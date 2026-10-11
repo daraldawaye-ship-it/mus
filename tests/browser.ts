@@ -202,9 +202,13 @@ async function waitRows(page: Page, expected: number[]): Promise<void> {
   );
 }
 async function openAppearance(page: Page): Promise<void> {
-  await page
-    .getByRole("button", { name: "إعدادات المظهر", exact: true })
-    .click();
+  const userTrigger = page.getByRole("button", { name: "قائمة المستخدم", exact: true });
+  if (await userTrigger.count()) {
+    await userTrigger.click();
+    await page.getByRole("menuitem", { name: "المظهر", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "إعدادات المظهر", exact: true }).click();
+  }
   await page.getByTestId("appearance-color").waitFor();
 }
 async function appearanceIs(
@@ -239,7 +243,8 @@ async function closeDialog(page: Page): Promise<void> {
   await page.getByRole("dialog").waitFor({ state: "hidden" });
 }
 async function logoutToPublic(page: Page, actor: Actor): Promise<void> {
-  await page.getByRole("button", { name: "تسجيل الخروج", exact: true }).click();
+  await page.getByRole("button", { name: "قائمة المستخدم", exact: true }).click();
+  await page.getByRole("menuitem", { name: "تسجيل الخروج", exact: true }).click();
   await eventually(
     () => call<SessionResponse>(actor, "/auth/session"),
     (value) => {
@@ -455,12 +460,81 @@ try {
         });
         assert.equal(header.height, 36, `Desktop header height at ${width}px`);
         assert.equal(header.subtitleCount, 0);
-        assert(header.controls.length >= 2);
+        assert(header.controls.length >= 1);
         for (const control of header.controls) {
           assert(control.height >= 30);
           assert(control.top >= header.top && control.bottom <= header.bottom);
         }
       }
+    },
+  );
+
+  await scenario(
+    "user avatar menu offers profile, appearance and logout controls",
+    async () => {
+      const { page } = await pageFor("owner@browser.test");
+      await page.goto("/");
+      const trigger = page.getByRole("button", { name: "قائمة المستخدم", exact: true });
+      await trigger.waitFor();
+      assert.equal(await page.locator(".topbar .account-name").count(), 0);
+      assert.equal(await page.locator(".topbar .user-avatar").count(), 1);
+      assert.equal(await page.getByRole("button", { name: "إعدادات المظهر" }).count(), 0);
+      await trigger.click();
+      const menu = page.getByRole("menu", { name: "خيارات المستخدم" });
+      await menu.waitFor();
+      assert.equal(await menu.getByRole("menuitem").count(), 3);
+      await menu.getByRole("menuitem", { name: "المظهر" }).click();
+      await page.getByTestId("appearance-color").waitFor();
+      await closeDialog(page);
+      await trigger.click();
+      await page.getByRole("menu").waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("menu").waitFor({ state: "hidden" });
+      await trigger.click();
+      await page.locator(".main-content").click({ position: { x: 10, y: 10 } });
+      await page.getByRole("menu").waitFor({ state: "hidden" });
+      await trigger.click();
+      await menu.getByRole("menuitem", { name: "تعديل حسابي" }).click();
+      await page.waitForURL(origin + "/profile");
+      await menu.waitFor({ state: "hidden" });
+    },
+  );
+
+  await scenario(
+    "saved user profile picture appears in topbar and has a fallback",
+    async () => {
+      const { page, actor } = await pageFor(users[31]!.email);
+      const current = actor.session.user!;
+      await call(actor, "/profile", "PATCH", {
+        name: current.name,
+        displayName: current.displayName,
+        email: current.email,
+        phone: current.phone,
+        image: "https://avatar.example.test/avatar-test.svg",
+      });
+      await page.route("https://avatar.example.test/avatar-test.svg", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "image/svg+xml",
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="30"/></svg>',
+        });
+      });
+      await page.goto("/");
+      await page.locator(".user-menu-trigger img").waitFor();
+      assert.equal(
+        await page.locator(".user-menu-trigger img").getAttribute("src"),
+        "https://avatar.example.test/avatar-test.svg",
+      );
+      await call(actor, "/profile", "PATCH", {
+        name: current.name,
+        displayName: current.displayName,
+        email: current.email,
+        phone: current.phone,
+        image: "",
+      });
+      await page.reload();
+      await page.locator(".user-menu-trigger .user-avatar span").waitFor();
+      assert.equal(await page.locator(".user-menu-trigger img").count(), 0);
     },
   );
 
@@ -493,7 +567,7 @@ try {
       });
       assert.equal(header.height, 44);
       assert.equal(header.subtitleCount, 0);
-      assert(header.buttons.length >= 3, "Menu, appearance and logout buttons should remain");
+      assert(header.buttons.length >= 2, "Mobile navigation and avatar menu must remain available");
       for (const button of header.buttons) {
         assert(button.height >= 38, "Keep mobile touch controls usable");
         assert(button.width > 0 && button.top >= header.top && button.bottom <= header.bottom);
