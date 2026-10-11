@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
-import { createDatabase } from "../apps/api/src/db.ts";
+import { createDatabase, migrate } from "../apps/api/src/db.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import { DEFAULT_APPEARANCE } from "../packages/contracts/src/index.ts";
 import type {
@@ -1074,6 +1074,70 @@ test("new company provisions active main branch and showroom atomically", async 
   assert.equal(otherBranches.total, 1);
   assert.notEqual(otherBranches.items[0]?.id, main.id);
   assert.equal(otherBranches.items[0]?.code, "HQ");
+});
+
+test("migration backfills only older companies without branches, and never duplicates a showroom", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  // Simulate a company created before HQ provisioning (without using the current API).
+  const legacy = await f.pool.query<{ id: number }>(
+    "INSERT INTO companies(name,phone,address,created_by) VALUES($1,$2,$3,$4) RETURNING id",
+    ["Legacy Company", "+967123456789", "Old address", platform.user.id],
+  );
+  const legacyId = legacy.rows[0]!.id;
+  const existing = await company(platform.client, "Existing organized company");
+  const existingBranch = (
+    await platform.client.ok<Page<Branch>>("GET", `/companies/${existing.id}/branches`)
+  ).items[0]!;
+  const existingShowroom = (
+    await platform.client.ok<Page<Location>>("GET", `/companies/${existing.id}/locations`)
+  ).items[0]!;
+
+  // Mark only this migration as unapplied inside the disposable test schema.
+  await f.pool.query("DELETE FROM schema_migrations WHERE version=$1", [
+    "003_backfill_main_branch.sql",
+  ]);
+  await migrate(f.pool);
+  const branches = await platform.client.ok<Page<Branch>>(
+    "GET", `/companies/${legacyId}/branches`,
+  );
+  assert.equal(branches.total, 1);
+  const main = branches.items[0]!;
+  assert.equal(main.code, "HQ");
+  assert.equal(main.name, "الفرع الرئيسي");
+  assert.equal(main.active, true);
+  assert.equal(main.phone, "+967123456789");
+  assert.equal(main.address, "Old address");
+  const locations = await platform.client.ok<Page<Location>>(
+    "GET", `/companies/${legacyId}/locations`,
+  );
+  assert.equal(locations.total, 1);
+  assert.equal(locations.items[0]?.branchId, main.id);
+  assert.equal(locations.items[0]?.code, "SHOWROOM");
+  assert.equal(locations.items[0]?.name, "المعرض");
+  assert.equal(locations.items[0]?.effectiveActive, true);
+  const events = await platform.client.ok<Page<AuditEvent>>(
+    "GET", `/companies/${legacyId}/audit?pageSize=100`,
+  );
+  assert.equal(events.items.filter((event) => event.action === "branch.create").length, 1);
+  assert.equal(events.items.filter((event) => event.action === "location.create").length, 1);
+
+  // A second migration pass must do nothing; an already configured company is untouched.
+  await migrate(f.pool);
+  assert.equal(
+    (await platform.client.ok<Page<Branch>>("GET", `/companies/${legacyId}/branches`)).total,
+    1,
+  );
+  const stillBranch = await platform.client.ok<Page<Branch>>(
+    "GET", `/companies/${existing.id}/branches`,
+  );
+  const stillShowroom = await platform.client.ok<Page<Location>>(
+    "GET", `/companies/${existing.id}/locations`,
+  );
+  assert.equal(stillBranch.total, 1);
+  assert.equal(stillBranch.items[0]?.id, existingBranch.id);
+  assert.equal(stillShowroom.total, 1);
+  assert.equal(stillShowroom.items[0]?.id, existingShowroom.id);
 });
 
 test("company audit records canonical database values and mutation rolls back when audit insertion fails", async (t) => {
