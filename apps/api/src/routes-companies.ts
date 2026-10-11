@@ -24,6 +24,7 @@ import {
   employeeSelect,
   userDTO,
 } from "./repositories/models.ts";
+import { branchDTO, locationDTO } from "./repositories/masters.ts";
 import { auditPage } from "./routes-public.ts";
 import { deny, missing, HttpError } from "./errors.ts";
 
@@ -117,6 +118,42 @@ export function companyRoutes(pool: Pool): Router {
           next.id,
           null,
           next,
+          next.id,
+        );
+        // Every new company starts with an active main branch and its showroom.
+        // Keep all three inserts and audit events in one transaction: no partial company.
+        const mainBranchResult = await client.query(
+          "INSERT INTO branches(company_id,code,name,phone,address,active,created_by) VALUES($1,'MAIN','الفرع الرئيسي',$2,$3,true,$4) RETURNING *",
+          [next.id, next.phone, next.address, user.id],
+        );
+        const mainBranch = branchDTO(mainBranchResult.rows[0]);
+        const showroomResult = await client.query(
+          "INSERT INTO locations(company_id,branch_id,code,name,kind,active,created_by) VALUES($1,$2,'SHOWROOM','المعرض','showroom',true,$3) RETURNING *",
+          [next.id, mainBranch.id, user.id],
+        );
+        const showroom = locationDTO({
+          ...showroomResult.rows[0],
+          branch_name: mainBranch.name,
+          branch_active: mainBranch.active,
+        });
+        await audit(
+          client,
+          user,
+          "branch.create",
+          "branch",
+          mainBranch.id,
+          null,
+          mainBranch,
+          next.id,
+        );
+        await audit(
+          client,
+          user,
+          "location.create",
+          "location",
+          showroom.id,
+          null,
+          showroom,
           next.id,
         );
         return next;
