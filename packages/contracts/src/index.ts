@@ -101,6 +101,8 @@ export const auditActionLabels = {
   "branch.update": "تعديل فرع",
   "location.create": "إنشاء موقع",
   "location.update": "تعديل موقع",
+  "generalTable.create": "إضافة سجل عام",
+  "generalTable.update": "تعديل سجل عام",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -115,6 +117,8 @@ export const publicAuditActions: AuditAction[] = [
   "users.view",
   "audit.view",
   "company.lastFallback",
+  "generalTable.create",
+  "generalTable.update",
 ];
 export const companyAuditActions: AuditAction[] = [
   "account.create",
@@ -156,6 +160,7 @@ export const auditTargetLabels: Record<string, string> = {
   exchangeRate: "سعر صرف",
   branch: "فرع",
   location: "موقع",
+  generalTable: "الجدول العام",
 };
 export const catalog = {
   ...masterCatalog,
@@ -367,3 +372,4 @@ export type ProfileInput = z.input<typeof profileSchema>;
 export type CompanyInput = z.input<typeof companySchema>;
 export type EmployeeInput = z.input<typeof employeeSchema>;
 export * from "./masters.ts";
+export * from "./general-table.ts";

@@ -6,7 +6,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY apps ./apps
 COPY packages ./packages
-RUN npm run build
+RUN npm run check && npm run build
 
 FROM node:24.19.0-bookworm-slim AS production-dependencies
 WORKDIR /app

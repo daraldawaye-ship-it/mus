@@ -17,6 +17,7 @@ import {
   Coins,
   FileClock,
   Home,
+  TableProperties,
   LayoutDashboard,
   LogIn,
   LogOut,
@@ -48,6 +49,9 @@ import {
   EmployeesPage,
 } from "./pages/CompanyPages";
 
+const GeneralTablePage = lazy(() =>
+  import("./pages/GeneralTablePage").then((module) => ({default:module.GeneralTablePage})),
+);
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -121,6 +125,8 @@ function Navigation({
           {link("/companies", "الشركات", <Building2 size={17} />, true)}
           {(user.owner || user.kind === "admin") &&
             link("/users", "المستخدمون", <Users size={17} />)}
+          {(user.owner || user.kind === "admin") &&
+            link("/general-table", "الجدول العام", <TableProperties size={17} />)}
           {(user.owner || user.kind === "admin" || user.monitor) &&
             link("/audit", "السجل العام", <FileClock size={17} />)}
         </>
@@ -465,6 +471,10 @@ function Workspace() {
                     <UsersPage />
                   </Protected>
                 }
+              />
+              <Route
+                path="/general-table"
+                element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الجدول العام…</Notice>}><GeneralTablePage /></Suspense></Protected>}
               />
               <Route
                 path="/audit"

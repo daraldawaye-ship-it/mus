@@ -13,6 +13,7 @@ import { companyRoutes } from "./routes-companies.ts";
 import { accountRoutes } from "./routes-accounts.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
+import { generalTableRoutes } from "./routes-general-table.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -33,7 +34,7 @@ export async function createApp(options: AppOptions = {}) {
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   app.use(
     "/api",
-    express.json({ limit: "32kb" }),
+    express.json({ limit: "512kb" }),
     loadSession(pool),
     mutationSecurity(config.appOrigin),
   );
@@ -46,6 +47,7 @@ export async function createApp(options: AppOptions = {}) {
     accountRoutes(pool),
     currencyRoutes(pool),
     locationRoutes(pool),
+    generalTableRoutes(pool),
   );
   app.use("/api", (_req, res) =>
     res
