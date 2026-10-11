@@ -8,7 +8,7 @@ import {
   useMatch,
   useNavigate,
 } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   BookOpen,
@@ -28,7 +28,7 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
-import type { CompanyContext } from "../../../packages/contracts/src/index";
+import type { CompanyContext, CompanyPage } from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { Button, Card, Dialog, Notice } from "./ui";
@@ -282,7 +282,9 @@ function Workspace() {
   } = useSession();
   const match = useMatch("/companies/:companyId/*");
   const companyId = Number(match?.params.companyId);
-  const scope = companyId > 0 ? `company:${companyId}` : "public";
+  const inCompany = Number.isSafeInteger(companyId) && companyId > 0;
+  const scope = inCompany ? `company:${companyId}` : "public";
+  const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const location = useLocation();
@@ -293,9 +295,25 @@ function Workspace() {
     queryKey: ["company", user?.id, companyId],
     queryFn: ({ signal }) =>
       api<CompanyContext>(`/companies/${companyId}`, { signal }),
-    enabled: !!user && companyId > 0,
+    enabled: !!user && inCompany,
     staleTime: 0,
   });
+  // The backend persists the last accessible company for each user. Resolve it
+  // independently from the current route so public pages retain company links.
+  const lastCompany = useQuery({
+    queryKey: ["last-company-sidebar", user?.id],
+    queryFn: async ({ signal }) => {
+      const list = await api<CompanyPage>("/companies?pageSize=1", { signal });
+      if (!list.lastCompanyId) return null;
+      return api<CompanyContext>(`/companies/${list.lastCompanyId}`, { signal });
+    },
+    enabled: !!user && !inCompany,
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
+  });
+  const navigationContext = inCompany
+    ? (company.isError ? undefined : company.data)
+    : (lastCompany.isError ? undefined : lastCompany.data ?? undefined);
   useEffect(() => {
     setDrawer(false);
     if (priorPath.current !== location.pathname) {
@@ -314,14 +332,25 @@ function Workspace() {
     acknowledgeLogoutRedirect,
   ]);
   useEffect(() => {
-    if (!user || companyId <= 0 || !company.data) return;
+    if (!user || !inCompany || !company.data || company.isError) return;
     const controller = new AbortController();
+    const userId = user.id;
+    const selectedContext = company.data;
     void api(`/companies/${companyId}/activate`, {
       method: "POST",
       signal: controller.signal,
-    }).catch(() => {});
+    })
+      .then(() => {
+        if (!controller.signal.aborted) {
+          queryClient.setQueryData(
+            ["last-company-sidebar", userId],
+            selectedContext,
+          );
+        }
+      })
+      .catch(() => {});
     return () => controller.abort();
-  }, [companyId, user?.id, !!company.data]);
+  }, [companyId, user?.id, !!company.data, company.isError, queryClient]);
   if (sessionLoading)
     return (
       <div className="boot-state">
@@ -339,7 +368,7 @@ function Workspace() {
               تجارة<small>مساحة العمل</small>
             </span>
           </NavLink>
-          <Navigation context={company.data} />
+          <Navigation context={navigationContext} />
           <div className="sidebar-bottom">
             <ShieldCheck size={17} />
             <span>
@@ -506,7 +535,7 @@ function Workspace() {
         onClose={() => setDrawer(false)}
         title="قائمة التنقل"
       >
-        <Navigation context={company.data} close={() => setDrawer(false)} />
+        <Navigation context={navigationContext} close={() => setDrawer(false)} />
       </Dialog>
     </AppearanceProvider>
   );
