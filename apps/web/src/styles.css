@@ -254,7 +254,8 @@ legend {
   min-width: 0;
 }
 .topbar {
-  height: 65px;
+  height: 36px;
+  min-height: 36px;
   display: flex;
   justify-content: space-between;
   align-items: center;
