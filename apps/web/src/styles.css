@@ -40,6 +40,12 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
+/* Do not hand an overscroll at the top of the page to the browser's
+   pull-to-refresh gesture. Scrolling within pages and tables still works. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
 * {
   box-sizing: border-box;
 }
