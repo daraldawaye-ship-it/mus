@@ -410,6 +410,27 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "mobile pages suppress pull-to-refresh while preserving document scrolling",
+    async () => {
+      const { page } = await pageFor("owner@browser.test", true);
+      await page.goto("/users?pageSize=100");
+      await page.getByRole("heading", { name: "المستخدمون" }).waitFor();
+      const behavior = await page.evaluate(() => ({
+        html: getComputedStyle(document.documentElement).overscrollBehaviorY,
+        body: getComputedStyle(document.body).overscrollBehaviorY,
+      }));
+      assert.deepEqual(behavior, { html: "none", body: "none" });
+      const scrolling = await page.evaluate(() => {
+        const available = document.documentElement.scrollHeight > innerHeight;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        return { available, scrolled: window.scrollY > 0 };
+      });
+      assert(scrolling.available, "The mobile users page should be scrollable");
+      assert(scrolling.scrolled, "Ordinary vertical scrolling must still work");
+    },
+  );
+
+  await scenario(
     "public registration, canonical profile and stored audit values",
     async () => {
       assert(browser);
