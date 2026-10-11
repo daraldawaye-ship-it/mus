@@ -134,6 +134,17 @@ export function AppearanceProvider({
   const [preference, updatePreference] =
     useState<AppearancePreference>(defaultPreference);
   const [opened, setOpened] = useState(false);
+  // Prevent an older request from closing a dialog opened again after dismissal.
+  const dialogVersion = useRef(0);
+  const openAppearance = () => {
+    dialogVersion.current++;
+    setNotice(null);
+    setOpened(true);
+  };
+  const closeAppearance = () => {
+    dialogVersion.current++;
+    setOpened(false);
+  };
   const [loading, setLoading] = useState(!!user);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{
@@ -183,6 +194,8 @@ export function AppearanceProvider({
     root.style.colorScheme = preference.mode;
   }, [preference]);
   const save = async () => {
+    if (saving) return;
+    const sentVersion = dialogVersion.current;
     const sentRevision = revision.current;
     const sent = { ...snapshot.current };
     setSaving(true);
@@ -195,14 +208,16 @@ export function AppearanceProvider({
       });
       if (!guard.isCurrent()) return;
       setSavedRevision(sentRevision);
-      setNotice(
-        revision.current === sentRevision
-          ? { tone: "success", text: "تم حفظ المظهر لهذا النطاق" }
-          : {
-              tone: "info",
-              text: "تم حفظ النسخة المرسلة. توجد تغييرات أحدث تحتاج إلى حفظ.",
-            },
-      );
+      if (revision.current === sentRevision && dialogVersion.current === sentVersion) {
+        // The submitted preference was saved and no newer unsaved edit exists.
+        setNotice(null);
+        closeAppearance();
+      } else if (revision.current !== sentRevision && dialogVersion.current === sentVersion) {
+        setNotice({
+          tone: "info",
+          text: "تم حفظ النسخة المرسلة. توجد تغييرات أحدث تحتاج إلى حفظ.",
+        });
+      }
     } catch (error) {
       if (guard.isCurrent())
         setNotice({
@@ -215,12 +230,12 @@ export function AppearanceProvider({
   };
   return (
     <AppearanceContext.Provider
-      value={{ preference, setPreference, open: () => setOpened(true) }}
+      value={{ preference, setPreference, open: openAppearance }}
     >
       {children}
       <Dialog
         open={opened}
-        onClose={() => setOpened(false)}
+        onClose={closeAppearance}
         title="مظهر مساحة العمل"
         footer={
           <>
