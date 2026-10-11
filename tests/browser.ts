@@ -677,6 +677,13 @@ try {
           .count(),
         0,
       );
+      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
+      await page.goto("/profile");
+      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
+      assert.equal(await page.locator(`.sidebar a[href="/companies/${companyA.id}/employees"]`).count(), 1);
+      await page.reload();
+      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
+      assert.equal(await page.locator(`.sidebar a[href="/companies/${companyB.id}/employees"]`).count(), 0);
     },
   );
 
@@ -1556,7 +1563,10 @@ try {
           await page.locator(".scope-title strong").textContent(),
           "الموقع العام",
         );
-        assert.equal(await page.locator(".company-nav-label").count(), 0);
+        await eventually(
+          async () => page.locator(".sidebar .company-nav-label").textContent(),
+          (name) => assert.equal(name, "Canonical Late Company"),
+        );
         assert.equal(
           await page
             .getByText("تم حفظ بيانات الشركة.", { exact: true })
