@@ -410,6 +410,45 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "mobile header stays compact with a single line and usable buttons",
+    async () => {
+      const { page } = await pageFor("owner@browser.test", true);
+      await page.goto(`/companies/${companyA.id}/accounts`);
+      await page.locator(".scope-title strong").getByText(companyA.name).waitFor();
+      const header = await page.locator(".topbar").evaluate((element) => {
+        const bar = element.getBoundingClientRect();
+        const buttons = [
+          ...element.querySelectorAll<HTMLElement>("button"),
+        ].map((button) => {
+          const rect = button.getBoundingClientRect();
+          return {
+            width: rect.width,
+            height: rect.height,
+            top: rect.top,
+            bottom: rect.bottom,
+          };
+        });
+        return {
+          height: bar.height,
+          top: bar.top,
+          bottom: bar.bottom,
+          subtitleCount: element.querySelectorAll(".scope-title small").length,
+          buttons,
+        };
+      });
+      assert.equal(header.height, 44);
+      assert.equal(header.subtitleCount, 0);
+      assert(header.buttons.length >= 3, "Menu, appearance and logout buttons should remain");
+      for (const button of header.buttons) {
+        assert(button.height >= 38, "Keep mobile touch controls usable");
+        assert(button.width > 0 && button.top >= header.top && button.bottom <= header.bottom);
+      }
+      await page.getByRole("button", { name: "فتح قائمة التنقل" }).click();
+      await page.getByRole("dialog").waitFor({ state: "visible" });
+    },
+  );
+
+  await scenario(
     "mobile pages suppress pull-to-refresh while preserving document scrolling",
     async () => {
       const { page } = await pageFor("owner@browser.test", true);
