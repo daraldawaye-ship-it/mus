@@ -308,6 +308,10 @@ export const passwordChangeSchema = z
   .strict();
 export const userPatchSchema = z
   .object({
+    name: name.optional(),
+    displayName: text(120).optional(),
+    email: email.optional(),
+    phone: phone.optional(),
     kind: z.enum(userKinds).optional(),
     archived: z.boolean().optional(),
     suspended: z.boolean().optional(),
