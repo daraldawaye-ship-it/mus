@@ -37,7 +37,7 @@ export async function createApp(options: AppOptions = {}) {
     loadSession(pool),
     mutationSecurity(config.appOrigin),
   );
-  app.use(setupRoutes(pool));
+  app.use(setupRoutes(pool, config.appOrigin));
   app.use(
     "/api",
     authRoutes(pool, config.production),
