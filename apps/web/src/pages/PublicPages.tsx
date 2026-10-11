@@ -592,10 +592,12 @@ function UserList() {
     setEditError("");
     try {
       await api(`/users/${editTarget.id}`, {method:"PATCH",body:editDraft,signal:guard.signal});
-      await list.refetch();
+      if (!guard.isCurrent()) return;
+      // Close as soon as the mutation succeeds; table refresh must not hold the dialog open.
       setEditTarget(null);
       setEditDraft(null);
       setNotice({tone:"success",text:`حُفظت تغييرات حساب ${editTarget.displayName}.`});
+      void list.refetch();
       if (editTarget.id === user?.id) await reloadSession();
     } catch (cause) { setEditError(messageOf(cause)); }
     finally { setEditBusy(false); }

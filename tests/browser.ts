@@ -210,10 +210,7 @@ async function setAppearance(
   await page.getByTestId("appearance-color").fill(preference.color);
   if (save) {
     await page.getByTestId("appearance-save").click();
-    await page
-      .getByTestId("appearance-status")
-      .getByText("تم حفظ المظهر لهذا النطاق", { exact: true })
-      .waitFor();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
   }
 }
 async function closeDialog(page: Page): Promise<void> {
@@ -954,6 +951,32 @@ try {
   );
 
   await scenario(
+    "appearance save closes on success, stays open on errors, and supports retry",
+    async () => {
+      const { page } = await pageFor();
+      await page.goto("/");
+      await openAppearance(page);
+      await page.getByText("جارٍ تحميل المظهر…", { exact: true })
+        .waitFor({ state: "hidden" });
+      await setAppearance(page, { mode: "dark", color: "#336699" }, false);
+      await page.route("**/api/appearance", async (route) => {
+        if (route.request().method() !== "PATCH") return route.continue();
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { code: "test_failure", message: "تعذر الحفظ مؤقتًا" } }),
+        });
+      });
+      await page.getByTestId("appearance-save").click();
+      await page.getByRole("dialog").waitFor({ state: "visible" });
+      await page.getByRole("alert").getByText("تعذر الحفظ مؤقتًا", { exact: true }).waitFor();
+      await page.unroute("**/api/appearance");
+      await page.getByTestId("appearance-save").click();
+      await page.getByRole("dialog").waitFor({ state: "hidden" });
+    },
+  );
+
+  await scenario(
     "appearance persists independently for public, each company and each user",
     async () => {
       const { page, actor } = await pageFor();
@@ -986,7 +1009,6 @@ try {
           ).preference,
           preference,
         );
-        await closeDialog(page);
       }
       for (const [path, , preference] of preferences) {
         await page.goto(path);

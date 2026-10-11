@@ -219,9 +219,10 @@ function BranchesContent({ context }: { context: CompanyContext }) {
           onSaved={async (branch) => {
             if (!guard.isCurrent()) return;
             const creating = !editor.branch;
+            // The save has succeeded; dismiss before refreshing the table.
+            setEditor(null);
             await changed();
             if (!guard.isCurrent()) return;
-            setEditor(null);
             setNotice(
               creating
                 ? `تم إنشاء الفرع «${branch.name}» ومعرضه تلقائيًا.`
@@ -635,9 +636,10 @@ function LocationsContent({ context }: { context: CompanyContext }) {
           onSaved={async (location) => {
             if (!guard.isCurrent()) return;
             const creating = !editor.location;
+            // The save has succeeded; dismiss before refreshing the table.
+            setEditor(null);
             await changed();
             if (!guard.isCurrent()) return;
-            setEditor(null);
             setNotice(
               `${creating ? "تم إنشاء" : "تم حفظ"} ${locationKindLabels[location.kind]} «${location.name}»${location.effectiveActive ? "." : "؛ غير متاح فعليًا حتى تفعيل الموقع والفرع معًا."}`,
             );
