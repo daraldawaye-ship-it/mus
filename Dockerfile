@@ -2,9 +2,7 @@
 FROM node:24.19.0-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN --mount=type=secret,id=trusted_ca \
-    if [ -f /run/secrets/trusted_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/trusted_ca; fi; \
-    npm ci
+RUN npm ci
 COPY tsconfig.json ./
 COPY apps ./apps
 COPY packages ./packages
@@ -13,9 +11,7 @@ RUN npm run build
 FROM node:24.19.0-bookworm-slim AS production-dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN --mount=type=secret,id=trusted_ca \
-    if [ -f /run/secrets/trusted_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/trusted_ca; fi; \
-    npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM node:24.19.0-bookworm-slim AS runtime
 WORKDIR /app
