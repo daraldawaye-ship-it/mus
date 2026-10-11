@@ -577,13 +577,13 @@ function UserList() {
   } | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
   const [editTarget, setEditTarget] = useState<User | null>(null);
-  const [editDraft, setEditDraft] = useState<{kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
+  const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState("");
   function openEditor(target: User) {
     if (target.owner) return;
     setEditTarget(target);
-    setEditDraft({kind:target.kind,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
+    setEditDraft({name:target.name,displayName:target.displayName,email:target.email,phone:target.phone,kind:target.kind,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
     setEditError("");
   }
   async function saveEditor() {
@@ -827,14 +827,18 @@ function UserList() {
         footer={<><Button variant="secondary" disabled={editBusy} onClick={()=>{setEditTarget(null);setEditDraft(null);}}>إلغاء</Button>
         <Button disabled={editBusy||!editDraft} onClick={()=>void saveEditor()}>{editBusy?"جارٍ الحفظ…":"حفظ التعديلات"}</Button></>}>
         {editTarget&&editDraft&&<div className="form-grid">
-          <p className="form-full">المعرف: {editTarget.id} — {editTarget.email}</p>
+          <p className="form-full">المعرف: {editTarget.id}</p>
+          <Field label="الاسم" value={editDraft.name} required maxLength={120} onChange={event=>setEditDraft({...editDraft,name:event.target.value})}/>
+          <Field label="اسم الظهور" value={editDraft.displayName} maxLength={120} onChange={event=>setEditDraft({...editDraft,displayName:event.target.value})}/>
+          <Field label="البريد الإلكتروني" type="email" dir="ltr" value={editDraft.email} required maxLength={254} onChange={event=>setEditDraft({...editDraft,email:event.target.value})}/>
+          <Field label="الهاتف" type="tel" dir="ltr" value={editDraft.phone} maxLength={40} onChange={event=>setEditDraft({...editDraft,phone:event.target.value})}/>
           <Select label="نوع الحساب" value={editDraft.kind} onChange={event=>setEditDraft({...editDraft,kind:event.target.value as User["kind"]})}>
             {userKinds.map(kind=><option key={kind} value={kind}>{userKindLabels[kind]}</option>)}
           </Select>
           {(["editor","monitor","suspended","archived"] as const).map(flag=><Select key={flag} label={flagLabels[flag]} value={String(editDraft[flag])} onChange={event=>setEditDraft({...editDraft,[flag]:event.target.value==="true"})}>
             <option value="false">لا</option><option value="true">نعم</option>
           </Select>)}
-          <p className="form-full">الاسم والبريد والهاتف يُعدّلها صاحب الحساب من «حسابي». أرشفة الحساب تسحب جلساته النشطة.</p>
+          <p className="form-full">ستُسجَّل تغييرات بيانات الحساب في سجل التدقيق. أرشفة الحساب تسحب جلساته النشطة.</p>
           {editError&&<Notice tone="error">{editError}</Notice>}
         </div>}
       </Dialog>
