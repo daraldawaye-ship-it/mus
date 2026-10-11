@@ -123,7 +123,7 @@ export function companyRoutes(pool: Pool): Router {
         // Every new company starts with an active main branch and its showroom.
         // Keep all three inserts and audit events in one transaction: no partial company.
         const mainBranchResult = await client.query(
-          "INSERT INTO branches(company_id,code,name,phone,address,active,created_by) VALUES($1,'MAIN','الفرع الرئيسي',$2,$3,true,$4) RETURNING *",
+          "INSERT INTO branches(company_id,code,name,phone,address,active,created_by) VALUES($1,'HQ','الفرع الرئيسي',$2,$3,true,$4) RETURNING *",
           [next.id, next.phone, next.address, user.id],
         );
         const mainBranch = branchDTO(mainBranchResult.rows[0]);
