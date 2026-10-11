@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
+import { itemCatalog } from "./items.ts";
 export const MAX_ID = 2_147_483_647;
 
 export const userKinds = ["admin", "supervisor", "member"] as const;
@@ -24,6 +25,8 @@ export const permissionKeys = [
   "finance.view",
   "finance.manage",
   "finance.post",
+  "items.view",
+  "items.manage",
 ] as const;
 export type UserKind = (typeof userKinds)[number];
 export type EmployeeRole = (typeof employeeRoles)[number];
@@ -53,6 +56,8 @@ export const permissionLabels: Record<Permission, string> = {
   "finance.view": "عرض القيود والسندات والأرصدة",
   "finance.manage": "إنشاء وتعديل المسودات المالية",
   "finance.post": "ترحيل وعكس القيود والسندات",
+  "items.view": "عرض الأصناف ووكلائها",
+  "items.manage": "إدارة الأصناف ووكلائها",
 };
 export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   employee: [],
@@ -116,6 +121,10 @@ export const auditActionLabels = {
   "financialDocument.update": "تعديل مسودة مالية",
   "financialDocument.post": "ترحيل مستند مالي",
   "financialDocument.reverse": "عكس مستند مالي",
+  "itemAgent.create": "إضافة وكيل صنف",
+  "itemAgent.update": "تعديل وكيل صنف",
+  "item.create": "إضافة صنف",
+  "item.update": "تعديل صنف",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -134,6 +143,10 @@ export const publicAuditActions: AuditAction[] = [
   "generalTable.update",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "itemAgent.create",
+  "itemAgent.update",
+  "item.create",
+  "item.update",
   "financialDocument.create",
   "financialDocument.update",
   "financialDocument.post",
@@ -179,10 +192,13 @@ export const auditTargetLabels: Record<string, string> = {
   location: "موقع",
   generalTable: "الجدول العام",
   financialDocument: "مستند مالي",
+  item: "صنف",
+  itemAgent: "وكيل صنف",
 };
 export const catalog = {
   ...masterCatalog,
   ...financeCatalog,
+  ...itemCatalog,
   userKinds,
   employeeRoles,
   permissionKeys,
@@ -393,3 +409,4 @@ export type EmployeeInput = z.input<typeof employeeSchema>;
 export * from "./masters.ts";
 export * from "./general-table.ts";
 export * from "./finance.ts";
+export * from "./items.ts";

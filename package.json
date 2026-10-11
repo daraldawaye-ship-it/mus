@@ -1,6 +1,6 @@
 {
   "name": "tijara",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,8 @@
     "db:stop": "bash scripts/postgres.sh stop",
     "owner:create": "tsx apps/api/src/owner.ts",
     "start": "NODE_ENV=production tsx apps/api/src/index.ts",
-    "test:browser:finance": "npm run build && tsx tests/browser-finance.ts"
+    "test:browser:finance": "npm run build && tsx tests/browser-finance.ts",
+    "test:browser:items": "npm run build && tsx tests/browser-items.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",

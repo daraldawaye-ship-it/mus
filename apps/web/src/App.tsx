@@ -26,6 +26,7 @@ import {
   LogIn,
   Menu,
   MapPin,
+  Package,
   Settings2,
   ShieldCheck,
   TrendingUp,
@@ -106,6 +107,25 @@ const AccountLedgerPage = lazy(() =>
     default: module.AccountLedgerPage,
   })),
 );
+const ItemsPage = lazy(() =>
+  import("./pages/ItemsPages").then((module) => ({
+    default: module.ItemsPage,
+  })),
+);
+const ItemPage = lazy(() =>
+  import("./pages/ItemsPages").then((module) => ({ default: module.ItemPage })),
+);
+const ItemAgentsPage = lazy(() =>
+  import("./pages/ItemsPages").then((module) => ({
+    default: module.ItemAgentsPage,
+  })),
+);
+const mayReadItems = (context: CompanyContext) =>
+  context.general ||
+  context.permissions.some(
+    (permission) =>
+      permission === "items.view" || permission === "items.manage",
+  );
 const mayReadFinance = (context: CompanyContext) =>
   context.general ||
   context.permissions.some((permission) =>
@@ -128,6 +148,9 @@ const companySections = [
   "payments",
   "account-balances",
   "account-ledger",
+  "items",
+  "item",
+  "item-agents",
 ] as const;
 type CompanySection = (typeof companySections)[number];
 
@@ -207,6 +230,20 @@ function Navigation({
               "دليل الحسابات",
               <BookOpen size={17} />,
             )}
+          {mayReadItems(context) && (
+            <>
+              {link(
+                `/companies/${context.company.id}/items`,
+                "الأصناف",
+                <Package size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/item-agents`,
+                "وكلاء الأصناف",
+                <Users size={17} />,
+              )}
+            </>
+          )}
           {mayReadFinance(context) && (
             <>
               {link(
@@ -318,6 +355,24 @@ function CompanyView({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل دليل الحسابات…</Notice>}>
           <AccountsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "items":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الأصناف…</Notice>}>
+          <ItemsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "item":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
+          <ItemPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "item-agents":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الوكلاء…</Notice>}>
+          <ItemAgentsPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "financial-documents":
@@ -617,7 +672,7 @@ function Workspace() {
               {companySections.map((section) => (
                 <Route
                   key={section}
-                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : `/${section}`}`}
+                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : section === "item" ? "/items/:itemId" : `/${section}`}`}
                   element={
                     <Protected>
                       <CompanyView

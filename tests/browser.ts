@@ -203,11 +203,13 @@ async function waitRows(page: Page, expected: number[]): Promise<void> {
 }
 async function openAppearance(page: Page): Promise<void> {
   const userTrigger = page.getByRole("button", { name: "قائمة المستخدم", exact: true });
-  if (await userTrigger.count()) {
+  const appearanceTrigger = page.getByRole("button", { name: "إعدادات المظهر", exact: true });
+  await userTrigger.or(appearanceTrigger).first().waitFor({ state: "visible" });
+  if (await userTrigger.isVisible()) {
     await userTrigger.click();
     await page.getByRole("menuitem", { name: "المظهر", exact: true }).click();
   } else {
-    await page.getByRole("button", { name: "إعدادات المظهر", exact: true }).click();
+    await appearanceTrigger.click();
   }
   await page.getByTestId("appearance-color").waitFor();
 }

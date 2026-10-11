@@ -58,7 +58,12 @@ export async function companyAccess(
   const permissions: Permission[] = general
     ? [...permissionKeys]
     : [...row.permissions];
-  for (const module of ["accounts", "currencies", "locations"] as const) {
+  for (const module of [
+    "accounts",
+    "currencies",
+    "locations",
+    "items",
+  ] as const) {
     if (
       permissions.includes(`${module}.manage`) &&
       !permissions.includes(`${module}.view`)
