@@ -688,6 +688,29 @@ try {
   );
 
   await scenario(
+    "sidebar tracks the last selected company across public pages and reloads",
+    async () => {
+      const { page, actor } = await pageFor();
+      for (const selected of [companyA, companyB]) {
+        await page.goto(`/companies/${selected.id}`);
+        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+        await eventually(
+          () => call<{ lastCompanyId: number | null }>(actor, "/companies?pageSize=1"),
+          (response) => assert.equal(response.lastCompanyId, selected.id),
+        );
+        await page.goto("/profile");
+        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+        assert.equal(
+          await page.locator(`.sidebar a[href="/companies/${selected.id}/employees"]`).count(),
+          1,
+        );
+        await page.reload();
+        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+      }
+    },
+  );
+
+  await scenario(
     "server pagination, row sorting and multisort priority remain stable",
     async () => {
       const { page, actor } = await pageFor();
