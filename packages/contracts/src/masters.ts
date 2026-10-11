@@ -107,6 +107,7 @@ export interface Account {
   category: AccountCategory;
   normalSide: NormalSide;
   active: boolean;
+  cashOrBank: boolean;
   rangeStart: string | null;
   rangeEnd: string | null;
   createdBy: number;
@@ -191,11 +192,21 @@ export const accountSchema = z
     category: z.enum(accountCategories),
     normalSide: z.enum(normalSides),
     active: z.boolean().default(true),
+    cashOrBank: z.boolean().default(false),
     rangeStart: code.nullable().optional().default(null),
     rangeEnd: code.nullable().optional().default(null),
   })
   .strict()
   .superRefine((value, context) => {
+    if (
+      value.cashOrBank &&
+      (value.kind !== "posting" || value.category !== "asset")
+    )
+      context.addIssue({
+        code: "custom",
+        message: "حساب الصندوق أو البنك يجب أن يكون حركيًا من الأصول",
+        path: ["cashOrBank"],
+      });
     if ((value.rangeStart === null) !== (value.rangeEnd === null))
       context.addIssue({
         code: "custom",
@@ -222,7 +233,11 @@ export const accountSchema = z
       });
   });
 export const accountPatchSchema = z
-  .object({ name: name.optional(), active: z.boolean().optional() })
+  .object({
+    name: name.optional(),
+    active: z.boolean().optional(),
+    cashOrBank: z.boolean().optional(),
+  })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
 export const accountLinkSchema = z
@@ -240,7 +255,10 @@ export const currencySchema = z
     active: z.boolean().default(true),
   })
   .strict();
-export const currencyPatchSchema = accountPatchSchema;
+export const currencyPatchSchema = z
+  .object({ name: name.optional(), active: z.boolean().optional() })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
 export const currenciesInitializeSchema = z
   .object({
     baseCurrency: z
@@ -320,7 +338,7 @@ export const branchPatchSchema = z
 export const locationSchema = z
   .object({ branchId: id, code: siteCode, name, kind: z.enum(locationKinds) })
   .strict();
-export const locationPatchSchema = accountPatchSchema;
+export const locationPatchSchema = currencyPatchSchema;
 export const emptyInitializeSchema = z.object({}).strict();
 export type AccountInput = z.input<typeof accountSchema>;
 export type CompanyCurrencyInput = z.input<typeof currencySchema>;

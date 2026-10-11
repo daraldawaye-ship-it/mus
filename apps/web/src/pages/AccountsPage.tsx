@@ -427,6 +427,7 @@ function AccountEditor({
   );
   const [name, setName] = useState(account?.name ?? "");
   const [active, setActive] = useState(account?.active ?? true);
+  const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
   const [code, setCode] = useState("");
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
@@ -441,7 +442,7 @@ function AccountEditor({
     event.preventDefault();
     if (saving) return;
     setError("");
-    let body: unknown = { name, active };
+    let body: unknown = { name, active, cashOrBank };
     if (!account) {
       if (numbering === "auto" && (!parent?.rangeStart || !parent.rangeEnd)) {
         setError("اختر مجموعة أم ذات مجال ترقيم لاستخدام الترقيم التلقائي.");
@@ -453,6 +454,7 @@ function AccountEditor({
         kind,
         category,
         normalSide,
+        cashOrBank: kind === "posting" && category === "asset" && cashOrBank,
         parentId: parent?.id ?? null,
         ...(numbering === "manual" ? { code } : {}),
         rangeStart: kind === "group" && rangeStart ? rangeStart : null,
@@ -513,7 +515,8 @@ function AccountEditor({
               </dd>
             </dl>
             <p className="muted">
-              هوية الحساب ونطاقه ثابتان؛ يمكن تغيير الاسم والتفعيل.
+              هوية الحساب ونطاقه ثابتان؛ يمكن تغيير الاسم والتفعيل وصفة النقد أو
+              البنك.
             </p>
           </>
         )}
@@ -535,7 +538,10 @@ function AccountEditor({
               onChange={(event) => {
                 const next = event.target.value as AccountKind;
                 setKind(next);
-                if (next === "group") setNumbering("manual");
+                if (next === "group") {
+                  setNumbering("manual");
+                  setCashOrBank(false);
+                }
               }}
             >
               {accountKinds.map((item) => (
@@ -553,6 +559,7 @@ function AccountEditor({
                 setParent(next);
                 if (next) {
                   setCategory(next.category);
+                  if (next.category !== "asset") setCashOrBank(false);
                   setNormalSide(next.normalSide);
                 }
               }}
@@ -570,6 +577,7 @@ function AccountEditor({
                 onChange={(event) => {
                   const next = event.target.value as AccountCategory;
                   setCategory(next);
+                  if (next !== "asset") setCashOrBank(false);
                   setNormalSide(
                     ["asset", "expense"].includes(next) ? "debit" : "credit",
                   );
@@ -661,6 +669,19 @@ function AccountEditor({
               </fieldset>
             )}
           </>
+        )}
+        {(account
+          ? account.kind === "posting" && account.category === "asset"
+          : kind === "posting" && category === "asset") && (
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={cashOrBank}
+              disabled={saving}
+              onChange={(event) => setCashOrBank(event.target.checked)}
+            />
+            حساب نقدي أو بنكي — متاح لسندات القبض والصرف
+          </label>
         )}
         <label className="check-label">
           <input

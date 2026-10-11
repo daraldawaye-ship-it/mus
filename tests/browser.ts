@@ -53,6 +53,10 @@ interface Actor {
   context: APIRequestContext;
   session: SessionResponse;
 }
+// Ordinary visual scenarios may share an authenticated session across isolated
+// browser contexts. Scenarios testing logout opt into a separate real login.
+// This keeps fixture setup below the production login limit without changing it.
+const sessionSeeds = new Map<string, Actor>();
 async function call<T>(
   actor: Actor,
   path: string,
@@ -87,6 +91,7 @@ async function actorFor(
     password,
   });
   assert(actor.session.user);
+  if (!context) sessionSeeds.set(email, actor);
   return actor;
 }
 async function register(index: number): Promise<User> {
@@ -145,10 +150,17 @@ async function scenario(name: string, run: () => Promise<void>): Promise<void> {
 async function pageFor(
   email = "owner@browser.test",
   mobile = false,
+  dedicatedSession = false,
 ): Promise<{ page: Page; actor: Actor; context: BrowserContext }> {
   assert(browser);
+  let seed = dedicatedSession ? undefined : sessionSeeds.get(email);
+  if (!dedicatedSession && !seed) {
+    seed = await actorFor(email);
+    apiContexts.push(seed.context);
+  }
   const context = await browser.newContext({
     baseURL: origin,
+    ...(seed ? { storageState: await seed.context.storageState() } : {}),
     timezoneId: "UTC",
     viewport: mobile
       ? { width: 390, height: 844 }
@@ -158,7 +170,13 @@ async function pageFor(
   });
   context.setDefaultTimeout(8000);
   contexts.push(context);
-  const actor = await actorFor(email, context.request);
+  const actor = dedicatedSession
+    ? await actorFor(email, context.request)
+    : { context: context.request, session: seed!.session };
+  // Read the real session again: cookie reuse must never hide expiry or a
+  // revoked/archived account, and callers receive fresh identity metadata.
+  actor.session = await call<SessionResponse>(actor, "/auth/session");
+  assert(actor.session.user, `Fixture session for ${email} must remain valid`);
   const page = await context.newPage();
   page.on("pageerror", (error) => pageErrors.push(error.message));
   return { page, actor, context };
@@ -486,7 +504,7 @@ try {
   );
 
   await scenario(
-    "mobile pages suppress pull-to-refresh while preserving document scrolling",
+    "mobile pages suppress pull-to-refresh while preserving real data-table scrolling",
     async () => {
       const { page } = await pageFor("owner@browser.test", true);
       await page.goto("/users?pageSize=100");
@@ -496,13 +514,26 @@ try {
         body: getComputedStyle(document.body).overscrollBehaviorY,
       }));
       assert.deepEqual(behavior, { html: "none", body: "none" });
-      const scrolling = await page.evaluate(() => {
-        const available = document.documentElement.scrollHeight > innerHeight;
-        window.scrollTo(0, document.documentElement.scrollHeight);
-        return { available, scrolled: window.scrollY > 0 };
-      });
-      assert(scrolling.available, "The mobile users page should be scrollable");
-      assert(scrolling.scrolled, "Ordinary vertical scrolling must still work");
+      await eventually(
+        () => page.locator("tbody tr[data-row-id]").count(),
+        count => assert.equal(count, users.length + 1),
+      );
+      const scrollContainer = page.locator(".table-scroll");
+      const scrolling = await scrollContainer.evaluate(element => ({
+        available: element.scrollHeight > element.clientHeight,
+        behavior: getComputedStyle(element).overflowY,
+      }));
+      assert(scrolling.available, "Loaded mobile user rows must overflow their table's vertical scroll container");
+      assert(["auto", "scroll"].includes(scrolling.behavior), "The data table must permit normal vertical scrolling");
+      await scrollContainer.scrollIntoViewIfNeeded();
+      const bounds = await scrollContainer.boundingBox();
+      assert(bounds);
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.wheel(0, 260);
+      await eventually(
+        () => scrollContainer.evaluate(element => element.scrollTop),
+        scrollTop => assert(scrollTop > 0, "A real wheel gesture must scroll the mobile data table"),
+      );
     },
   );
 
@@ -1116,7 +1147,7 @@ try {
   await scenario(
     "appearance persists independently for public, each company and each user",
     async () => {
-      const { page, actor } = await pageFor();
+      const { page, actor } = await pageFor("owner@browser.test", false, true);
       const preferences: Array<[string, string, AppearancePreference]> = [
         ["/", "public", { mode: "light", color: "#ff00ff" }],
         [
@@ -1199,7 +1230,7 @@ try {
     "rendered desktop and mobile geometry, RTL, full values and drawer keyboard/touch behavior",
     async () => {
       for (const mobile of [false, true]) {
-        const { page, actor } = await pageFor("owner@browser.test", mobile);
+        const { page, actor } = await pageFor("owner@browser.test", mobile, true);
         await page.goto(`/companies/${companyA.id}/employees`);
         await waitRows(
           page,
@@ -2095,6 +2126,7 @@ try {
       await dialog.waitFor({ state: "hidden" });
       await page.goto(`${path}/locations`);
       await page
+        .locator(`tbody tr[data-row-id="${locations[0]!.id}"]`)
         .getByRole("button", { name: "تعديل الموقع المعرض", exact: true })
         .click();
       dialog = page.getByRole("dialog");

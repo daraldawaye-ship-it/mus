@@ -14,6 +14,7 @@ import { accountRoutes } from "./routes-accounts.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
 import { generalTableRoutes } from "./routes-general-table.ts";
+import { financeRoutes } from "./routes-finance.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -48,6 +49,7 @@ export async function createApp(options: AppOptions = {}) {
     currencyRoutes(pool),
     locationRoutes(pool),
     generalTableRoutes(pool),
+    financeRoutes(pool),
   );
   app.use("/api", (_req, res) =>
     res

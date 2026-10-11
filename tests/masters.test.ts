@@ -1746,6 +1746,11 @@ test("composite database foreign keys reject every cross-company master referenc
   await f.owner.ok("PATCH", `/companies/${a.id}/finance-settings`, {
     baseCurrencyId: aCurrency.id,
   });
+  // B has no rate or document history, so a foreign base reference reaches
+  // the composite FK rather than being rejected earlier by a history guard.
+  await f.owner.ok("PATCH", `/companies/${b.id}/finance-settings`, {
+    baseCurrencyId: bCurrency.id,
+  });
   const foreignCurrency = await currency(f, a.id, { code: "USD" });
   const quote = await rate(f, a.id, foreignCurrency.id, "2026-01-01T00:00:00Z");
   const aBranch = await branch(f, a.id),
@@ -1767,7 +1772,7 @@ test("composite database foreign keys reject every cross-company master referenc
     ],
     [
       "UPDATE finance_settings SET base_currency_id=$1 WHERE company_id=$2",
-      [bCurrency.id, a.id],
+      [aCurrency.id, b.id],
     ],
     [
       "UPDATE exchange_rates SET currency_id=$1 WHERE id=$2",

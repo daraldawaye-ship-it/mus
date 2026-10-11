@@ -44,6 +44,7 @@ const columns = {
   category: "a.category",
   normalSide: "a.normal_side",
   active: "a.active",
+  cashOrBank: "a.cash_or_bank",
   rangeStart: "a.range_start",
   rangeEnd: "a.range_end",
   createdAt: "a.created_at",
@@ -107,7 +108,7 @@ async function insertAccount(
     code = next.toString().padStart(10, "0");
   }
   const result = await client.query(
-    "INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id",
+    "INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
     [
       companyId,
       code,
@@ -120,6 +121,7 @@ async function insertAccount(
       input.rangeStart,
       input.rangeEnd,
       user.id,
+      input.cashOrBank,
     ],
   );
   return accountDTO(
@@ -298,6 +300,7 @@ export function accountRoutes(pool: Pool): Router {
             kind: accountKinds,
             category: accountCategories,
             active: "boolean",
+            cashOrBank: "boolean",
             parentId: "id",
           },
           "code:asc",
@@ -360,6 +363,7 @@ export function accountRoutes(pool: Pool): Router {
               category: seed.category,
               normalSide: seed.normalSide,
               active: true,
+              cashOrBank: false,
               rangeStart: seed.rangeStart ?? null,
               rangeEnd: seed.rangeEnd ?? null,
             });
@@ -416,6 +420,24 @@ export function accountRoutes(pool: Pool): Router {
           const before = accountDTO(
             await masterRow(client, accountSelect, "a", companyId, accountId),
           );
+          if (
+            input.cashOrBank !== undefined &&
+            input.cashOrBank !== before.cashOrBank
+          ) {
+            if (
+              input.cashOrBank &&
+              (before.kind !== "posting" || before.category !== "asset")
+            )
+              conflict("الصندوق أو البنك يجب أن يكون حسابًا حركيًا من الأصول");
+            const history = await client.query(
+              "SELECT 1 FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft' LIMIT 1",
+              [companyId, accountId],
+            );
+            if (history.rowCount)
+              conflict(
+                "لا يمكن تغيير تصنيف الصندوق أو البنك بعد ترحيل حركات عليه",
+              );
+          }
           if (input.active === false) {
             const children = await client.query(
               "SELECT 1 FROM accounts WHERE company_id=$1 AND parent_id=$2 AND active LIMIT 1",
@@ -442,12 +464,13 @@ export function accountRoutes(pool: Pool): Router {
             if (!parent.active) conflict("يجب تفعيل الأب أولًا");
           }
           await client.query(
-            "UPDATE accounts SET name=$1,active=$2 WHERE company_id=$3 AND id=$4",
+            "UPDATE accounts SET name=$1,active=$2,cash_or_bank=$5 WHERE company_id=$3 AND id=$4",
             [
               input.name ?? before.name,
               input.active ?? before.active,
               companyId,
               accountId,
+              input.cashOrBank ?? before.cashOrBank,
             ],
           );
           const next = accountDTO(

@@ -52,7 +52,7 @@ export async function masterRow(
   return result.rows[0];
 }
 export async function masterPage<T>(
-  pool: Pool,
+  pool: Database,
   req: Request,
   companyId: number,
   select: string,

@@ -16,6 +16,10 @@ import {
   CircleUserRound,
   Coins,
   FileClock,
+  FileText,
+  HandCoins,
+  Landmark,
+  Wallet,
   Home,
   TableProperties,
   LayoutDashboard,
@@ -29,7 +33,10 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
-import type { CompanyContext, CompanyPage } from "../../../packages/contracts/src/index";
+import type {
+  CompanyContext,
+  CompanyPage,
+} from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { Button, Card, Dialog, Notice } from "./ui";
@@ -50,7 +57,9 @@ import {
 } from "./pages/CompanyPages";
 
 const GeneralTablePage = lazy(() =>
-  import("./pages/GeneralTablePage").then((module) => ({default:module.GeneralTablePage})),
+  import("./pages/GeneralTablePage").then((module) => ({
+    default: module.GeneralTablePage,
+  })),
 );
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
@@ -77,6 +86,31 @@ const LocationsPage = lazy(() =>
     default: module.LocationsPage,
   })),
 );
+const FinancialDocumentsPage = lazy(() =>
+  import("./pages/FinancePages").then((module) => ({
+    default: module.FinancialDocumentsPage,
+  })),
+);
+const FinanceDocumentPage = lazy(() =>
+  import("./pages/FinancePages").then((module) => ({
+    default: module.FinanceDocumentPage,
+  })),
+);
+const AccountBalancesPage = lazy(() =>
+  import("./pages/FinancePages").then((module) => ({
+    default: module.AccountBalancesPage,
+  })),
+);
+const AccountLedgerPage = lazy(() =>
+  import("./pages/FinancePages").then((module) => ({
+    default: module.AccountLedgerPage,
+  })),
+);
+const mayReadFinance = (context: CompanyContext) =>
+  context.general ||
+  context.permissions.some((permission) =>
+    ["finance.view", "finance.manage", "finance.post"].includes(permission),
+  );
 const companySections = [
   "overview",
   "employees",
@@ -87,6 +121,13 @@ const companySections = [
   "exchange-rates",
   "branches",
   "locations",
+  "financial-documents",
+  "financial-document",
+  "journals",
+  "receipts",
+  "payments",
+  "account-balances",
+  "account-ledger",
 ] as const;
 type CompanySection = (typeof companySections)[number];
 
@@ -126,7 +167,11 @@ function Navigation({
           {(user.owner || user.kind === "admin") &&
             link("/users", "المستخدمون", <Users size={17} />)}
           {(user.owner || user.kind === "admin") &&
-            link("/general-table", "الجدول العام", <TableProperties size={17} />)}
+            link(
+              "/general-table",
+              "الجدول العام",
+              <TableProperties size={17} />,
+            )}
           {(user.owner || user.kind === "admin" || user.monitor) &&
             link("/audit", "السجل العام", <FileClock size={17} />)}
         </>
@@ -162,6 +207,40 @@ function Navigation({
               "دليل الحسابات",
               <BookOpen size={17} />,
             )}
+          {mayReadFinance(context) && (
+            <>
+              {link(
+                `/companies/${context.company.id}/financial-documents`,
+                "العمليات المالية",
+                <FileText size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/journals`,
+                "قيود اليومية",
+                <BookOpen size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/receipts`,
+                "سندات القبض",
+                <HandCoins size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/payments`,
+                "سندات الصرف",
+                <Wallet size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/account-balances`,
+                "أرصدة الحسابات",
+                <Landmark size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/account-ledger`,
+                "كشف حساب",
+                <FileText size={17} />,
+              )}
+            </>
+          )}
           {moduleAccess(context, "currencies") && (
             <>
               {link(
@@ -241,6 +320,45 @@ function CompanyView({
           <AccountsPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "financial-documents":
+    case "journals":
+    case "receipts":
+    case "payments":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل العمليات المالية…</Notice>}>
+          <FinancialDocumentsPage
+            key={`${context.company.id}:${section}`}
+            context={context}
+            kind={
+              section === "journals"
+                ? "journal"
+                : section === "receipts"
+                  ? "receipt"
+                  : section === "payments"
+                    ? "payment"
+                    : undefined
+            }
+          />
+        </Suspense>
+      );
+    case "financial-document":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل المستند…</Notice>}>
+          <FinanceDocumentPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "account-balances":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الأرصدة…</Notice>}>
+          <AccountBalancesPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "account-ledger":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل كشف الحساب…</Notice>}>
+          <AccountLedgerPage key={context.company.id} context={context} />
+        </Suspense>
+      );
     case "currencies":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل العملات…</Notice>}>
@@ -311,15 +429,21 @@ function Workspace() {
     queryFn: async ({ signal }) => {
       const list = await api<CompanyPage>("/companies?pageSize=1", { signal });
       if (!list.lastCompanyId) return null;
-      return api<CompanyContext>(`/companies/${list.lastCompanyId}`, { signal });
+      return api<CompanyContext>(`/companies/${list.lastCompanyId}`, {
+        signal,
+      });
     },
     enabled: !!user && !inCompany,
     staleTime: 0,
     refetchOnWindowFocus: "always",
   });
   const navigationContext = inCompany
-    ? (company.isError ? undefined : company.data)
-    : (lastCompany.isError ? undefined : lastCompany.data ?? undefined);
+    ? company.isError
+      ? undefined
+      : company.data
+    : lastCompany.isError
+      ? undefined
+      : (lastCompany.data ?? undefined);
   useEffect(() => {
     setDrawer(false);
     if (priorPath.current !== location.pathname) {
@@ -474,7 +598,15 @@ function Workspace() {
               />
               <Route
                 path="/general-table"
-                element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الجدول العام…</Notice>}><GeneralTablePage /></Suspense></Protected>}
+                element={
+                  <Protected>
+                    <Suspense
+                      fallback={<Notice>جارٍ تحميل الجدول العام…</Notice>}
+                    >
+                      <GeneralTablePage />
+                    </Suspense>
+                  </Protected>
+                }
               />
               <Route
                 path="/audit"
@@ -495,7 +627,7 @@ function Workspace() {
               {companySections.map((section) => (
                 <Route
                   key={section}
-                  path={`/companies/:companyId${section === "overview" ? "" : `/${section}`}`}
+                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : `/${section}`}`}
                   element={
                     <Protected>
                       <CompanyView
@@ -542,7 +674,10 @@ function Workspace() {
         onClose={() => setDrawer(false)}
         title="قائمة التنقل"
       >
-        <Navigation context={navigationContext} close={() => setDrawer(false)} />
+        <Navigation
+          context={navigationContext}
+          close={() => setDrawer(false)}
+        />
       </Dialog>
     </AppearanceProvider>
   );

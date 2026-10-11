@@ -30,6 +30,7 @@ export function accountDTO(row: Row): Account {
     category: row.category,
     normalSide: row.normal_side,
     active: row.active,
+    cashOrBank: row.cash_or_bank,
     rangeStart: row.range_start,
     rangeEnd: row.range_end,
   };

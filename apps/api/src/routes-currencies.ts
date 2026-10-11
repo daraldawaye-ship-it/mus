@@ -294,12 +294,12 @@ export function currencyRoutes(pool: Pool): Router {
           if (!currency.active) conflict("العملة الأساسية يجب أن تكون فعالة");
           if (before?.baseCurrencyId !== input.baseCurrencyId) {
             const history = await client.query(
-              "SELECT 1 FROM exchange_rates WHERE company_id=$1 LIMIT 1",
+              "SELECT 1 FROM exchange_rates WHERE company_id=$1 UNION ALL SELECT 1 FROM financial_documents WHERE company_id=$1 AND status<>'draft' LIMIT 1",
               [companyId],
             );
             if (history.rowCount)
               conflict(
-                "لا يمكن تغيير العملة الأساسية بعد تسجيل تاريخ أسعار الصرف",
+                "لا يمكن تغيير العملة الأساسية بعد تسجيل أسعار صرف أو ترحيل مستندات مالية",
               );
           }
           await client.query(

@@ -785,6 +785,9 @@ test("multiple general managers have full company access while appointments and 
       "currencies.manage",
       "currencies.view",
       "employees.view",
+      "finance.manage",
+      "finance.post",
+      "finance.view",
       "locations.manage",
       "locations.view",
     ]);

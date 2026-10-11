@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { masterCatalog } from "./masters.ts";
+import { financeCatalog } from "./finance.ts";
 export const MAX_ID = 2_147_483_647;
 
 export const userKinds = ["admin", "supervisor", "member"] as const;
@@ -20,6 +21,9 @@ export const permissionKeys = [
   "currencies.manage",
   "locations.view",
   "locations.manage",
+  "finance.view",
+  "finance.manage",
+  "finance.post",
 ] as const;
 export type UserKind = (typeof userKinds)[number];
 export type EmployeeRole = (typeof employeeRoles)[number];
@@ -46,6 +50,9 @@ export const permissionLabels: Record<Permission, string> = {
   "currencies.manage": "إدارة العملات وأسعار الصرف",
   "locations.view": "عرض الفروع والمواقع",
   "locations.manage": "إدارة الفروع والمواقع",
+  "finance.view": "عرض القيود والسندات والأرصدة",
+  "finance.manage": "إنشاء وتعديل المسودات المالية",
+  "finance.post": "ترحيل وعكس القيود والسندات",
 };
 export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   employee: [],
@@ -62,6 +69,8 @@ export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
     "accounts.manage",
     "currencies.manage",
     "locations.view",
+    "finance.manage",
+    "finance.post",
   ],
   sales: [],
   purchases: [],
@@ -103,6 +112,10 @@ export const auditActionLabels = {
   "location.update": "تعديل موقع",
   "generalTable.create": "إضافة سجل عام",
   "generalTable.update": "تعديل سجل عام",
+  "financialDocument.create": "إنشاء مسودة مالية",
+  "financialDocument.update": "تعديل مسودة مالية",
+  "financialDocument.post": "ترحيل مستند مالي",
+  "financialDocument.reverse": "عكس مستند مالي",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -121,6 +134,10 @@ export const publicAuditActions: AuditAction[] = [
   "generalTable.update",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "financialDocument.create",
+  "financialDocument.update",
+  "financialDocument.post",
+  "financialDocument.reverse",
   "account.create",
   "account.update",
   "accounts.initialize",
@@ -161,9 +178,11 @@ export const auditTargetLabels: Record<string, string> = {
   branch: "فرع",
   location: "موقع",
   generalTable: "الجدول العام",
+  financialDocument: "مستند مالي",
 };
 export const catalog = {
   ...masterCatalog,
+  ...financeCatalog,
   userKinds,
   employeeRoles,
   permissionKeys,
@@ -373,3 +392,4 @@ export type CompanyInput = z.input<typeof companySchema>;
 export type EmployeeInput = z.input<typeof employeeSchema>;
 export * from "./masters.ts";
 export * from "./general-table.ts";
+export * from "./finance.ts";

@@ -65,6 +65,12 @@ export async function companyAccess(
     )
       permissions.push(`${module}.view`);
   }
+  if (
+    (permissions.includes("finance.manage") ||
+      permissions.includes("finance.post")) &&
+    !permissions.includes("finance.view")
+  )
+    permissions.push("finance.view");
   if (permission && !permissions.includes(permission)) deny();
   return {
     company: companyDTO(company.rows[0]),
