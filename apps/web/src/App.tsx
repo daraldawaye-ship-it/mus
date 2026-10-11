@@ -400,9 +400,6 @@ function Workspace() {
                   <strong>
                     {company.data?.company.name ?? "الموقع العام"}
                   </strong>
-                  <small>
-                    {companyId > 0 ? "مساحة الشركة" : "الهوية العامة"}
-                  </small>
                 </div>
               </div>
             </div>
