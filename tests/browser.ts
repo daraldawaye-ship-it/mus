@@ -491,7 +491,7 @@ try {
       await page.keyboard.press("Escape");
       await page.getByRole("menu").waitFor({ state: "hidden" });
       await trigger.click();
-      await page.locator(".main-content").click({ position: { x: 10, y: 10 } });
+      await page.locator(".scope-title strong").click();
       await page.getByRole("menu").waitFor({ state: "hidden" });
       await trigger.click();
       await menu.getByRole("menuitem", { name: "تعديل حسابي" }).click();
