@@ -410,6 +410,43 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "laptop header is half-height while all controls remain usable",
+    async () => {
+      const { page } = await pageFor("owner@browser.test");
+      for (const width of [1440, 820]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(`/companies/${companyA.id}/accounts`);
+        await page.locator(".scope-title strong").getByText(companyA.name).waitFor();
+        const header = await page.locator(".topbar").evaluate((element) => {
+          const bar = element.getBoundingClientRect();
+          const controls = [...element.querySelectorAll<HTMLElement>("button, a")]
+            .filter((control) => {
+              const rect = control.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }).map((control) => {
+              const rect = control.getBoundingClientRect();
+              return { height: rect.height, top: rect.top, bottom: rect.bottom };
+            });
+          return {
+            height: bar.height,
+            top: bar.top,
+            bottom: bar.bottom,
+            subtitleCount: element.querySelectorAll(".scope-title small").length,
+            controls,
+          };
+        });
+        assert.equal(header.height, 36, `Desktop header height at ${width}px`);
+        assert.equal(header.subtitleCount, 0);
+        assert(header.controls.length >= 2);
+        for (const control of header.controls) {
+          assert(control.height >= 30);
+          assert(control.top >= header.top && control.bottom <= header.bottom);
+        }
+      }
+    },
+  );
+
+  await scenario(
     "mobile header stays compact with a single line and usable buttons",
     async () => {
       const { page } = await pageFor("owner@browser.test", true);
