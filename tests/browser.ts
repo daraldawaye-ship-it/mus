@@ -539,7 +539,7 @@ try {
       assert.equal(updated.record.text9,"updated text9");
       const regular=await pageFor(users[3]!.email);
       await regular.page.goto("/general-table");
-      await regular.page.getByRole("alert").waitFor();
+      await regular.page.getByText("إدارة الجدول العام لمالك المنصة وإدارة الموقع فقط.").waitFor();
       assert.equal(
         await regular.page.getByRole("button",{name:"إضافة سجل"}).count(),0,
       );
