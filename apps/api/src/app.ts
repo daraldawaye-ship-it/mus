@@ -7,6 +7,7 @@ import { configuration, type AppOptions } from "./config.ts";
 import { HttpError } from "./errors.ts";
 import { loadSession, mutationSecurity } from "./http.ts";
 import { authRoutes } from "./routes-auth.ts";
+import { setupRoutes } from "./routes-setup.ts";
 import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
 import { accountRoutes } from "./routes-accounts.ts";
@@ -36,6 +37,7 @@ export async function createApp(options: AppOptions = {}) {
     loadSession(pool),
     mutationSecurity(config.appOrigin),
   );
+  app.use(setupRoutes(pool));
   app.use(
     "/api",
     authRoutes(pool, config.production),
