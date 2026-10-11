@@ -576,6 +576,30 @@ function UserList() {
     value: string;
   } | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<User | null>(null);
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editDraft, setEditDraft] = useState<{kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  function openEditor(target: User) {
+    if (target.owner) return;
+    setEditTarget(target);
+    setEditDraft({kind:target.kind,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
+    setEditError("");
+  }
+  async function saveEditor() {
+    if (!editTarget || !editDraft || editBusy) return;
+    setEditBusy(true);
+    setEditError("");
+    try {
+      await api(`/users/${editTarget.id}`, {method:"PATCH",body:editDraft,signal:guard.signal});
+      await list.refetch();
+      setEditTarget(null);
+      setEditDraft(null);
+      setNotice({tone:"success",text:`حُفظت تغييرات حساب ${editTarget.displayName}.`});
+      if (editTarget.id === user?.id) await reloadSession();
+    } catch (cause) { setEditError(messageOf(cause)); }
+    finally { setEditBusy(false); }
+  }
   const busyIds = useRef(new Set<number>());
 
   function filter(key: "kind" | "archived", value: string) {
@@ -663,6 +687,9 @@ function UserList() {
       ),
     }));
     return [
+      { id:"edit",header:"الإجراءات",size:110,enableSorting:false,cell:({row})=>row.original.owner?"محمي":(
+        <Button type="button" size="compact" variant="secondary" onClick={()=>openEditor(row.original)} disabled={savingIds.has(row.original.id)}>تعديل</Button>
+      ) },
       { accessorKey: "id", header: "المعرف", size: 80 },
       {
         accessorKey: "name",
@@ -796,6 +823,21 @@ function UserList() {
           ariaLabel="جدول المستخدمين العامين"
         />
       </Card>
+      <Dialog open={Boolean(editTarget)} onClose={()=>{if(!editBusy){setEditTarget(null);setEditDraft(null);}}} title={editTarget?`تعديل المستخدم: ${editTarget.displayName}`:"تعديل المستخدم"}
+        footer={<><Button variant="secondary" disabled={editBusy} onClick={()=>{setEditTarget(null);setEditDraft(null);}}>إلغاء</Button>
+        <Button disabled={editBusy||!editDraft} onClick={()=>void saveEditor()}>{editBusy?"جارٍ الحفظ…":"حفظ التعديلات"}</Button></>}>
+        {editTarget&&editDraft&&<div className="form-grid">
+          <p className="form-full">المعرف: {editTarget.id} — {editTarget.email}</p>
+          <Select label="نوع الحساب" value={editDraft.kind} onChange={event=>setEditDraft({...editDraft,kind:event.target.value as User["kind"]})}>
+            {userKinds.map(kind=><option key={kind} value={kind}>{userKindLabels[kind]}</option>)}
+          </Select>
+          {(["editor","monitor","suspended","archived"] as const).map(flag=><Select key={flag} label={flagLabels[flag]} value={String(editDraft[flag])} onChange={event=>setEditDraft({...editDraft,[flag]:event.target.value==="true"})}>
+            <option value="false">لا</option><option value="true">نعم</option>
+          </Select>)}
+          <p className="form-full">الاسم والبريد والهاتف يُعدّلها صاحب الحساب من «حسابي». أرشفة الحساب تسحب جلساته النشطة.</p>
+          {editError&&<Notice tone="error">{editError}</Notice>}
+        </div>}
+      </Dialog>
       <Dialog
         open={Boolean(fullValue)}
         onClose={() => setFullValue(null)}
