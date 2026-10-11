@@ -14,8 +14,10 @@ import { DEFAULT_APPEARANCE } from "../packages/contracts/src/index.ts";
 import type {
   AppearancePreference,
   AuditEvent,
+  Branch,
   Company,
   CompanyContext,
+  Location,
   CompanyPage,
   Employee,
   Page,
@@ -1000,6 +1002,78 @@ test("employee permissions and last company are rechecked on every request acros
   const noAccess = await member.client.ok<CompanyPage>("GET", "/companies");
   assert.equal(noAccess.total, 0);
   assert.equal(noAccess.lastCompanyId, null);
+});
+
+test("new company provisions active main branch and showroom atomically", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const created = await platform.client.ok<{ company: Company }>(
+    "POST",
+    "/companies",
+    { name: " New Company ", phone: "+967777123456", address: " Sana'a " },
+    201,
+  );
+  const c = created.company;
+  assert.equal(c.name, "New Company");
+
+  const branches = await platform.client.ok<Page<Branch>>(
+    "GET",
+    `/companies/${c.id}/branches`,
+  );
+  assert.equal(branches.total, 1);
+  const main = branches.items[0]!;
+  assert.equal(main.code, "HQ");
+  assert.equal(main.name, "الفرع الرئيسي");
+  assert.equal(main.active, true);
+  assert.equal(main.phone, c.phone);
+  assert.equal(main.address, c.address);
+  assert.equal(main.companyId, c.id);
+  assert.equal(main.createdBy, platform.user.id);
+
+  const locations = await platform.client.ok<Page<Location>>(
+    "GET",
+    `/companies/${c.id}/locations?branchId=${main.id}`,
+  );
+  assert.equal(locations.total, 1);
+  assert.deepEqual(
+    {
+      companyId: locations.items[0]?.companyId,
+      branchId: locations.items[0]?.branchId,
+      code: locations.items[0]?.code,
+      name: locations.items[0]?.name,
+      kind: locations.items[0]?.kind,
+      active: locations.items[0]?.active,
+      branchActive: locations.items[0]?.branchActive,
+      effectiveActive: locations.items[0]?.effectiveActive,
+    },
+    {
+      companyId: c.id,
+      branchId: main.id,
+      code: "SHOWROOM",
+      name: "المعرض",
+      kind: "showroom",
+      active: true,
+      branchActive: true,
+      effectiveActive: true,
+    },
+  );
+
+  const events = await platform.client.ok<Page<AuditEvent>>(
+    "GET",
+    `/companies/${c.id}/audit?pageSize=100`,
+  );
+  for (const action of ["company.create", "branch.create", "location.create"]) {
+    assert.equal(events.items.filter((event) => event.action === action).length, 1);
+  }
+
+  const other = await company(platform.client, "Other new company");
+  const otherBranches = await platform.client.ok<Page<Branch>>(
+    "GET",
+    `/companies/${other.id}/branches`,
+  );
+  assert.equal(otherBranches.total, 1);
+  assert.notEqual(otherBranches.items[0]?.id, main.id);
+  assert.equal(otherBranches.items[0]?.code, "HQ");
 });
 
 test("company audit records canonical database values and mutation rolls back when audit insertion fails", async (t) => {

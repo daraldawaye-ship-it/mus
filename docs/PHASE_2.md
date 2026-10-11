@@ -32,6 +32,7 @@ ExchangeRate: id/companyId/currencyId/baseCurrencyId/rate/effectiveAt/source/act
 
 ## الفروع والمواقع
 
+عند إنشاء أي شركة جديدة، يُضاف تلقائيًا الفرع الرئيسي الفعّال برمز HQ واسم «الفرع الرئيسي» مع رقم هاتف الشركة وعنوانها، ويتبع له موقع فعّال من النوع showroom برمز SHOWROOM واسم «المعرض». تُنفذ إنشاءات الشركة والفرع والمعرض وتوثيقها في معاملة واحدة؛ لا يتأثر تأسيس الشركات القديمة الموجودة عند ترقية التطبيق.
 Branch: id/companyId/code/name/phone/address/active/createdBy/createdAt. code من 1–20 حرفًا/رقمًا لاتينيًا أو _/-، ثابت وفريد بالشركة. الاسم والهاتف والعنوان والتفعيل قابلة للتعديل. إنشاء الفرع ينشئ معه معرضًا واحدًا بالكود SHOWROOM والاسم «المعرض» في المعاملة نفسها.
 
 Location: id/companyId/branchId/code/name/kind/active/branchName/branchActive/effectiveActive/createdBy/createdAt. kind هو showroom أو warehouse. الكود فريد داخل الفرع، وهو والفرع والنوع ثابتة بعد الإنشاء. يوجد معرض واحد كحد أقصى للفرع، والمخازن متعددة. إنشاء مخزن يحتاج فرعًا فعالًا من الشركة نفسها. يمكن تعديل الاسم والتفعيل.

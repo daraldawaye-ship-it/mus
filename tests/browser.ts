@@ -1928,7 +1928,8 @@ try {
         .click();
       await dialog.waitFor({ state: "hidden" });
       const branch = (await call<ApiPage<Branch>>(actor, `${path}/branches`))
-        .items[0]!;
+        .items.find((item) => item.code === "MAIN")!;
+      assert.ok(branch, "The manually created branch should coexist with the default HQ branch");
       assert.equal(branch.code, "MAIN");
       assert.equal(branch.phone, "+15554001234");
       assert.equal(branch.address, "Browser address");
@@ -2540,10 +2541,9 @@ try {
           await page.unroute(routePattern);
         }
       }
-      assert.equal(
-        (await call<ApiPage<Location>>(actor, `${b}/locations`)).total,
-        0,
-      );
+      const untouched = await call<ApiPage<Location>>(actor, `${b}/locations`);
+      assert.equal(untouched.total, 1, "The other company retains only its default showroom");
+      assert.equal(untouched.items[0]?.code, "SHOWROOM");
     },
   );
 

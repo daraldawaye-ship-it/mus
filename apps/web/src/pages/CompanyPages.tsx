@@ -180,7 +180,7 @@ export function CompaniesPage() {
           onCreated={() => {
             if (!guard.isCurrent()) return;
             setCreating(false);
-            setNotice("تم إنشاء الشركة. يمكنك فتحها وإضافة موظفيها.");
+            setNotice("تم إنشاء الشركة مع الفرع الرئيسي والمعرض تلقائيًا، وكلاهما فعال. يمكنك فتحها وبدء إعداد بياناتها.");
             void list.refetch();
           }}
         />
@@ -229,6 +229,10 @@ function CreateCompanyDialog({
       }}
     >
       <form onSubmit={submit} className="form-stack">
+        <Notice>
+          سيُنشأ الفرع الرئيسي (HQ) ومعرضه تلقائيًا مع الشركة، مع نسخ هاتف الشركة
+          وعنوانها إلى الفرع الرئيسي. يمكنك تعديل بيانات الفرع لاحقًا.
+        </Notice>
         {error && <Notice tone="error">{error}</Notice>}
         <Field
           label="اسم الشركة"
