@@ -20,6 +20,7 @@ import type {
   Location,
   CompanyPage,
   Employee,
+  GeneralTableRecord,
   Page,
   Permission,
   SessionResponse,
@@ -1138,6 +1139,93 @@ test("migration backfills only older companies without branches, and never dupli
   assert.equal(stillBranch.items[0]?.id, existingBranch.id);
   assert.equal(stillShowroom.total, 1);
   assert.equal(stillShowroom.items[0]?.id, existingShowroom.id);
+});
+
+test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const ordinary = await register(f, "general-table-reader@example.test");
+  const blank = {
+    tableName: "directories",
+    category: "shops",
+    title: "First entry",
+    description: "Description",
+    number1: "100.125",
+    number2: null,
+    date1: "2026-10-11T17:00:00.000Z",
+    date2: null,
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`text${i+1}`, ""])),
+    text9: "نص إضافي",
+  };
+  assert.equal((await f.client().request("GET", "/general-table")).status, 401);
+  assert.equal((await ordinary.client.request("GET", "/general-table")).status, 403);
+  assert.equal(
+    (await ordinary.client.request("POST", "/general-table", blank)).status,
+    403,
+  );
+  assert.equal(
+    (await platform.client.request("POST", "/general-table", { ...blank, tableName: "" })).status,
+    400,
+  );
+
+  const created = await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST", "/general-table", blank, 201,
+  );
+  assert(created.record.id > 0);
+  assert.equal(created.record.tableName, "directories");
+  assert.equal(created.record.category, "shops");
+  assert.equal(created.record.title, "First entry");
+  assert.equal(created.record.number1, "100.125");
+  assert.equal(created.record.date1, "2026-10-11T17:00:00.000Z");
+  assert.equal(created.record.text9, "نص إضافي");
+  assert.equal(created.record.createdBy, platform.user.id);
+
+  const page = await platform.client.ok<Page<GeneralTableRecord>>(
+    "GET", "/general-table?q=First&tableName=directories&category=shops",
+  );
+  assert.equal(page.total, 1);
+  assert.equal(page.items[0]?.id, created.record.id);
+  assert.equal(
+    (await platform.client.ok<Page<GeneralTableRecord>>(
+      "GET", "/general-table?tableName=other",
+    )).total,
+    0,
+  );
+  const detail = await platform.client.ok<{record:GeneralTableRecord}>(
+    "GET", `/general-table/${created.record.id}`,
+  );
+  assert.equal(detail.record.text9, "نص إضافي");
+  const patched = await platform.client.ok<{record:GeneralTableRecord}>(
+    "PATCH", `/general-table/${created.record.id}`, {
+      ...blank,
+      title: "Updated entry",
+      description: "Changed description",
+      text9: "آخر حقل",
+      number2: "-23.456",
+      date2: "2026-10-12T01:30:00.000Z",
+    },
+  );
+  assert.equal(patched.record.title, "Updated entry");
+  assert.equal(patched.record.number2, "-23.456");
+  assert.equal(patched.record.date2, "2026-10-12T01:30:00.000Z");
+  assert.equal(patched.record.text9, "آخر حقل");
+  assert.equal((await ordinary.client.request(
+    "PATCH", `/general-table/${created.record.id}`, blank,
+  )).status, 403);
+  assert.equal((await platform.client.request(
+    "PATCH", "/general-table/999999", blank,
+  )).status, 404);
+  const stored = await f.pool.query(
+    "SELECT general_table_text9,general_table_number2,general_table_title FROM general_table WHERE general_table_id=$1",
+    [created.record.id],
+  );
+  assert.equal(stored.rows[0]?.general_table_text9, "آخر حقل");
+  assert.equal(stored.rows[0]?.general_table_number2, "-23.456");
+  const events = await platform.client.ok<Page<AuditEvent>>(
+    "GET", "/audit?action=generalTable.update",
+  );
+  assert.ok(events.items.some((event) => event.targetId === created.record.id
+    && event.after?.title === "Updated entry"));
 });
 
 test("company audit records canonical database values and mutation rolls back when audit insertion fails", async (t) => {
