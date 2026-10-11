@@ -507,6 +507,46 @@ try {
   );
 
   await scenario(
+    "general table page lets platform owner add and edit text9 while keeping it private",
+    async () => {
+      const { page, actor } = await pageFor();
+      await page.goto("/general-table");
+      await page.getByRole("heading", { name: "الجدول العام" }).waitFor();
+      await page.getByRole("button", { name: "إضافة سجل", exact: true }).click();
+      let dialog = page.getByRole("dialog");
+      await dialog.getByLabel("اسم الجدول (general_table_table_name)").fill("reference");
+      await dialog.getByLabel("التصنيف (general_table_category)").fill("demo");
+      await dialog.getByLabel("العنوان (general_table_title)").fill("Example value");
+      await dialog.locator("details summary").click();
+      await dialog.getByLabel("نص 9 (general_table_text9)").fill("ninth text value");
+      await dialog.getByRole("button", { name: "حفظ السجل" }).click();
+      await dialog.waitFor({state:"hidden"});
+      const listed = await call<ApiPage<{id:number;title:string;text9:string}>>(actor,
+        "/general-table?tableName=reference&category=demo");
+      assert.equal(listed.total, 1);
+      assert.equal(listed.items[0]?.text9, "ninth text value");
+      await page.goto("/general-table?tableName=reference&category=demo");
+      await page.getByRole("button", {name: `تعديل السجل ${listed.items[0]!.id}`}).click();
+      dialog=page.getByRole("dialog");
+      await dialog.getByLabel("العنوان (general_table_title)").fill("Updated example value");
+      await dialog.locator("details summary").click();
+      await dialog.getByLabel("نص 9 (general_table_text9)").fill("updated text9");
+      await dialog.getByRole("button",{name:"حفظ السجل"}).click();
+      await dialog.waitFor({state:"hidden"});
+      const updated=await call<{record:{title:string;text9:string}}>(actor,
+        `/general-table/${listed.items[0]!.id}`);
+      assert.equal(updated.record.title,"Updated example value");
+      assert.equal(updated.record.text9,"updated text9");
+      const regular=await pageFor(users[3]!.email);
+      await regular.page.goto("/general-table");
+      await regular.page.getByRole("alert").waitFor();
+      assert.equal(
+        await regular.page.getByRole("button",{name:"إضافة سجل"}).count(),0,
+      );
+    },
+  );
+
+  await scenario(
     "public registration, canonical profile and stored audit values",
     async () => {
       assert(browser);
