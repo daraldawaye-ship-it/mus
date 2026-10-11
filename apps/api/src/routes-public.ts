@@ -96,13 +96,17 @@ export function publicRoutes(pool: Pool): Router {
         }
         const afterValues = { ...before, ...input };
         const updated = await client.query(
-          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5 WHERE id=$6 RETURNING *",
+          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9 WHERE id=$10 RETURNING *",
           [
             afterValues.kind,
             afterValues.archived,
             afterValues.suspended,
             afterValues.editor,
             afterValues.monitor,
+            afterValues.name,
+            afterValues.displayName?.trim() || afterValues.name,
+            afterValues.email,
+            afterValues.phone,
             targetId,
           ],
         );
