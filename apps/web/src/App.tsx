@@ -24,7 +24,6 @@ import {
   TableProperties,
   LayoutDashboard,
   LogIn,
-  LogOut,
   Menu,
   MapPin,
   Settings2,
@@ -39,6 +38,7 @@ import type {
 } from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
 import { AppearanceButton, AppearanceProvider } from "./theme";
+import { UserMenu } from "./UserMenu";
 import { Button, Card, Dialog, Notice } from "./ui";
 import { moduleAccess } from "./phase2";
 import {
@@ -534,42 +534,32 @@ function Workspace() {
               </div>
             </div>
             <div className="topbar-actions">
-              <AppearanceButton />
               {user ? (
-                <>
-                  <NavLink
-                    to="/profile"
-                    className="account-name"
-                    title={user.displayName}
-                  >
-                    {user.displayName}
-                  </NavLink>
-                  <Button
-                    variant="ghost"
-                    aria-label="تسجيل الخروج"
-                    onClick={() => {
-                      setLogoutError("");
-                      void logout()
-                        .then(() => navigate("/", { replace: true }))
-                        .catch((error) =>
-                          setLogoutError(
-                            error instanceof Error
-                              ? error.message
-                              : "تعذر تسجيل الخروج",
-                          ),
-                        );
-                    }}
-                  >
-                    <LogOut size={17} />
-                  </Button>
-                </>
+                <UserMenu
+                  user={user}
+                  onLogout={() => {
+                    setLogoutError("");
+                    void logout()
+                      .then(() => navigate("/", { replace: true }))
+                      .catch((error) =>
+                        setLogoutError(
+                          error instanceof Error
+                            ? error.message
+                            : "تعذر تسجيل الخروج",
+                        ),
+                      );
+                  }}
+                />
               ) : (
-                <NavLink
-                  className="button button-secondary desktop-only"
-                  to="/login"
-                >
-                  تسجيل الدخول
-                </NavLink>
+                <>
+                  <AppearanceButton />
+                  <NavLink
+                    className="button button-secondary desktop-only"
+                    to="/login"
+                  >
+                    تسجيل الدخول
+                  </NavLink>
+                </>
               )}
             </div>
           </header>
