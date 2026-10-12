@@ -1432,7 +1432,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
     body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"}),
   });
   assert.equal(unauthorized.status,401);
-  assert.match(unauthorized.headers.get("www-authenticate")??"","oauth-protected-resource");
+  assert.match(unauthorized.headers.get("www-authenticate")??"",/oauth-protected-resource/);
 
   const register=await fetch(base("/oauth/register"),{
     method:"POST",headers:{"content-type":"application/json"},
@@ -1451,7 +1451,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
     headers:{cookie:"tijara_session="+session.token},
   });
   assert.equal(authorize.status,200);
-  assert.match(await authorize.text(),"الجدول العام فقط");
+  assert.match(await authorize.text(),/الجدول العام فقط/);
   const response=await fetch(base("/oauth/authorize"),{
     method:"POST",redirect:"manual",
     headers:{"content-type":"application/x-www-form-urlencoded",
@@ -1497,7 +1497,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
     });
     return {status:res.status,body:await res.json() as {result?:{tools?:{name:string}[];structuredContent?:{
       total?:number;records?:{description:string;number1:string}[]
-    }}}},
+    }}}};
   };
   const found=await rpc("tools/list",{});
   assert.equal(found.status,200);
