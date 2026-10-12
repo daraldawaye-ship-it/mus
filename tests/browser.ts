@@ -695,6 +695,46 @@ try {
   );
 
   await scenario(
+    "general table repeats only the checkmarked records and clears selection after saving",
+    async () => {
+      const { page, actor } = await pageFor();
+      const source = {
+        tableName: "repeat-browser", category: "selection",
+        title: "Record for duplicate", description: "Original content",
+        number1: null, number2: "2.5", date1: null, date2: null,
+        ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [
+          `text${i + 1}`, i === 8 ? "Unique ninth field" : "",
+        ])),
+      };
+      const first = (await call<{record:GeneralTableRecord}>(
+        actor, "/general-table", "POST", source,
+      )).record;
+      const second = (await call<{record:GeneralTableRecord}>(
+        actor, "/general-table", "POST", { ...source, title: "Another record" },
+      )).record;
+      await page.goto("/general-table?tableName=repeat-browser&category=selection");
+      await page.getByRole("button", { name: "تكرار المحدد (0)" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "تكرار المحدد (0)" }).isDisabled(), true);
+      await page.getByRole("checkbox", { name: `اختيار السجل ${first.id}` }).check();
+      await page.getByRole("checkbox", { name: `اختيار السجل ${second.id}` }).check();
+      await page.getByRole("button", { name: "تكرار المحدد (2)" }).click();
+      await page.getByText("تم تكرار 2 سجل بنجاح؛ احتُفظ بالسجلات الأصلية.").waitFor();
+      await page.getByRole("button", { name: "تكرار المحدد (0)" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "تكرار المحدد (0)" }).isDisabled(), true);
+      const listed = await call<ApiPage<GeneralTableRecord>>(
+        actor, "/general-table?tableName=repeat-browser&category=selection",
+      );
+      assert.equal(listed.total, 4);
+      assert.equal(
+        listed.items.filter((item) => item.text9 === "Unique ninth field").length,
+        4,
+      );
+      assert.equal(listed.items.filter((item) => item.id === first.id).length, 1);
+      assert.equal(listed.items.filter((item) => item.id === second.id).length, 1);
+    },
+  );
+
+  await scenario(
     "general table page lets platform owner add and edit text9 while keeping it private",
     async () => {
       const { page, actor } = await pageFor();
