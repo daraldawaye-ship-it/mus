@@ -1,11 +1,12 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   useBlocker,
@@ -297,6 +298,7 @@ function InvoiceList({
 
 interface DraftLine {
   key: string;
+  search: string;
   itemId: number;
   itemCode: string;
   itemName: string;
@@ -309,29 +311,102 @@ interface DraftLine {
   sourceItem?: Item;
 }
 
+function emptyLine(returning = false): DraftLine {
+  return {
+    key: crypto.randomUUID(),
+    search: "",
+    itemId: 0,
+    itemCode: "",
+    itemName: "",
+    unit: 1,
+    unitName: "",
+    quantity: returning ? "-1" : "1",
+    unitPrice: "0",
+    expiryDate: null,
+    originalLineId: null,
+    sourceItem: undefined,
+  };
+}
+const lineInputId = (line: DraftLine, field: string) =>
+  `invoice-${field}-${line.key}`;
+
 function ItemSearch({
   companyId,
+  id,
+  value,
+  selected,
   disabled,
+  onQueryChange,
   onChoose,
 }: {
   companyId: number;
+  id: string;
+  value: string;
+  selected: boolean;
   disabled: boolean;
+  onQueryChange: (value: string) => void;
   onChoose: (item: Item) => void;
 }) {
   const { user } = useSession();
-  const [query, setQuery] = useState("");
+  const query = value;
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLDivElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState({
+    left: 0,
+    top: 0,
+    width: 310,
+    maxHeight: 320,
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(0);
   const [autoChoose, setAutoChoose] = useState("");
   useEffect(() => {
+    if (selected || !open) {
+      setSearch("");
+      return;
+    }
     const timer = window.setTimeout(() => {
       setSearch(query.trim());
       setPage(1);
       setActive(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [query]);
+  }, [query, selected, open]);
+  const expanded = open && !!search && !selected && !disabled;
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const position = () => {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(Math.max(rect.width, 310), window.innerWidth - 16);
+      const below = window.innerHeight - rect.bottom - 8;
+      const above = rect.top - 8;
+      const down = below >= Math.min(240, above);
+      const maxHeight = Math.max(80, Math.min(320, down ? below : above));
+      const height = Math.min(popup.current?.scrollHeight ?? 240, maxHeight);
+      setPlacement({
+        left: Math.max(
+          8,
+          Math.min(rect.right - width, window.innerWidth - width - 8),
+        ),
+        top: down ? rect.bottom : Math.max(8, rect.top - height),
+        width,
+        maxHeight,
+      });
+    };
+    position();
+    const observer = new ResizeObserver(position);
+    if (popup.current) observer.observe(popup.current);
+    window.addEventListener("resize", position);
+    window.addEventListener("scroll", position, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
+    };
+  }, [expanded, page]);
   const result = useQuery({
     queryKey: ["commerce", user?.id, companyId, "item-search", search, page],
     queryFn: ({ signal }) =>
@@ -344,7 +419,7 @@ function ItemSearch({
   const items = result.data?.items ?? [];
   function choose(item: Item) {
     onChoose(item);
-    setQuery("");
+    setOpen(false);
     setSearch("");
     setActive(0);
     setAutoChoose("");
@@ -368,23 +443,40 @@ function ItemSearch({
     }
   }, [autoChoose, search, result.isFetching, result.data, disabled]);
   return (
-    <div className="commerce-item-search">
+    <div
+      className="commerce-item-search"
+      ref={anchor}
+      onBlur={(event) => {
+        if (
+          !anchor.current?.contains(event.relatedTarget) &&
+          !popup.current?.contains(event.relatedTarget)
+        ) {
+          setOpen(false);
+          setAutoChoose("");
+        }
+      }}
+    >
       <Field
-        id="invoice-item-search"
+        id={id}
+        className="item-cell-field"
         label="الصنف / الباركود"
         type="search"
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder="امسح الباركود أو اكتب الاسم / الرمز"
+        placeholder="اكتب جزءًا من اسم الصنف…"
         role="combobox"
-        aria-expanded={!!search}
-        aria-controls="invoice-item-results"
+        aria-expanded={expanded}
+        aria-controls={expanded ? `${id}-results` : undefined}
         aria-activedescendant={
-          items[active] ? `invoice-item-result-${items[active].id}` : undefined
+          expanded && items[active]
+            ? `${id}-result-${items[active].id}`
+            : undefined
         }
+        onFocus={() => setOpen(true)}
         onChange={(event) => {
-          setQuery(event.target.value);
+          onQueryChange(event.target.value);
+          setOpen(true);
           setAutoChoose("");
         }}
         onKeyDown={(event) => {
@@ -399,12 +491,13 @@ function ItemSearch({
             setActive((index) => Math.max(index - 1, 0));
           }
           if (event.key === "Escape") {
-            setQuery("");
+            setOpen(false);
             setSearch("");
             setAutoChoose("");
           }
           if (event.key === "Enter") {
             event.preventDefault();
+            if (selected) return;
             if (!result.isFetching && search === query.trim() && items[active])
               choose(items[active]);
             else if (query.trim()) {
@@ -415,71 +508,81 @@ function ItemSearch({
           }
         }}
       />
-      {search && (
-        <div className="commerce-search-results">
-          <ul
-            id="invoice-item-results"
-            role="listbox"
-            aria-label="نتائج الأصناف"
+      {expanded &&
+        createPortal(
+          <div
+            className="commerce-search-results"
+            ref={popup}
+            style={placement}
+            onBlur={(event) => {
+              if (
+                !popup.current?.contains(event.relatedTarget) &&
+                !anchor.current?.contains(event.relatedTarget)
+              )
+                setOpen(false);
+            }}
           >
-            {items.map((item, index) => (
-              <li
-                id={`invoice-item-result-${item.id}`}
-                key={item.id}
-                role="option"
-                aria-selected={index === active}
-              >
-                <Button
-                  variant={index === active ? "secondary" : "ghost"}
-                  onClick={() => choose(item)}
-                  disabled={
-                    disabled || result.isFetching || search !== query.trim()
-                  }
+            <ul id={`${id}-results`} role="listbox" aria-label="نتائج الأصناف">
+              {items.map((item, index) => (
+                <li
+                  id={`${id}-result-${item.id}`}
+                  key={item.id}
+                  role="option"
+                  aria-selected={index === active}
                 >
-                  <bdi>{item.code}</bdi>
-                  <span>{item.name}</span>
-                  <bdi>{item.barcode}</bdi>
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {result.isFetching ? (
-            <span className="muted">جارٍ البحث…</span>
-          ) : (
-            !items.length && <span className="muted">لا توجد نتائج.</span>
-          )}
-          {result.error && (
-            <Notice tone="error">{errorMessage(result.error)}</Notice>
-          )}
-          <div className="lookup-pages">
-            <Button
-              size="compact"
-              variant="ghost"
-              disabled={page <= 1 || result.isFetching}
-              onClick={() => {
-                setPage(page - 1);
-                setActive(0);
-              }}
-            >
-              السابق
-            </Button>
-            <span>صفحة {page}</span>
-            <Button
-              size="compact"
-              variant="ghost"
-              disabled={
-                page * 10 >= (result.data?.total ?? 0) || result.isFetching
-              }
-              onClick={() => {
-                setPage(page + 1);
-                setActive(0);
-              }}
-            >
-              التالي
-            </Button>
-          </div>
-        </div>
-      )}
+                  <Button
+                    variant={index === active ? "secondary" : "ghost"}
+                    onClick={() => choose(item)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    disabled={
+                      disabled || result.isFetching || search !== query.trim()
+                    }
+                  >
+                    <bdi>{item.code}</bdi>
+                    <span>{item.name}</span>
+                    <bdi>{item.barcode}</bdi>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            {result.isFetching ? (
+              <span className="muted">جارٍ البحث…</span>
+            ) : (
+              !items.length && <span className="muted">لا توجد نتائج.</span>
+            )}
+            {result.error && (
+              <Notice tone="error">{errorMessage(result.error)}</Notice>
+            )}
+            <div className="lookup-pages">
+              <Button
+                size="compact"
+                variant="ghost"
+                disabled={page <= 1 || result.isFetching}
+                onClick={() => {
+                  setPage(page - 1);
+                  setActive(0);
+                }}
+              >
+                السابق
+              </Button>
+              <span>صفحة {page}</span>
+              <Button
+                size="compact"
+                variant="ghost"
+                disabled={
+                  page * 10 >= (result.data?.total ?? 0) || result.isFetching
+                }
+                onClick={() => {
+                  setPage(page + 1);
+                  setActive(0);
+                }}
+              >
+                التالي
+              </Button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -648,21 +751,47 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const [discount, setDiscount] = useState("0");
   const [isReturn, setIsReturn] = useState(false);
   const [original, setOriginal] = useState<Invoice | null>(null);
-  const [originalLine, setOriginalLine] = useState<InvoiceLine | null>(null);
-  const [item, setItem] = useState<Item | null>(null);
-  const [unit, setUnit] = useState<1 | 2 | 3>(1);
-  const [quantity, setQuantity] = useState("1");
-  const [price, setPrice] = useState("0");
-  const [expiry, setExpiry] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
+  const selectedLines = lines.filter((line) => line.itemId > 0);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  const [footerBounds, setFooterBounds] = useState({
+    left: 0,
+    width: 0,
+    height: 0,
+  });
+  useLayoutEffect(() => {
+    const page = pageRef.current;
+    const footer = footerRef.current;
+    if (!page || !footer) return;
+    const measure = () => {
+      const rect = page.getBoundingClientRect();
+      const height = footer.getBoundingClientRect().height;
+      setFooterBounds((previous) =>
+        previous.left === rect.left &&
+        previous.width === rect.width &&
+        previous.height === height
+          ? previous
+          : { left: rect.left, width: rect.width, height },
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(page);
+    observer.observe(footer);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
   const allowNavigation = useRef(false);
   const dirty =
-    !!lines.length ||
-    !!item ||
+    lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
     !!account ||
@@ -701,18 +830,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       : level === 2
         ? selected.unit2Name
         : selected.unit3Name;
-  const displayedPrice = isReturn
-    ? (originalLine?.unitPrice ?? "0")
-    : kind === "sale" && item
-      ? salePrice(item, unit)
-      : price;
   const totals = useMemo(() => {
     try {
       return calculateInvoiceTotals(
-        lines.map((line) => ({
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-        })),
+        lines
+          .filter((line) => line.itemId > 0)
+          .map((line) => ({
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+          })),
         isReturn ? "0" : discount,
         currency?.decimalPlaces ?? 6,
       );
@@ -720,13 +846,39 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       return null;
     }
   }, [lines, discount, currency?.decimalPlaces, isReturn]);
-  function addLine() {
+  function updateLine(key: string, patch: Partial<DraftLine>) {
+    setLines((current) =>
+      current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+    );
+  }
+  function chooseItem(line: DraftLine, selected: Item) {
     setError("");
-    const normalized = normalizeDigits(quantity.trim());
+    updateLine(line.key, {
+      itemId: selected.id,
+      itemCode: selected.code,
+      itemName: selected.name,
+      search: selected.name,
+      sourceItem: selected,
+      unit: 1,
+      unitName: selected.unit1Name,
+      quantity: "1",
+      unitPrice:
+        kind === "sale"
+          ? selected.salePrice1
+          : currency?.id === selected.currencyId
+            ? selected.purchasePrice
+            : "0",
+      expiryDate: null,
+      originalLineId: null,
+    });
+    focus(lineInputId(line, "quantity"));
+  }
+  function validateQuantity(line: DraftLine) {
+    const normalized = normalizeDigits(line.quantity.trim());
     if (!/^-?\d{1,22}$/.test(normalized) || BigInt(normalized) === 0n) {
       setError("الكمية عدد صحيح غير صفري حتى 22 رقمًا.");
-      focus("invoice-quantity");
-      return;
+      focus(lineInputId(line, "quantity"));
+      return false;
     }
     if (isReturn !== normalized.startsWith("-")) {
       setError(
@@ -734,120 +886,109 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           ? "أدخل كمية سالبة للمردود."
           : "اختر عملية مردود عند إدخال كمية سالبة.",
       );
-      return;
+      focus(lineInputId(line, "quantity"));
+      return false;
     }
-    if (lines.length >= 100) {
-      setError("الحد الأقصى 100 سطر للفاتورة.");
-      return;
+    return true;
+  }
+  function validateLine(line: DraftLine) {
+    if (!line.itemId) {
+      setError("اختر صنفًا من نتائج البحث.");
+      focus(lineInputId(line, "item-search"));
+      return false;
+    }
+    if (!validateQuantity(line)) return false;
+    if (
+      !currency ||
+      (kind === "sale" &&
+        !isReturn &&
+        line.sourceItem?.currencyId !== currency.id)
+    ) {
+      setError("اختر عملة الفاتورة؛ عملة سعر البيع يجب أن تطابقها.");
+      return false;
     }
     if (isReturn) {
-      if (!original || !originalLine) {
-        setError("اختر الفاتورة الأصلية والصنف المرتجع أولًا.");
-        return;
-      }
-      if (lines.some((line) => line.originalLineId === originalLine.id)) {
-        setError(
-          "سطر الأصل موجود في المردود. عدّل كميته في الجدول بدل إضافته مرتين.",
-        );
-        return;
+      const source = original?.lines.find(
+        (entry) => entry.id === line.originalLineId,
+      );
+      if (!source) {
+        setError("اختر الصنف المرتجع من الفاتورة الأصلية.");
+        return false;
       }
       if (
-        lines.some(
-          (line) =>
-            line.originalLineId === originalLine.id &&
-            !/^-\d{1,22}$/.test(normalizeDigits(line.quantity.trim())),
+        selectedLines.some(
+          (entry) =>
+            entry.key !== line.key &&
+            entry.originalLineId === line.originalLineId,
         )
       ) {
-        setError("صحح كمية المردود في السطور السابقة قبل إضافة سطر آخر.");
-        return;
+        setError("سطر الأصل موجود في المردود. عدّل كميته بدل إضافته مرتين.");
+        return false;
       }
-      const previousQuantity = lines
-        .filter((line) => line.originalLineId === originalLine.id)
-        .reduce(
-          (sum, line) => sum + BigInt(normalizeDigits(line.quantity.trim())),
-          0n,
-        );
       if (
-        -BigInt(normalized) - previousQuantity >
-        BigInt(originalLine.quantity)
+        -BigInt(normalizeDigits(line.quantity.trim())) > BigInt(source.quantity)
       ) {
         setError(
           "كمية المردود تتجاوز كمية السطر الأصلي. يتحقق الخادم أيضًا من المردودات السابقة.",
         );
-        return;
+        focus(lineInputId(line, "quantity"));
+        return false;
       }
-      setLines((current) => [
-        ...current,
-        {
-          key: crypto.randomUUID(),
-          itemId: originalLine.itemId,
-          itemCode: originalLine.itemCode,
-          itemName: originalLine.itemName,
-          unit: originalLine.unit,
-          unitName: originalLine.unitName,
-          quantity: BigInt(normalized).toString(),
-          unitPrice: originalLine.unitPrice,
-          expiryDate: originalLine.expiryDate,
-          originalLineId: originalLine.id,
-        },
-      ]);
-      setOriginalLine(null);
-      setQuantity("-1");
-      focus("invoice-original-line");
-    } else {
-      if (!item) {
-        setError("اختر صنفًا من نتائج البحث.");
-        focus("invoice-item-search");
-        return;
-      }
-      if (!currency || (kind === "sale" && item.currencyId !== currency.id)) {
-        setError("اختر عملة الفاتورة؛ عملة سعر البيع يجب أن تطابقها.");
-        return;
-      }
-      if (kind === "purchase" && item.hasExpiry && !expiry) {
-        setError("تاريخ الانتهاء مطلوب للصنف المختار.");
-        focus("invoice-expiry");
-        return;
-      }
-      try {
-        calculateInvoiceTotals(
-          [{ quantity: normalized, unitPrice: displayedPrice }],
-          "0",
-          currency.decimalPlaces,
-        );
-      } catch (error) {
-        setError(errorMessage(error));
-        return;
-      }
-      setLines((current) => [
-        ...current,
-        {
-          key: crypto.randomUUID(),
-          itemId: item.id,
-          itemCode: item.code,
-          itemName: item.name,
-          unit,
-          unitName: unitName(item, unit),
-          quantity: BigInt(normalized).toString(),
-          unitPrice: displayedPrice,
-          expiryDate: kind === "purchase" && item.hasExpiry ? expiry : null,
-          originalLineId: null,
-          sourceItem: item,
-        },
-      ]);
-      setItem(null);
-      setQuantity("1");
-      setPrice("0");
-      setExpiry("");
-      setUnit(1);
-      focus("invoice-item-search");
+    } else if (
+      kind === "purchase" &&
+      line.sourceItem?.hasExpiry &&
+      !line.expiryDate
+    ) {
+      setError("تاريخ الانتهاء مطلوب للصنف المختار.");
+      focus(lineInputId(line, "expiry"));
+      return false;
     }
+    try {
+      calculateInvoiceTotals(
+        [{ quantity: line.quantity, unitPrice: line.unitPrice }],
+        "0",
+        currency.decimalPlaces,
+      );
+    } catch (error) {
+      setError(errorMessage(error));
+      focus(lineInputId(line, "price"));
+      return false;
+    }
+    return true;
   }
-  function quantityKey(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    if (kind === "purchase" && !isReturn) focus("invoice-price");
-    else addLine();
+  function nextLine(line?: DraftLine) {
+    if (locked) return;
+    setError("");
+    if (line && !validateLine(line)) return;
+    const index = line
+      ? lines.findIndex((entry) => entry.key === line.key)
+      : -1;
+    const next =
+      (line ? lines[index + 1] : undefined) ??
+      lines.find((entry) => !entry.itemId && !entry.search.trim());
+    if (next) {
+      focus(lineInputId(next, isReturn ? "original-line" : "item-search"));
+      return;
+    }
+    if (selectedLines.length >= 100) {
+      setError("الحد الأقصى 100 سطر للفاتورة.");
+      return;
+    }
+    const created = emptyLine(isReturn);
+    setLines((current) => [...current, created]);
+    focus(lineInputId(created, isReturn ? "original-line" : "item-search"));
+  }
+  function deleteLine(line: DraftLine) {
+    setError("");
+    const remaining = lines.filter((entry) => entry.key !== line.key);
+    const replacement = remaining.length ? remaining : [emptyLine(isReturn)];
+    setLines(replacement);
+    focus(
+      lineInputId(
+        replacement[Math.min(lines.indexOf(line), replacement.length - 1)],
+        isReturn ? "original-line" : "item-search",
+      ),
+    );
   }
   async function save(event?: FormEvent) {
     event?.preventDefault();
@@ -855,10 +996,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     setError("");
     let payload = pending.current;
     if (!unknown) {
-      if (item || originalLine) {
-        setError("أضف الصنف الجاري إلى السطور قبل الحفظ.");
+      const unfinished = lines.find(
+        (line) => !line.itemId && line.search.trim(),
+      );
+      if (unfinished) {
+        setError("اختر الصنف الجاري من نتائج البحث أو امسح البحث قبل الحفظ.");
+        focus(lineInputId(unfinished, "item-search"));
         return;
       }
+      if (selectedLines.some((line) => !validateLine(line))) return;
       const parsed = invoiceSchema.safeParse({
         idempotencyKey: crypto.randomUUID(),
         kind,
@@ -869,7 +1015,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         counterpartyAccountId: account?.id,
         description,
         discount: isReturn ? "0" : discount,
-        lines: lines.map((line) => ({
+        lines: selectedLines.map((line) => ({
           itemId: line.itemId,
           unit: line.unit,
           quantity: line.quantity,
@@ -932,10 +1078,18 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     return () => window.removeEventListener("keydown", handler);
   });
   return (
-    <div className="commerce-document-page">
+    <div
+      className="commerce-document-page"
+      ref={pageRef}
+      style={{ paddingBottom: footerBounds.height + 12 }}
+    >
       <PageHeader
         title={`${isReturn ? "مردود " : "إضافة "}${title(kind)}`}
-        description="اختر الصنف ثم الكمية واضغط Enter لإضافة السطر. حفظ الفاتورة يرحّلها فورًا."
+        description={
+          kind === "sale"
+            ? "اختر الصنف ثم الكمية؛ Enter ينقلك للصنف التالي. سعر البيع من كرت الصنف."
+            : "اختر الصنف ثم الكمية والسعر، وتاريخ الانتهاء للأصناف التي تتطلبه."
+        }
         actions={
           <Link
             className="button button-secondary"
@@ -958,15 +1112,13 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               />
               <Select
                 label="العملية"
-                disabled={lines.length > 0}
+                disabled={selectedLines.length > 0}
                 value={isReturn ? "return" : "invoice"}
                 onChange={(event) => {
                   const returning = event.target.value === "return";
                   setIsReturn(returning);
-                  setQuantity(returning ? "-1" : "1");
-                  setItem(null);
+                  setLines([emptyLine(returning)]);
                   setOriginal(null);
-                  setOriginalLine(null);
                   setDiscount("0");
                 }}
               >
@@ -986,7 +1138,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setCurrency(value);
                 }}
                 display={(value) => `${value.code} — ${value.name}`}
-                disabled={locked || lines.length > 0 || isReturn}
+                disabled={locked || isReturn}
                 required
               />
               <ServerLookup<Account>
@@ -1013,7 +1165,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setLocation(null);
                 }}
                 display={itemLabel}
-                disabled={locked || lines.length > 0 || isReturn}
+                disabled={
+                  locked || (!!branch && selectedLines.length > 0) || isReturn
+                }
                 required
               />
               <ServerLookup<Location>
@@ -1024,7 +1178,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 onChange={setLocation}
                 display={itemLabel}
                 accept={(value) => kind !== "sale" || value.kind === "showroom"}
-                disabled={locked || !branch || lines.length > 0 || isReturn}
+                disabled={
+                  locked ||
+                  !branch ||
+                  (!!location && selectedLines.length > 0) ||
+                  isReturn
+                }
                 required
               />
             </div>
@@ -1033,10 +1192,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 companyId={companyId}
                 kind={kind}
                 value={original}
-                disabled={locked || lines.length > 0}
+                disabled={locked || selectedLines.length > 0}
                 onChange={(value) => {
                   setOriginal(value);
-                  setOriginalLine(null);
+                  setLines([emptyLine(true)]);
                   if (value) {
                     setCurrency({
                       id: value.currencyId,
@@ -1102,240 +1261,326 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             )}
           </fieldset>
         </Card>
-        <Card title="سطور الفاتورة">
+        <Card className="commerce-matrix-card">
           <fieldset disabled={locked} className="commerce-fieldset">
-            <div className="commerce-add-grid">
-              {isReturn ? (
-                <Select
-                  id="invoice-original-line"
-                  label="الصنف المرتجع من الأصل"
-                  value={originalLine?.id ?? ""}
-                  disabled={!original}
-                  onChange={(event) => {
-                    const selected =
-                      original?.lines.find(
-                        (line) => line.id === Number(event.target.value),
-                      ) ?? null;
-                    setOriginalLine(selected);
-                    setQuantity("-1");
-                    if (selected) focus("invoice-quantity");
-                  }}
-                >
-                  <option value="">اختر سطر الأصل</option>
-                  {original?.lines
-                    .filter((line) => !line.quantity.startsWith("-"))
-                    .map((line) => (
-                      <option key={line.id} value={line.id}>
-                        {line.itemCode} — {line.itemName} — {line.quantity}{" "}
-                        {line.unitName}
-                      </option>
-                    ))}
-                </Select>
-              ) : (
-                <ItemSearch
-                  companyId={companyId}
-                  disabled={locked}
-                  onChoose={(selected) => {
-                    setItem(selected);
-                    setUnit(1);
-                    setQuantity("1");
-                    setPrice(
-                      currency && currency.id === selected.currencyId
-                        ? selected.purchasePrice
-                        : "0",
-                    );
-                    setExpiry("");
-                    focus("invoice-quantity");
-                  }}
-                />
-              )}
-              <Select
-                label="الوحدة"
-                value={isReturn ? (originalLine?.unit ?? 1) : unit}
-                disabled={locked || isReturn || !item}
-                onChange={(event) =>
-                  setUnit(Number(event.target.value) as 1 | 2 | 3)
-                }
+            <div
+              className="commerce-lines-scroll"
+              role="region"
+              aria-label="سطور الفاتورة"
+            >
+              <table
+                className={`commerce-lines commerce-matrix ${kind === "purchase" ? "commerce-matrix-purchase" : ""}`}
               >
-                {isReturn ? (
-                  <option value={originalLine?.unit ?? 1}>
-                    {originalLine?.unitName ?? "—"}
-                  </option>
-                ) : (
-                  <>
-                    <option value="1">
-                      {item?.unit1Name || "الوحدة الأولى"}
-                    </option>
-                    {item && item.factor2 > 1 && (
-                      <option value="2">{item.unit2Name}</option>
-                    )}
-                    {item && item.factor3 > 1 && (
-                      <option value="3">{item.unit3Name}</option>
-                    )}
-                  </>
-                )}
-              </Select>
-              <Field
-                id="invoice-quantity"
-                label={isReturn ? "الكمية المرتجعة (سالبة)" : "الكمية"}
-                inputMode="text"
-                value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
-                onKeyDown={quantityKey}
-              />
-              <Field
-                id="invoice-price"
-                label="سعر الوحدة"
-                inputMode="decimal"
-                value={displayedPrice}
-                readOnly={kind === "sale" || isReturn}
-                onChange={(event) => setPrice(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    if (kind === "purchase" && !isReturn && item?.hasExpiry)
-                      focus("invoice-expiry");
-                    else addLine();
-                  }
-                }}
-              />
-              {kind === "purchase" && !isReturn && (
-                <Field
-                  id="invoice-expiry"
-                  label="تاريخ الانتهاء"
-                  type="date"
-                  disabled={!item?.hasExpiry}
-                  value={expiry}
-                  required={!!item?.hasExpiry}
-                  onChange={(event) => setExpiry(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addLine();
-                    }
-                  }}
-                />
-              )}
-              <Button
-                onClick={addLine}
-                disabled={locked || (isReturn ? !originalLine : !item)}
-              >
-                <Plus size={15} />
-                إضافة السطر
-              </Button>
-            </div>
-            {item && (
-              <div className="commerce-selected-item">
-                <strong>{itemLabel(item)}</strong>
-                <span>{item.currencyCode}</span>
-                {kind === "purchase" && item.purchaseNotes && (
-                  <ValueCell>{item.purchaseNotes}</ValueCell>
-                )}
-                {kind === "sale" && (
-                  <span className="muted">
-                    السعر من كرت الصنف، ويتحقق منه الخادم عند الحفظ.
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="commerce-lines-scroll">
-              <table className="commerce-lines">
+                <colgroup>
+                  <col className="commerce-col-item" />
+                  <col className="commerce-col-unit" />
+                  <col className="commerce-col-quantity" />
+                  <col className="commerce-col-price" />
+                  {kind === "purchase" && (
+                    <col className="commerce-col-expiry" />
+                  )}
+                  <col className="commerce-col-total" />
+                  <col className="commerce-col-delete" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>الرمز</th>
-                    <th>الصنف</th>
-                    <th>الوحدة</th>
-                    <th>الكمية</th>
-                    <th>سعر الوحدة</th>
-                    {kind === "purchase" && <th>الانتهاء</th>}
-                    <th>الإجمالي</th>
-                    <th>حذف</th>
+                    <th scope="col">الصنف</th>
+                    <th scope="col">الوحدة</th>
+                    <th scope="col">الكمية</th>
+                    <th scope="col">
+                      {kind === "sale" ? "سعر البيع" : "سعر الشراء"}
+                    </th>
+                    {kind === "purchase" && <th scope="col">تاريخ الانتهاء</th>}
+                    <th scope="col">إجمالي الصنف</th>
+                    <th scope="col">
+                      <span className="visually-hidden">حذف</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line, index) => (
-                    <tr key={line.key}>
-                      <td>
-                        <bdi>{line.itemCode}</bdi>
-                      </td>
-                      <td>
-                        <ValueCell>{line.itemName}</ValueCell>
-                      </td>
-                      <td>{line.unitName}</td>
-                      <td>
-                        <Field
-                          className="item-cell-field"
-                          label={`كمية ${line.itemName}`}
-                          value={line.quantity}
-                          inputMode="text"
-                          onChange={(event) =>
-                            setLines((current) =>
-                              current.map((entry) =>
-                                entry.key === line.key
-                                  ? { ...entry, quantity: event.target.value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        {kind === "purchase" && !isReturn ? (
-                          <Field
-                            className="item-cell-field"
-                            label={`سعر ${line.itemName}`}
-                            value={line.unitPrice}
-                            inputMode="decimal"
-                            onChange={(event) =>
-                              setLines((current) =>
-                                current.map((entry) =>
-                                  entry.key === line.key
+                  {lines.map((line) => {
+                    let lineTotal = "0";
+                    try {
+                      if (line.itemId)
+                        lineTotal = calculateInvoiceTotals(
+                          [
+                            {
+                              quantity: line.quantity,
+                              unitPrice: line.unitPrice,
+                            },
+                          ],
+                          "0",
+                          currency?.decimalPlaces ?? 6,
+                        ).gross;
+                    } catch {
+                      lineTotal = "—";
+                    }
+                    return (
+                      <tr
+                        key={line.key}
+                        data-line-key={line.key}
+                        data-selected={!!line.itemId}
+                      >
+                        <td>
+                          {isReturn ? (
+                            <Select
+                              id={lineInputId(line, "original-line")}
+                              className="item-cell-field"
+                              label="الصنف المرتجع من الأصل"
+                              value={line.originalLineId ?? ""}
+                              disabled={!original}
+                              onChange={(event) => {
+                                const source = original?.lines.find(
+                                  (entry) =>
+                                    entry.id === Number(event.target.value),
+                                );
+                                updateLine(
+                                  line.key,
+                                  source
                                     ? {
-                                        ...entry,
-                                        unitPrice: event.target.value,
+                                        itemId: source.itemId,
+                                        itemCode: source.itemCode,
+                                        itemName: source.itemName,
+                                        search: source.itemName,
+                                        unit: source.unit,
+                                        unitName: source.unitName,
+                                        quantity: "-1",
+                                        unitPrice: source.unitPrice,
+                                        expiryDate: source.expiryDate,
+                                        originalLineId: source.id,
                                       }
-                                    : entry,
-                                ),
-                              )
+                                    : { ...emptyLine(true), key: line.key },
+                                );
+                                if (source)
+                                  focus(lineInputId(line, "quantity"));
+                              }}
+                            >
+                              <option value="">اختر سطر الأصل</option>
+                              {original?.lines
+                                .filter(
+                                  (entry) => !entry.quantity.startsWith("-"),
+                                )
+                                .map((entry) => (
+                                  <option
+                                    key={entry.id}
+                                    value={entry.id}
+                                    disabled={selectedLines.some(
+                                      (selected) =>
+                                        selected.key !== line.key &&
+                                        selected.originalLineId === entry.id,
+                                    )}
+                                  >
+                                    {entry.itemCode} — {entry.itemName} —{" "}
+                                    {entry.quantity} {entry.unitName}
+                                  </option>
+                                ))}
+                            </Select>
+                          ) : (
+                            <ItemSearch
+                              companyId={companyId}
+                              id={lineInputId(line, "item-search")}
+                              value={line.search}
+                              selected={!!line.itemId}
+                              disabled={locked}
+                              onQueryChange={(value) =>
+                                updateLine(line.key, {
+                                  ...emptyLine(),
+                                  key: line.key,
+                                  search: value,
+                                })
+                              }
+                              onChoose={(selected) =>
+                                chooseItem(line, selected)
+                              }
+                            />
+                          )}
+                        </td>
+                        <td>
+                          <Select
+                            className="item-cell-field"
+                            label={`الوحدة${line.itemName ? ` ${line.itemName}` : ""}`}
+                            value={line.unit}
+                            disabled={isReturn || !line.itemId}
+                            onChange={(event) => {
+                              if (!line.sourceItem) return;
+                              const level = Number(event.target.value) as
+                                1 | 2 | 3;
+                              updateLine(line.key, {
+                                unit: level,
+                                unitName: unitName(line.sourceItem, level),
+                                ...(kind === "sale"
+                                  ? {
+                                      unitPrice: salePrice(
+                                        line.sourceItem,
+                                        level,
+                                      ),
+                                    }
+                                  : {}),
+                              });
+                            }}
+                          >
+                            {isReturn ? (
+                              <option value={line.unit}>
+                                {line.unitName || "—"}
+                              </option>
+                            ) : (
+                              <>
+                                <option value="1">
+                                  {line.sourceItem?.unit1Name || "—"}
+                                </option>
+                                {!!line.sourceItem &&
+                                  line.sourceItem.factor2 > 1 && (
+                                    <option value="2">
+                                      {line.sourceItem.unit2Name}
+                                    </option>
+                                  )}
+                                {!!line.sourceItem &&
+                                  line.sourceItem.factor3 > 1 && (
+                                    <option value="3">
+                                      {line.sourceItem.unit3Name}
+                                    </option>
+                                  )}
+                              </>
+                            )}
+                          </Select>
+                        </td>
+                        <td>
+                          <Field
+                            id={lineInputId(line, "quantity")}
+                            className="item-cell-field"
+                            label={
+                              line.itemName ? `كمية ${line.itemName}` : "الكمية"
                             }
+                            inputMode="text"
+                            disabled={!line.itemId}
+                            value={line.quantity}
+                            onChange={(event) =>
+                              updateLine(line.key, {
+                                quantity: event.target.value,
+                              })
+                            }
+                            onFocus={(event) => event.target.select()}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              setError("");
+                              if (!validateQuantity(line)) return;
+                              if (kind === "purchase" && !isReturn)
+                                focus(lineInputId(line, "price"));
+                              else nextLine(line);
+                            }}
                           />
-                        ) : (
-                          amount(line.unitPrice)
+                        </td>
+                        <td>
+                          <Field
+                            id={lineInputId(line, "price")}
+                            className="item-cell-field"
+                            label={
+                              line.itemName
+                                ? `سعر ${line.itemName}`
+                                : "سعر الوحدة"
+                            }
+                            inputMode="decimal"
+                            readOnly={kind === "sale" || isReturn}
+                            disabled={!line.itemId}
+                            value={line.unitPrice}
+                            title={
+                              kind === "sale"
+                                ? "سعر ثابت من كرت الصنف للوحدة المختارة"
+                                : line.sourceItem?.purchaseNotes
+                            }
+                            onChange={(event) =>
+                              updateLine(line.key, {
+                                unitPrice: event.target.value,
+                              })
+                            }
+                            onFocus={(event) => event.target.select()}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              if (
+                                kind === "purchase" &&
+                                !isReturn &&
+                                line.sourceItem?.hasExpiry
+                              )
+                                focus(lineInputId(line, "expiry"));
+                              else nextLine(line);
+                            }}
+                          />
+                        </td>
+                        {kind === "purchase" && (
+                          <td>
+                            {isReturn ? (
+                              line.expiryDate || "—"
+                            ) : line.sourceItem?.hasExpiry ? (
+                              <Field
+                                id={lineInputId(line, "expiry")}
+                                className="item-cell-field"
+                                label={`تاريخ انتهاء ${line.itemName}`}
+                                type="date"
+                                required
+                                value={line.expiryDate ?? ""}
+                                onChange={(event) =>
+                                  updateLine(line.key, {
+                                    expiryDate: event.target.value || null,
+                                  })
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    nextLine(line);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
                         )}
-                      </td>
-                      {kind === "purchase" && <td>{line.expiryDate || "—"}</td>}
-                      <td>{amount(totals?.lineTotals[index] ?? "—")}</td>
-                      <td>
-                        <Button
-                          variant="ghost"
-                          size="compact"
-                          aria-label={`حذف ${line.itemName}`}
-                          onClick={() =>
-                            setLines((current) =>
-                              current.filter((entry) => entry.key !== line.key),
-                            )
-                          }
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!lines.length && (
-                    <tr>
-                      <td colSpan={kind === "purchase" ? 8 : 7}>
-                        أضف الأصناف إلى الفاتورة.
-                      </td>
-                    </tr>
-                  )}
+                        <td className="commerce-line-total" aria-live="polite">
+                          {amount(lineTotal)}
+                        </td>
+                        <td>
+                          <Button
+                            variant="ghost"
+                            size="compact"
+                            aria-label={`حذف ${line.itemName || "السطر الفارغ"}`}
+                            className="commerce-delete-line"
+                            onClick={() => deleteLine(line)}
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            <div className="commerce-matrix-actions">
+              <Button
+                variant="ghost"
+                size="compact"
+                onClick={() => nextLine()}
+                disabled={locked || selectedLines.length >= 100}
+              >
+                <Plus size={15} /> سطر جديد
+              </Button>
+              <span className="muted">{selectedLines.length} / 100</span>
+            </div>
           </fieldset>
         </Card>
-        <Card className="commerce-save-footer">
+        <footer
+          ref={footerRef}
+          className="card commerce-save-footer"
+          aria-label="إجمالي الفاتورة والحفظ"
+          style={{
+            left: footerBounds.left,
+            width: footerBounds.width || undefined,
+          }}
+        >
           {error && <Notice tone="error">{error}</Notice>}
-          {!isReturn && lines.length > 0 && totals?.total === "0" && (
+          {!isReturn && selectedLines.length > 0 && totals?.total === "0" && (
             <Notice>
               الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
               المقابل.
@@ -1372,7 +1617,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 </strong>
               </span>
             </div>
-            <Button type="submit" disabled={saving || !lines.length}>
+            <Button type="submit" disabled={saving || !selectedLines.length}>
               {saving
                 ? "جارٍ الحفظ والترحيل…"
                 : unknown
@@ -1386,7 +1631,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               لا يسمح بتجاوز الكمية الأصلية.
             </small>
           )}
-        </Card>
+        </footer>
       </form>
       <Dialog
         open={blocker.state === "blocked"}

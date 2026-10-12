@@ -167,6 +167,23 @@ async function geometry(page: Page, width: number) {
     assert.equal(header.overflow, "auto");
     if (width < 600) assert(header.scrolls);
   }
+  const footer = page.locator(".commerce-save-footer");
+  if (await footer.count()) {
+    const bounds = await footer.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        viewport: innerHeight,
+        position: getComputedStyle(element).position,
+        left: rect.left,
+        right: rect.right,
+        width: innerWidth,
+      };
+    });
+    assert.equal(bounds.position, "fixed");
+    assert(Math.abs(bounds.bottom - bounds.viewport) <= 1);
+    assert(bounds.left >= 0 && bounds.right <= bounds.width + 1);
+  }
 }
 
 try {
@@ -438,26 +455,37 @@ try {
         await page
           .getByLabel("تاريخ الفاتورة", { exact: true })
           .fill("2026-10-12");
-        await page.locator("#invoice-item-search").fill(item.barcode);
-        await page.getByRole("button", { name: new RegExp(item.name) }).click();
+        await page
+          .locator('[id^="invoice-item-search-"]')
+          .first()
+          .fill(item.barcode);
+        await page
+          .getByRole("listbox", { name: "نتائج الأصناف" })
+          .getByRole("button", { name: new RegExp(item.name) })
+          .click();
         assert.equal(
           await page
-            .locator("#invoice-quantity")
+            .locator('[id^="invoice-quantity-"]')
+            .first()
             .evaluate((element) => element === document.activeElement),
           true,
         );
-        await page.locator("#invoice-quantity").fill("2");
-        await page.locator("#invoice-quantity").press("Enter");
+        await page.locator('[id^="invoice-quantity-"]').first().fill("2");
+        await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
         assert.equal(
           await page
-            .locator("#invoice-price")
+            .locator('[id^="invoice-price-"]')
+            .first()
             .evaluate((element) => element === document.activeElement),
           true,
         );
-        await page.locator("#invoice-price").fill("72");
-        await page.locator("#invoice-price").press("Enter");
-        await page.locator("#invoice-expiry").fill("2027-02-28");
-        await page.locator("#invoice-expiry").press("Enter");
+        await page.locator('[id^="invoice-price-"]').first().fill("72");
+        await page.locator('[id^="invoice-price-"]').first().press("Enter");
+        await page
+          .locator('[id^="invoice-expiry-"]')
+          .first()
+          .fill("2027-02-28");
+        await page.locator('[id^="invoice-expiry-"]').first().press("Enter");
         await page.getByLabel("الخصم", { exact: true }).fill("4");
         assert.match(await page.locator(".commerce-totals").innerText(), /140/);
         await page
@@ -501,21 +529,35 @@ try {
         .getByLabel("تاريخ الفاتورة", { exact: true })
         .fill("2026-10-12");
       // A scanner may send Enter before the debounce completes.
-      await page.locator("#invoice-item-search").fill(item.barcode);
-      await page.locator("#invoice-item-search").press("Enter");
+      await page
+        .locator('[id^="invoice-item-search-"]')
+        .first()
+        .fill(item.barcode);
+      await page.locator('[id^="invoice-item-search-"]').first().press("Enter");
       await eventually(
-        () => page.locator("#invoice-price").inputValue(),
+        () => page.locator('[id^="invoice-price-"]').first().inputValue(),
         (value) => assert.equal(value, "120"),
       );
-      await page.getByLabel("الوحدة", { exact: true }).selectOption("3");
-      assert.equal(await page.locator("#invoice-price").inputValue(), "5");
+      await page
+        .getByLabel("الوحدة " + item.name, { exact: true })
+        .selectOption("3");
       assert.equal(
-        await page.locator("#invoice-price").getAttribute("readonly"),
+        await page.locator('[id^="invoice-price-"]').first().inputValue(),
+        "5",
+      );
+      assert.equal(
+        await page
+          .locator('[id^="invoice-price-"]')
+          .first()
+          .getAttribute("readonly"),
         "",
       );
-      assert.equal(await page.locator("#invoice-expiry").count(), 0);
-      await page.locator("#invoice-quantity").fill(quantity);
-      await page.locator("#invoice-quantity").press("Enter");
+      assert.equal(
+        await page.locator('[id^="invoice-expiry-"]').first().count(),
+        0,
+      );
+      await page.locator('[id^="invoice-quantity-"]').first().fill(quantity);
+      await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
     }
     await scenario(
       "sales preserve authoritative unit prices, showroom selection and linked discounted return",
@@ -549,7 +591,7 @@ try {
         await page
           .getByLabel("تاريخ الفاتورة", { exact: true })
           .fill("2026-10-12");
-        await page.locator("#invoice-quantity").press("Enter");
+        await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
@@ -667,12 +709,24 @@ try {
         await page
           .getByLabel("تاريخ الفاتورة", { exact: true })
           .fill("2026-10-12");
-        await page.locator("#invoice-item-search").fill(item.barcode);
-        await page.getByRole("button", { name: new RegExp(item.name) }).click();
-        await page.locator("#invoice-quantity").press("Enter");
-        await page.locator("#invoice-price").press("Enter");
-        await page.locator("#invoice-expiry").fill("2027-01-31");
-        await page.locator("#invoice-expiry").press("Enter");
+        await page
+          .locator('[id^="invoice-item-search-"]')
+          .first()
+          .fill(item.barcode);
+        await page
+          .getByRole("listbox", { name: "نتائج الأصناف" })
+          .getByRole("button", { name: new RegExp(item.name) })
+          .click();
+        await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
+        await page.locator('[id^="invoice-price-"]').first().press("Enter");
+        await page
+          .locator('[id^="invoice-expiry-"]')
+          .first()
+          .fill("2027-01-31");
+        assert.equal(
+          await page.locator(".commerce-matrix tbody tr").count(),
+          1,
+        );
         await page.getByLabel("الخصم", { exact: true }).fill("72");
         await page
           .getByText(
@@ -720,7 +774,7 @@ try {
         await page
           .getByLabel("تاريخ الفاتورة", { exact: true })
           .fill("2026-10-12");
-        await page.locator("#invoice-quantity").press("Enter");
+        await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
@@ -735,6 +789,259 @@ try {
         assert.equal(returned.financialDocumentId, null);
         assert.equal(returned.lines[0]!.originalLineId, zero.lines[0]!.id);
         assert(returned.varianceDocumentId);
+      },
+    );
+    await scenario(
+      "inline invoice matrix retains one row per item, live totals, focus, replacement and fixed footer",
+      async () => {
+        await saleDraft("2");
+        const rows = page.locator(".commerce-matrix tbody tr");
+        assert.equal(await rows.count(), 2);
+        const first = rows.first();
+        const second = rows.nth(1);
+        assert.equal(
+          await first.locator('input[type="search"]').inputValue(),
+          item.name,
+        );
+        assert.equal(
+          await second
+            .locator('input[type="search"]')
+            .evaluate((element) => element === document.activeElement),
+          true,
+        );
+        assert.match(
+          await first.locator(".commerce-line-total").innerText(),
+          /10/,
+        );
+        await second.locator('input[type="search"]').fill("التشغيل");
+        await page.getByRole("listbox", { name: "نتائج الأصناف" }).waitFor();
+        // Results are visible outside the horizontally/vertically scrolling table.
+        const popup = page.locator(".commerce-search-results");
+        assert.equal(
+          await popup.evaluate(
+            (element) => element.parentElement === document.body,
+          ),
+          true,
+        );
+        await page
+          .getByRole("listbox", { name: "نتائج الأصناف" })
+          .getByRole("button", { name: new RegExp(item.name) })
+          .click();
+        assert.equal(
+          await second.locator('[id^="invoice-quantity-"]').inputValue(),
+          "1",
+        );
+        assert.equal(
+          await second
+            .locator('[id^="invoice-quantity-"]')
+            .evaluate((element) => element === document.activeElement),
+          true,
+        );
+        assert.match(
+          await second.locator(".commerce-line-total").innerText(),
+          /120/,
+        );
+        assert.match(await page.locator(".commerce-totals").innerText(), /130/);
+        const rectangles = await first.locator("td").evaluateAll((cells) =>
+          cells.map((cell) => {
+            const rect = cell.getBoundingClientRect();
+            return { top: rect.top, left: rect.left, height: rect.height };
+          }),
+        );
+        assert.equal(rectangles.length, 6);
+        assert(
+          rectangles.every(
+            (cell) => cell.top === rectangles[0]!.top && cell.height <= 35,
+          ),
+        );
+        assert(
+          rectangles.every(
+            (cell, index) =>
+              index === 0 || cell.left < rectangles[index - 1]!.left,
+          ),
+        );
+        assert.equal(
+          await page
+            .getByRole("button", { name: "إضافة السطر", exact: true })
+            .count(),
+          0,
+        );
+        assert.equal(await page.getByRole("dialog").count(), 0);
+        const ids = await page
+          .locator('[id^="invoice-"]')
+          .evaluateAll((elements) => elements.map((element) => element.id));
+        assert.equal(new Set(ids).size, ids.length);
+        await second
+          .getByRole("button", { name: "حذف " + item.name, exact: true })
+          .click();
+        assert.equal(await rows.count(), 1);
+        await first.getByLabel("كمية " + item.name, { exact: true }).fill("3");
+        assert.match(
+          await first.locator(".commerce-line-total").innerText(),
+          /15/,
+        );
+        await first
+          .getByLabel("كمية " + item.name, { exact: true })
+          .press("Enter");
+        await rows.nth(1).locator('input[type="search"]').fill("صنف غير مكتمل");
+        await page
+          .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
+          .click();
+        await page
+          .getByText(
+            "اختر الصنف الجاري من نتائج البحث أو امسح البحث قبل الحفظ.",
+          )
+          .waitFor();
+        assert.equal(
+          await page
+            .locator('.commerce-matrix tr[data-selected="true"]')
+            .count(),
+          1,
+        );
+        await geometry(page, 1440);
+        await page.evaluate(() =>
+          window.scrollTo(0, document.documentElement.scrollHeight),
+        );
+        await geometry(page, 1440);
+        await page.screenshot({
+          path: "/workspace/work/invoice-matrix-desktop.png",
+          fullPage: true,
+        });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await geometry(page, 390);
+        await page.screenshot({
+          path: "/workspace/work/invoice-matrix-mobile.png",
+          fullPage: true,
+        });
+        await page.setViewportSize({ width: 1440, height: 960 });
+        // Discard through the existing guard to prepare the next scenario.
+        await page
+          .getByRole("link", { name: "قائمة الفواتير", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "مغادرة دون حفظ", exact: true })
+          .click();
+        await page.waitForURL("**" + base + "/sales");
+      },
+    );
+    await scenario(
+      "purchase items without expiry move quantity to price to the next inline item",
+      async () => {
+        const noExpiry = (
+          await call<{ item: Item }>(base + "/items", "POST", {
+            idempotencyKey: randomUUID(),
+            name: "صنف بلا انتهاء",
+            barcode: "987654321",
+            currencyId: currency.id,
+            unit1Name: "حبة",
+            unit2Name: "",
+            unit3Name: "",
+            factor2: 1,
+            factor3: 1,
+            salePrice1: "9",
+            salePrice2: "0",
+            salePrice3: "0",
+            purchasePrice: "6",
+            purchaseFactor: 1,
+            hasExpiry: false,
+          })
+        ).item;
+        await page.goto(base + "/invoices/new?kind=purchase");
+        await page
+          .getByLabel("عملة الفاتورة", { exact: true })
+          .selectOption(String(currency.id));
+        await page
+          .getByLabel("حساب المورد / النقد", { exact: true })
+          .selectOption(String(accounts.supplier!.id));
+        await page
+          .getByLabel("الفرع", { exact: true })
+          .selectOption(String(branch.id));
+        await page
+          .getByLabel("المعرض / المخزن", { exact: true })
+          .selectOption(String(showroom.id));
+        const rows = page.locator(".commerce-matrix tbody tr");
+        await rows
+          .first()
+          .locator('input[type="search"]')
+          .fill(noExpiry.barcode);
+        await rows.first().locator('input[type="search"]').press("Enter");
+        await eventually(
+          () => rows.first().locator('[id^="invoice-price-"]').inputValue(),
+          (value) => assert.equal(value, "6"),
+        );
+        assert.equal(
+          await rows.first().locator('[id^="invoice-quantity-"]').inputValue(),
+          "1",
+        );
+        await rows.first().locator('[id^="invoice-quantity-"]').press("Enter");
+        assert.equal(
+          await rows
+            .first()
+            .locator('[id^="invoice-price-"]')
+            .evaluate((element) => element === document.activeElement),
+          true,
+        );
+        assert.equal(
+          await page
+            .locator('input[type="date"][id^="invoice-expiry-"]')
+            .count(),
+          0,
+        );
+        await rows.first().locator('[id^="invoice-price-"]').fill("7");
+        assert.match(
+          await rows.first().locator(".commerce-line-total").innerText(),
+          /7/,
+        );
+        await rows.first().locator('[id^="invoice-price-"]').press("Enter");
+        assert.equal(await rows.count(), 2);
+        assert.equal(
+          await rows
+            .nth(1)
+            .locator('input[type="search"]')
+            .evaluate((element) => element === document.activeElement),
+          true,
+        );
+        // Replacing the item clears its old unit, price and expiry requirements in this same row.
+        await rows.first().locator('input[type="search"]').fill(item.barcode);
+        await rows.first().locator('input[type="search"]').press("Enter");
+        await eventually(
+          () => rows.first().locator('[id^="invoice-price-"]').inputValue(),
+          (value) => assert.equal(value, "72"),
+        );
+        assert.equal(
+          await rows.first().locator('input[type="date"]').count(),
+          1,
+        );
+        await rows.first().locator('input[type="date"]').fill("2027-02-28");
+        await rows
+          .first()
+          .locator('input[type="search"]')
+          .fill(noExpiry.barcode);
+        assert.equal(
+          await rows.first().locator('input[type="date"]').count(),
+          0,
+        );
+        await rows.first().locator('input[type="search"]').press("Enter");
+        await eventually(
+          () => rows.first().locator('[id^="invoice-price-"]').inputValue(),
+          (value) => assert.equal(value, "6"),
+        );
+        assert.equal(
+          await rows.first().locator('input[type="date"]').count(),
+          0,
+        );
+        assert.equal(
+          await rows.first().locator('[id^="invoice-quantity-"]').inputValue(),
+          "1",
+        );
+        assert.equal(await rows.count(), 2);
+        await page
+          .getByRole("link", { name: "قائمة الفواتير", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "مغادرة دون حفظ", exact: true })
+          .click();
+        await page.waitForURL("**" + base + "/purchases");
       },
     );
     await scenario(

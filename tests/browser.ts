@@ -202,8 +202,14 @@ async function waitRows(page: Page, expected: number[]): Promise<void> {
   );
 }
 async function openAppearance(page: Page): Promise<void> {
-  const userTrigger = page.getByRole("button", { name: "قائمة المستخدم", exact: true });
-  const appearanceTrigger = page.getByRole("button", { name: "إعدادات المظهر", exact: true });
+  const userTrigger = page.getByRole("button", {
+    name: "قائمة المستخدم",
+    exact: true,
+  });
+  const appearanceTrigger = page.getByRole("button", {
+    name: "إعدادات المظهر",
+    exact: true,
+  });
   await userTrigger.or(appearanceTrigger).first().waitFor({ state: "visible" });
   if (await userTrigger.isVisible()) {
     await userTrigger.click();
@@ -245,8 +251,12 @@ async function closeDialog(page: Page): Promise<void> {
   await page.getByRole("dialog").waitFor({ state: "hidden" });
 }
 async function logoutToPublic(page: Page, actor: Actor): Promise<void> {
-  await page.getByRole("button", { name: "قائمة المستخدم", exact: true }).click();
-  await page.getByRole("menuitem", { name: "تسجيل الخروج", exact: true }).click();
+  await page
+    .getByRole("button", { name: "قائمة المستخدم", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "تسجيل الخروج", exact: true })
+    .click();
   await eventually(
     () => call<SessionResponse>(actor, "/auth/session"),
     (value) => {
@@ -441,22 +451,33 @@ try {
       for (const width of [1440, 820]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto(`/companies/${companyA.id}/accounts`);
-        await page.locator(".scope-title strong").getByText(companyA.name).waitFor();
+        await page
+          .locator(".scope-title strong")
+          .getByText(companyA.name)
+          .waitFor();
         const header = await page.locator(".topbar").evaluate((element) => {
           const bar = element.getBoundingClientRect();
-          const controls = [...element.querySelectorAll<HTMLElement>("button, a")]
+          const controls = [
+            ...element.querySelectorAll<HTMLElement>("button, a"),
+          ]
             .filter((control) => {
               const rect = control.getBoundingClientRect();
               return rect.width > 0 && rect.height > 0;
-            }).map((control) => {
+            })
+            .map((control) => {
               const rect = control.getBoundingClientRect();
-              return { height: rect.height, top: rect.top, bottom: rect.bottom };
+              return {
+                height: rect.height,
+                top: rect.top,
+                bottom: rect.bottom,
+              };
             });
           return {
             height: bar.height,
             top: bar.top,
             bottom: bar.bottom,
-            subtitleCount: element.querySelectorAll(".scope-title small").length,
+            subtitleCount:
+              element.querySelectorAll(".scope-title small").length,
             controls,
           };
         });
@@ -476,11 +497,17 @@ try {
     async () => {
       const { page } = await pageFor("owner@browser.test");
       await page.goto("/");
-      const trigger = page.getByRole("button", { name: "قائمة المستخدم", exact: true });
+      const trigger = page.getByRole("button", {
+        name: "قائمة المستخدم",
+        exact: true,
+      });
       await trigger.waitFor();
       assert.equal(await page.locator(".topbar .account-name").count(), 0);
       assert.equal(await page.locator(".topbar .user-avatar").count(), 1);
-      assert.equal(await page.getByRole("button", { name: "إعدادات المظهر" }).count(), 0);
+      assert.equal(
+        await page.getByRole("button", { name: "إعدادات المظهر" }).count(),
+        0,
+      );
       await trigger.click();
       const menu = page.getByRole("menu", { name: "خيارات المستخدم" });
       await menu.waitFor();
@@ -514,13 +541,16 @@ try {
         phone: current.phone,
         image: "https://avatar.example.test/avatar-test.svg",
       });
-      await page.route("https://avatar.example.test/avatar-test.svg", async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/svg+xml",
-          body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="30"/></svg>',
-        });
-      });
+      await page.route(
+        "https://avatar.example.test/avatar-test.svg",
+        async (route) => {
+          await route.fulfill({
+            status: 200,
+            contentType: "image/svg+xml",
+            body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="30"/></svg>',
+          });
+        },
+      );
       await page.goto("/");
       await page.locator(".user-menu-trigger img").waitFor();
       assert.equal(
@@ -545,7 +575,10 @@ try {
     async () => {
       const { page } = await pageFor("owner@browser.test", true);
       await page.goto(`/companies/${companyA.id}/accounts`);
-      await page.locator(".scope-title strong").getByText(companyA.name).waitFor();
+      await page
+        .locator(".scope-title strong")
+        .getByText(companyA.name)
+        .waitFor();
       const header = await page.locator(".topbar").evaluate((element) => {
         const bar = element.getBoundingClientRect();
         const buttons = [
@@ -569,10 +602,17 @@ try {
       });
       assert.equal(header.height, 44);
       assert.equal(header.subtitleCount, 0);
-      assert(header.buttons.length >= 2, "Mobile navigation and avatar menu must remain available");
+      assert(
+        header.buttons.length >= 2,
+        "Mobile navigation and avatar menu must remain available",
+      );
       for (const button of header.buttons) {
         assert(button.height >= 38, "Keep mobile touch controls usable");
-        assert(button.width > 0 && button.top >= header.top && button.bottom <= header.bottom);
+        assert(
+          button.width > 0 &&
+            button.top >= header.top &&
+            button.bottom <= header.bottom,
+        );
       }
       await page.getByRole("button", { name: "فتح قائمة التنقل" }).click();
       await page.getByRole("dialog").waitFor({ state: "visible" });
@@ -592,23 +632,36 @@ try {
       assert.deepEqual(behavior, { html: "none", body: "none" });
       await eventually(
         () => page.locator("tbody tr[data-row-id]").count(),
-        count => assert.equal(count, users.length + 1),
+        (count) => assert.equal(count, users.length + 1),
       );
       const scrollContainer = page.locator(".table-scroll");
-      const scrolling = await scrollContainer.evaluate(element => ({
+      const scrolling = await scrollContainer.evaluate((element) => ({
         available: element.scrollHeight > element.clientHeight,
         behavior: getComputedStyle(element).overflowY,
       }));
-      assert(scrolling.available, "Loaded mobile user rows must overflow their table's vertical scroll container");
-      assert(["auto", "scroll"].includes(scrolling.behavior), "The data table must permit normal vertical scrolling");
+      assert(
+        scrolling.available,
+        "Loaded mobile user rows must overflow their table's vertical scroll container",
+      );
+      assert(
+        ["auto", "scroll"].includes(scrolling.behavior),
+        "The data table must permit normal vertical scrolling",
+      );
       await scrollContainer.scrollIntoViewIfNeeded();
       const bounds = await scrollContainer.boundingBox();
       assert(bounds);
-      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.move(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+      );
       await page.mouse.wheel(0, 260);
       await eventually(
-        () => scrollContainer.evaluate(element => element.scrollTop),
-        scrollTop => assert(scrollTop > 0, "A real wheel gesture must scroll the mobile data table"),
+        () => scrollContainer.evaluate((element) => element.scrollTop),
+        (scrollTop) =>
+          assert(
+            scrollTop > 0,
+            "A real wheel gesture must scroll the mobile data table",
+          ),
       );
     },
   );
@@ -619,36 +672,56 @@ try {
       const { page, actor } = await pageFor();
       await page.goto("/general-table");
       await page.getByRole("heading", { name: "الجدول العام" }).waitFor();
-      await page.getByRole("button", { name: "إضافة سجل", exact: true }).click();
+      await page
+        .getByRole("button", { name: "إضافة سجل", exact: true })
+        .click();
       let dialog = page.getByRole("dialog");
-      await dialog.getByLabel("اسم الجدول (general_table_table_name)").fill("reference");
+      await dialog
+        .getByLabel("اسم الجدول (general_table_table_name)")
+        .fill("reference");
       await dialog.getByLabel("التصنيف (general_table_category)").fill("demo");
-      await dialog.getByLabel("العنوان (general_table_title)").fill("Example value");
+      await dialog
+        .getByLabel("العنوان (general_table_title)")
+        .fill("Example value");
       await dialog.locator("details summary").click();
-      await dialog.getByLabel("نص 9 (general_table_text9)").fill("ninth text value");
+      await dialog
+        .getByLabel("نص 9 (general_table_text9)")
+        .fill("ninth text value");
       await dialog.getByRole("button", { name: "حفظ السجل" }).click();
-      await dialog.waitFor({state:"hidden"});
-      const listed = await call<ApiPage<{id:number;title:string;text9:string}>>(actor,
-        "/general-table?tableName=reference&category=demo");
+      await dialog.waitFor({ state: "hidden" });
+      const listed = await call<
+        ApiPage<{ id: number; title: string; text9: string }>
+      >(actor, "/general-table?tableName=reference&category=demo");
       assert.equal(listed.total, 1);
       assert.equal(listed.items[0]?.text9, "ninth text value");
       await page.goto("/general-table?tableName=reference&category=demo");
-      await page.getByRole("button", {name: `تعديل السجل ${listed.items[0]!.id}`}).click();
-      dialog=page.getByRole("dialog");
-      await dialog.getByLabel("العنوان (general_table_title)").fill("Updated example value");
+      await page
+        .getByRole("button", { name: `تعديل السجل ${listed.items[0]!.id}` })
+        .click();
+      dialog = page.getByRole("dialog");
+      await dialog
+        .getByLabel("العنوان (general_table_title)")
+        .fill("Updated example value");
       await dialog.locator("details summary").click();
-      await dialog.getByLabel("نص 9 (general_table_text9)").fill("updated text9");
-      await dialog.getByRole("button",{name:"حفظ السجل"}).click();
-      await dialog.waitFor({state:"hidden"});
-      const updated=await call<{record:{title:string;text9:string}}>(actor,
-        `/general-table/${listed.items[0]!.id}`);
-      assert.equal(updated.record.title,"Updated example value");
-      assert.equal(updated.record.text9,"updated text9");
-      const regular=await pageFor(users[3]!.email);
+      await dialog
+        .getByLabel("نص 9 (general_table_text9)")
+        .fill("updated text9");
+      await dialog.getByRole("button", { name: "حفظ السجل" }).click();
+      await dialog.waitFor({ state: "hidden" });
+      const updated = await call<{ record: { title: string; text9: string } }>(
+        actor,
+        `/general-table/${listed.items[0]!.id}`,
+      );
+      assert.equal(updated.record.title, "Updated example value");
+      assert.equal(updated.record.text9, "updated text9");
+      const regular = await pageFor(users[3]!.email);
       await regular.page.goto("/general-table");
-      await regular.page.getByText("إدارة الجدول العام لمالك المنصة وإدارة الموقع فقط.").waitFor();
+      await regular.page
+        .getByText("إدارة الجدول العام لمالك المنصة وإدارة الموقع فقط.")
+        .waitFor();
       assert.equal(
-        await regular.page.getByRole("button",{name:"إضافة سجل"}).count(),0,
+        await regular.page.getByRole("button", { name: "إضافة سجل" }).count(),
+        0,
       );
     },
   );
@@ -918,13 +991,32 @@ try {
           .count(),
         0,
       );
-      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
+      await page
+        .locator(".sidebar .company-nav-label")
+        .getByText(companyA.name, { exact: true })
+        .waitFor();
       await page.goto("/profile");
-      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
-      assert.equal(await page.locator(`.sidebar a[href="/companies/${companyA.id}/employees"]`).count(), 1);
+      await page
+        .locator(".sidebar .company-nav-label")
+        .getByText(companyA.name, { exact: true })
+        .waitFor();
+      assert.equal(
+        await page
+          .locator(`.sidebar a[href="/companies/${companyA.id}/employees"]`)
+          .count(),
+        1,
+      );
       await page.reload();
-      await page.locator(".sidebar .company-nav-label").getByText(companyA.name, { exact: true }).waitFor();
-      assert.equal(await page.locator(`.sidebar a[href="/companies/${companyB.id}/employees"]`).count(), 0);
+      await page
+        .locator(".sidebar .company-nav-label")
+        .getByText(companyA.name, { exact: true })
+        .waitFor();
+      assert.equal(
+        await page
+          .locator(`.sidebar a[href="/companies/${companyB.id}/employees"]`)
+          .count(),
+        0,
+      );
     },
   );
 
@@ -934,19 +1026,34 @@ try {
       const { page, actor } = await pageFor();
       for (const selected of [companyA, companyB]) {
         await page.goto(`/companies/${selected.id}`);
-        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+        await page
+          .locator(".sidebar .company-nav-label")
+          .getByText(selected.name, { exact: true })
+          .waitFor();
         await eventually(
-          () => call<{ lastCompanyId: number | null }>(actor, "/companies?pageSize=1"),
+          () =>
+            call<{ lastCompanyId: number | null }>(
+              actor,
+              "/companies?pageSize=1",
+            ),
           (response) => assert.equal(response.lastCompanyId, selected.id),
         );
         await page.goto("/profile");
-        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+        await page
+          .locator(".sidebar .company-nav-label")
+          .getByText(selected.name, { exact: true })
+          .waitFor();
         assert.equal(
-          await page.locator(`.sidebar a[href="/companies/${selected.id}/employees"]`).count(),
+          await page
+            .locator(`.sidebar a[href="/companies/${selected.id}/employees"]`)
+            .count(),
           1,
         );
         await page.reload();
-        await page.locator(".sidebar .company-nav-label").getByText(selected.name, { exact: true }).waitFor();
+        await page
+          .locator(".sidebar .company-nav-label")
+          .getByText(selected.name, { exact: true })
+          .waitFor();
       }
     },
   );
@@ -1200,7 +1307,8 @@ try {
       const { page } = await pageFor();
       await page.goto("/");
       await openAppearance(page);
-      await page.getByText("جارٍ تحميل المظهر…", { exact: true })
+      await page
+        .getByText("جارٍ تحميل المظهر…", { exact: true })
         .waitFor({ state: "hidden" });
       await setAppearance(page, { mode: "dark", color: "#336699" }, false);
       await page.route("**/api/appearance", async (route) => {
@@ -1208,12 +1316,17 @@ try {
         await route.fulfill({
           status: 500,
           contentType: "application/json",
-          body: JSON.stringify({ error: { code: "test_failure", message: "تعذر الحفظ مؤقتًا" } }),
+          body: JSON.stringify({
+            error: { code: "test_failure", message: "تعذر الحفظ مؤقتًا" },
+          }),
         });
       });
       await page.getByTestId("appearance-save").click();
       await page.getByRole("dialog").waitFor({ state: "visible" });
-      await page.getByRole("alert").getByText("تعذر الحفظ مؤقتًا", { exact: true }).waitFor();
+      await page
+        .getByRole("alert")
+        .getByText("تعذر الحفظ مؤقتًا", { exact: true })
+        .waitFor();
       await page.unroute("**/api/appearance");
       await page.getByTestId("appearance-save").click();
       await page.getByRole("dialog").waitFor({ state: "hidden" });
@@ -1306,7 +1419,11 @@ try {
     "rendered desktop and mobile geometry, RTL, full values and drawer keyboard/touch behavior",
     async () => {
       for (const mobile of [false, true]) {
-        const { page, actor } = await pageFor("owner@browser.test", mobile, true);
+        const { page, actor } = await pageFor(
+          "owner@browser.test",
+          mobile,
+          true,
+        );
         await page.goto(`/companies/${companyA.id}/employees`);
         await waitRows(
           page,
@@ -1842,6 +1959,12 @@ try {
         );
         await page.locator('.sidebar a[href="/"]').first().click();
         await page.waitForURL(origin + "/");
+        // The URL changes before React commits the new scope. Release the
+        // delayed save only once the destination has actually rendered.
+        await eventually(
+          async () => page.locator(".scope-title strong").textContent(),
+          (name) => assert.equal(name, "الموقع العام"),
+        );
         held.release();
         await eventually(
           async () => completed,
@@ -1855,6 +1978,10 @@ try {
         await eventually(
           async () => page.locator(".sidebar .company-nav-label").textContent(),
           (name) => assert.equal(name, "Canonical Late Company"),
+        );
+        assert.equal(
+          await page.locator(".scope-title strong").textContent(),
+          "الموقع العام",
         );
         assert.equal(
           await page
@@ -2171,9 +2298,13 @@ try {
         .getByRole("button", { name: "إضافة الفرع", exact: true })
         .click();
       await dialog.waitFor({ state: "hidden" });
-      const branch = (await call<ApiPage<Branch>>(actor, `${path}/branches`))
-        .items.find((item) => item.code === "MAIN")!;
-      assert.ok(branch, "The manually created branch should coexist with the default HQ branch");
+      const branch = (
+        await call<ApiPage<Branch>>(actor, `${path}/branches`)
+      ).items.find((item) => item.code === "MAIN")!;
+      assert.ok(
+        branch,
+        "The manually created branch should coexist with the default HQ branch",
+      );
       assert.equal(branch.code, "MAIN");
       assert.equal(branch.phone, "+15554001234");
       assert.equal(branch.address, "Browser address");
@@ -2793,7 +2924,11 @@ try {
         }
       }
       const untouched = await call<ApiPage<Location>>(actor, `${b}/locations`);
-      assert.equal(untouched.total, 1, "The other company retains only its default showroom");
+      assert.equal(
+        untouched.total,
+        1,
+        "The other company retains only its default showroom",
+      );
       assert.equal(untouched.items[0]?.code, "SHOWROOM");
     },
   );
