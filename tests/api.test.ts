@@ -1376,6 +1376,44 @@ test("company configuration safely manages options, roles, and scoped grants or 
   })).status,403);
 });
 
+test("company item imports preserve original legacy IDs and are idempotent across batches", async (t) => {
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const pharmacy=await company(platform.client,"صيدلية دار الدواء");
+  const another=await company(platform.client,"شركة أخرى");
+  const url=`/companies/${pharmacy.id}/items/import-batch`;
+  const source={
+    format:"tijara-items-v1",companyHint:"صيدلية دار الدواء",currency:"YER",
+    items:[
+      {legacyId:"8247",name:"إبرة 1 سي سي",englishName:"SYRINGE 1CC",
+       unit1Name:"واحدة",unit2Name:"",unit3Name:"",factor2:1,factor3:1,
+       salePrice1:"35",salePrice2:"0",salePrice3:"0",purchasePrice:"22",
+       hasExpiry:false,active:true,searchKeys:"ابره"},
+      {legacyId:"1",name:"منتج مؤرشف",englishName:"ADIPRIL",
+       unit1Name:"واحدة",unit2Name:"قطعة",unit3Name:"",factor2:4,factor3:1,
+       salePrice1:"3",salePrice2:"0",salePrice3:"0",purchasePrice:"200",
+       hasExpiry:true,active:false,searchKeys:""},
+    ],
+  };
+  assert.equal((await platform.client.request("POST",`/companies/${another.id}/items/import-batch`,source)).status,409);
+  const started=await platform.client.ok<{created:number;skipped:number}>("POST",url,source);
+  assert.deepEqual(started,{created:2,skipped:0});
+  const again=await platform.client.ok<{created:number;skipped:number}>("POST",url,source);
+  assert.deepEqual(again,{created:0,skipped:2});
+  const items=await platform.client.ok<Page<{legacyId:string;active:boolean;name:string;hasExpiry:boolean;factor2:number;purchasePrice:string}>>(
+    "GET",`/companies/${pharmacy.id}/items?q=`);
+  assert.equal(items.total,2);
+  assert(items.items.some(x=>x.legacyId==="8247"&&x.active&&x.name==="إبرة 1 سي سي"&&x.purchasePrice==="22"));
+  assert(items.items.some(x=>x.legacyId==="1"&&!x.active&&x.hasExpiry&&x.factor2===4));
+  const invalid={...source,items:[source.items[0],{...source.items[1],factor2:4,unit2Name:""}]};
+  assert.equal((await platform.client.request("POST",url,invalid)).status,400);
+  const normal=await register(f,"no-import-rights@example.test");
+  await employee(platform.client,pharmacy.id,normal.user.id,["items.view"]);
+  assert.equal((await normal.client.request("POST",url,source)).status,403);
+  const otherCompany=await platform.client.ok<Page<{legacyId:string}>>("GET",`/companies/${another.id}/items`);
+  assert.equal(otherCompany.items.some(x=>x.legacyId==="8247"),false);
+});
+
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
