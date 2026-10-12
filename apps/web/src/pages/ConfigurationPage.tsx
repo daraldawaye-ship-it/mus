@@ -132,7 +132,11 @@ export function ConfigurationPage({context}:{context:CompanyContext}) {
     void perform(async()=>{
       await api(row==="new"?base+"/options":base+"/options/"+row.id,{
         method:row==="new"?"POST":"PATCH",
-        body:row==="new"?body:{
+        body:row==="new"?body:row.system?{
+          name:body.name,description:body.description,
+          searchable:body.searchable,showOnCard:body.showOnCard,
+          showInList:body.showInList,sortOrder:body.sortOrder,revision:row.revision,
+        }:{
           name:body.name,description:body.description,valueType:body.valueType,
           defaultValue:body.defaultValue,choices:body.choices,required:body.required,
           searchable:body.searchable,showOnCard:body.showOnCard,showInList:body.showInList,
