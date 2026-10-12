@@ -461,9 +461,13 @@ try {
       "invoice purchase screen supports keyboard entry and exact totals",
       async () => {
         await page.goto(base + "/invoices/new?kind=purchase");
-        await page
-          .getByRole("heading", { name: "إضافة فاتورة مشتريات", exact: true })
-          .waitFor();
+        await page.locator("form.commerce-editor").waitFor();
+        assert.equal(
+          await page.locator('[id^="invoice-item-search-"]').first()
+            .evaluate((input) => input === document.activeElement),
+          true,
+          "New purchase invoice should focus the first item search",
+        );
         await page
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
@@ -515,7 +519,20 @@ try {
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
-        await page.waitForURL("**" + base + "/purchases");
+        await page
+          .getByText(/تم حفظ وترحيل الفاتورة رقم/)
+          .waitFor();
+        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem.waitFor();
+        assert.equal(await readyItem.inputValue(), "");
+        assert.equal(
+          await readyItem.evaluate((node) => node === document.activeElement),
+          true,
+          "After saving, focus should return to an empty item search",
+        );
+        assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         const invoices = await call<ApiPage<Invoice>>(
           base + "/invoices?kind=purchase",
         );
@@ -527,6 +544,13 @@ try {
     );
     async function saleDraft(quantity: string) {
       await page.goto(base + "/invoices/new?kind=sale");
+      await page.locator('[id^="invoice-item-search-"]').first().waitFor();
+      assert.equal(
+        await page.locator('[id^="invoice-item-search-"]').first()
+          .evaluate((input) => input === document.activeElement),
+        true,
+        "New sales invoice should focus the first item search",
+      );
       await page
         .getByRole("heading", { name: "إضافة فاتورة مبيعات", exact: true })
         .waitFor();
@@ -592,7 +616,20 @@ try {
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
-        await page.waitForURL("**" + base + "/sales");
+        await page
+          .getByText(/تم حفظ وترحيل الفاتورة رقم/)
+          .waitFor();
+        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem.waitFor();
+        assert.equal(await readyItem.inputValue(), "");
+        assert.equal(
+          await readyItem.evaluate((node) => node === document.activeElement),
+          true,
+          "After saving, focus should return to an empty item search",
+        );
+        assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         savedSale = (
           await call<ApiPage<Invoice>>(
             base + "/invoices?kind=sale&returning=false",
@@ -619,7 +656,20 @@ try {
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
-        await page.waitForURL("**" + base + "/sales");
+        await page
+          .getByText(/تم حفظ وترحيل الفاتورة رقم/)
+          .waitFor();
+        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem.waitFor();
+        assert.equal(await readyItem.inputValue(), "");
+        assert.equal(
+          await readyItem.evaluate((node) => node === document.activeElement),
+          true,
+          "After saving, focus should return to an empty item search",
+        );
+        assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         const returned = (
           await call<ApiPage<Invoice>>(
             base + "/invoices?kind=sale&returning=true",
@@ -715,9 +765,7 @@ try {
       "fully discounted purchases and linked zero-net returns save and render without empty journal links",
       async () => {
         await page.goto(base + "/invoices/new?kind=purchase");
-        await page
-          .getByRole("heading", { name: "إضافة فاتورة مشتريات", exact: true })
-          .waitFor();
+        await page.locator("form.commerce-editor").waitFor();
         await page
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
@@ -760,7 +808,20 @@ try {
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
-        await page.waitForURL("**" + base + "/purchases");
+        await page
+          .getByText(/تم حفظ وترحيل الفاتورة رقم/)
+          .waitFor();
+        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem.waitFor();
+        assert.equal(await readyItem.inputValue(), "");
+        assert.equal(
+          await readyItem.evaluate((node) => node === document.activeElement),
+          true,
+          "After saving, focus should return to an empty item search",
+        );
+        assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         const zero = (
           await call<ApiPage<Invoice>>(
             base + "/invoices?kind=purchase&sort=id:desc",
@@ -802,7 +863,20 @@ try {
         await page
           .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
           .click();
-        await page.waitForURL("**" + base + "/purchases");
+        await page
+          .getByText(/تم حفظ وترحيل الفاتورة رقم/)
+          .waitFor();
+        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem.waitFor();
+        assert.equal(await readyItem.inputValue(), "");
+        assert.equal(
+          await readyItem.evaluate((node) => node === document.activeElement),
+          true,
+          "After saving, focus should return to an empty item search",
+        );
+        assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         const returned = (
           await call<ApiPage<Invoice>>(
             base + "/invoices?kind=purchase&returning=true",
