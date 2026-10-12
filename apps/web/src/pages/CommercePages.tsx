@@ -848,6 +848,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   const stockByItem = new Map((stockPreview.data?.items ?? []).map((row) => [row.itemId, row]));
   const [error, setError] = useState("");
+  const [savedInvoice, setSavedInvoice] = useState<{ id: number; number: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
@@ -883,7 +884,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, saving, unknown]);
-  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(null);
+  // Start new invoices with the cursor in the first item/barcode search.
+  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(() => ({
+    id: lineInputId(lines[0]!, "item-search"),
+  }));
   const focus = (id: string) => setFocusTarget({ id });
   useLayoutEffect(() => {
     if (!focusTarget || locked || !guard.isCurrent()) return;
@@ -1118,18 +1122,29 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       );
       if (!guard.isCurrent()) return;
       setUnknown(false);
-      await invalidate();
+      // A confirmed posting must not become "unknown" if refreshing a
+      // read-only query fails afterwards.
+      await invalidate().catch(() => undefined);
       if (!guard.isCurrent()) return;
-      allowNavigation.current = true;
-      navigate(listPath(companyId, kind), {
-        replace: true,
-        state: {
-          invoiceSaved: {
-            id: response.invoice.id,
-            number: response.invoice.number,
-          },
-        },
-      });
+      const next = emptyLine();
+      pending.current = null;
+      setLines([next]);
+      setAccount(null);
+      setOriginal(null);
+      setIsReturn(false);
+      setDocumentDate(today());
+      setDescription("");
+      setDiscount("0");
+      // Reuse currency, branch and stock location for efficient consecutive
+      // invoices, but always clear the old customer/supplier.
+      currencyManuallyChosen.current = false;
+      branchManuallyChosen.current = false;
+      locationManuallyChosen.current = false;
+      automaticCurrencyId.current = currency?.id ?? null;
+      automaticBranchId.current = branch?.id ?? null;
+      automaticLocationId.current = location?.id ?? null;
+      setSavedInvoice({ id: response.invoice.id, number: response.invoice.number });
+      focus(lineInputId(next, "item-search"));
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
@@ -1157,6 +1172,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   return (
     <div className="commerce-document-page">
+      {savedInvoice && (
+        <Notice tone="success">
+          تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.
+          {" "}
+          <Link to={invoicePath(companyId, savedInvoice.id)}>
+            عرض الفاتورة المحفوظة
+          </Link>
+          . يمكنك إدخال الفاتورة التالية مباشرة.
+        </Notice>
+      )}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
