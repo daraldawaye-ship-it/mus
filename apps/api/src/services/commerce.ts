@@ -642,15 +642,39 @@ export async function createInvoice(
       ],
     });
   }
-  if (input.kind === "purchase" && returning && totalCost !== baseTotal) {
+  if (input.kind === "purchase" && totalCost !== baseTotal) {
     const variance = totalCost - baseTotal;
     varianceDocumentId = await postCommerceJournal(client, companyId, user, {
       documentDate: input.documentDate,
       branchId: input.branchId,
       currencyId: settings.baseCurrencyId,
-      description: `فرق تكلفة مردود مشتريات ${number}`,
+      description: `${returning ? "فرق تكلفة مردود مشتريات" : "تسوية تكلفة المخزون السالب"} ${number}`,
       idempotencyKey: randomUUID(),
-      lines:
+      lines: !returning ? (
+        variance > 0n ? [
+          {
+            accountId: settings.inventoryAccountId,
+            debit: moneyString(variance), credit: "0",
+            description: "تسوية تكلفة مخزون سالب",
+          },
+          {
+            accountId: settings.cogsAccountId,
+            debit: "0", credit: moneyString(variance),
+            description: "تسوية تكلفة مخزون سالب",
+          },
+        ] : [
+          {
+            accountId: settings.cogsAccountId,
+            debit: moneyString(-variance), credit: "0",
+            description: "تسوية تكلفة مخزون سالب",
+          },
+          {
+            accountId: settings.inventoryAccountId,
+            debit: "0", credit: moneyString(-variance),
+            description: "تسوية تكلفة مخزون سالب",
+          },
+        ]
+      ) :
         variance > 0n
           ? [
               {
