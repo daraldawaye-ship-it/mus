@@ -28,6 +28,7 @@ import { configurationAdministrationRoutes } from "./routes-configuration-admin.
 import { permissionRequest } from "./services/permission-rules.ts";
 import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
+import { mediaRoutes } from "./routes-media.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -52,7 +53,7 @@ export async function createApp(options: AppOptions = {}) {
   app.use(chatgptMcpRoutes(pool, config.appOrigin));
   app.use(
     "/api",
-    express.json({ limit: "512kb" }),
+    express.json({ limit: "5mb" }),
     loadSession(pool),
     mutationSecurity(config.appOrigin),
   );
@@ -63,6 +64,7 @@ export async function createApp(options: AppOptions = {}) {
     pageRoutes(pool),
     pageAvailabilityGate(pool),
     authRoutes(pool, config.production),
+    mediaRoutes(pool),
     publicRoutes(pool),
     companyRoutes(pool),
     attendanceRoutes(pool),

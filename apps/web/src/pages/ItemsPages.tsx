@@ -36,6 +36,7 @@ import {
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
+import { ImageUpload } from "../ImageUpload";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -168,6 +169,16 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   }
   const columns = useMemo<ColumnDef<OptionListRecord<Item>, unknown>[]>(
     () => [
+      {
+        accessorKey: "imageId",
+        header: "الصورة",
+        enableSorting: false,
+        size: 62,
+        cell: ({ row }) => row.original.imageId ? (
+          <img className="item-list-thumbnail" loading="lazy" decoding="async"
+            src={`/api/media/${row.original.imageId}/thumbnail`} alt="" />
+        ) : "—",
+      },
       {
         accessorKey: "code",
         header: "رمز الصنف",
@@ -571,6 +582,7 @@ function ItemStatisticsCard({
 
 type ItemFields = {
   name: string;
+  imageId: string | null;
   englishName: string;
   barcode: string;
   legacyId: string;
@@ -595,6 +607,7 @@ type ItemFields = {
 function initialItemFields(item: Item | null): ItemFields {
   return {
     name: item?.name ?? "",
+    imageId: item?.imageId ?? null,
     englishName: item?.englishName ?? "",
     barcode: item?.barcode ?? "",
     legacyId: item?.legacyId ?? "",
@@ -823,6 +836,10 @@ function ItemEditor({
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
+            <ImageUpload purpose="item" companyId={companyId}
+              preview={fields.imageId ? `/api/media/${fields.imageId}/thumbnail` : null}
+              disabled={disabled} onUploaded={({id})=>edit("imageId",id)}
+              onClear={()=>edit("imageId",null)} />
             <Field
               label="رمز الصنف"
               value={item?.code ?? "تلقائي عند الحفظ"}

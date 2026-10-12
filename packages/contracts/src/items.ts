@@ -52,6 +52,7 @@ export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 const itemFields = z
   .object({
     name,
+    imageId: z.uuid().nullable().default(null),
     englishName: z.string().trim().max(120).default(""),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     legacyId: z.string().trim().max(100).default(""),
@@ -128,6 +129,7 @@ export interface ItemAgent extends ItemIdentity {
 }
 export interface Item extends ItemIdentity {
   code: string;
+  imageId: string | null;
   name: string;
   englishName: string;
   barcode: string;

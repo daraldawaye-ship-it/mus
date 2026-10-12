@@ -132,6 +132,11 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
       const input = parse(profileSchema, req.body);
       const user = await transaction(pool, async (client) => {
         const before = await currentActor(client, actor(req));
+        if(input.image.startsWith("/api/media/")){
+          const assetId=input.image.split("/")[3];
+          const owned=await client.query("SELECT 1 FROM media_assets WHERE id=$1 AND purpose='avatar' AND uploaded_by=$2",[assetId,before.id]);
+          if(!owned.rowCount)throw new HttpError(403,"invalid_image","هذه الصورة لا تخص حسابك");
+        }
         const updated = await client.query(
           "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5 WHERE id=$6 RETURNING *",
           [
