@@ -395,7 +395,7 @@ export async function applyStock(
   const batchKey = input.expiryDate ?? "";
   if (!item.hasExpiry && batchKey !== "")
     conflict("الصنف لا يتتبع تاريخ انتهاء؛ اترك تاريخ الدفعة فارغًا");
-  if (incoming && item.hasExpiry && !batchKey)
+  if (incoming && item.hasExpiry && !batchKey && input.kind !== "sales_return")
     conflict("تاريخ انتهاء الدفعة مطلوب لهذا الصنف");
   if (batchKey && batchKey < input.documentDate && !input.allowExpired)
     conflict("الدفعة منتهية بتاريخ المستند");
