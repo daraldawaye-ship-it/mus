@@ -5,6 +5,10 @@ on:
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-media.ts'
+      - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/web/src/**'
+      - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
@@ -13,6 +17,10 @@ on:
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-media.ts'
+      - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/web/src/**'
+      - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
@@ -47,4 +55,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: node --import tsx --test --test-name-pattern='ChatGPT MCP' tests/api.test.ts
+      - run: npm run build
+      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts

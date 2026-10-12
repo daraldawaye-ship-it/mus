@@ -74,7 +74,7 @@ class Client {
       else this.cookie = cookie;
     }
     const raw = await response.text();
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    const parsed: unknown = raw && response.headers.get("content-type")?.includes("json") ? JSON.parse(raw) : null;
     if (parsed && typeof parsed === "object" && "csrf" in parsed) {
       const csrf = (parsed as { csrf: unknown }).csrf;
       if (typeof csrf === "string" || csrf === null) this.csrf = csrf;
@@ -2733,4 +2733,36 @@ test("attendance reports preserve overnight metrics, absence deadlines, history 
   const past=await people[0]!.client.ok<Report>("GET",base+"/report?day=1999-01-01");assert.equal(past.items[0]!.status,"unconfigured");
   assert.equal((await platform.client.request("GET",base+"/report?status=invalid")).status,400);
   await assert.rejects(f.pool.query("DELETE FROM employee_schedule_history WHERE company_id=$1",[co.id]),(error:{code?:string})=>error.code==="23514");
+});
+
+test("media images upload thumbnails, protect tenants, and persist profile URLs",async(t)=>{
+  const f=await fixture(t);
+  const {client,user}=await owner(f);
+  const other=await register(f,"media-outsider@example.test");
+  const c=await company(client,"Image company");
+  // A 1x1 PNG; the browser produces the full-sized and 160px renditions.
+  const data="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YiR7j8AAAAASUVORK5CYII=";
+  const avatar=await client.ok<{id:string;fullUrl:string;thumbnailUrl:string}>("POST","/media",{
+    purpose:"avatar",companyId:null,original:data,thumbnail:data
+  },201);
+  assert.match(avatar.fullUrl,/^\/api\/media\/[0-9a-f-]{36}\/full$/);
+  const thumbnail=await client.request("GET",avatar.thumbnailUrl);
+  assert.equal(thumbnail.status,200);
+  assert.equal(thumbnail.headers.get("content-type"),"image/png");
+  assert.equal((await other.client.request("GET",avatar.thumbnailUrl)).status,404);
+  assert.equal((await f.client().request("GET",avatar.thumbnailUrl)).status,401);
+  const profile=await client.ok<{user:User}>("PATCH","/profile",{
+    name:user.name,displayName:user.displayName,email:user.email,phone:user.phone,image:avatar.fullUrl
+  });
+  assert.equal(profile.user.image,avatar.fullUrl);
+  const itemImage=await client.ok<{id:string;thumbnailUrl:string}>("POST","/media",{
+    purpose:"item",companyId:c.id,original:data,thumbnail:data
+  },201);
+  assert.equal((await client.request("GET",itemImage.thumbnailUrl)).status,200);
+  assert.equal((await other.client.request("GET",itemImage.thumbnailUrl)).status,403);
+  assert.equal((await client.request("POST","/media",{
+    purpose:"item",companyId:c.id,original:"data:image/png;base64,ZmFrZQ==",thumbnail:data
+  })).status,400);
+  const stored=await f.pool.query("SELECT count(*)::int AS count FROM media_assets WHERE uploaded_by=$1",[user.id]);
+  assert.equal(stored.rows[0].count,2);
 });
