@@ -152,7 +152,7 @@ function FinanceSettingsCard({
               {settings.data.settings.baseCurrencyName}. سعرها التعريفي 1.
             </>
           ) : (
-            "لم تُحدد عملة أساسية. أضف عملة فعالة واخترها، أو هيئ العملات المقترحة."
+            "لم تُحدد عملة أساسية بعد. إذا كان لديك عملات فعالة، يمكنك اختيار العملة الأساسية."
           )}
         </p>
       )}
@@ -234,7 +234,6 @@ function CurrenciesContent({ context }: { context: CompanyContext }) {
     scope,
   );
   const [editor, setEditor] = useState<CompanyCurrency | "new" | null>(null);
-  const [initializing, setInitializing] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -261,7 +260,6 @@ function CurrenciesContent({ context }: { context: CompanyContext }) {
   function changed(message: string) {
     if (!guard.isCurrent()) return;
     setEditor(null);
-    setInitializing(false);
     setNotice(message);
     setError("");
     void refresh();
@@ -386,13 +384,6 @@ function CurrenciesContent({ context }: { context: CompanyContext }) {
             editor.id === settings.data?.settings?.baseCurrencyId
           }
           onClose={() => setEditor(null)}
-          onSaved={changed}
-        />
-      )}
-      {mayManage && initializing && (
-        <CurrenciesInitializeDialog
-          companyId={companyId}
-          onClose={() => setInitializing(false)}
           onSaved={changed}
         />
       )}
@@ -521,82 +512,6 @@ function CurrencyEditor({
         <div className="form-actions">
           <Button type="submit" disabled={saving}>
             {saving ? "جارٍ الحفظ…" : currency ? "حفظ العملة" : "إضافة العملة"}
-          </Button>
-          <Button variant="secondary" disabled={saving} onClick={onClose}>
-            إلغاء
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-function CurrenciesInitializeDialog({
-  companyId,
-  onClose,
-  onSaved,
-}: {
-  companyId: number;
-  onClose: () => void;
-  onSaved: (message: string) => void;
-}) {
-  const guard = useScopeGuard(`company:${companyId}:currencies:initialize`);
-  const [baseCurrency, setBaseCurrency] = useState("YER");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (saving) return;
-    setSaving(true);
-    setError("");
-    try {
-      await api<{ settings: FinanceSettings }>(
-        `/companies/${companyId}/currencies/initialize`,
-        {
-          method: "POST",
-          body: { baseCurrency },
-          signal: guard.signal,
-        },
-      );
-      if (guard.isCurrent())
-        onSaved(`تمت تهيئة YER وSAR وUSD، والعملة الأساسية ${baseCurrency}.`);
-    } catch (reason) {
-      if (guard.isCurrent()) setError(errorMessage(reason));
-    } finally {
-      if (guard.isCurrent()) setSaving(false);
-    }
-  }
-  return (
-    <Dialog
-      open
-      title="تهيئة العملات"
-      onClose={() => {
-        if (!saving) onClose();
-      }}
-    >
-      <form className="form-stack" onSubmit={submit}>
-        <Notice>
-          ستُضاف العملات الناقصة من YER وSAR وUSD بدقة عرض 2، وتُحفظ بيانات
-          العملات الموجودة ودقتها وحالتها. التهيئة متاحة قبل تحديد العملة
-          الأساسية فقط. لا تُنشأ أسعار صرف تلقائيًا.
-        </Notice>
-        <Select
-          label="العملة الأساسية المقترحة"
-          value={baseCurrency}
-          onChange={(event) => setBaseCurrency(event.target.value)}
-          disabled={saving}
-        >
-          <option value="YER">YER — الريال اليمني</option>
-          <option value="SAR">SAR — الريال السعودي</option>
-          <option value="USD">USD — الدولار الأمريكي</option>
-        </Select>
-        <p>
-          تأكيد التهيئة واختيار <bdi>{baseCurrency}</bdi> عملة أساسية للشركة.
-        </p>
-        {error && <Notice tone="error">{error}</Notice>}
-        <div className="form-actions">
-          <Button type="submit" disabled={saving}>
-            {saving ? "جارٍ التهيئة…" : "تأكيد تهيئة العملات"}
           </Button>
           <Button variant="secondary" disabled={saving} onClick={onClose}>
             إلغاء
