@@ -17,6 +17,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { actionColumnsFirst } from "./table-column-order";
 
 export function Button({
   variant = "primary",
@@ -274,7 +275,7 @@ export function DataTable<T>({
   const anchor = useRef<string | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
   const table = useReactTable({
-    columns,
+    columns: actionColumnsFirst(columns),
     data,
     state: { sorting },
     onSortingChange,
