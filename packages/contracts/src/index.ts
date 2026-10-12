@@ -144,6 +144,8 @@ export const auditActionLabels = {
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
   "page.settings": "تعديل إعدادات صفحة",
+  "configuration.options.seed": "إنشاء تعريفات الخيارات الأساسية تلقائيًا",
+  "configuration.roles.seed": "إنشاء أدوار الشركة الأساسية تلقائيًا",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -163,6 +165,8 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "configuration.options.seed",
+  "configuration.roles.seed",
   "page.settings",
   "invoice.post",
   "inventory.settings",
@@ -445,3 +449,4 @@ export * from "./commerce.ts";
 export * from "./inventory.ts";
 
 export * from "./pages.ts";
+export * from "./configuration.ts";

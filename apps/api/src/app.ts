@@ -20,6 +20,7 @@ import { inventoryRoutes } from "./routes-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
+import { configurationRoutes } from "./routes-configuration.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -52,6 +53,7 @@ export async function createApp(options: AppOptions = {}) {
     authRoutes(pool, config.production),
     publicRoutes(pool),
     companyRoutes(pool),
+    configurationRoutes(pool),
     accountRoutes(pool),
     currencyRoutes(pool),
     locationRoutes(pool),
