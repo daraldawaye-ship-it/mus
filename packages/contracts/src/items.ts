@@ -54,6 +54,7 @@ const itemFields = z
     name,
     imageId: z.uuid().nullable().default(null),
     englishName: z.string().trim().max(120).default(""),
+    shelf: z.string().trim().max(100).default(""),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
@@ -132,6 +133,7 @@ export interface Item extends ItemIdentity {
   imageId: string | null;
   name: string;
   englishName: string;
+  shelf: string;
   barcode: string;
   legacyId: string;
   agentId: number | null;
