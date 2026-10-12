@@ -12,11 +12,13 @@ const tools=[{
    page:{type:"integer",minimum:1,default:1},
    pageSize:{type:"integer",minimum:1,maximum:50,default:20}
  },required:["tableName"],additionalProperties:false},
+ securitySchemes:[{type:"oauth2",scopes:["general_table.read"]}],
  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
 },{
  name:"get_general_table_record",
  description:"قراءة سجل معين من الجدول العام برقم السجل مع الشرح والنص الكامل للحقول. للقراءة فقط.",
  inputSchema:{type:"object",properties:{id:{type:"integer",minimum:1}},required:["id"],additionalProperties:false},
+ securitySchemes:[{type:"oauth2",scopes:["general_table.read"]}],
  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
 }];
 const argsSchema=z.object({
@@ -39,26 +41,19 @@ const selectFields=`general_table_id AS "id",
 
 export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
  const router=Router();
- const unauthorized=(res:import("express").Response)=>{
-   res.setHeader("WWW-Authenticate",
-     `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", scope="general_table.read"`);
+ const unauthorized=(res:import("express").Response,id:string|number)=>{
+   const challenge=`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Authorize Tijara's general table read access"`;
+   res.setHeader("WWW-Authenticate",challenge);
    res.setHeader("Cache-Control","no-store");
-   res.status(401).json({error:"unauthorized",message:"Connect Tijara with OAuth first"});
+   res.json({jsonrpc:"2.0",id,result:{
+     content:[{type:"text",text:"Authentication required: connect Tijara using OAuth."}],
+     isError:true,
+     _meta:{"mcp/www_authenticate":[challenge]},
+   }});
  };
  router.post("/mcp",express.json({limit:"64kb"}),async(req,res,next)=>{
   try{
    res.setHeader("Cache-Control","no-store");
-   const auth=req.get("authorization")??"";
-   if(!/^Bearer [A-Za-z0-9_-]{43}$/.test(auth))return unauthorized(res);
-   const row=(await pool.query(
-     `SELECT u.id FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
-       WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
-       AND t.revoked_at IS NULL AND t.scope='general_table.read'
-       AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
-       AND NOT u.archived AND NOT u.suspended LIMIT 1`,
-     [tokenHash(auth.slice(7)),[origin,origin+"/mcp"]],
-   )).rows[0];
-   if(!row)return unauthorized(res);
    const body=req.body as {jsonrpc?:unknown;id?:string|number;method?:unknown;params?:unknown};
    if(!body||body.jsonrpc!=="2.0"||typeof body.method!=="string"||
      (body.id!==undefined&&!["string","number"].includes(typeof body.id))){
@@ -77,6 +72,21 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
    if(body.method==="resources/list"){ok({resources:[]});return;}
    if(body.method==="prompts/list"){ok({prompts:[]});return;}
    if(body.method!=="tools/call"){fail(-32601,"Method not found");return;}
+   // MCP capabilities are discoverable anonymously, but actual record reads
+   // always require an unexpired, unrevoked, scoped and owner/admin token.
+   const auth=req.get("authorization")??"";
+   if(!/^Bearer [A-Za-z0-9_-]{43}$/.test(auth)){
+     unauthorized(res,body.id);return;
+   }
+   const user=(await pool.query(
+     `SELECT u.id FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
+       WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
+       AND t.revoked_at IS NULL AND t.scope='general_table.read'
+       AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
+       AND NOT u.archived AND NOT u.suspended LIMIT 1`,
+     [tokenHash(auth.slice(7)),[origin,origin+"/mcp"]],
+   )).rows[0];
+   if(!user){unauthorized(res,body.id);return;}
    const params=body.params as {name?:unknown;arguments?:unknown}|undefined;
    if(!params||typeof params.name!=="string"){fail(-32602,"Invalid tool");return;}
    let result:unknown;
