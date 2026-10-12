@@ -1650,7 +1650,8 @@ ul {
   align-items: start;
 }
 .commerce-header-card {
-  max-height: clamp(150px, 23dvh, 230px);
+  /* Roughly half the former height; remaining invoice fields scroll here. */
+  max-height: clamp(96px, 11dvh, 110px);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1658,7 +1659,8 @@ ul {
 .commerce-list-link {
   width: max-content;
   max-width: 100%;
-  align-self: end;
+  align-self: start;
+  margin-block-start: 20px;
   white-space: nowrap;
 }
 .commerce-header-grid > *,
