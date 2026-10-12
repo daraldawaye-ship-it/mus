@@ -175,9 +175,10 @@ export function inventoryRoutes(pool: Pool): Router {
             );
           await client.query(
             `INSERT INTO inventory_settings(company_id,inventory_account_id,sales_account_id,cogs_account_id,surplus_account_id,shortage_account_id,costing_method,allow_negative,updated_by)
-        VALUES($1,$2,$3,$4,$5,$6,'weighted_average',false,$7)
+        VALUES($1,$2,$3,$4,$5,$6,'weighted_average',$8,$7)
         ON CONFLICT(company_id) DO UPDATE SET inventory_account_id=EXCLUDED.inventory_account_id,sales_account_id=EXCLUDED.sales_account_id,
         cogs_account_id=EXCLUDED.cogs_account_id,surplus_account_id=EXCLUDED.surplus_account_id,shortage_account_id=EXCLUDED.shortage_account_id,
+        allow_negative=EXCLUDED.allow_negative,
         revision=inventory_settings.revision+1,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp()`,
             [
               companyId,
@@ -187,6 +188,7 @@ export function inventoryRoutes(pool: Pool): Router {
               input.surplusAccountId,
               input.shortageAccountId,
               user.id,
+              input.allowNegative,
             ],
           );
           const after = await getInventorySettings(client, companyId);
