@@ -1340,7 +1340,9 @@ test("company configuration safely manages options, roles, and scoped grants or 
   // The role grants exactly the item list read, not accounting, writes or posting.
   assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/items`)).status,200);
   assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/accounts`)).status,403);
-  assert.equal((await ordinary.client.request("POST",`/companies/${co.id}/items`,{})).status,403);
+  const itemNewPage=await ordinary.client.ok<{items:{key:string;actionAccess:Record<string,boolean>}[]}>(
+    "GET",`/page-catalog?companyId=${co.id}&q=إضافة صنف`);
+  assert.equal(itemNewPage.items.find(x=>x.key==="company.item-new")?.actionAccess.view,false);
   await platform.client.ok("PUT",prefix+"/employee-rules",{
     employeeId:member.id,permissionKey:"company.items:view",effect:"deny",revision:null,
   });
