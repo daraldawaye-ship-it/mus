@@ -59,11 +59,12 @@ export const invoiceSchema = z
           message:
             "الفاتورة تحوي بيعًا/شراءً أو مردودًا فقط؛ لا تجمع الاتجاهين",
         });
-      if (returning !== (line.originalLineId !== null))
+      if ((!returning && line.originalLineId !== null) ||
+          (returning && value.kind === "purchase" && line.originalLineId === null))
         context.addIssue({
           code: "custom",
           path: ["lines", index, "originalLineId"],
-          message: "المردود يحتاج سطر الأصل؛ السطر الموجب لا يرتبط بمردود",
+          message: "مردود المشتريات يتطلب سطر الأصل، والبيع العادي لا يرتبط بمردود",
         });
     }
     if (returning && value.discount !== "0")

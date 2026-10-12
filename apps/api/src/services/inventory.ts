@@ -170,7 +170,7 @@ function fractionQuantity(
 ): StockBalance["quantityUnit1"] {
   if (numerator === 0n)
     return { numerator: "0", denominator: "1", decimal: "0" };
-  let a = numerator,
+  let a = numerator < 0n ? -numerator : numerator,
     b = denominator;
   while (b !== 0n) [a, b] = [b, a % b];
   const n = numerator / a,
@@ -191,11 +191,12 @@ function fractionQuantity(
     const places = Math.max(twos, fives);
     if (places === 0) decimal = n.toString();
     else {
-      const value = ((n * 10n ** BigInt(places)) / d)
+      const magnitude = n < 0n ? -n : n;
+      const value = ((magnitude * 10n ** BigInt(places)) / d)
         .toString()
         .padStart(places + 1, "0");
       const tail = value.slice(-places).replace(/0+$/, "");
-      decimal = value.slice(0, -places) + (tail ? `.${tail}` : "");
+      decimal = (n < 0n ? "-" : "") + value.slice(0, -places) + (tail ? `.${tail}` : "");
     }
   }
   return { numerator: n.toString(), denominator: d.toString(), decimal };
@@ -365,7 +366,7 @@ export async function applyStock(
   companyId: number,
   userId: number,
   input: ApplyStockInput,
-): Promise<{ costBase: bigint; allocations: StockAllocation[] }> {
+): Promise<{ costBase: bigint; allocations: StockAllocation[]; valuationAdjustment: bigint }> {
   const item = await itemStockSnapshot(
     client,
     companyId,
@@ -394,7 +395,7 @@ export async function applyStock(
   const batchKey = input.expiryDate ?? "";
   if (!item.hasExpiry && batchKey !== "")
     conflict("الصنف لا يتتبع تاريخ انتهاء؛ اترك تاريخ الدفعة فارغًا");
-  if (incoming && item.hasExpiry && !batchKey)
+  if (incoming && item.hasExpiry && !batchKey && input.kind !== "sales_return")
     conflict("تاريخ انتهاء الدفعة مطلوب لهذا الصنف");
   if (batchKey && batchKey < input.documentDate && !input.allowExpired)
     conflict("الدفعة منتهية بتاريخ المستند");
@@ -409,18 +410,36 @@ export async function applyStock(
   const previousQuantity = BigInt(values.rows[0].quantity_smallest),
     previousValue = moneyUnits(values.rows[0].value_base);
   let cost: bigint;
+  let valuationAdjustment = 0n;
+  const step = quantum(settings.baseDecimalPlaces);
   const batches: { key: string; quantity: bigint }[] = [];
   if (incoming) {
     if (input.costBase === undefined || input.costBase < 0n)
       throw new Error("Incoming stock requires a nonnegative exact cost");
     cost = input.costBase;
-    if (cost % quantum(settings.baseDecimalPlaces) !== 0n)
+    if (cost % step !== 0n)
       throw new HttpError(
         400,
         "currency_precision",
         "تكلفة المخزون تتجاوز دقة العملة الأساسية",
       );
     batches.push({ key: batchKey, quantity: magnitude });
+    // Incoming stock settles previously negative quantities. Book the part
+    // replacing shortages at the provisional cost of the earlier issue;
+    // differences go to the purchase valuation-variance journal.
+    if (previousQuantity < 0n && settings.allowNegative) {
+      const nextQuantity = previousQuantity + magnitude;
+      const targetValue = nextQuantity < 0n
+        ? -(roundedRatio((-previousValue) * (-nextQuantity),-previousQuantity,step))
+        : nextQuantity === 0n
+          ? 0n
+          : roundedRatio(input.costBase * nextQuantity,magnitude,step);
+      const bookedCost = targetValue - previousValue;
+      if (bookedCost < 0n)
+        conflict("تعذر تقييم تسوية المخزون السالب؛ راجع تكلفة الصنف.");
+      valuationAdjustment = bookedCost - input.costBase;
+      cost = bookedCost;
+    }
   } else {
     const parameters: unknown[] = [companyId, item.id, input.locationId];
     let condition = "";
@@ -444,31 +463,45 @@ export async function applyStock(
       remaining -= taken;
       if (remaining === 0n) break;
     }
-    if (remaining > 0n || magnitude > previousQuantity)
-      conflict(
-        "الرصيد المتاح في الموقع أو الدفعة لا يكفي؛ المخزون السالب غير مفعل في هذه المرحلة",
+    if (remaining > 0n) {
+      if (!settings.allowNegative)
+        conflict("الرصيد المتاح في الموقع أو الدفعة لا يكفي؛ فعّل السماح بالمخزون السالب.");
+      batches.push({key:input.expiryDate ?? "",quantity:remaining});
+    }
+    if (magnitude > previousQuantity && !settings.allowNegative)
+      conflict("رصيد المخزون المجمع لا يكفي؛ فعّل السماح بالمخزون السالب.");
+    // Exact FIFO-like quantity allocation, pooled weighted-average cost. A
+    // deficit inherits the current weighted unit cost; absent any historical
+    // acquisition it uses zero provisional COGS, corrected on replenishment.
+    if (input.costBase !== undefined) cost=input.costBase;
+    else if (previousQuantity > 0n) {
+      const inStock=magnitude < previousQuantity?magnitude:previousQuantity;
+      cost=weightedStockCost(previousQuantity,previousValue,inStock,settings.baseDecimalPlaces);
+      if(magnitude>previousQuantity)
+        cost+=roundedRatio(previousValue*(magnitude-previousQuantity),previousQuantity,step);
+    } else if (previousQuantity < 0n) {
+      cost=roundedRatio((-previousValue)*magnitude,-previousQuantity,step);
+    } else {
+      const recent=await client.query(
+        "SELECT quantity_smallest,cost_base FROM stock_movements WHERE company_id=$1 AND item_id=$2 AND quantity_smallest>0 AND cost_base>0 ORDER BY id DESC LIMIT 1",
+        [companyId,item.id],
       );
-    cost =
-      input.costBase ??
-      weightedStockCost(
-        previousQuantity,
-        previousValue,
-        magnitude,
-        settings.baseDecimalPlaces,
-      );
-    if (
-      cost < 0n ||
-      cost > previousValue ||
-      cost % quantum(settings.baseDecimalPlaces) !== 0n
-    )
-      conflict("تكلفة الإخراج لا تطابق رصيد المخزون ودقة العملة الأساسية");
+      cost=recent.rows[0]
+        ? roundedRatio(moneyUnits(recent.rows[0].cost_base)*magnitude,BigInt(recent.rows[0].quantity_smallest),step)
+        : 0n;
+    }
+    if (cost < 0n || cost % step !== 0n)
+      conflict("تكلفة الإخراج لا تطابق دقة العملة الأساسية.");
+    if(!settings.allowNegative && (cost>previousValue || previousQuantity-magnitude<0n))
+      conflict("الرصيد المتاح لا يكفي.");
     if (magnitude === previousQuantity && cost !== previousValue)
       conflict("إخراج كامل المخزون يجب أن يستهلك قيمته المتبقية كاملة");
   }
   const nextQuantity = previousQuantity + quantity,
     signedCost = incoming ? cost : -cost,
     nextValue = previousValue + signedCost;
-  if (nextQuantity >= 10n ** 40n || nextValue >= 10n ** 32n)
+  if ((nextQuantity >= 10n ** 40n || nextQuantity <= -(10n ** 40n)) ||
+      (nextValue >= 10n ** 32n || nextValue <= -(10n ** 32n)))
     throw new HttpError(
       400,
       "stock_overflow",
@@ -494,28 +527,12 @@ export async function applyStock(
     residualQuantity -= batch.quantity;
     const signedQuantity = incoming ? batch.quantity : -batch.quantity,
       batchCost = incoming ? allocationCost : -allocationCost;
-    if (incoming)
-      await client.query(
-        "INSERT INTO stock_balances(company_id,item_id,location_id,batch_key,quantity_smallest) VALUES($1,$2,$3,$4,$5) ON CONFLICT(company_id,item_id,location_id,batch_key) DO UPDATE SET quantity_smallest=stock_balances.quantity_smallest+EXCLUDED.quantity_smallest,updated_at=clock_timestamp()",
-        [
-          companyId,
-          item.id,
-          input.locationId,
-          batch.key,
-          batch.quantity.toString(),
-        ],
-      );
-    else
-      await client.query(
-        "UPDATE stock_balances SET quantity_smallest=quantity_smallest-$1,updated_at=clock_timestamp() WHERE company_id=$2 AND item_id=$3 AND location_id=$4 AND batch_key=$5",
-        [
-          batch.quantity.toString(),
-          companyId,
-          item.id,
-          input.locationId,
-          batch.key,
-        ],
-      );
+    // UPSERT handles an unallocated shortage even where no batch ever
+    // existed. Batch keys remain auditable and do not invent expiry dates.
+    await client.query(
+      "INSERT INTO stock_balances(company_id,item_id,location_id,batch_key,quantity_smallest) VALUES($1,$2,$3,$4,$5) ON CONFLICT(company_id,item_id,location_id,batch_key) DO UPDATE SET quantity_smallest=stock_balances.quantity_smallest+EXCLUDED.quantity_smallest,updated_at=clock_timestamp()",
+      [companyId,item.id,input.locationId,batch.key,signedQuantity.toString()],
+    );
     const move = await client.query(
       "INSERT INTO stock_movements(company_id,item_id,location_id,batch_key,quantity_smallest,cost_base,kind,document_date,created_by,invoice_id,invoice_line_id,operation_id,original_movement_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
       [
@@ -541,7 +558,7 @@ export async function applyStock(
       costBase: moneyString(batchCost),
     });
   }
-  return { costBase: signedCost, allocations };
+  return { costBase: signedCost, allocations, valuationAdjustment };
 }
 
 export async function auditStockOperation(

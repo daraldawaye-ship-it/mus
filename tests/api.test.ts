@@ -2323,6 +2323,55 @@ test("option lists search and filter native item booleans without widening picke
   assert(!Object.hasOwn(picker,"optionDefinitions"));
 });
 
+test("negative stock in sales, purchase replenishment, transfers and standalone returns keeps books balanced",async(t)=>{
+  const f=await fixture(t),ownerUser=await owner(f),co=await company(ownerUser.client,"Negative stock accounting"),prefix=`/companies/${co.id}`;
+  const settings=(await f.pool.query<{allow_negative:boolean}>("SELECT allow_negative FROM inventory_settings WHERE company_id=$1",[co.id])).rows[0]!;
+  assert.equal(settings.allow_negative,true);
+  const currency=(await ownerUser.client.ok<Page<{id:number;code:string}>>("GET",prefix+"/currencies")).items.find(row=>row.code==="YER")!;
+  const main=(await ownerUser.client.ok<Page<{id:number;code:string}>>("GET",prefix+"/branches")).items.find(row=>row.code==="HQ")!;
+  const showroom=(await ownerUser.client.ok<Page<{id:number;code:string;branchId:number}>>("GET",prefix+`/locations?branchId=${main.id}`)).items.find(row=>row.code==="SHOWROOM")!;
+  const accounts=(await ownerUser.client.ok<Page<{id:number;code:string;kind:string;category:string}>>("GET",prefix+"/accounts?pageSize=100")).items;
+  const forbidden=new Set((await f.pool.query<{id:number}>("SELECT inventory_account_id AS id FROM inventory_settings WHERE company_id=$1 UNION SELECT sales_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT cogs_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT surplus_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT shortage_account_id FROM inventory_settings WHERE company_id=$1",[co.id])).rows.map(x=>x.id));
+  let counterparty=accounts.find(a=>a.kind==="posting"&&a.category==="asset"&&!forbidden.has(a.id));
+  if(!counterparty)counterparty=(await ownerUser.client.ok<{account:{id:number;code:string;kind:string;category:string}}>("POST",prefix+"/accounts",{
+    code:"1111999999",name:"حساب المبيعات التجريبي",kind:"posting",category:"asset",normalSide:"debit",parentId:null,active:true,
+  },201)).account;
+  const item=(await ownerUser.client.ok<{item:{id:number}}>("POST",prefix+"/items",{
+    idempotencyKey:randomUUID(),name:"Negative stock item",currencyId:currency.id,
+    unit1Name:"قطعة",salePrice1:"30",purchasePrice:"15",hasExpiry:false,
+  },201)).item;
+  const invoice=(kind:"sale"|"purchase",quantity:string,price?:string)=>({
+    idempotencyKey:randomUUID(),kind,documentDate:"2026-10-12",currencyId:currency.id,
+    branchId:main.id,locationId:showroom.id,counterpartyAccountId:counterparty!.id,description:"اختبار المخزون السالب",
+    discount:"0",lines:[{itemId:item.id,unit:1,quantity,unitPrice:price??"30",expiryDate:null,originalLineId:null}],
+  });
+  const sale=await ownerUser.client.ok<{invoice:{id:number;returning:boolean;total:string}}>("POST",prefix+"/invoices",invoice("sale","5"),201);
+  assert(!sale.invoice.returning);
+  const balances=async()=>f.pool.query<{quantity_smallest:string;value_base:string}>(
+    "SELECT quantity_smallest::text,value_base::text FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",[co.id,item.id]);
+  assert.equal((await balances()).rows[0]!.quantity_smallest,"-5");
+  const warehouse=(await ownerUser.client.ok<{location:{id:number}}>("POST",prefix+"/locations",{
+    branchId:main.id,code:"NEGWH",name:"مخزن استلام سالب",kind:"warehouse",active:true,
+  },201)).location;
+  await ownerUser.client.ok("POST",prefix+"/stock-transfers",{
+    documentDate:"2026-10-12",itemId:item.id,fromLocationId:showroom.id,toLocationId:warehouse.id,
+    quantity:"2",unit:1,expiryDate:null,description:"نقل من معرض سالب",idempotencyKey:randomUUID(),
+  },201);
+  const sourceBal=await f.pool.query<{quantity_smallest:string}>(
+    "SELECT quantity_smallest::text FROM stock_balances WHERE company_id=$1 AND item_id=$2 AND location_id=$3",[co.id,item.id,showroom.id]);
+  assert.equal(sourceBal.rows[0]!.quantity_smallest,"-7");
+  const direct=await ownerUser.client.ok<{invoice:{returning:boolean;total:string}}>("POST",prefix+"/invoices",invoice("sale","-1"),201);
+  assert.equal(direct.invoice.returning,true);
+  assert.equal(direct.invoice.total,"-30");
+  const replenished=await ownerUser.client.ok<{invoice:{varianceDocumentId:number|null}}>("POST",prefix+"/invoices",invoice("purchase","4","15"),201);
+  assert(replenished.invoice.varianceDocumentId!==null,"Negative inventory replenishment needs an auditable variance journal");
+  const pool=(await balances()).rows[0]!;
+  assert.equal(pool.quantity_smallest,"0");
+  assert.equal(pool.value_base,"0");
+  const balanced=await f.pool.query<{count:string}>(
+    "SELECT count(*)::text AS count FROM financial_documents WHERE company_id=$1 AND status='posted' AND total_debit<>total_credit",[co.id]);
+  assert.equal(balanced.rows[0]!.count,"0");
+});
 test("inventory accounts are ready automatically for new and existing companies",async(t)=>{
   const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Automatic inventory");
   type Settings={inventory_account_id:number;sales_account_id:number;cogs_account_id:number;surplus_account_id:number;shortage_account_id:number;revision:number};

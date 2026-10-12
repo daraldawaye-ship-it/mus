@@ -249,8 +249,10 @@ export async function createInvoice(
   )
     conflict("اختر أصنافًا فعالة من الشركة");
   const originals = new Map<number, QueryResultRow>();
-  if (returning) {
-    const ids = input.lines.map((line) => line.originalLineId!);
+  if (returning && input.lines.some((line) => line.originalLineId !== null)) {
+    const ids = input.lines.map((line) => line.originalLineId).filter(
+      (value): value is number => value !== null,
+    );
     if (new Set(ids).size !== ids.length)
       conflict("لا تكرر سطر الأصل في فاتورة المردود");
     const rows = await client.query(
@@ -270,8 +272,8 @@ export async function createInvoice(
       original: QueryResultRow | null = null;
     const smallest = quantity * stockUnitMultiplier(item, line.unit);
     let expiryDate = line.expiryDate;
-    if (returning) {
-      original = originals.get(line.originalLineId!)!;
+    if (returning && line.originalLineId !== null) {
+      original = originals.get(line.originalLineId)!;
       if (
         original.item_id !== line.itemId ||
         original.unit !== line.unit ||
@@ -325,6 +327,20 @@ export async function createInvoice(
       }
     } else {
       if (input.kind === "sale") {
+        if (returning && line.originalLineId === null) {
+          if (item.currency_id !== input.currencyId)
+            conflict("عملة مردود المبيعات يجب أن تطابق عملة أسعار كرت الصنف.");
+          price = normalizeRate(item[`sale_price${line.unit}`]);
+          if (line.unitPrice !== undefined && line.unitPrice !== price)
+            conflict("سعر مردود المبيعات المباشر من كرت الصنف.");
+          checkQuantum(price, currency.decimal_places);
+          if (!item.has_expiry && expiryDate !== null)
+            conflict("الصنف لا يتتبع تاريخ الانتهاء.");
+          // A direct customer return has no historical invoice allocation;
+          // any provided expiry batch is retained, otherwise unspecified.
+          if (item.has_expiry && expiryDate && expiryDate < input.documentDate)
+            conflict("لا تقبل دفعة مردود منتهية الصلاحية دون مراجعة.");
+        } else {
         if (expiryDate !== null)
           conflict(
             "دفعات المبيعات تختار تلقائيًا بحسب أقرب انتهاء؛ لا تدخل تاريخ انتهاء",
@@ -336,6 +352,7 @@ export async function createInvoice(
         price = normalizeRate(item[`sale_price${line.unit}`]);
         if (line.unitPrice !== undefined && line.unitPrice !== price)
           conflict("سعر البيع يؤخذ من كرت الصنف ولا يعدل داخل الفاتورة");
+        }
       } else {
         if (
           line.unitPrice === undefined &&
@@ -530,20 +547,35 @@ export async function createInvoice(
         conflict("حركات الأصل لا تكفي لاستعادة كمية المردود");
     } else {
       const delta = input.kind === "sale" ? -line.smallest : line.smallest;
+      let directReturnCost: bigint | undefined;
+      if (input.kind === "sale" && returning && line.original === null) {
+        // Derive an available historical unit-cost estimate; unlike a linked
+        // customer return there is no original movement to reverse precisely.
+        const previousSale = await client.query(
+          "SELECT quantity_smallest,cost_base FROM stock_movements WHERE company_id=$1 AND item_id=$2 AND kind='sale' AND quantity_smallest<0 AND cost_base<0 ORDER BY id DESC LIMIT 1",
+          [companyId,line.item.id],
+        );
+        const returnedQuantity = line.smallest;
+        directReturnCost = previousSale.rows[0]
+          ? share(-moneyUnits(previousSale.rows[0].cost_base),returnedQuantity,
+              -BigInt(previousSale.rows[0].quantity_smallest),
+              quantum(settings.baseDecimalPlaces))
+          : 0n;
+      }
       const movement = await applyStock(client, companyId, user.id, {
         itemId: line.item.id,
         locationId: input.locationId,
         quantitySmallest: delta,
         kind:
           input.kind === "sale"
-            ? "sale"
+            ? (returning ? "sales_return" : "sale")
             : returning
               ? "purchase_return"
               : "purchase",
         documentDate: input.documentDate,
         expiryDate: line.expiryDate,
         costBase:
-          input.kind === "purchase" && !returning ? line.baseTotal : undefined,
+          input.kind === "purchase" && !returning ? line.baseTotal : directReturnCost,
         invoiceId,
         invoiceLineId: lineId,
         allowExpired: returning,
@@ -642,15 +674,39 @@ export async function createInvoice(
       ],
     });
   }
-  if (input.kind === "purchase" && returning && totalCost !== baseTotal) {
+  if (input.kind === "purchase" && totalCost !== baseTotal) {
     const variance = totalCost - baseTotal;
     varianceDocumentId = await postCommerceJournal(client, companyId, user, {
       documentDate: input.documentDate,
       branchId: input.branchId,
       currencyId: settings.baseCurrencyId,
-      description: `فرق تكلفة مردود مشتريات ${number}`,
+      description: `${returning ? "فرق تكلفة مردود مشتريات" : "تسوية تكلفة المخزون السالب"} ${number}`,
       idempotencyKey: randomUUID(),
-      lines:
+      lines: !returning ? (
+        variance > 0n ? [
+          {
+            accountId: settings.inventoryAccountId,
+            debit: moneyString(variance), credit: "0",
+            description: "تسوية تكلفة مخزون سالب",
+          },
+          {
+            accountId: settings.cogsAccountId,
+            debit: "0", credit: moneyString(variance),
+            description: "تسوية تكلفة مخزون سالب",
+          },
+        ] : [
+          {
+            accountId: settings.cogsAccountId,
+            debit: moneyString(-variance), credit: "0",
+            description: "تسوية تكلفة مخزون سالب",
+          },
+          {
+            accountId: settings.inventoryAccountId,
+            debit: "0", credit: moneyString(-variance),
+            description: "تسوية تكلفة مخزون سالب",
+          },
+        ]
+      ) :
         variance > 0n
           ? [
               {
