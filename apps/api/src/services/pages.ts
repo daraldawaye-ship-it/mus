@@ -27,7 +27,7 @@ export async function directoryEntries(
     ? await permissionRuleEffects(db,companyId!,context.employee.id)
     : new Map<string,"allow"|"deny">();
   const baseContext = context && !context.general
-    ? {...context,permissions:[...context.employee?.permissions??[]]}
+    ? {...context,permissions:[...(context.employee?.permissions ?? [])]}
     : context;
   if(baseContext && !baseContext.general){
     for(const module of ["accounts","currencies","locations","items","commerce","inventory"] as const){
