@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, CircleUserRound, LogOut, Palette } from "lucide-react";
+import { ChevronDown, CircleUserRound, Link2, LogOut, Palette } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
 
@@ -117,6 +117,12 @@ export function UserMenu({
               <Palette size={17} aria-hidden="true" />
               المظهر
             </button>
+            {(user.owner || user.kind === "admin") && (
+              <a className="user-menu-item" role="menuitem" href="/oauth/connections">
+                <Link2 size={17} aria-hidden="true" />
+                اتصالات ChatGPT
+              </a>
+            )}
             <button
               className="user-menu-item user-menu-logout"
               type="button"
