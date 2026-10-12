@@ -188,7 +188,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
        const fields=keys.map(key=>editableColumns[key]);
        const placeholders=keys.map((_,i)=>"$"+(i+1));
        const inserted=await db.query(
-         `INSERT INTO general_table(${fields.join(",")},created_by) VALUES(${placeholders.join(",")},${keys.length+1}) RETURNING ${selectFields}`,
+         `INSERT INTO general_table(${fields.join(",")},created_by) VALUES(${placeholders.join(",")},$${keys.length+1}) RETURNING ${selectFields}`,
          [...values,active.id]);
        const next=inserted.rows[0];
        await audit(db,userDTO(active),"generalTable.create","generalTable",next.id,null,next);
@@ -215,7 +215,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
        const assignments=keys.map((key,i)=>`${editableColumns[key]}=${i+1}`).join(",");
        const vals=keys.map(key=>changes[key]);
        const changed=await db.query(
-         `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=${keys.length+1} RETURNING ${selectFields}`,
+         `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=$${keys.length+1} RETURNING ${selectFields}`,
          [...vals,id]);
        const next=changed.rows[0];
        await audit(db,userDTO(active),"generalTable.update","generalTable",id,before,next);
