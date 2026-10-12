@@ -522,11 +522,11 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
-        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
-        await readyItem.waitFor();
-        assert.equal(await readyItem.inputValue(), "");
+        const readyItem1 = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem1.waitFor();
+        assert.equal(await readyItem1.inputValue(), "");
         assert.equal(
-          await readyItem.evaluate((node) => node === document.activeElement),
+          await readyItem1.evaluate((node) => node === document.activeElement),
           true,
           "After saving, focus should return to an empty item search",
         );
@@ -619,11 +619,11 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
-        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
-        await readyItem.waitFor();
-        assert.equal(await readyItem.inputValue(), "");
+        const readyItem2 = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem2.waitFor();
+        assert.equal(await readyItem2.inputValue(), "");
         assert.equal(
-          await readyItem.evaluate((node) => node === document.activeElement),
+          await readyItem2.evaluate((node) => node === document.activeElement),
           true,
           "After saving, focus should return to an empty item search",
         );
@@ -659,11 +659,11 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
-        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
-        await readyItem.waitFor();
-        assert.equal(await readyItem.inputValue(), "");
+        const readyItem3 = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem3.waitFor();
+        assert.equal(await readyItem3.inputValue(), "");
         assert.equal(
-          await readyItem.evaluate((node) => node === document.activeElement),
+          await readyItem3.evaluate((node) => node === document.activeElement),
           true,
           "After saving, focus should return to an empty item search",
         );
@@ -811,11 +811,11 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
-        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
-        await readyItem.waitFor();
-        assert.equal(await readyItem.inputValue(), "");
+        const readyItem4 = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem4.waitFor();
+        assert.equal(await readyItem4.inputValue(), "");
         assert.equal(
-          await readyItem.evaluate((node) => node === document.activeElement),
+          await readyItem4.evaluate((node) => node === document.activeElement),
           true,
           "After saving, focus should return to an empty item search",
         );
@@ -866,11 +866,11 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
-        const readyItem = page.locator('[id^="invoice-item-search-"]').first();
-        await readyItem.waitFor();
-        assert.equal(await readyItem.inputValue(), "");
+        const readyItem5 = page.locator('[id^="invoice-item-search-"]').first();
+        await readyItem5.waitFor();
+        assert.equal(await readyItem5.inputValue(), "");
         assert.equal(
-          await readyItem.evaluate((node) => node === document.activeElement),
+          await readyItem5.evaluate((node) => node === document.activeElement),
           true,
           "After saving, focus should return to an empty item search",
         );
