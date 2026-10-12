@@ -90,21 +90,24 @@ async function insertAccount(
   }
   let code = input.code;
   if (!code) {
-    if (!parent?.rangeStart || !parent.rangeEnd)
-      throw new HttpError(
-        400,
-        "invalid_account",
-        "الأب لا يملك مجالًا للترقيم التلقائي",
-      );
+    const prefix = {
+      asset: "1",
+      liability: "2",
+      equity: "3",
+      income: "4",
+      expense: "5",
+    }[input.category];
+    const start = parent?.rangeStart ?? `${prefix}000000001`;
+    const end = parent?.rangeEnd ?? `${prefix}999999999`;
     const maximum = await client.query(
       "SELECT max(code) AS code FROM accounts WHERE company_id=$1 AND code BETWEEN $2 AND $3",
-      [companyId, parent.rangeStart, parent.rangeEnd],
+      [companyId, start, end],
     );
     const next =
       maximum.rows[0].code === null
-        ? BigInt(parent.rangeStart)
+        ? BigInt(start)
         : BigInt(maximum.rows[0].code) + 1n;
-    if (next > BigInt(parent.rangeEnd)) conflict("نفد مجال ترقيم الحسابات");
+    if (next > BigInt(end)) conflict("نفد مجال ترقيم الحسابات");
     code = next.toString().padStart(10, "0");
   }
   const result = await client.query(
@@ -278,6 +281,54 @@ const seeds: Seed[] = [
   },
 ];
 
+export async function initializeCompanyAccounts(
+  client: PoolClient,
+  user: User,
+  companyId: number,
+): Promise<number> {
+  const existing = await client.query(
+    "SELECT 1 FROM accounts WHERE company_id=$1 LIMIT 1",
+    [companyId],
+  );
+  if (existing.rowCount) conflict("تهيئة الدليل متاحة فقط عندما يكون فارغًا");
+  const previousLinks = await links(client, companyId);
+  const created: Account[] = [];
+  for (const seed of seeds) {
+    const parentId = seed.parentCode
+      ? created.find((account) => account.code === seed.parentCode)!.id
+      : null;
+    const next = await insertAccount(client, user, companyId, {
+      code: seed.code,
+      name: seed.name,
+      parentId,
+      kind: seed.purpose ? "posting" : "group",
+      category: seed.category,
+      normalSide: seed.normalSide,
+      active: true,
+      cashOrBank: false,
+      rangeStart: seed.rangeStart ?? null,
+      rangeEnd: seed.rangeEnd ?? null,
+    });
+    created.push(next);
+    if (seed.purpose)
+      await client.query(
+        "INSERT INTO account_links(company_id,purpose,account_id) VALUES($1,$2,$3) ON CONFLICT(company_id,purpose) DO UPDATE SET account_id=excluded.account_id",
+        [companyId, seed.purpose, next.id],
+      );
+  }
+  await audit(
+    client,
+    user,
+    "accounts.initialize",
+    "account",
+    null,
+    { accounts: [], links: previousLinks },
+    { accounts: created, links: await links(client, companyId) },
+    companyId,
+  );
+  return created.length;
+}
+
 export function accountRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
@@ -343,48 +394,7 @@ export function accountRoutes(pool: Pool): Router {
         req,
         "accounts.manage",
         async (client, user, companyId) => {
-          const existing = await client.query(
-            "SELECT 1 FROM accounts WHERE company_id=$1 LIMIT 1",
-            [companyId],
-          );
-          if (existing.rowCount)
-            conflict("تهيئة الدليل متاحة فقط عندما يكون فارغًا");
-          const previousLinks = await links(client, companyId);
-          const created: Account[] = [];
-          for (const seed of seeds) {
-            const parentId = seed.parentCode
-              ? created.find((account) => account.code === seed.parentCode)!.id
-              : null;
-            const next = await insertAccount(client, user, companyId, {
-              code: seed.code,
-              name: seed.name,
-              parentId,
-              kind: seed.purpose ? "posting" : "group",
-              category: seed.category,
-              normalSide: seed.normalSide,
-              active: true,
-              cashOrBank: false,
-              rangeStart: seed.rangeStart ?? null,
-              rangeEnd: seed.rangeEnd ?? null,
-            });
-            created.push(next);
-            if (seed.purpose)
-              await client.query(
-                "INSERT INTO account_links(company_id,purpose,account_id) VALUES($1,$2,$3) ON CONFLICT(company_id,purpose) DO UPDATE SET account_id=excluded.account_id",
-                [companyId, seed.purpose, next.id],
-              );
-          }
-          await audit(
-            client,
-            user,
-            "accounts.initialize",
-            "account",
-            null,
-            { accounts: [], links: previousLinks },
-            { accounts: created, links: await links(client, companyId) },
-            companyId,
-          );
-          return created.length;
+          return initializeCompanyAccounts(client, user, companyId);
         },
       );
       res.status(201).json({ created });

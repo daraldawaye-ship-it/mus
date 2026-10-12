@@ -241,17 +241,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
               >
                 إضافة حساب
               </Button>
-              <Button
-                variant="secondary"
-                disabled={
-                  loadingDetail ||
-                  presence.isFetching ||
-                  presence.data?.total !== 0
-                }
-                onClick={() => setInitializing(true)}
-              >
-                تهيئة دليل مقترح
-              </Button>
             </>
           )
         }
@@ -428,12 +417,10 @@ function AccountEditor({
   const [name, setName] = useState(account?.name ?? "");
   const [active, setActive] = useState(account?.active ?? true);
   const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
-  const [code, setCode] = useState("");
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
   const [category, setCategory] = useState<AccountCategory>("asset");
   const [normalSide, setNormalSide] = useState<NormalSide>("debit");
-  const [numbering, setNumbering] = useState("manual");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [saving, setSaving] = useState(false);
@@ -444,10 +431,6 @@ function AccountEditor({
     setError("");
     let body: unknown = { name, active, cashOrBank };
     if (!account) {
-      if (numbering === "auto" && (!parent?.rangeStart || !parent.rangeEnd)) {
-        setError("اختر مجموعة أم ذات مجال ترقيم لاستخدام الترقيم التلقائي.");
-        return;
-      }
       const parsed = accountSchema.safeParse({
         name,
         active,
@@ -456,7 +439,6 @@ function AccountEditor({
         normalSide,
         cashOrBank: kind === "posting" && category === "asset" && cashOrBank,
         parentId: parent?.id ?? null,
-        ...(numbering === "manual" ? { code } : {}),
         rangeStart: kind === "group" && rangeStart ? rangeStart : null,
         rangeEnd: kind === "group" && rangeEnd ? rangeEnd : null,
       });
@@ -539,7 +521,6 @@ function AccountEditor({
                 const next = event.target.value as AccountKind;
                 setKind(next);
                 if (next === "group") {
-                  setNumbering("manual");
                   setCashOrBank(false);
                 }
               }}
@@ -604,44 +585,12 @@ function AccountEditor({
                 ))}
               </Select>
             </div>
-            {kind === "posting" && (
-              <Select
-                label="طريقة الترقيم"
-                value={numbering}
-                disabled={saving}
-                onChange={(event) => setNumbering(event.target.value)}
-              >
-                <option value="manual">كود يدوي</option>
-                <option value="auto">تلقائي من مجال المجموعة الأم</option>
-              </Select>
-            )}
-            {numbering === "manual" ? (
-              <Field
-                label="كود الحساب"
-                dir="ltr"
-                inputMode="numeric"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                required
-                maxLength={10}
-                disabled={saving}
-                hint="عشرة أرقام، مع الاحتفاظ بالأصفار في البداية."
-              />
-            ) : (
-              <Notice>
-                {parent?.rangeStart ? (
-                  <>
-                    سيختار النظام الكود التالي ضمن المجال{" "}
-                    <bdi>
-                      {parent.rangeStart} – {parent.rangeEnd}
-                    </bdi>
-                    .
-                  </>
-                ) : (
-                  "اختر مجموعة أم لها مجال ترقيم."
-                )}
-              </Notice>
-            )}
+            <Field
+              label="كود الحساب"
+              value="تلقائي عند الحفظ"
+              readOnly
+              hint="يُولّد النظام كودًا فريدًا من عشرة أرقام."
+            />
             {kind === "group" && (
               <fieldset disabled={saving}>
                 <legend>مجال ترقيم الأبناء — اختياري</legend>

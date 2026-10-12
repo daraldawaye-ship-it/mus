@@ -1,3 +1,5 @@
+import { initializeCompanyAccounts } from "./routes-accounts.ts";
+import { initializeCompanyCurrencies } from "./routes-currencies.ts";
 import { Router } from "express";
 import type { Pool } from "pg";
 import {
@@ -111,6 +113,8 @@ export function companyRoutes(pool: Pool): Router {
           [input.name, input.phone, input.address, user.id],
         );
         const next = companyDTO(result.rows[0]);
+        await initializeCompanyAccounts(client, user, next.id);
+        await initializeCompanyCurrencies(client, user, next.id);
         await audit(
           client,
           user,

@@ -324,19 +324,6 @@ function CurrenciesContent({ context }: { context: CompanyContext }) {
               >
                 إضافة عملة
               </Button>
-              <Button
-                variant="secondary"
-                disabled={
-                  opening !== null ||
-                  settings.isFetching ||
-                  !!settings.error ||
-                  !settings.data ||
-                  !!settings.data.settings
-                }
-                onClick={() => setInitializing(true)}
-              >
-                تهيئة العملات
-              </Button>
             </>
           )
         }

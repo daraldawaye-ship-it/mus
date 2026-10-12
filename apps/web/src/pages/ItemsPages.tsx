@@ -455,6 +455,7 @@ function ItemEditor({
   onSaved: (item: Item, message: string) => void;
 }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const navigate = useNavigate();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
@@ -470,6 +471,26 @@ function ItemEditor({
         }
       : null,
   );
+  const defaultApplied = useRef(false);
+  const defaultCurrency = useQuery({
+    queryKey: ["company", user?.id, companyId, "item-default-currency", "YER"],
+    queryFn: ({ signal }) =>
+      api<{ items: SelectedCurrency[] }>(
+        `/companies/${companyId}/item-options?type=currencies&q=YER&pageSize=20`,
+        { signal },
+      ),
+    enabled: !!user && !item,
+  });
+  useEffect(() => {
+    if (item || defaultApplied.current) return;
+    const yemeni = defaultCurrency.data?.items.find(
+      (value) => value.code === "YER" && value.active,
+    );
+    if (yemeni) {
+      defaultApplied.current = true;
+      setCurrency((selected) => selected ?? yemeni);
+    }
+  }, [item, defaultCurrency.data]);
   const [agent, setAgent] = useState<SelectedAgent | null>(
     item?.agentId
       ? {

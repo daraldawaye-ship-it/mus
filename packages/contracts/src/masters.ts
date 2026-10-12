@@ -225,12 +225,6 @@ export const accountSchema = z
         message: "الحساب الحركي لا يملك مجال ترقيم",
         path: ["rangeStart"],
       });
-    if (!value.code && (value.kind !== "posting" || value.parentId === null))
-      context.addIssue({
-        code: "custom",
-        message: "الترقيم التلقائي يتطلب حسابًا حركيًا وأبًا ذا مجال",
-        path: ["code"],
-      });
   });
 export const accountPatchSchema = z
   .object({

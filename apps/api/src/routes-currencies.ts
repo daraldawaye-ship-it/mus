@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   currenciesInitializeSchema,
   currencyPatchSchema,
@@ -8,6 +8,7 @@ import {
   exchangeRatePatchSchema,
   exchangeRateSchema,
   financeSettingsSchema,
+  type User,
   type CompanyCurrency,
   type FinanceSettings,
 } from "../../../packages/contracts/src/index.ts";
@@ -84,6 +85,63 @@ async function currencyReference(
   return currencyDTO(result.rows[0]);
 }
 
+export async function initializeCompanyCurrencies(
+  client: PoolClient,
+  user: User,
+  companyId: number,
+  baseCurrencyCode: "YER" | "SAR" | "USD" = "YER",
+) {
+  if (await settings(client, companyId))
+    conflict(
+      "تم اختيار العملة الأساسية بالفعل؛ أضف العملات أو عدّل الإعدادات مباشرة",
+    );
+  const existing = await client.query(
+    `${currencySelect} WHERE c.company_id=$1 ORDER BY c.id`,
+    [companyId],
+  );
+  const before = {
+    currencies: existing.rows.map(currencyDTO),
+    settings: null,
+  };
+  // Initialization completes the suggested catalog while preserving each existing identity and precision.
+  for (const [code, name] of [
+    ["YER", "ريال يمني"],
+    ["SAR", "ريال سعودي"],
+    ["USD", "دولار أمريكي"],
+  ] as const) {
+    await client.query(
+      "INSERT INTO company_currencies(company_id,code,name,decimal_places,created_by) VALUES($1,$2,$3,2,$4) ON CONFLICT(company_id,code) DO NOTHING",
+      [companyId, code, name, user.id],
+    );
+  }
+  const result = await client.query(
+    `${currencySelect} WHERE c.company_id=$1 ORDER BY c.id`,
+    [companyId],
+  );
+  const currencies = result.rows.map(currencyDTO);
+  const baseCurrency = currencies.find(
+    (currency) => currency.code === baseCurrencyCode,
+  )!;
+  if (!baseCurrency.active)
+    conflict("فعّل العملة الأساسية المختارة قبل التهيئة");
+  await client.query(
+    "INSERT INTO finance_settings(company_id,base_currency_id) VALUES($1,$2)",
+    [companyId, baseCurrency.id],
+  );
+  const next = await requireSettings(client, companyId);
+  await audit(
+    client,
+    user,
+    "currencies.initialize",
+    "financeSettings",
+    companyId,
+    before,
+    { currencies, settings: next },
+    companyId,
+  );
+  return next;
+}
+
 export function currencyRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
@@ -154,55 +212,12 @@ export function currencyRoutes(pool: Pool): Router {
         req,
         "currencies.manage",
         async (client, user, companyId) => {
-          if (await settings(client, companyId))
-            conflict(
-              "تم اختيار العملة الأساسية بالفعل؛ أضف العملات أو عدّل الإعدادات مباشرة",
-            );
-          const existing = await client.query(
-            `${currencySelect} WHERE c.company_id=$1 ORDER BY c.id`,
-            [companyId],
-          );
-          const before = {
-            currencies: existing.rows.map(currencyDTO),
-            settings: null,
-          };
-          // Initialization completes the suggested catalog while preserving each existing identity and precision.
-          for (const [code, name] of [
-            ["YER", "ريال يمني"],
-            ["SAR", "ريال سعودي"],
-            ["USD", "دولار أمريكي"],
-          ] as const) {
-            await client.query(
-              "INSERT INTO company_currencies(company_id,code,name,decimal_places,created_by) VALUES($1,$2,$3,2,$4) ON CONFLICT(company_id,code) DO NOTHING",
-              [companyId, code, name, user.id],
-            );
-          }
-          const result = await client.query(
-            `${currencySelect} WHERE c.company_id=$1 ORDER BY c.id`,
-            [companyId],
-          );
-          const currencies = result.rows.map(currencyDTO);
-          const baseCurrency = currencies.find(
-            (currency) => currency.code === input.baseCurrency,
-          )!;
-          if (!baseCurrency.active)
-            conflict("فعّل العملة الأساسية المختارة قبل التهيئة");
-          await client.query(
-            "INSERT INTO finance_settings(company_id,base_currency_id) VALUES($1,$2)",
-            [companyId, baseCurrency.id],
-          );
-          const next = await requireSettings(client, companyId);
-          await audit(
+          return initializeCompanyCurrencies(
             client,
             user,
-            "currencies.initialize",
-            "financeSettings",
             companyId,
-            before,
-            { currencies, settings: next },
-            companyId,
+            input.baseCurrency,
           );
-          return next;
         },
       );
       res.status(201).json({ settings: value });
