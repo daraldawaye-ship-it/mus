@@ -1300,6 +1300,80 @@ test("bulk duplicate of selected general-table rows is atomic, audited and restr
   }
 });
 
+test("company configuration safely manages options, roles, and scoped grants or denies",async(t)=>{
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const co=await company(platform.client,"Configuration company");
+  const prefix=`/companies/${co.id}/configuration`;
+  const initial=await platform.client.ok<{options:{id:number;key:string}[];roles:{id:number;key:string}[];definitions:{key:string}[]}>(
+    "GET",prefix+"/directory");
+  assert(initial.options.some(o=>o.key==="items.archived"));
+  assert(initial.roles.some(r=>r.key==="accountant"));
+  assert(initial.definitions.some(r=>r.key==="company.items:view"));
+  const definition={
+    key:"item.warranty_months",pageKey:"company.item-card",recordKind:"item",
+    name:"مدة الضمان",description:"شهور",valueType:"integer",defaultValue:"12",
+    choices:[],required:true,searchable:true,showOnCard:true,
+    showInList:false,sortOrder:90,active:true,
+  };
+  const created=await platform.client.ok<{option:{id:number;revision:number;valueType:string}}>(
+    "POST",prefix+"/options",definition,201);
+  assert.equal(created.option.revision,1);
+  assert.equal((await platform.client.request("PATCH",
+    prefix+"/options/"+created.option.id,{revision:1,name:"ضمان بالأشهر"})).status,200);
+  assert.equal((await platform.client.request("PATCH",
+    prefix+"/options/"+created.option.id,{revision:1,name:"نسخة قديمة"})).status,409);
+  const role=await platform.client.ok<{role:{id:number;revision:number;key:string}}>(
+    "POST",prefix+"/roles",{key:"stock_readers",name:"قارئ الأصناف"},201);
+  assert.equal(role.role.key,"stock_readers");
+  const ordinary=await register(f,"configuration-member@example.test");
+  const member=await employee(platform.client,co.id,ordinary.user.id,[]);
+  assert.equal((await ordinary.client.request("GET",prefix+"/directory")).status,403);
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/items`)).status,403);
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/accounts`)).status,403);
+  await platform.client.ok("PUT",prefix+"/assignments",{
+    employeeId:member.id,roleId:role.role.id,active:true,revision:null,
+  });
+  await platform.client.ok("PUT",prefix+"/roles/"+role.role.id+"/rules",{
+    permissionKey:"company.items:view",effect:"allow",revision:null,
+  });
+  // The role grants exactly the item list read, not accounting, writes or posting.
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/items`)).status,200);
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/accounts`)).status,403);
+  assert.equal((await ordinary.client.request("POST",`/companies/${co.id}/items`,{})).status,403);
+  await platform.client.ok("PUT",prefix+"/employee-rules",{
+    employeeId:member.id,permissionKey:"company.items:view",effect:"deny",revision:null,
+  });
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/items`)).status,403);
+  const directory=await platform.client.ok<{employeeRules:{id:number;revision:number;employeeId:number;permissionKey:string}[]}>(
+    "GET",prefix+"/directory");
+  const override=directory.employeeRules.find(x=>x.employeeId===member.id&&x.permissionKey==="company.items:view")!;
+  await platform.client.ok("PUT",prefix+"/employee-rules",{
+    employeeId:member.id,permissionKey:"company.items:view",effect:null,revision:override.revision,
+  });
+  assert.equal((await ordinary.client.request("GET",`/companies/${co.id}/items`)).status,200);
+  const existingAccounts=await platform.client.ok<Page<{id:number}>>("GET",`/companies/${co.id}/accounts`);
+  assert(existingAccounts.items.length>0);
+  const accountId=existingAccounts.items[0]!.id;
+  const option=await platform.client.ok<{option:{id:number;revision:number}}>("POST",prefix+"/options",{
+    ...definition,key:"account.note",pageKey:"company.accounts",recordKind:"account",
+    valueType:"text",name:"ملاحظة خاصة",defaultValue:"افتتاحي",required:false,
+  },201);
+  const url=prefix+`/record-options?recordKind=account&recordId=${accountId}`;
+  const before=await platform.client.ok<{definitions:{key:string;id:number}[];values:{definitionId:number;value:unknown;revision:number}[]}>("GET",url);
+  assert(before.definitions.some(x=>x.key==="account.note"));
+  const saved=await platform.client.ok<{value:{revision:number;value:string}}>("PUT",url,{
+    definitionId:option.option.id,value:"تجربة",revision:null,
+  });
+  assert.equal(saved.value.value,"تجربة");
+  assert.equal((await platform.client.request("PUT",url,{
+    definitionId:option.option.id,value:"نسخة متأخرة",revision:null,
+  })).status,409);
+  assert.equal((await ordinary.client.request("PUT",url,{
+    definitionId:option.option.id,value:"غير مصرح",revision:saved.value.revision,
+  })).status,403);
+});
+
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
