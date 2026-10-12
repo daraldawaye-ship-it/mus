@@ -167,6 +167,23 @@ async function geometry(page: Page, width: number) {
     assert.equal(header.overflow, "auto");
     if (width < 600) assert(header.scrolls);
   }
+  // Both purchase and sale editors start with the account followed by the
+  // invoice list link inside the scrollable header (not an outer page header).
+  if (header) {
+    const order = await page.locator(".commerce-header-grid").evaluate((element) => {
+      const first = element.children.item(0);
+      const second = element.children.item(1);
+      return {
+        firstLabel: first?.textContent?.trim() ?? "",
+        secondLabel: second?.textContent?.trim() ?? "",
+        linkInside: !!element.querySelector(".commerce-list-link"),
+      };
+    });
+    assert.match(order.firstLabel, /حساب العميل|حساب المورد/);
+    assert.match(order.secondLabel, /قائمة الفواتير/);
+    assert.equal(order.linkInside, true);
+    assert.equal(await page.locator(".commerce-document-page > .page-header").count(), 0);
+  }
   const footer = page.locator(".commerce-save-footer");
   if (await footer.count()) {
     const bounds = await footer.evaluate((element) => {
@@ -180,8 +197,15 @@ async function geometry(page: Page, width: number) {
         width: innerWidth,
       };
     });
-    assert.equal(bounds.position, "fixed");
-    assert(Math.abs(bounds.bottom - bounds.viewport) <= 1);
+    assert.equal(bounds.position, "static");
+    assert(bounds.bottom > 0);
+    // Unlike the former fixed footer, this section must follow the matrix.
+    const followsRows = await footer.evaluate((element) => {
+      const matrix = document.querySelector(".commerce-matrix-card");
+      if (!matrix) return false;
+      return !!(matrix.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    assert.equal(followsRows, true);
     assert(bounds.left >= 0 && bounds.right <= bounds.width + 1);
   }
 }
@@ -792,7 +816,7 @@ try {
       },
     );
     await scenario(
-      "inline invoice matrix retains one row per item, live totals, focus, replacement and fixed footer",
+      "inline invoice matrix retains one row per item, live totals, focus, replacement and flowing footer",
       async () => {
         await saleDraft("2");
         const rows = page.locator(".commerce-matrix tbody tr");

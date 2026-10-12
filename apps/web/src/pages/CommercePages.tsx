@@ -834,38 +834,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
-  const pageRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLElement>(null);
-  const [footerBounds, setFooterBounds] = useState({
-    left: 0,
-    width: 0,
-    height: 0,
-  });
-  useLayoutEffect(() => {
-    const page = pageRef.current;
-    const footer = footerRef.current;
-    if (!page || !footer) return;
-    const measure = () => {
-      const rect = page.getBoundingClientRect();
-      const height = footer.getBoundingClientRect().height;
-      setFooterBounds((previous) =>
-        previous.left === rect.left &&
-        previous.width === rect.width &&
-        previous.height === height
-          ? previous
-          : { left: rect.left, width: rect.width, height },
-      );
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(page);
-    observer.observe(footer);
-    window.addEventListener("resize", measure);
-    measure();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
@@ -1175,29 +1143,31 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     return () => window.removeEventListener("keydown", handler);
   });
   return (
-    <div
-      className="commerce-document-page"
-      ref={pageRef}
-      style={{ paddingBottom: footerBounds.height + 12 }}
-    >
-      {kind === "purchase" && (
-        <PageHeader
-          title={`${isReturn ? "مردود " : "إضافة "}${title(kind)}`}
-          description="اختر الصنف ثم الكمية والسعر، وتاريخ الانتهاء للأصناف التي تتطلبه."
-          actions={
-            <Link
-              className="button button-secondary"
-              to={listPath(companyId, kind)}
-            >
-              قائمة الفواتير
-            </Link>
-          }
-        />
-      )}
+    <div className="commerce-document-page">
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
+              <ServerLookup<Account>
+                companyId={companyId}
+                resource={`/companies/${companyId}/commerce-options?type=accounts`}
+                label={
+                  kind === "sale"
+                    ? "حساب العميل / النقد"
+                    : "حساب المورد / النقد"
+                }
+                value={account}
+                onChange={setAccount}
+                display={itemLabel}
+                disabled={locked || isReturn}
+                required
+              />
+              <Link
+                className="button button-secondary commerce-list-link"
+                to={listPath(companyId, kind)}
+              >
+                قائمة الفواتير
+              </Link>
               <Field
                 label="تاريخ الفاتورة"
                 type="date"
@@ -1247,20 +1217,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setCurrency(value);
                 }}
                 display={(value) => `${value.code} — ${value.name}`}
-                disabled={locked || isReturn}
-                required
-              />
-              <ServerLookup<Account>
-                companyId={companyId}
-                resource={`/companies/${companyId}/commerce-options?type=accounts`}
-                label={
-                  kind === "sale"
-                    ? "حساب العميل / النقد"
-                    : "حساب المورد / النقد"
-                }
-                value={account}
-                onChange={setAccount}
-                display={itemLabel}
                 disabled={locked || isReturn}
                 required
               />
@@ -1716,13 +1672,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         <footer
-          ref={footerRef}
           className="card commerce-save-footer"
           aria-label="إجمالي الفاتورة والحفظ"
-          style={{
-            left: footerBounds.left,
-            width: footerBounds.width || undefined,
-          }}
         >
           {error && <Notice tone="error">{error}</Notice>}
           {!isReturn && selectedLines.length > 0 && totals?.total === "0" && (
