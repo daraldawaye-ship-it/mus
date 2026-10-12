@@ -1435,9 +1435,9 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   });
   assert.equal(unauthorized.status,200);
   assert.match(unauthorized.headers.get("www-authenticate")??"",/oauth-protected-resource/);
-  const challenge=await unauthorized.json() as {result:{isError:boolean;_meta:Record<string,string[]>}};
-  assert.equal(challenge.result.isError,true);
-  assert.match(challenge.result._meta["mcp/www_authenticate"]?.[0]??"",/invalid_token/);
+  const oauthChallenge=await unauthorized.json() as {result:{isError:boolean;_meta:Record<string,string[]>}};
+  assert.equal(oauthChallenge.result.isError,true);
+  assert.match(oauthChallenge.result._meta["mcp/www_authenticate"]?.[0]??"",/invalid_token/);
   const anonymousList=await fetch(base("/mcp"),{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({jsonrpc:"2.0",id:2,method:"tools/list"}),
