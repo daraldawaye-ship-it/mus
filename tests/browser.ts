@@ -717,7 +717,7 @@ try {
       const regular = await pageFor(users[3]!.email);
       await regular.page.goto("/general-table");
       await regular.page
-        .getByText("إدارة الجدول العام لمالك المنصة وإدارة الموقع فقط.")
+        .getByText("لا تملك الصلاحية المطلوبة لفتح هذه الصفحة.")
         .waitFor();
       assert.equal(
         await regular.page.getByRole("button", { name: "إضافة سجل" }).count(),
@@ -2452,7 +2452,7 @@ try {
       const restricted = await pageFor(users[2]!.email);
       await restricted.page.goto(`/companies/${companyA.id}/accounts`);
       await restricted.page
-        .getByText("ليس لديك صلاحية عرض دليل الحسابات.", { exact: true })
+        .getByText("لا تملك الصلاحية المطلوبة لفتح هذه الصفحة.", { exact: true })
         .waitFor();
       assert.equal(
         await restricted.page

@@ -797,6 +797,7 @@ test("multiple general managers have full company access while appointments and 
       "items.view",
       "locations.manage",
       "locations.view",
+      "pages.manage",
     ]);
     await manager.client.ok("GET", `/companies/${c.id}/employees`);
     await manager.client.ok("GET", `/companies/${c.id}/audit`);

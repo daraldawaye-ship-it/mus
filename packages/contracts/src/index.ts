@@ -15,6 +15,7 @@ export const employeeRoles = [
   "purchases",
 ] as const;
 export const permissionKeys = [
+  "pages.manage",
   "company.edit",
   "employees.view",
   "audit.view",
@@ -51,6 +52,7 @@ export const employeeRoleLabels: Record<EmployeeRole, string> = {
   purchases: "مشتريات",
 };
 export const permissionLabels: Record<Permission, string> = {
+  "pages.manage": "إدارة إظهار وتفعيل صفحات الشركة",
   "company.edit": "تعديل بيانات الشركة",
   "employees.view": "عرض الموظفين",
   "audit.view": "عرض سجل الشركة",
@@ -141,6 +143,7 @@ export const auditActionLabels = {
   "inventory.settings": "حفظ إعدادات المخزون",
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
+  "page.settings": "تعديل إعدادات صفحة",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -157,8 +160,10 @@ export const publicAuditActions: AuditAction[] = [
   "company.lastFallback",
   "generalTable.create",
   "generalTable.update",
+  "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "page.settings",
   "invoice.post",
   "inventory.settings",
   "stock.transfer",
@@ -217,6 +222,7 @@ export const auditTargetLabels: Record<string, string> = {
   invoice: "فاتورة",
   inventorySettings: "إعدادات المخزون",
   stockOperation: "عملية مخزون",
+  page: "صفحة",
 };
 export const catalog = {
   ...masterCatalog,
@@ -437,3 +443,5 @@ export * from "./finance.ts";
 export * from "./items.ts";
 export * from "./commerce.ts";
 export * from "./inventory.ts";
+
+export * from "./pages.ts";

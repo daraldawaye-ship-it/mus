@@ -1012,7 +1012,7 @@ try {
         );
       await view.page.goto(`${base}/financial-documents/new?kind=receipt`);
       await view.page
-        .getByText("ليس لديك صلاحية إنشاء مستند مالي.", { exact: true })
+        .getByText("لا تملك الصلاحية المطلوبة لفتح هذه الصفحة.", { exact: true })
         .waitFor();
       assert.equal(
         await view.page.getByLabel("البيان العام", { exact: true }).count(),

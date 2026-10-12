@@ -18,6 +18,7 @@ import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
+import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 
 export async function createApp(options: AppOptions = {}) {
@@ -46,6 +47,8 @@ export async function createApp(options: AppOptions = {}) {
   app.use(setupRoutes(pool, config.appOrigin));
   app.use(
     "/api",
+    pageRoutes(pool),
+    pageAvailabilityGate(pool),
     authRoutes(pool, config.production),
     publicRoutes(pool),
     companyRoutes(pool),

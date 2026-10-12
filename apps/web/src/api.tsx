@@ -175,7 +175,11 @@ export function useScopeGuard(scope: string) {
       current.current === state.identity,
   };
 }
-export function usePagedQuery<T>(resource: string, scope: string) {
+export function usePagedQuery<T>(
+  resource: string,
+  scope: string,
+  defaultSort = "id:asc",
+) {
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
@@ -183,7 +187,7 @@ export function usePagedQuery<T>(resource: string, scope: string) {
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize"))
     : 20;
-  const sorting: SortingState = (params.get("sort") ?? "id:asc")
+  const sorting: SortingState = (params.get("sort") ?? defaultSort)
     .split(",")
     .filter(Boolean)
     .map((value) => {
@@ -201,7 +205,7 @@ export function usePagedQuery<T>(resource: string, scope: string) {
   const sort =
     sorting
       .map((item) => `${item.id}:${item.desc ? "desc" : "asc"}`)
-      .join(",") || "id:asc";
+      .join(",") || defaultSort;
   const result = useQuery({
     queryKey: ["list", user?.id, scope, resource, query, page, pageSize, sort],
     queryFn: ({ signal }) => {
@@ -221,7 +225,7 @@ export function usePagedQuery<T>(resource: string, scope: string) {
       sort:
         next
           .map((item) => `${item.id}:${item.desc ? "desc" : "asc"}`)
-          .join(",") || "id:asc",
+          .join(",") || defaultSort,
       page: null,
     });
   };

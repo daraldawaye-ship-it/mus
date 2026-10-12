@@ -23,6 +23,7 @@ import {
   Home,
   TableProperties,
   LayoutDashboard,
+  ListTree,
   LogIn,
   Menu,
   MapPin,
@@ -38,10 +39,20 @@ import type {
   CompanyPage,
 } from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
+import {
+  pageKeyForLocation,
+  pageDefinitions,
+  pageHref,
+  pageRuleAllows,
+} from "../../../packages/contracts/src/index";
+import {
+  PageRouteGuard,
+  PageReferenceRedirect,
+  usePageDirectory,
+} from "./page-directory";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
 import { Button, Card, Dialog, Notice } from "./ui";
-import { moduleAccess } from "./phase2";
 import {
   AuthPage,
   HomePage,
@@ -57,6 +68,11 @@ import {
   EmployeesPage,
 } from "./pages/CompanyPages";
 
+const PageDirectoryPage = lazy(() =>
+  import("./pages/PageDirectoryPage").then((module) => ({
+    default: module.PageDirectoryPage,
+  })),
+);
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -150,31 +166,8 @@ const InvoicePage = lazy(() =>
     default: module.InvoicePage,
   })),
 );
-const mayReadCommerce = (context: CompanyContext) =>
-  context.general ||
-  context.permissions.some(
-    (permission) =>
-      permission === "commerce.view" || permission === "commerce.manage",
-  );
-const mayReadInventory = (context: CompanyContext) =>
-  context.general ||
-  context.permissions.some((permission) =>
-    ["inventory.view", "inventory.manage", "inventory.post"].includes(
-      permission,
-    ),
-  );
-const mayReadItems = (context: CompanyContext) =>
-  context.general ||
-  context.permissions.some(
-    (permission) =>
-      permission === "items.view" || permission === "items.manage",
-  );
-const mayReadFinance = (context: CompanyContext) =>
-  context.general ||
-  context.permissions.some((permission) =>
-    ["finance.view", "finance.manage", "finance.post"].includes(permission),
-  );
 const companySections = [
+  "pages",
   "overview",
   "employees",
   "settings",
@@ -212,198 +205,91 @@ function Navigation({
   close?: () => void;
 }) {
   const { user } = useSession();
-  const link = (
-    to: string,
-    title: string,
-    icon: React.ReactNode,
-    end = false,
-  ) => (
-    <NavLink
-      to={to}
-      end={end}
-      onClick={close}
-      className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-    >
-      {icon}
-      <span>{title}</span>
-      <ChevronLeft size={13} className="nav-chevron" />
-    </NavLink>
-  );
+  const directory = usePageDirectory(context?.company.id);
+  const entries =
+    directory.data ??
+    pageDefinitions.map((definition) => ({
+      ...definition,
+      href: pageHref(definition, context?.company.id),
+      enabled: true,
+      actionAccess: {
+        view: pageRuleAllows(definition.actions.view, user, context),
+      },
+    }));
+  const icons: Record<string, React.ReactNode> = {
+    "public.home": <Home size={17} />,
+    "public.profile": <CircleUserRound size={17} />,
+    "public.companies": <Building2 size={17} />,
+    "public.users": <Users size={17} />,
+    "public.general-table": <TableProperties size={17} />,
+    "public.audit": <FileClock size={17} />,
+    "company.overview": <LayoutDashboard size={17} />,
+    "company.employees": <Users size={17} />,
+    "company.settings": <Settings2 size={17} />,
+    "company.accounts": <BookOpen size={17} />,
+    "company.items": <Package size={17} />,
+    "company.item-agents": <Users size={17} />,
+    "company.stock-balances": <Warehouse size={17} />,
+    "company.stock-movements": <FileText size={17} />,
+    "company.stock-operations": <Package size={17} />,
+    "company.inventory-settings": <Settings2 size={17} />,
+    "company.sales": <FileText size={17} />,
+    "company.purchases": <FileText size={17} />,
+    "company.financial-documents": <FileText size={17} />,
+    "company.journals": <BookOpen size={17} />,
+    "company.receipts": <HandCoins size={17} />,
+    "company.payments": <Wallet size={17} />,
+    "company.account-balances": <Landmark size={17} />,
+    "company.account-ledger": <FileText size={17} />,
+    "company.currencies": <Coins size={17} />,
+    "company.exchange-rates": <TrendingUp size={17} />,
+    "company.branches": <MapPin size={17} />,
+    "company.locations": <Warehouse size={17} />,
+    "company.audit": <FileClock size={17} />,
+  };
+  const links = (scope: "public" | "company") =>
+    [...entries]
+      .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
+      .filter(
+        (entry) =>
+          entry.scope === scope &&
+          entry.navigation &&
+          entry.href &&
+          entry.visible &&
+          entry.enabled &&
+          entry.actionAccess.view,
+      )
+      .map((entry) => (
+        <NavLink
+          key={entry.key}
+          to={entry.href!}
+          end={["public.home", "public.companies", "company.overview"].includes(
+            entry.key,
+          )}
+          onClick={close}
+          className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+        >
+          {icons[entry.key] ?? <ListTree size={17} />}
+          <span>{entry.name}</span>
+          <ChevronLeft size={13} className="nav-chevron" />
+        </NavLink>
+      ));
   return (
     <nav aria-label="التنقل الرئيسي">
       <div className="nav-label">الموقع العام</div>
-      {link("/", "الرئيسية", <Home size={17} />, true)}
-      {user && (
-        <>
-          {link("/profile", "حسابي", <CircleUserRound size={17} />)}
-          {link("/companies", "الشركات", <Building2 size={17} />, true)}
-          {(user.owner || user.kind === "admin") &&
-            link("/users", "المستخدمون", <Users size={17} />)}
-          {(user.owner || user.kind === "admin") &&
-            link(
-              "/general-table",
-              "الجدول العام",
-              <TableProperties size={17} />,
-            )}
-          {(user.owner || user.kind === "admin" || user.monitor) &&
-            link("/audit", "السجل العام", <FileClock size={17} />)}
-        </>
+      {links("public")}
+      {!user && (
+        <NavLink to="/login" onClick={close} className="nav-link">
+          <LogIn size={17} />
+          <span>تسجيل الدخول</span>
+        </NavLink>
       )}
-      {!user && link("/login", "تسجيل الدخول", <LogIn size={17} />)}
       {context && (
         <>
           <div className="nav-label company-nav-label">
             {context.company.name}
           </div>
-          {link(
-            `/companies/${context.company.id}`,
-            "نظرة عامة",
-            <LayoutDashboard size={17} />,
-            true,
-          )}
-          {(context.general ||
-            context.permissions.includes("employees.view")) &&
-            link(
-              `/companies/${context.company.id}/employees`,
-              "الموظفون",
-              <Users size={17} />,
-            )}
-          {(context.general || context.permissions.includes("company.edit")) &&
-            link(
-              `/companies/${context.company.id}/settings`,
-              "بيانات الشركة",
-              <Settings2 size={17} />,
-            )}
-          {moduleAccess(context, "accounts") &&
-            link(
-              `/companies/${context.company.id}/accounts`,
-              "دليل الحسابات",
-              <BookOpen size={17} />,
-            )}
-          {mayReadItems(context) && (
-            <>
-              {link(
-                `/companies/${context.company.id}/items`,
-                "الأصناف",
-                <Package size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/item-agents`,
-                "وكلاء الأصناف",
-                <Users size={17} />,
-              )}
-            </>
-          )}
-          {mayReadInventory(context) && (
-            <>
-              {link(
-                `/companies/${context.company.id}/stock-balances`,
-                "أرصدة المخزون",
-                <Warehouse size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/stock-movements`,
-                "حركات المخزون",
-                <FileText size={17} />,
-              )}
-              {(context.general ||
-                context.permissions.includes("inventory.post")) &&
-                link(
-                  `/companies/${context.company.id}/stock-operations`,
-                  "المناقلات والجرد",
-                  <Package size={17} />,
-                )}
-              {(context.general ||
-                context.permissions.includes("inventory.manage")) &&
-                link(
-                  `/companies/${context.company.id}/inventory-settings`,
-                  "إعداد المخزون",
-                  <Settings2 size={17} />,
-                )}
-            </>
-          )}
-          {mayReadCommerce(context) && (
-            <>
-              {link(
-                `/companies/${context.company.id}/purchases`,
-                "فواتير المشتريات",
-                <FileText size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/sales`,
-                "فواتير المبيعات",
-                <FileText size={17} />,
-              )}
-            </>
-          )}
-          {mayReadFinance(context) && (
-            <>
-              {link(
-                `/companies/${context.company.id}/financial-documents`,
-                "العمليات المالية",
-                <FileText size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/journals`,
-                "قيود اليومية",
-                <BookOpen size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/receipts`,
-                "سندات القبض",
-                <HandCoins size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/payments`,
-                "سندات الصرف",
-                <Wallet size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/account-balances`,
-                "أرصدة الحسابات",
-                <Landmark size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/account-ledger`,
-                "كشف حساب",
-                <FileText size={17} />,
-              )}
-            </>
-          )}
-          {moduleAccess(context, "currencies") && (
-            <>
-              {link(
-                `/companies/${context.company.id}/currencies`,
-                "العملات",
-                <Coins size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/exchange-rates`,
-                "أسعار الصرف",
-                <TrendingUp size={17} />,
-              )}
-            </>
-          )}
-          {moduleAccess(context, "locations") && (
-            <>
-              {link(
-                `/companies/${context.company.id}/branches`,
-                "الفروع",
-                <MapPin size={17} />,
-              )}
-              {link(
-                `/companies/${context.company.id}/locations`,
-                "المعارض والمخازن",
-                <Warehouse size={17} />,
-              )}
-            </>
-          )}
-          {(context.general || context.permissions.includes("audit.view")) &&
-            link(
-              `/companies/${context.company.id}/audit`,
-              "سجل الشركة",
-              <FileClock size={17} />,
-            )}
+          {links("company")}
         </>
       )}
     </nav>
@@ -420,6 +306,8 @@ function CompanyView({
   error: Error | null;
   section: CompanySection;
 }) {
+  const location = useLocation();
+  const { user } = useSession();
   if (loading && !context)
     return (
       <Card>
@@ -436,7 +324,31 @@ function CompanyView({
       </Card>
     );
   if (!context) return <Notice tone="error">تعذر العثور على الشركة.</Notice>;
+  const pageKey = pageKeyForLocation(location.pathname, location.search);
+  return (
+    <PageRouteGuard
+      key={`${user?.id}:${context.company.id}:${pageKey}`}
+      pageKey={pageKey}
+      companyId={context.company.id}
+    >
+      <CompanyContent context={context} section={section} />
+    </PageRouteGuard>
+  );
+}
+function CompanyContent({
+  context,
+  section,
+}: {
+  context: CompanyContext;
+  section: CompanySection;
+}) {
   switch (section) {
+    case "pages":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل قائمة الصفحات…</Notice>}>
+          <PageDirectoryPage key={context.company.id} context={context} />
+        </Suspense>
+      );
     case "employees":
       return <EmployeesPage key={context.company.id} context={context} />;
     case "settings":
@@ -768,6 +680,26 @@ function Workspace() {
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route
+                path="/pages"
+                element={
+                  <Protected>
+                    <Suspense
+                      fallback={<Notice>جارٍ تحميل قائمة الصفحات…</Notice>}
+                    >
+                      <PageDirectoryPage />
+                    </Suspense>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/go/:pageKey"
+                element={
+                  <Protected>
+                    <PageReferenceRedirect />
+                  </Protected>
+                }
+              />
+              <Route
                 path="/profile"
                 element={
                   <Protected>
@@ -779,7 +711,9 @@ function Workspace() {
                 path="/users"
                 element={
                   <Protected>
-                    <UsersPage />
+                    <PageRouteGuard pageKey="public.users">
+                      <UsersPage />
+                    </PageRouteGuard>
                   </Protected>
                 }
               />
@@ -790,7 +724,9 @@ function Workspace() {
                     <Suspense
                       fallback={<Notice>جارٍ تحميل الجدول العام…</Notice>}
                     >
-                      <GeneralTablePage />
+                      <PageRouteGuard pageKey="public.general-table">
+                        <GeneralTablePage />
+                      </PageRouteGuard>
                     </Suspense>
                   </Protected>
                 }
@@ -799,7 +735,9 @@ function Workspace() {
                 path="/audit"
                 element={
                   <Protected>
-                    <PublicAuditPage />
+                    <PageRouteGuard pageKey="public.audit">
+                      <PublicAuditPage />
+                    </PageRouteGuard>
                   </Protected>
                 }
               />

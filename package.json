@@ -18,7 +18,8 @@
     "start": "NODE_ENV=production tsx apps/api/src/index.ts",
     "test:browser:finance": "npm run build && tsx tests/browser-finance.ts",
     "test:browser:items": "npm run build && tsx tests/browser-items.ts",
-    "test:browser:commerce": "npm run build && tsx tests/browser-commerce.ts"
+    "test:browser:commerce": "npm run build && tsx tests/browser-commerce.ts",
+    "test:browser:pages": "npm run build && tsx tests/browser-pages.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",

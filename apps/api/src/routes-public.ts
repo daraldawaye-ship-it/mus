@@ -7,6 +7,7 @@ import {
   DEFAULT_APPEARANCE,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
+import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
@@ -80,6 +81,7 @@ export function publicRoutes(pool: Pool): Router {
       const user = await transaction(pool, async (client) => {
         const current = await currentActor(client, actor(req));
         publicAdmin(current);
+        await assertRequestPagesEnabled(client, req, true);
         const found = await client.query(
           "SELECT * FROM users WHERE id=$1 FOR UPDATE",
           [targetId],

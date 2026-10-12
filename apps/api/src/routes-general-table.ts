@@ -6,6 +6,7 @@ import {
   type GeneralTableRecord,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
+import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, publicAdmin } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
@@ -33,7 +34,8 @@ const columns: Record<keyof GeneralTableInput, string> = {
 };
 const fields = Object.keys(columns) as (keyof GeneralTableInput)[];
 const sqlFields = fields.map((field) => columns[field]);
-const valuesOf = (input: GeneralTableInput) => fields.map((field) => input[field]);
+const valuesOf = (input: GeneralTableInput) =>
+  fields.map((field) => input[field]);
 const dateOf = (value: Date | string | null): string | null =>
   value === null ? null : new Date(value).toISOString();
 
@@ -64,89 +66,128 @@ function recordDTO(row: QueryResultRow): GeneralTableRecord {
 }
 export function generalTableRoutes(pool: Pool): Router {
   const router = Router();
-  router.get("/general-table", handler(async (req, res) => {
-    publicAdmin(actor(req));
-    const query = listQuery(req.query, {
-      id: "general_table_id",
-      tableName: "general_table_table_name",
-      category: "general_table_category",
-      title: "general_table_title",
-      createdAt: "created_at",
-      updatedAt: "updated_at",
-    }, "id:desc");
-    const params: unknown[] = [searchPattern(query.q)];
-    let where = "(general_table_table_name ILIKE $1 OR general_table_category ILIKE $1 OR general_table_title ILIKE $1 OR general_table_description ILIKE $1)";
-    for (const [key, column] of [
-      ["tableName", "general_table_table_name"],
-      ["category", "general_table_category"],
-    ] as const) {
-      const value = req.query[key];
-      if (value === undefined || value === "") continue;
-      if (typeof value !== "string" || value.length > 120)
-        throw new HttpError(400, "invalid_query", "عامل التصفية غير صالح");
-      params.push(value.trim());
-      where += ` AND ${column}=$${params.length}`;
-    }
-    const total = await pool.query(
-      `SELECT count(*)::integer AS total FROM general_table WHERE ${where}`,
-      params,
-    );
-    const rows = await pool.query(
-      `SELECT * FROM general_table WHERE ${where} ORDER BY ${query.order} LIMIT $${params.length+1} OFFSET $${params.length+2}`,
-      [...params, query.pageSize, query.offset],
-    );
-    res.json({
-      items: rows.rows.map(recordDTO),
-      total: total.rows[0].total,
-      page: query.page,
-      pageSize: query.pageSize,
-    });
-  }));
-  router.get("/general-table/:id", handler(async (req, res) => {
-    publicAdmin(actor(req));
-    const found = await pool.query(
-      "SELECT * FROM general_table WHERE general_table_id=$1", [id(req.params.id)],
-    );
-    if (!found.rows[0]) missing();
-    res.json({ record: recordDTO(found.rows[0]) });
-  }));
-  router.post("/general-table", handler(async (req, res) => {
-    const input = parse(generalTableSchema, req.body);
-    const record = await transaction(pool, async (client) => {
-      const user = await currentActor(client, actor(req));
-      publicAdmin(user);
-      const placeholders = sqlFields.map((_, i) => `$${i+1}`).join(",");
-      const result = await client.query(
-        `INSERT INTO general_table(${sqlFields.join(",")},created_by) VALUES(${placeholders},$${sqlFields.length+1}) RETURNING *`,
-        [...valuesOf(input), user.id],
+  router.get(
+    "/general-table",
+    handler(async (req, res) => {
+      publicAdmin(actor(req));
+      const query = listQuery(
+        req.query,
+        {
+          id: "general_table_id",
+          tableName: "general_table_table_name",
+          category: "general_table_category",
+          title: "general_table_title",
+          createdAt: "created_at",
+          updatedAt: "updated_at",
+        },
+        "id:desc",
       );
-      const next = recordDTO(result.rows[0]);
-      await audit(client, user, "generalTable.create", "generalTable", next.id, null, next);
-      return next;
-    });
-    res.status(201).json({ record });
-  }));
-  router.patch("/general-table/:id", handler(async (req, res) => {
-    const targetId = id(req.params.id);
-    const input = parse(generalTableSchema, req.body);
-    const record = await transaction(pool, async (client) => {
-      const user = await currentActor(client, actor(req));
-      publicAdmin(user);
-      const found = await client.query(
-        "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE", [targetId],
+      const params: unknown[] = [searchPattern(query.q)];
+      let where =
+        "(general_table_table_name ILIKE $1 OR general_table_category ILIKE $1 OR general_table_title ILIKE $1 OR general_table_description ILIKE $1)";
+      for (const [key, column] of [
+        ["tableName", "general_table_table_name"],
+        ["category", "general_table_category"],
+      ] as const) {
+        const value = req.query[key];
+        if (value === undefined || value === "") continue;
+        if (typeof value !== "string" || value.length > 120)
+          throw new HttpError(400, "invalid_query", "عامل التصفية غير صالح");
+        params.push(value.trim());
+        where += ` AND ${column}=$${params.length}`;
+      }
+      const total = await pool.query(
+        `SELECT count(*)::integer AS total FROM general_table WHERE ${where}`,
+        params,
+      );
+      const rows = await pool.query(
+        `SELECT * FROM general_table WHERE ${where} ORDER BY ${query.order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, query.pageSize, query.offset],
+      );
+      res.json({
+        items: rows.rows.map(recordDTO),
+        total: total.rows[0].total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
+    }),
+  );
+  router.get(
+    "/general-table/:id",
+    handler(async (req, res) => {
+      publicAdmin(actor(req));
+      const found = await pool.query(
+        "SELECT * FROM general_table WHERE general_table_id=$1",
+        [id(req.params.id)],
       );
       if (!found.rows[0]) missing();
-      const before = recordDTO(found.rows[0]);
-      const assignments = sqlFields.map((field, index) => `${field}=$${index+1}`).join(",");
-      const changed = await client.query(
-        `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=$${sqlFields.length+1} RETURNING *`,
-        [...valuesOf(input), targetId],
-      );
-      const next = recordDTO(changed.rows[0]);
-      await audit(client, user, "generalTable.update", "generalTable", next.id, before, next);
-      return next;
-    });
-    res.json({ record });
-  }));
+      res.json({ record: recordDTO(found.rows[0]) });
+    }),
+  );
+  router.post(
+    "/general-table",
+    handler(async (req, res) => {
+      const input = parse(generalTableSchema, req.body);
+      const record = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        publicAdmin(user);
+        await assertRequestPagesEnabled(client, req, true);
+        const placeholders = sqlFields.map((_, i) => `$${i + 1}`).join(",");
+        const result = await client.query(
+          `INSERT INTO general_table(${sqlFields.join(",")},created_by) VALUES(${placeholders},$${sqlFields.length + 1}) RETURNING *`,
+          [...valuesOf(input), user.id],
+        );
+        const next = recordDTO(result.rows[0]);
+        await audit(
+          client,
+          user,
+          "generalTable.create",
+          "generalTable",
+          next.id,
+          null,
+          next,
+        );
+        return next;
+      });
+      res.status(201).json({ record });
+    }),
+  );
+  router.patch(
+    "/general-table/:id",
+    handler(async (req, res) => {
+      const targetId = id(req.params.id);
+      const input = parse(generalTableSchema, req.body);
+      const record = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        publicAdmin(user);
+        await assertRequestPagesEnabled(client, req, true);
+        const found = await client.query(
+          "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE",
+          [targetId],
+        );
+        if (!found.rows[0]) missing();
+        const before = recordDTO(found.rows[0]);
+        const assignments = sqlFields
+          .map((field, index) => `${field}=$${index + 1}`)
+          .join(",");
+        const changed = await client.query(
+          `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=$${sqlFields.length + 1} RETURNING *`,
+          [...valuesOf(input), targetId],
+        );
+        const next = recordDTO(changed.rows[0]);
+        await audit(
+          client,
+          user,
+          "generalTable.update",
+          "generalTable",
+          next.id,
+          before,
+          next,
+        );
+        return next;
+      });
+      res.json({ record });
+    }),
+  );
   return router;
 }

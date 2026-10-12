@@ -9,6 +9,7 @@ import {
   managerSchema,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
+import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
@@ -194,6 +195,7 @@ export function companyRoutes(pool: Pool): Router {
           "company.edit",
           true,
         );
+        await assertRequestPagesEnabled(client, req, true);
         const after = { ...access.company, ...input };
         const result = await client.query(
           "UPDATE companies SET name=$1,phone=$2,address=$3 WHERE id=$4 RETURNING *",
@@ -339,6 +341,7 @@ export function companyRoutes(pool: Pool): Router {
           true,
         );
         manageEmployees(user, context);
+        await assertRequestPagesEnabled(client, req, true);
         const target = await client.query(
           "SELECT * FROM users WHERE id=$1 FOR SHARE",
           [input.userId],
@@ -393,6 +396,7 @@ export function companyRoutes(pool: Pool): Router {
           true,
         );
         manageEmployees(user, context);
+        await assertRequestPagesEnabled(client, req, true);
         const target = await client.query(
           "SELECT u.* FROM users u JOIN employees e ON e.user_id=u.id WHERE e.company_id=$1 AND e.id=$2 FOR SHARE OF u",
           [companyId, employeeId],

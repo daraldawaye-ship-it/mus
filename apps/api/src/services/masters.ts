@@ -6,6 +6,7 @@ import type {
 } from "../../../../packages/contracts/src/index.ts";
 import type { Database } from "../db.ts";
 import { transaction } from "../db.ts";
+import { assertRequestPagesEnabled } from "./pages.ts";
 import { actor, id } from "../http.ts";
 import { companyAccess, currentActor } from "../policies/access.ts";
 import { HttpError, missing } from "../errors.ts";
@@ -34,6 +35,7 @@ export async function mutateMaster<T>(
   return transaction(pool, async (client) => {
     const user = await currentActor(client, actor(req));
     await companyAccess(client, user, companyId, permission, true);
+    await assertRequestPagesEnabled(client, req, true);
     return action(client, user, companyId);
   });
 }
