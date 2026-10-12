@@ -392,7 +392,7 @@ const image = z.union([
   z
     .url()
     .refine(
-      (value) => new URL(value).protocol === "https:",
+      (value) => value.startsWith("https://"),
       "الصورة تتطلب رابط HTTPS",
     ),
 ]);

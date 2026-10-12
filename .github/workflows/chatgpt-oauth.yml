@@ -57,4 +57,5 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: node --import tsx --test tests/table-column-order.test.ts
+      - run: node --import tsx --test tests/profile-image-field.test.ts
       - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts
