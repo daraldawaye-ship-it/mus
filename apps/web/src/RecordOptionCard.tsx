@@ -36,8 +36,9 @@ export function RecordOptionCard({
       return query.data?.native.archived??false;
     if(definition.nativeBinding==="items.has_expiry")
       return query.data?.native.hasExpiry??true;
-    return edited[definition.id]??query.data?.values.find(v=>v.definitionId===definition.id)?.value??
-      definition.defaultValue;
+    return Object.prototype.hasOwnProperty.call(edited,definition.id)
+      ? edited[definition.id]!
+      : (query.data?.values.find(v=>v.definitionId===definition.id)?.value ?? definition.defaultValue);
   };
   const show=(value:string|boolean|null):string=>value===null?"غير محدد":typeof value==="boolean"?(value?"نعم":"لا"):value;
   const save=async(definition:OptionDefinition)=>{
