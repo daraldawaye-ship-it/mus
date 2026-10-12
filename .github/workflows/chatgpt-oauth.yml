@@ -1,4 +1,4 @@
-name: ChatGPT read-only connector checks
+name: ChatGPT connector read/write checks
 on:
   push:
     branches: [codex/deploy-phase2]
@@ -6,6 +6,7 @@ on:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
+      - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
+      - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   workflow_dispatch:
@@ -45,4 +47,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: node --import tsx --test --test-name-pattern='ChatGPT MCP read-only OAuth' tests/api.test.ts
+      - run: node --import tsx --test --test-name-pattern='ChatGPT MCP' tests/api.test.ts
