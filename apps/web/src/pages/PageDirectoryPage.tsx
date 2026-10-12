@@ -23,6 +23,7 @@ import {
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
+import { ConfigurationAdminPage } from "./ConfigurationAdminPage";
 import {
   Button,
   Card,
@@ -63,7 +64,7 @@ function State({
     </span>
   );
 }
-export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
+function PageDirectoryListing({ context }: { context?: CompanyContext }) {
   const companyId = context?.company.id;
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
@@ -611,4 +612,29 @@ function PageDetails({
       {message && <Notice tone="success">{message}</Notice>}
     </div>
   );
+}
+
+export function PageDirectoryPage({context}:{context?:CompanyContext}) {
+  const [params,setParams]=useSearchParams();
+  const tab=params.get("tab");
+  const canManage=!!context&&(context.general||context.permissions.includes("pages.manage"));
+  const mode=canManage&&(tab==="options"||tab==="permissions")?tab:null;
+  const changeTab=(value:string)=>{
+    setParams(previous=>{
+      const next=new URLSearchParams(previous);
+      value?next.set("tab",value):next.delete("tab");
+      next.delete("page");
+      return next;
+    });
+  };
+  return <>
+    {canManage&&<div className="form-actions" role="group" aria-label="إدارة دليل الصفحات والخيارات والصلاحيات">
+      <Button variant={!mode?"primary":"secondary"} onClick={()=>changeTab("")}>دليل الصفحات</Button>
+      <Button variant={mode==="options"?"primary":"secondary"} onClick={()=>changeTab("options")}>الخيارات</Button>
+      <Button variant={mode==="permissions"?"primary":"secondary"} onClick={()=>changeTab("permissions")}>الصلاحيات والأدوار</Button>
+    </div>}
+    {mode&&context?
+      <ConfigurationAdminPage key={context.company.id+":"+mode} context={context} tab={mode}/>:
+      <PageDirectoryListing context={context}/>}
+  </>;
 }
