@@ -50,6 +50,12 @@ export async function requestPermissionTargets(
 ): Promise<string[][]> {
   if (!req) return [];
   const path = req.originalUrl.split("?")[0]?.replace(/^\/api/, "") ?? "";
+  if (
+    req.method === "PUT" &&
+    /^\/page-catalog\/[^/]+\/settings$/.test(path) &&
+    req.body?.companyId === companyId
+  )
+    return [["company.pages:edit"]];
   const prefix = `/companies/${companyId}`;
   if (path !== prefix && !path.startsWith(prefix + "/")) return [];
   const segments = path.slice(prefix.length).split("/").filter(Boolean);

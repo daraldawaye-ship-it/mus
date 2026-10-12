@@ -2194,6 +2194,8 @@ test("configuration review isolates companies and keeps denies stronger than gra
   assert(blockedAlias.rule.revision>0);
   await grant(allow.id,"company.item-card:view","allow");
   assert.equal((await person.client.request("GET",`/companies/${first.id}/items/999`)).status,403);
+  await grant(allow.id,"company.pages:edit","allow");
+  assert.equal((await person.client.request("PUT","/page-catalog/company.accounts/settings",{companyId:first.id,visible:false,enabled:true,order:20,revision:null})).status,200);
 });
 
 test("configuration review rejects invalid dates and preserves old values and native options", async(t)=>{
