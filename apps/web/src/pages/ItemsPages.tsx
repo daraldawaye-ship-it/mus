@@ -32,6 +32,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import { ItemImportDialog } from "../ItemImportDialog";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -153,6 +154,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
     `company:${companyId}:items`,
   );
   const canManage = itemsAccess(context, true);
+  const [importOpen, setImportOpen] = useState(false);
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -292,11 +294,14 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         description="كروت الأصناف ووحداتها وأسعارها."
         actions={
           canManage && (
-            <Button
-              onClick={() => navigate(`/companies/${companyId}/items/new`)}
-            >
-              صنف جديد
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                استيراد الأصناف
+              </Button>
+              <Button onClick={() => navigate(`/companies/${companyId}/items/new`)}>
+                صنف جديد
+              </Button>
+            </>
           )
         }
       />
@@ -348,6 +353,13 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           ariaLabel="جدول الأصناف"
         />
       </Card>
+      {canManage && importOpen && (
+        <ItemImportDialog
+          context={context}
+          onClose={() => setImportOpen(false)}
+          onImported={() => void list.refetch()}
+        />
+      )}
     </>
   );
 }
