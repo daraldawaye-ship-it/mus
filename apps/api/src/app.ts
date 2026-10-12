@@ -21,6 +21,7 @@ import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
+import { configurationAdminRoutes } from "./routes-configuration-admin.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -54,6 +55,7 @@ export async function createApp(options: AppOptions = {}) {
     publicRoutes(pool),
     companyRoutes(pool),
     configurationRoutes(pool),
+    configurationAdminRoutes(pool),
     accountRoutes(pool),
     currencyRoutes(pool),
     locationRoutes(pool),
