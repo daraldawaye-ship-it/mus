@@ -59,6 +59,13 @@ export async function companyAccess(
   // Keep the old employee grants as the base. Rule assignments never touch
   // employees.permissions and never extend another company's permissions.
   const legacy: Permission[] = general ? [...permissionKeys] : [...row.permissions];
+  for (const module of ["accounts","currencies","locations","items","commerce","inventory"] as const) {
+    if (legacy.includes(`${module}.manage`) && !legacy.includes(`${module}.view`))
+      legacy.push(`${module}.view`);
+  }
+  if (legacy.includes("inventory.post") && !legacy.includes("inventory.view"))legacy.push("inventory.view");
+  if ((legacy.includes("finance.manage") || legacy.includes("finance.post")) &&
+      !legacy.includes("finance.view"))legacy.push("finance.view");
   const effects = !general && row
     ? await permissionRuleEffects(db,companyId,row.id)
     : new Map<string,"allow"|"deny">();
