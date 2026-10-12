@@ -1429,10 +1429,23 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   assert.equal(m.authorization_response_iss_parameter_supported,true);
   const unauthorized=await fetch(base("/mcp"),{
     method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"}),
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{
+      name:"query_general_table",arguments:{tableName:"طلب تعديلات في الموقع"},
+    }}),
   });
-  assert.equal(unauthorized.status,401);
+  assert.equal(unauthorized.status,200);
   assert.match(unauthorized.headers.get("www-authenticate")??"",/oauth-protected-resource/);
+  const challenge=await unauthorized.json() as {result:{isError:boolean;_meta:Record<string,string[]>}};
+  assert.equal(challenge.result.isError,true);
+  assert.match(challenge.result._meta["mcp/www_authenticate"]?.[0]??"",/invalid_token/);
+  const anonymousList=await fetch(base("/mcp"),{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({jsonrpc:"2.0",id:2,method:"tools/list"}),
+  });
+  assert.equal(anonymousList.status,200);
+  const anonymousTools=await anonymousList.json() as {result:{tools:{securitySchemes:{type:string;scopes:string[]}[]}[]}};
+  assert(anonymousTools.result.tools.every(tool=>
+    tool.securitySchemes.some(scheme=>scheme.type==="oauth2"&&scheme.scopes.includes("general_table.read"))));
 
   const register=await fetch(base("/oauth/register"),{
     method:"POST",headers:{"content-type":"application/json"},
@@ -1521,9 +1534,12 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   assert.equal(revoked.status,303);
   const blocked=await fetch(base("/mcp"),{
     method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+issued.access_token},
-    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"}),
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{
+      name:"query_general_table",arguments:{tableName:"طلب تعديلات في الموقع"},
+    }}),
   });
-  assert.equal(blocked.status,401);
+  assert.equal(blocked.status,200);
+  assert.equal((await blocked.json() as {result:{isError:boolean}}).result.isError,true);
 });
 
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
