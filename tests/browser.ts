@@ -474,6 +474,61 @@ try {
   );
 
   await scenario(
+    "new sales and purchases default to HQ showroom and respect manually changed branches",
+    async () => {
+      const { page, actor } = await pageFor("owner@browser.test");
+      const companyPath = `/companies/${companyA.id}`;
+      const branches = await call<ApiPage<Branch>>(actor, `${companyPath}/branches`);
+      const main = branches.items.find((entry) => entry.code === "HQ");
+      assert(main?.active, "The main branch should exist and be active");
+      const existingLocations = await call<ApiPage<Location>>(
+        actor, `${companyPath}/locations?branchId=${main.id}&kind=showroom`,
+      );
+      const showroom = existingLocations.items.find((entry) =>
+        entry.kind === "showroom" && entry.active && entry.effectiveActive);
+      assert(showroom, "An active main showroom should exist");
+
+      for (const kind of ["sale", "purchase"] as const) {
+        await page.goto(`${companyPath}/invoices/new?kind=${kind}`);
+        await eventually(
+          () => page.getByLabel("الفرع", { exact: true }).inputValue(),
+          (value) => assert.equal(value, String(main.id)),
+        );
+        await eventually(
+          () => page.getByLabel("المعرض / المخزن", { exact: true }).inputValue(),
+          (value) => assert.equal(value, String(showroom.id)),
+        );
+      }
+
+      const secondary = (await call<{ branch: Branch }>(
+        actor, `${companyPath}/branches`, "POST",
+        { code: "ALTINV", name: "فرع فواتير تجريبي", phone: "", address: "" },
+      )).branch;
+      const altLocations = await call<ApiPage<Location>>(
+        actor, `${companyPath}/locations?branchId=${secondary.id}&kind=showroom`,
+      );
+      const altShowroom = altLocations.items.find(entry =>
+        entry.kind === "showroom" && entry.active && entry.effectiveActive);
+      assert(altShowroom, "The new branch should have an active showroom");
+
+      await page.goto(`${companyPath}/invoices/new?kind=sale`);
+      await eventually(
+        () => page.getByLabel("الفرع", { exact: true }).inputValue(),
+        (value) => assert.equal(value, String(main.id)),
+      );
+      await page.getByLabel("الفرع", { exact: true }).selectOption(String(secondary.id));
+      await eventually(
+        () => page.getByLabel("المعرض / المخزن", { exact: true }).inputValue(),
+        (value) => assert.equal(value, String(altShowroom.id)),
+      );
+      await page.getByLabel("الفرع", { exact: true }).selectOption("");
+      await page.waitForTimeout(100);
+      assert.equal(await page.getByLabel("الفرع", { exact: true }).inputValue(), "");
+      assert.equal(await page.getByLabel("المعرض / المخزن", { exact: true }).inputValue(), "");
+    },
+  );
+
+  await scenario(
     "laptop header is half-height while all controls remain usable",
     async () => {
       const { page } = await pageFor("owner@browser.test");
