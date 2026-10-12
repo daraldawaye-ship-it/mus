@@ -1645,6 +1645,12 @@ ul {
   gap: 8px;
   align-items: start;
 }
+.commerce-header-card {
+  max-height: clamp(150px, 23dvh, 230px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .commerce-header-grid > *,
 .commerce-add-grid > *,
 .commerce-footer-grid > * {

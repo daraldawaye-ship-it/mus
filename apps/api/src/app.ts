@@ -18,6 +18,7 @@ import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
+import { commerceRoutes } from "./routes-commerce.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -56,6 +57,7 @@ export async function createApp(options: AppOptions = {}) {
     itemRoutes(pool),
     inventoryRoutes(pool),
     commerceOptionRoutes(pool),
+    commerceRoutes(pool),
   );
   app.use("/api", (_req, res) =>
     res

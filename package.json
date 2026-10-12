@@ -17,7 +17,8 @@
     "owner:create": "tsx apps/api/src/owner.ts",
     "start": "NODE_ENV=production tsx apps/api/src/index.ts",
     "test:browser:finance": "npm run build && tsx tests/browser-finance.ts",
-    "test:browser:items": "npm run build && tsx tests/browser-items.ts"
+    "test:browser:items": "npm run build && tsx tests/browser-items.ts",
+    "test:browser:commerce": "npm run build && tsx tests/browser-commerce.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",

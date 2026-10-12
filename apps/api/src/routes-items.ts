@@ -367,6 +367,24 @@ export function itemRoutes(pool: Pool): Router {
             conflict(
               "تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ",
             );
+          const unitFields = [
+            "unit1Name",
+            "unit2Name",
+            "unit3Name",
+            "factor2",
+            "factor3",
+            "hasExpiry",
+          ] as const;
+          if (unitFields.some((field) => input[field] !== before[field])) {
+            const history = await client.query(
+              "SELECT 1 FROM stock_movements WHERE company_id=$1 AND item_id=$2 LIMIT 1",
+              [companyId, rowId],
+            );
+            if (history.rowCount)
+              conflict(
+                "لا يمكن تغيير الوحدات أو عواملها أو تتبع الانتهاء بعد وجود حركات للصنف؛ أنشئ صنفًا جديدًا للبنية المختلفة",
+              );
+          }
           await checkItemReferences(client, companyId, input, before);
           const values: unknown[] = itemFieldColumns.map(
             ([field]) => input[field],

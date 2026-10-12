@@ -140,6 +140,22 @@ const InventorySettingsPage = lazy(() =>
     default: module.InventorySettingsPage,
   })),
 );
+const InvoicesPage = lazy(() =>
+  import("./pages/CommercePages").then((module) => ({
+    default: module.InvoicesPage,
+  })),
+);
+const InvoicePage = lazy(() =>
+  import("./pages/CommercePages").then((module) => ({
+    default: module.InvoicePage,
+  })),
+);
+const mayReadCommerce = (context: CompanyContext) =>
+  context.general ||
+  context.permissions.some(
+    (permission) =>
+      permission === "commerce.view" || permission === "commerce.manage",
+  );
 const mayReadInventory = (context: CompanyContext) =>
   context.general ||
   context.permissions.some((permission) =>
@@ -182,6 +198,9 @@ const companySections = [
   "stock-movements",
   "stock-operations",
   "inventory-settings",
+  "purchases",
+  "sales",
+  "invoice",
 ] as const;
 type CompanySection = (typeof companySections)[number];
 
@@ -301,6 +320,20 @@ function Navigation({
                   "إعداد المخزون",
                   <Settings2 size={17} />,
                 )}
+            </>
+          )}
+          {mayReadCommerce(context) && (
+            <>
+              {link(
+                `/companies/${context.company.id}/purchases`,
+                "فواتير المشتريات",
+                <FileText size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/sales`,
+                "فواتير المبيعات",
+                <FileText size={17} />,
+              )}
             </>
           )}
           {mayReadFinance(context) && (
@@ -456,6 +489,32 @@ function CompanyView({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل إعداد المخزون…</Notice>}>
           <InventorySettingsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "purchases":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل فواتير المشتريات…</Notice>}>
+          <InvoicesPage
+            key={`${context.company.id}:purchase`}
+            context={context}
+            kind="purchase"
+          />
+        </Suspense>
+      );
+    case "invoice":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الفاتورة…</Notice>}>
+          <InvoicePage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "sales":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل فواتير المبيعات…</Notice>}>
+          <InvoicesPage
+            key={`${context.company.id}:sale`}
+            context={context}
+            kind="sale"
+          />
         </Suspense>
       );
     case "financial-documents":
@@ -755,7 +814,7 @@ function Workspace() {
               {companySections.map((section) => (
                 <Route
                   key={section}
-                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : section === "item" ? "/items/:itemId" : `/${section}`}`}
+                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : section === "item" ? "/items/:itemId" : section === "invoice" ? "/invoices/:invoiceId" : `/${section}`}`}
                   element={
                     <Protected>
                       <CompanyView
