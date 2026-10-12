@@ -57,10 +57,10 @@ const optionColumns = `id,key,page_key AS "pageKey",record_kind AS "recordKind",
 const roleColumns = `id,key,name,description,active,is_system AS "system",revision`;
 const ruleColumns = `r.id,r.role_id AS "roleId",r.permission_key AS "permissionKey",
  p.name AS "permissionName",p.page_key AS "pageKey",p.action,r.effect,r.active,r.revision`;
-async function authorized(client: PoolClient, req: Request, general = false) {
+async function authorized(client: PoolClient, req: Request, general = false, readonly = false) {
   const companyId = id(req.params.companyId);
-  const user = await currentActor(client, actor(req));
-  const context = await companyAccess(client, user, companyId, "pages.manage", true);
+  const user = await currentActor(client, actor(req), !readonly);
+  const context = await companyAccess(client, user, companyId, "pages.manage", !readonly);
   if (general && !context.general)
     throw new HttpError(403,"forbidden","إدارة منح الصلاحيات للمالك أو المدير العام فقط");
   return {companyId,user};
@@ -87,7 +87,7 @@ export function configurationAdminRoutes(pool:Pool):Router {
   router.get("/companies/:companyId/configuration-directory", handler(async(req,res)=>{
     const out=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const {companyId}=await authorized(client,req);
+      const {companyId}=await authorized(client,req,false,true);
       const [options,roles,permissions,rules,assignments,exceptions,targets]=await Promise.all([
         client.query(`SELECT ${optionColumns} FROM option_definitions WHERE company_id=$1 ORDER BY page_key,sort_order,id`,[companyId]),
         client.query(`SELECT ${roleColumns} FROM company_roles WHERE company_id=$1 ORDER BY name,id`,[companyId]),
