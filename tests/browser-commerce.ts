@@ -646,6 +646,98 @@ try {
       },
     );
     await scenario(
+      "fully discounted purchases and linked zero-net returns save and render without empty journal links",
+      async () => {
+        await page.goto(base + "/invoices/new?kind=purchase");
+        await page
+          .getByRole("heading", { name: "إضافة فاتورة مشتريات", exact: true })
+          .waitFor();
+        await page
+          .getByLabel("عملة الفاتورة", { exact: true })
+          .selectOption(String(currency.id));
+        await page
+          .getByLabel("حساب المورد / النقد", { exact: true })
+          .selectOption(String(accounts.supplier!.id));
+        await page
+          .getByLabel("الفرع", { exact: true })
+          .selectOption(String(branch.id));
+        await page
+          .getByLabel("المعرض / المخزن", { exact: true })
+          .selectOption(String(showroom.id));
+        await page
+          .getByLabel("تاريخ الفاتورة", { exact: true })
+          .fill("2026-10-12");
+        await page.locator("#invoice-item-search").fill(item.barcode);
+        await page.getByRole("button", { name: new RegExp(item.name) }).click();
+        await page.locator("#invoice-quantity").press("Enter");
+        await page.locator("#invoice-price").press("Enter");
+        await page.locator("#invoice-expiry").fill("2027-01-31");
+        await page.locator("#invoice-expiry").press("Enter");
+        await page.getByLabel("الخصم", { exact: true }).fill("72");
+        await page
+          .getByText(
+            "الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب المقابل.",
+          )
+          .waitFor();
+        await page
+          .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
+          .click();
+        await page.waitForURL("**" + base + "/purchases");
+        const zero = (
+          await call<ApiPage<Invoice>>(
+            base + "/invoices?kind=purchase&sort=id:desc",
+          )
+        ).items[0]!;
+        assert.equal(zero.total, "0");
+        assert.equal(zero.financialDocumentId, null);
+        assert.equal(zero.returning, false);
+        await page.goto(base + "/invoices/" + zero.id);
+        await page
+          .getByText(
+            "صافي المستند صفر؛ لا يوجد مبلغ مستحق أو مردود على الحساب المقابل.",
+          )
+          .waitFor();
+        assert.equal(
+          await page
+            .getByRole("link", { name: "القيد المحاسبي", exact: true })
+            .count(),
+          0,
+        );
+        assert.equal(
+          await page.locator('a[href$="/financial-documents/null"]').count(),
+          0,
+        );
+        await page.goto(base + "/invoices/new?kind=purchase");
+        await page
+          .getByLabel("العملية", { exact: true })
+          .selectOption("return");
+        await page
+          .getByLabel("الفاتورة الأصلية", { exact: true })
+          .selectOption(String(zero.id));
+        await page
+          .getByLabel("الصنف المرتجع من الأصل", { exact: true })
+          .selectOption(String(zero.lines[0]!.id));
+        await page
+          .getByLabel("تاريخ الفاتورة", { exact: true })
+          .fill("2026-10-12");
+        await page.locator("#invoice-quantity").press("Enter");
+        await page
+          .getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true })
+          .click();
+        await page.waitForURL("**" + base + "/purchases");
+        const returned = (
+          await call<ApiPage<Invoice>>(
+            base + "/invoices?kind=purchase&returning=true",
+          )
+        ).items[0]!;
+        assert.equal(returned.total, "0");
+        assert.equal(returned.returning, true);
+        assert.equal(returned.financialDocumentId, null);
+        assert.equal(returned.lines[0]!.originalLineId, zero.lines[0]!.id);
+        assert(returned.varianceDocumentId);
+      },
+    );
+    await scenario(
       "rejected oversell retains invoice rows and navigation guards unsaved entries",
       async () => {
         await saleDraft("999");

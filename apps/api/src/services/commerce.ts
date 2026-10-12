@@ -107,6 +107,7 @@ export async function invoiceDTOs(
     number: row.number,
     kind: row.kind,
     status: "posted",
+    returning: row.is_return,
     documentDate: row.date_text,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
@@ -394,18 +395,12 @@ export async function createInvoice(
     total = gross - discount;
   assertAmount(gross);
   assertAmount(total);
-  if (total === 0n)
-    throw new HttpError(
-      400,
-      "zero_invoice",
-      "صافي الفاتورة أو المردود لا يساوي صفرًا في هذه الدفعة؛ راجع الخصم والكميات المرتجعة",
-    );
   const baseMagnitude = convertedUnits(
     moneyString(abs(total)),
     rate,
     settings.baseDecimalPlaces,
   );
-  if (baseMagnitude === 0n)
+  if (total !== 0n && baseMagnitude === 0n)
     throw new HttpError(
       400,
       "conversion_zero",
@@ -425,7 +420,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id",
     [
       companyId,
       number,
@@ -454,6 +449,7 @@ export async function createInvoice(
       user.id,
       input.idempotencyKey,
       JSON.stringify(input),
+      returning,
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
@@ -603,23 +599,20 @@ export async function createInvoice(
     add(settings.inventoryAccountId, total, true, "صافي تكلفة المشتريات");
     add(input.counterpartyAccountId, total, false, "حساب المشتريات");
   }
-  const financialDocumentId = await postCommerceJournal(
-    client,
-    companyId,
-    user,
-    {
-      documentDate: input.documentDate,
-      branchId: input.branchId,
-      currencyId: input.currencyId,
-      description:
-        `${input.kind === "sale" ? "مبيعات" : "مشتريات"} ${number} ${input.description}`.slice(
-          0,
-          1000,
-        ),
-      idempotencyKey: randomUUID(),
-      lines: journalLines,
-    },
-  );
+  const financialDocumentId = journalLines.length
+    ? await postCommerceJournal(client, companyId, user, {
+        documentDate: input.documentDate,
+        branchId: input.branchId,
+        currencyId: input.currencyId,
+        description:
+          `${input.kind === "sale" ? "مبيعات" : "مشتريات"} ${number} ${input.description}`.slice(
+            0,
+            1000,
+          ),
+        idempotencyKey: randomUUID(),
+        lines: journalLines,
+      })
+    : null;
   let costDocumentId: number | null = null,
     varianceDocumentId: number | null = null;
   if (input.kind === "sale" && totalCost !== 0n) {
@@ -690,7 +683,7 @@ export async function createInvoice(
     });
   }
   await client.query(
-    "UPDATE invoices SET financial_document_id=$1,cost_document_id=$2,variance_document_id=$3 WHERE company_id=$4 AND id=$5",
+    "UPDATE invoices SET financial_document_id=$1,cost_document_id=$2,variance_document_id=$3,posted=true WHERE company_id=$4 AND id=$5",
     [
       financialDocumentId,
       costDocumentId,

@@ -102,6 +102,7 @@ export interface Invoice {
   number: string;
   kind: InvoiceKind;
   status: "posted";
+  returning: boolean;
   documentDate: string;
   currencyId: number;
   currencyCode: string;
@@ -123,7 +124,7 @@ export interface Invoice {
   discount: string;
   total: string;
   baseTotal: string;
-  financialDocumentId: number;
+  financialDocumentId: number | null;
   costDocumentId: number | null;
   varianceDocumentId: number | null;
   createdBy: number;

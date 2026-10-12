@@ -1335,6 +1335,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         </Card>
         <Card className="commerce-save-footer">
           {error && <Notice tone="error">{error}</Notice>}
+          {!isReturn && lines.length > 0 && totals?.total === "0" && (
+            <Notice>
+              الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
+              المقابل.
+            </Notice>
+          )}
           <div className="commerce-footer-grid">
             <Field
               label="ملاحظات الفاتورة"
@@ -1568,12 +1574,19 @@ function InvoiceViewer({
         {invoice.description && (
           <p className="commerce-invoice-notes">{invoice.description}</p>
         )}
+        {invoice.total === "0" && (
+          <Notice>
+            صافي المستند صفر؛ لا يوجد مبلغ مستحق أو مردود على الحساب المقابل.
+          </Notice>
+        )}
         <div className="commerce-no-print form-actions">
-          <Link
-            to={`/companies/${companyId}/financial-documents/${invoice.financialDocumentId}`}
-          >
-            القيد المحاسبي
-          </Link>
+          {invoice.financialDocumentId !== null && (
+            <Link
+              to={`/companies/${companyId}/financial-documents/${invoice.financialDocumentId}`}
+            >
+              القيد المحاسبي
+            </Link>
+          )}
           {invoice.costDocumentId && (
             <Link
               to={`/companies/${companyId}/financial-documents/${invoice.costDocumentId}`}

@@ -667,7 +667,8 @@ test("purchase and sale atomically post exact stock and balanced discounted reve
     0,
   );
   assert.equal(
-    (await f.owner.request("GET", `${s.path}/invoices?branchId=1&branchId=2`)).status,
+    (await f.owner.request("GET", `${s.path}/invoices?branchId=1&branchId=2`))
+      .status,
     400,
   );
 });
@@ -1946,5 +1947,280 @@ test("sales returns restore archived items into their original batch at historic
   const stock = await balances(f, s, item.id);
   assert.equal(stock[0]!.pooledQuantitySmallest, "2");
   assert.equal(stock[0]!.pooledValueBase, "20");
+  await assertBalanced(f, s.company.id);
+});
+
+test("zero-net sales and their returns keep stock, cost and discount journals without charging the counterparty", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f),
+    item = await s.item({
+      factor2: 1,
+      factor3: 1,
+      hasExpiry: false,
+      salePrice1: "1",
+    });
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "3", unitPrice: "2" }],
+    }),
+  );
+  const sale = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      discount: "3",
+      lines: [{ itemId: item.id, unit: 1, quantity: "3" }],
+    }),
+  );
+  assert.equal(sale.total, "0");
+  assert.equal(sale.baseTotal, "0");
+  assert.equal(sale.returning, false);
+  assert(sale.financialDocumentId);
+  assert(sale.costDocumentId);
+  assert.equal(sale.lines[0]!.costBase, "6");
+  const returns: Invoice[] = [];
+  for (let index = 0; index < 3; index++)
+    returns.push(
+      await invoice(
+        f,
+        s,
+        invoiceBody(s, item.id, {
+          kind: "sale",
+          counterpartyAccountId: s.customer.id,
+          lines: [
+            {
+              itemId: item.id,
+              unit: 1,
+              quantity: "-1",
+              originalLineId: sale.lines[0]!.id,
+            },
+          ],
+        }),
+      ),
+    );
+  for (const returned of returns) {
+    assert.equal(returned.total, "0");
+    assert.equal(returned.returning, true);
+    assert.equal(returned.lines[0]!.costBase, "-2");
+  }
+  assert.equal(
+    (
+      await f.owner.ok<Page<Invoice>>(
+        "GET",
+        `${s.path}/invoices?kind=sale&returning=true`,
+      )
+    ).total,
+    3,
+  );
+  assert.equal(
+    (
+      await f.owner.ok<Page<Invoice>>(
+        "GET",
+        `${s.path}/invoices?kind=sale&returning=false`,
+      )
+    ).total,
+    1,
+  );
+  const party = await f.owner.ok<{ totals: { closingBalance: string } }>(
+    "GET",
+    `${s.path}/account-ledger?accountId=${s.customer.id}`,
+  );
+  assert.equal(party.totals.closingBalance, "0");
+  const stock = await balances(f, s, item.id);
+  assert.equal(stock[0]!.pooledQuantitySmallest, "3");
+  assert.equal(stock[0]!.pooledValueBase, "6");
+  await assertBalanced(f, s.company.id);
+});
+
+test("zero-net partial returns caused by minor-unit rounding complete the exact original refund and remain idempotent", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f),
+    item = await s.item({
+      factor2: 1,
+      factor3: 1,
+      hasExpiry: false,
+      salePrice1: "0.01",
+    });
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "3", unitPrice: "0.01" }],
+    }),
+  );
+  const sale = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      discount: "0.02",
+      lines: [{ itemId: item.id, unit: 1, quantity: "3" }],
+    }),
+  );
+  const body = invoiceBody(s, item.id, {
+    kind: "sale",
+    counterpartyAccountId: s.customer.id,
+    lines: [
+      {
+        itemId: item.id,
+        unit: 1,
+        quantity: "-1",
+        originalLineId: sale.lines[0]!.id,
+      },
+    ],
+  });
+  const first = await invoice(f, s, body);
+  assert.equal(first.total, "0");
+  assert.equal(first.discount, "-0.01");
+  const after = await stockSnapshot(f, s.company.id);
+  assert.equal((await invoice(f, s, body)).id, first.id);
+  assert.deepEqual(await stockSnapshot(f, s.company.id), after);
+  const second = await invoice(f, s, { ...body, idempotencyKey: randomUUID() });
+  const last = await invoice(f, s, { ...body, idempotencyKey: randomUUID() });
+  assert.equal(second.total, "0");
+  assert.equal(last.total, "-0.01");
+  assert.equal(
+    [first, second, last].reduce(
+      (sum, value) => sum + minorUnits(value.discount),
+      0n,
+    ),
+    -minorUnits("0.02"),
+  );
+  assert.equal(
+    [first, second, last].reduce(
+      (sum, value) => sum + minorUnits(value.total),
+      0n,
+    ),
+    -minorUnits(sale.total),
+  );
+  assert.equal((await balances(f, s, item.id))[0]!.pooledValueBase, "0.03");
+  assert.equal(
+    (
+      await f.owner.request("POST", `${s.path}/invoices`, {
+        ...body,
+        idempotencyKey: randomUUID(),
+      })
+    ).status,
+    409,
+  );
+  await assertBalanced(f, s.company.id);
+});
+
+test("zero-net purchases and free sale returns finalize without dummy journals and preserve current cost variance", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f),
+    item = await s.item({
+      factor2: 1,
+      factor3: 1,
+      hasExpiry: false,
+      salePrice1: "0",
+    });
+  const free = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      discount: "20",
+      lines: [{ itemId: item.id, unit: 1, quantity: "2", unitPrice: "10" }],
+    }),
+  );
+  assert.equal(free.total, "0");
+  assert.equal(free.financialDocumentId, null);
+  assert.equal(free.costDocumentId, null);
+  assert.equal(
+    (await stockSnapshot(f, s.company.id)).financial_documents!.length,
+    0,
+  );
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "2", unitPrice: "10" }],
+    }),
+  );
+  const returned = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: free.lines[0]!.id,
+        },
+      ],
+    }),
+  );
+  assert.equal(returned.total, "0");
+  assert.equal(returned.financialDocumentId, null);
+  assert(returned.varianceDocumentId);
+  assert.equal(returned.lines[0]!.costBase, "-5");
+  const sale = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      lines: [{ itemId: item.id, unit: 1, quantity: "1" }],
+    }),
+  );
+  assert.equal(sale.total, "0");
+  assert.equal(sale.gross, "0");
+  assert.equal(sale.financialDocumentId, null);
+  assert(sale.costDocumentId);
+  const restored = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: sale.lines[0]!.id,
+        },
+      ],
+    }),
+  );
+  assert.equal(restored.total, "0");
+  assert.equal(restored.financialDocumentId, null);
+  assert(restored.costDocumentId);
+  const stock = await balances(f, s, item.id);
+  assert.equal(stock[0]!.pooledQuantitySmallest, "3");
+  assert.equal(stock[0]!.pooledValueBase, "15");
+  const inventory = await f.owner.ok<{ totals: { closingBalance: string } }>(
+    "GET",
+    `${s.path}/account-ledger?accountId=${s.accounts.inventory!.id}`,
+  );
+  assert.equal(inventory.totals.closingBalance, "15");
+  for (const query of [
+    [
+      "UPDATE invoices SET description='tampered' WHERE company_id=$1 AND id=$2",
+      [s.company.id, free.id],
+    ],
+    [
+      "UPDATE invoice_lines SET cost_base=1 WHERE company_id=$1 AND invoice_id=$2",
+      [s.company.id, free.id],
+    ],
+    [
+      "INSERT INTO stock_movements(company_id,item_id,location_id,batch_key,quantity_smallest,cost_base,kind,invoice_id,invoice_line_id,document_date,created_by) SELECT company_id,item_id,location_id,batch_key,quantity_smallest,cost_base,kind,invoice_id,invoice_line_id,document_date,created_by FROM stock_movements WHERE company_id=$1 AND invoice_id=$2",
+      [s.company.id, free.id],
+    ],
+  ] as const)
+    await assert.rejects(
+      f.pool.query(query[0], [...query[1]]),
+      (error: unknown) =>
+        !!error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "23514",
+    );
   await assertBalanced(f, s.company.id);
 });
