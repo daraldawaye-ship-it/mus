@@ -89,7 +89,7 @@ export function ConfigurationPage({context}:{context:CompanyContext}) {
   const employee=data?.employees.find(e=>e.id===employeeId)??null;
   const definitions=(data?.definitions??[]).filter(d=>
     (!permissionPage||d.pageKey===permissionPage)&&(!action||d.action===action)&&
-    (!search||[d.name,d.key,d.pageKey].join(" ").toLocaleLowerCase("ar").includes(search.toLocaleLowerCase("ar")));
+    (!search||[d.name,d.key,d.pageKey].join(" ").toLocaleLowerCase("ar").includes(search.toLocaleLowerCase("ar"))));
   async function perform(task:()=>Promise<void>,message:string) {
     if(pending)return;
     setPending(true);setError("");setNotice("");
