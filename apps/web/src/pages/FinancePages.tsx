@@ -36,7 +36,7 @@ import {
   useScopeGuard,
   useSession,
 } from "../api";
-import { errorMessage, ServerLookup } from "../phase2";
+import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import {
   Button,
   Card,
@@ -469,6 +469,12 @@ function DocumentEditor({
         }
       : null,
   );
+  const defaultYer = useDefaultYerCurrency(companyId, "financial-options");
+  const currencyManuallyChosen = useRef(false);
+  useEffect(() => {
+    if (document || !defaultYer || currencyManuallyChosen.current) return;
+    if (currency === null) setCurrency(defaultYer);
+  }, [document, defaultYer, currency]);
   const [branch, setBranch] = useState<PickBranch | null>(
     document?.branchId
       ? {
@@ -1156,6 +1162,7 @@ function DocumentEditor({
             display={(item) => `${item.code} — ${item.name}`}
             onChange={(item) => {
               if (item) {
+                currencyManuallyChosen.current = true;
                 touch();
                 setCurrency(item);
                 setPicker(null);
