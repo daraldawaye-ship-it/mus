@@ -1533,6 +1533,26 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                   : {}),
                               });
                             }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" || !line.sourceItem || isReturn)
+                                return;
+                              // The selected native option must be committed without
+                              // submitting the invoice form.
+                              event.preventDefault();
+                              const level = Number(event.currentTarget.value) as
+                                1 | 2 | 3;
+                              if (![1, 2, 3].includes(level)) return;
+                              updateLine(line.key, {
+                                unit: level,
+                                unitName: unitName(line.sourceItem, level),
+                                ...(kind === "sale"
+                                  ? {
+                                      unitPrice: salePrice(line.sourceItem, level),
+                                    }
+                                  : {}),
+                              });
+                              focus(lineInputId(line, "quantity"));
+                            }}
                           >
                             {isReturn ? (
                               <option value={line.unit}>
