@@ -38,6 +38,10 @@ export function requestPermissionAction(req:Request|undefined, companyId:number)
     "inventory-options":"company.stock-operations",
   };
   let pageKey=direct[resource], action=operation;
+  if(resource==="configuration" && detail==="record-options"){
+    const kind=req.query.recordKind;
+    pageKey=kind==="item"?"company.item-card":kind==="account"?"company.accounts":undefined;
+  }
   if(resource==="items")pageKey=verb==="POST"&&!detail?"company.item-new":detail&&/^\d+$/.test(detail)?"company.item-card":"company.items";
   if(resource==="financial-documents") {
     pageKey=verb==="POST"&&!detail?"company.financial-new":detail&&/^\d+$/.test(detail)?"company.financial-document":"company.financial-documents";
