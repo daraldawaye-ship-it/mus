@@ -2363,7 +2363,7 @@ test("negative stock in sales, purchase replenishment, transfers and standalone 
   const direct=await ownerUser.client.ok<{invoice:{returning:boolean;total:string}}>("POST",prefix+"/invoices",invoice("sale","-1"),201);
   assert.equal(direct.invoice.returning,true);
   assert.equal(direct.invoice.total,"-30");
-  const replenished=await ownerUser.client.ok<{invoice:{varianceDocumentId:number|null}}>("POST",prefix+"/invoices",invoice("purchase","7","15"),201);
+  const replenished=await ownerUser.client.ok<{invoice:{varianceDocumentId:number|null}}>("POST",prefix+"/invoices",invoice("purchase","4","15"),201);
   assert(replenished.invoice.varianceDocumentId!==null,"Negative inventory replenishment needs an auditable variance journal");
   const pool=(await balances()).rows[0]!;
   assert.equal(pool.quantity_smallest,"0");
