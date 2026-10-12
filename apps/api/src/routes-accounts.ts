@@ -127,6 +127,13 @@ async function insertAccount(
       input.cashOrBank,
     ],
   );
+  await client.query(
+    `INSERT INTO option_values(company_id,definition_id,record_kind,account_id,value,created_by,updated_by)
+     SELECT company_id,id,'account',$2,default_value,$3,$3 FROM option_definitions
+     WHERE company_id=$1 AND record_kind='account' AND active=true AND native_binding IS NULL
+       AND default_value <> 'null'::jsonb`,
+    [companyId, result.rows[0].id, user.id],
+  );
   return accountDTO(
     await masterRow(client, accountSelect, "a", companyId, result.rows[0].id),
   );
