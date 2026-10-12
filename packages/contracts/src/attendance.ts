@@ -60,3 +60,39 @@ export interface AttendanceDirectory extends Page<AttendanceRecord> {
   employees: { id: number; name: string }[];
   branches: { id: number; name: string }[];
 }
+
+export type AttendanceStatus =
+  | "present"
+  | "open"
+  | "missingCheckout"
+  | "absent"
+  | "waiting"
+  | "notRecorded"
+  | "rest"
+  | "unconfigured";
+export interface AttendanceReportRow {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  branchName: string | null;
+  workDate: string;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  status: AttendanceStatus;
+  lateMinutes: number;
+  workedMinutes: number | null;
+  earlyLeaveMinutes: number | null;
+}
+export interface AttendanceReport extends Page<AttendanceReportRow> {
+  day: string;
+  summary: {
+    total: number;
+    attended: number;
+    absent: number;
+    late: number;
+    missingCheckout: number;
+    workedMinutes: number;
+  };
+}

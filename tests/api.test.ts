@@ -2423,3 +2423,38 @@ test("attendance schedules and punches enforce server time, privacy and duplicat
  assert.deepEqual(events.rows.map(e=>e.action),["attendance.schedule","attendance.checkIn","attendance.checkOut"]);
  await assert.rejects(f.pool.query("DELETE FROM attendance_records WHERE id=$1",[record.id]),(error:{code?:string})=>error.code==="23514");
 });
+
+test("attendance reports preserve overnight metrics, absence deadlines, history and privacy", async (t) => {
+  const f=await fixture(t), platform=await owner(f), co=await company(platform.client,"Attendance reports"), other=await company(platform.client,"Other reports");
+  const people=await Promise.all(Array.from({length:5},(_,i)=>register(f,`report-${i}@example.test`)));
+  const staff: Employee[]=[];
+  for(const person of people) staff.push(await employee(platform.client,co.id,person.user.id,[]));
+  const branch=(await platform.client.ok<Page<{id:number}>>("GET",`/companies/${co.id}/branches`)).items[0]!.id;
+  const base=`/companies/${co.id}/attendance`,day="2000-01-03";
+  for(const i of [0,1,2,4]) await f.pool.query(`INSERT INTO employee_schedules(company_id,employee_id,branch_id,work_days,start_time,end_time,active,updated_by,updated_at) VALUES($1,$2,$3,$4,'22:00','06:00',true,$5,'2000-01-03T08:00:00+03:00')`,[co.id,staff[i]!.id,branch,i===2?[2]:[0,1,2,3,4,5,6],platform.user.id]);
+  for(const i of [0,4]) await f.pool.query(`INSERT INTO attendance_records(company_id,employee_id,employee_name,branch_id,branch_name,work_date,checked_in_at,checked_out_at,start_time,end_time,schedule_revision,idempotency_key,created_by,updated_by) VALUES($1,$2,$3,$4,'Historical branch',$5,$6,$7,'22:00','06:00',1,$8,$9,$9)`,[co.id,staff[i]!.id,staff[i]!.name,branch,day,i===0?"2000-01-03T22:07:00+03:00":"2000-01-03T22:00:00+03:00",i===0?"2000-01-04T05:30:00+03:00":null,randomUUID(),platform.user.id]);
+  type Report=import("../packages/contracts/src/attendance.ts").AttendanceReport;
+  const report=await platform.client.ok<Report>("GET",base+`/report?day=${day}&pageSize=1&sort=workDate:desc,id:desc`);
+  assert.equal(report.items.length,1);assert.equal(report.total,5);
+  assert.deepEqual(report.summary,{total:5,attended:2,absent:1,late:1,missingCheckout:1,workedMinutes:443});
+  const own=await people[0]!.client.ok<Report>("GET",base+`/report?day=${day}`);
+  assert.equal(own.total,1);assert.equal(own.items[0]!.employeeId,staff[0]!.id);
+  assert.equal(own.items[0]!.lateMinutes,7);assert.equal(own.items[0]!.earlyLeaveMinutes,30);assert.equal(own.items[0]!.workedMinutes,443);
+  const all=await platform.client.ok<Report>("GET",base+`/report?day=${day}&sort=lateMinutes:desc,workedMinutes:desc`);
+  assert.equal(all.items.find(r=>r.employeeId===staff[2]!.id)!.status,"rest");
+  assert.equal(all.items.find(r=>r.employeeId===staff[3]!.id)!.status,"unconfigured");
+  assert.equal(all.items.find(r=>r.employeeId===staff[4]!.id)!.workedMinutes,null);
+  assert.equal((await people[0]!.client.request("GET",base+`/report?day=${day}&employeeId=${staff[1]!.id}`)).status,403);
+  assert.equal((await platform.client.request("GET",`/companies/${other.id}/attendance/report?employeeId=${staff[0]!.id}`)).status,404);
+  const absent=await platform.client.ok<Report>("GET",base+`/report?day=${day}&status=absent`);assert.equal(absent.total,1);assert.equal(absent.items[0]!.employeeId,staff[1]!.id);
+  await platform.client.ok("PUT",base+`/schedules/${staff[1]!.id}`,{branchId:branch,workDays:[0],startTime:"08:00",endTime:"16:00",active:false,revision:1});
+  const preserved=await platform.client.ok<Report>("GET",base+`/report?day=${day}&employeeId=${staff[1]!.id}`);assert.equal(preserved.items[0]!.status,"absent");assert.equal(preserved.items[0]!.startTime,"22:00");
+  const late=await platform.client.ok<Report>("GET",base+`/report?day=${day}&status=late`);assert.equal(late.total,1);assert.equal(late.summary.late,1);
+  await platform.client.ok("PUT",base+`/schedules/${staff[1]!.id}`,{branchId:branch,workDays:[0,1,2,3,4,5,6],startTime:"00:00",endTime:"23:59",active:true,revision:2});
+  const now=(await f.pool.query("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS day,(clock_timestamp() AT TIME ZONE 'Asia/Aden')::time<'23:59'::time AS during")).rows[0];
+  const during=await people[1]!.client.ok<Report>("GET",base+`/report?day=${now.day}`);assert.equal(during.items[0]!.status,now.during?"notRecorded":"absent");
+  const upcoming=await people[0]!.client.ok<Report>("GET",base+"/report?day=2099-01-01");assert.equal(upcoming.items[0]!.status,"waiting");assert.equal(upcoming.summary.absent,0);
+  const past=await people[0]!.client.ok<Report>("GET",base+"/report?day=1999-01-01");assert.equal(past.items[0]!.status,"unconfigured");
+  assert.equal((await platform.client.request("GET",base+"/report?status=invalid")).status,400);
+  await assert.rejects(f.pool.query("DELETE FROM employee_schedule_history WHERE company_id=$1",[co.id]),(error:{code?:string})=>error.code==="23514");
+});

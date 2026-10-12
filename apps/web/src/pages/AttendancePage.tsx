@@ -1,11 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   attendanceScheduleSchema,
   type AttendanceDirectory,
   type AttendanceRecord,
+  type AttendanceReport,
+  type AttendanceReportRow,
+  type AttendanceStatus,
   type AttendanceSchedule,
   type CompanyContext,
 } from "../../../../packages/contracts/src/index";
@@ -38,6 +41,18 @@ const time = (value: string | null) =>
         timeZone: "Asia/Aden",
       }).format(new Date(value))
     : "—";
+const statusLabels: Record<AttendanceStatus, string> = {
+  present: "حضور مكتمل",
+  open: "حاضر",
+  missingCheckout: "انصراف غير مسجل",
+  absent: "غياب",
+  waiting: "لم يبدأ الدوام",
+  notRecorded: "حضور غير مسجل",
+  rest: "خارج أيام الدوام",
+  unconfigured: "لا يوجد إعداد محفوظ لهذا اليوم",
+};
+const duration = (minutes: number | null) =>
+  minutes === null ? "—" : `${Math.floor(minutes / 60)} س ${minutes % 60} د`;
 type Draft = {
   employeeId: number;
   branchId: number;
@@ -54,21 +69,29 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
     client = useQueryClient();
   const [params, setParams] = useSearchParams(),
     filters = new URLSearchParams();
-  for (const key of ["day", "employeeId"])
+  for (const key of ["day", "employeeId", "status"])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<AttendanceRecord, AttendanceDirectory>(
-    `/companies/${companyId}/attendance?${filters}`,
+  const list = usePagedQuery<AttendanceReportRow, AttendanceReport>(
+    `/companies/${companyId}/attendance/report?${filters}`,
     `company:${companyId}:attendance`,
     "workDate:desc,id:desc",
   );
-  const data = list.data,
-    base = `/companies/${companyId}/attendance`;
+  const base = `/companies/${companyId}/attendance`;
+  const overview = useQuery({
+    queryKey: ["list", user?.id, `company:${companyId}:attendance`, "overview"],
+    queryFn: ({ signal }) => api<AttendanceDirectory>(base, { signal }),
+    enabled: !!user,
+  });
+  const data = overview.data;
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void list.refetch();
+      if (document.visibilityState === "visible") {
+        void list.refetch();
+        void overview.refetch();
+      }
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [base, list.refetch]);
+  }, [base, list.refetch, overview.refetch]);
   const [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -161,7 +184,7 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
       if (guard.isCurrent()) setPending(false);
     }
   }
-  const columns: ColumnDef<AttendanceRecord, unknown>[] = [
+  const columns: ColumnDef<AttendanceReportRow, unknown>[] = [
     { accessorKey: "workDate", header: "يوم الدوام" },
     ...(context.general
       ? [{ accessorKey: "employeeName", header: "الموظف" }]
@@ -176,9 +199,7 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
       accessorKey: "checkedOutAt",
       header: "الانصراف",
       cell: ({ row }) =>
-        row.original.checkedOutAt
-          ? time(row.original.checkedOutAt)
-          : "لم يسجل الانصراف",
+        row.original.checkedOutAt ? time(row.original.checkedOutAt) : "—",
     },
     {
       id: "schedule",
@@ -186,9 +207,29 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
       enableSorting: false,
       cell: ({ row }) => (
         <bdi>
-          {row.original.startTime} — {row.original.endTime}
+          {row.original.startTime ?? "—"} — {row.original.endTime ?? "—"}
         </bdi>
       ),
+    },
+    {
+      accessorKey: "status",
+      header: "الحالة",
+      cell: ({ row }) => statusLabels[row.original.status],
+    },
+    {
+      accessorKey: "lateMinutes",
+      header: "التأخير",
+      cell: ({ row }) => duration(row.original.lateMinutes),
+    },
+    {
+      accessorKey: "workedMinutes",
+      header: "مدة العمل",
+      cell: ({ row }) => duration(row.original.workedMinutes),
+    },
+    {
+      accessorKey: "earlyLeaveMinutes",
+      header: "الانصراف المبكر",
+      cell: ({ row }) => duration(row.original.earlyLeaveMinutes),
     },
   ];
   return (
@@ -199,10 +240,17 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
       />
       {error && <Notice tone="error">{error}</Notice>}
       {notice && <Notice tone="success">{notice}</Notice>}
-      {list.error && (
+      {(list.error || overview.error) && (
         <Notice tone="error">
-          {errorMessage(list.error)}{" "}
-          <Button onClick={() => void list.refetch()}>إعادة المحاولة</Button>
+          {errorMessage(list.error || overview.error)}{" "}
+          <Button
+            onClick={() => {
+              void list.refetch();
+              void overview.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </Button>
         </Notice>
       )}
       <Card title="حضورك اليوم">
@@ -245,7 +293,10 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
               <Button
                 variant="ghost"
                 disabled={pending || list.loading}
-                onClick={() => void list.refetch()}
+                onClick={() => {
+                  void list.refetch();
+                  void overview.refetch();
+                }}
               >
                 تحديث
               </Button>
@@ -262,7 +313,18 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
           </>
         )}
       </Card>
-      <Card title={context.general ? "السجل اليومي للموظفين" : "سجل حضورك"}>
+      <Card
+        title={context.general ? "تقرير الدوام اليومي" : "تقرير دوامك"}
+        description="يُحسب الغياب بعد نهاية الدوام، والتأخير والانصراف المبكر بالدقائق الكاملة دون سماح تلقائي. مدة العمل للحضور المكتمل فقط؛ لا تُحسب خصومات أو رواتب."
+      >
+        {list.data && (
+          <p aria-label="ملخص الدوام">
+            الحضور: {list.data.summary.attended} · الغياب:{" "}
+            {list.data.summary.absent} · المتأخرون: {list.data.summary.late} ·
+            انصراف غير مسجل: {list.data.summary.missingCheckout} · مجموع مدة
+            العمل: {duration(list.data.summary.workedMinutes)}
+          </p>
+        )}
         <div className="table-filters">
           <Field
             label="يوم السجل"
@@ -284,6 +346,19 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
               ))}
             </Select>
           )}
+          <Select
+            label="حالة الدوام"
+            value={params.get("status") ?? ""}
+            onChange={(e) => filter("status", e.target.value)}
+          >
+            <option value="">جميع الحالات</option>
+            <option value="late">المتأخرون</option>
+            {Object.entries(statusLabels).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </Select>
           <Field
             label="بحث في الحضور"
             type="search"
@@ -293,8 +368,8 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
         </div>
         <DataTable
           columns={columns}
-          data={data?.items ?? []}
-          total={data?.total ?? 0}
+          data={list.data?.items ?? []}
+          total={list.data?.total ?? 0}
           page={list.page}
           pageSize={list.pageSize}
           onPageChange={list.setPage}

@@ -6,6 +6,7 @@ import {
   attendanceCheckOutSchema,
   type AttendanceRecord,
   type AttendanceSchedule,
+  type AttendanceReportRow,
 } from "../../../packages/contracts/src/index.ts";
 import { documentDateSchema } from "../../../packages/contracts/src/finance.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -197,6 +198,161 @@ export function attendanceRoutes(pool: Pool) {
           schedules: definitions,
           employees: employees.rows,
           branches,
+        };
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
+    base + "/report",
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (client) => {
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        const { companyId, context } = await access(client, req);
+        const ownId = context.employee?.id ?? null;
+        const employeeId =
+          req.query.employeeId === undefined
+            ? null
+            : id(
+                typeof req.query.employeeId === "string"
+                  ? req.query.employeeId
+                  : undefined,
+              );
+        if (!context.general && employeeId !== null && employeeId !== ownId)
+          deny("يمكنك عرض تقرير حضورك فقط");
+        if (
+          employeeId !== null &&
+          !(
+            await client.query(
+              "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+              [companyId, employeeId],
+            )
+          ).rowCount
+        )
+          missing();
+        const own = ownId
+          ? (
+              await client.query(
+                schedules + " WHERE s.company_id=$1 AND s.employee_id=$2",
+                [companyId, ownId],
+              )
+            ).rows[0]
+          : null;
+        const time = await clock(client, own ? scheduleDTO(own) : null);
+        const day =
+          req.query.day === undefined
+            ? time.work_date
+            : parse(documentDateSchema, req.query.day);
+        const status = req.query.status ?? "";
+        if (
+          typeof status !== "string" ||
+          ![
+            "",
+            "present",
+            "open",
+            "missingCheckout",
+            "absent",
+            "waiting",
+            "notRecorded",
+            "rest",
+            "unconfigured",
+            "late",
+          ].includes(status)
+        )
+          throw new HttpError(400, "invalid_query", "حالة الحضور غير صالحة");
+        const query = listQuery(
+          req.query,
+          {
+            id: "f.employee_id",
+            employeeName: "f.employee_name",
+            workDate: "f.work_date",
+            checkedInAt: "f.checked_in_at",
+            checkedOutAt: "f.checked_out_at",
+            status: "f.status",
+            lateMinutes: "f.late_minutes",
+            workedMinutes: "f.worked_minutes",
+            earlyLeaveMinutes: "f.early_leave_minutes",
+          },
+          "employeeName:asc,id:asc",
+        );
+        const args = [
+          companyId,
+          day,
+          context.general ? employeeId : ownId,
+          searchPattern(query.q),
+          status,
+          time.instant,
+        ];
+        const sql = `WITH expected AS (
+          SELECT e.id AS employee_id,COALESCE(r.employee_name,e.name) AS employee_name,$2::date AS work_date,
+            COALESCE(r.branch_name,h.branch_name) AS branch_name,r.checked_in_at,r.checked_out_at,
+            COALESCE(r.start_time,h.start_time) AS start_time,COALESCE(r.end_time,h.end_time) AS end_time,
+            h.revision AS schedule_revision,h.active AND EXTRACT(DOW FROM $2::date)::smallint=ANY(h.work_days) AS work_day
+          FROM employees e
+          LEFT JOIN attendance_records r ON r.company_id=e.company_id AND r.employee_id=e.id AND r.work_date=$2::date
+          LEFT JOIN LATERAL (SELECT sh.* FROM employee_schedule_history sh WHERE sh.company_id=e.company_id AND sh.employee_id=e.id AND sh.effective_date<=$2::date ORDER BY sh.effective_date DESC,sh.revision DESC LIMIT 1) h ON true
+          WHERE e.company_id=$1 AND ($3::integer IS NULL OR e.id=$3) AND (e.active OR r.id IS NOT NULL)
+        ),timed AS (
+          SELECT *, (work_date+start_time) AT TIME ZONE 'Asia/Aden' AS scheduled_start,
+            (work_date+end_time+CASE WHEN end_time<start_time THEN interval '1 day' ELSE interval '0' END) AT TIME ZONE 'Asia/Aden' AS scheduled_end
+          FROM expected
+        ),computed AS (
+          SELECT *,CASE
+            WHEN checked_out_at IS NOT NULL THEN 'present'
+            WHEN checked_in_at IS NOT NULL THEN CASE WHEN $6::timestamptz>=scheduled_end THEN 'missingCheckout' ELSE 'open' END
+            WHEN schedule_revision IS NULL THEN 'unconfigured'
+            WHEN NOT work_day THEN 'rest'
+            WHEN $6::timestamptz<scheduled_start THEN 'waiting'
+            WHEN $6::timestamptz<scheduled_end THEN 'notRecorded'
+            ELSE 'absent' END AS status,
+            CASE WHEN checked_in_at IS NULL THEN 0 ELSE GREATEST(0,FLOOR(EXTRACT(EPOCH FROM checked_in_at-scheduled_start)/60))::integer END AS late_minutes,
+            CASE WHEN checked_out_at IS NULL THEN NULL ELSE FLOOR(EXTRACT(EPOCH FROM checked_out_at-checked_in_at)/60)::integer END AS worked_minutes,
+            CASE WHEN checked_out_at IS NULL THEN NULL ELSE GREATEST(0,FLOOR(EXTRACT(EPOCH FROM scheduled_end-checked_out_at)/60))::integer END AS early_leave_minutes
+          FROM timed
+        ),filtered AS (SELECT * FROM computed WHERE employee_name ILIKE $4 AND ($5='' OR status=$5 OR ($5='late' AND late_minutes>0))) `;
+        const summary = (
+          await client.query(
+            sql +
+              `SELECT count(*)::integer AS total,
+          count(*) FILTER(WHERE checked_in_at IS NOT NULL)::integer AS attended,
+          count(*) FILTER(WHERE status='absent')::integer AS absent,
+          count(*) FILTER(WHERE late_minutes>0)::integer AS late,
+          count(*) FILTER(WHERE status='missingCheckout')::integer AS "missingCheckout",
+          COALESCE(sum(worked_minutes),0)::double precision AS "workedMinutes" FROM filtered`,
+            args,
+          )
+        ).rows[0];
+        const rows = (
+          await client.query(
+            sql +
+              `SELECT *,work_date::text AS work_date,start_time::text AS start_time,end_time::text AS end_time FROM filtered f ORDER BY ${query.order} LIMIT $7 OFFSET $8`,
+            [...args, query.pageSize, query.offset],
+          )
+        ).rows;
+        const items: AttendanceReportRow[] = rows.map((row) => ({
+          id: row.employee_id,
+          employeeId: row.employee_id,
+          employeeName: row.employee_name,
+          branchName: row.branch_name ?? null,
+          workDate: row.work_date,
+          checkedInAt: row.checked_in_at?.toISOString() ?? null,
+          checkedOutAt: row.checked_out_at?.toISOString() ?? null,
+          startTime: row.start_time?.slice(0, 5) ?? null,
+          endTime: row.end_time?.slice(0, 5) ?? null,
+          status: row.status,
+          lateMinutes: row.late_minutes,
+          workedMinutes: row.worked_minutes,
+          earlyLeaveMinutes: row.early_leave_minutes,
+        }));
+        return {
+          items,
+          total: summary.total,
+          page: query.page,
+          pageSize: query.pageSize,
+          day,
+          summary,
         };
       });
       res.json(result);

@@ -9,7 +9,7 @@ import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import type { SessionResponse } from "../packages/contracts/src/index.ts";
 
-// Focused first-stage attendance browser flow.
+// Focused attendance flow and daily-report controls.
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const schema = `attendance_browser_${randomUUID().replaceAll("-", "")}`;
 const port = await new Promise<number>((resolve, reject) => {
@@ -156,13 +156,46 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth + 1,
     ),
   );
+  await table
+    .getByRole("columnheader", { name: "التأخير", exact: true })
+    .waitFor();
+  await table
+    .getByRole("columnheader", { name: "مدة العمل", exact: true })
+    .waitFor();
+  assert.match(await table.innerText(), /حضور مكتمل/);
+  const absentResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/attendance/report?") &&
+      response.url().includes("status=absent") &&
+      response.status() === 200,
+  );
+  await page.getByLabel("حالة الدوام", { exact: true }).selectOption("absent");
+  await absentResponse;
+  await page.waitForFunction(
+    () =>
+      !document.querySelector(
+        'table[aria-label="سجل الحضور والانصراف"] tbody tr[data-row-id]',
+      ),
+  );
+  await page.getByLabel("حالة الدوام", { exact: true }).selectOption("present");
+  await table.getByText("حضور مكتمل", { exact: true }).waitFor();
+  const sorting = page.waitForResponse(
+    (response) =>
+      response.url().includes("/attendance/report?") &&
+      response.url().includes("lateMinutes") &&
+      response.status() === 200,
+  );
+  await table
+    .getByRole("columnheader", { name: "التأخير", exact: true })
+    .click();
+  await sorting;
   assert.deepEqual(errors, []);
   const overview = await call<{ items: { employeeId: number }[] }>(
     base + "/attendance",
   );
   assert.equal(overview.items[0]!.employeeId, employee.id);
   console.log(
-    "PASS: manager schedule setup, private mobile employee check-in/out, daily log and duplicate controls",
+    "PASS: manager schedule setup, private mobile employee check-in/out, daily report, status filters, metric sorting and duplicate controls",
   );
   await ownerContext.close();
   await employeeContext.close();
