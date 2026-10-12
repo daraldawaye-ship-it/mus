@@ -7,6 +7,9 @@ on:
       - 'apps/api/src/app.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/api/migrations/024_item_shelf.sql'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/services/items.ts'
       - 'apps/web/src/**'
       - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
@@ -19,6 +22,9 @@ on:
       - 'apps/api/src/app.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/api/migrations/024_item_shelf.sql'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/services/items.ts'
       - 'apps/web/src/**'
       - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
@@ -56,6 +62,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - run: node --import tsx --test tests/sale-stock-quantity.test.ts
+      - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - run: node --import tsx --test tests/table-column-order.test.ts
       - run: node --import tsx --test tests/profile-image-field.test.ts
       - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts

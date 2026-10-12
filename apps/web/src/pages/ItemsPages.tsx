@@ -584,6 +584,7 @@ type ItemFields = {
   name: string;
   imageId: string | null;
   englishName: string;
+  shelf: string;
   barcode: string;
   legacyId: string;
   unit1Name: string;
@@ -609,6 +610,7 @@ function initialItemFields(item: Item | null): ItemFields {
     name: item?.name ?? "",
     imageId: item?.imageId ?? null,
     englishName: item?.englishName ?? "",
+    shelf: item?.shelf ?? "",
     barcode: item?.barcode ?? "",
     legacyId: item?.legacyId ?? "",
     unit1Name: item?.unit1Name ?? "باكت",
@@ -867,6 +869,14 @@ function ItemEditor({
               value={fields.englishName}
               disabled={disabled}
               onChange={(event) => edit("englishName", event.target.value)}
+            />
+            <Field
+              label="الرف"
+              maxLength={100}
+              value={fields.shelf}
+              disabled={disabled}
+              placeholder="مثال: رف A3"
+              onChange={(event) => edit("shelf", event.target.value)}
             />
             <Field
               label="الباركود"

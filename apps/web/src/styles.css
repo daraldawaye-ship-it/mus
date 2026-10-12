@@ -1782,6 +1782,12 @@ ul {
 .commerce-matrix-purchase {
   min-width: 790px;
 }
+.commerce-matrix-sale {
+  min-width: 940px;
+}
+@media (min-width: 1024px) {
+  .commerce-matrix-sale .commerce-col-item { width: 33%; }
+}
 .commerce-matrix th:nth-child(2),
 .commerce-matrix th:last-child {
   width: auto;
@@ -1804,6 +1810,10 @@ ul {
 .commerce-col-total {
   width: 115px;
 }
+.commerce-col-available { width: 99px; }
+.commerce-col-shelf { width: 100px; }
+.commerce-line-available { font-variant-numeric: tabular-nums; }
+.commerce-line-shelf span { display: block; overflow: hidden; text-overflow: ellipsis; }
 .commerce-col-delete {
   width: 36px;
 }

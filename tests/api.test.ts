@@ -2581,7 +2581,7 @@ test("item statistics track finalized stock and last normal documents without le
     code: "1111999998", name: "حساب اختبار الإحصائيات", kind: "posting", category: "asset", normalSide: "debit", parentId: null, active: true,
   }, 201)).account;
   const item = (await platform.client.ok<{ item: { id: number } }>("POST", prefix + "/items", {
-    idempotencyKey: randomUUID(), name: "صنف بثلاث وحدات", currencyId: currency.id, hasExpiry: false,
+    idempotencyKey: randomUUID(), name: "صنف بثلاث وحدات", currencyId: currency.id, hasExpiry: false, shelf: "رف A3",
     unit1Name: "كرتون", unit2Name: "باكت", unit3Name: "حبة", factor2: 7, factor3: 3,
     salePrice1: "210", salePrice2: "30", salePrice3: "10", purchasePrice: "84",
   }, 201)).item;
@@ -2606,6 +2606,10 @@ test("item statistics track finalized stock and last normal documents without le
   const purchase = await save("purchase", "2", 1);
   const purchased = await statistics();
   assert.equal(purchased.stock?.total, "42", "Unit conversion uses the smallest part exactly");
+  const preview = await platform.client.ok<{items:{itemId:number;quantitySmallest:string;shelf:string}[]}>(
+    "GET", prefix+`/invoice-stock-preview?locationId=${showroom.id}&itemIds=${item.id}`);
+  assert.deepEqual(preview.items,[{itemId:item.id,quantitySmallest:"42",shelf:"رف A3"}]);
+  assert.equal((await platform.client.request("GET",prefix+`/invoice-stock-preview?locationId=${showroom.id}&itemIds=invalid`)).status,400);
   assert.equal(purchased.stock?.unitName, "حبة");
   assert.equal(purchased.lastPurchase?.invoiceId, purchase.id);
   const sale = await save("sale", "3", 2);

@@ -872,7 +872,7 @@ try {
             return { top: rect.top, left: rect.left, height: rect.height };
           }),
         );
-        assert.equal(rectangles.length, 6);
+        assert.equal(rectangles.length, 8);
         assert(
           rectangles.every(
             (cell) => cell.top === rectangles[0]!.top && cell.height <= 35,

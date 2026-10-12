@@ -61,6 +61,7 @@ export type ItemFields = Pick<
   | "name"
   | "imageId"
   | "englishName"
+  | "shelf"
   | "barcode"
   | "legacyId"
   | "agentId"
@@ -140,6 +141,7 @@ export const itemFieldColumns = [
   ["name", "name"],
   ["imageId", "image_id"],
   ["englishName", "english_name"],
+  ["shelf", "shelf"],
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],

@@ -38,6 +38,39 @@ export function commerceRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
   router.get(
+    `${base}/invoice-stock-preview`,
+    handler(async (req, res) => {
+      const locationId = id(typeof req.query.locationId === "string" ? req.query.locationId : undefined);
+      const raw = req.query.itemIds;
+      if (typeof raw !== "string" || !raw || raw.length > 1100)
+        throw new HttpError(400, "invalid_query", "حدد أصنافًا صالحة");
+      const tokens = raw.split(",");
+      if (tokens.length > 100 || tokens.some((value) => !/^[1-9][0-9]{0,9}$/.test(value) || !Number.isSafeInteger(Number(value))))
+        throw new HttpError(400, "invalid_query", "قائمة الأصناف غير صالحة");
+      const itemIds = [...new Set(tokens.map(Number))];
+      const items = await readCommerce(pool, req, async (client, companyId) => {
+        const location = await client.query("SELECT 1 FROM locations WHERE company_id=$1 AND id=$2", [companyId, locationId]);
+        if (!location.rowCount)
+          throw new HttpError(404, "not_found", "الموقع غير موجود لهذه الشركة");
+        const result = await client.query(
+          `SELECT i.id AS item_id, i.shelf, COALESCE(sum(s.quantity_smallest),0)::text AS quantity_smallest
+           FROM items i
+           LEFT JOIN stock_balances s
+             ON s.company_id=i.company_id AND s.item_id=i.id AND s.location_id=$2
+           WHERE i.company_id=$1 AND i.id=ANY($3::integer[])
+           GROUP BY i.id, i.shelf`,
+          [companyId, locationId, itemIds],
+        );
+        return result.rows.map((row) => ({
+          itemId: Number(row.item_id),
+          quantitySmallest: String(row.quantity_smallest),
+          shelf: String(row.shelf),
+        }));
+      });
+      res.json({ items });
+    }),
+  );
+  router.get(
     `${base}/invoices`,
     handler(async (req, res) => {
       res.json(

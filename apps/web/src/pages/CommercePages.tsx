@@ -42,6 +42,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { saleStockQuantity } from "../sale-stock-quantity";
 import {
   Button,
   Card,
@@ -834,6 +835,18 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
+  const stockItemIds = [...new Set(selectedLines.map((line) => line.itemId))].sort((a,b) => a-b).join(",");
+  const stockPreview = useQuery<{
+    items: {itemId:number;quantitySmallest:string;shelf:string}[];
+  }>({
+    queryKey: ["sale-stock-preview", user?.id, companyId, location?.id, stockItemIds],
+    enabled: kind === "sale" && !!user && !!location && !!stockItemIds,
+    queryFn: ({signal}) => api(
+      `/companies/${companyId}/invoice-stock-preview?${new URLSearchParams({
+        locationId: String(location!.id), itemIds: stockItemIds,
+      })}`, {signal}),
+  });
+  const stockByItem = new Map((stockPreview.data?.items ?? []).map((row) => [row.itemId, row]));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
@@ -1343,7 +1356,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               aria-label="سطور الفاتورة"
             >
               <table
-                className={`commerce-lines commerce-matrix ${kind === "purchase" ? "commerce-matrix-purchase" : ""}`}
+                className={`commerce-lines commerce-matrix ${kind === "purchase" ? "commerce-matrix-purchase" : "commerce-matrix-sale"}`}
               >
                 <colgroup>
                   <col className="commerce-col-item" />
@@ -1354,6 +1367,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     <col className="commerce-col-expiry" />
                   )}
                   <col className="commerce-col-total" />
+                  {kind === "sale" && <>
+                    <col className="commerce-col-available" />
+                    <col className="commerce-col-shelf" />
+                  </>}
                   <col className="commerce-col-delete" />
                 </colgroup>
                 <thead>
@@ -1366,6 +1383,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     </th>
                     {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && <th scope="col">تاريخ الانتهاء</th>}
                     <th scope="col">إجمالي الصنف</th>
+                    {kind === "sale" && <>
+                      <th scope="col" title="الرصيد المتاح في الموقع المختار، بوحدة السطر">الكمية</th>
+                      <th scope="col">الرف</th>
+                    </>}
                     <th scope="col">
                       <span className="visually-hidden">حذف</span>
                     </th>
@@ -1641,6 +1662,22 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         <td className="commerce-line-total" aria-live="polite">
                           {amount(lineTotal)}
                         </td>
+                        {kind === "sale" && <>
+                          <td className="commerce-line-available" title="المتاح في المعرض/المخزن المختار، حسب وحدة السطر">
+                            {line.itemId && location
+                              ? stockPreview.isFetching && !stockByItem.has(line.itemId)
+                                ? "…" : stockPreview.isError ? "—"
+                                : stockByItem.has(line.itemId) && line.sourceItem
+                                  ? saleStockQuantity(stockByItem.get(line.itemId)!.quantitySmallest, line.sourceItem, line.unit)
+                                  : "—"
+                              : "—"}
+                          </td>
+                          <td className="commerce-line-shelf">
+                            <span title={line.sourceItem?.shelf || stockByItem.get(line.itemId)?.shelf || "الرف غير محدد"}>
+                              {line.sourceItem?.shelf || stockByItem.get(line.itemId)?.shelf || "—"}
+                            </span>
+                          </td>
+                        </>}
                         <td>
                           <Button
                             variant="ghost"

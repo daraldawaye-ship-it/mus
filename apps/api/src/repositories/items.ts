@@ -31,6 +31,7 @@ export function itemDTO(row: QueryResultRow): Item {
     imageId: row.image_id ?? null,
     name: row.name,
     englishName: row.english_name,
+    shelf: row.shelf ?? "",
     barcode: row.barcode,
     legacyId: row.legacy_id,
     agentId: row.agent_id,
