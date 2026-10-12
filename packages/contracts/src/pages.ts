@@ -230,6 +230,38 @@ page(
   "اسم الشركة وبيانات الاتصال والعنوان.",
 );
 page(
+  "public.notifications",
+  "تنبيهاتك العامة",
+  "الموقع العام",
+  "/notifications",
+  { view: signed, edit: signed },
+  "التنبيهات الآلية العامة الموجهة إليك ومتابعتها.",
+);
+page(
+  "public.notification-templates",
+  "أنواع التنبيهات العامة",
+  "الموقع العام",
+  "/notification-templates",
+  { view: owner, edit: owner },
+  "كروت أنواع التنبيهات العامة وإعداد أهميتها ومتابعتها.",
+);
+page(
+  "company.notifications",
+  "التنبيهات",
+  "الشركة",
+  "/companies/:companyId/notifications",
+  { view: member, edit: member },
+  "تنبيهاتك العامة وتنبيهات هذه الشركة فقط، مع القراءة والإنجاز والتأجيل.",
+);
+page(
+  "company.notification-templates",
+  "أنواع التنبيهات",
+  "الشركة",
+  "/companies/:companyId/notification-templates",
+  { view: general, edit: general },
+  "إعداد أنواع التنبيهات الآلية والأهمية والأدوار والمتابعين والتكرار.",
+);
+page(
   "company.attendance",
   "الحضور والانصراف",
   "الموظفون",

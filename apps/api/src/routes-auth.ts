@@ -23,6 +23,8 @@ import {
 } from "./services/auth.ts";
 import { userDTO } from "./repositories/models.ts";
 import { HttpError } from "./errors.ts";
+import { randomUUID } from "node:crypto";
+import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
@@ -201,6 +203,16 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           null,
           null,
         );
+        await emitNotification(client, {
+          code: "AUTH_PASSWORD_CHANGED",
+          companyId: null,
+          subjectUserId: user.id,
+          subjectKey: `user:${user.id}`,
+          eventKey: `password:${randomUUID()}`,
+          message:
+            "تم تغيير كلمة مرور حسابك. إذا لم تُجرِ هذا التغيير، راجع أمان حسابك فورًا.",
+          href: "/profile",
+        });
       });
       res.json({ ok: true });
     }),

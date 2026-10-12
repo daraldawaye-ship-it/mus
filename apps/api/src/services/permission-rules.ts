@@ -78,6 +78,8 @@ export async function requestPermissionTargets(
     locations: "company.locations",
     employees: "company.employees",
     attendance: "company.attendance",
+    notifications: "company.notifications",
+    "notification-templates": "company.notification-templates",
     users: "company.employees",
     "item-agents": "company.item-agents",
     "item-options": "company.items",
@@ -96,6 +98,7 @@ export async function requestPermissionTargets(
     "commerce-options": "company.sales",
     "inventory-options": "company.stock-operations",
   };
+  if (resource === "notifications" && verb === "POST") action = "edit";
   let page = direct[resource];
   if (resource === "commerce-options" && permission === "inventory.view")
     page = "company.stock-balances";

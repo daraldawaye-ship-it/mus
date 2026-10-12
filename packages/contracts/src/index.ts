@@ -142,6 +142,11 @@ export const auditActionLabels = {
   "item.update": "تعديل صنف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "inventory.settings": "حفظ إعدادات المخزون",
+  "notification.create": "إنشاء تنبيه آلي",
+  "notification.follow": "متابعة تنبيه",
+  "notification.assign": "إسناد متابعة تنبيه",
+  "notification.remind": "تكرار تنبيه",
+  "notification.settings": "إعداد نوع تنبيه",
   "attendance.schedule": "إعداد دوام الموظف",
   "attendance.checkIn": "تسجيل الحضور",
   "attendance.checkOut": "تسجيل الانصراف",
@@ -161,6 +166,11 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "notification.create",
+  "notification.follow",
+  "notification.assign",
+  "notification.remind",
+  "notification.settings",
   "owner.create",
   "user.register",
   "auth.login",
@@ -178,6 +188,11 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "notification.create",
+  "notification.follow",
+  "notification.assign",
+  "notification.remind",
+  "notification.settings",
   "attendance.schedule",
   "attendance.checkIn",
   "attendance.checkOut",
@@ -475,3 +490,4 @@ export * from "./inventory.ts";
 export * from "./pages.ts";
 export * from "./configuration.ts";
 export * from "./attendance.ts";
+export * from "./notifications.ts";

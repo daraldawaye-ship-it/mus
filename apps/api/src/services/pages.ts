@@ -234,13 +234,17 @@ export async function requestPageKeys(
     return {
       companyId: null,
       keys:
-        prefix === "users"
-          ? ["public.users"]
-          : prefix === "general-table"
-            ? ["public.general-table"]
-            : prefix === "audit"
-              ? ["public.audit"]
-              : [],
+        prefix === "notifications"
+          ? ["public.notifications"]
+          : prefix === "notification-templates"
+            ? ["public.notification-templates"]
+            : prefix === "users"
+              ? ["public.users"]
+              : prefix === "general-table"
+                ? ["public.general-table"]
+                : prefix === "audit"
+                  ? ["public.audit"]
+                  : [],
     };
   }
   if (
@@ -254,6 +258,8 @@ export async function requestPageKeys(
   const names: Record<string, string> = {
     employees: "employees",
     attendance: "attendance",
+    notifications: "notifications",
+    "notification-templates": "notification-templates",
     users: "employees",
     accounts: "accounts",
     "account-links": "accounts",

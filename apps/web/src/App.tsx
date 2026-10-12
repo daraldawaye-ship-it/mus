@@ -11,6 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  Bell,
   BookOpen,
   ChevronLeft,
   CircleUserRound,
@@ -52,6 +53,7 @@ import {
 } from "./page-directory";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
+import { NotificationBell } from "./NotificationBell";
 import { Button, Card, Dialog, Notice } from "./ui";
 import {
   AuthPage,
@@ -86,6 +88,16 @@ const ConfigurationPage = lazy(() =>
 const AttendancePage = lazy(() =>
   import("./pages/AttendancePage").then((module) => ({
     default: module.AttendancePage,
+  })),
+);
+const NotificationsPage = lazy(() =>
+  import("./pages/NotificationsPage").then((module) => ({
+    default: module.NotificationsPage,
+  })),
+);
+const NotificationTemplatesPage = lazy(() =>
+  import("./pages/NotificationsPage").then((module) => ({
+    default: module.NotificationTemplatesPage,
   })),
 );
 const AccountsPage = lazy(() =>
@@ -177,6 +189,8 @@ const InvoicePage = lazy(() =>
   })),
 );
 const companySections = [
+  "notifications",
+  "notification-templates",
   "attendance",
   "pages",
   "configuration",
@@ -235,10 +249,14 @@ function Navigation({
     "public.users": <Users size={17} />,
     "public.general-table": <TableProperties size={17} />,
     "public.audit": <FileClock size={17} />,
+    "public.notifications": <Bell size={17} />,
+    "public.notification-templates": <Settings2 size={17} />,
     "company.overview": <LayoutDashboard size={17} />,
     "company.configuration": <ShieldCheck size={17} />,
     "company.employees": <Users size={17} />,
     "company.attendance": <FileClock size={17} />,
+    "company.notifications": <Bell size={17} />,
+    "company.notification-templates": <Settings2 size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.items": <Package size={17} />,
@@ -357,6 +375,21 @@ function CompanyContent({
   section: CompanySection;
 }) {
   switch (section) {
+    case "notifications":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل التنبيهات…</Notice>}>
+          <NotificationsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "notification-templates":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل أنواع التنبيهات…</Notice>}>
+          <NotificationTemplatesPage
+            key={context.company.id}
+            context={context}
+          />
+        </Suspense>
+      );
     case "attendance":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الحضور والانصراف…</Notice>}>
@@ -671,6 +704,16 @@ function Workspace() {
               </div>
             </div>
             <div className="topbar-actions">
+              {user && (
+                <NotificationBell
+                  key={`${user.id}:${scope}`}
+                  companyId={
+                    inCompany && company.data && !company.isError
+                      ? companyId
+                      : undefined
+                  }
+                />
+              )}
               {user ? (
                 <UserMenu
                   user={user}
@@ -707,6 +750,34 @@ function Workspace() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
+              <Route
+                path="/notifications"
+                element={
+                  <Protected>
+                    <PageRouteGuard pageKey="public.notifications">
+                      <Suspense
+                        fallback={<Notice>جارٍ تحميل التنبيهات…</Notice>}
+                      >
+                        <NotificationsPage />
+                      </Suspense>
+                    </PageRouteGuard>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/notification-templates"
+                element={
+                  <Protected>
+                    <PageRouteGuard pageKey="public.notification-templates">
+                      <Suspense
+                        fallback={<Notice>جارٍ تحميل أنواع التنبيهات…</Notice>}
+                      >
+                        <NotificationTemplatesPage />
+                      </Suspense>
+                    </PageRouteGuard>
+                  </Protected>
+                }
+              />
               <Route
                 path="/pages"
                 element={
