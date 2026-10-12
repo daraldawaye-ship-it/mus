@@ -1226,6 +1226,80 @@ test("migration backfills only older companies without branches, and never dupli
   assert.equal(stillShowroom.items[0]?.id, existingShowroom.id);
 });
 
+test("bulk duplicate of selected general-table rows is atomic, audited and restricted", async (t) => {
+  const f = await fixture(t);
+  const admin = await owner(f);
+  const ordinary = await register(f, "general-table-duplicate-ordinary@example.test");
+  const template = {
+    tableName: "duplicates", category: "test", title: "Copied entry",
+    description: "An exact non-empty description",
+    number1: "102.5", number2: "-7.125",
+    date1: "2026-10-12T08:00:00.000Z", date2: null,
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
+      `text${index + 1}`, `Sample ${index + 1}`,
+    ])),
+  };
+  const first = (await admin.client.ok<{record:GeneralTableRecord}>(
+    "POST", "/general-table", template, 201,
+  )).record;
+  const second = (await admin.client.ok<{record:GeneralTableRecord}>(
+    "POST", "/general-table", { ...template, title: "Second copied entry" }, 201,
+  )).record;
+  const ids = [first.id, second.id];
+  assert.equal(
+    (await ordinary.client.request("POST", "/general-table/duplicate", { ids })).status, 403,
+  );
+  assert.equal(
+    (await f.client().request("POST", "/general-table/duplicate", { ids })).status, 401,
+  );
+  for (const invalid of [{ ids: [] }, { ids: [first.id, first.id] }, { ids: [0] }]) {
+    assert.equal(
+      (await admin.client.request("POST", "/general-table/duplicate", invalid)).status, 400,
+    );
+  }
+  assert.equal(
+    (await admin.client.request("POST", "/general-table/duplicate", {
+      ids: [first.id, 2_147_483_647],
+    })).status, 404,
+  );
+  assert.equal(
+    (await admin.client.ok<Page<GeneralTableRecord>>(
+      "GET", "/general-table?tableName=duplicates",
+    )).total, 2,
+    "A missing selected source must roll back all copies",
+  );
+
+  const copies = await admin.client.ok<{ created: number; records: GeneralTableRecord[] }>(
+    "POST", "/general-table/duplicate", { ids }, 201,
+  );
+  assert.equal(copies.created, 2);
+  assert.equal(copies.records.length, 2);
+  for (const [index, original] of [first, second].entries()) {
+    const copied = copies.records[index]!;
+    assert.notEqual(copied.id, original.id);
+    const withoutIdentity = (record: GeneralTableRecord) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) =>
+        !["id", "createdAt", "updatedAt"].includes(key)));
+    assert.deepEqual(withoutIdentity(copied), withoutIdentity(original));
+    const originalAfter = await admin.client.ok<{ record: GeneralTableRecord }>(
+      "GET", `/general-table/${original.id}`,
+    );
+    assert.deepEqual(originalAfter.record, original);
+  }
+  assert.equal(
+    (await admin.client.ok<Page<GeneralTableRecord>>(
+      "GET", "/general-table?tableName=duplicates",
+    )).total, 4,
+  );
+  const logs = await admin.client.ok<Page<AuditEvent>>(
+    "GET", "/audit?action=generalTable.duplicate",
+  );
+  for (const copy of copies.records) {
+    assert(logs.items.some((event) =>
+      event.targetId === copy.id && event.action === "generalTable.duplicate"));
+  }
+});
+
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);

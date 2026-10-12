@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import type { Pool, QueryResultRow } from "pg";
 import {
   generalTableSchema,
@@ -110,6 +111,51 @@ export function generalTableRoutes(pool: Pool): Router {
         page: query.page,
         pageSize: query.pageSize,
       });
+    }),
+  );
+  router.post(
+    "/general-table/duplicate",
+    handler(async (req, res) => {
+      const input = parse(
+        z.object({
+          ids: z.array(z.number().int().positive().max(2_147_483_647))
+            .min(1, "حدد سجلًا واحدًا على الأقل")
+            .max(100, "يمكن تكرار 100 سجل في العملية الواحدة")
+            .refine((ids) => new Set(ids).size === ids.length, "لا تكرر رقم السجل في الطلب"),
+        }).strict(),
+        req.body,
+      );
+      const records = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        publicAdmin(user);
+        await assertRequestPagesEnabled(client, req, true);
+        // Lock and validate every source record before any insert. The entire
+        // copy operation rolls back if a source is missing or auditing fails.
+        const source = await client.query(
+          "SELECT * FROM general_table WHERE general_table_id=ANY($1::integer[]) FOR SHARE",
+          [input.ids],
+        );
+        const found = new Map(source.rows.map((row) => [row.general_table_id as number, row]));
+        if (found.size !== input.ids.length) missing();
+        const created: GeneralTableRecord[] = [];
+        for (const sourceId of input.ids) {
+          const original = recordDTO(found.get(sourceId)!);
+          const copy = await client.query(
+            `INSERT INTO general_table(${sqlFields.join(",")},created_by)
+             SELECT ${sqlFields.join(",")},$1 FROM general_table
+             WHERE general_table_id=$2 RETURNING *`,
+            [user.id, sourceId],
+          );
+          const next = recordDTO(copy.rows[0]);
+          await audit(
+            client, user, "generalTable.duplicate", "generalTable",
+            next.id, { sourceId, record: original }, next,
+          );
+          created.push(next);
+        }
+        return created;
+      });
+      res.status(201).json({ created: records.length, records });
     }),
   );
   router.get(
