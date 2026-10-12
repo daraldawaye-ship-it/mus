@@ -1516,6 +1516,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   assert.equal(found.status,200);
   assert.deepEqual(found.body.result?.tools?.map(t=>t.name),[
     "query_general_table","get_general_table_record",
+    "create_general_table_record","update_general_table_record",
   ]);
   const sorted=await rpc("tools/call",{name:"query_general_table",arguments:{
     tableName:"طلب تعديلات في الموقع",number2EmptyOrZero:true,pageSize:10,
@@ -1540,6 +1541,73 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   });
   assert.equal(blocked.status,200);
   assert.equal((await blocked.json() as {result:{isError:boolean}}).result.isError,true);
+});
+
+test("ChatGPT MCP write access needs fresh OAuth approval and audits conflict-safe changes",async(t)=>{
+  const f=await fixture(t),platform=await owner(f);
+  const {createSession}=await import("../apps/api/src/services/auth.ts");
+  const session=await createSession(f.pool,platform.user.id);
+  const base=(path:string)=>f.baseUrl+path;
+  const registration=await fetch(base("/oauth/register"),{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({redirect_uris:["http://localhost:4322/callback"],token_endpoint_auth_method:"none"}),
+  });
+  assert.equal(registration.status,201);
+  const client=await registration.json() as {client_id:string};
+  const verifier="w".repeat(64);
+  const challenge=createHash("sha256").update(verifier).digest("base64url");
+  const fields={client_id:client.client_id,redirect_uri:"http://localhost:4322/callback",
+    response_type:"code",scope:"general_table.read general_table.write",state:"write_state_12345678",
+    resource:"http://localhost/mcp",code_challenge:challenge,code_challenge_method:"S256"};
+  const consent=await fetch(base("/oauth/authorize?"+new URLSearchParams(fields)),{
+    headers:{cookie:"tijara_session="+session.token},
+  });
+  assert.equal(consent.status,200);
+  assert.match(await consent.text(),/القراءة والإنشاء والتعديل/);
+  const approval=await fetch(base("/oauth/authorize"),{
+    method:"POST",redirect:"manual",headers:{
+      "content-type":"application/x-www-form-urlencoded",
+      cookie:"tijara_session="+session.token,
+    },
+    body:new URLSearchParams({...fields,csrf:session.csrf}),
+  });
+  assert.equal(approval.status,302);
+  const code=new URL(approval.headers.get("location")!).searchParams.get("code")!;
+  const exchange=await fetch(base("/oauth/token"),{
+    method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,
+      redirect_uri:fields.redirect_uri,code,code_verifier:verifier,resource:fields.resource}),
+  });
+  assert.equal(exchange.status,200);
+  const tokenData=await exchange.json() as {access_token:string;scope:string};
+  assert.equal(tokenData.scope,fields.scope);
+  const rpc=async(name:string,args:unknown)=>{
+    const res=await fetch(base("/mcp"),{method:"POST",headers:{
+      authorization:"Bearer "+tokenData.access_token,"content-type":"application/json",
+    },body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}})});
+    assert.equal(res.status,200);
+    return await res.json() as {result?:{structuredContent?:Record<string,any>;isError?:boolean}};
+  };
+  const created=await rpc("create_general_table_record",{
+    tableName:"طلبات اختبار ChatGPT",title:"First",description:"created via scoped tool",
+  });
+  const row=created.result?.structuredContent?.record;
+  assert(row?.id>0);
+  assert.equal(row.title,"First");
+  const updated=await rpc("update_general_table_record",{
+    id:row.id,expectedUpdatedAt:row.updatedAt,changes:{title:"Updated",description:"edited"},
+  });
+  assert.equal(updated.result?.structuredContent?.record?.title,"Updated");
+  const stale=await rpc("update_general_table_record",{
+    id:row.id,expectedUpdatedAt:row.updatedAt,changes:{title:"Overwritten"},
+  });
+  assert.equal(stale.result?.isError,true);
+  assert.equal(stale.result?.structuredContent?.code,"conflict");
+  const stored=await f.pool.query("SELECT general_table_title FROM general_table WHERE general_table_id=$1",[row.id]);
+  assert.equal(stored.rows[0]?.general_table_title,"Updated");
+  const events=await f.pool.query<{action:string}>(
+    "SELECT action FROM audit_events WHERE target_type='generalTable' AND target_id=$1 ORDER BY id",[row.id]);
+  assert.deepEqual(events.rows.map(e=>e.action),["generalTable.create","generalTable.update"]);
 });
 
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
