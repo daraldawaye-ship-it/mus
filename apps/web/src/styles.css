@@ -1655,6 +1655,12 @@ ul {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+.commerce-list-link {
+  width: max-content;
+  max-width: 100%;
+  align-self: end;
+  white-space: nowrap;
+}
 .commerce-header-grid > *,
 .commerce-footer-grid > * {
   min-width: 0;
@@ -1836,17 +1842,11 @@ ul {
   border: 0;
 }
 .commerce-save-footer {
-  position: fixed;
-  bottom: 0;
-  z-index: 6;
+  /* Part of the invoice form after item rows, never pinned to the viewport. */
+  position: static;
   display: grid;
   gap: 6px;
-  max-height: 40dvh;
-  overflow: auto;
   border-top: 2px solid var(--primary);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  box-shadow: 0 -4px 16px rgb(0 0 0 / 12%);
 }
 .commerce-footer-grid {
   display: grid;
