@@ -30,7 +30,7 @@ export const inventorySettingsSchema = z
     surplusAccountId: id,
     shortageAccountId: id,
     costingMethod: z.literal("weighted_average").default("weighted_average"),
-    allowNegative: z.literal(false).default(false),
+    allowNegative: z.boolean().default(true),
     revision: id.nullable(),
   })
   .strict();
@@ -43,7 +43,7 @@ export interface InventorySettings {
   surplusAccountId: number;
   shortageAccountId: number;
   costingMethod: "weighted_average";
-  allowNegative: false;
+  allowNegative: boolean;
   revision: number;
   baseCurrencyId: number | null;
   baseCurrencyCode: string | null;
