@@ -2322,3 +2322,21 @@ test("option lists search and filter native item booleans without widening picke
   assert.equal(picker.items.length,0,"Option search stays scoped to primary business lists");
   assert(!Object.hasOwn(picker,"optionDefinitions"));
 });
+
+test("inventory accounts are ready automatically for new and existing companies",async(t)=>{
+  const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Automatic inventory");
+  type Settings={inventory_account_id:number;sales_account_id:number;cogs_account_id:number;surplus_account_id:number;shortage_account_id:number;revision:number};
+  const current=(await f.pool.query<Settings>("SELECT * FROM inventory_settings WHERE company_id=$1",[co.id])).rows[0]!;
+  assert(current);
+  const ids=[current.inventory_account_id,current.sales_account_id,current.cogs_account_id,current.surplus_account_id,current.shortage_account_id];
+  assert.equal(new Set(ids).size,5);
+  const accounts=(await f.pool.query<{id:number;category:string;active:boolean;kind:string}>("SELECT * FROM accounts WHERE company_id=$1 AND id=ANY($2::integer[])",[co.id,ids])).rows;
+  for(const [i,category] of ["asset","income","expense","income","expense"].entries())assert(accounts.some(a=>a.id===ids[i]&&a.category===category&&a.active&&a.kind==="posting"));
+  assert.equal((await f.pool.query("SELECT initialize_company_inventory_settings($1,$2) AS changed",[co.id,platform.user.id])).rows[0].changed,false);
+  assert.deepEqual((await f.pool.query("SELECT * FROM inventory_settings WHERE company_id=$1",[co.id])).rows[0],current);
+  const existing=(await f.pool.query<{id:number}>("INSERT INTO companies(name,created_by) VALUES('Legacy inventory company',$1) RETURNING id",[platform.user.id])).rows[0]!;
+  assert.equal((await f.pool.query("SELECT initialize_company_inventory_settings($1,$2) AS changed",[existing.id,platform.user.id])).rows[0].changed,true);
+  const backfilled=(await f.pool.query<Settings>("SELECT * FROM inventory_settings WHERE company_id=$1",[existing.id])).rows[0]!;
+  assert.equal(new Set([backfilled.inventory_account_id,backfilled.sales_account_id,backfilled.cogs_account_id,backfilled.surplus_account_id,backfilled.shortage_account_id]).size,5);
+  assert.equal((await f.pool.query("SELECT count(*)::integer AS total FROM accounts WHERE company_id=$1 AND active AND kind='posting'",[existing.id])).rows[0].total,5);
+});
