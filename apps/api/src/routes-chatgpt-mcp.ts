@@ -212,7 +212,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
        if(new Date(before.updatedAt).toISOString()!==new Date(expectedUpdatedAt).toISOString())
          return {error:"Record changed since last read. Reload before editing.",code:"conflict",current:before};
        const keys=Object.keys(changes) as (keyof GeneralTableInput)[];
-       const assignments=keys.map((key,i)=>`${editableColumns[key]}=${i+1}`).join(",");
+       const assignments=keys.map((key,i)=>`${editableColumns[key]}=$${i+1}`).join(",");
        const vals=keys.map(key=>changes[key]);
        const changed=await db.query(
          `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=$${keys.length+1} RETURNING ${selectFields}`,
