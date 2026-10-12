@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import {
   optionValueTypes,
@@ -57,7 +57,7 @@ const optionColumns = `id,key,page_key AS "pageKey",record_kind AS "recordKind",
 const roleColumns = `id,key,name,description,active,is_system AS "system",revision`;
 const ruleColumns = `r.id,r.role_id AS "roleId",r.permission_key AS "permissionKey",
  p.name AS "permissionName",p.page_key AS "pageKey",p.action,r.effect,r.active,r.revision`;
-async function authorized(client: PoolClient, req: Parameters<ReturnType<typeof handler>>[0], general = false) {
+async function authorized(client: PoolClient, req: Request, general = false) {
   const companyId = id(req.params.companyId);
   const user = await currentActor(client, actor(req));
   const context = await companyAccess(client, user, companyId, "pages.manage", true);
