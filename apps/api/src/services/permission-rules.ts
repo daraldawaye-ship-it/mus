@@ -37,7 +37,8 @@ export function requestPermissionAction(req:Request|undefined, companyId:number)
     "commerce-options":"company.sales", "item-options":"company.items",
     "inventory-options":"company.stock-operations",
   };
-  let pageKey=direct[resource], action=operation;
+  let pageKey: string | undefined = direct[resource];
+  let action: PageAction = operation;
   if(resource==="configuration" && detail==="record-options"){
     const kind=req.query.recordKind;
     pageKey=kind==="item"?"company.item-card":kind==="account"?"company.accounts":undefined;
