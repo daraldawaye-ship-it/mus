@@ -1497,7 +1497,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
     });
     return {status:res.status,body:await res.json() as {result?:{tools?:{name:string}[];structuredContent?:{
       total?:number;records?:{description:string;number1:string}[]
-    }}}},
+    }}}};
   };
   const found=await rpc("tools/list",{});
   assert.equal(found.status,200);
