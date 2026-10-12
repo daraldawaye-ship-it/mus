@@ -27,6 +27,7 @@ import type {
   Employee,
   ExchangeRate,
   FinanceSettings,
+  GeneralTableRecord,
   Location,
   Page as ApiPage,
   SessionResponse,
