@@ -1613,3 +1613,292 @@ ul {
     padding: 1px 4px;
   }
 }
+
+/* Invoice and stock pages share the central compact control sizes and colors. */
+.inventory-operation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+.inventory-exact {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.commerce-document-page,
+.commerce-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.commerce-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.commerce-header-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+.commerce-header-grid > *,
+.commerce-add-grid > *,
+.commerce-footer-grid > * {
+  min-width: 0;
+}
+.commerce-header-grid .server-lookup {
+  display: grid;
+  gap: 4px;
+}
+.commerce-header-grid .lookup-pages {
+  font-size: 10px;
+  gap: 3px;
+}
+.commerce-header-grid .lookup-pages .button {
+  padding-inline: 4px;
+  font-size: 10px;
+}
+.commerce-original-picker {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(200px, 2fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.commerce-original-picker .lookup-pages,
+.commerce-original-picker .notice {
+  grid-column: 1 / -1;
+}
+.commerce-add-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(210px, 3fr) minmax(100px, 1fr) minmax(95px, 1fr)
+    minmax(95px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+.commerce-add-grid:has(#invoice-expiry) {
+  grid-template-columns:
+    minmax(190px, 3fr) minmax(90px, 1fr) minmax(90px, 1fr)
+    minmax(90px, 1fr) minmax(130px, 1fr) auto;
+}
+.commerce-item-search {
+  position: relative;
+}
+.commerce-search-results {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  inset-inline: 0;
+  width: max(100%, 310px);
+  max-width: calc(100vw - 44px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: var(--card-shadow);
+  padding: 4px;
+}
+.commerce-search-results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.commerce-search-results .button {
+  width: 100%;
+  justify-content: start;
+  overflow: hidden;
+}
+.commerce-search-results .button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commerce-selected-item,
+.commerce-document-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-block: 8px;
+  font-size: 12px;
+}
+.commerce-lines-scroll {
+  overflow: auto;
+  max-height: max(180px, calc(100dvh - 420px));
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.commerce-lines {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.commerce-lines th,
+.commerce-lines td {
+  height: var(--row-height);
+  padding: 1px 5px;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commerce-lines th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--table-head);
+  font-size: 12px;
+}
+.commerce-lines th:nth-child(2) {
+  width: 22%;
+}
+.commerce-lines th:last-child {
+  width: 52px;
+}
+.commerce-lines .field {
+  gap: 0;
+}
+.commerce-lines input {
+  width: 100%;
+}
+.commerce-save-footer {
+  position: sticky;
+  bottom: -1px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+}
+.commerce-footer-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 2fr) minmax(100px, 1fr) minmax(170px, 1.5fr)
+    auto;
+  gap: 8px;
+  align-items: center;
+}
+.commerce-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.commerce-print-heading {
+  display: none;
+}
+.commerce-invoice-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
+  .commerce-header-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .commerce-add-grid,
+  .commerce-add-grid:has(#invoice-expiry) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .commerce-add-grid > :first-child {
+    grid-column: span 2;
+  }
+  .commerce-footer-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .inventory-operation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .commerce-header-grid,
+  .commerce-original-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .commerce-add-grid,
+  .commerce-add-grid:has(#invoice-expiry) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .commerce-add-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+  .commerce-footer-grid {
+    gap: 6px;
+  }
+  .commerce-footer-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+  .commerce-footer-grid .button {
+    width: 100%;
+  }
+  .commerce-save-footer {
+    padding: 8px;
+  }
+}
+@media print {
+  .commerce-no-print,
+  .commerce-save-footer {
+    display: none !important;
+  }
+  .commerce-print-document,
+  .commerce-print-document table,
+  .commerce-print-document th,
+  .commerce-print-document td {
+    color: #111 !important;
+    background: white !important;
+    box-shadow: none !important;
+  }
+  .commerce-print-document {
+    padding: 0;
+    border: 0;
+  }
+  .commerce-print-heading {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .commerce-lines-scroll {
+    overflow: visible;
+    max-height: none;
+    border-color: #777;
+  }
+  .commerce-lines {
+    min-width: 0;
+  }
+  .commerce-lines th {
+    position: static;
+  }
+  .commerce-lines tr {
+    break-inside: avoid;
+  }
+  .commerce-lines td,
+  .commerce-lines th {
+    border-color: #777;
+    white-space: normal;
+    overflow: visible;
+  }
+}
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+@media print {
+  .commerce-print-document .table-value,
+  .commerce-print-document .truncate {
+    color: #111 !important;
+    white-space: normal;
+    overflow: visible;
+    height: auto;
+    max-height: none;
+    text-overflow: clip;
+  }
+}

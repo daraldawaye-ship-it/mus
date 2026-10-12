@@ -63,6 +63,8 @@ export async function companyAccess(
     "currencies",
     "locations",
     "items",
+    "commerce",
+    "inventory",
   ] as const) {
     if (
       permissions.includes(`${module}.manage`) &&
@@ -70,6 +72,9 @@ export async function companyAccess(
     )
       permissions.push(`${module}.view`);
   }
+  if (
+    permissions.includes("inventory.post") && !permissions.includes("inventory.view")
+  ) permissions.push("inventory.view");
   if (
     (permissions.includes("finance.manage") ||
       permissions.includes("finance.post")) &&

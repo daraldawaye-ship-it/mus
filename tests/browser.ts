@@ -2744,6 +2744,12 @@ try {
             .getByRole("heading", { name: test.title, exact: true })
             .waitFor();
           await page.getByRole("dialog").waitFor({ state: "hidden" });
+          // The heading may still belong to the old route while the company context loads.
+          // Release the held save only after the destination scope has actually rendered.
+          await eventually(
+            () => page.locator(".scope-title strong").textContent(),
+            (value) => assert.equal(value, companies[1]!.name),
+          );
           held.release();
           await eventually(
             async () => completed,

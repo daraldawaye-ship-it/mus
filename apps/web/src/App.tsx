@@ -120,6 +120,33 @@ const ItemAgentsPage = lazy(() =>
     default: module.ItemAgentsPage,
   })),
 );
+const InventoryBalancesPage = lazy(() =>
+  import("./pages/InventoryPages").then((module) => ({
+    default: module.InventoryBalancesPage,
+  })),
+);
+const InventoryMovementsPage = lazy(() =>
+  import("./pages/InventoryPages").then((module) => ({
+    default: module.InventoryMovementsPage,
+  })),
+);
+const InventoryOperationsPage = lazy(() =>
+  import("./pages/InventoryPages").then((module) => ({
+    default: module.InventoryOperationsPage,
+  })),
+);
+const InventorySettingsPage = lazy(() =>
+  import("./pages/InventoryPages").then((module) => ({
+    default: module.InventorySettingsPage,
+  })),
+);
+const mayReadInventory = (context: CompanyContext) =>
+  context.general ||
+  context.permissions.some((permission) =>
+    ["inventory.view", "inventory.manage", "inventory.post"].includes(
+      permission,
+    ),
+  );
 const mayReadItems = (context: CompanyContext) =>
   context.general ||
   context.permissions.some(
@@ -151,6 +178,10 @@ const companySections = [
   "items",
   "item",
   "item-agents",
+  "stock-balances",
+  "stock-movements",
+  "stock-operations",
+  "inventory-settings",
 ] as const;
 type CompanySection = (typeof companySections)[number];
 
@@ -242,6 +273,34 @@ function Navigation({
                 "وكلاء الأصناف",
                 <Users size={17} />,
               )}
+            </>
+          )}
+          {mayReadInventory(context) && (
+            <>
+              {link(
+                `/companies/${context.company.id}/stock-balances`,
+                "أرصدة المخزون",
+                <Warehouse size={17} />,
+              )}
+              {link(
+                `/companies/${context.company.id}/stock-movements`,
+                "حركات المخزون",
+                <FileText size={17} />,
+              )}
+              {(context.general ||
+                context.permissions.includes("inventory.post")) &&
+                link(
+                  `/companies/${context.company.id}/stock-operations`,
+                  "المناقلات والجرد",
+                  <Package size={17} />,
+                )}
+              {(context.general ||
+                context.permissions.includes("inventory.manage")) &&
+                link(
+                  `/companies/${context.company.id}/inventory-settings`,
+                  "إعداد المخزون",
+                  <Settings2 size={17} />,
+                )}
             </>
           )}
           {mayReadFinance(context) && (
@@ -373,6 +432,30 @@ function CompanyView({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الوكلاء…</Notice>}>
           <ItemAgentsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "stock-balances":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل أرصدة المخزون…</Notice>}>
+          <InventoryBalancesPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "stock-movements":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل حركات المخزون…</Notice>}>
+          <InventoryMovementsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "stock-operations":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل المناقلات والجرد…</Notice>}>
+          <InventoryOperationsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "inventory-settings":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل إعداد المخزون…</Notice>}>
+          <InventorySettingsPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "financial-documents":

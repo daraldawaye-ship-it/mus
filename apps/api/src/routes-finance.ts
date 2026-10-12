@@ -127,7 +127,7 @@ async function insertDraft(
   await replaceDraftLines(client, companyId, documentId, input.lines);
   return documentId;
 }
-async function postDraft(
+export async function postDraft(
   client: PoolClient,
   companyId: number,
   documentId: number,
@@ -525,6 +525,8 @@ export function financeRoutes(pool: Pool): Router {
             };
           await documentRow(client, companyId, documentId, true);
           const before = await loadDocument(client, companyId, documentId);
+          const linkedStock = await client.query("SELECT 1 FROM invoices WHERE company_id=$1 AND $2 IN(financial_document_id,cost_document_id,variance_document_id) UNION ALL SELECT 1 FROM stock_operations WHERE company_id=$1 AND financial_document_id=$2 LIMIT 1", [companyId, documentId]);
+          if (linkedStock.rowCount) conflict("هذا القيد مرتبط بفاتورة أو حركة مخزون؛ صححه بمردود مرتبط أو تسوية مخزون موثقة");
           if (before.status !== "posted")
             conflict("يمكن عكس المستند المرحل مرة واحدة فقط");
           if (before.reversesDocumentId !== null)

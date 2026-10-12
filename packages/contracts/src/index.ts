@@ -2,6 +2,8 @@ import { z } from "zod";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
 import { itemCatalog } from "./items.ts";
+import { commerceCatalog } from "./commerce.ts";
+import { inventoryCatalog } from "./inventory.ts";
 export const MAX_ID = 2_147_483_647;
 
 export const userKinds = ["admin", "supervisor", "member"] as const;
@@ -27,6 +29,11 @@ export const permissionKeys = [
   "finance.post",
   "items.view",
   "items.manage",
+  "commerce.view",
+  "commerce.manage",
+  "inventory.view",
+  "inventory.manage",
+  "inventory.post",
 ] as const;
 export type UserKind = (typeof userKinds)[number];
 export type EmployeeRole = (typeof employeeRoles)[number];
@@ -58,6 +65,11 @@ export const permissionLabels: Record<Permission, string> = {
   "finance.post": "ترحيل وعكس القيود والسندات",
   "items.view": "عرض الأصناف ووكلائها",
   "items.manage": "إدارة الأصناف ووكلائها",
+  "commerce.view": "عرض فواتير المبيعات والمشتريات",
+  "commerce.manage": "حفظ وترحيل الفواتير والمردودات",
+  "inventory.view": "عرض المخزون وحركاته",
+  "inventory.manage": "إدارة إعدادات المخزون",
+  "inventory.post": "ترحيل المناقلات والجرد",
 };
 export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   employee: [],
@@ -125,6 +137,10 @@ export const auditActionLabels = {
   "itemAgent.update": "تعديل وكيل صنف",
   "item.create": "إضافة صنف",
   "item.update": "تعديل صنف",
+  "invoice.post": "حفظ وترحيل فاتورة",
+  "inventory.settings": "حفظ إعدادات المخزون",
+  "stock.transfer": "ترحيل مناقلة مخزون",
+  "stock.adjustment": "ترحيل تسوية جرد",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -143,6 +159,10 @@ export const publicAuditActions: AuditAction[] = [
   "generalTable.update",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "invoice.post",
+  "inventory.settings",
+  "stock.transfer",
+  "stock.adjustment",
   "itemAgent.create",
   "itemAgent.update",
   "item.create",
@@ -194,11 +214,16 @@ export const auditTargetLabels: Record<string, string> = {
   financialDocument: "مستند مالي",
   item: "صنف",
   itemAgent: "وكيل صنف",
+  invoice: "فاتورة",
+  inventorySettings: "إعدادات المخزون",
+  stockOperation: "عملية مخزون",
 };
 export const catalog = {
   ...masterCatalog,
   ...financeCatalog,
   ...itemCatalog,
+  ...commerceCatalog,
+  ...inventoryCatalog,
   userKinds,
   employeeRoles,
   permissionKeys,
@@ -410,3 +435,5 @@ export * from "./masters.ts";
 export * from "./general-table.ts";
 export * from "./finance.ts";
 export * from "./items.ts";
+export * from "./commerce.ts";
+export * from "./inventory.ts";
