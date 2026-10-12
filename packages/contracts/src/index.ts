@@ -145,6 +145,12 @@ export const auditActionLabels = {
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
   "page.settings": "تعديل إعدادات صفحة",
+  "configuration.option.create": "تعريف خيار جديد",
+  "configuration.option.update": "تعديل تعريف خيار",
+  "configuration.role.create": "إنشاء دور",
+  "configuration.role.update": "تعديل دور",
+  "configuration.roleRule.create": "إضافة قاعدة صلاحية لدور",
+  "configuration.roleRule.update": "تعديل قاعدة صلاحية لدور",
   "configuration.options.seed": "إنشاء تعريفات الخيارات الأساسية تلقائيًا",
   "configuration.roles.seed": "إنشاء أدوار الشركة الأساسية تلقائيًا",
 } as const;
@@ -167,6 +173,12 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "configuration.option.create",
+  "configuration.option.update",
+  "configuration.role.create",
+  "configuration.role.update",
+  "configuration.roleRule.create",
+  "configuration.roleRule.update",
   "configuration.options.seed",
   "configuration.roles.seed",
   "page.settings",
