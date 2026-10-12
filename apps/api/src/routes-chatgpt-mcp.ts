@@ -2,6 +2,10 @@ import express, { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { tokenHash } from "./services/auth.ts";
+import { transaction } from "./db.ts";
+import { generalTableSchema, type GeneralTableInput } from "../../../packages/contracts/src/general-table.ts";
+import { audit } from "./services/audit.ts";
+import { userDTO } from "./repositories/models.ts";
 
 const tools=[{
  name:"query_general_table",
@@ -20,6 +24,34 @@ const tools=[{
  inputSchema:{type:"object",properties:{id:{type:"integer",minimum:1}},required:["id"],additionalProperties:false},
  securitySchemes:[{type:"oauth2",scopes:["general_table.read"]}],
  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+},{
+ name:"create_general_table_record",
+ description:"إنشاء سجل جديد في الجدول العام بعد موافقة المستخدم. تتطلب صلاحية كتابة مستقلة، ويسجل النظام العملية للتدقيق. لا ينفذ أوامر SQL حرة.",
+ inputSchema:{type:"object",properties:{
+   tableName:{type:"string"},title:{type:"string"},category:{type:"string"},description:{type:"string"},
+   number1:{type:["string","null"]},number2:{type:["string","null"]},
+   date1:{type:["string","null"]},date2:{type:["string","null"]},
+   text1:{type:"string"},text2:{type:"string"},text3:{type:"string"},
+   text4:{type:"string"},text5:{type:"string"},text6:{type:"string"},
+   text7:{type:"string"},text8:{type:"string"},text9:{type:"string"}
+ },required:["tableName","title"],additionalProperties:false},
+ securitySchemes:[{type:"oauth2",scopes:["general_table.read","general_table.write"]}],
+ annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+},{
+ name:"update_general_table_record",
+ description:"تعديل الحقول المحددة في سجل موجود من الجدول العام مع رقم السجل وتاريخ updatedAt المتوقع الذي تحصل عليه من القراءة. يمنع الكتابة فوق تعديل أحدث، ويسجل التغيير للتدقيق. لا يسمح بالحذف أو SQL الحر.",
+ inputSchema:{type:"object",properties:{
+  id:{type:"integer",minimum:1},expectedUpdatedAt:{type:"string",description:"updatedAt من آخر قراءة للسجل"},
+  changes:{type:"object",properties:{
+   tableName:{type:"string"},title:{type:"string"},category:{type:"string"},description:{type:"string"},
+   number1:{type:["string","null"]},number2:{type:["string","null"]},
+   date1:{type:["string","null"]},date2:{type:["string","null"]},
+   text1:{type:"string"},text2:{type:"string"},text3:{type:"string"},text4:{type:"string"},
+   text5:{type:"string"},text6:{type:"string"},text7:{type:"string"},text8:{type:"string"},text9:{type:"string"}
+  },additionalProperties:false}
+ },required:["id","expectedUpdatedAt","changes"],additionalProperties:false},
+ securitySchemes:[{type:"oauth2",scopes:["general_table.read","general_table.write"]}],
+ annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
 }];
 const argsSchema=z.object({
  tableName:z.string().trim().min(1).max(120),
@@ -28,6 +60,30 @@ const argsSchema=z.object({
  pageSize:z.number().int().min(1).max(50).default(20),
 }).strict();
 const idSchema=z.object({id:z.number().int().positive().max(2147483647)}).strict();
+const createSchema=generalTableSchema.partial().extend({
+ tableName:generalTableSchema.shape.tableName,
+ title:generalTableSchema.shape.title,
+}).strict();
+const updateSchema=z.object({
+ id:idSchema.shape.id,
+ expectedUpdatedAt:z.string().datetime({offset:true}),
+ changes:generalTableSchema.partial().refine(v=>Object.keys(v).length>0,"No changes provided"),
+}).strict();
+const editableColumns:Record<keyof GeneralTableInput,string>={
+ tableName:"general_table_table_name",category:"general_table_category",
+ title:"general_table_title",description:"general_table_description",
+ number1:"general_table_number1",number2:"general_table_number2",
+ date1:"general_table_date1",date2:"general_table_date2",
+ text1:"general_table_text1",text2:"general_table_text2",
+ text3:"general_table_text3",text4:"general_table_text4",text5:"general_table_text5",
+ text6:"general_table_text6",text7:"general_table_text7",
+ text8:"general_table_text8",text9:"general_table_text9",
+};
+const emptyRecord:Omit<GeneralTableInput,"tableName"|"title">={
+ category:"",description:"",number1:null,number2:null,date1:null,date2:null,
+ text1:"",text2:"",text3:"",text4:"",text5:"",text6:"",text7:"",text8:"",text9:"",
+};
+
 const selectFields=`general_table_id AS "id",
  general_table_table_name AS "tableName",general_table_category AS "category",
  general_table_title AS "title",general_table_description AS "description",
@@ -37,7 +93,7 @@ const selectFields=`general_table_id AS "id",
  general_table_text3 AS "text3",general_table_text4 AS "text4",
  general_table_text5 AS "text5",general_table_text6 AS "text6",
  general_table_text7 AS "text7",general_table_text8 AS "text8",
- general_table_text9 AS "text9"`;
+ general_table_text9 AS "text9",created_at AS "createdAt",updated_at AS "updatedAt"`;
 
 export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
  const router=Router();
@@ -65,7 +121,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
    const fail=(code:number,message:string)=>res.json({jsonrpc:"2.0",id:body.id,error:{code,message}});
    if(body.method==="initialize"){
      ok({protocolVersion:"2025-06-18",capabilities:{tools:{listChanged:false}},
-       serverInfo:{name:"tijara-readonly",version:"1.0.0"}});return;
+       serverInfo:{name:"tijara-general-table",version:"1.1.0"}});return;
    }
    if(body.method==="ping"){ok({});return;}
    if(body.method==="tools/list"){ok({tools});return;}
@@ -79,9 +135,9 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
      unauthorized(res,body.id);return;
    }
    const user=(await pool.query(
-     `SELECT u.id FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
+     `SELECT u.*,t.scope AS granted_scope FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
        WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
-       AND t.revoked_at IS NULL AND t.scope='general_table.read'
+       AND t.revoked_at IS NULL AND t.scope IN ('general_table.read','general_table.read general_table.write')
        AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
        AND NOT u.archived AND NOT u.suspended LIMIT 1`,
      [tokenHash(auth.slice(7)),[origin,origin+"/mcp"]],
@@ -89,6 +145,10 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
    if(!user){unauthorized(res,body.id);return;}
    const params=body.params as {name?:unknown;arguments?:unknown}|undefined;
    if(!params||typeof params.name!=="string"){fail(-32602,"Invalid tool");return;}
+   const isWrite=["create_general_table_record","update_general_table_record"].includes(params.name);
+   if(isWrite&&!String(user.granted_scope).split(" ").includes("general_table.write")){
+     fail(-32001,"Write scope required. Reconnect Tijara and approve read and write permissions.");return;
+   }
    let result:unknown;
    if(params.name==="query_general_table"){
      const parsed=argsSchema.safeParse(params.arguments??{});
@@ -112,6 +172,57 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
        [parsed.data.id])).rows[0];
      if(!row){fail(-32602,"Record not found");return;}
      result={record:row};
+   }else if(params.name==="create_general_table_record"){
+     const parsed=createSchema.safeParse(params.arguments??{});
+     if(!parsed.success){fail(-32602,"Invalid record fields");return;}
+     const input=generalTableSchema.parse({...emptyRecord,...parsed.data});
+     const record=await transaction(pool,async db=>{
+       const actorResult=await db.query("SELECT * FROM users WHERE id=$1 FOR SHARE",[user.id]);
+       const active=actorResult.rows[0];
+       if(!active||active.archived||active.suspended||(!active.owner&&active.kind!=="admin"))
+         throw new Error("User no longer has administration rights");
+       const disabled=await db.query("SELECT 1 FROM page_settings WHERE page_key='public.general-table' AND company_id IS NULL AND NOT enabled FOR SHARE");
+       if(disabled.rowCount)throw new Error("General table page is disabled");
+       const keys=Object.keys(editableColumns) as (keyof GeneralTableInput)[];
+       const values=keys.map(key=>input[key]);
+       const fields=keys.map(key=>editableColumns[key]);
+       const placeholders=keys.map((_,i)=>"$"+(i+1));
+       const inserted=await db.query(
+         `INSERT INTO general_table(${fields.join(",")},created_by) VALUES(${placeholders.join(",")},${keys.length+1}) RETURNING ${selectFields}`,
+         [...values,active.id]);
+       const next=inserted.rows[0];
+       await audit(db,userDTO(active),"generalTable.create","generalTable",next.id,null,next);
+       return next;
+     });
+     result={record};
+   }else if(params.name==="update_general_table_record"){
+     const parsed=updateSchema.safeParse(params.arguments??{});
+     if(!parsed.success){fail(-32602,"Invalid update; supply id, expectedUpdatedAt and changes");return;}
+     const {id,expectedUpdatedAt,changes}=parsed.data;
+     const updated=await transaction(pool,async db=>{
+       const actorResult=await db.query("SELECT * FROM users WHERE id=$1 FOR SHARE",[user.id]);
+       const active=actorResult.rows[0];
+       if(!active||active.archived||active.suspended||(!active.owner&&active.kind!=="admin"))
+         throw new Error("User no longer has administration rights");
+       const disabled=await db.query("SELECT 1 FROM page_settings WHERE page_key='public.general-table' AND company_id IS NULL AND NOT enabled FOR SHARE");
+       if(disabled.rowCount)throw new Error("General table page is disabled");
+       const old=await db.query(`SELECT ${selectFields} FROM general_table WHERE general_table_id=$1 FOR UPDATE`,[id]);
+       if(!old.rows[0])return {error:"Record not found",code:"not_found"};
+       const before=old.rows[0];
+       if(new Date(before.updatedAt).toISOString()!==new Date(expectedUpdatedAt).toISOString())
+         return {error:"Record changed since last read. Reload before editing.",code:"conflict",current:before};
+       const keys=Object.keys(changes) as (keyof GeneralTableInput)[];
+       const assignments=keys.map((key,i)=>`${editableColumns[key]}=${i+1}`).join(",");
+       const vals=keys.map(key=>changes[key]);
+       const changed=await db.query(
+         `UPDATE general_table SET ${assignments},updated_at=now() WHERE general_table_id=${keys.length+1} RETURNING ${selectFields}`,
+         [...vals,id]);
+       const next=changed.rows[0];
+       await audit(db,userDTO(active),"generalTable.update","generalTable",id,before,next);
+       return {record:next};
+     });
+     if("error" in updated){ok({content:[{type:"text",text:updated.error}],structuredContent:updated,isError:true});return;}
+     result=updated;
    }else{fail(-32602,"Unknown tool");return;}
    ok({content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result});
   }catch(error){next(error);}
