@@ -38,7 +38,7 @@ export function RecordOptionCard({
       return query.data?.native.hasExpiry??true;
     return Object.prototype.hasOwnProperty.call(edited,definition.id)
       ? edited[definition.id]!
-      : (query.data?.values.find(v=>v.definitionId===definition.id)?.value ?? definition.defaultValue);
+      : (query.data?.values.find(v=>v.definitionId===definition.id)?.value ?? null);
   };
   const show=(value:string|boolean|null):string=>value===null?"غير محدد":typeof value==="boolean"?(value?"نعم":"لا"):value;
   const save=async(definition:OptionDefinition)=>{
