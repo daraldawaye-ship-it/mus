@@ -147,6 +147,14 @@ export const auditActionLabels = {
   "page.settings": "تعديل إعدادات صفحة",
   "configuration.options.seed": "إنشاء تعريفات الخيارات الأساسية تلقائيًا",
   "configuration.roles.seed": "إنشاء أدوار الشركة الأساسية تلقائيًا",
+  "configuration.options.create": "إضافة خيار جديد",
+  "configuration.options.update": "تعديل تعريف خيار",
+  "configuration.options.value": "حفظ قيمة خيار لسجل",
+  "configuration.roles.create": "إضافة دور شركة",
+  "configuration.roles.update": "تعديل دور شركة",
+  "configuration.permissions.role": "تعديل صلاحية دور",
+  "configuration.permissions.assignment": "إسناد دور إلى موظف",
+  "configuration.permissions.employee": "استثناء صلاحية موظف",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -169,6 +177,14 @@ export const publicAuditActions: AuditAction[] = [
 export const companyAuditActions: AuditAction[] = [
   "configuration.options.seed",
   "configuration.roles.seed",
+  "configuration.options.create",
+  "configuration.options.update",
+  "configuration.options.value",
+  "configuration.roles.create",
+  "configuration.roles.update",
+  "configuration.permissions.role",
+  "configuration.permissions.assignment",
+  "configuration.permissions.employee",
   "page.settings",
   "invoice.post",
   "inventory.settings",

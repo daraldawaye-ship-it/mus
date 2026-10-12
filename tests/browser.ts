@@ -736,6 +736,35 @@ try {
   );
 
   await scenario(
+    "options and permissions directory is available in two tabs with scoped records",
+    async () => {
+      const {page}=await pageFor("owner@browser.test");
+      const root=`/companies/${companyA.id}/configuration`;
+      await page.goto(root);
+      await page.getByRole("heading",{name:"إدارة الخيارات والصلاحيات"}).waitFor();
+      await page.getByRole("table",{name:"دليل الخيارات"}).waitFor();
+      await page.getByText("مؤرشف",{exact:true}).first().waitFor();
+      await page.getByRole("button",{name:"إضافة خيار"}).click();
+      const dialog=page.getByRole("dialog");
+      await dialog.getByLabel("معرّف الخيار (ثابت)").fill("item.note-browser");
+      await dialog.getByLabel("اسم الخيار").fill("ملاحظة إضافية");
+      await dialog.getByLabel("الافتراضي").fill("قيمة مقترحة");
+      await dialog.getByRole("button",{name:"حفظ",exact:true}).click();
+      await dialog.waitFor({state:"hidden"});
+      await page.getByText("ملاحظة إضافية",{exact:true}).waitFor();
+      await page.getByRole("button",{name:"دليل الصلاحيات والأدوار"}).click();
+      await page.getByRole("heading",{name:"دليل الأدوار"}).waitFor();
+      await page.getByRole("table",{name:"قواعد الأدوار"}).waitFor();
+      await page.getByRole("button",{name:"دور جديد"}).click();
+      await dialog.getByLabel("معرّف الدور").fill("browser_role");
+      await dialog.getByLabel("اسم الدور").fill("دور التجربة");
+      await dialog.getByRole("button",{name:"حفظ الدور"}).click();
+      await dialog.waitFor({state:"hidden"});
+      await page.getByRole("option",{name:"دور التجربة"}).waitFor();
+    },
+  );
+
+  await scenario(
     "general table page lets platform owner add and edit text9 while keeping it private",
     async () => {
       const { page, actor } = await pageFor();

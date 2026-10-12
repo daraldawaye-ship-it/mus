@@ -12,6 +12,7 @@ import {
   userDTO,
 } from "../repositories/models.ts";
 import { deny, HttpError, missing } from "../errors.ts";
+import { permissionRequest, permissionRuleEffects, requestPermissionAction, requirementForAction } from "../services/permission-rules.ts";
 
 export function ownerOnly(actor: User): void {
   if (!actor.owner) deny("هذا الإجراء لمالك المنصة فقط");
@@ -55,9 +56,32 @@ export async function companyAccess(
   const row = employee.rows[0];
   if (!actor.owner && !row) deny("ليس لديك وصول إلى هذه الشركة");
   const general = actor.owner || Boolean(row?.is_general_manager);
-  const permissions: Permission[] = general
-    ? [...permissionKeys]
-    : [...row.permissions];
+  // Keep the old employee grants as the base. Rule assignments never touch
+  // employees.permissions and never extend another company's permissions.
+  const legacy: Permission[] = general ? [...permissionKeys] : [...row.permissions];
+  for (const module of ["accounts","currencies","locations","items","commerce","inventory"] as const) {
+    if (legacy.includes(`${module}.manage`) && !legacy.includes(`${module}.view`))
+      legacy.push(`${module}.view`);
+  }
+  if (legacy.includes("inventory.post") && !legacy.includes("inventory.view"))legacy.push("inventory.view");
+  if ((legacy.includes("finance.manage") || legacy.includes("finance.post")) &&
+      !legacy.includes("finance.view"))legacy.push("finance.view");
+  const effects = !general && row
+    ? await permissionRuleEffects(db,companyId,row.id)
+    : new Map<string,"allow"|"deny">();
+  const scopedAction = requestPermissionAction(permissionRequest.getStore(),companyId);
+  const decision = scopedAction ? effects.get(scopedAction) : undefined;
+  if (decision === "deny") deny("هذا الإجراء ممنوع صراحةً ضمن صلاحيات الشركة.");
+  const explicitGrant = decision === "allow" && !!permission &&
+    requirementForAction(scopedAction!).includes(permission);
+  const permissions: Permission[] = [...legacy];
+  // Context is a navigation hint only. Server authorization below checks
+  // the exact request action; a grant on edit cannot grant create or post.
+  for (const [key,effect] of effects) {
+    if(effect !== "allow")continue;
+    for(const granted of requirementForAction(key))
+      if(!permissions.includes(granted))permissions.push(granted);
+  }
   for (const module of [
     "accounts",
     "currencies",
@@ -81,7 +105,7 @@ export async function companyAccess(
     !permissions.includes("finance.view")
   )
     permissions.push("finance.view");
-  if (permission && !permissions.includes(permission)) deny();
+  if (permission && !legacy.includes(permission) && !explicitGrant) deny();
   return {
     company: companyDTO(company.rows[0]),
     employee: row ? employeeDTO(row) : null,

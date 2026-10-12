@@ -78,6 +78,11 @@ const GeneralTablePage = lazy(() =>
     default: module.GeneralTablePage,
   })),
 );
+const ConfigurationPage = lazy(() =>
+  import("./pages/ConfigurationPage").then((module) => ({
+    default: module.ConfigurationPage,
+  })),
+);
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -168,6 +173,7 @@ const InvoicePage = lazy(() =>
 );
 const companySections = [
   "pages",
+  "configuration",
   "overview",
   "employees",
   "settings",
@@ -224,6 +230,7 @@ function Navigation({
     "public.general-table": <TableProperties size={17} />,
     "public.audit": <FileClock size={17} />,
     "company.overview": <LayoutDashboard size={17} />,
+    "company.configuration": <ShieldCheck size={17} />,
     "company.employees": <Users size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
@@ -347,6 +354,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل قائمة الصفحات…</Notice>}>
           <PageDirectoryPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "configuration":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل إدارة الخيارات والصلاحيات…</Notice>}>
+          <ConfigurationPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "employees":

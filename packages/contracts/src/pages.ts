@@ -205,6 +205,15 @@ page(
   { critical: true },
 );
 page(
+  "company.configuration",
+  "الخيارات والصلاحيات",
+  "الشركة",
+  "/companies/:companyId/configuration",
+  { view: permission("pages.manage"), edit: permission("pages.manage") },
+  "إدارة تعريفات الخيارات والأدوار وصلاحيات موظفي الشركة.",
+  { critical: true },
+);
+page(
   "company.employees",
   "الموظفون",
   "الشركة",

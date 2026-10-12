@@ -15,6 +15,7 @@ import {
 import type { Database } from "../db.ts";
 import { companyAccess } from "../policies/access.ts";
 import { HttpError, missing } from "../errors.ts";
+import { permissionRuleEffects } from "./permission-rules.ts";
 
 export async function directoryEntries(
   db: Database,
@@ -22,6 +23,20 @@ export async function directoryEntries(
   companyId: number | null,
 ): Promise<PageEntry[]> {
   const context = companyId ? await companyAccess(db, user, companyId) : null;
+  const effects = context?.employee && !context.general
+    ? await permissionRuleEffects(db,companyId!,context.employee.id)
+    : new Map<string,"allow"|"deny">();
+  const baseContext = context && !context.general
+    ? {...context,permissions:[...(context.employee?.permissions ?? [])]}
+    : context;
+  if(baseContext && !baseContext.general){
+    for(const module of ["accounts","currencies","locations","items","commerce","inventory"] as const){
+      if(baseContext.permissions.includes(`${module}.manage`) && !baseContext.permissions.includes(`${module}.view`))
+        baseContext.permissions.push(`${module}.view`);
+    }
+    if(baseContext.permissions.includes("inventory.post")&&!baseContext.permissions.includes("inventory.view"))baseContext.permissions.push("inventory.view");
+    if((baseContext.permissions.includes("finance.post")||baseContext.permissions.includes("finance.manage"))&&!baseContext.permissions.includes("finance.view"))baseContext.permissions.push("finance.view");
+  }
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
     [companyId],
@@ -71,8 +86,12 @@ export async function directoryEntries(
       actionAccess: Object.fromEntries(
         pageActions.map((action) => [
           action,
-          isEnabled &&
-            pageRuleAllows(definition.actions[action], user, context),
+          isEnabled && (
+            !context?.general && effects.get(definition.key+":"+action)==="deny" ? false
+            : !context?.general && effects.get(definition.key+":"+action)==="allow" &&
+              definition.actions[action]?.role==="permissions" ? true
+            : pageRuleAllows(definition.actions[action], user, baseContext)
+          ),
         ]),
       ) as Record<PageAction, boolean>,
     };
@@ -197,6 +216,8 @@ export async function requestPageKeys(
     "account-links": "accounts",
     currencies: "currencies",
     "finance-settings": "currencies",
+    configuration: "configuration",
+    "configuration-foundation": "configuration",
     "exchange-rates": "exchange-rates",
     branches: "branches",
     locations: "locations",

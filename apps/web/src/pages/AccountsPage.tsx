@@ -27,6 +27,7 @@ import {
   ServerLookup,
   useMasterChanges,
 } from "../phase2";
+import { RecordOptionCard } from "../RecordOptionCard";
 import {
   Button,
   Card,
@@ -655,6 +656,7 @@ function AccountEditor({
           </Button>
         </div>
       </form>
+      {account && <RecordOptionCard companyId={companyId} recordKind="account" recordId={account.id} canEdit />}
     </Dialog>
   );
 }

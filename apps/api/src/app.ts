@@ -21,6 +21,8 @@ import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
+import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
+import { permissionRequest } from "./services/permission-rules.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -46,6 +48,7 @@ export async function createApp(options: AppOptions = {}) {
     mutationSecurity(config.appOrigin),
   );
   app.use(setupRoutes(pool, config.appOrigin));
+  app.use("/api", (req, _res, next) => permissionRequest.run(req, next));
   app.use(
     "/api",
     pageRoutes(pool),
@@ -54,6 +57,7 @@ export async function createApp(options: AppOptions = {}) {
     publicRoutes(pool),
     companyRoutes(pool),
     configurationRoutes(pool),
+    configurationAdministrationRoutes(pool),
     accountRoutes(pool),
     currencyRoutes(pool),
     locationRoutes(pool),

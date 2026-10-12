@@ -312,6 +312,16 @@ export function itemRoutes(pool: Pool): Router {
             `INSERT INTO items(${columns.join(",")}) VALUES(${values.map((_, position) => `$${position + 1}`).join(",")}) RETURNING id`,
             values,
           );
+          // Persist additional option defaults only on the first creation.
+          // Native item flags remain authoritative on the items table.
+          await client.query(
+            `INSERT INTO option_values(company_id,definition_id,record_kind,item_id,value,created_by,updated_by)
+             SELECT company_id,id,'item',$2,default_value,$3,$3
+             FROM option_definitions
+             WHERE company_id=$1 AND record_kind='item' AND active=true
+               AND native_binding IS NULL AND default_value <> 'null'::jsonb`,
+            [companyId, added.rows[0].id, user.id],
+          );
           const item = itemDTO(
             await masterRow(
               client,

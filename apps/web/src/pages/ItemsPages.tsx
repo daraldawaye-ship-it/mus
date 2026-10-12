@@ -29,6 +29,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
+import { RecordOptionCard } from "../RecordOptionCard";
 import {
   Button,
   Card,
@@ -971,6 +972,7 @@ function ItemEditor({
           </Button>
         </div>
       </form>
+      {item && <RecordOptionCard companyId={companyId} recordKind="item" recordId={item.id} canEdit={manage} />}
       <Dialog
         open={picker !== null}
         title={
