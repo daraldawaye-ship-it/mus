@@ -749,10 +749,39 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const automaticCurrencyId = useRef<number | null>(null);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
+  const [isReturn, setIsReturn] = useState(false);
+  const branchManuallyChosen = useRef(false);
+  const locationManuallyChosen = useRef(false);
+  const automaticBranchId = useRef<number | null>(null);
+  const automaticLocationId = useRef<number | null>(null);
+  const mainBranchQuery = useQuery({
+    queryKey: ["invoice-default-branch", user?.id, companyId],
+    enabled: !!user,
+    queryFn: async ({ signal }) => {
+      // HQ is the automatic main branch. Older companies may use MAIN.
+      for (const code of ["HQ", "MAIN"]) {
+        const page = await api<Page<Branch>>(
+          `/companies/${companyId}/commerce-options?type=branches&active=true&q=${code}&pageSize=20`,
+          { signal },
+        );
+        const exact = page.items.find((item) => item.active && item.code === code);
+        if (exact) return exact;
+      }
+      return null;
+    },
+  });
+  const showroomQuery = useQuery({
+    queryKey: ["invoice-default-showroom", user?.id, companyId, branch?.id],
+    enabled: !!user && !!branch && !isReturn,
+    queryFn: ({ signal }) =>
+      api<Page<Location>>(
+        `/companies/${companyId}/commerce-options?type=locations&active=true&branchId=${branch!.id}&kind=showroom&pageSize=100`,
+        { signal },
+      ),
+  });
   const [account, setAccount] = useState<Account | null>(null);
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
-  const [isReturn, setIsReturn] = useState(false);
   useEffect(() => {
     if (isReturn || !defaultYer || currencyManuallyChosen.current) return;
     if (currency === null) {
@@ -760,6 +789,26 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       setCurrency(defaultYer);
     }
   }, [defaultYer, currency, isReturn]);
+  useEffect(() => {
+    const main = mainBranchQuery.data;
+    if (isReturn || !main || branchManuallyChosen.current || branch) return;
+    automaticBranchId.current = main.id;
+    setBranch(main);
+  }, [mainBranchQuery.data, branch, isReturn]);
+  useEffect(() => {
+    if (isReturn || !branch || !showroomQuery.data ||
+        locationManuallyChosen.current || location) return;
+    const defaultShowroom = showroomQuery.data.items.find(
+      (entry) => entry.active && entry.effectiveActive &&
+        entry.branchId === branch.id && entry.code === "SHOWROOM" && entry.kind === "showroom",
+    ) ?? showroomQuery.data.items.find(
+      (entry) => entry.active && entry.effectiveActive &&
+        entry.branchId === branch.id && entry.kind === "showroom",
+    );
+    if (!defaultShowroom) return;
+    automaticLocationId.current = defaultShowroom.id;
+    setLocation(defaultShowroom);
+  }, [showroomQuery.data, branch, location, isReturn]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
@@ -805,7 +854,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     !!original ||
     !!description ||
     !!account ||
-    !!branch ||
+    (!!branch &&
+      (branchManuallyChosen.current || branch.id !== automaticBranchId.current)) ||
+    (!!location &&
+      (locationManuallyChosen.current || location.id !== automaticLocationId.current)) ||
     (!!currency &&
       (currencyManuallyChosen.current ||
         currency.id !== automaticCurrencyId.current));
@@ -1132,6 +1184,19 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setLines([emptyLine(returning)]);
                   setOriginal(null);
                   setDiscount("0");
+                  if (!returning) {
+                    // Switch back to a fresh invoice rather than retain an original
+                    // return's branch, showroom and currency.
+                    branchManuallyChosen.current = false;
+                    locationManuallyChosen.current = false;
+                    currencyManuallyChosen.current = false;
+                    automaticBranchId.current = null;
+                    automaticLocationId.current = null;
+                    automaticCurrencyId.current = null;
+                    setBranch(null);
+                    setLocation(null);
+                    setCurrency(null);
+                  }
                 }}
               >
                 <option value="invoice">
@@ -1174,6 +1239,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 label="الفرع"
                 value={branch}
                 onChange={(value) => {
+                  branchManuallyChosen.current = true;
+                  locationManuallyChosen.current = false;
+                  automaticLocationId.current = null;
                   setBranch(value);
                   setLocation(null);
                 }}
@@ -1188,7 +1256,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 resource={`/companies/${companyId}/commerce-options?type=locations${branch ? `&branchId=${branch.id}` : ""}${kind === "sale" ? "&kind=showroom" : ""}`}
                 label="المعرض / المخزن"
                 value={location}
-                onChange={setLocation}
+                onChange={(value) => {
+                  locationManuallyChosen.current = true;
+                  setLocation(value);
+                }}
                 display={itemLabel}
                 accept={(value) => kind !== "sale" || value.kind === "showroom"}
                 disabled={
