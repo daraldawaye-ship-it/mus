@@ -54,6 +54,7 @@ const itemFields = z
     name,
     englishName: z.string().trim().max(120).default(""),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
+    legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
     unit1Name: name.default("باكت"),
     unit2Name: z.string().trim().max(120).default(""),
@@ -102,7 +103,7 @@ export const itemSchema = itemFields
   .strict()
   .superRefine(validateNames);
 export const itemPatchSchema = itemFields
-  .extend({ revision })
+  .extend({ revision, legacyId:z.string().trim().max(100).optional() })
   .strict()
   .superRefine(validateNames);
 export type ItemInput = z.input<typeof itemSchema>;
@@ -130,6 +131,7 @@ export interface Item extends ItemIdentity {
   name: string;
   englishName: string;
   barcode: string;
+  legacyId: string;
   agentId: number | null;
   agentName: string | null;
   agentActive: boolean | null;

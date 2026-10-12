@@ -30,7 +30,7 @@ export async function itemIdempotent(
   payload: unknown,
 ): Promise<QueryResultRow | null> {
   const result = await db.query(
-    `SELECT id,creation_payload=$3::jsonb AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
+    `SELECT id,(creation_payload=$3::jsonb ${table==="items"?"OR (NOT (creation_payload ? 'legacyId') AND $3::jsonb->>'legacyId'='' AND creation_payload=($3::jsonb-'legacyId'))":""}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
     [companyId, key, JSON.stringify(payload)],
   );
   if (!result.rows[0]) return null;
@@ -61,6 +61,7 @@ export type ItemFields = Pick<
   | "name"
   | "englishName"
   | "barcode"
+  | "legacyId"
   | "agentId"
   | "unit1Name"
   | "unit2Name"
@@ -87,6 +88,10 @@ export async function checkItemReferences(
   input: ItemFields,
   previous: Item | null = null,
 ): Promise<void> {
+  if(input.legacyId){
+    const duplicate=await db.query("SELECT 1 FROM items WHERE company_id=$1 AND legacy_id=$2 AND id<>$3",[companyId,input.legacyId,previous?.id??0]);
+    if(duplicate.rowCount)conflict("المعرف في النظام السابق مستخدم لصنف آخر في هذه الشركة");
+  }
   const reactivated = previous !== null && !previous.active && input.active;
   const currency = await db.query(
     "SELECT active,decimal_places FROM company_currencies WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -130,6 +135,7 @@ export const itemFieldColumns = [
   ["name", "name"],
   ["englishName", "english_name"],
   ["barcode", "barcode"],
+  ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],
   ["unit1Name", "unit1_name"],
   ["unit2Name", "unit2_name"],

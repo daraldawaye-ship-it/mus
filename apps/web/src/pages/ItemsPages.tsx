@@ -174,6 +174,16 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         ),
       },
       {
+        accessorKey: "legacyId",
+        header: "المعرف في النظام السابق",
+        size: 180,
+        cell: ({ row }) => (
+          <ValueCell>
+            <bdi>{row.original.legacyId || "—"}</bdi>
+          </ValueCell>
+        ),
+      },
+      {
         accessorKey: "name",
         header: "اسم الصنف",
         size: 210,
@@ -412,6 +422,7 @@ type ItemFields = {
   name: string;
   englishName: string;
   barcode: string;
+  legacyId: string;
   unit1Name: string;
   unit2Name: string;
   unit3Name: string;
@@ -435,6 +446,7 @@ function initialItemFields(item: Item | null): ItemFields {
     name: item?.name ?? "",
     englishName: item?.englishName ?? "",
     barcode: item?.barcode ?? "",
+    legacyId: item?.legacyId ?? "",
     unit1Name: item?.unit1Name ?? "باكت",
     unit2Name: item?.unit2Name ?? "",
     unit3Name: item?.unit3Name ?? "",
@@ -663,6 +675,14 @@ function ItemEditor({
               label="رمز الصنف"
               value={item?.code ?? "تلقائي عند الحفظ"}
               readOnly
+            />
+            <Field
+              label="المعرف في النظام السابق"
+              maxLength={100}
+              dir="ltr"
+              value={fields.legacyId}
+              disabled={disabled}
+              onChange={(event) => edit("legacyId", event.target.value)}
             />
             <Field
               label="اسم الصنف"

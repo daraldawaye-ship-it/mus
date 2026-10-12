@@ -48,6 +48,7 @@ const itemColumns = {
   name: "i.name",
   englishName: "i.english_name",
   barcode: "i.barcode",
+  legacyId: "i.legacy_id",
   agentId: "i.agent_id",
   agentName: "a.name",
   unit1Name: "i.unit1_name",
@@ -245,6 +246,7 @@ export function itemRoutes(pool: Pool): Router {
               "i.name",
               "i.english_name",
               "i.barcode",
+              "i.legacy_id",
               "i.search_keys",
               "a.name",
             ],
@@ -396,9 +398,10 @@ export function itemRoutes(pool: Pool): Router {
                 "لا يمكن تغيير الوحدات أو عواملها أو تتبع الانتهاء بعد وجود حركات للصنف؛ أنشئ صنفًا جديدًا للبنية المختلفة",
               );
           }
-          await checkItemReferences(client, companyId, input, before);
+          const fields={...input,legacyId:input.legacyId??before.legacyId};
+          await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
-            ([field]) => input[field],
+            ([field]) => fields[field],
           );
           values.push(companyId, rowId);
           await client.query(
