@@ -170,7 +170,7 @@ function fractionQuantity(
 ): StockBalance["quantityUnit1"] {
   if (numerator === 0n)
     return { numerator: "0", denominator: "1", decimal: "0" };
-  let a = numerator,
+  let a = numerator < 0n ? -numerator : numerator,
     b = denominator;
   while (b !== 0n) [a, b] = [b, a % b];
   const n = numerator / a,
@@ -191,11 +191,12 @@ function fractionQuantity(
     const places = Math.max(twos, fives);
     if (places === 0) decimal = n.toString();
     else {
-      const value = ((n * 10n ** BigInt(places)) / d)
+      const magnitude = n < 0n ? -n : n;
+      const value = ((magnitude * 10n ** BigInt(places)) / d)
         .toString()
         .padStart(places + 1, "0");
       const tail = value.slice(-places).replace(/0+$/, "");
-      decimal = value.slice(0, -places) + (tail ? `.${tail}` : "");
+      decimal = (n < 0n ? "-" : "") + value.slice(0, -places) + (tail ? `.${tail}` : "");
     }
   }
   return { numerator: n.toString(), denominator: d.toString(), decimal };
