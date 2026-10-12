@@ -26,6 +26,8 @@ import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
+import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
+import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -44,6 +46,10 @@ export async function createApp(options: AppOptions = {}) {
     next();
   });
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  // MCP and OAuth have dedicated bearer / PKCE / CSRF checks; they cannot use
+  // the browser JSON API's Origin/CSRF middleware.
+  app.use(chatgptOauthRoutes(pool, config.appOrigin, config.production));
+  app.use(chatgptMcpRoutes(pool, config.appOrigin));
   app.use(
     "/api",
     express.json({ limit: "512kb" }),
