@@ -149,6 +149,7 @@ async function fixture(
 
   return {
     schema,
+    get baseUrl() { return baseUrl; },
     get pool() {
       return runtime.pool;
     },
@@ -1414,6 +1415,115 @@ test("company item imports preserve original legacy IDs and are idempotent acros
   assert.equal((await normal.client.request("POST",url,source)).status,403);
   const otherCompany=await platform.client.ok<Page<{legacyId:string}>>("GET",`/companies/${another.id}/items`);
   assert.equal(otherCompany.items.some(x=>x.legacyId==="8247"),false);
+});
+
+test("ChatGPT MCP read-only OAuth approves per-user access, filters general table and revokes immediately",async(t)=>{
+  const f=await fixture(t),ownerUser=await owner(f);
+  const {createSession}=await import("../apps/api/src/services/auth.ts");
+  const session=await createSession(f.pool,ownerUser.user.id);
+  const base=(p:string)=>f.baseUrl+p;
+  const meta=await fetch(base("/.well-known/oauth-authorization-server"));
+  assert.equal(meta.status,200);
+  const m=await meta.json() as {code_challenge_methods_supported:string[];authorization_response_iss_parameter_supported:boolean};
+  assert(m.code_challenge_methods_supported.includes("S256"));
+  assert.equal(m.authorization_response_iss_parameter_supported,true);
+  const unauthorized=await fetch(base("/mcp"),{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"}),
+  });
+  assert.equal(unauthorized.status,401);
+  assert.match(unauthorized.headers.get("www-authenticate")??"","oauth-protected-resource");
+
+  const register=await fetch(base("/oauth/register"),{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({redirect_uris:["http://localhost:4321/callback"],
+      token_endpoint_auth_method:"none"}),
+  });
+  assert.equal(register.status,201);
+  const client=await register.json() as {client_id:string};
+  const verifier="v".repeat(64);
+  const challenge=createHash("sha256").update(verifier).digest("base64url");
+  const fields={client_id:client.client_id,redirect_uri:"http://localhost:4321/callback",
+    response_type:"code",scope:"general_table.read",state:"state_12345678",
+    resource:"http://localhost/mcp",code_challenge:challenge,code_challenge_method:"S256"};
+  const params=new URLSearchParams(fields);
+  const authorize=await fetch(base("/oauth/authorize?"+params),{
+    headers:{cookie:"tijara_session="+session.token},
+  });
+  assert.equal(authorize.status,200);
+  assert.match(await authorize.text(),"الجدول العام فقط");
+  const response=await fetch(base("/oauth/authorize"),{
+    method:"POST",redirect:"manual",
+    headers:{"content-type":"application/x-www-form-urlencoded",
+      cookie:"tijara_session="+session.token},
+    body:new URLSearchParams({...fields,csrf:session.csrf}),
+  });
+  assert.equal(response.status,302);
+  const callback=new URL(response.headers.get("location")!);
+  assert.equal(callback.searchParams.get("iss"),"http://localhost");
+  const code=callback.searchParams.get("code")!;
+  const exchange=await fetch(base("/oauth/token"),{
+    method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({
+      grant_type:"authorization_code",client_id:client.client_id,
+      redirect_uri:fields.redirect_uri,code,code_verifier:verifier,resource:fields.resource,
+    }),
+  });
+  assert.equal(exchange.status,200);
+  const issued=await exchange.json() as {access_token:string;refresh_token:string};
+  const reused=await fetch(base("/oauth/token"),{
+    method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,
+      redirect_uri:fields.redirect_uri,code,code_verifier:verifier,resource:fields.resource}),
+  });
+  assert.equal(reused.status,400,"Authorization code may only be used once");
+
+  const emptyRow={
+    tableName:"طلب تعديلات في الموقع",category:"test",title:"طلب كبير",
+    description:"الشرح المطلوب قراءته أولًا",number1:"900",number2:null,
+    date1:null,date2:null,...Object.fromEntries(Array.from({length:9},(_,i)=>["text"+(i+1),""])),
+  };
+  await ownerUser.client.ok("POST","/general-table",emptyRow,201);
+  await ownerUser.client.ok("POST","/general-table",{
+    ...emptyRow,title:"رقم أقل",description:"الشرح الثاني",number1:"100",number2:"0",
+  },201);
+  await ownerUser.client.ok("POST","/general-table",{
+    ...emptyRow,title:"طلب مكتمل",description:"لا يظهر",number1:"9999",number2:"2",
+  },201);
+  const rpc=async(method:string,paramsValue:unknown,access=issued.access_token)=>{
+    const res=await fetch(base("/mcp"),{
+      method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+access},
+      body:JSON.stringify({jsonrpc:"2.0",id:1,method,params:paramsValue}),
+    });
+    return {status:res.status,body:await res.json() as {result?:{tools?:{name:string}[];structuredContent?:{
+      total?:number;records?:{description:string;number1:string}[]
+    }}}},
+  };
+  const found=await rpc("tools/list",{});
+  assert.equal(found.status,200);
+  assert.deepEqual(found.body.result?.tools?.map(t=>t.name),[
+    "query_general_table","get_general_table_record",
+  ]);
+  const sorted=await rpc("tools/call",{name:"query_general_table",arguments:{
+    tableName:"طلب تعديلات في الموقع",number2EmptyOrZero:true,pageSize:10,
+  }});
+  assert.equal(sorted.body.result?.structuredContent?.total,2);
+  assert.deepEqual(sorted.body.result?.structuredContent?.records?.map(r=>r.description),
+    ["الشرح المطلوب قراءته أولًا","الشرح الثاني"]);
+  const connectors=(await f.pool.query<{id:number}>(
+    "SELECT id FROM chatgpt_oauth_tokens WHERE user_id=$1",[ownerUser.user.id])).rows;
+  assert.equal(connectors.length,1);
+  const revoked=await fetch(base("/oauth/connections/"+connectors[0]!.id+"/revoke"),{
+    method:"POST",redirect:"manual",
+    headers:{"content-type":"application/x-www-form-urlencoded",cookie:"tijara_session="+session.token},
+    body:new URLSearchParams({csrf:session.csrf}),
+  });
+  assert.equal(revoked.status,303);
+  const blocked=await fetch(base("/mcp"),{
+    method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+issued.access_token},
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"}),
+  });
+  assert.equal(blocked.status,401);
 });
 
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
