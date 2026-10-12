@@ -1,0 +1,147 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
+import { chromium, request } from "playwright";
+import { createApp } from "../apps/api/src/app.ts";
+import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
+import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import type { SessionResponse } from "../packages/contracts/src/index.ts";
+
+// Focused regression for invoice keyboard and asynchronous item selection.
+const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+const schema = `invoice_focus_${randomUUID().replaceAll("-", "")}`;
+const port = await new Promise<number>((resolve, reject) => {
+  const probe = createServer();
+  probe.once("error", reject);
+  probe.listen(0, "127.0.0.1", () => {
+    const address = probe.address();
+    assert(address && typeof address !== "string");
+    probe.close(() => resolve(address.port));
+  });
+});
+const origin = `http://127.0.0.1:${port}`;
+const runtime = await createApp({
+  databaseUrl,
+  schema,
+  appOrigin: origin,
+  production: false,
+  serveStatic: true,
+});
+const server = runtime.app.listen(port, "127.0.0.1");
+await once(server, "listening");
+const api = await request.newContext({ baseURL: origin });
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_PATH ?? "/usr/bin/chromium",
+  headless: true,
+  args: ["--no-sandbox"],
+});
+let csrf: string | null = null;
+async function call<T>(
+  path: string,
+  method = "GET",
+  data?: unknown,
+): Promise<T> {
+  const response = await api.fetch("/api" + path, {
+    method,
+    headers: { origin, ...(csrf ? { "x-csrf-token": csrf } : {}) },
+    ...(data === undefined ? {} : { data }),
+  });
+  const body = await response.json();
+  assert(
+    response.ok(),
+    `${method} ${path}: ${response.status()} ${JSON.stringify(body)}`,
+  );
+  return body as T;
+}
+try {
+  await provisionOwner(runtime.pool, {
+    name: "Focus review",
+    displayName: "Focus",
+    email: "focus@example.test",
+    password: "invoice-focus-passphrase",
+  });
+  csrf = (
+    await call<SessionResponse>("/auth/login", "POST", {
+      email: "focus@example.test",
+      password: "invoice-focus-passphrase",
+    })
+  ).csrf;
+  const { company } = await call<{ company: { id: number } }>(
+    "/companies",
+    "POST",
+    { name: "Focus review", phone: "", address: "" },
+  );
+  const base = `/companies/${company.id}`;
+  const currencies = await call<{ items: { id: number; code: string }[] }>(
+    base + "/currencies",
+  );
+  const currencyId = currencies.items.find((c) => c.code === "YER")!.id;
+  await call(base + "/items", "POST", {
+    name: "Focus item",
+    barcode: "FOCUS-001",
+    currencyId,
+    salePrice1: "5",
+    idempotencyKey: randomUUID(),
+  });
+  const context = await browser.newContext({
+    baseURL: origin,
+    storageState: await api.storageState(),
+  });
+  const page = await context.newPage();
+  page.setDefaultTimeout(8000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(base + "/invoices/new?kind=sale");
+  const rows = page.locator(".commerce-matrix tbody tr");
+  const search = rows.first().locator('input[type="search"]');
+  await search.fill("Focus item");
+  await page
+    .getByRole("listbox", { name: "نتائج الأصناف" })
+    .getByRole("button", { name: /Focus item/ })
+    .click();
+  async function focused(id: string) {
+    await page.waitForFunction(
+      (target) => document.activeElement?.id === target,
+      id,
+    );
+  }
+  const firstQuantity = rows.first().locator('[id^="invoice-quantity-"]');
+  await focused((await firstQuantity.getAttribute("id"))!);
+  await search.focus();
+  await search.press("Enter");
+  await focused((await firstQuantity.getAttribute("id"))!);
+  await firstQuantity.fill("2");
+  await firstQuantity.press("Enter");
+  const nextSearch = rows.nth(1).locator('input[type="search"]');
+  await focused((await nextSearch.getAttribute("id"))!);
+  await page.route("**/commerce-options?**", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("type") === "items")
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    await route.continue();
+  });
+  await nextSearch.fill("FOCUS-001");
+  await nextSearch.press("Enter");
+  const secondQuantity = rows.nth(1).locator('[id^="invoice-quantity-"]');
+  await focused((await secondQuantity.getAttribute("id"))!);
+  assert.equal(await secondQuantity.inputValue(), "1");
+  assert.deepEqual(errors, []);
+  console.log(
+    "PASS: mouse selection, Enter on selected item, next row and delayed barcode selection all focus quantity",
+  );
+  await context.close();
+} finally {
+  await browser.close();
+  await api.dispose();
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  await runtime.close();
+  const cleanup = new Pool({ connectionString: databaseUrl });
+  try {
+    await cleanup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  } finally {
+    await cleanup.end();
+  }
+}

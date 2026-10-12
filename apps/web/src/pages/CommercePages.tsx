@@ -338,6 +338,7 @@ function ItemSearch({
   disabled,
   onQueryChange,
   onChoose,
+  onConfirmSelected,
 }: {
   companyId: number;
   id: string;
@@ -346,6 +347,7 @@ function ItemSearch({
   disabled: boolean;
   onQueryChange: (value: string) => void;
   onChoose: (item: Item) => void;
+  onConfirmSelected: () => void;
 }) {
   const { user } = useSession();
   const query = value;
@@ -497,7 +499,10 @@ function ItemSearch({
           }
           if (event.key === "Enter") {
             event.preventDefault();
-            if (selected) return;
+            if (selected) {
+              onConfirmSelected();
+              return;
+            }
             if (!result.isFetching && search === query.trim() && items[active])
               choose(items[active]);
             else if (query.trim()) {
@@ -764,7 +769,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           `/companies/${companyId}/commerce-options?type=branches&active=true&q=${code}&pageSize=20`,
           { signal },
         );
-        const exact = page.items.find((item) => item.active && item.code === code);
+        const exact = page.items.find(
+          (item) => item.active && item.code === code,
+        );
         if (exact) return exact;
       }
       return null;
@@ -796,15 +803,30 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     setBranch(main);
   }, [mainBranchQuery.data, branch, isReturn]);
   useEffect(() => {
-    if (isReturn || !branch || !showroomQuery.data ||
-        locationManuallyChosen.current || location) return;
-    const defaultShowroom = showroomQuery.data.items.find(
-      (entry) => entry.active && entry.effectiveActive &&
-        entry.branchId === branch.id && entry.code === "SHOWROOM" && entry.kind === "showroom",
-    ) ?? showroomQuery.data.items.find(
-      (entry) => entry.active && entry.effectiveActive &&
-        entry.branchId === branch.id && entry.kind === "showroom",
-    );
+    if (
+      isReturn ||
+      !branch ||
+      !showroomQuery.data ||
+      locationManuallyChosen.current ||
+      location
+    )
+      return;
+    const defaultShowroom =
+      showroomQuery.data.items.find(
+        (entry) =>
+          entry.active &&
+          entry.effectiveActive &&
+          entry.branchId === branch.id &&
+          entry.code === "SHOWROOM" &&
+          entry.kind === "showroom",
+      ) ??
+      showroomQuery.data.items.find(
+        (entry) =>
+          entry.active &&
+          entry.effectiveActive &&
+          entry.branchId === branch.id &&
+          entry.kind === "showroom",
+      );
     if (!defaultShowroom) return;
     automaticLocationId.current = defaultShowroom.id;
     setLocation(defaultShowroom);
@@ -855,9 +877,11 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     !!description ||
     !!account ||
     (!!branch &&
-      (branchManuallyChosen.current || branch.id !== automaticBranchId.current)) ||
+      (branchManuallyChosen.current ||
+        branch.id !== automaticBranchId.current)) ||
     (!!location &&
-      (locationManuallyChosen.current || location.id !== automaticLocationId.current)) ||
+      (locationManuallyChosen.current ||
+        location.id !== automaticLocationId.current)) ||
     (!!currency &&
       (currencyManuallyChosen.current ||
         currency.id !== automaticCurrencyId.current));
@@ -878,10 +902,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, saving, unknown]);
-  const focus = (id: string) =>
-    window.requestAnimationFrame(() => {
-      if (guard.isCurrent()) document.getElementById(id)?.focus();
-    });
+  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(null);
+  const focus = (id: string) => setFocusTarget({ id });
+  useLayoutEffect(() => {
+    if (!focusTarget || locked || !guard.isCurrent()) return;
+    const element = document.getElementById(focusTarget.id);
+    // Selection and a new row must commit before their controls can receive focus.
+    if (!element || element.matches(":disabled")) return;
+    element.focus();
+    setFocusTarget(null);
+  }, [focusTarget, lines, locked]);
   const salePrice = (selected: Item, level: 1 | 2 | 3) =>
     level === 1
       ? selected.salePrice1
@@ -1475,6 +1505,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                               }
                               onChoose={(selected) =>
                                 chooseItem(line, selected)
+                              }
+                              onConfirmSelected={() =>
+                                focus(lineInputId(line, "quantity"))
                               }
                             />
                           )}
