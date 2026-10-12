@@ -1540,7 +1540,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                               });
                             }}
                             onKeyDown={(event) => {
-                              if (event.key !== "Enter" || !line.sourceItem || isReturn)
+                              if (event.key !== "Enter" || !line.sourceItem || (isReturn && !!original))
                                 return;
                               // The selected native option must be committed without
                               // submitting the invoice form.
