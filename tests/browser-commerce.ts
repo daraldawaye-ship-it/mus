@@ -161,8 +161,8 @@ async function geometry(page: Page, width: number) {
   });
   if (header) {
     assert(
-      header.height < header.viewport * 0.3,
-      "Invoice header must leave room for entry rows",
+      header.height <= 111 && header.height < header.viewport * 0.3,
+      "Invoice header should occupy roughly half its former height",
     );
     assert.equal(header.overflow, "auto");
     if (width < 600) assert(header.scrolls);
