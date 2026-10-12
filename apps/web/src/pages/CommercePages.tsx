@@ -955,7 +955,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       sourceItem: selected,
       unit: 1,
       unitName: selected.unit1Name,
-      quantity: "1",
+      quantity: isReturn ? "-1" : "1",
       unitPrice:
         kind === "sale"
           ? selected.salePrice1
@@ -995,14 +995,14 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     if (
       !currency ||
       (kind === "sale" &&
-        !isReturn &&
+        (!isReturn || !original) &&
         line.sourceItem?.currencyId !== currency.id)
     ) {
       setError("اختر عملة الفاتورة؛ عملة سعر البيع يجب أن تطابقها.");
       return false;
     }
-    if (isReturn) {
-      const source = original?.lines.find(
+    if (isReturn && original) {
+      const source = original.lines.find(
         (entry) => entry.id === line.originalLineId,
       );
       if (!source) {
@@ -1028,6 +1028,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         focus(lineInputId(line, "quantity"));
         return false;
       }
+    } else if (isReturn && kind === "purchase") {
+      setError("مردود المشتريات يتطلب اختيار فاتورة أصلية.");
+      return false;
     } else if (
       kind === "purchase" &&
       line.sourceItem?.hasExpiry &&
@@ -1299,6 +1302,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 required
               />
             </div>
+            {isReturn && kind === "sale" && (
+              <small className="muted">يمكن إدخال كمية سالبة مباشرة كمردود مبيعات دون فاتورة أصلية، أو اختيار فاتورة أصلية لاسترداد تكلفتها وخصمها بدقة.</small>
+            )}
             {isReturn && (
               <OriginalInvoicePicker
                 companyId={companyId}
@@ -1388,7 +1394,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   <col className="commerce-col-unit" />
                   <col className="commerce-col-quantity" />
                   <col className="commerce-col-price" />
-                  {kind === "purchase" && (
+                  {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && (
                     <col className="commerce-col-expiry" />
                   )}
                   <col className="commerce-col-total" />
@@ -1402,7 +1408,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     <th scope="col">
                       {kind === "sale" ? "سعر البيع" : "سعر الشراء"}
                     </th>
-                    {kind === "purchase" && <th scope="col">تاريخ الانتهاء</th>}
+                    {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && <th scope="col">تاريخ الانتهاء</th>}
                     <th scope="col">إجمالي الصنف</th>
                     <th scope="col">
                       <span className="visually-hidden">حذف</span>
@@ -1434,7 +1440,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         data-selected={!!line.itemId}
                       >
                         <td>
-                          {isReturn ? (
+                          {isReturn && original ? (
                             <Select
                               id={lineInputId(line, "original-line")}
                               className="item-cell-field"
@@ -1515,7 +1521,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             className="item-cell-field"
                             label={`الوحدة${line.itemName ? ` ${line.itemName}` : ""}`}
                             value={line.unit}
-                            disabled={isReturn || !line.itemId}
+                            disabled={(isReturn && !!original) || !line.itemId}
                             onChange={(event) => {
                               if (!line.sourceItem) return;
                               const level = Number(event.target.value) as
@@ -1589,10 +1595,14 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             inputMode="text"
                             disabled={!line.itemId}
                             value={line.quantity}
-                            onChange={(event) =>
-                              updateLine(line.key, {
-                                quantity: event.target.value,
-                              })
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              updateLine(line.key, { quantity: value });
+                              if (kind === "sale" && /^-\d/.test(value) && !isReturn) {
+                                setIsReturn(true);
+                                setOriginal(null);
+                                setDiscount("0");
+                              }
                             }
                             onFocus={(event) => event.target.select()}
                             onKeyDown={(event) => {
@@ -1643,9 +1653,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             }}
                           />
                         </td>
-                        {kind === "purchase" && (
+                        {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && (
                           <td>
-                            {isReturn ? (
+                            {isReturn && original ? (
                               line.expiryDate || "—"
                             ) : line.sourceItem?.hasExpiry ? (
                               <Field
