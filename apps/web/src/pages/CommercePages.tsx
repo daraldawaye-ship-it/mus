@@ -1603,7 +1603,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                 setOriginal(null);
                                 setDiscount("0");
                               }
-                            }
+                            }}
                             onFocus={(event) => event.target.select()}
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
