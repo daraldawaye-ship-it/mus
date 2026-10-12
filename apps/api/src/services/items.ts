@@ -59,6 +59,7 @@ export async function nextItemCode(
 export type ItemFields = Pick<
   Item,
   | "name"
+  | "imageId"
   | "englishName"
   | "barcode"
   | "legacyId"
@@ -88,6 +89,10 @@ export async function checkItemReferences(
   input: ItemFields,
   previous: Item | null = null,
 ): Promise<void> {
+  if(input.imageId){
+    const image=await db.query("SELECT 1 FROM media_assets WHERE id=$1 AND company_id=$2 AND purpose='item'",[input.imageId,companyId]);
+    if(!image.rowCount)conflict("اختر صورة مرفوعة لهذه الشركة فقط");
+  }
   if(input.legacyId){
     const duplicate=await db.query("SELECT 1 FROM items WHERE company_id=$1 AND legacy_id=$2 AND id<>$3",[companyId,input.legacyId,previous?.id??0]);
     if(duplicate.rowCount)conflict("المعرف في النظام السابق مستخدم لصنف آخر في هذه الشركة");
@@ -133,6 +138,7 @@ export async function checkItemReferences(
 
 export const itemFieldColumns = [
   ["name", "name"],
+  ["imageId", "image_id"],
   ["englishName", "english_name"],
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],

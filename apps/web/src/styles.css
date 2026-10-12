@@ -305,22 +305,26 @@ legend {
 }
 .user-menu-trigger {
   height: 32px;
-  min-width: 46px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 0 5px;
+  width: 32px;
+  min-width: 32px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 0;
   color: var(--text);
-  background: var(--surface);
+  background: transparent;
   cursor: pointer;
 }
 .user-menu-trigger:hover,
 .user-menu-trigger[aria-expanded="true"] {
-  background: var(--hover);
-  border-color: var(--primary);
+  background: transparent;
+}
+.user-menu-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 .user-avatar {
   display: inline-flex;
@@ -2344,3 +2348,12 @@ ul {
     grid-column: 1 / -1;
   }
 }
+
+/* Durable media assets are loaded through their small cached thumbnail URLs. */
+.image-upload{grid-column:1/-1}
+.image-upload-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.image-upload-controls input[type=file]{max-width:260px;font-size:12px}
+.image-upload-controls button{border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:var(--surface);color:var(--text);cursor:pointer}
+.image-upload-preview{width:60px;height:60px;object-fit:cover;border:1px solid var(--border);border-radius:8px}
+.image-upload-error{color:var(--error-text)}
+.item-list-thumbnail{display:block;width:32px;height:32px;object-fit:cover;border-radius:5px}

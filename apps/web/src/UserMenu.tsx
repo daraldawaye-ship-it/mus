@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, CircleUserRound, Link2, LogOut, Palette } from "lucide-react";
+import { CircleUserRound, Link2, LogOut, Palette } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
+import { thumbnailUrl } from "./ImageUpload";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -13,7 +14,7 @@ function Avatar({ user, large = false }: { user: User; large?: boolean }) {
     <span className={`user-avatar${large ? " user-avatar-large" : ""}`}>
       {user.image && !imageFailed ? (
         <img
-          src={user.image}
+          src={thumbnailUrl(user.image)}
           alt=""
           referrerPolicy="no-referrer"
           onError={() => setImageFailed(true)}
@@ -78,7 +79,6 @@ export function UserMenu({
         onClick={() => setOpen((value) => !value)}
       >
         <Avatar user={user} />
-        <ChevronDown size={13} aria-hidden="true" />
       </button>
       {open && (
         <div

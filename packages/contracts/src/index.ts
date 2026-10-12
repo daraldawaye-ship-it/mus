@@ -101,6 +101,7 @@ export const auditActionLabels = {
   "auth.logout": "تسجيل الخروج",
   "auth.password": "تغيير كلمة المرور",
   "user.profile": "تعديل الملف الشخصي",
+  "media.upload": "رفع صورة",
   "user.update": "تعديل صلاحيات الحساب",
   "appearance.update": "حفظ المظهر",
   "users.view": "عرض المستخدمين",
@@ -177,6 +178,7 @@ export const publicAuditActions: AuditAction[] = [
   "auth.logout",
   "auth.password",
   "user.profile",
+  "media.upload",
   "user.update",
   "appearance.update",
   "users.view",
@@ -215,6 +217,7 @@ export const companyAuditActions: AuditAction[] = [
   "itemAgent.update",
   "item.create",
   "item.update",
+  "media.upload",
   "financialDocument.create",
   "financialDocument.update",
   "financialDocument.post",
@@ -385,6 +388,7 @@ const phone = text(40)
 const email = z.string().trim().toLowerCase().email().max(254);
 const image = z.union([
   z.literal(""),
+  z.string().regex(/^\/api\/media\/[a-f0-9-]{36}\/full$/),
   z
     .url()
     .refine(

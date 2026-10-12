@@ -28,6 +28,7 @@ export function itemDTO(row: QueryResultRow): Item {
   return {
     ...identity(row),
     code: row.code,
+    imageId: row.image_id ?? null,
     name: row.name,
     englishName: row.english_name,
     barcode: row.barcode,

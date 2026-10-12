@@ -25,6 +25,7 @@ import {
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import {
   Button,
   Card,
@@ -458,6 +459,9 @@ function ProfileForms({ user }: { user: User }) {
             onChange={(event) => updateProfile("phone", event.target.value)}
             maxLength={40}
           />
+          <ImageUpload purpose="avatar" preview={draft.image ? thumbnailUrl(draft.image) : null}
+            disabled={saving} onUploaded={({fullUrl})=>updateProfile("image",fullUrl)}
+            onClear={()=>updateProfile("image","")} />
           <Field
             label="رابط الصورة"
             name="image"
@@ -465,7 +469,7 @@ function ProfileForms({ user }: { user: User }) {
             dir="ltr"
             value={draft.image}
             onChange={(event) => updateProfile("image", event.target.value)}
-            hint="رابط يبدأ بـ HTTPS، أو اتركه فارغًا."
+            hint="ارفع صورة من جهازك أو استخدم رابط HTTPS."
           />
           {profileNotice && (
             <Notice tone={profileNotice.tone}>{profileNotice.text}</Notice>
