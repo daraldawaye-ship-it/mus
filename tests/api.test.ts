@@ -2389,3 +2389,37 @@ test("inventory accounts are ready automatically for new and existing companies"
   assert.equal(new Set([backfilled.inventory_account_id,backfilled.sales_account_id,backfilled.cogs_account_id,backfilled.surplus_account_id,backfilled.shortage_account_id]).size,5);
   assert.equal((await f.pool.query("SELECT count(*)::integer AS total FROM accounts WHERE company_id=$1 AND active AND kind='posting'",[existing.id])).rows[0].total,5);
 });
+
+test("attendance schedules and punches enforce server time, privacy and duplicate safety",async(t)=>{
+ const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Attendance"),other=await company(platform.client,"Other attendance");
+ const person=await register(f,"attendance-person@example.test"),someone=await register(f,"attendance-other@example.test");
+ const staff=await employee(platform.client,co.id,person.user.id,[]),peer=await employee(platform.client,co.id,someone.user.id,[]);
+ await employee(platform.client,other.id,person.user.id,[]);
+ const base=`/companies/${co.id}/attendance`;
+ const branches=await platform.client.ok<Page<{id:number}>>("GET",`/companies/${co.id}/branches`);
+ const foreign=await platform.client.ok<Page<{id:number}>>("GET",`/companies/${other.id}/branches`);
+ const draft={branchId:branches.items[0]!.id,workDays:[0,1,2,3,4,5,6],startTime:"08:00",endTime:"16:00",active:true,revision:null};
+ assert.equal((await person.client.request("POST",base+"/check-in",{idempotencyKey:randomUUID()})).status,409);
+ assert.equal((await person.client.request("PUT",base+`/schedules/${staff.id}`,draft)).status,403);
+ assert.equal((await platform.client.request("PUT",base+`/schedules/${staff.id}`,{...draft,branchId:foreign.items[0]!.id})).status,400);
+ await platform.client.ok("PUT",base+`/schedules/${staff.id}`,draft);
+ assert.equal((await platform.client.request("PUT",base+`/schedules/${staff.id}`,draft)).status,409);
+ assert.equal((await person.client.request("POST",base+"/check-in",{idempotencyKey:randomUUID(),checkedInAt:"2020-01-01"})).status,400);
+ const key=randomUUID();
+ const punches=await Promise.all([person.client.request<{record:{id:number;checkedInAt:string;workDate:string}}>("POST",base+"/check-in",{idempotencyKey:key}),person.client.request<{record:{id:number;checkedInAt:string;workDate:string}}>("POST",base+"/check-in",{idempotencyKey:key})]);
+ assert(punches.every(p=>p.status===200));assert.equal(punches[0]!.body.record.id,punches[1]!.body.record.id);
+ const record= punches[0]!.body.record;
+ assert(Math.abs(Date.now()-new Date(record.checkedInAt).getTime())<10000);
+ const self=await person.client.ok<{items:{employeeId:number}[];employees:{id:number}[];canCheckOut:boolean}>("GET",base);
+ assert(self.items.every(r=>r.employeeId===staff.id));assert.deepEqual(self.employees.map(e=>e.id),[staff.id]);assert(self.canCheckOut);
+ assert.equal((await person.client.request("GET",base+`?employeeId=${peer.id}`)).status,403);
+ assert.equal((await someone.client.request("POST",base+"/check-out",{recordId:record.id})).status,404);
+ assert.equal((await person.client.request("POST",`/companies/${other.id}/attendance/check-out`,{recordId:record.id})).status,404);
+ const closed=await person.client.ok<{record:{checkedOutAt:string;revision:number}}>("POST",base+"/check-out",{recordId:record.id});
+ assert(new Date(closed.record.checkedOutAt)>=new Date(record.checkedInAt));
+ const retry=await person.client.ok<{record:{checkedOutAt:string;revision:number}}>("POST",base+"/check-out",{recordId:record.id});assert.deepEqual(retry,closed);
+ const duplicate=await person.client.ok<{record:{id:number}}>("POST",base+"/check-in",{idempotencyKey:randomUUID()});assert.equal(duplicate.record.id,record.id);
+ const events=await f.pool.query("SELECT action FROM audit_events WHERE company_id=$1 AND action LIKE 'attendance.%' ORDER BY id",[co.id]);
+ assert.deepEqual(events.rows.map(e=>e.action),["attendance.schedule","attendance.checkIn","attendance.checkOut"]);
+ await assert.rejects(f.pool.query("DELETE FROM attendance_records WHERE id=$1",[record.id]),(error:{code?:string})=>error.code==="23514");
+});

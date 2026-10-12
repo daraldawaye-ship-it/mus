@@ -230,6 +230,14 @@ page(
   "اسم الشركة وبيانات الاتصال والعنوان.",
 );
 page(
+  "company.attendance",
+  "الحضور والانصراف",
+  "الموظفون",
+  "/companies/:companyId/attendance",
+  { view: member, create: member, edit: general },
+  "تسجيل الحضور والانصراف وإعداد دوام الموظفين والسجل اليومي.",
+);
+page(
   "company.accounts",
   "دليل الحسابات",
   "المحاسبة",

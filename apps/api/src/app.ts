@@ -10,6 +10,7 @@ import { authRoutes } from "./routes-auth.ts";
 import { setupRoutes } from "./routes-setup.ts";
 import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
+import { attendanceRoutes } from "./routes-attendance.ts";
 import { accountRoutes } from "./routes-accounts.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
@@ -57,6 +58,7 @@ export async function createApp(options: AppOptions = {}) {
     authRoutes(pool, config.production),
     publicRoutes(pool),
     companyRoutes(pool),
+    attendanceRoutes(pool),
     configurationRoutes(pool),
     configurationAdministrationRoutes(pool),
     accountRoutes(pool),

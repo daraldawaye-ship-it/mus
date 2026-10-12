@@ -77,6 +77,7 @@ export async function requestPermissionTargets(
     branches: "company.branches",
     locations: "company.locations",
     employees: "company.employees",
+    attendance: "company.attendance",
     users: "company.employees",
     "item-agents": "company.item-agents",
     "item-options": "company.items",

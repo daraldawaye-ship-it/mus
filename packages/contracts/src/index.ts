@@ -142,6 +142,9 @@ export const auditActionLabels = {
   "item.update": "تعديل صنف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "inventory.settings": "حفظ إعدادات المخزون",
+  "attendance.schedule": "إعداد دوام الموظف",
+  "attendance.checkIn": "تسجيل الحضور",
+  "attendance.checkOut": "تسجيل الانصراف",
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
   "page.settings": "تعديل إعدادات صفحة",
@@ -175,6 +178,9 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "attendance.schedule",
+  "attendance.checkIn",
+  "attendance.checkOut",
   "configuration.options.seed",
   "configuration.roles.seed",
   "configuration.options.create",
@@ -468,3 +474,4 @@ export * from "./inventory.ts";
 
 export * from "./pages.ts";
 export * from "./configuration.ts";
+export * from "./attendance.ts";

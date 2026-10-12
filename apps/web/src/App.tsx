@@ -83,6 +83,11 @@ const ConfigurationPage = lazy(() =>
     default: module.ConfigurationPage,
   })),
 );
+const AttendancePage = lazy(() =>
+  import("./pages/AttendancePage").then((module) => ({
+    default: module.AttendancePage,
+  })),
+);
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -172,6 +177,7 @@ const InvoicePage = lazy(() =>
   })),
 );
 const companySections = [
+  "attendance",
   "pages",
   "configuration",
   "overview",
@@ -232,6 +238,7 @@ function Navigation({
     "company.overview": <LayoutDashboard size={17} />,
     "company.configuration": <ShieldCheck size={17} />,
     "company.employees": <Users size={17} />,
+    "company.attendance": <FileClock size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.items": <Package size={17} />,
@@ -350,6 +357,12 @@ function CompanyContent({
   section: CompanySection;
 }) {
   switch (section) {
+    case "attendance":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الحضور والانصراف…</Notice>}>
+          <AttendancePage key={context.company.id} context={context} />
+        </Suspense>
+      );
     case "pages":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل قائمة الصفحات…</Notice>}>
@@ -358,7 +371,9 @@ function CompanyContent({
       );
     case "configuration":
       return (
-        <Suspense fallback={<Notice>جارٍ تحميل إدارة الخيارات والصلاحيات…</Notice>}>
+        <Suspense
+          fallback={<Notice>جارٍ تحميل إدارة الخيارات والصلاحيات…</Notice>}
+        >
           <ConfigurationPage key={context.company.id} context={context} />
         </Suspense>
       );
