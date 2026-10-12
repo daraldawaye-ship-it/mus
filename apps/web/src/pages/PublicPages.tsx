@@ -133,6 +133,10 @@ export function HomePage() {
 export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const { user, reloadSession } = useSession();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const oauthReturn = searchParams.get("returnTo");
+  const safeReturn = oauthReturn?.startsWith("/oauth/authorize?") &&
+    !oauthReturn.includes("\\") && !oauthReturn.includes("//") ? oauthReturn : null;
   const guard = useScopeGuard(`public:auth:${mode}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -171,6 +175,11 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
       );
       if (!guard.isCurrent()) return;
       await reloadSession();
+      if (safeReturn) {
+        // The OAuth approval page is a server route, not a React Router page.
+        window.location.assign(safeReturn);
+        return;
+      }
       navigate("/", { replace: true });
     } catch (cause) {
       if (guard.isCurrent()) setError(messageOf(cause));
