@@ -532,6 +532,7 @@ export function ConfigurationPage({ context }: { context: CompanyContext }) {
               <table aria-label="دليل الخيارات">
                 <thead>
                   <tr>
+                    <th>الإجراء</th>
                     <th>الخيار</th>
                     <th>الصفحة / الكرت</th>
                     <th>النوع</th>
@@ -540,12 +541,20 @@ export function ConfigurationPage({ context }: { context: CompanyContext }) {
                     <th>البحث</th>
                     <th>الظهور</th>
                     <th>الحالة</th>
-                    <th>الإجراء</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((row) => (
                     <tr key={row.id}>
+                      <td>
+                        <Button
+                          size="compact"
+                          variant="secondary"
+                          onClick={() => openOption(row)}
+                        >
+                          تعديل
+                        </Button>
+                      </td>
                       <td title={row.description}>
                         <strong>{row.name}</strong>
                         <small className="muted"> ({row.key})</small>
@@ -576,15 +585,6 @@ export function ConfigurationPage({ context }: { context: CompanyContext }) {
                       <td>
                         {row.active ? "فعال" : "مؤرشف"}
                         {row.system ? " — أساسي" : ""}
-                      </td>
-                      <td>
-                        <Button
-                          size="compact"
-                          variant="secondary"
-                          onClick={() => openOption(row)}
-                        >
-                          تعديل
-                        </Button>
                       </td>
                     </tr>
                   ))}

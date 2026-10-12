@@ -392,11 +392,11 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
             <table aria-label="إعداد دوام الموظفين">
               <thead>
                 <tr>
+                  <th>الإجراء</th>
                   <th>الموظف</th>
                   <th>الفرع</th>
                   <th>الدوام</th>
                   <th>أيام العمل</th>
-                  <th>الإجراء</th>
                 </tr>
               </thead>
               <tbody>
@@ -406,6 +406,17 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
                   );
                   return (
                     <tr key={e.id}>
+                      <td>
+                        <Button
+                          size="compact"
+                          variant="secondary"
+                          disabled={pending}
+                          aria-label={`إعداد دوام ${e.name}`}
+                          onClick={() => openSchedule(e.id)}
+                        >
+                          إعداد الدوام
+                        </Button>
+                      </td>
                       <td>{e.name}</td>
                       <td>{schedule?.branchName ?? "غير محدد"}</td>
                       <td>
@@ -418,17 +429,6 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
                       <td>
                         {schedule?.workDays.map((d) => days[d]).join("، ")}
                         {schedule && !schedule.active ? " (غير مفعّل)" : ""}
-                      </td>
-                      <td>
-                        <Button
-                          size="compact"
-                          variant="secondary"
-                          disabled={pending}
-                          aria-label={`إعداد دوام ${e.name}`}
-                          onClick={() => openSchedule(e.id)}
-                        >
-                          إعداد الدوام
-                        </Button>
                       </td>
                     </tr>
                   );
