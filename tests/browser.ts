@@ -445,6 +445,34 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "new invoices and journal/receipt/payment documents preselect active YER",
+    async () => {
+      const { page, actor } = await pageFor("owner@browser.test");
+      const yen = (await call<ApiPage<CompanyCurrency>>(
+        actor,
+        `/companies/${companyA.id}/currencies?q=YER&active=true`,
+      )).items.find((item) => item.code === "YER");
+      assert(yen?.active);
+      for (const kind of ["sale", "purchase"] as const) {
+        await page.goto(`/companies/${companyA.id}/invoices/new?kind=${kind}`);
+        await eventually(
+          () => page.getByLabel("عملة الفاتورة", { exact: true }).inputValue(),
+          (value) => assert.equal(value, String(yen.id)),
+        );
+      }
+      for (const kind of ["journal", "receipt", "payment"] as const) {
+        await page.goto(
+          `/companies/${companyA.id}/financial-documents/new?kind=${kind}`,
+        );
+        await eventually(
+          () => page.locator(".financial-picker").first().textContent(),
+          (value) => assert.match(value ?? "", /^YER — /),
+        );
+      }
+    },
+  );
+
+  await scenario(
     "laptop header is half-height while all controls remain usable",
     async () => {
       const { page } = await pageFor("owner@browser.test");
