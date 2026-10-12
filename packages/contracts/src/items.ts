@@ -103,7 +103,7 @@ export const itemSchema = itemFields
   .strict()
   .superRefine(validateNames);
 export const itemPatchSchema = itemFields
-  .extend({ revision, legacyId:z.string().trim().max(100).optional() })
+  .extend({ revision, legacyId: z.string().trim().max(100).optional() })
   .strict()
   .superRefine(validateNames);
 export type ItemInput = z.input<typeof itemSchema>;
@@ -265,3 +265,46 @@ export const itemCatalog = {
   },
   itemFactorMax: ITEM_FACTOR_MAX,
 };
+
+/** First statistics increment: derived current balances and references to immutable history. */
+export interface ItemStatisticsInvoice {
+  invoiceId: number;
+  invoiceNumber: string;
+  documentDate: string;
+  createdAt: string;
+  userName: string;
+}
+export interface ItemStatistics {
+  itemId: number;
+  companyId: number;
+  updatedAt: string;
+  canViewStock: boolean;
+  canViewCommerce: boolean;
+  stock: {
+    total: string;
+    showroom: string;
+    warehouse: string;
+    unitName: string;
+  } | null;
+  lastMovement: {
+    id: number;
+    kind: string;
+    documentDate: string;
+    createdAt: string;
+  } | null;
+  lastSale: ItemStatisticsInvoice | null;
+  lastPurchase:
+    | (ItemStatisticsInvoice & {
+        price: string;
+        unitName: string;
+        currencyCode: string;
+        accountName: string;
+      })
+    | null;
+  lastAdjustment: {
+    id: number;
+    documentDate: string;
+    createdAt: string;
+    userName: string;
+  } | null;
+}

@@ -18,6 +18,8 @@ import type {
   Company,
   CompanyContext,
   Location,
+  ItemStatistics,
+  Invoice,
   CompanyPage,
   Employee,
   GeneralTableRecord,
@@ -2372,6 +2374,86 @@ test("negative stock in sales, purchase replenishment, transfers and standalone 
     "SELECT count(*)::text AS count FROM financial_documents WHERE company_id=$1 AND status='posted' AND total_debit<>total_credit",[co.id]);
   assert.equal(balanced.rows[0]!.count,"0");
 });
+test("item statistics track finalized stock and last normal documents without leaking company data", async (t) => {
+  const f = await fixture(t), platform = await owner(f);
+  const co = await company(platform.client, "Item statistics"), prefix = `/companies/${co.id}`;
+  const currency = (await platform.client.ok<Page<{ id: number; code: string }>>("GET", prefix + "/currencies")).items.find((row) => row.code === "YER")!;
+  const branch = (await platform.client.ok<Page<{ id: number; code: string }>>("GET", prefix + "/branches")).items.find((row) => row.code === "HQ")!;
+  const showroom = (await platform.client.ok<Page<{ id: number; code: string }>>("GET", prefix + `/locations?branchId=${branch.id}`)).items.find((row) => row.code === "SHOWROOM")!;
+  const warehouse = (await platform.client.ok<{ location: { id: number } }>("POST", prefix + "/locations", {
+    branchId: branch.id, code: "STATWH", name: "مخزن الإحصائيات", kind: "warehouse",
+  }, 201)).location;
+  const counterparty = (await platform.client.ok<{ account: { id: number } }>("POST", prefix + "/accounts", {
+    code: "1111999998", name: "حساب اختبار الإحصائيات", kind: "posting", category: "asset", normalSide: "debit", parentId: null, active: true,
+  }, 201)).account;
+  const item = (await platform.client.ok<{ item: { id: number } }>("POST", prefix + "/items", {
+    idempotencyKey: randomUUID(), name: "صنف بثلاث وحدات", currencyId: currency.id, hasExpiry: false,
+    unit1Name: "كرتون", unit2Name: "باكت", unit3Name: "حبة", factor2: 7, factor3: 3,
+    salePrice1: "210", salePrice2: "30", salePrice3: "10", purchasePrice: "84",
+  }, 201)).item;
+  const statistics = async (client = platform.client, companyId = co.id) =>
+    (await client.ok<{ statistics: ItemStatistics }>("GET", `/companies/${companyId}/items/${item.id}/statistics`)).statistics;
+  const initial = await statistics();
+  assert.equal(initial.companyId, co.id);
+  assert.equal(initial.itemId, item.id);
+  assert.equal(initial.canViewStock, true);
+  assert.equal(initial.canViewCommerce, true);
+  assert.equal(initial.stock?.total, "0");
+  assert.equal(initial.lastMovement, null);
+  assert.equal(initial.lastPurchase, null);
+  assert.equal(initial.lastSale, null);
+  assert.equal(initial.lastAdjustment, null);
+  const save = async (kind: "sale" | "purchase", quantity: string, unit: 1 | 2 | 3, originalLineId: number | null = null) =>
+    (await platform.client.ok<{ invoice: Invoice }>("POST", prefix + "/invoices", {
+      idempotencyKey: randomUUID(), kind, documentDate: "2026-10-12", currencyId: currency.id,
+      branchId: branch.id, locationId: showroom.id, counterpartyAccountId: counterparty.id,
+      discount: "0", lines: [{ itemId: item.id, unit, quantity, unitPrice: kind === "purchase" ? "84" : undefined, originalLineId, expiryDate: null }],
+    }, 201)).invoice;
+  const purchase = await save("purchase", "2", 1);
+  const purchased = await statistics();
+  assert.equal(purchased.stock?.total, "42", "Unit conversion uses the smallest part exactly");
+  assert.equal(purchased.stock?.unitName, "حبة");
+  assert.equal(purchased.lastPurchase?.invoiceId, purchase.id);
+  const sale = await save("sale", "3", 2);
+  const sold = await statistics();
+  assert.equal(sold.stock?.total, "33");
+  assert.equal(sold.lastSale?.invoiceId, sale.id);
+  await save("sale", "-1", 2, sale.lines[0]!.id);
+  await save("purchase", "-1", 1, purchase.lines[0]!.id);
+  const returned = await statistics();
+  assert.equal(returned.stock?.total, "15");
+  assert.equal(returned.lastSale?.invoiceId, sale.id, "A return does not replace the last normal sale");
+  assert.equal(returned.lastPurchase?.invoiceId, purchase.id, "A return does not replace the last normal purchase");
+  await platform.client.ok("POST", prefix + "/stock-transfers", {
+    documentDate: "2026-10-12", itemId: item.id, fromLocationId: showroom.id, toLocationId: warehouse.id,
+    quantity: "4", unit: 3, expiryDate: null, description: "مناقلة الإحصائيات", idempotencyKey: randomUUID(),
+  }, 201);
+  const transferred = await statistics();
+  assert.equal(transferred.stock?.total, "15", "A transfer preserves the company total");
+  assert.equal(transferred.stock?.showroom, "11");
+  assert.equal(transferred.stock?.warehouse, "4");
+  const adjustment = (await platform.client.ok<{ operation: { id: number } }>("POST", prefix + "/stock-adjustments", {
+    documentDate: "2026-10-12", itemId: item.id, locationId: showroom.id,
+    countedQuantity: "10", expectedQuantitySmallest: "11", unit: 3, expiryDate: null,
+    unitCostBase: "4", description: "تسوية الإحصائيات", idempotencyKey: randomUUID(),
+  }, 201)).operation;
+  const adjusted = await statistics();
+  assert.equal(adjusted.stock?.total, "14");
+  assert.equal(adjusted.lastAdjustment?.id, adjustment.id);
+  const other = await company(platform.client, "Other statistics company");
+  assert.equal((await platform.client.request("GET", `/companies/${other.id}/items/${item.id}/statistics`)).status, 404);
+  const clerk = await register(f, "statistics-items-only@example.test");
+  await employee(platform.client, co.id, clerk.user.id, ["items.view"]);
+  const limited = await statistics(clerk.client);
+  assert.equal(limited.canViewStock, false);
+  assert.equal(limited.canViewCommerce, false);
+  assert.equal(limited.stock, null);
+  assert.equal(limited.lastMovement, null);
+  assert.equal(limited.lastAdjustment, null);
+  assert.equal(limited.lastPurchase, null);
+  assert.equal(limited.lastSale, null);
+});
+
 test("inventory accounts are ready automatically for new and existing companies",async(t)=>{
   const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Automatic inventory");
   type Settings={inventory_account_id:number;sales_account_id:number;cogs_account_id:number;surplus_account_id:number;shortage_account_id:number;revision:number};

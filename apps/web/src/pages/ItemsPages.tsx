@@ -14,12 +14,15 @@ import {
   itemAgentSchema,
   itemAgentPatchSchema,
   itemFactorSchema,
+  stockMovementKinds,
+  stockMovementKindLabels,
   type CompanyContext,
   type CompanyCurrency,
   type Item,
   type ItemAgent,
   type ItemInput,
   type ItemAgentInput,
+  type ItemStatistics,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -298,7 +301,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 استيراد الأصناف
               </Button>
-              <Button onClick={() => navigate(`/companies/${companyId}/items/new`)}>
+              <Button
+                onClick={() => navigate(`/companies/${companyId}/items/new`)}
+              >
                 صنف جديد
               </Button>
             </>
@@ -427,6 +432,140 @@ function ItemDetail({
         }}
       />
     </>
+  );
+}
+
+function ItemStatisticsCard({
+  companyId,
+  itemId,
+}: {
+  companyId: number;
+  itemId: number;
+}) {
+  const { user } = useSession();
+  const result = useQuery({
+    queryKey: ["items", user?.id, companyId, "statistics", itemId],
+    queryFn: ({ signal }) =>
+      api<{ statistics: ItemStatistics }>(
+        `/companies/${companyId}/items/${itemId}/statistics`,
+        { signal },
+      ),
+    enabled: !!user,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+  const statistics = result.data?.statistics;
+  const dateTime = (value: string) =>
+    new Date(value).toLocaleString("ar-YE", { timeZone: "Asia/Aden" });
+  const movementKind = statistics?.lastMovement
+    ? stockMovementKinds.find((kind) => kind === statistics.lastMovement?.kind)
+    : undefined;
+  return (
+    <Card title="رصيد الصنف وآخر الحركات">
+      {result.isPending && <Notice>جارٍ تحميل ملخص الصنف…</Notice>}
+      {result.error && (
+        <Notice tone="error">{errorMessage(result.error)}</Notice>
+      )}
+      {statistics && (
+        <dl className="details-list">
+          <dt>المخزون</dt>
+          <dd>
+            {statistics.stock ? (
+              <>
+                الإجمالي <bdi>{statistics.stock.total}</bdi> · المعارض{" "}
+                <bdi>{statistics.stock.showroom}</bdi> · المخازن{" "}
+                <bdi>{statistics.stock.warehouse}</bdi> · الوحدة:{" "}
+                {statistics.stock.unitName}
+              </>
+            ) : statistics.canViewStock ? (
+              "لا يوجد رصيد مسجل."
+            ) : (
+              "يتطلب صلاحية عرض المخزون."
+            )}
+          </dd>
+          <dt>آخر مبيعات</dt>
+          <dd>
+            {statistics.lastSale ? (
+              <>
+                فاتورة <bdi>{statistics.lastSale.invoiceNumber}</bdi> · بتاريخ{" "}
+                <bdi>{statistics.lastSale.documentDate}</bdi> ·{" "}
+                {statistics.lastSale.userName}
+              </>
+            ) : statistics.canViewCommerce ? (
+              "لا توجد مبيعات مسجلة."
+            ) : (
+              "يتطلب صلاحية عرض الفواتير."
+            )}
+          </dd>
+          <dt>آخر مشتريات</dt>
+          <dd>
+            {statistics.lastPurchase ? (
+              <>
+                فاتورة <bdi>{statistics.lastPurchase.invoiceNumber}</bdi> ·
+                بتاريخ <bdi>{statistics.lastPurchase.documentDate}</bdi> ·{" "}
+                {statistics.lastPurchase.accountName} ·{" "}
+                <bdi>
+                  {statistics.lastPurchase.price}{" "}
+                  {statistics.lastPurchase.currencyCode}
+                </bdi>{" "}
+                لكل {statistics.lastPurchase.unitName} ·{" "}
+                {statistics.lastPurchase.userName}
+              </>
+            ) : statistics.canViewCommerce ? (
+              "لا توجد مشتريات مسجلة."
+            ) : (
+              "يتطلب صلاحية عرض الفواتير."
+            )}
+          </dd>
+          <dt>آخر تسوية ذات حركة</dt>
+          <dd>
+            {statistics.lastAdjustment ? (
+              <>
+                بتاريخ <bdi>{statistics.lastAdjustment.documentDate}</bdi> ·{" "}
+                {statistics.lastAdjustment.userName}
+              </>
+            ) : statistics.canViewStock ? (
+              "لا توجد تسوية ذات حركة مخزون."
+            ) : (
+              "يتطلب صلاحية عرض المخزون."
+            )}
+          </dd>
+          <dt>آخر حركة</dt>
+          <dd>
+            {statistics.lastMovement ? (
+              <>
+                {movementKind
+                  ? stockMovementKindLabels[movementKind]
+                  : statistics.lastMovement.kind}{" "}
+                · بتاريخ <bdi>{statistics.lastMovement.documentDate}</bdi> ·{" "}
+                {dateTime(statistics.lastMovement.createdAt)}
+              </>
+            ) : statistics.canViewStock ? (
+              "لا توجد حركة مخزون."
+            ) : (
+              "يتطلب صلاحية عرض المخزون."
+            )}
+          </dd>
+        </dl>
+      )}
+      <div className="form-actions">
+        <Button
+          variant="ghost"
+          size="compact"
+          disabled={result.isFetching}
+          onClick={() => void result.refetch()}
+        >
+          {result.isFetching ? "جارٍ التحديث…" : "تحديث الملخص"}
+        </Button>
+        {statistics && (
+          <small className="muted">
+            آخر تحديث: {dateTime(statistics.updatedAt)}
+          </small>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -680,6 +819,7 @@ function ItemEditor({
           </Button>
         </Notice>
       )}
+      {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
