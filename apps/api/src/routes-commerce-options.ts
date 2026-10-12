@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import type { Pool } from "pg";
 import { accountCategories } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
-import { deny, HttpError } from "./errors.ts";
+import { HttpError } from "./errors.ts";
 import { actor, handler, id } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import {
@@ -29,12 +29,13 @@ export function commerceOptionRoutes(pool: Pool): Router {
         );
         const companyId = id(req.params.companyId);
         const user = await currentActor(client, actor(req), false);
-        const context = await companyAccess(client, user, companyId);
-        if (
-          !context.permissions.includes("commerce.view") &&
-          !context.permissions.includes("inventory.view")
-        )
-          deny();
+        try {
+          await companyAccess(client, user, companyId, "commerce.view");
+        } catch (error) {
+          if (!(error instanceof HttpError) || error.status !== 403)
+            throw error;
+          await companyAccess(client, user, companyId, "inventory.view");
+        }
         const query = {
           ...req.query,
           ...(req.query.id === undefined ? { active: "true" } : {}),
@@ -138,7 +139,12 @@ export function commerceOptionRoutes(pool: Pool): Router {
             },
             ["l.name", "l.code", "b.name"],
             locationDTO,
-            { id: "id", active: "boolean", branchId: "id", kind: ["showroom", "warehouse"] },
+            {
+              id: "id",
+              active: "boolean",
+              branchId: "id",
+              kind: ["showroom", "warehouse"],
+            },
             "code:asc",
           );
         throw new HttpError(400, "invalid_query", "نوع الاختيارات غير صالح");

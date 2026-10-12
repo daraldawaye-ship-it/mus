@@ -12,7 +12,12 @@ import {
   userDTO,
 } from "../repositories/models.ts";
 import { deny, HttpError, missing } from "../errors.ts";
-import { permissionRequest, permissionRuleEffects, requestPermissionAction, requirementForAction } from "../services/permission-rules.ts";
+import {
+  permissionRequest,
+  permissionRuleEffects,
+  requestPermissionTargets,
+  requirementForAction,
+} from "../services/permission-rules.ts";
 
 export function ownerOnly(actor: User): void {
   if (!actor.owner) deny("هذا الإجراء لمالك المنصة فقط");
@@ -58,29 +63,61 @@ export async function companyAccess(
   const general = actor.owner || Boolean(row?.is_general_manager);
   // Keep the old employee grants as the base. Rule assignments never touch
   // employees.permissions and never extend another company's permissions.
-  const legacy: Permission[] = general ? [...permissionKeys] : [...row.permissions];
-  for (const module of ["accounts","currencies","locations","items","commerce","inventory"] as const) {
-    if (legacy.includes(`${module}.manage`) && !legacy.includes(`${module}.view`))
+  const legacy: Permission[] = general
+    ? [...permissionKeys]
+    : [...row.permissions];
+  for (const module of [
+    "accounts",
+    "currencies",
+    "locations",
+    "items",
+    "commerce",
+    "inventory",
+  ] as const) {
+    if (
+      legacy.includes(`${module}.manage`) &&
+      !legacy.includes(`${module}.view`)
+    )
       legacy.push(`${module}.view`);
   }
-  if (legacy.includes("inventory.post") && !legacy.includes("inventory.view"))legacy.push("inventory.view");
-  if ((legacy.includes("finance.manage") || legacy.includes("finance.post")) &&
-      !legacy.includes("finance.view"))legacy.push("finance.view");
-  const effects = !general && row
-    ? await permissionRuleEffects(db,companyId,row.id)
-    : new Map<string,"allow"|"deny">();
-  const scopedAction = requestPermissionAction(permissionRequest.getStore(),companyId);
-  const decision = scopedAction ? effects.get(scopedAction) : undefined;
-  if (decision === "deny") deny("هذا الإجراء ممنوع صراحةً ضمن صلاحيات الشركة.");
-  const explicitGrant = decision === "allow" && !!permission &&
-    requirementForAction(scopedAction!).includes(permission);
+  if (legacy.includes("inventory.post") && !legacy.includes("inventory.view"))
+    legacy.push("inventory.view");
+  if (
+    (legacy.includes("finance.manage") || legacy.includes("finance.post")) &&
+    !legacy.includes("finance.view")
+  )
+    legacy.push("finance.view");
+  const effects =
+    !general && row
+      ? await permissionRuleEffects(db, companyId, row.id)
+      : new Map<string, "allow" | "deny">();
+  const targets = general
+    ? []
+    : await requestPermissionTargets(
+        db,
+        permissionRequest.getStore(),
+        companyId,
+        permission,
+      );
+  if (targets.flat().some((key) => effects.get(key) === "deny"))
+    deny("هذا الإجراء ممنوع صراحةً ضمن صلاحيات الشركة.");
+  const explicitGrant =
+    !!permission &&
+    targets.length > 0 &&
+    targets.every((group) =>
+      group.some(
+        (key) =>
+          effects.get(key) === "allow" &&
+          requirementForAction(key).includes(permission),
+      ),
+    );
   const permissions: Permission[] = [...legacy];
   // Context is a navigation hint only. Server authorization below checks
   // the exact request action; a grant on edit cannot grant create or post.
-  for (const [key,effect] of effects) {
-    if(effect !== "allow")continue;
-    for(const granted of requirementForAction(key))
-      if(!permissions.includes(granted))permissions.push(granted);
+  for (const [key, effect] of effects) {
+    if (effect !== "allow") continue;
+    for (const granted of requirementForAction(key))
+      if (!permissions.includes(granted)) permissions.push(granted);
   }
   for (const module of [
     "accounts",
@@ -97,8 +134,10 @@ export async function companyAccess(
       permissions.push(`${module}.view`);
   }
   if (
-    permissions.includes("inventory.post") && !permissions.includes("inventory.view")
-  ) permissions.push("inventory.view");
+    permissions.includes("inventory.post") &&
+    !permissions.includes("inventory.view")
+  )
+    permissions.push("inventory.view");
   if (
     (permissions.includes("finance.manage") ||
       permissions.includes("finance.post")) &&

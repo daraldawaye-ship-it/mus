@@ -15,7 +15,11 @@ import {
 import type { Database } from "../db.ts";
 import { companyAccess } from "../policies/access.ts";
 import { HttpError, missing } from "../errors.ts";
-import { permissionRuleEffects } from "./permission-rules.ts";
+import {
+  permissionRuleEffects,
+  pagePermissionAliases,
+  requirementForAction,
+} from "./permission-rules.ts";
 
 export async function directoryEntries(
   db: Database,
@@ -23,19 +27,40 @@ export async function directoryEntries(
   companyId: number | null,
 ): Promise<PageEntry[]> {
   const context = companyId ? await companyAccess(db, user, companyId) : null;
-  const effects = context?.employee && !context.general
-    ? await permissionRuleEffects(db,companyId!,context.employee.id)
-    : new Map<string,"allow"|"deny">();
-  const baseContext = context && !context.general
-    ? {...context,permissions:[...(context.employee?.permissions ?? [])]}
-    : context;
-  if(baseContext && !baseContext.general){
-    for(const module of ["accounts","currencies","locations","items","commerce","inventory"] as const){
-      if(baseContext.permissions.includes(`${module}.manage`) && !baseContext.permissions.includes(`${module}.view`))
+  const effects =
+    context?.employee && !context.general
+      ? await permissionRuleEffects(db, companyId!, context.employee.id)
+      : new Map<string, "allow" | "deny">();
+  const baseContext =
+    context && !context.general
+      ? { ...context, permissions: [...(context.employee?.permissions ?? [])] }
+      : context;
+  if (baseContext && !baseContext.general) {
+    for (const module of [
+      "accounts",
+      "currencies",
+      "locations",
+      "items",
+      "commerce",
+      "inventory",
+    ] as const) {
+      if (
+        baseContext.permissions.includes(`${module}.manage`) &&
+        !baseContext.permissions.includes(`${module}.view`)
+      )
         baseContext.permissions.push(`${module}.view`);
     }
-    if(baseContext.permissions.includes("inventory.post")&&!baseContext.permissions.includes("inventory.view"))baseContext.permissions.push("inventory.view");
-    if((baseContext.permissions.includes("finance.post")||baseContext.permissions.includes("finance.manage"))&&!baseContext.permissions.includes("finance.view"))baseContext.permissions.push("finance.view");
+    if (
+      baseContext.permissions.includes("inventory.post") &&
+      !baseContext.permissions.includes("inventory.view")
+    )
+      baseContext.permissions.push("inventory.view");
+    if (
+      (baseContext.permissions.includes("finance.post") ||
+        baseContext.permissions.includes("finance.manage")) &&
+      !baseContext.permissions.includes("finance.view")
+    )
+      baseContext.permissions.push("finance.view");
   }
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
@@ -81,17 +106,34 @@ export async function directoryEntries(
         (companyId
           ? definition.scope === "company" &&
             (!!context?.general ||
-              !!context?.permissions.includes("pages.manage"))
+              !!baseContext?.permissions.includes("pages.manage") ||
+              effects.get("company.pages:edit") === "allow")
           : user.owner),
       actionAccess: Object.fromEntries(
         pageActions.map((action) => [
           action,
-          isEnabled && (
-            !context?.general && effects.get(definition.key+":"+action)==="deny" ? false
-            : !context?.general && effects.get(definition.key+":"+action)==="allow" &&
-              definition.actions[action]?.role==="permissions" ? true
-            : pageRuleAllows(definition.actions[action], user, baseContext)
-          ),
+          isEnabled &&
+            (!context?.general &&
+            pagePermissionAliases(definition.key, action).some(
+              (key) => effects.get(key) === "deny",
+            )
+              ? false
+              : !context?.general &&
+                  pagePermissionAliases(definition.key, action).some(
+                    (key) =>
+                      effects.get(key) === "allow" &&
+                      definition.actions[action]?.permissions.every(
+                        (permission) =>
+                          requirementForAction(key).includes(permission),
+                      ),
+                  ) &&
+                  definition.actions[action]?.role === "permissions"
+                ? true
+                : pageRuleAllows(
+                    definition.actions[action],
+                    user,
+                    baseContext,
+                  )),
         ]),
       ) as Record<PageAction, boolean>,
     };
@@ -236,6 +278,11 @@ export async function requestPageKeys(
     "financial-options": "financial-documents",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (resource === "configuration" && rest.split("/")[1] === "record-options") {
+    if (req.query.recordKind === "item")
+      keys.push("company.items", "company.item-card");
+    if (req.query.recordKind === "account") keys.push("company.accounts");
+  }
   if (!rest && ["PATCH", "PUT"].includes(req.method))
     keys.push("company.settings");
   if (

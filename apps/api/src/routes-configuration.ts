@@ -8,7 +8,7 @@ import { transaction } from "./db.ts";
 import { actor, handler, id } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 
-/** Read-only metadata for the next administration stage; no grant mutations yet. */
+/** Read-only summary of the active configuration administration. */
 export function configurationRoutes(pool: Pool): Router {
   const router = Router();
   router.get(
@@ -46,9 +46,9 @@ export function configurationRoutes(pool: Pool): Router {
         );
         return {
           companyId,
-          stage: "foundation",
-          authorizationMode: "existing-employee-permissions",
-          administrationAvailable: false,
+          stage: "management",
+          authorizationMode: "employee-permissions-and-page-rules",
+          administrationAvailable: true,
           valueTypes: optionValueTypes,
           summary: summary.rows[0],
           options: options.rows,

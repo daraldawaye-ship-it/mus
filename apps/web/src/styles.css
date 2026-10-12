@@ -2108,3 +2108,18 @@ ul {
     grid-column: 1 / -1;
   }
 }
+
+.configuration-value-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.configuration-value-heading small { display: block; }
+.configuration-value-row .field { margin: 0; }
+@media (max-width: 600px) {
+  .configuration-value-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .configuration-value-heading { grid-column: 1 / -1; }
+}
