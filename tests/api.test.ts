@@ -1088,6 +1088,80 @@ test("new company provisions active main branch and showroom atomically", async 
   assert.equal(otherBranches.items[0]?.code, "HQ");
 });
 
+test("currency migration initializes legacy companies and preserves existing currency choices", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const insertLegacy = async (name: string) => (
+    await f.pool.query<{ id: number }>(
+      "INSERT INTO companies(name,phone,address,created_by) VALUES($1,'','',$2) RETURNING id",
+      [name, platform.user.id],
+    )
+  ).rows[0]!.id;
+
+  const emptyId = await insertLegacy("Legacy Dar Al Dawa fixture");
+  const customId = await insertLegacy("Legacy with partial currencies");
+  const existing = await company(platform.client, "Already configured");
+  const currentBase = (
+    await f.pool.query<{ base_currency_id: number }>(
+      "SELECT base_currency_id FROM finance_settings WHERE company_id=$1",
+      [existing.id],
+    )
+  ).rows[0]!.base_currency_id;
+  const custom = await f.pool.query<{ id: number }>(
+    "INSERT INTO company_currencies(company_id,code,name,decimal_places,active,created_by) VALUES($1,'SAR','عملة مخصصة',3,true,$2) RETURNING id",
+    [customId, platform.user.id],
+  );
+  await f.pool.query(
+    "INSERT INTO company_currencies(company_id,code,name,decimal_places,active,created_by) VALUES($1,'YER','ريال معطل',2,false,$2)",
+    [customId, platform.user.id],
+  );
+  await f.pool.query(
+    "DELETE FROM schema_migrations WHERE version='011_backfill_company_currencies.sql'",
+  );
+  await migrate(f.pool);
+
+  const currencies = await f.pool.query<{ company_id: number; code: string; name: string; decimal_places: number; active: boolean; id: number }>(
+    "SELECT company_id,id,code,name,decimal_places,active FROM company_currencies WHERE company_id=ANY($1::integer[]) ORDER BY company_id,code",
+    [[emptyId, customId, existing.id]],
+  );
+  const emptyRows = currencies.rows.filter(row => row.company_id === emptyId);
+  assert.deepEqual(emptyRows.map(row => row.code), ["SAR", "USD", "YER"]);
+  const emptyBase = await f.pool.query<{ code: string }>(
+    "SELECT cur.code FROM finance_settings fs JOIN company_currencies cur ON cur.id=fs.base_currency_id WHERE fs.company_id=$1",
+    [emptyId],
+  );
+  assert.equal(emptyBase.rows[0]?.code, "YER");
+  const customRows = currencies.rows.filter(row => row.company_id === customId);
+  assert.deepEqual(customRows.map(row => row.code), ["SAR", "USD", "YER"]);
+  assert.equal(customRows.find(row => row.code === "SAR")?.id, custom.rows[0]?.id);
+  assert.equal(customRows.find(row => row.code === "SAR")?.name, "عملة مخصصة");
+  assert.equal(customRows.find(row => row.code === "SAR")?.decimal_places, 3);
+  assert.equal(customRows.find(row => row.code === "YER")?.active, false);
+  const customBase = await f.pool.query<{ code: string }>(
+    "SELECT cur.code FROM finance_settings fs JOIN company_currencies cur ON cur.id=fs.base_currency_id WHERE fs.company_id=$1",
+    [customId],
+  );
+  assert.equal(customBase.rows[0]?.code, "SAR");
+
+  const existingBase = await f.pool.query<{ base_currency_id: number }>(
+    "SELECT base_currency_id FROM finance_settings WHERE company_id=$1",
+    [existing.id],
+  );
+  assert.equal(existingBase.rows[0]?.base_currency_id, currentBase);
+  const snapshot = currencies.rows;
+  await migrate(f.pool);
+  const again = await f.pool.query(
+    "SELECT company_id,id,code,name,decimal_places,active FROM company_currencies WHERE company_id=ANY($1::integer[]) ORDER BY company_id,code",
+    [[emptyId, customId, existing.id]],
+  );
+  assert.deepEqual(again.rows, snapshot);
+  const audit = await f.pool.query(
+    "SELECT company_id FROM audit_events WHERE action='currencies.initialize' AND actor_id IS NULL AND company_id=ANY($1::integer[])",
+    [[emptyId, customId]],
+  );
+  assert.equal(audit.rowCount, 2);
+});
+
 test("migration backfills only older companies without branches, and never duplicates a showroom", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
