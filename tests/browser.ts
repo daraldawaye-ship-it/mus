@@ -446,6 +446,64 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "Enter on the unit in sales and purchases commits it and moves to quantity",
+    async () => {
+      const { page, actor } = await pageFor("owner@browser.test");
+      const companyPath = `/companies/${companyA.id}`;
+      const currencies = await call<ApiPage<CompanyCurrency>>(
+        actor, `${companyPath}/currencies?q=YER`,
+      );
+      const yer = currencies.items.find((row) => row.code === "YER");
+      assert(yer, "YER must be available for invoice item setup");
+      await call(actor, `${companyPath}/items`, "POST", {
+        idempotencyKey: crypto.randomUUID(),
+        name: "Invoice keyboard unit item",
+        currencyId: yer.id,
+        unit1Name: "Box",
+        unit2Name: "Piece",
+        factor2: 10,
+        salePrice1: "100",
+        salePrice2: "10",
+        purchasePrice: "60",
+        hasExpiry: false,
+      });
+
+      for (const kind of ["sale", "purchase"] as const) {
+        await page.goto(`${companyPath}/invoices/new?kind=${kind}`);
+        const search = page.getByRole("combobox", { name: "الصنف / الباركود" });
+        await search.fill("Invoice keyboard unit item");
+        await search.press("Enter");
+        const unit = page.getByLabel("الوحدة Invoice keyboard unit item");
+        const quantity = page.getByLabel("كمية Invoice keyboard unit item");
+        await eventually(() => unit.isEnabled(), (enabled) => assert(enabled));
+        await unit.selectOption("2");
+        await unit.press("Enter");
+        await eventually(
+          () => quantity.evaluate((field) => field === document.activeElement),
+          (focused) => assert.equal(focused, true),
+        );
+        assert.equal(await unit.inputValue(), "2");
+        assert.equal(await quantity.inputValue(), "1");
+        assert.equal(
+          await quantity.evaluate((field) =>
+            field instanceof HTMLInputElement
+              ? [field.selectionStart, field.selectionEnd]
+              : null,
+          ),
+          [0, 1],
+        );
+        if (kind === "sale") {
+          assert.equal(
+            await page.getByLabel("سعر Invoice keyboard unit item").inputValue(),
+            "10",
+          );
+        }
+        assert.equal(new URL(page.url()).pathname, `${companyPath}/invoices/new`);
+      }
+    },
+  );
+
+  await scenario(
     "new invoices and journal/receipt/payment documents preselect active YER",
     async () => {
       const { page, actor } = await pageFor("owner@browser.test");
