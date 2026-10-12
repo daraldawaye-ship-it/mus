@@ -268,7 +268,7 @@ export function ConfigurationPage({context}:{context:CompanyContext}) {
               <td>{d.name}</td><td>
                 <Select aria-label={`قرار الدور ${d.key}`} value={current?.effect??""}
                   disabled={!role||!role.active||!context.general||pending}
-                  onChange={e=>setRoleRule(d.key,e.target.value as "allow"|"deny"|""||null)}>
+                  onChange={e=>setRoleRule(d.key,(e.target.value||null) as "allow"|"deny"|null)}>
                   <option value="">بلا قاعدة</option><option value="allow">سماح</option><option value="deny">منع</option>
                 </Select>
               </td></tr>;
