@@ -747,6 +747,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const defaultYer = useDefaultYerCurrency(companyId, "commerce-options");
   const currencyManuallyChosen = useRef(false);
   const automaticCurrencyId = useRef<number | null>(null);
+  const [branch, setBranch] = useState<Branch | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [description, setDescription] = useState("");
+  const [discount, setDiscount] = useState("0");
+  const [isReturn, setIsReturn] = useState(false);
   useEffect(() => {
     if (isReturn || !defaultYer || currencyManuallyChosen.current) return;
     if (currency === null) {
@@ -754,12 +760,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       setCurrency(defaultYer);
     }
   }, [defaultYer, currency, isReturn]);
-  const [branch, setBranch] = useState<Branch | null>(null);
-  const [location, setLocation] = useState<Location | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
-  const [description, setDescription] = useState("");
-  const [discount, setDiscount] = useState("0");
-  const [isReturn, setIsReturn] = useState(false);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
