@@ -320,7 +320,9 @@ legend {
 }
 .user-menu-trigger:hover,
 .user-menu-trigger[aria-expanded="true"] {
-  background: var(--hover);
+  background: transparent;
+}
+.user-menu-trigger:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }

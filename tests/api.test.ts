@@ -2746,11 +2746,11 @@ test("media images upload thumbnails, protect tenants, and persist profile URLs"
     purpose:"avatar",companyId:null,original:data,thumbnail:data
   },201);
   assert.match(avatar.fullUrl,/^\/api\/media\/[0-9a-f-]{36}\/full$/);
-  const thumbnail=await client.request("GET",avatar.thumbnailUrl);
+  const thumbnail=await client.request("GET",avatar.thumbnailUrl.replace(/^\/api/,""));
   assert.equal(thumbnail.status,200);
   assert.equal(thumbnail.headers.get("content-type"),"image/png");
-  assert.equal((await other.client.request("GET",avatar.thumbnailUrl)).status,404);
-  assert.equal((await f.client().request("GET",avatar.thumbnailUrl)).status,401);
+  assert.equal((await other.client.request("GET",avatar.thumbnailUrl.replace(/^\/api/,""))).status,404);
+  assert.equal((await f.client().request("GET",avatar.thumbnailUrl.replace(/^\/api/,""))).status,401);
   const profile=await client.ok<{user:User}>("PATCH","/profile",{
     name:user.name,displayName:user.displayName,email:user.email,phone:user.phone,image:avatar.fullUrl
   });
@@ -2758,8 +2758,8 @@ test("media images upload thumbnails, protect tenants, and persist profile URLs"
   const itemImage=await client.ok<{id:string;thumbnailUrl:string}>("POST","/media",{
     purpose:"item",companyId:c.id,original:data,thumbnail:data
   },201);
-  assert.equal((await client.request("GET",itemImage.thumbnailUrl)).status,200);
-  assert.equal((await other.client.request("GET",itemImage.thumbnailUrl)).status,403);
+  assert.equal((await client.request("GET",itemImage.thumbnailUrl.replace(/^\/api/,""))).status,200);
+  assert.equal((await other.client.request("GET",itemImage.thumbnailUrl.replace(/^\/api/,""))).status,403);
   assert.equal((await client.request("POST","/media",{
     purpose:"item",companyId:c.id,original:"data:image/png;base64,ZmFrZQ==",thumbnail:data
   })).status,400);
