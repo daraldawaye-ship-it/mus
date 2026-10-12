@@ -130,6 +130,7 @@ export const auditActionLabels = {
   "location.create": "إنشاء موقع",
   "location.update": "تعديل موقع",
   "generalTable.create": "إضافة سجل عام",
+  "generalTable.duplicate": "تكرار سجلات الجدول العام",
   "generalTable.update": "تعديل سجل عام",
   "financialDocument.create": "إنشاء مسودة مالية",
   "financialDocument.update": "تعديل مسودة مالية",
@@ -161,6 +162,7 @@ export const publicAuditActions: AuditAction[] = [
   "audit.view",
   "company.lastFallback",
   "generalTable.create",
+  "generalTable.duplicate",
   "generalTable.update",
   "page.settings",
 ];

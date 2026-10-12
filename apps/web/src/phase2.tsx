@@ -2,10 +2,32 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CompanyContext,
+  CompanyCurrency,
   Page,
 } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
 import { Button, Field, Notice, Select } from "./ui";
+
+/** Pick active Yemeni rial for new documents without altering saved records.
+ * Fetch through the same finance/commerce permissions as each document editor. */
+export function useDefaultYerCurrency(
+  companyId: number,
+  resource: "financial-options" | "commerce-options",
+) {
+  const { user } = useSession();
+  const result = useQuery({
+    queryKey: ["company", user?.id, companyId, "default-yer", resource],
+    queryFn: ({ signal }) =>
+      api<Page<CompanyCurrency>>(
+        `/companies/${companyId}/${resource}?type=currencies&active=true&q=YER&page=1&pageSize=20`,
+        { signal },
+      ),
+    enabled: !!user && companyId > 0,
+  });
+  return result.data?.items.find(
+    (item) => item.code === "YER" && item.active,
+  ) ?? null;
+}
 
 export const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "تعذر إكمال الطلب. حاول مجددًا.";

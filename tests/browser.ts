@@ -27,6 +27,7 @@ import type {
   Employee,
   ExchangeRate,
   FinanceSettings,
+  GeneralTableRecord,
   Location,
   Page as ApiPage,
   SessionResponse,
@@ -445,6 +446,34 @@ try {
   // Scenarios below exercise the real isolated application; only race regressions intercept the endpoint under test.
 
   await scenario(
+    "new invoices and journal/receipt/payment documents preselect active YER",
+    async () => {
+      const { page, actor } = await pageFor("owner@browser.test");
+      const yen = (await call<ApiPage<CompanyCurrency>>(
+        actor,
+        `/companies/${companyA.id}/currencies?q=YER&active=true`,
+      )).items.find((item) => item.code === "YER");
+      assert(yen?.active);
+      for (const kind of ["sale", "purchase"] as const) {
+        await page.goto(`/companies/${companyA.id}/invoices/new?kind=${kind}`);
+        await eventually(
+          () => page.getByLabel("عملة الفاتورة", { exact: true }).inputValue(),
+          (value) => assert.equal(value, String(yen.id)),
+        );
+      }
+      for (const kind of ["journal", "receipt", "payment"] as const) {
+        await page.goto(
+          `/companies/${companyA.id}/financial-documents/new?kind=${kind}`,
+        );
+        await eventually(
+          () => page.locator(".financial-picker").first().textContent(),
+          (value) => assert.match(value ?? "", /^YER — /),
+        );
+      }
+    },
+  );
+
+  await scenario(
     "laptop header is half-height while all controls remain usable",
     async () => {
       const { page } = await pageFor("owner@browser.test");
@@ -663,6 +692,46 @@ try {
             "A real wheel gesture must scroll the mobile data table",
           ),
       );
+    },
+  );
+
+  await scenario(
+    "general table repeats only the checkmarked records and clears selection after saving",
+    async () => {
+      const { page, actor } = await pageFor();
+      const source = {
+        tableName: "repeat-browser", category: "selection",
+        title: "Record for duplicate", description: "Original content",
+        number1: null, number2: "2.5", date1: null, date2: null,
+        ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [
+          `text${i + 1}`, i === 8 ? "Unique ninth field" : "",
+        ])),
+      };
+      const first = (await call<{record:GeneralTableRecord}>(
+        actor, "/general-table", "POST", source,
+      )).record;
+      const second = (await call<{record:GeneralTableRecord}>(
+        actor, "/general-table", "POST", { ...source, title: "Another record" },
+      )).record;
+      await page.goto("/general-table?tableName=repeat-browser&category=selection");
+      await page.getByRole("button", { name: "تكرار المحدد (0)" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "تكرار المحدد (0)" }).isDisabled(), true);
+      await page.getByRole("checkbox", { name: `اختيار السجل ${first.id}` }).check();
+      await page.getByRole("checkbox", { name: `اختيار السجل ${second.id}` }).check();
+      await page.getByRole("button", { name: "تكرار المحدد (2)" }).click();
+      await page.getByText("تم تكرار 2 سجل بنجاح؛ احتُفظ بالسجلات الأصلية.").waitFor();
+      await page.getByRole("button", { name: "تكرار المحدد (0)" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "تكرار المحدد (0)" }).isDisabled(), true);
+      const listed = await call<ApiPage<GeneralTableRecord>>(
+        actor, "/general-table?tableName=repeat-browser&category=selection",
+      );
+      assert.equal(listed.total, 4);
+      assert.equal(
+        listed.items.filter((item) => item.text9 === "Unique ninth field").length,
+        4,
+      );
+      assert.equal(listed.items.filter((item) => item.id === first.id).length, 1);
+      assert.equal(listed.items.filter((item) => item.id === second.id).length, 1);
     },
   );
 

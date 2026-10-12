@@ -1088,6 +1088,80 @@ test("new company provisions active main branch and showroom atomically", async 
   assert.equal(otherBranches.items[0]?.code, "HQ");
 });
 
+test("currency migration initializes legacy companies and preserves existing currency choices", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const insertLegacy = async (name: string) => (
+    await f.pool.query<{ id: number }>(
+      "INSERT INTO companies(name,phone,address,created_by) VALUES($1,'','',$2) RETURNING id",
+      [name, platform.user.id],
+    )
+  ).rows[0]!.id;
+
+  const emptyId = await insertLegacy("Legacy Dar Al Dawa fixture");
+  const customId = await insertLegacy("Legacy with partial currencies");
+  const existing = await company(platform.client, "Already configured");
+  const currentBase = (
+    await f.pool.query<{ base_currency_id: number }>(
+      "SELECT base_currency_id FROM finance_settings WHERE company_id=$1",
+      [existing.id],
+    )
+  ).rows[0]!.base_currency_id;
+  const custom = await f.pool.query<{ id: number }>(
+    "INSERT INTO company_currencies(company_id,code,name,decimal_places,active,created_by) VALUES($1,'SAR','عملة مخصصة',3,true,$2) RETURNING id",
+    [customId, platform.user.id],
+  );
+  await f.pool.query(
+    "INSERT INTO company_currencies(company_id,code,name,decimal_places,active,created_by) VALUES($1,'YER','ريال معطل',2,false,$2)",
+    [customId, platform.user.id],
+  );
+  await f.pool.query(
+    "DELETE FROM schema_migrations WHERE version='011_backfill_company_currencies.sql'",
+  );
+  await migrate(f.pool);
+
+  const currencies = await f.pool.query<{ company_id: number; code: string; name: string; decimal_places: number; active: boolean; id: number }>(
+    "SELECT company_id,id,code,name,decimal_places,active FROM company_currencies WHERE company_id=ANY($1::integer[]) ORDER BY company_id,code",
+    [[emptyId, customId, existing.id]],
+  );
+  const emptyRows = currencies.rows.filter(row => row.company_id === emptyId);
+  assert.deepEqual(emptyRows.map(row => row.code), ["SAR", "USD", "YER"]);
+  const emptyBase = await f.pool.query<{ code: string }>(
+    "SELECT cur.code FROM finance_settings fs JOIN company_currencies cur ON cur.id=fs.base_currency_id WHERE fs.company_id=$1",
+    [emptyId],
+  );
+  assert.equal(emptyBase.rows[0]?.code, "YER");
+  const customRows = currencies.rows.filter(row => row.company_id === customId);
+  assert.deepEqual(customRows.map(row => row.code), ["SAR", "USD", "YER"]);
+  assert.equal(customRows.find(row => row.code === "SAR")?.id, custom.rows[0]?.id);
+  assert.equal(customRows.find(row => row.code === "SAR")?.name, "عملة مخصصة");
+  assert.equal(customRows.find(row => row.code === "SAR")?.decimal_places, 3);
+  assert.equal(customRows.find(row => row.code === "YER")?.active, false);
+  const customBase = await f.pool.query<{ code: string }>(
+    "SELECT cur.code FROM finance_settings fs JOIN company_currencies cur ON cur.id=fs.base_currency_id WHERE fs.company_id=$1",
+    [customId],
+  );
+  assert.equal(customBase.rows[0]?.code, "SAR");
+
+  const existingBase = await f.pool.query<{ base_currency_id: number }>(
+    "SELECT base_currency_id FROM finance_settings WHERE company_id=$1",
+    [existing.id],
+  );
+  assert.equal(existingBase.rows[0]?.base_currency_id, currentBase);
+  const snapshot = currencies.rows;
+  await migrate(f.pool);
+  const again = await f.pool.query(
+    "SELECT company_id,id,code,name,decimal_places,active FROM company_currencies WHERE company_id=ANY($1::integer[]) ORDER BY company_id,code",
+    [[emptyId, customId, existing.id]],
+  );
+  assert.deepEqual(again.rows, snapshot);
+  const audit = await f.pool.query(
+    "SELECT company_id FROM audit_events WHERE action='currencies.initialize' AND actor_id IS NULL AND company_id=ANY($1::integer[])",
+    [[emptyId, customId]],
+  );
+  assert.equal(audit.rowCount, 2);
+});
+
 test("migration backfills only older companies without branches, and never duplicates a showroom", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
@@ -1150,6 +1224,80 @@ test("migration backfills only older companies without branches, and never dupli
   assert.equal(stillBranch.items[0]?.id, existingBranch.id);
   assert.equal(stillShowroom.total, 1);
   assert.equal(stillShowroom.items[0]?.id, existingShowroom.id);
+});
+
+test("bulk duplicate of selected general-table rows is atomic, audited and restricted", async (t) => {
+  const f = await fixture(t);
+  const admin = await owner(f);
+  const ordinary = await register(f, "general-table-duplicate-ordinary@example.test");
+  const template = {
+    tableName: "duplicates", category: "test", title: "Copied entry",
+    description: "An exact non-empty description",
+    number1: "102.5", number2: "-7.125",
+    date1: "2026-10-12T08:00:00.000Z", date2: null,
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
+      `text${index + 1}`, `Sample ${index + 1}`,
+    ])),
+  };
+  const first = (await admin.client.ok<{record:GeneralTableRecord}>(
+    "POST", "/general-table", template, 201,
+  )).record;
+  const second = (await admin.client.ok<{record:GeneralTableRecord}>(
+    "POST", "/general-table", { ...template, title: "Second copied entry" }, 201,
+  )).record;
+  const ids = [first.id, second.id];
+  assert.equal(
+    (await ordinary.client.request("POST", "/general-table/duplicate", { ids })).status, 403,
+  );
+  assert.equal(
+    (await f.client().request("POST", "/general-table/duplicate", { ids })).status, 401,
+  );
+  for (const invalid of [{ ids: [] }, { ids: [first.id, first.id] }, { ids: [0] }]) {
+    assert.equal(
+      (await admin.client.request("POST", "/general-table/duplicate", invalid)).status, 400,
+    );
+  }
+  assert.equal(
+    (await admin.client.request("POST", "/general-table/duplicate", {
+      ids: [first.id, 2_147_483_647],
+    })).status, 404,
+  );
+  assert.equal(
+    (await admin.client.ok<Page<GeneralTableRecord>>(
+      "GET", "/general-table?tableName=duplicates",
+    )).total, 2,
+    "A missing selected source must roll back all copies",
+  );
+
+  const copies = await admin.client.ok<{ created: number; records: GeneralTableRecord[] }>(
+    "POST", "/general-table/duplicate", { ids }, 201,
+  );
+  assert.equal(copies.created, 2);
+  assert.equal(copies.records.length, 2);
+  for (const [index, original] of [first, second].entries()) {
+    const copied = copies.records[index]!;
+    assert.notEqual(copied.id, original.id);
+    const withoutIdentity = (record: GeneralTableRecord) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) =>
+        !["id", "createdAt", "updatedAt"].includes(key)));
+    assert.deepEqual(withoutIdentity(copied), withoutIdentity(original));
+    const originalAfter = await admin.client.ok<{ record: GeneralTableRecord }>(
+      "GET", `/general-table/${original.id}`,
+    );
+    assert.deepEqual(originalAfter.record, original);
+  }
+  assert.equal(
+    (await admin.client.ok<Page<GeneralTableRecord>>(
+      "GET", "/general-table?tableName=duplicates",
+    )).total, 4,
+  );
+  const logs = await admin.client.ok<Page<AuditEvent>>(
+    "GET", "/audit?action=generalTable.duplicate",
+  );
+  for (const copy of copies.records) {
+    assert(logs.items.some((event) =>
+      event.targetId === copy.id && event.action === "generalTable.duplicate"));
+  }
 });
 
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {

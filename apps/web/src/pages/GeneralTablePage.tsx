@@ -58,6 +58,31 @@ function GeneralTableContent() {
   const [editor, setEditor] = useState<GeneralTableRecord | "new" | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionEpoch, setSelectionEpoch] = useState(0);
+  const [duplicating, setDuplicating] = useState(false);
+  async function duplicateSelected() {
+    if (duplicating || !selectedIds.length || selectedIds.length > 100) return;
+    setError("");
+    setNotice("");
+    setDuplicating(true);
+    try {
+      const result = await api<{ created: number }>("/general-table/duplicate", {
+        method: "POST",
+        body: { ids: selectedIds.map(Number) },
+        signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      setSelectedIds([]);
+      setSelectionEpoch((value) => value + 1);
+      setNotice(`تم تكرار ${result.created} سجل بنجاح؛ احتُفظ بالسجلات الأصلية.`);
+      void list.refetch();
+    } catch (cause) {
+      if (guard.isCurrent()) setError(errorMessage(cause));
+    } finally {
+      if (guard.isCurrent()) setDuplicating(false);
+    }
+  }
   const columns: ColumnDef<GeneralTableRecord, unknown>[] = [
     { accessorKey:"id",header:"الرقم",size:85 },
     { accessorKey:"tableName",header:"اسم الجدول / الاستخدام",size:190,
@@ -84,7 +109,14 @@ function GeneralTableContent() {
   return <>
     <PageHeader title="الجدول العام"
       description="سجلات مرنة لاستخدامات متعددة؛ تُحدد وظيفة كل مجموعة من خلال اسم الجدول والتصنيف."
-      actions={<Button onClick={()=>{setError("");setEditor("new");}}>إضافة سجل</Button>} />
+      actions={<>
+        <Button variant="secondary"
+          disabled={duplicating || !selectedIds.length || selectedIds.length > 100}
+          onClick={() => void duplicateSelected()}>
+          {duplicating ? "جارٍ التكرار…" : `تكرار المحدد (${selectedIds.length})`}
+        </Button>
+        <Button disabled={duplicating} onClick={()=>{setError("");setEditor("new");}}>إضافة سجل</Button>
+      </>} />
     <Notice>هذه السجلات ضمن إدارة الموقع العام حاليًا، وليست ظاهرة للجمهور أو مرتبطة بشركة. يمكن ربط استخداماتها بوحدات أخرى لاحقًا.</Notice>
     {notice && <Notice tone="success">{notice}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
@@ -97,10 +129,13 @@ function GeneralTableContent() {
         <Field label="التصنيف" value={category} maxLength={120} placeholder="كل التصنيفات"
           onChange={event=>changeFilter("category",event.target.value)}/>
       </div>
+      {selectedIds.length > 100 && <Notice tone="warning">يمكن تكرار 100 سجل كحد أقصى في كل عملية. ألغِ تحديد بعض السجلات.</Notice>}
       {list.error && <Notice tone="error">{errorMessage(list.error)}
         {" "}<Button variant="ghost" onClick={()=>void list.refetch()}>إعادة المحاولة</Button>
       </Notice>}
-      <DataTable columns={columns} data={list.data?.items??[]} total={list.data?.total??0}
+      <DataTable key={selectionEpoch} columns={columns} data={list.data?.items??[]} total={list.data?.total??0}
+        selectionMode="multi" onSelectionChange={setSelectedIds}
+        getRowId={(row) => String(row.id)}
         page={list.page} pageSize={list.pageSize} onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize} sorting={list.sorting}
         onSortingChange={list.setSorting} loading={list.loading}

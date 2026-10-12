@@ -41,7 +41,7 @@ import {
   useScopeGuard,
   useSession,
 } from "../api";
-import { errorMessage, ServerLookup } from "../phase2";
+import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import {
   Button,
   Card,
@@ -744,12 +744,22 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const invalidate = useCommerceChanges(companyId);
   const [documentDate, setDocumentDate] = useState(today);
   const [currency, setCurrency] = useState<CompanyCurrency | null>(null);
+  const defaultYer = useDefaultYerCurrency(companyId, "commerce-options");
+  const currencyManuallyChosen = useRef(false);
+  const automaticCurrencyId = useRef<number | null>(null);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
   const [isReturn, setIsReturn] = useState(false);
+  useEffect(() => {
+    if (isReturn || !defaultYer || currencyManuallyChosen.current) return;
+    if (currency === null) {
+      automaticCurrencyId.current = defaultYer.id;
+      setCurrency(defaultYer);
+    }
+  }, [defaultYer, currency, isReturn]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
@@ -796,7 +806,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     !!description ||
     !!account ||
     !!branch ||
-    !!currency;
+    (!!currency &&
+      (currencyManuallyChosen.current ||
+        currency.id !== automaticCurrencyId.current));
   const locked = saving || unknown;
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -1135,6 +1147,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 label="عملة الفاتورة"
                 value={currency}
                 onChange={(value) => {
+                  currencyManuallyChosen.current = true;
                   setCurrency(value);
                 }}
                 display={(value) => `${value.code} — ${value.name}`}
