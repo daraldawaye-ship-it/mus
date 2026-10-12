@@ -768,7 +768,7 @@ function SettingsEditor({
       ...fields,
       revision: settings?.revision ?? null,
       costingMethod: "weighted_average",
-      allowNegative: false,
+      allowNegative: settings?.allowNegative ?? true,
     });
     if (!parsed.success) {
       setError("اختر حسابًا فعالًا لكل وظيفة قبل الحفظ.");
