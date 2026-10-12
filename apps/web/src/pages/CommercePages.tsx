@@ -1177,22 +1177,20 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ref={pageRef}
       style={{ paddingBottom: footerBounds.height + 12 }}
     >
-      <PageHeader
-        title={`${isReturn ? "مردود " : "إضافة "}${title(kind)}`}
-        description={
-          kind === "sale"
-            ? "اختر الصنف ثم الكمية؛ Enter ينقلك للصنف التالي. سعر البيع من كرت الصنف."
-            : "اختر الصنف ثم الكمية والسعر، وتاريخ الانتهاء للأصناف التي تتطلبه."
-        }
-        actions={
-          <Link
-            className="button button-secondary"
-            to={listPath(companyId, kind)}
-          >
-            قائمة الفواتير
-          </Link>
-        }
-      />
+      {kind === "purchase" && (
+        <PageHeader
+          title={`${isReturn ? "مردود " : "إضافة "}${title(kind)}`}
+          description="اختر الصنف ثم الكمية والسعر، وتاريخ الانتهاء للأصناف التي تتطلبه."
+          actions={
+            <Link
+              className="button button-secondary"
+              to={listPath(companyId, kind)}
+            >
+              قائمة الفواتير
+            </Link>
+          }
+        />
+      )}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
