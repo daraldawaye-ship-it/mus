@@ -104,7 +104,16 @@ function RecordOptionFields({
         },
       });
       if (!guard.isCurrent()) return;
-      await client.invalidateQueries({ queryKey: key });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: key }),
+        client.invalidateQueries({
+          queryKey: [
+            "list",
+            user?.id,
+            `company:${companyId}:${recordKind === "item" ? "items" : "accounts"}`,
+          ],
+        }),
+      ]);
       if (guard.isCurrent()) {
         setEdited((previous) => {
           const next = { ...previous };

@@ -2221,3 +2221,66 @@ test("configuration review rejects invalid dates and preserves old values and na
   assert.equal((await platform.client.request("PATCH",base+`/options/${native.id}`,{name:"أرشفة الحساب",description:"مستمد من الحالة الأساسية",revision:native.revision})).status,200);
   assert.equal((await platform.client.request("PUT",url,{definitionId:native.id,value:true,revision:null})).status,403);
 });
+
+test("option lists keep typed filtering, label search, archival and company isolation", async(t)=>{
+  const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Option lists");
+  const base=`/companies/${co.id}`,config=base+"/configuration";
+  type Def={id:number;key:string;revision:number};
+  type Row={id:number;name:string;optionValues:Record<string,string|boolean|null>};
+  type List=Page<Row>&{optionDefinitions:Def[]};
+  const records=[] as {id:number}[];
+  for(const suffix of ["Alpha","Beta","Gamma","Unset"]) records.push((await platform.client.ok<{account:{id:number}}>("POST",base+"/accounts",{name:"Option record "+suffix,kind:"group",category:"asset",normalSide:"debit",parentId:null},201)).account);
+  const create=async(key:string,valueType:string,extra:object={})=>(await platform.client.ok<{option:Def}>("POST",config+"/options",{key:"list."+key,pageKey:"company.accounts",recordKind:"account",name:key,valueType,searchable:true,showInList:true,...extra},201)).option;
+  const integer=await create("integer","integer",{defaultValue:"100"}),decimal=await create("decimal","decimal"),date=await create("date","date");
+  const choice=await create("choice","list",{choices:[{key:"premium",label:"عميل مميز"},{key:"regular",label:"عادي"}]}),hidden=await create("hidden","text",{showInList:false});
+  const put=async(id:number,def:Def,value:string|boolean|null)=>platform.client.ok("PUT",config+`/record-options?recordKind=account&recordId=${id}`,{definitionId:def.id,value,revision:null});
+  for(const [index,values] of [[0,["9007199254740993","9007199254740993.000001","2026-10-01","premium","needle"]],[1,["9007199254740994","9007199254740993.000002","2026-10-12","regular",null]],[2,["0","0",null,"premium",null]]] as const)
+    for(const [column,def] of [integer,decimal,date,choice,hidden].entries()) await put(records[index]!.id,def,values[column]!);
+  const list=async(extra:Record<string,string>={})=>platform.client.ok<List>("GET",base+"/accounts?"+new URLSearchParams({q:"Option record",pageSize:"100",...extra}));
+  const ids=(page:List)=>page.items.map(row=>row.id);
+  const first=await list();
+  assert(first.optionDefinitions.some(def=>def.id===hidden.id));
+  assert(!Object.hasOwn(first.items.find(row=>row.id===records[0]!.id)!.optionValues,String(hidden.id)));
+  assert.equal(first.items.find(row=>row.id===records[3]!.id)!.optionValues[integer.id],null,"New definition defaults never fill old records");
+  assert.deepEqual(ids(await list({q:"عميل مميز"})),[records[0]!.id,records[2]!.id]);
+  assert.deepEqual(ids(await list({q:"needle"})),[records[0]!.id]);
+  assert.deepEqual(ids(await list({optionId:String(integer.id),optionOperator:"gte",optionValue:"9007199254740994"})),[records[1]!.id]);
+  assert.deepEqual(ids(await list({optionId:String(decimal.id),optionOperator:"gte",optionValue:"9007199254740993.000002"})),[records[1]!.id]);
+  assert.deepEqual(ids(await list({optionId:String(date.id),optionOperator:"lte",optionValue:"2026-10-01"})),[records[0]!.id]);
+  assert.deepEqual(ids(await list({optionId:String(choice.id),optionOperator:"eq",optionValue:"premium"})),[records[0]!.id,records[2]!.id]);
+  assert.deepEqual(ids(await list({optionId:String(integer.id),optionOperator:"empty"})),[records[3]!.id],"Zero is a specified value");
+  assert.deepEqual(ids(await list({optionId:String(integer.id),optionOperator:"filled",sort:`option.${integer.id}:asc`})),[records[2]!.id,records[0]!.id,records[1]!.id]);
+  const directory=await platform.client.ok<{options:Def[]}>("GET",config+"/directory"),native=directory.options.find(def=>def.key==="accounts.archived")!;
+  assert.deepEqual(ids(await list({optionId:String(native.id),optionOperator:"empty"})),[],"False is a specified native value");
+  const other=await company(platform.client,"Other option lists");
+  const foreign=await platform.client.request("GET",`/companies/${other.id}/accounts?optionId=${integer.id}&optionOperator=eq&optionValue=0`);
+  assert([400,404].includes(foreign.status));
+  const invalid=await platform.client.request("GET",base+`/accounts?optionId=${date.id}&optionOperator=eq&optionValue=2026-02-30`);
+  assert.equal(invalid.status,400);
+  await platform.client.ok("PATCH",config+`/options/${hidden.id}`,{active:false,revision:hidden.revision});
+  assert.equal((await list({q:"needle"})).total,0);
+  await platform.client.ok("PATCH",config+`/options/${integer.id}`,{active:false,revision:integer.revision});
+  assert(!(await list()).optionDefinitions.some(def=>def.id===integer.id));
+  const card=await platform.client.ok<{values:{definitionId:number;value:unknown}[]}>("GET",config+`/record-options?recordKind=account&recordId=${records[0]!.id}`);
+  assert.equal(card.values.find(value=>value.definitionId===integer.id)?.value,"9007199254740993");
+  assert.equal(card.values.find(value=>value.definitionId===hidden.id)?.value,"needle");
+});
+
+test("option lists search and filter native item booleans without widening pickers",async(t)=>{
+  const f=await fixture(t),platform=await owner(f),co=await company(platform.client,"Item option lists"),base=`/companies/${co.id}`;
+  const currencies=await platform.client.ok<Page<{id:number;code:string}>>("GET",base+"/currencies"),currencyId=currencies.items.find(row=>row.code==="YER")!.id;
+  const withExpiry=(await platform.client.ok<{item:{id:number}}>("POST",base+"/items",{name:"Expiry item",currencyId,hasExpiry:true,idempotencyKey:randomUUID()},201)).item;
+  const withoutExpiry=(await platform.client.ok<{item:{id:number}}>("POST",base+"/items",{name:"Simple item",currencyId,hasExpiry:false,idempotencyKey:randomUUID()},201)).item;
+  const directory=await platform.client.ok<{options:{id:number;key:string;revision:number}[]}>("GET",base+"/configuration/directory"),native=directory.options.find(def=>def.key==="items.has-expiry")!;
+  await platform.client.ok("PATCH",base+`/configuration/options/${native.id}`,{showInList:true,revision:native.revision});
+  type Result=Page<{id:number;optionValues:Record<string,unknown>}>&{optionDefinitions:{id:number}[]};
+  const yes=await platform.client.ok<Result>("GET",base+"/items?q="+encodeURIComponent("نعم"));
+  assert.deepEqual(yes.items.map(row=>row.id),[withExpiry.id]);
+  assert.equal(yes.items[0]!.optionValues[native.id],true);
+  const no=await platform.client.ok<Result>("GET",base+`/items?optionId=${native.id}&optionOperator=eq&optionValue=false`);
+  assert.deepEqual(no.items.map(row=>row.id),[withoutExpiry.id]);
+  assert.equal(no.items[0]!.optionValues[native.id],false);
+  const picker=await platform.client.ok<Page<{id:number}>>("GET",base+"/commerce-options?type=items&q="+encodeURIComponent("نعم"));
+  assert.equal(picker.items.length,0,"Option search stays scoped to primary business lists");
+  assert(!Object.hasOwn(picker,"optionDefinitions"));
+});

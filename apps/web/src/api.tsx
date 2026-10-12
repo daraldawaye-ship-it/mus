@@ -175,7 +175,7 @@ export function useScopeGuard(scope: string) {
       current.current === state.identity,
   };
 }
-export function usePagedQuery<T>(
+export function usePagedQuery<T, Extra = Record<never, never>>(
   resource: string,
   scope: string,
   defaultSort = "id:asc",
@@ -215,7 +215,7 @@ export function usePagedQuery<T>(
       fields.set("page", String(page));
       fields.set("pageSize", String(pageSize));
       fields.set("sort", sort);
-      return api<Page<T>>(`${pathname}?${fields}`, { signal });
+      return api<Page<T> & Extra>(`${pathname}?${fields}`, { signal });
     },
     enabled: !!user,
   });

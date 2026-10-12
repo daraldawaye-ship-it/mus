@@ -19,6 +19,8 @@ import {
   type CompanyContext,
   type NormalSide,
   type Page,
+  type OptionListMetadata,
+  type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import {
@@ -28,6 +30,11 @@ import {
   useMasterChanges,
 } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import {
+  OptionListTools,
+  optionFilterKeys,
+  optionListColumns,
+} from "../OptionListTools";
 import {
   Button,
   Card,
@@ -54,9 +61,9 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const canManage = moduleAccess(context, "accounts", true);
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["kind", "category", "active"])
+  for (const key of ["kind", "category", "active", ...optionFilterKeys])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<Account>(
+  const list = usePagedQuery<OptionListRecord<Account>, OptionListMetadata>(
     `/companies/${companyId}/accounts?${filters}`,
     `company:${companyId}:accounts`,
   );
@@ -142,7 +149,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     if (guard.isCurrent())
       setNotice(`تم حفظ الحساب ${account.code} — ${account.name}.`);
   }
-  const columns = useMemo<ColumnDef<Account, unknown>[]>(
+  const columns = useMemo<ColumnDef<OptionListRecord<Account>, unknown>[]>(
     () => [
       {
         accessorKey: "code",
@@ -202,6 +209,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           </ValueCell>
         ),
       },
+      ...optionListColumns<Account>(list.data?.optionDefinitions ?? []),
       ...(canManage
         ? [
             {
@@ -219,11 +227,11 @@ function AccountsManager({ context }: { context: CompanyContext }) {
                   تعديل
                 </Button>
               ),
-            } satisfies ColumnDef<Account, unknown>,
+            } satisfies ColumnDef<OptionListRecord<Account>, unknown>,
           ]
         : []),
     ],
-    [canManage, loadingDetail, companyId],
+    [canManage, loadingDetail, companyId, list.data?.optionDefinitions],
   );
   return (
     <>
@@ -259,7 +267,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             type="search"
             value={list.query}
             onChange={(event) => list.setQuery(event.target.value)}
-            placeholder="الاسم أو الكود"
+            placeholder="الاسم أو الكود أو الخيارات القابلة للبحث"
           />
           <Select
             label="نوع الحساب"
@@ -295,6 +303,11 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             <option value="false">موقف</option>
           </Select>
         </div>
+        <OptionListTools
+          definitions={list.data?.optionDefinitions ?? []}
+          query={list.query}
+          onClearSearch={() => list.setQuery("")}
+        />
         {list.error && (
           <Notice tone="error">
             {errorMessage(list.error)}{" "}
@@ -656,7 +669,14 @@ function AccountEditor({
           </Button>
         </div>
       </form>
-      {account && <RecordOptionCard companyId={companyId} recordKind="account" recordId={account.id} canEdit />}
+      {account && (
+        <RecordOptionCard
+          companyId={companyId}
+          recordKind="account"
+          recordId={account.id}
+          canEdit
+        />
+      )}
     </Dialog>
   );
 }

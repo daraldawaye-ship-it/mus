@@ -32,6 +32,9 @@ import {
   readMaster,
 } from "./services/masters.ts";
 import type { Database } from "./db.ts";
+import { transaction } from "./db.ts";
+import { companyAccess, currentActor } from "./policies/access.ts";
+import { actor } from "./http.ts";
 
 const columns = {
   id: "a.id",
@@ -342,10 +345,15 @@ export function accountRoutes(pool: Pool): Router {
   router.get(
     `${base}/accounts`,
     handler(async (req, res) => {
-      const companyId = await readMaster(pool, req, "accounts.view");
-      res.json(
-        await masterPage(
-          pool,
+      const result = await transaction(pool, async (client) => {
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        const companyId = id(req.params.companyId),
+          user = await currentActor(client, actor(req), false);
+        await companyAccess(client, user, companyId, "accounts.view");
+        return masterPage(
+          client,
           req,
           companyId,
           accountSelect,
@@ -362,8 +370,10 @@ export function accountRoutes(pool: Pool): Router {
             parentId: "id",
           },
           "code:asc",
-        ),
-      );
+          "account",
+        );
+      });
+      res.json(result);
     }),
   );
   router.post(

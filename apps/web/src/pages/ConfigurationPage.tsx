@@ -209,6 +209,11 @@ export function ConfigurationPage({ context }: { context: CompanyContext }) {
         queryClient.invalidateQueries({
           queryKey: ["company", user?.id, companyId],
         }),
+        ...["items", "accounts"].map((kind) =>
+          queryClient.invalidateQueries({
+            queryKey: ["list", user?.id, `company:${companyId}:${kind}`],
+          }),
+        ),
         queryClient.invalidateQueries({
           queryKey: ["page-directory", user?.id, companyId],
         }),

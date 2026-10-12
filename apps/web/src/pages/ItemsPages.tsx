@@ -20,6 +20,8 @@ import {
   type ItemAgent,
   type ItemInput,
   type ItemAgentInput,
+  type OptionListMetadata,
+  type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
 import {
   api,
@@ -30,6 +32,11 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import {
+  OptionListTools,
+  optionFilterKeys,
+  optionListColumns,
+} from "../OptionListTools";
 import {
   Button,
   Card,
@@ -139,9 +146,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["active", "hasExpiry", "agentId"])
+  for (const key of ["active", "hasExpiry", "agentId", ...optionFilterKeys])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<Item>(
+  const list = usePagedQuery<OptionListRecord<Item>, OptionListMetadata>(
     `/companies/${companyId}/items?${filters}`,
     `company:${companyId}:items`,
   );
@@ -154,7 +161,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
       return next;
     });
   }
-  const columns = useMemo<ColumnDef<Item, unknown>[]>(
+  const columns = useMemo<ColumnDef<OptionListRecord<Item>, unknown>[]>(
     () => [
       {
         accessorKey: "code",
@@ -246,6 +253,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           </ValueCell>
         ),
       },
+      ...optionListColumns<Item>(list.data?.optionDefinitions ?? []),
       {
         id: "actions",
         header: "الإجراء",
@@ -265,7 +273,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         ),
       },
     ],
-    [companyId, canManage, navigate],
+    [companyId, canManage, navigate, list.data?.optionDefinitions],
   );
   return (
     <>
@@ -288,7 +296,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
             label="بحث في الأصناف"
             type="search"
             value={list.query}
-            placeholder="الاسم أو الرمز أو الباركود أو مفاتيح البحث"
+            placeholder="الاسم أو الرمز أو الباركود أو الخيارات القابلة للبحث"
             onChange={(event) => list.setQuery(event.target.value)}
           />
           <Select
@@ -310,6 +318,11 @@ function ItemsManager({ context }: { context: CompanyContext }) {
             <option value="false">بدون انتهاء</option>
           </Select>
         </div>
+        <OptionListTools
+          definitions={list.data?.optionDefinitions ?? []}
+          query={list.query}
+          onClearSearch={() => list.setQuery("")}
+        />
         {list.error && <Notice tone="error">{errorMessage(list.error)}</Notice>}
         <DataTable
           columns={columns}
@@ -972,7 +985,14 @@ function ItemEditor({
           </Button>
         </div>
       </form>
-      {item && <RecordOptionCard companyId={companyId} recordKind="item" recordId={item.id} canEdit={manage} />}
+      {item && (
+        <RecordOptionCard
+          companyId={companyId}
+          recordKind="item"
+          recordId={item.id}
+          canEdit={manage}
+        />
+      )}
       <Dialog
         open={picker !== null}
         title={

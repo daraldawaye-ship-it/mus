@@ -11,6 +11,7 @@ import { actor, id } from "../http.ts";
 import { companyAccess, currentActor } from "../policies/access.ts";
 import { HttpError, missing } from "../errors.ts";
 import { listQuery, searchPattern } from "./lists.ts";
+import { optionListPlan } from "./option-lists.ts";
 
 export function conflict(message: string): never {
   throw new HttpError(409, "conflict", message);
@@ -65,10 +66,18 @@ export async function masterPage<T>(
   dto: (row: QueryResultRow) => T,
   filters: Record<string, "boolean" | "id" | readonly string[]>,
   fallback = "id:asc",
+  optionKind?: "item" | "account",
 ) {
-  const query = listQuery(req.query, columns, fallback);
+  const options = optionKind
+    ? await optionListPlan(pool, req, companyId, optionKind, alias)
+    : null;
+  const query = listQuery(
+    req.query,
+    { ...columns, ...options?.sortColumns },
+    fallback,
+  );
   const parameters: unknown[] = [companyId, searchPattern(query.q)];
-  let filter = `${alias}.company_id=$1 AND (${searchColumns.map((column) => `${column} ILIKE $2`).join(" OR ")})`;
+  let filter = `${alias}.company_id=$1 AND (${searchColumns.map((column) => `${column} ILIKE $2`).join(" OR ")}${query.q && options?.search ? ` OR ${options.search}` : ""})`;
   for (const [field, allowed] of Object.entries(filters)) {
     const value = req.query[field];
     if (value === undefined) continue;
@@ -90,6 +99,8 @@ export async function masterPage<T>(
     parameters.push(normalized);
     filter += ` AND ${column}=$${parameters.length}`;
   }
+  const optionFilter = options?.filter(parameters);
+  if (optionFilter) filter += ` AND ${optionFilter}`;
   const count = await pool.query(
     `SELECT count(*)::integer AS total ${from} WHERE ${filter}`,
     parameters,
@@ -99,9 +110,10 @@ export async function masterPage<T>(
     [...parameters, query.pageSize, query.offset],
   );
   return {
-    items: rows.rows.map(dto),
+    items: options ? await options.rows(rows.rows, dto) : rows.rows.map(dto),
     total: count.rows[0].total as number,
     page: query.page,
     pageSize: query.pageSize,
+    ...(options ? { optionDefinitions: options.definitions } : {}),
   };
 }

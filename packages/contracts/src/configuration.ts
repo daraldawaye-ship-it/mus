@@ -34,6 +34,14 @@ export interface OptionDefinition {
   revision: number;
 }
 
+/** Metadata and exact option scalars returned with supported record lists. */
+export type OptionListRecord<T> = T & {
+  optionValues: Record<string, OptionScalar>;
+};
+export interface OptionListMetadata {
+  optionDefinitions: OptionDefinition[];
+}
+
 /** Validate exact scalar strings without converting large numbers to floats. */
 export function optionValueError(
   definition: Pick<OptionDefinition, "valueType" | "choices" | "required">,

@@ -256,6 +256,7 @@ export function itemRoutes(pool: Pool): Router {
               currencyId: "id",
             },
             "code:asc",
+            "item",
           ),
         ),
       );
