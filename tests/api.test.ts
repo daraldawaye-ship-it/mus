@@ -1300,6 +1300,61 @@ test("bulk duplicate of selected general-table rows is atomic, audited and restr
   }
 });
 
+test("configuration administration protects company scope and enforces revision for options and roles", async (t) => {
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const companyA=await company(platform.client,"Configuration A");
+  const companyB=await company(platform.client,"Configuration B");
+  const ordinary=await register(f,"config-user@example.test");
+  const path=`/companies/${companyA.id}`;
+  assert.equal((await ordinary.client.request("GET",path+"/configuration-directory")).status,403);
+  const directory=await platform.client.ok<{
+    options: {id:number;key:string;revision:number;system:boolean}[];
+    roles:{id:number;key:string;revision:number}[];
+    permissions:{key:string}[];
+    rules:{id:number}[];
+  }>("GET",path+"/configuration-directory");
+  assert(directory.options.some(o=>o.key==="items.archived"&&o.system));
+  assert(directory.roles.some(r=>r.key==="accountant"));
+  const data={
+    key:"items.warranty-months",pageKey:"company.items",recordKind:"item",
+    name:"مدة الضمان",description:"بالأشهر",valueType:"integer",
+    defaultValue:"12",choices:[],required:false,searchable:true,
+    showOnCard:true,showInList:true,sortOrder:10,active:true,
+  };
+  const created=await platform.client.ok<{option:{id:number;revision:number;key:string}}>(
+    "POST",path+"/configuration-options",data,201);
+  assert.equal(created.option.key,data.key);
+  assert.equal((await platform.client.request("POST",path+"/configuration-options",data)).status,409);
+  const changed=await platform.client.ok<{option:{revision:number;name:string}}>(
+    "PATCH",path+"/configuration-options/"+created.option.id,
+    {...data,name:"ضمان المنتج",revision:created.option.revision});
+  assert.equal(changed.option.revision,2);
+  assert.equal((await platform.client.request("PATCH",path+"/configuration-options/"+created.option.id,
+    {...data,revision:1})).status,409);
+  const other=await platform.client.ok<{options:{key:string}[]}>("GET",
+    `/companies/${companyB.id}/configuration-directory`);
+  assert(!other.options.some(o=>o.key===data.key));
+  const role=await platform.client.ok<{role:{id:number;revision:number}}>(
+    "POST",path+"/configuration-roles",
+    {key:"warehouse-clerk",name:"موظف مستودع",description:"دور تجريبي"},201);
+  const permission=directory.permissions.find(p=>p.key==="company.items:view")!;
+  const createdRule=await platform.client.ok<{rule:{id:number;revision:number;effect:string}}>(
+    "POST",path+"/configuration-role-rules",
+    {roleId:role.role.id,permissionKey:permission.key,effect:"allow"},201);
+  assert.equal(createdRule.rule.effect,"allow");
+  const revisedRule=await platform.client.ok<{rule:{revision:number;effect:string}}>(
+    "PATCH",path+"/configuration-role-rules/"+createdRule.rule.id,
+    {effect:"deny",active:true,revision:createdRule.rule.revision});
+  assert.equal(revisedRule.rule.effect,"deny");
+  assert.equal(revisedRule.rule.revision,2);
+  assert.equal((await platform.client.request("PATCH",path+"/configuration-role-rules/"+createdRule.rule.id,
+    {effect:"allow",active:true,revision:1})).status,409);
+  const audit=await platform.client.ok<Page<AuditEvent>>("GET",`/companies/${companyA.id}/audit?pageSize=100`);
+  assert(audit.items.some(e=>e.action==="configuration.roleRule.create"));
+  assert(audit.items.some(e=>e.action==="configuration.option.update"));
+});
+
 test("general table stores reusable records, filters them and enforces public admin access", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
