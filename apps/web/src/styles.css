@@ -274,6 +274,53 @@ legend {
   gap: 10px;
   min-width: 0;
 }
+.wallet-indicator {
+  max-width: 150px;
+  gap: 5px;
+  padding-inline: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-indicator > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wallet-indicator svg {
+  flex-shrink: 0;
+}
+.wallet-page {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.wallet-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.wallet-balance {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.wallet-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.wallet-filters > .field {
+  flex: 1 1 200px;
+  max-width: 470px;
+}
+@media (max-width: 760px) {
+  .wallet-indicator {
+    max-width: 78px;
+  }
+  .wallet-summary {
+    grid-template-columns: 1fr;
+  }
+}
 .scope-title {
   display: flex;
   align-items: center;

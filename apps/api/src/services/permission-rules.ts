@@ -78,6 +78,8 @@ export async function requestPermissionTargets(
     locations: "company.locations",
     employees: "company.employees",
     attendance: "company.attendance",
+    wallet: "company.wallet",
+    "reward-tasks": "company.reward-tasks",
     notifications: "company.notifications",
     "notification-templates": "company.notification-templates",
     users: "company.employees",
@@ -99,6 +101,8 @@ export async function requestPermissionTargets(
     "inventory-options": "company.stock-operations",
   };
   if (resource === "notifications" && verb === "POST") action = "edit";
+  if (resource === "wallet" && detail === "reversals" && verb === "POST")
+    action = "reverse";
   let page = direct[resource];
   if (resource === "commerce-options" && permission === "inventory.view")
     page = "company.stock-balances";

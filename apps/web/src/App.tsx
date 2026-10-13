@@ -54,6 +54,7 @@ import {
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
 import { NotificationBell } from "./NotificationBell";
+import { WalletIndicator } from "./WalletIndicator";
 import { Button, Card, Dialog, Notice } from "./ui";
 import {
   AuthPage,
@@ -88,6 +89,16 @@ const ConfigurationPage = lazy(() =>
 const AttendancePage = lazy(() =>
   import("./pages/AttendancePage").then((module) => ({
     default: module.AttendancePage,
+  })),
+);
+const WalletPage = lazy(() =>
+  import("./pages/WalletPage").then((module) => ({
+    default: module.WalletPage,
+  })),
+);
+const RewardTasksPage = lazy(() =>
+  import("./pages/WalletPage").then((module) => ({
+    default: module.RewardTasksPage,
   })),
 );
 const NotificationsPage = lazy(() =>
@@ -192,6 +203,8 @@ const companySections = [
   "notifications",
   "notification-templates",
   "attendance",
+  "wallet",
+  "reward-tasks",
   "pages",
   "configuration",
   "overview",
@@ -255,6 +268,8 @@ function Navigation({
     "company.configuration": <ShieldCheck size={17} />,
     "company.employees": <Users size={17} />,
     "company.attendance": <FileClock size={17} />,
+    "company.wallet": <Wallet size={17} />,
+    "company.reward-tasks": <Coins size={17} />,
     "company.notifications": <Bell size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
     "company.settings": <Settings2 size={17} />,
@@ -394,6 +409,18 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الحضور والانصراف…</Notice>}>
           <AttendancePage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "wallet":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل النقاط والمحفظة…</Notice>}>
+          <WalletPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "reward-tasks":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل مهام المكافآت…</Notice>}>
+          <RewardTasksPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "pages":
@@ -704,6 +731,12 @@ function Workspace() {
               </div>
             </div>
             <div className="topbar-actions">
+              {user && inCompany && company.data && !company.isError && (
+                <WalletIndicator
+                  key={`${user.id}:${scope}`}
+                  context={company.data}
+                />
+              )}
               {user && (
                 <NotificationBell
                   key={`${user.id}:${scope}`}

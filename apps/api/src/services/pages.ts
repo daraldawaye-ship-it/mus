@@ -258,6 +258,8 @@ export async function requestPageKeys(
   const names: Record<string, string> = {
     employees: "employees",
     attendance: "attendance",
+    wallet: "wallet",
+    "reward-tasks": "reward-tasks",
     notifications: "notifications",
     "notification-templates": "notification-templates",
     users: "employees",
@@ -375,7 +377,7 @@ export async function assertRequestPagesEnabled(
   // a changed payload can only fail with conflict, never create a new record.
   const path = req.originalUrl.split("?")[0]!.replace(/^\/api/, "");
   const creation = path.match(
-    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments)$/,
+    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals)$/,
   );
   const requestKey: unknown = req.body?.idempotencyKey;
   if (
@@ -392,6 +394,8 @@ export async function assertRequestPagesEnabled(
       "financial-documents": "financial_documents",
       "stock-transfers": "stock_operations",
       "stock-adjustments": "stock_operations",
+      "wallet/awards": "employee_wallet_entries",
+      "wallet/reversals": "employee_wallet_entries",
     };
     const existing = await db.query(
       `SELECT 1 FROM ${tables[creation[1]!]} WHERE company_id=$1 AND idempotency_key=$2`,

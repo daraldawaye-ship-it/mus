@@ -148,6 +148,9 @@ export const auditActionLabels = {
   "notification.assign": "إسناد متابعة تنبيه",
   "notification.remind": "تكرار تنبيه",
   "notification.settings": "إعداد نوع تنبيه",
+  "wallet.award": "إضافة نقاط إدارية",
+  "wallet.reverse": "تصحيح حركة نقاط",
+  "wallet.task": "إعداد مهمة مكافأة",
   "attendance.schedule": "إعداد دوام الموظف",
   "attendance.checkIn": "تسجيل الحضور",
   "attendance.checkOut": "تسجيل الانصراف",
@@ -190,6 +193,9 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "wallet.award",
+  "wallet.reverse",
+  "wallet.task",
   "notification.create",
   "notification.follow",
   "notification.assign",
@@ -495,3 +501,5 @@ export * from "./pages.ts";
 export * from "./configuration.ts";
 export * from "./attendance.ts";
 export * from "./notifications.ts";
+
+export * from "./wallet.ts";

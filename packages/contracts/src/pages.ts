@@ -262,6 +262,22 @@ page(
   "إعداد أنواع التنبيهات الآلية والأهمية والأدوار والمتابعين والتكرار.",
 );
 page(
+  "company.wallet",
+  "النقاط والمحفظة",
+  "الموظفون",
+  "/companies/:companyId/wallet",
+  { view: member, create: general, reverse: general },
+  "محفظة الموظف وسجل نقاطه، مع إضافات إدارية موثقة وتصحيح بحركات عكسية.",
+);
+page(
+  "company.reward-tasks",
+  "مهام المكافآت",
+  "الموظفون",
+  "/companies/:companyId/reward-tasks",
+  { view: general, edit: general },
+  "تعريف نقاط مهام المكافآت وشروط تكرارها وأدوارها قبل ربطها بالأحداث الآلية.",
+);
+page(
   "company.attendance",
   "الحضور والانصراف",
   "الموظفون",
