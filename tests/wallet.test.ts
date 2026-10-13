@@ -432,7 +432,7 @@ test("wallet access is self-only unless general, company isolated and reward tas
   assert(directory.tasks.every((row) => !row.enabled));
   assert.deepEqual(
     directory.tasks.filter((row) => row.implemented).map((row) => row.code).sort(),
-    ["PAGE_VISIT", "PAYMENT_PRINT", "PURCHASE_LINES", "PURCHASE_SAVED", "RECEIPT_PRINT", "SALE_LINES", "SALE_SAVED"],
+    ["DAILY_LOGIN", "PAGE_VISIT", "PAYMENT_PRINT", "PURCHASE_LINES", "PURCHASE_SAVED", "RECEIPT_PRINT", "SALE_LINES", "SALE_SAVED"],
   );
   assert.equal(
     (await staff.client.request("GET", base + "/reward-tasks")).status,
@@ -626,4 +626,108 @@ test("company page-visit rewards require an admitted configured page, role and t
   assert.equal((await visit(third.client)).rewarded, false, "Distinct immediate request is throttled");
   assert.equal((await wallet(third.employee.id)).wallet?.points, "4");
   assert.equal((await wallet(staff.employee.id)).wallet?.money, "0");
+});
+
+test("daily company entry rewards are opt-in, scoped, role-limited and once per Aden day", async (t) => {
+  const f = await fixture(t);
+  const first = await f.company("First daily entry company");
+  const second = await f.company("Second daily entry company");
+  const staff = await f.staff(first.id, "Daily staff");
+  const peer = await f.staff(first.id, "Other company member");
+  const { employee: secondEmployee } = await f.owner.ok<{ employee: Employee }>(
+    "POST", `/companies/${second.id}/employees`,
+    { userId: staff.user.id, name: "Same staff second company", phone: "",
+      role: "employee", active: true, permissions: [] }, 201,
+  );
+  const firstBase = `/companies/${first.id}`;
+  const secondBase = `/companies/${second.id}`;
+  const task = (await f.owner.ok<RewardTaskDirectory>(
+    "GET", firstBase + "/reward-tasks"
+  )).tasks.find((item) => item.code === "DAILY_LOGIN")!;
+  assert.equal(task.enabled, false);
+  assert.equal(task.implemented, true);
+  assert.equal(task.repeatRule, "daily");
+  await staff.client.ok("POST", firstBase + "/activate");
+  assert.equal(
+    (await f.owner.ok<WalletDirectory>(
+      "GET", firstBase + "/wallet?employeeId=" + staff.employee.id
+    )).wallet?.points, "0", "An inactive task does not pay on entry",
+  );
+  for (const invalid of [
+    { repeatRule: "unlimited", enabled: true, points: "50" },
+    { repeatRule: "daily", enabled: true, points: "0" },
+  ]) {
+    assert.equal((await f.owner.request(
+      "PUT", firstBase + "/reward-tasks/DAILY_LOGIN", {
+        ...taskSettings(task), ...invalid,
+      }
+    )).status, 400);
+  }
+  const role = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM company_roles WHERE company_id=$1 AND key='employee'",
+    [first.id],
+  )).rows[0]!;
+  await f.owner.ok("PUT", firstBase + "/reward-tasks/DAILY_LOGIN", {
+    ...taskSettings(task),
+    points: "50", enabled: true, repeatRule: "daily", roleIds: [role.id],
+  });
+  await staff.client.ok("POST", firstBase + "/activate");
+  assert.equal((await f.owner.ok<WalletDirectory>(
+    "GET", firstBase + "/wallet?employeeId=" + staff.employee.id,
+  )).wallet?.points, "0", "Unassigned roles receive no points");
+  await f.pool.query(
+    "INSERT INTO employee_role_assignments(company_id,employee_id,role_id,active) VALUES($1,$2,$3,true)",
+    [first.id, staff.employee.id, role.id],
+  );
+  await Promise.all(
+    Array.from({ length: 4 }, () =>
+      staff.client.ok("POST", firstBase + "/activate")
+    ),
+  );
+  const earned = await f.owner.ok<WalletDirectory>(
+    "GET", firstBase + "/wallet?employeeId=" + staff.employee.id,
+  );
+  assert.equal(earned.wallet?.points, "50");
+  assert.equal(earned.total, 1, "Concurrent tabs must not create duplicate rewards");
+  assert.equal(earned.items[0]?.taskCode, "DAILY_LOGIN");
+  assert.equal(earned.items[0]?.logicalLineCount, 1);
+  assert.equal(earned.items[0]?.money, "0");
+  await staff.client.ok("POST", firstBase + "/activate");
+  await f.owner.ok("PUT", firstBase + "/reward-tasks/DAILY_LOGIN", {
+    ...taskSettings((await f.owner.ok<RewardTaskDirectory>(
+      "GET", firstBase + "/reward-tasks",
+    )).tasks.find((item) => item.code === "DAILY_LOGIN")!),
+    points: "80", enabled: true, roleIds: [],
+  });
+  await staff.client.ok("POST", firstBase + "/activate");
+  const unchanged = await f.owner.ok<WalletDirectory>(
+    "GET", firstBase + "/wallet?employeeId=" + staff.employee.id,
+  );
+  assert.equal(unchanged.wallet?.points, "50", "Changing task points never alters an earned day");
+  assert.equal(unchanged.total, 1, "Re-entering company the same day is not a new event");
+  assert.equal((await f.owner.ok<WalletDirectory>(
+    "GET", firstBase + "/wallet?employeeId=" + peer.employee.id,
+  )).wallet?.points, "0");
+
+  await staff.client.ok("POST", secondBase + "/activate");
+  assert.equal((await f.owner.ok<WalletDirectory>(
+    "GET", secondBase + "/wallet?employeeId=" + secondEmployee.id,
+  )).wallet?.points, "0", "One company's settings never pay another company");
+  const otherTask = (await f.owner.ok<RewardTaskDirectory>(
+    "GET", secondBase + "/reward-tasks",
+  )).tasks.find((item) => item.code === "DAILY_LOGIN")!;
+  await f.owner.ok("PUT", secondBase + "/reward-tasks/DAILY_LOGIN", {
+    ...taskSettings(otherTask), enabled: true, points: "7", roleIds: [],
+  });
+  await staff.client.ok("POST", secondBase + "/activate");
+  assert.equal((await f.owner.ok<WalletDirectory>(
+    "GET", secondBase + "/wallet?employeeId=" + secondEmployee.id,
+  )).wallet?.points, "7", "Only the entered company receives its configured reward");
+  assert.equal((await f.owner.ok<WalletDirectory>(
+    "GET", firstBase + "/wallet?employeeId=" + staff.employee.id,
+  )).wallet?.points, "50");
+  assert.equal(
+    (await peer.client.request("POST", secondBase + "/activate")).status,
+    403,
+  );
 });
