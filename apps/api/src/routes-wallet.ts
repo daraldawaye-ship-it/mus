@@ -387,6 +387,10 @@ export function walletRoutes(pool: Pool) {
             "invalid_repeat_rule",
             "مكافآت الفواتير والطباعة تُحتسب مرة لكل مستند جديد فقط",
           );
+        if (input.enabled && code === "DAILY_LOGIN" && input.repeatRule !== "daily")
+          throw new HttpError(
+            400, "invalid_repeat_rule", "مكافأة دخول الشركة يجب أن تكون مرة يوميًا فقط",
+          );
         if (input.enabled && code === "PAGE_VISIT" &&
           (!input.pageKey || input.points === "0" || input.repeatRule === "per-document"))
           throw new HttpError(
