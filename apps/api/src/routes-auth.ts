@@ -26,6 +26,7 @@ import { HttpError } from "./errors.ts";
 import { randomUUID } from "node:crypto";
 import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
+import { assertPhoneAvailable } from "./services/phone-identity.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
   const router = Router();
@@ -43,8 +44,9 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
       const input = parse(registerSchema, req.body),
         hash = await passwordHash(input.password);
       const result = await transaction(pool, async (client) => {
+        await assertPhoneAvailable(client, input.phone);
         const inserted = await client.query(
-          "INSERT INTO users(name,display_name,email,phone,image,password_hash) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
+          "INSERT INTO users(name,display_name,email,phone,phone_login_key,image,password_hash) VALUES($1,$2,$3,$4,NULLIF($4,''),$5,$6) RETURNING *",
           [
             input.name,
             input.displayName,
@@ -71,9 +73,12 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
     handler(async (req, res) => {
       limitAuth(`login:${req.ip}`);
       const input = parse(loginSchema, req.body);
-      const found = await pool.query("SELECT * FROM users WHERE email=$1", [
-        input.email,
-      ]);
+      const found = await pool.query(
+        input.phone
+          ? "SELECT * FROM users WHERE phone_login_key=$1"
+          : "SELECT * FROM users WHERE email=$1",
+        [input.phone ?? input.email],
+      );
       const row = found.rows[0];
       // Unknown accounts perform the same asynchronous derivation to reduce enumeration timing.
       const matches = await passwordMatches(
@@ -84,7 +89,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         throw new HttpError(
           401,
           "invalid_login",
-          "البريد أو كلمة المرور غير صحيحة",
+          "رقم الهاتف أو البريد أو كلمة المرور غير صحيحة",
         );
       const result = await transaction(pool, async (client) => {
         const locked = await client.query(
@@ -98,7 +103,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           throw new HttpError(
             401,
             "invalid_login",
-            "البريد أو كلمة المرور غير صحيحة",
+            "رقم الهاتف أو البريد أو كلمة المرور غير صحيحة",
           );
         const user = userDTO(locked.rows[0]);
         await audit(client, user, "auth.login", "user", user.id, null, null);
@@ -137,8 +142,12 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           const owned=await client.query("SELECT 1 FROM media_assets WHERE id=$1 AND purpose='avatar' AND uploaded_by=$2",[assetId,before.id]);
           if(!owned.rowCount)throw new HttpError(403,"invalid_image","هذه الصورة لا تخص حسابك");
         }
+        if (!input.phone && !input.email)
+          throw new HttpError(400, "missing_login_identity", "أدخل رقم هاتف أو بريدًا إلكترونيًا");
+        if (input.phone !== before.phone)
+          await assertPhoneAvailable(client, input.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5 WHERE id=$6 RETURNING *",
+          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5,phone_login_key=CASE WHEN phone<>$4 THEN $7 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$4 THEN NULL ELSE phone_verified_at END WHERE id=$6 RETURNING *",
           [
             input.name,
             input.displayName,
@@ -146,6 +155,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
             input.phone,
             input.image,
             before.id,
+            input.phone || null,
           ],
         );
         const after = userDTO(updated.rows[0]);

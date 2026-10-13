@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import {
   appearanceSchema,
   userPatchSchema,
+  ownerPasswordResetSchema,
   userKinds,
   DEFAULT_APPEARANCE,
 } from "../../../packages/contracts/src/index.ts";
@@ -13,12 +14,15 @@ import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   currentActor,
+  ownerOnly,
   publicAdmin,
   publicAudit,
   companyAccess,
 } from "./policies/access.ts";
 import { auditDTO, userDTO } from "./repositories/models.ts";
 import { deny, missing, HttpError } from "./errors.ts";
+import { passwordHash } from "./services/auth.ts";
+import { assertPhoneAvailable } from "./services/phone-identity.ts";
 
 export function publicRoutes(pool: Pool): Router {
   const router = Router();
@@ -73,6 +77,29 @@ export function publicRoutes(pool: Pool): Router {
       });
     }),
   );
+  router.post(
+    "/users/:id/password",
+    handler(async (req, res) => {
+      const targetId = id(req.params.id);
+      const input = parse(ownerPasswordResetSchema, req.body);
+      const owner = await currentActor(pool, actor(req));
+      ownerOnly(owner);
+      const hash = await passwordHash(input.newPassword);
+      await transaction(pool, async (client) => {
+        const target = await client.query(
+          "SELECT id,owner FROM users WHERE id=$1 FOR UPDATE",
+          [targetId],
+        );
+        if (!target.rows[0]) missing();
+        if (target.rows[0].owner)
+          deny("تغيير كلمة مرور المالك يتطلب كلمة المرور الحالية من ملفه الشخصي");
+        await client.query("UPDATE users SET password_hash=$1 WHERE id=$2", [hash, targetId]);
+        await client.query("DELETE FROM sessions WHERE user_id=$1", [targetId]);
+        await audit(client, owner, "auth.password", "user", targetId, null, null);
+      });
+      res.json({ ok: true });
+    }),
+  );
   router.patch(
     "/users/:id",
     handler(async (req, res) => {
@@ -97,8 +124,10 @@ export function publicRoutes(pool: Pool): Router {
           if (managers.rowCount) deny("أرشفة مدير عام فعال تتطلب مالك المنصة");
         }
         const afterValues = { ...before, ...input };
+        if (afterValues.phone !== before.phone)
+          await assertPhoneAvailable(client, afterValues.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9 WHERE id=$10 RETURNING *",
+          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END WHERE id=$10 RETURNING *",
           [
             afterValues.kind,
             afterValues.archived,
@@ -110,6 +139,7 @@ export function publicRoutes(pool: Pool): Router {
             afterValues.email,
             afterValues.phone,
             targetId,
+            afterValues.phone || null,
           ],
         );
         const after = userDTO(updated.rows[0]);

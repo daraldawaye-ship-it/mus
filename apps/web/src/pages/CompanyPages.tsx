@@ -625,6 +625,15 @@ function EmployeeEditor({
   const guard = useScopeGuard(
     `company:${companyId}:employee:${employee?.id ?? "new"}`,
   );
+  const { user: actorUser } = useSession();
+  const [createMode, setCreateMode] = useState<"phone" | "existing">("phone");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [issuedCredentials, setIssuedCredentials] = useState<{phone:string;password:string}|null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetStatus, setResetStatus] = useState("");
+  const [resetting, setResetting] = useState(false);
   const [lookup, setLookup] = useState("");
   const [matches, setMatches] = useState<User[]>([]);
   const [lookedUp, setLookedUp] = useState(false);
@@ -676,7 +685,10 @@ function EmployeeEditor({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (saving || (!employee && !selectedUser)) return;
+    if (saving ||
+      (!employee && createMode === "existing" && !selectedUser) ||
+      (!employee && createMode === "phone" && (!actorUser?.owner || !phone || newUserPassword.length < 12))
+    ) return;
     setSaving(true);
     setError("");
     try {
@@ -686,32 +698,72 @@ function EmployeeEditor({
         role,
         active,
         permissions,
-        ...(employee ? {} : { userId: selectedUser?.id, createSalesCashbox }),
+        ...(employee ? {} : {
+          createSalesCashbox,
+          ...(createMode === "phone"
+            ? { newUser: { name, displayName: name, phone, email: newUserEmail, password: newUserPassword } }
+            : { userId: selectedUser?.id }),
+        }),
       };
       await api<{ employee: Employee }>(
         `/companies/${companyId}/employees${employee ? `/${employee.id}` : ""}`,
         { method: employee ? "PATCH" : "POST", body, signal: guard.signal },
       );
-      if (guard.isCurrent()) onSaved();
+      if (guard.isCurrent()) {
+        if (!employee && createMode === "phone") {
+          setIssuedCredentials({phone, password:newUserPassword});
+          setNewUserPassword("");
+        } else onSaved();
+      }
     } catch (reason) {
       if (guard.isCurrent()) setError(errorMessage(reason));
     } finally {
       if (guard.isCurrent()) setSaving(false);
     }
   }
+  async function changeEmployeePassword() {
+    if (!employee || !actorUser?.owner || resetting || resetPassword.length < 12) return;
+    setResetting(true);
+    setResetStatus("");
+    try {
+      await api(`/users/${employee.userId}/password`, {
+        method:"POST", body:{newPassword:resetPassword}, signal:guard.signal,
+      });
+      if (guard.isCurrent()) setResetStatus("تم تعيين كلمة المرور الجديدة وإلغاء جلسات الدخول السابقة. سلّمها للموظف.");
+    } catch (cause) {
+      if (guard.isCurrent()) setResetStatus(errorMessage(cause));
+    } finally { if (guard.isCurrent()) setResetting(false); }
+  }
+  if (issuedCredentials) return (
+    <Dialog open title="تم إنشاء المستخدم والموظف" onClose={() => {setIssuedCredentials(null);onSaved();}}>
+      <p>بيانات الدخول التالية تظهر الآن فقط. سلّمها لصاحب الحساب عبر وسيلة آمنة.</p>
+      <Field label="رقم الهاتف" readOnly value={issuedCredentials.phone} dir="ltr" />
+      <Field label="كلمة المرور الأولية" readOnly value={issuedCredentials.password} dir="ltr" />
+      <p className="muted">يمكن للمالك تعيين كلمة مرور جديدة لاحقًا، ولا يمكن استرجاع كلمة المرور الحالية من قاعدة البيانات.</p>
+      <div className="form-actions">
+        <Button onClick={() => {setIssuedCredentials(null);onSaved();}}>تم تسليم بيانات الدخول</Button>
+      </div>
+    </Dialog>
+  );
   return (
     <Dialog
       open
-      title={employee ? "تعديل الموظف" : "إضافة موظف مرتبط بحساب"}
+      title={employee ? "تعديل الموظف" : "إضافة موظف"}
       onClose={() => {
         if (!saving) onClose();
       }}
     >
       {error && <Notice tone="error">{error}</Notice>}
-      {!employee && (
+      {!employee && actorUser?.owner && (
+        <div className="form-actions">
+          <Button type="button" variant="secondary" disabled={saving} onClick={() => setCreateMode("phone")}>مستخدم جديد برقم الهاتف {createMode === "phone" ? "✓" : ""}</Button>
+          <Button type="button" variant="secondary" disabled={saving} onClick={() => setCreateMode("existing")}>ربط حساب موجود {createMode === "existing" ? "✓" : ""}</Button>
+        </div>
+      )}
+      {!employee && (!actorUser?.owner || createMode === "existing") && (
         <form onSubmit={search} className="form-stack">
           <Field
-            label="البريد أو هاتف الحساب العام"
+            label="رقم الهاتف أو البريد لحساب موجود"
             value={lookup}
             onChange={(event) => changeLookup(event.target.value)}
             required
@@ -777,15 +829,35 @@ function EmployeeEditor({
           autoFocus={Boolean(employee)}
         />
         <Field
-          label="هاتف الموظف"
+          label={employee || createMode === "existing" ? "هاتف الموظف" : "رقم الهاتف الأساسي للمستخدم"}
           type="tel"
           dir="ltr"
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           maxLength={40}
           disabled={saving}
-          hint="رقم مستقل للتواصل والبحث؛ لا يمنح العضوية لحساب آخر."
+          hint={employee || createMode === "existing"
+            ? "رقم مستقل للتواصل والبحث؛ لا يمنح العضوية لحساب آخر."
+            : "يستخدم هذا الرقم لتسجيل الدخول. سيضاف التحقق برسالة SMS لاحقًا."}
+          required={!employee && createMode === "phone"}
         />
+        {!employee && createMode === "phone" && actorUser?.owner && (
+          <>
+            <Field label="البريد الإلكتروني (اختياري)" type="email" dir="ltr"
+              value={newUserEmail} onChange={event=>setNewUserEmail(event.target.value)}
+              disabled={saving} maxLength={254} />
+            <Field label="كلمة المرور الأولية" type={passwordVisible ? "text" : "password"} dir="ltr"
+              autoComplete="new-password" value={newUserPassword}
+              onChange={event=>setNewUserPassword(event.target.value)}
+              disabled={saving} required minLength={12} maxLength={128}
+              hint="12 حرفًا على الأقل. ستُعرض لك مرة واحدة بعد الحفظ لتسليمها للمستخدم." />
+            <label className="check-label">
+              <input type="checkbox" checked={passwordVisible}
+                onChange={event=>setPasswordVisible(event.target.checked)} disabled={saving}/>
+              إظهار كلمة المرور أثناء الإدخال
+            </label>
+          </>
+        )}
         <Select
           label="الدور"
           value={role}
@@ -832,6 +904,26 @@ function EmployeeEditor({
             ينشأ حساب «سلفة اسم الموظف» تلقائيًا لكل موظف جديد، سواء فُعّل خيار الصندوق أم لا.
           </small>
         )}
+        {employee && actorUser?.owner && (
+          <div className="form-stack">
+            <Field label="تعيين كلمة مرور جديدة للمستخدم"
+              type={passwordVisible ? "text" : "password"}
+              value={resetPassword}
+              onChange={event => {setResetPassword(event.target.value);setResetStatus("");}}
+              disabled={saving || resetting}
+              minLength={12} maxLength={128} autoComplete="new-password"
+              hint="لا يمكن عرض كلمة المرور السابقة. سيُخرج النظام المستخدم من جلساته الحالية عند تغييرها." />
+            <label className="check-label">
+              <input type="checkbox" checked={passwordVisible}
+                onChange={event=>setPasswordVisible(event.target.checked)} disabled={saving || resetting}/>
+              إظهار كلمة المرور الجديدة
+            </label>
+            <Button type="button" variant="secondary" disabled={resetting || saving || resetPassword.length < 12} onClick={() => void changeEmployeePassword()}>
+              {resetting ? "جارٍ التعيين…" : "حفظ كلمة المرور الجديدة"}
+            </Button>
+            {resetStatus && <Notice>{resetStatus}</Notice>}
+          </div>
+        )}
         {employee?.isGeneralManager && (
           <Notice tone="warning">
             هذا الموظف مدير عام. إيقافه يسحب وصوله الفعال إلى الشركة، وتعيين
@@ -841,7 +933,9 @@ function EmployeeEditor({
         <div className="form-actions">
           <Button
             type="submit"
-            disabled={saving || (!employee && !selectedUser)}
+            disabled={saving || (!employee && (
+              createMode === "existing" ? !selectedUser : !actorUser?.owner || !phone || newUserPassword.length < 12
+            ))}
           >
             {saving ? "جارٍ الحفظ…" : employee ? "حفظ الموظف" : "إضافة الموظف"}
           </Button>
