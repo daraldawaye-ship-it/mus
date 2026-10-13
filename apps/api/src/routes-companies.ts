@@ -14,6 +14,7 @@ import { transaction } from "./db.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
+import { rewardCompanyEntry } from "./services/wallet-company-entry.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   currentActor,
@@ -229,7 +230,7 @@ export function companyRoutes(pool: Pool): Router {
     "/companies/:companyId/activate",
     handler(async (req, res) => {
       const companyId = id(req.params.companyId);
-      await transaction(pool, async (client) => {
+      const rewarded = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
         await companyAccess(client, user, companyId, undefined, true);
         const previous = await client.query(
@@ -240,6 +241,7 @@ export function companyRoutes(pool: Pool): Router {
           companyId,
           user.id,
         ]);
+        const rewarded = await rewardCompanyEntry(client, companyId, user);
         await audit(
           client,
           user,
@@ -250,8 +252,9 @@ export function companyRoutes(pool: Pool): Router {
           { lastCompanyId: companyId },
           companyId,
         );
+        return rewarded;
       });
-      res.json({ ok: true, lastCompanyId: companyId });
+      res.json({ ok: true, lastCompanyId: companyId, rewarded });
     }),
   );
   router.get(
