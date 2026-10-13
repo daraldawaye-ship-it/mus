@@ -366,13 +366,13 @@ export function walletRoutes(pool: Pool) {
           );
         if (
           input.enabled &&
-          ["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES"].includes(code) &&
+          ["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES", "RECEIPT_PRINT", "PAYMENT_PRINT"].includes(code) &&
           input.repeatRule !== "per-document"
         )
           throw new HttpError(
             400,
             "invalid_repeat_rule",
-            "مكافآت الفواتير والسطور تُحتسب مرة لكل فاتورة جديدة فقط",
+            "مكافآت الفواتير والطباعة تُحتسب مرة لكل مستند جديد فقط",
           );
         if (input.revision !== before.revision)
           throw new HttpError(
