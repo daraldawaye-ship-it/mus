@@ -393,6 +393,12 @@ export function walletRoutes(pool: Pool) {
             400, "invalid_page_visit",
             "مكافأة زيارة الصفحة تتطلب صفحة محددة ونقاطًا موجبة وتكرارًا زمنيًا",
           );
+        if (input.enabled && code === "DAILY_LOGIN" &&
+          (input.repeatRule !== "daily" || input.points === "0"))
+          throw new HttpError(
+            400, "invalid_daily_login",
+            "مكافأة دخول الشركة تتطلب نقاطًا موجبة وتكرارًا يوميًا",
+          );
         if (input.revision !== before.revision)
           throw new HttpError(
             409,

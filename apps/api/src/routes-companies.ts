@@ -14,6 +14,7 @@ import { transaction } from "./db.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
+import { awardCompanyDailyLogin } from "./services/wallet-login.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   currentActor,
@@ -250,6 +251,9 @@ export function companyRoutes(pool: Pool): Router {
           { lastCompanyId: companyId },
           companyId,
         );
+        // Same transaction: a failed ledger write cannot silently lose the reward.
+        // Not a global login reward: only the company actually opened is credited.
+        await awardCompanyDailyLogin(client, companyId, user);
       });
       res.json({ ok: true, lastCompanyId: companyId });
     }),
