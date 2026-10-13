@@ -1341,3 +1341,58 @@ test("item compositions support multilingual cards, strict flags, archived links
   await assert.rejects(f.pool.query("DELETE FROM item_compositions WHERE id=$1",
     [created.id]));
 });
+
+test("composition bulk import duplicates a single source name into both fields without overwriting", async (t) => {
+  const f = await fixture(t);
+  const c = await f.company("مستورد التراكيب");
+  const url = `/companies/${c.id}/item-compositions`;
+  const longName = "تركيب مطول ".repeat(14).trim();
+  assert(longName.length > 120 && longName.length <= 240);
+  const existing = (await f.owner.ok<{composition: ItemComposition}>(
+    "POST",url,{
+      arabicName:"اسم قديم",englishName:"اسم قديم",description:"ابقِ الشرح القديم",
+      active:false,identicalAlternative:false,nonInterchangeable:true,
+      idempotencyKey:randomUUID(),
+    },201)).composition;
+  const payload = {format:"tijara-compositions-v1",items:[
+    {arabicName:longName,englishName:longName},
+    {arabicName:"اسم جديد",englishName:"اسم جديد"},
+    {arabicName:" اسم جديد ",englishName:"اسم جديد"},
+    {arabicName:"اسم قديم",englishName:"اسم قديم"},
+  ]};
+  const start = await f.owner.ok<{created:number;skipped:number}>(
+    "POST",url+"/import-batch",payload);
+  assert.deepEqual(start,{created:2,skipped:2});
+  const second = await f.owner.ok<{created:number;skipped:number}>(
+    "POST",url+"/import-batch",payload);
+  assert.deepEqual(second,{created:0,skipped:4});
+  const list = await f.owner.ok<Page<ItemComposition>>("GET",url+"?pageSize=20");
+  assert.equal(list.total,3);
+  const imported = list.items.find(row=>row.arabicName===longName);
+  assert(imported);
+  assert.equal(imported.englishName,longName);
+  assert.equal(imported.active,true);
+  assert.equal(imported.identicalAlternative,false);
+  assert.equal(imported.nonInterchangeable,false);
+  const stillOld = list.items.find(row=>row.id===existing.id);
+  assert(stillOld);
+  assert.equal(stillOld.description,"ابقِ الشرح القديم");
+  assert.equal(stillOld.active,false);
+  assert.equal(stillOld.nonInterchangeable,true);
+  const viewOnly = await f.member(c.id,["items.view"],16);
+  assert.equal((await viewOnly.client.request("POST",url+"/import-batch",payload)).status,403);
+  const illegal = await f.owner.request("POST",url+"/import-batch",{
+    format:"tijara-compositions-v1",items:[
+      {arabicName:"اسم صالح",englishName:"اسم صالح"},
+      {arabicName:"م".repeat(241),englishName:"Invalid"},
+    ],
+  });
+  assert.equal(illegal.status,400);
+  const unchanged = await f.owner.ok<Page<ItemComposition>>("GET",url);
+  assert.equal(unchanged.total,3,"Batch validation must be atomic");
+  const other=await f.company("شركة أخرى");
+  const independent=await f.owner.ok<{created:number;skipped:number}>(
+    "POST",`/companies/${other.id}/item-compositions/import-batch`,
+    {format:payload.format,items:[payload.items[0]]});
+  assert.deepEqual(independent,{created:1,skipped:0});
+});
