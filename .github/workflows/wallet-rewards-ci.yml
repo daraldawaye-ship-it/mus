@@ -49,6 +49,8 @@ jobs:
         run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - name: Test account choice creation, editing and strict ordered labels
         run: node --import tsx --test --test-name-pattern="account card choice labels retain" tests/masters.test.ts
+      - name: Test full-length account names and legacy identifiers
+        run: node --import tsx --test --test-name-pattern="legacy account import permits" tests/masters.test.ts
       - name: Test item composition cards and company scoping
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
       - name: Test safe composition bulk import and long names

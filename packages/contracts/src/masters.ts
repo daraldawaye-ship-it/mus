@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const id = z.number().int().positive().max(2_147_483_647);
 const name = z.string().trim().min(1, "الاسم مطلوب").max(120);
+const accountName = z.string().trim().min(1, "الاسم مطلوب").max(240);
 export function normalizeDigits(value: string): string {
   return value
     .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
@@ -236,7 +237,7 @@ export interface Location {
 export const accountSchema = z
   .object({
     code: code.optional(),
-    name,
+    name: accountName,
     parentId: id.nullable().optional().default(null),
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
@@ -281,7 +282,7 @@ export const accountSchema = z
   });
 export const accountPatchSchema = z
   .object({
-    name: name.optional(),
+    name: accountName.optional(),
     active: z.boolean().optional(),
     cashOrBank: z.boolean().optional(),
     accountChoice: z.enum(accountChoices).nullable().optional(),
