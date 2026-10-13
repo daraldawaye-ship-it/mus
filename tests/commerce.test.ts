@@ -261,6 +261,10 @@ async function setup(f: Fixture, name?: string) {
       201,
     )
   ).location;
+  const currentInventory = await f.owner.ok<{ settings: InventorySettings | null }>(
+    "GET",
+    `${path}/inventory-settings`,
+  );
   const settings = (
     await f.owner.ok<{ settings: InventorySettings }>(
       "PUT",
@@ -273,7 +277,7 @@ async function setup(f: Fixture, name?: string) {
         shortageAccountId: accounts.stockShortage!.id,
         costingMethod: "weighted_average",
         allowNegative: false,
-        revision: null,
+        revision: currentInventory.settings?.revision ?? null,
       },
     )
   ).settings;
