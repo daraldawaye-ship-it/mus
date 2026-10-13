@@ -1953,7 +1953,21 @@ test("account card choice labels retain exact order and support create, update, 
     `/companies/${company.id}/accounts?pageSize=100`,
   )).items.find(row => row.code === "1000000000")!;
   assert(existing, "The company chart includes a seeded base account");
-  assert.equal(existing.accountChoice, null, "Legacy/unspecified accounts remain without choice");
+  assert.equal(existing.accountChoice, "administrative", "Seeded chart accounts default to administrative");
+  const companyChart = await f.owner.ok<Page<Account>>("GET",
+    `/companies/${company.id}/accounts?pageSize=100`);
+  for (const code of ["4100000001", "5200000001", "1130000001",
+                       "5000000000", "4000000000"]) {
+    assert.equal(companyChart.items.find(row=>row.code===code)?.accountChoice,
+      "administrative", `Seeded ${code} must be an administrative account`);
+  }
+  const newUntyped = await account(f, company.id, {
+    code: "1000000997",
+    name: "حساب إضافي افتراضي",
+  });
+  assert.equal(newUntyped.accountChoice,"administrative",
+    "Manual and API-created accounts without a choice default to administrative");
+
   const chosen = await account(f, company.id, {
     code: "1000000998",
     name: "حساب صندوق",
