@@ -124,8 +124,6 @@ export function publicRoutes(pool: Pool): Router {
           if (managers.rowCount) deny("أرشفة مدير عام فعال تتطلب مالك المنصة");
         }
         const afterValues = { ...before, ...input };
-        if (!afterValues.phone && !afterValues.email)
-          throw new HttpError(400, "missing_login_identity", "أدخل رقم هاتف أو بريدًا إلكترونيًا");
         if (afterValues.phone !== before.phone)
           await assertPhoneAvailable(client, afterValues.phone, before.id);
         const updated = await client.query(
