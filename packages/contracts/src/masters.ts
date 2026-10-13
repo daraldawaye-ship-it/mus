@@ -106,6 +106,10 @@ export interface Account {
   kind: AccountKind;
   category: AccountCategory;
   normalSide: NormalSide;
+  // Page-only derived posted balance in the company's base currency.
+  // No fixed debit/credit direction exists for the current balance.
+  balanceAmount?: string | null;
+  balanceDirection?: "debit" | "credit" | "zero" | null;
   active: boolean;
   cashOrBank: boolean;
   rangeStart: string | null;
@@ -190,7 +194,9 @@ export const accountSchema = z
     parentId: id.nullable().optional().default(null),
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
-    normalSide: z.enum(normalSides),
+    // Accepted for compatibility with existing integrations; the server sets
+    // the accounting classification automatically from the account category.
+    normalSide: z.enum(normalSides).optional(),
     active: z.boolean().default(true),
     cashOrBank: z.boolean().default(false),
     rangeStart: code.nullable().optional().default(null),
