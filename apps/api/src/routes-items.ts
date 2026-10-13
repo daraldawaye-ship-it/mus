@@ -62,6 +62,7 @@ const itemColumns = {
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
   compositionId: "i.composition_id",
+  shelfId: "i.shelf_id",
   compositionArabicName: "f.arabic_name",
   agentName: "a.name",
   unit1Name: "i.unit1_name",
@@ -503,6 +504,7 @@ export function itemRoutes(pool: Pool): Router {
               hasExpiry: "boolean",
               agentId: "id",
               compositionId: "id",
+              shelfId: "id",
               currencyId: "id",
             },
             "code:asc",
@@ -667,6 +669,7 @@ export function itemRoutes(pool: Pool): Router {
             legacyId: input.legacyId ?? before.legacyId,
             defaultSaleUnit: input.defaultSaleUnit ?? before.defaultSaleUnit,
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
+            shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
