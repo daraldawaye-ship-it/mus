@@ -80,6 +80,7 @@ export async function requestPermissionTargets(
     attendance: "company.attendance",
     wallet: "company.wallet",
     "reward-tasks": "company.reward-tasks",
+    "wallet-settings": "company.wallet-settings",
     notifications: "company.notifications",
     "notification-templates": "company.notification-templates",
     users: "company.employees",

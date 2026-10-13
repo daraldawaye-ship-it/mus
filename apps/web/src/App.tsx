@@ -101,6 +101,11 @@ const RewardTasksPage = lazy(() =>
     default: module.RewardTasksPage,
   })),
 );
+const WalletSettingsPage = lazy(() =>
+  import("./pages/WalletSettingsPage").then((module) => ({
+    default: module.WalletSettingsPage,
+  })),
+);
 const NotificationsPage = lazy(() =>
   import("./pages/NotificationsPage").then((module) => ({
     default: module.NotificationsPage,
@@ -205,6 +210,7 @@ const companySections = [
   "attendance",
   "wallet",
   "reward-tasks",
+  "wallet-settings",
   "pages",
   "configuration",
   "overview",
@@ -270,6 +276,7 @@ function Navigation({
     "company.attendance": <FileClock size={17} />,
     "company.wallet": <Wallet size={17} />,
     "company.reward-tasks": <Coins size={17} />,
+    "company.wallet-settings": <Wallet size={17} />,
     "company.notifications": <Bell size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
     "company.settings": <Settings2 size={17} />,
@@ -421,6 +428,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل مهام المكافآت…</Notice>}>
           <RewardTasksPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "wallet-settings":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل إعدادات المحفظة…</Notice>}>
+          <WalletSettingsPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "pages":

@@ -11,6 +11,11 @@ import type {
   RewardTaskDirectory,
   SessionResponse,
   WalletDirectory,
+  WalletPolicyDirectory,
+  EmployeeWalletAccount,
+  WalletConversionPreview,
+  Account,
+  Page,
 } from "../packages/contracts/src/index.ts";
 
 // One isolated management-to-employee browser flow; no production data.
@@ -374,9 +379,124 @@ try {
   const finalLedger = await employeeCall<WalletDirectory>(base + "/wallet");
   assert.equal(finalLedger.total, 4);
   assert.equal(finalLedger.wallet!.points, "57");
+
+  // Configure a declared rate and employee account through the real controls.
+  // Preview must leave both the ledger and the available points unchanged.
+  const settings = await ownerCall<WalletPolicyDirectory>(
+    base + "/wallet-settings",
+  );
+  assert(settings.baseCurrency && settings.baseCurrency.active);
+  assert.equal(settings.policy.pointValue, null);
+  const expenseAccounts = await ownerCall<Page<Account>>(
+    base + "/accounts?kind=posting&category=expense&active=true&pageSize=100",
+  );
+  const postingAccounts = await ownerCall<Page<Account>>(
+    base + "/accounts?kind=posting&active=true&pageSize=100",
+  );
+  const expenseAccount = expenseAccounts.items[0];
+  const employeeAccount = postingAccounts.items.find(
+    (account) => account.id !== expenseAccount?.id,
+  );
+  assert(expenseAccount && employeeAccount);
+  await ownerPage.goto(base + "/wallet");
+  await ownerPage
+    .getByRole("link", { name: "إعدادات المحفظة", exact: true })
+    .click();
+  await ownerPage
+    .getByRole("heading", { name: "إعدادات المحفظة", exact: true })
+    .waitFor();
+  await ownerPage
+    .getByLabel("قيمة النقطة الواحدة", { exact: true })
+    .fill("٠٫١٢٥");
+  await ownerPage
+    .getByLabel("عملة التحويل", { exact: true })
+    .selectOption(String(settings.baseCurrency.id));
+  await ownerPage
+    .getByLabel("بحث عن حساب مصروف مكافآت النقاط", { exact: true })
+    .fill(expenseAccount.code);
+  await ownerPage
+    .getByLabel("حساب مصروف مكافآت النقاط", { exact: true })
+    .selectOption(String(expenseAccount.id));
+  await ownerPage
+    .getByLabel("طريقة اعتماد التحويل", { exact: true })
+    .selectOption("approval");
+  await ownerPage
+    .getByRole("button", { name: "حفظ إعدادات التحويل", exact: true })
+    .click();
+  await ownerPage
+    .getByText(
+      "تم حفظ إعدادات التحويل. يمكن مراجعة نتيجتها من معاينة المحفظة.",
+      {
+        exact: true,
+      },
+    )
+    .waitFor();
+  await ownerPage
+    .getByLabel("الموظف", { exact: true })
+    .selectOption(String(employee.id));
+  await ownerPage
+    .getByLabel("بحث عن حساب الموظف المرتبط بالمحفظة", { exact: true })
+    .fill(employeeAccount.code);
+  await ownerPage
+    .getByLabel("حساب الموظف المرتبط بالمحفظة", { exact: true })
+    .selectOption(String(employeeAccount.id));
+  await ownerPage
+    .getByRole("button", { name: "حفظ حساب الموظف", exact: true })
+    .click();
+  await ownerPage
+    .getByText("تم حفظ ربط حساب الموظف.", { exact: true })
+    .waitFor();
+  const savedPolicy = (
+    await ownerCall<WalletPolicyDirectory>(base + "/wallet-settings")
+  ).policy;
+  assert.equal(savedPolicy.pointValue, "0.125");
+  assert.equal(savedPolicy.currencyId, settings.baseCurrency.id);
+  assert.equal(savedPolicy.expenseAccountId, expenseAccount.id);
+  assert.equal(savedPolicy.approvalMode, "approval");
+  const savedBinding = await ownerCall<{ binding: EmployeeWalletAccount }>(
+    base + "/wallet-settings/employee-accounts/" + employee.id,
+  );
+  assert.equal(savedBinding.binding.accountId, employeeAccount.id);
+
+  await page
+    .getByRole("button", { name: "معاينة تحويل النقاط", exact: true })
+    .click();
+  const previewDialog = page.getByRole("dialog");
+  await previewDialog
+    .getByLabel("مبلغ التحويل المتوقع", { exact: true })
+    .waitFor();
+  assert.equal(
+    await previewDialog
+      .getByLabel("مبلغ التحويل المتوقع", { exact: true })
+      .inputValue(),
+    "7.13 YER",
+  );
+  assert.equal(
+    await previewDialog.getByLabel("حساب الموظف", { exact: true }).inputValue(),
+    employeeAccount.code + " — " + employeeAccount.name,
+  );
+  assert.equal(await previewDialog.locator('button[type="submit"]').count(), 0);
+  const preview = await employeeCall<{ preview: WalletConversionPreview }>(
+    base + "/wallet/conversion-preview?employeeId=" + employee.id,
+  );
+  assert.equal(preview.preview.canConvert, false);
+  assert.equal(preview.preview.configurationComplete, true);
+  assert.equal(preview.preview.amount, "7.13");
+  const afterPreview = await employeeCall<WalletDirectory>(base + "/wallet");
+  assert.equal(afterPreview.total, 4);
+  assert.equal(afterPreview.wallet!.points, "57");
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    "The readonly conversion preview fits the mobile viewport",
+  );
+  await previewDialog
+    .getByRole("button", { name: "إغلاق", exact: true })
+    .click();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: wallet award/reversal, Arabic input, employee-only mobile ledger/header, page-visit and daily-entry task settings and committed balance refresh",
+    "PASS: wallet award/reversal, automatic task settings/refresh, revisioned policy/account setup and readonly exact mobile conversion preview",
   );
   await ownerContext.close();
   await employeeContext.close();

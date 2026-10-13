@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Page } from "./index.ts";
-import { normalizeDigits } from "./masters.ts";
+import { normalizeDigits, rateSchema } from "./masters.ts";
 
 const id = z.number().int().positive().max(2147483647);
 const points = z
@@ -43,6 +43,68 @@ export const pageVisitEventSchema = z.object({
   pageKey: z.string().min(1).max(100),
   idempotencyKey: z.uuid(),
 }).strict();
+
+export const walletPolicySchema = z.object({
+  pointValue: rateSchema.nullable(),
+  currencyId: id.nullable(),
+  expenseAccountId: id.nullable(),
+  approvalMode: z.enum(["direct", "approval"]).nullable(),
+  revision: id.nullable(),
+}).strict();
+export const employeeWalletAccountSchema = z.object({
+  accountId: id.nullable(),
+  revision: id.nullable(),
+}).strict();
+
+export interface WalletCurrency {
+  id: number;
+  code: string;
+  name: string;
+  decimalPlaces: number;
+  active: boolean;
+}
+export interface WalletAccount {
+  id: number;
+  code: string;
+  name: string;
+  active: boolean;
+  kind: "group" | "posting";
+  category: "asset" | "liability" | "equity" | "income" | "expense";
+}
+export interface WalletPolicy {
+  pointValue: string | null;
+  currencyId: number | null;
+  expenseAccountId: number | null;
+  approvalMode: "direct" | "approval" | null;
+  revision: number | null;
+  currency: WalletCurrency | null;
+  expenseAccount: WalletAccount | null;
+}
+export interface WalletPolicyDirectory {
+  policy: WalletPolicy;
+  baseCurrency: WalletCurrency | null;
+  employees: { id: number; name: string }[];
+}
+export interface EmployeeWalletAccount {
+  employeeId: number;
+  employeeName: string;
+  active: boolean;
+  accountId: number | null;
+  account: WalletAccount | null;
+  revision: number | null;
+}
+export interface WalletConversionPreview {
+  employeeId: number;
+  points: string;
+  pointValue: string | null;
+  amount: string | null;
+  currency: WalletCurrency | null;
+  account: WalletAccount | null;
+  approvalMode: "direct" | "approval" | null;
+  configurationComplete: boolean;
+  canConvert: false;
+  unavailableReason: string;
+}
 
 export const rewardTaskSettingsSchema = z
   .object({

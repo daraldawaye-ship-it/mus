@@ -275,7 +275,15 @@ page(
   "الموظفون",
   "/companies/:companyId/reward-tasks",
   { view: general, edit: general },
-  "تعريف نقاط مهام المكافآت وشروط تكرارها وأدوارها قبل ربطها بالأحداث الآلية.",
+  "إعداد نقاط مهام المكافآت الآلية وشروط تكرارها وأدوارها وتفعيلها.",
+);
+page(
+  "company.wallet-settings",
+  "إعدادات المحفظة",
+  "الموظفون",
+  "/companies/:companyId/wallet-settings",
+  { view: general, edit: general },
+  "إعداد قيمة النقطة وعملة التحويل وحساب المصروف وربط الموظفين بحساباتهم.",
 );
 page(
   "company.attendance",

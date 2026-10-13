@@ -5,6 +5,8 @@ import {
   walletReversalSchema,
   rewardTaskSettingsSchema,
   pageVisitEventSchema,
+  walletPolicySchema,
+  employeeWalletAccountSchema,
 } from "../../../packages/contracts/src/wallet.ts";
 import { pageDefinitions } from "../../../packages/contracts/src/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -19,6 +21,14 @@ import { audit } from "./services/audit.ts";
 import { awardCompanyPageVisit } from "./services/wallet-page-visit.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import {
+  walletPolicy,
+  walletBaseCurrency,
+  employeeWalletAccount,
+  saveWalletPolicy,
+  saveEmployeeWalletAccount,
+  walletConversionPreview,
+} from "./services/wallet-policy.ts";
 import {
   walletEntryQuery,
   walletEntryDTO,
@@ -67,6 +77,75 @@ async function activeEmployee(
 export function walletRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId";
+  router.get(
+    base + "/wallet-settings",
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const { companyId, user, context } = await scope(client, req);
+        manageEmployees(user, context);
+        const policy = await walletPolicy(client, companyId),
+          baseCurrency = await walletBaseCurrency(client, companyId),
+          employees = (await client.query(
+            `SELECT e.id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
+             WHERE e.company_id=$1 AND e.active ORDER BY e.name,e.id`, [companyId],
+          )).rows;
+        return { policy, baseCurrency, employees };
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/wallet-settings",
+    handler(async (req, res) => {
+      const input = parse(walletPolicySchema, req.body);
+      const policy = await transaction(pool, async (client) => {
+        const { companyId, user, context } = await scope(client, req, true);
+        manageEmployees(user, context);
+        return saveWalletPolicy(client, user, companyId, input);
+      });
+      res.json({ policy });
+    }),
+  );
+  router.get(
+    base + "/wallet-settings/employee-accounts/:employeeId",
+    handler(async (req, res) => {
+      const binding = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const { companyId, user, context } = await scope(client, req);
+        manageEmployees(user, context);
+        return employeeWalletAccount(client, companyId, id(req.params.employeeId));
+      });
+      res.json({ binding });
+    }),
+  );
+  router.put(
+    base + "/wallet-settings/employee-accounts/:employeeId",
+    handler(async (req, res) => {
+      const input = parse(employeeWalletAccountSchema, req.body), employeeId = id(req.params.employeeId);
+      const binding = await transaction(pool, async (client) => {
+        const { companyId, user, context } = await scope(client, req, true);
+        manageEmployees(user, context);
+        return saveEmployeeWalletAccount(client, user, companyId, employeeId, input);
+      });
+      res.json({ binding });
+    }),
+  );
+  router.get(
+    base + "/wallet/conversion-preview",
+    handler(async (req, res) => {
+      const preview = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const { companyId, context, ownId } = await scope(client, req),
+          employeeId = req.query.employeeId === undefined ? ownId : id(typeof req.query.employeeId === "string" ? req.query.employeeId : undefined);
+        if (employeeId === null)
+          throw new HttpError(400, "employee_required", "اختر موظفًا لمعاينة قيمة نقاط محفظته");
+        if (!context.general && employeeId !== ownId) deny("يمكنك معاينة محفظتك فقط");
+        return walletConversionPreview(client, companyId, employeeId);
+      });
+      res.json({ preview });
+    }),
+  );
   router.post(
     base + "/reward-events/page-visit",
     handler(async (req, res) => {
