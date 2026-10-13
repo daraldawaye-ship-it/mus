@@ -169,12 +169,19 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 async function setup(f: Fixture, name?: string) {
   const company = await f.company(name);
   const path = `/companies/${company.id}`;
-  await f.owner.ok(
-    "POST",
-    `${path}/currencies/initialize`,
-    { baseCurrency: "YER" },
-    201,
+  // New companies already have YER as their base currency; legacy fixtures may not.
+  const currencySettings = await f.owner.ok<{ settings: { baseCurrencyId: number } | null }>(
+    "GET",
+    `${path}/finance-settings`,
   );
+  if (!currencySettings.settings) {
+    await f.owner.ok(
+      "POST",
+      `${path}/currencies/initialize`,
+      { baseCurrency: "YER" },
+      201,
+    );
+  }
   const currencies = (
     await f.owner.ok<Page<CompanyCurrency>>("GET", `${path}/currencies`)
   ).items;
@@ -203,14 +210,14 @@ async function setup(f: Fixture, name?: string) {
         201,
       )
     ).account;
-  const cash = await makeAccount("1000000001", "Cash", { cashOrBank: true });
-  const bank = await makeAccount("1000000002", "Bank", { cashOrBank: true });
-  const counter = await makeAccount("1000000003", "Customer");
-  const income = await makeAccount("4000000001", "Income", {
+  const cash = await makeAccount("8810000001", "Cash", { cashOrBank: true });
+  const bank = await makeAccount("8810000002", "Bank", { cashOrBank: true });
+  const counter = await makeAccount("8810000003", "Customer");
+  const income = await makeAccount("8840000001", "Income", {
     category: "income",
     normalSide: "credit",
   });
-  const group = await makeAccount("1000000000", "Assets group", {
+  const group = await makeAccount("8810000000", "Assets group", {
     kind: "group",
   });
   const branch = (
