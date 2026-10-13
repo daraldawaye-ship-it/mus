@@ -11,6 +11,8 @@ import {
   itemSchema,
   itemPatchSchema,
   itemConversionSchema,
+  itemShelfPatchSchema,
+  arabicShelfLetters,
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -20,6 +22,8 @@ import {
   itemAgentSelect,
   itemCompositionDTO,
   itemCompositionSelect,
+  itemShelfDTO,
+  itemShelfSelect,
   itemDTO,
   itemSelect,
   itemFrom,
