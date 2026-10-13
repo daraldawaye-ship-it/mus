@@ -15,6 +15,8 @@ import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
 import { awardCompanyDailyLogin } from "./services/wallet-login.ts";
+import { passwordHash } from "./services/auth.ts";
+import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { provisionEmployeeAccounts } from "./services/employee-accounts.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
@@ -357,15 +359,30 @@ export function companyRoutes(pool: Pool): Router {
         await assertRequestPagesEnabled(client, req, true);
         const target = await client.query(
           "SELECT * FROM users WHERE id=$1 FOR SHARE",
-          [input.userId],
+          [input.userId ?? 0],
         );
-        if (!target.rows[0]) missing("المستخدم غير موجود");
-        if (target.rows[0].archived) deny("لا يمكن ربط حساب مؤرشف");
+        let targetUserId = input.userId ?? 0;
+        if (input.newUser) {
+          ownerOnly(user);
+          await assertPhoneAvailable(client, input.newUser.phone);
+          const secretHash = await passwordHash(input.newUser.password);
+          const createdUser = await client.query(
+            "INSERT INTO users(name,display_name,phone,email,phone_login_key,password_hash) VALUES($1,$2,$3,$4,$3,$5) RETURNING *",
+            [input.newUser.name, input.newUser.displayName || input.newUser.name,
+              input.newUser.phone, input.newUser.email, secretHash],
+          );
+          targetUserId = createdUser.rows[0].id;
+          await audit(client, user, "user.register", "user", targetUserId, null,
+            userDTO(createdUser.rows[0]));
+        } else {
+          if (!target.rows[0]) missing("المستخدم غير موجود");
+          if (target.rows[0].archived) deny("لا يمكن ربط حساب مؤرشف");
+        }
         const created = await client.query(
           "INSERT INTO employees(company_id,user_id,name,phone,role,active,permissions,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
           [
             companyId,
-            input.userId,
+            targetUserId,
             input.name,
             input.phone,
             input.role,
