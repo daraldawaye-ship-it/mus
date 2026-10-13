@@ -46,6 +46,9 @@ export function itemDTO(row: QueryResultRow): Item {
     salePrice2: normalizeRate(row.sale_price2),
     salePrice3: normalizeRate(row.sale_price3),
     purchasePrice: normalizeRate(row.purchase_price),
+    commissionRate: normalizeRate(row.commission_rate),
+    clearanceFrom: row.clearance_from_text ?? null,
+    clearanceTo: row.clearance_to_text ?? null,
     purchaseFactor: row.purchase_factor,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
@@ -65,5 +68,5 @@ export const itemAgentSelect = "SELECT a.* FROM item_agents a";
 export const itemFrom =
   "FROM items i JOIN company_currencies c ON c.company_id=i.company_id AND c.id=i.currency_id LEFT JOIN item_agents a ON a.company_id=i.company_id AND a.id=i.agent_id";
 export const itemSelect =
-  "SELECT i.*,i.order_stopped_until::text AS order_stopped_until,a.name AS agent_name,a.active AS agent_active,c.code AS currency_code,c.name AS currency_name,c.decimal_places AS currency_decimal_places,c.active AS currency_active " +
+  "SELECT i.*,i.order_stopped_until::text AS order_stopped_until,i.clearance_from::text AS clearance_from_text,i.clearance_to::text AS clearance_to_text,a.name AS agent_name,a.active AS agent_active,c.code AS currency_code,c.name AS currency_name,c.decimal_places AS currency_decimal_places,c.active AS currency_active " +
   itemFrom;
