@@ -149,36 +149,29 @@ async function geometry(page: Page, width: number) {
     "Page overflow: " + JSON.stringify(actual),
   );
   const header = await page.evaluate(() => {
-    const element = document.querySelector(".commerce-header-card");
-    return element
+    const card = document.querySelector(".commerce-header-card");
+    const content = document.querySelector(".commerce-header-content");
+    return card && content
       ? {
-          height: element.getBoundingClientRect().height,
+          height: card.getBoundingClientRect().height,
           viewport: innerHeight,
-          scrolls: element.scrollHeight > element.clientHeight,
-          overflow: getComputedStyle(element).overflowY,
+          scrolls: content.scrollHeight > content.clientHeight,
+          overflow: getComputedStyle(content).overflowY,
         }
       : null;
   });
   if (header) {
     assert(
       header.height <= 111 && header.height < header.viewport * 0.3,
-      "Invoice header should occupy roughly half its former height",
+      "Invoice header should stay compact while its right half scrolls",
     );
     assert.equal(header.overflow, "auto");
-    if (width < 600) assert(header.scrolls);
-  }
-  // Both purchase and sale editors start with the account followed by the
-  // invoice list link inside the scrollable header (not an outer page header).
-  if (header) {
-    const order = await page.locator(".commerce-header-grid").evaluate((element) => {
-      const first = element.children.item(0);
-      const second = element.children.item(1);
-      return {
-        firstLabel: first?.textContent?.trim() ?? "",
-        secondLabel: second?.textContent?.trim() ?? "",
-        linkInside: !!element.querySelector(".commerce-list-link"),
-      };
-    });
+    assert(header.scrolls, "The occupied header half must have vertical scroll");
+    const order = await page.locator(".commerce-header-content").evaluate((element) => ({
+      firstLabel: element.children.item(0)?.textContent?.trim() ?? "",
+      secondLabel: element.children.item(1)?.textContent?.trim() ?? "",
+      linkInside: !!element.querySelector(".commerce-list-link"),
+    }));
     assert.match(order.firstLabel, /حساب العميل|حساب المورد/);
     assert.match(order.secondLabel, /قائمة الفواتير/);
     assert.equal(order.linkInside, true);
@@ -458,25 +451,33 @@ try {
   if (process.env.COMMERCE_BROWSER_INVENTORY_ONLY !== "1") {
     let savedSale: Invoice | undefined;
     await scenario(
-      "invoice header halves are equal width and preserve account/date controls",
+      "entire invoice header scrolls in right half; left half stays empty",
       async () => {
         for (const kind of ["sale", "purchase"] as const) {
           await page.goto(base + "/invoices/new?kind=" + kind);
           await page.locator("form.commerce-editor").waitFor();
-          const halves = await page.locator(".commerce-header-half")
+          const halves = await page.locator(".commerce-header-grid > div")
             .evaluateAll((nodes) => nodes.map((element) => {
               const rect = element.getBoundingClientRect();
               return { width: rect.width, top: rect.top };
             }));
           assert.equal(halves.length, 2);
           assert(Math.abs(halves[0]!.width - halves[1]!.width) <= 2,
-            "Header halves must occupy equal width: " + JSON.stringify(halves));
+            "Both header halves must be equal: " + JSON.stringify(halves));
           assert(Math.abs(halves[0]!.top - halves[1]!.top) <= 2);
-          assert.equal(await page.locator(".commerce-header-account")
-            .getByLabel(kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد")
-            .count(), 1);
-          assert.equal(await page.locator(".commerce-header-secondary")
-            .getByLabel("تاريخ الفاتورة").count(), 1);
+          const occupied = page.locator(".commerce-header-content");
+          const blank = page.locator(".commerce-header-blank");
+          assert.equal(await blank.innerText(), "");
+          assert.equal(await blank.locator("input,button,a,select").count(), 0);
+          assert.equal(await occupied.getByLabel(
+            kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد").count(), 1);
+          assert.equal(await occupied.getByLabel("تاريخ الفاتورة").count(), 1);
+          assert.equal(await occupied.getByLabel("عملة الفاتورة").count(), 1);
+          assert.equal(await occupied.getByLabel("الفرع").count(), 1);
+          assert.equal(await occupied.getByLabel("المعرض / المخزن").count(), 1);
+          await occupied.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+          assert((await occupied.evaluate((node) => node.scrollTop)) > 0,
+            "Only the occupied half should scroll down to the remaining fields");
         }
         await geometry(page, 1440);
       },
@@ -678,6 +679,31 @@ try {
       await page.locator('[id^="invoice-quantity-"]').first().fill(quantity);
       await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
     }
+    await scenario(
+      "sales stock stays in first item unit with one decimal when sale unit changes",
+      async () => {
+        await saleDraft("3");
+        const preview = await call<{
+          items: { itemId: number; quantitySmallest: string }[];
+        }>(base + "/invoice-stock-preview?locationId=" + showroom.id +
+          "&itemIds=" + item.id);
+        const available = preview.items.find((entry) => entry.itemId === item.id)!;
+        const expected = Number((
+          Number(available.quantitySmallest) / (item.factor2 * item.factor3)
+        ).toFixed(1)).toString();
+        const stock = page.locator(".commerce-matrix tr[data-selected='true']")
+          .first().locator(".commerce-line-available");
+        await eventually(() => stock.innerText(), (shown) =>
+          assert.equal(shown.trim(), expected));
+        for (const saleUnit of ["1", "2", "3"]) {
+          await page.getByLabel("الوحدة " + item.name, { exact: true })
+            .selectOption(saleUnit);
+          assert.equal((await stock.innerText()).trim(), expected,
+            "Available stock must not switch from first unit to sale unit " + saleUnit);
+        }
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+      },
+    );
     await scenario(
       "sales keyboard shortcut: zero Enter, notes Enter, discount Enter, then focused Save",
       async () => {

@@ -1489,7 +1489,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
-              <div className="commerce-header-half commerce-header-account">
+              <div className="commerce-header-content">
                 <ServerLookup<Account>
                   companyId={companyId}
                   resource={`/companies/${companyId}/commerce-options?type=accounts`}
@@ -1513,8 +1513,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 >
                   قائمة الفواتير
                 </Link>
-              </div>
-              <div className="commerce-header-half commerce-header-secondary">
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
@@ -1529,8 +1527,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 >
                   {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
                 </Button>
-              </div>
-              <div className="commerce-header-options">
                 <ServerLookup<CompanyCurrency>
                   companyId={companyId}
                   resource={`/companies/${companyId}/commerce-options?type=currencies`}
@@ -1576,9 +1572,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   }
                   required
                 />
-              </div>
-            </div>
-            {showOriginalPicker && (
+              {showOriginalPicker && (
               <>
                 <OriginalInvoicePicker
                   companyId={companyId}
@@ -1678,7 +1672,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   </Button>
                 )}
               </>
-            )}
+              )}
+              </div>
+              <div className="commerce-header-blank" aria-hidden="true" />
+            </div>
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
@@ -1730,7 +1727,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                       <>
                         <th
                           scope="col"
-                          title="الرصيد المتاح في الموقع المختار، بوحدة السطر"
+                          title="الرصيد المتاح في الموقع المختار، بالوحدة الأولى للصنف"
                         >
                           الكمية
                         </th>
@@ -2000,7 +1997,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                           <>
                             <td
                               className="commerce-line-available"
-                              title="المتاح في المعرض/المخزن المختار، حسب وحدة السطر"
+                              title="المتاح في المعرض/المخزن المختار بالوحدة الأولى للصنف"
                             >
                               {line.itemId && location
                                 ? stockPreview.isFetching &&
@@ -2014,7 +2011,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                           stockByItem.get(line.itemId)!
                                             .quantitySmallest,
                                           line.sourceItem,
-                                          line.unit,
+                                          1,
                                           1,
                                         )
                                       : "—"

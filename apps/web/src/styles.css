@@ -1854,35 +1854,43 @@ ul {
 }
 .commerce-header-grid {
   display: grid;
-  /* Two strictly equal top header halves; no empty placeholders or future UI. */
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  align-items: start;
+  align-items: stretch;
+  min-width: 0;
 }
-.commerce-header-half {
+.commerce-header-content {
+  /* All header controls remain together in the right half, which scrolls
+     independently. The empty left half is reserved for a future feature. */
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
   align-items: start;
   gap: 8px;
   min-width: 0;
-}
-.commerce-header-options {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-.commerce-header-half > *,
-.commerce-header-options > * {
-  min-width: 0;
-}
-.commerce-header-card {
-  /* Roughly half the former height; remaining invoice fields scroll here. */
-  max-height: clamp(96px, 11dvh, 110px);
-  overflow: auto;
+  height: clamp(75px, 9dvh, 88px);
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  padding-inline-end: 4px;
+}
+.commerce-header-content > * {
+  min-width: 0;
+}
+.commerce-header-content .commerce-original-picker {
+  grid-column: 1 / -1;
+}
+.commerce-header-blank {
+  min-width: 0;
+  height: clamp(75px, 9dvh, 88px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.commerce-header-card {
+  padding: 8px;
+  overflow: visible;
 }
 .commerce-list-link {
   width: max-content;
@@ -2158,9 +2166,6 @@ ul {
   overflow-wrap: anywhere;
 }
 @media (max-width: 1100px) {
-  .commerce-header-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .commerce-footer-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
@@ -2169,8 +2174,6 @@ ul {
   .inventory-operation-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .commerce-header-grid,
-  .commerce-header-options,
   .commerce-original-picker {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2190,19 +2193,20 @@ ul {
   }
 }
 @container invoice-main (max-width: 800px) {
-  .invoice-workspace-main .commerce-header-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .invoice-workspace-main .commerce-header-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .invoice-workspace-main .commerce-header-content {
+    grid-template-columns: minmax(0, 1fr);
   }
   .invoice-workspace-main .commerce-footer-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
 }
 @container invoice-main (max-width: 480px) {
-  .invoice-workspace-main .commerce-header-grid,
-  .invoice-workspace-main .commerce-header-options,
+  .invoice-workspace-main .commerce-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invoice-workspace-main .commerce-header-blank {
+    display: none;
+  }
   .invoice-workspace-main .commerce-footer-grid {
     grid-template-columns: minmax(0, 1fr);
   }
