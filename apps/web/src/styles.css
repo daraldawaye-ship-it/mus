@@ -275,12 +275,6 @@ legend {
   gap: 10px;
   min-width: 0;
 }
-.topbar .desktop-sidebar-toggle {
-  width: 32px;
-  min-width: 32px;
-  padding-inline: 0;
-  flex-shrink: 0;
-}
 @media (min-width: 681px) {
   .topbar-start {
     flex: 1;
@@ -288,35 +282,43 @@ legend {
   .scope-title > div {
     min-width: 0;
   }
-  .workspace.sidebar-collapsed {
+
+}
+/* Desktop and laptop: the icon rail stays 64px wide. Hovering over it
+   expands a fixed overlay; the document keeps its width and is never remounted.
+   Keyboard focus-visible also expands the links for accessible navigation.
+   Touch devices with no hover retain the ordinary full-width sidebar. */
+@media (min-width: 681px) and (hover: hover) and (pointer: fine) {
+  .workspace {
     --sidebar-width: 64px;
   }
-  .workspace.sidebar-collapsed .sidebar {
+  .sidebar {
+    width: 64px;
     padding: 19px 10px;
     gap: 22px;
   }
-  .workspace.sidebar-collapsed .brand {
+  .sidebar .brand {
     justify-content: center;
     gap: 0;
     padding: 0;
   }
-  .workspace.sidebar-collapsed .brand-copy,
-  .workspace.sidebar-collapsed .nav-text,
-  .workspace.sidebar-collapsed .nav-heading,
-  .workspace.sidebar-collapsed .nav-chevron,
-  .workspace.sidebar-collapsed .sidebar-bottom > span {
+  .sidebar .brand-copy,
+  .sidebar .nav-text,
+  .sidebar .nav-heading,
+  .sidebar .nav-chevron,
+  .sidebar .sidebar-bottom > span {
     display: none;
   }
-  .workspace.sidebar-collapsed .nav-link {
+  .sidebar .nav-link {
     justify-content: center;
     gap: 0;
     padding-inline: 0;
   }
-  .workspace.sidebar-collapsed .company-nav-label + .nav-link {
+  .sidebar .company-nav-label + .nav-link {
     position: relative;
     margin-top: 13px;
   }
-  .workspace.sidebar-collapsed .company-nav-label + .nav-link::before {
+  .sidebar .company-nav-label + .nav-link::before {
     content: "";
     position: absolute;
     inset-inline: 4px;
@@ -324,9 +326,44 @@ legend {
     height: 1px;
     background: var(--border);
   }
-  .workspace.sidebar-collapsed .sidebar-bottom {
+  .sidebar .sidebar-bottom {
     justify-content: center;
     padding-inline: 0;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) {
+    width: var(--sidebar-expanded-width, 214px);
+    padding: 19px 12px;
+    box-shadow: var(--card-shadow);
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .brand {
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 7px;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .brand-copy,
+  .sidebar:is(:hover, :has(:focus-visible)) .nav-text,
+  .sidebar:is(:hover, :has(:focus-visible)) .sidebar-bottom > span {
+    display: inline;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .nav-heading,
+  .sidebar:is(:hover, :has(:focus-visible)) .nav-chevron {
+    display: block;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .nav-link {
+    justify-content: flex-start;
+    gap: 10px;
+    padding-inline: 10px;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .company-nav-label + .nav-link {
+    position: static;
+    margin-top: 0;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .company-nav-label + .nav-link::before {
+    content: none;
+  }
+  .sidebar:is(:hover, :has(:focus-visible)) .sidebar-bottom {
+    justify-content: flex-start;
+    padding: 12px 7px 0;
   }
 }
 .wallet-indicator {
@@ -1160,6 +1197,7 @@ ul {
 @media (max-width: 900px) {
   .workspace {
     --sidebar-width: 190px;
+    --sidebar-expanded-width: 190px;
   }
   .main-content {
     padding: 17px;
@@ -1175,6 +1213,11 @@ ul {
   }
   .account-name {
     max-width: 100px;
+  }
+}
+@media (min-width: 681px) and (max-width: 900px) and (hover: hover) and (pointer: fine) {
+  .workspace {
+    --sidebar-width: 64px;
   }
 }
 @media (max-width: 680px) {
@@ -1210,9 +1253,6 @@ ul {
     display: inline-flex !important;
   }
   .desktop-only {
-    display: none !important;
-  }
-  .desktop-sidebar-toggle {
     display: none !important;
   }
   .topbar-actions,
