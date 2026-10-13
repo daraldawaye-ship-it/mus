@@ -554,8 +554,10 @@ try {
           ).selectOption(String(kind === "sale" ? accounts.customer!.id : accounts.supplier!.id));
           await page.getByLabel("تاريخ الفاتورة", { exact: true }).fill("2026-01-01");
           await page.getByLabel("ملاحظات الفاتورة", { exact: true }).fill("ملاحظة للتصفير");
+          await page.locator('[id^="invoice-item-search-"]').first().fill(item.barcode);
+          await page.getByRole("listbox", { name: "نتائج الأصناف" })
+            .getByRole("button", { name: new RegExp(item.name) }).click();
           await page.getByLabel("الخصم", { exact: true }).fill("15");
-          await page.locator('[id^="invoice-item-search-"]').first().fill("بحث غير مكتمل");
           await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
           const search = page.locator('[id^="invoice-item-search-"]').first();
           assert.equal(await search.inputValue(), "");
