@@ -379,6 +379,15 @@ page(
   { keywords: ["تركيب", "تركيبة", "composition", "بدائل"] },
 );
 page(
+  "company.item-shelves",
+  "كرت الرفوف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/item-shelves",
+  manage("items"),
+  "إدارة ٣٣٦ رفًا ضمن ٢٨ مجموعة من الحروف العربية، مع خيارات الأرشفة والبترينة.",
+  { keywords: ["رف", "رفوف", "مجموعة", "بترينة", "vitrine", "shelf"] },
+);
+page(
   "company.item-agents",
   "وكلاء الأصناف",
   "الأصناف والمخزون",
