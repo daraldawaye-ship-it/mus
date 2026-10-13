@@ -475,7 +475,7 @@ export const companySchema = z
 export const companyPatchSchema = companySchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
-export const employeeSchema = z
+const employeeFieldsSchema = z
   .object({
     userId: z.number().int().positive().max(MAX_ID).optional(),
     newUser: ownerUserSchema.optional(),
@@ -489,9 +489,10 @@ export const employeeSchema = z
       .max(permissionKeys.length)
       .transform((values) => [...new Set(values)].sort()),
   })
-  .strict()
+  .strict();
+export const employeeSchema = employeeFieldsSchema
   .refine((value) => Boolean(value.userId) !== Boolean(value.newUser), "اختر حسابًا موجودًا أو أنشئ مستخدمًا برقم الهاتف");
-export const employeePatchSchema = employeeSchema
+export const employeePatchSchema = employeeFieldsSchema
   .omit({ userId: true, newUser: true, createSalesCashbox: true })
   .extend({ active: z.boolean() })
   .partial()
