@@ -174,6 +174,11 @@ const ItemsPage = lazy(() =>
 const ItemPage = lazy(() =>
   import("./pages/ItemsPages").then((module) => ({ default: module.ItemPage })),
 );
+const ItemCompositionsPage = lazy(() =>
+  import("./pages/ItemCompositionsPage").then((module) => ({
+    default: module.ItemCompositionsPage,
+  })),
+);
 const ItemAgentsPage = lazy(() =>
   import("./pages/ItemsPages").then((module) => ({
     default: module.ItemAgentsPage,
@@ -238,6 +243,7 @@ const companySections = [
   "items",
   "item",
   "item-agents",
+  "item-compositions",
   "stock-balances",
   "stock-movements",
   "stock-operations",
@@ -290,6 +296,7 @@ function Navigation({
     "company.accounts": <BookOpen size={17} />,
     "company.items": <Package size={17} />,
     "company.item-agents": <Users size={17} />,
+    "company.item-compositions": <Package size={17} />,
     "company.stock-balances": <Warehouse size={17} />,
     "company.stock-movements": <FileText size={17} />,
     "company.stock-operations": <Package size={17} />,
@@ -493,6 +500,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
           <ItemPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "item-compositions":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل تراكيب الأصناف…</Notice>}>
+          <ItemCompositionsPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "item-agents":
