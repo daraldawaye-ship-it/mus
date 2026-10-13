@@ -384,7 +384,7 @@ export function accountRoutes(pool: Pool): Router {
         const balances = postingIds.length
           ? await client.query<{account_id:number;net:string}>(
             `SELECT l.account_id,
-               COALESCE(sum(l.base_debit-l.base_credit),0)::text AS net
+               COALESCE(trim_scale(sum(l.base_debit-l.base_credit)),0)::text AS net
              FROM financial_document_lines l
              JOIN financial_documents d
                ON d.company_id=l.company_id AND d.id=l.document_id
