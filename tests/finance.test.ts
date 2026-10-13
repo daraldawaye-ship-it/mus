@@ -210,14 +210,14 @@ async function setup(f: Fixture, name?: string) {
         201,
       )
     ).account;
-  const cash = await makeAccount("1000000001", "Cash", { cashOrBank: true });
-  const bank = await makeAccount("1000000002", "Bank", { cashOrBank: true });
-  const counter = await makeAccount("1000000003", "Customer");
-  const income = await makeAccount("4000000001", "Income", {
+  const cash = await makeAccount("8810000001", "Cash", { cashOrBank: true });
+  const bank = await makeAccount("8810000002", "Bank", { cashOrBank: true });
+  const counter = await makeAccount("8810000003", "Customer");
+  const income = await makeAccount("8840000001", "Income", {
     category: "income",
     normalSide: "credit",
   });
-  const group = await makeAccount("1000000000", "Assets group", {
+  const group = await makeAccount("8810000000", "Assets group", {
     kind: "group",
   });
   const branch = (
