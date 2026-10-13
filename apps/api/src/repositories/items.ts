@@ -3,6 +3,7 @@ import type {
   Item,
   ItemAgent,
   ItemComposition,
+  ItemShelf,
 } from "../../../../packages/contracts/src/index.ts";
 import { normalizeRate } from "../../../../packages/contracts/src/index.ts";
 
@@ -37,6 +38,19 @@ export function itemCompositionDTO(row: QueryResultRow): ItemComposition {
   };
 }
 export const itemCompositionSelect = "SELECT f.* FROM item_compositions f";
+
+export function itemShelfDTO(row: QueryResultRow): ItemShelf {
+  return {
+    ...identity(row),
+    name: row.name,
+    groupLetter: row.group_letter,
+    groupOrder: row.group_order,
+    slotNumber: row.slot_number,
+    archived: row.archived,
+    vitrine: row.vitrine,
+  };
+}
+export const itemShelfSelect = "SELECT s.* FROM item_shelves s";
 
 export function itemDTO(row: QueryResultRow): Item {
   return {
