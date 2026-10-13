@@ -1,3 +1,4 @@
+import { awardPostedInvoice } from "./wallet-invoice.ts";
 import { randomUUID } from "node:crypto";
 import type { PoolClient, QueryResultRow } from "pg";
 import type { z } from "zod";
@@ -748,6 +749,7 @@ export async function createInvoice(
       invoiceId,
     ],
   );
+  await awardPostedInvoice(client, companyId, invoiceId, user);
   const invoice = await loadInvoice(client, companyId, invoiceId);
   await audit(
     client,
