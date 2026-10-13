@@ -1949,7 +1949,10 @@ test("account card choice labels retain exact order and support create, update, 
   const f = await fixture(t);
   const company = await f.company("Company account choices");
   const other = await f.company("Company other");
-  const existing = await account(f, company.id);
+  const existing = (await f.owner.ok<Page<Account>>("GET",
+    `/companies/${company.id}/accounts?pageSize=100`,
+  )).items.find(row => row.code === "1000000000")!;
+  assert(existing, "The company chart includes a seeded base account");
   assert.equal(existing.accountChoice, null, "Legacy/unspecified accounts remain without choice");
   const chosen = await account(f, company.id, {
     code: "1000000998",
@@ -1996,7 +1999,9 @@ test("account card choice labels retain exact order and support create, update, 
   }
   assert.equal((await f.owner.request("GET",
     `/companies/${company.id}/accounts?accountChoice=invalid`)).status, 400);
-  const otherAccount = await account(f,other.id,{accountChoice:"cashboxSecond"});
+  const otherAccount = await account(f,other.id,{
+    code:"1000000999",accountChoice:"cashboxSecond"
+  });
   assert.equal(otherAccount.accountChoice, "cashboxSecond");
   assert.equal((await f.owner.ok<Page<Account>>("GET",
     `/companies/${company.id}/accounts?accountChoice=cashboxSecond`)).total,0);
