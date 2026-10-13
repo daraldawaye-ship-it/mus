@@ -29,6 +29,7 @@ import {
   type Item,
   type ItemAgent,
   type ItemComposition,
+  type ItemShelf,
   type ItemInput,
   type ItemAgentInput,
   type ItemStatistics,
@@ -868,7 +869,7 @@ function ItemEditor({
       `/companies/${companyId}/item-compositions/${fields.compositionId}`,{signal}),
     enabled: !!user && !!fields.compositionId,
   });
-  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | null>(null);
+  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [unknownCreation, setUnknownCreation] = useState(false);
@@ -1066,14 +1067,20 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("englishName", event.target.value)}
             />
-            <Field
-              label="الرف"
-              maxLength={100}
-              value={fields.shelf}
-              disabled={disabled}
-              placeholder="مثال: رف A3"
-              onChange={(event) => edit("shelf", event.target.value)}
-            />
+            <div className="field">
+              <div className="item-reference-field">
+                <Field
+                  label="الرف الحالي"
+                  maxLength={100}
+                  value={fields.shelf}
+                  disabled={disabled}
+                  placeholder="اختر من كرت الرفوف أو احتفظ باسم الرف السابق"
+                  onChange={event=>edit("shelf",event.target.value)}
+                />
+                <Button variant="secondary" disabled={disabled}
+                  onClick={()=>setPicker("shelf")}>اختيار رف</Button>
+              </div>
+            </div>
             <Field
               label="الباركود"
               maxLength={80}
@@ -1501,7 +1508,8 @@ function ItemEditor({
         open={picker !== null}
         title={
           picker === "currency" ? "اختيار عملة الأسعار" :
-            picker === "composition" ? "اختيار تركيب الصنف" : "اختيار وكيل الصنف"
+            picker === "composition" ? "اختيار تركيب الصنف" :
+              picker === "shelf" ? "اختيار رف الصنف" : "اختيار وكيل الصنف"
         }
         onClose={() => setPicker(null)}
       >
@@ -1517,6 +1525,20 @@ function ItemEditor({
               if (!option) return;
               setCurrency(option);
               setDirty(true);
+              setPicker(null);
+            }}
+          />
+        ) : picker === "shelf" ? (
+          <ServerLookup<ItemShelf>
+            companyId={companyId}
+            resource={`/companies/${companyId}/item-options?type=shelves&archived=false`}
+            label="الرف"
+            value={null}
+            display={option=>`${option.name} — مجموعة ${option.groupLetter}${option.vitrine?" — بترينة":""}`}
+            disabled={disabled}
+            onChange={option=>{
+              if(!option)return;
+              edit("shelf",option.name);
               setPicker(null);
             }}
           />
