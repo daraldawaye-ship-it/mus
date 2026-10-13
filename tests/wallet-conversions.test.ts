@@ -643,7 +643,7 @@ test("a general manager cannot approve their own wallet conversion; independent 
   const setup = await f.configure(company.id, manager.employee.id, "approval");
   await f.owner.ok(
     "PATCH",
-    setup.base + "/employees/" + manager.employee.id,
+    setup.base + "/employees/" + manager.employee.id + "/manager",
     { isGeneralManager: true },
   );
   await f.award(company.id, manager.employee.id, "80");
