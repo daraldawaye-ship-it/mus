@@ -73,6 +73,7 @@ export interface WalletEntry {
   reason: string;
   referenceId: number | null;
   invoiceId: number | null;
+  financialDocumentId: number | null;
   taskCode: string | null;
   taskRevision: number | null;
   logicalLineCount: number | null;
