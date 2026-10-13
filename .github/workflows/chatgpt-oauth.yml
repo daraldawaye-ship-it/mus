@@ -1,0 +1,69 @@
+name: ChatGPT connector read/write checks
+on:
+  push:
+    branches: [codex/deploy-phase2]
+    paths:
+      - 'apps/api/src/routes-chatgpt-*.ts'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-media.ts'
+      - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/api/migrations/024_item_shelf.sql'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/services/items.ts'
+      - 'apps/web/src/**'
+      - 'packages/contracts/src/**'
+      - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
+      - 'apps/api/migrations/022_chatgpt_write_scope.sql'
+      - 'tests/api.test.ts'
+      - '.github/workflows/chatgpt-oauth.yml'
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-chatgpt-*.ts'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-media.ts'
+      - 'apps/api/migrations/023_media_uploads.sql'
+      - 'apps/api/migrations/024_item_shelf.sql'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/services/items.ts'
+      - 'apps/web/src/**'
+      - 'packages/contracts/src/**'
+      - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
+      - 'apps/api/migrations/022_chatgpt_write_scope.sql'
+      - 'tests/api.test.ts'
+      - '.github/workflows/chatgpt-oauth.yml'
+  workflow_dispatch:
+
+jobs:
+  connector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/sale-stock-quantity.test.ts
+      - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
+      - run: node --import tsx --test tests/table-column-order.test.ts
+      - run: node --import tsx --test tests/profile-image-field.test.ts
+      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts
