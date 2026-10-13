@@ -106,6 +106,10 @@ export interface Account {
   kind: AccountKind;
   category: AccountCategory;
   normalSide: NormalSide;
+  // Page-only derived posted balance in the company's base currency.
+  // No fixed debit/credit direction exists for the current balance.
+  balanceAmount?: string | null;
+  balanceDirection?: "debit" | "credit" | "zero" | null;
   active: boolean;
   cashOrBank: boolean;
   rangeStart: string | null;
