@@ -143,6 +143,55 @@ try {
   const base = `/companies/${company.id}`,
     page = await pageFor();
   await scenario(
+    "desktop navigation expands on hover, collapses on exit without shifting content",
+    async () => {
+      await page.goto(base + "/accounts");
+      await page.getByRole("heading", { name: "دليل الحسابات", exact: true }).waitFor();
+      const sidebar = page.locator("#desktop-navigation");
+      const main = page.locator(".workspace-body");
+      const width = async () =>
+        sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width));
+      const mainWidth = async () =>
+        main.evaluate((element) => Math.round(element.getBoundingClientRect().width));
+
+      await page.mouse.move(720, 140);
+      assert.equal(await width(), 64);
+      assert.equal(await page.getByRole("button", { name: "طي قائمة التنقل" }).count(), 0);
+      const stableWidth = await mainWidth();
+      await page.mouse.move(1420, 150);
+      await eventually(async () => (await width()) === 214);
+      assert.equal(await sidebar.locator(".nav-text").first().isVisible(), true);
+      assert.equal(await mainWidth(), stableWidth, "Expanded overlay must not resize the document");
+      await page.mouse.move(720, 140);
+      await eventually(async () => (await width()) === 64);
+      assert.equal(await mainWidth(), stableWidth);
+
+      await page.setViewportSize({ width: 820, height: 960 });
+      await page.mouse.move(400, 160);
+      assert.equal(await width(), 64);
+      const laptopMainWidth = await mainWidth();
+      await page.mouse.move(800, 150);
+      await eventually(async () => (await width()) === 190);
+      assert.equal(await mainWidth(), laptopMainWidth);
+      await page.mouse.move(400, 160);
+      await eventually(async () => (await width()) === 64);
+      await geometry(page, 820);
+
+      // Touchscreen/mobile retains its original button-triggered drawer.
+      const mobile = await pageFor(true);
+      await mobile.goto(base + "/accounts");
+      await mobile.getByRole("heading", { name: "دليل الحسابات", exact: true }).waitFor();
+      assert.equal(await mobile.locator("#desktop-navigation").isVisible(), false);
+      const open = mobile.getByRole("button", { name: "فتح قائمة التنقل" });
+      await open.tap();
+      const drawer = mobile.getByRole("dialog", { name: "قائمة التنقل" });
+      await drawer.waitFor();
+      await mobile.keyboard.press("Escape");
+      await drawer.waitFor({ state: "hidden" });
+      await geometry(mobile, 390);
+    },
+  );
+  await scenario(
     "automatic company accounts/currencies, account codes and Yemeni item currency",
     async () => {
       const accounts = await call<{
