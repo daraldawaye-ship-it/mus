@@ -1757,6 +1757,35 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         key={line.key}
                         data-line-key={line.key}
                         data-selected={!!line.itemId}
+                        onKeyDownCapture={(event) => {
+                          // RTL invoice matrix: right returns to the preceding
+                          // control, left advances to the following control.
+                          // Skip disabled controls and non-interactive cells
+                          // (totals, available stock, shelf) within this row.
+                          if (
+                            locked ||
+                            (event.key !== "ArrowRight" && event.key !== "ArrowLeft") ||
+                            event.altKey || event.ctrlKey || event.metaKey ||
+                            event.shiftKey || event.nativeEvent.isComposing
+                          ) return;
+                          const controls = Array.from(
+                            event.currentTarget.querySelectorAll<HTMLElement>(
+                              'input:not([type="hidden"]):not(:disabled), select:not(:disabled), button:not(:disabled)',
+                            ),
+                          ).filter((element) => element.getClientRects().length > 0);
+                          const position = controls.findIndex(
+                            (element) => element === event.target ||
+                              element.contains(event.target as Node),
+                          );
+                          if (position < 0) return;
+                          const target = controls[
+                            position + (event.key === "ArrowRight" ? -1 : 1)
+                          ];
+                          if (!target) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          target.focus();
+                        }}
                       >
                         <td>
                           {line.originalSelection && original ? (
