@@ -542,6 +542,39 @@ try {
         await geometry(page, 1440);
       },
     );
+    await scenario(
+      "reset clears purchase and sale invoice drafts and restores first-item focus",
+      async () => {
+        for (const kind of ["purchase", "sale"] as const) {
+          await page.goto(base + "/invoices/new?kind=" + kind);
+          await page.locator("form.commerce-editor").waitFor();
+          await page.getByLabel(
+            kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد",
+            { exact: true },
+          ).selectOption(String(kind === "sale" ? accounts.customer!.id : accounts.supplier!.id));
+          await page.getByLabel("تاريخ الفاتورة", { exact: true }).fill("2026-01-01");
+          await page.getByLabel("ملاحظات الفاتورة", { exact: true }).fill("ملاحظة للتصفير");
+          await page.getByLabel("الخصم", { exact: true }).fill("15");
+          await page.locator('[id^="invoice-item-search-"]').first().fill("بحث غير مكتمل");
+          await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+          const search = page.locator('[id^="invoice-item-search-"]').first();
+          assert.equal(await search.inputValue(), "");
+          assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
+          assert.equal(await page.getByLabel("ملاحظات الفاتورة", { exact: true }).inputValue(), "");
+          assert.equal(await page.getByLabel("الخصم", { exact: true }).inputValue(), "0");
+          assert.notEqual(await page.getByLabel("تاريخ الفاتورة", { exact: true }).inputValue(), "2026-01-01");
+          assert.equal(
+            await page.getByLabel(
+              kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد",
+              { exact: true },
+            ).inputValue(),
+            "",
+          );
+          assert.equal(await search.evaluate((node) => node === document.activeElement), true);
+          assert.match(page.url(), new RegExp("/invoices/new\\?kind=" + kind));
+        }
+      },
+    );
     async function saleDraft(quantity: string) {
       await page.goto(base + "/invoices/new?kind=sale");
       await page.locator('[id^="invoice-item-search-"]').first().waitFor();
