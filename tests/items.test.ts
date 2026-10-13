@@ -1461,3 +1461,33 @@ test("Arabic shelf cards are seeded 28x12, company-scoped and editable without c
   await assert.rejects(f.pool.query("DELETE FROM item_shelves WHERE company_id=$1 AND id=$2",
     [first.id,updated.id]));
 });
+
+test("Item shelf cards are real company-scoped references while legacy labels remain writable",async(t)=>{
+  const f=await fixture(t);
+  const a=await f.company("صيدلية اختبار رفوف");
+  const b=await f.company("صيدلية اختبار أخرى");
+  const shelfa=(await f.owner.ok<Page<ItemShelf>>("GET",
+    `/companies/${a.id}/item-shelves?q=${encodeURIComponent("ا-1")}`)).items.find(x=>x.name==="ا-1")!;
+  const shelfb=(await f.owner.ok<Page<ItemShelf>>("GET",
+    `/companies/${b.id}/item-shelves?q=${encodeURIComponent("ا-2")}`)).items.find(x=>x.name==="ا-2")!;
+  const c=(await f.owner.ok<Page<CompanyCurrency>>("GET",
+    `/companies/${a.id}/currencies`)).items.find(x=>x.code==="YER")!;
+  const first=await item(f,a.id,c.id,{shelf:"ا-1",shelfId:shelfa.id});
+  assert.equal(first.shelfId,shelfa.id);
+  assert.equal(first.shelf,"ا-1");
+  assert.equal((await f.owner.request("POST",`/companies/${a.id}/items`,
+    itemBody(c.id,{shelf:"ا-2",shelfId:shelfb.id}))).status,409);
+  assert.equal((await f.owner.request("POST",`/companies/${a.id}/items`,
+    itemBody(c.id,{shelf:"ب-7",shelfId:shelfa.id}))).status,409);
+  const after=(await f.owner.ok<{item:Item}>(
+    "PATCH",`/companies/${a.id}/items/${first.id}`,
+    patchItem(first,{shelf:"ب-تر",shelfId:null}))).item;
+  assert.equal(after.shelf,"ب-تر");
+  assert.equal(after.shelfId,null);
+  const archived=(await f.owner.ok<{shelf:ItemShelf}>(
+    "PATCH",`/companies/${a.id}/item-shelves/${shelfa.id}`,
+    {revision:shelfa.revision,archived:true,vitrine:false})).shelf;
+  assert.equal(archived.archived,true);
+  assert.equal((await f.owner.request("PATCH",`/companies/${a.id}/items/${after.id}`,
+    patchItem(after,{shelf:"ا-1",shelfId:shelfa.id}))).status,409);
+});
