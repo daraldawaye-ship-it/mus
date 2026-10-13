@@ -1,3 +1,4 @@
+import { rewardVoucherPrintRequest } from "./services/wallet-print.ts";
 import { Router, type Request } from "express";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import {
@@ -403,6 +404,20 @@ export function financeRoutes(pool: Pool): Router {
           loadDocument(client, companyId, documentId),
         ),
       });
+    }),
+  );
+  router.post(
+    `${base}/financial-documents/:id/print-request`,
+    handler(async (req, res) => {
+      const documentId = id(req.params.id);
+      const result = await mutateMaster(
+        pool,
+        req,
+        "finance.view",
+        (client, user, companyId) =>
+          rewardVoucherPrintRequest(client, companyId, documentId, user),
+      );
+      res.json(result);
     }),
   );
   router.patch(
