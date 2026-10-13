@@ -14,7 +14,7 @@ export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,
 export const walletEntryQuery = `SELECT l.*,l.points::text,l.money::text,r.id AS reversed_by_entry_id
  FROM employee_wallet_entries l LEFT JOIN employee_wallet_entries r ON r.company_id=l.company_id AND r.reference_id=l.id AND r.kind='reversal'`;
 export const rewardTaskQuery = `SELECT d.*,COALESCE(s.points,d.default_points)::text AS points,
- COALESCE(s.repeat_rule,d.default_repeat_rule) AS repeat_rule,COALESCE(s.enabled,false) AS enabled,s.page_key,s.revision,
+ COALESCE(s.repeat_rule,d.default_repeat_rule) AS repeat_rule,COALESCE(s.enabled,false) AS enabled,s.page_key,s.daily_limit,s.revision,
  COALESCE((SELECT array_agg(r.role_id ORDER BY r.role_id) FROM reward_task_roles r WHERE r.company_id=s.company_id AND r.code=s.code),'{}'::integer[]) AS role_ids
  FROM reward_task_definitions d LEFT JOIN reward_task_settings s ON s.code=d.code AND s.company_id=$1`;
 
@@ -36,6 +36,7 @@ export const walletEntryDTO = (row: QueryResultRow): WalletEntry => ({
   referenceId: row.reference_id,
   invoiceId: row.invoice_id ?? null,
   financialDocumentId: row.financial_document_id ?? null,
+  pageKey: row.page_key ?? null,
   taskCode: row.task_code ?? null,
   taskRevision: row.task_revision ?? null,
   logicalLineCount: row.logical_line_count ?? null,
@@ -53,6 +54,7 @@ export const rewardTaskDTO = (row: QueryResultRow): RewardTask => ({
   enabled: row.enabled,
   roleIds: row.role_ids,
   pageKey: row.page_key ?? null,
+  dailyLimit: row.daily_limit ?? null,
   revision: row.revision ?? null,
 });
 

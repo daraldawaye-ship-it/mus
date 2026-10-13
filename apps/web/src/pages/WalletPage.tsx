@@ -487,13 +487,14 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending) return;
-    const { points, repeatRule, enabled, roleIds, pageKey, revision } = draft;
+    const { points, repeatRule, enabled, roleIds, pageKey, dailyLimit, revision } = draft;
     const parsed = rewardTaskSettingsSchema.safeParse({
       points,
       repeatRule,
       enabled,
       roleIds,
       pageKey,
+      dailyLimit,
       revision,
     });
     if (!parsed.success) {
@@ -540,7 +541,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
         ولا تُمنح أي نقاط تلقائيًا قبل تفعيل المهمة. يمكن جمع مكافأة الفاتورة مع
         مكافأة السطور: مثلًا 5 نقاط لحفظ فاتورة مبيعات + نقطتين لكل سطر منطقي
         من ثلاثة سطور = 11 نقطة. تكرار نفس الصنف والوحدة والسعر وتاريخ الصلاحية
-        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. يمكن كذلك تفعيل نقاط طلب طباعة سند القبض أو الصرف المرحّل مرة لكل سند ولكل موظف؛ ولا يعد الطلب إثباتًا لخروج الورقة. مكافآت الدخول والصفحات مخططة لاحقًا.
+        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. يمكن كذلك تفعيل نقاط طلب طباعة سند القبض أو الصرف المرحّل مرة لكل سند ولكل موظف؛ ولا يعد الطلب إثباتًا لخروج الورقة. مهمة زيارة صفحات الشركة متاحة للتفعيل كذلك، ويُحدد كرتها الصفحة وقاعدة التكرار وسقف اليوم. مكافأة الدخول ما زالت مخططة.
       </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {query.error && (
@@ -657,7 +658,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                   })
                 }
               >
-                {Object.entries(repeatLabels).map(([key, label]) => (
+                {Object.entries(repeatLabels).filter(([key]) => draft.code !== "PAGE_VISIT" || key !== "per-document").map(([key, label]) => (
                   <option key={key} value={key}>
                     {label}
                   </option>
@@ -686,6 +687,12 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                   </option>
                 ))}
               </Select>
+            )}
+            {draft.code === "PAGE_VISIT" && (
+              <Notice>تُحتسب الزيارة عند فتح المستخدم صفحة شركة مصرحًا له بها، وليس عند تحديث بياناتها في الخلفية. الاستحقاق لكل موظف ومهمة وشركة وفق يوم عدن، أو سبعة أيام كاملة، أو أحداث الانتقال المختلفة.</Notice>
+            )}
+            {draft.code === "PAGE_VISIT" && draft.repeatRule === "unlimited" && (
+              <Field label="الحد الأقصى للمكافآت يوميًا (الافتراضي 100)" type="number" min={1} max={10000} disabled={pending} value={draft.dailyLimit ?? ""} onChange={(event) => setDraft({ ...draft, dailyLimit: event.target.value === "" ? null : Number(event.target.value) })} />
             )}
             <fieldset className="notification-recipients">
               <legend>الأدوار المستفيدة</legend>

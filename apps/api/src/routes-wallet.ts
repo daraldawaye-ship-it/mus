@@ -4,6 +4,7 @@ import {
   walletAwardSchema,
   walletReversalSchema,
   rewardTaskSettingsSchema,
+  pageVisitEventSchema,
 } from "../../../packages/contracts/src/wallet.ts";
 import { pageDefinitions } from "../../../packages/contracts/src/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -15,6 +16,7 @@ import {
 } from "./policies/access.ts";
 import { HttpError, missing, deny } from "./errors.ts";
 import { audit } from "./services/audit.ts";
+import { awardCompanyPageVisit } from "./services/wallet-page-visit.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
@@ -65,6 +67,17 @@ async function activeEmployee(
 export function walletRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId";
+  router.post(
+    base + "/reward-events/page-visit",
+    handler(async (req, res) => {
+      const input = parse(pageVisitEventSchema, req.body);
+      const result = await transaction(pool, async (client) => {
+        const { companyId, user } = await scope(client, req, true);
+        return awardCompanyPageVisit(client, companyId, user, input.pageKey, input.idempotencyKey);
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     base + "/wallet/summary",
     handler(async (req, res) => {
@@ -374,6 +387,12 @@ export function walletRoutes(pool: Pool) {
             "invalid_repeat_rule",
             "مكافآت الفواتير والطباعة تُحتسب مرة لكل مستند جديد فقط",
           );
+        if (input.enabled && code === "PAGE_VISIT" &&
+          (!input.pageKey || input.points === "0" || input.repeatRule === "per-document"))
+          throw new HttpError(
+            400, "invalid_page_visit",
+            "مكافأة زيارة الصفحة تتطلب صفحة محددة ونقاطًا موجبة وتكرارًا زمنيًا",
+          );
         if (input.revision !== before.revision)
           throw new HttpError(
             409,
@@ -403,9 +422,9 @@ export function walletRoutes(pool: Pool) {
             "اختر أدوارًا فعالة من الشركة نفسها",
           );
         await client.query(
-          `INSERT INTO reward_task_settings(company_id,code,points,repeat_rule,enabled,page_key,updated_by)
-        VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(company_id,code) DO UPDATE SET points=EXCLUDED.points,repeat_rule=EXCLUDED.repeat_rule,
-        enabled=EXCLUDED.enabled,page_key=EXCLUDED.page_key,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp(),revision=reward_task_settings.revision+1`,
+          `INSERT INTO reward_task_settings(company_id,code,points,repeat_rule,enabled,page_key,daily_limit,updated_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(company_id,code) DO UPDATE SET points=EXCLUDED.points,repeat_rule=EXCLUDED.repeat_rule,
+        enabled=EXCLUDED.enabled,page_key=EXCLUDED.page_key,daily_limit=EXCLUDED.daily_limit,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp(),revision=reward_task_settings.revision+1`,
           [
             companyId,
             code,
@@ -413,6 +432,7 @@ export function walletRoutes(pool: Pool) {
             input.repeatRule,
             input.enabled,
             input.pageKey,
+            input.dailyLimit,
             user.id,
           ],
         );

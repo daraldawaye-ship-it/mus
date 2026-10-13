@@ -429,7 +429,11 @@ test("wallet access is self-only unless general, company isolated and reward tas
     base + "/reward-tasks",
   );
   assert.equal(directory.tasks.length, 8);
-  assert(directory.tasks.every((row) => !row.implemented && !row.enabled));
+  assert(directory.tasks.every((row) => !row.enabled));
+  assert.deepEqual(
+    directory.tasks.filter((row) => row.implemented).map((row) => row.code).sort(),
+    ["PAGE_VISIT", "PAYMENT_PRINT", "PURCHASE_LINES", "PURCHASE_SAVED", "RECEIPT_PRINT", "SALE_LINES", "SALE_SAVED"],
+  );
   assert.equal(
     (await staff.client.request("GET", base + "/reward-tasks")).status,
     403,
@@ -552,4 +556,74 @@ test("wallet access is self-only unless general, company isolated and reward tas
     (await staff.client.request("GET", otherBase + "/wallet")).status,
     401,
   );
+});
+
+
+test("company page-visit rewards require an admitted configured page, role and time-window", async (t) => {
+  const f = await fixture(t), co = await f.company("Page points company");
+  const staff = await f.staff(co.id, "Page visitor");
+  const peer = await f.staff(co.id, "Peer visitor");
+  const base = "/companies/" + co.id;
+  const wallet = async (id: number) =>
+    f.owner.ok<WalletDirectory>("GET", base + "/wallet?employeeId=" + id);
+  const visit = async (client: Client, pageKey = "company.wallet") =>
+    client.ok<{ rewarded: boolean }>("POST", base + "/reward-events/page-visit", {
+      pageKey, idempotencyKey: randomUUID(),
+    });
+  const task = (await f.owner.ok<RewardTaskDirectory>("GET", base + "/reward-tasks"))
+    .tasks.find((row) => row.code === "PAGE_VISIT")!;
+  assert.equal(task.implemented, true);
+  assert.equal(task.enabled, false);
+  assert.equal((await visit(staff.client)).rewarded, false);
+  assert.equal((await wallet(staff.employee.id)).wallet?.points, "0");
+  for (const invalid of [
+    { enabled: true, points: "2", pageKey: null, repeatRule: "daily" },
+    { enabled: true, points: "0", pageKey: "company.wallet", repeatRule: "daily" },
+    { enabled: true, points: "2", pageKey: "company.wallet", repeatRule: "per-document" },
+  ]) {
+    assert.equal((await f.owner.request("PUT", base + "/reward-tasks/PAGE_VISIT", {
+      ...taskSettings(task), ...invalid,
+    })).status, 400);
+  }
+  const role = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM company_roles WHERE company_id=$1 AND key='employee'",
+    [co.id],
+  )).rows[0]!;
+  await f.owner.ok("PUT", base + "/reward-tasks/PAGE_VISIT", {
+    ...taskSettings(task),
+    points: "4", enabled: true, repeatRule: "daily",
+    roleIds: [role.id], pageKey: "company.wallet", dailyLimit: null,
+  });
+  assert.equal((await visit(staff.client)).rewarded, false, "Unassigned role denies reward");
+  await f.pool.query(
+    "INSERT INTO employee_role_assignments(company_id,employee_id,role_id,active) VALUES($1,$2,$3,true)",
+    [co.id, staff.employee.id, role.id],
+  );
+  assert.equal((await visit(staff.client, "company.accounts")).rewarded, false, "Only configured page");
+  const first = await visit(staff.client);
+  assert.equal(first.rewarded, true);
+  assert.equal((await wallet(staff.employee.id)).wallet?.points, "4");
+  assert.equal((await visit(staff.client)).rewarded, false, "Daily repeat in Asia/Aden blocked");
+  assert.equal((await wallet(staff.employee.id)).items[0]!.pageKey, "company.wallet");
+  assert.equal((await wallet(peer.employee.id)).wallet?.points, "0");
+
+  const task2 = (await f.owner.ok<RewardTaskDirectory>("GET", base + "/reward-tasks"))
+    .tasks.find((row) => row.code === "PAGE_VISIT")!;
+  await f.owner.ok("PUT", base + "/reward-tasks/PAGE_VISIT", {
+    ...taskSettings(task2), repeatRule: "rolling-seven-days", roleIds: [],
+  });
+  assert.equal((await visit(peer.client)).rewarded, true, "Independent employee wallet");
+  assert.equal((await visit(peer.client)).rewarded, false, "Rolling seven days blocks repeat");
+  assert.equal((await visit(staff.client)).rewarded, false, "Previous daily event counts for rolling window");
+
+  const task3 = (await f.owner.ok<RewardTaskDirectory>("GET", base + "/reward-tasks"))
+    .tasks.find((row) => row.code === "PAGE_VISIT")!;
+  await f.owner.ok("PUT", base + "/reward-tasks/PAGE_VISIT", {
+    ...taskSettings(task3), repeatRule: "unlimited", dailyLimit: 2,
+  });
+  const third = await f.staff(co.id, "Unlimited visitor");
+  assert.equal((await visit(third.client)).rewarded, true);
+  assert.equal((await visit(third.client)).rewarded, false, "Distinct immediate request is throttled");
+  assert.equal((await wallet(third.employee.id)).wallet?.points, "4");
+  assert.equal((await wallet(staff.employee.id)).wallet?.money, "0");
 });
