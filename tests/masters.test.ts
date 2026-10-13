@@ -1935,6 +1935,33 @@ test("master lists paginate and combine server filters deterministically without
     );
 });
 
+test("legacy account import permits full notes-style names and stores stable identifiers", async t => {
+  const f=await fixture(t), company=await f.company("Account legacy imports test");
+  const longName=("اسم حساب مرهون وملاحظات تفصيلية ").repeat(6).trim();
+  assert(longName.length>120 && longName.length<=240);
+  const value=await account(f,company.id,{
+    code:"1000000993",name:longName,accountChoice:"pledges",kind:"posting",
+  });
+  assert.equal(value.name,longName);
+  const edited=await f.owner.ok<{account:Account}>("PATCH",
+    `/companies/${company.id}/accounts/${value.id}`,
+    {name:longName+" جديد"});
+  assert.equal(edited.account.name,longName+" جديد");
+  await f.pool.query(
+    "INSERT INTO legacy_account_imports(company_id,source,legacy_id,account_id,original_category) VALUES($1,$2,$3,$4,$5)",
+    [company.id,"legacy-test",727,value.id,"الرهونات"],
+  );
+  const mapped=await f.pool.query(
+    "SELECT account_id FROM legacy_account_imports WHERE company_id=$1 AND source=$2 AND legacy_id=$3",
+    [company.id,"legacy-test",727],
+  );
+  assert.equal(mapped.rows[0].account_id,value.id);
+  await assert.rejects(f.pool.query(
+    "INSERT INTO legacy_account_imports(company_id,source,legacy_id,account_id,original_category) VALUES($1,$2,$3,$4,$5)",
+    [company.id,"legacy-test",727,value.id,"الرهونات"],
+  ), "source legacy identity must be unique");
+});
+
 test("account card choice labels retain exact order and support create, update, filtering and legacy accounts", async (t) => {
   const labels = accountChoices.map(choice => accountChoiceLabels[choice]);
   assert.deepEqual(labels, [
