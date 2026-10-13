@@ -737,6 +737,7 @@ type ItemFields = {
   imageId: string | null;
   englishName: string;
   shelf: string;
+  shelfId: number | null;
   barcode: string;
   legacyId: string;
   compositionId: number | null;
@@ -768,6 +769,7 @@ function initialItemFields(item: Item | null): ItemFields {
     imageId: item?.imageId ?? null,
     englishName: item?.englishName ?? "",
     shelf: item?.shelf ?? "",
+    shelfId: item?.shelfId ?? null,
     barcode: item?.barcode ?? "",
     legacyId: item?.legacyId ?? "",
     compositionId: item?.compositionId ?? null,
@@ -1075,7 +1077,10 @@ function ItemEditor({
                   value={fields.shelf}
                   disabled={disabled}
                   placeholder="اختر من كرت الرفوف أو احتفظ باسم الرف السابق"
-                  onChange={event=>edit("shelf",event.target.value)}
+                  onChange={event=>{
+                    edit("shelfId",null);
+                    edit("shelf",event.target.value);
+                  }}
                 />
                 <Button variant="secondary" disabled={disabled}
                   onClick={()=>setPicker("shelf")}>اختيار رف</Button>
@@ -1539,6 +1544,7 @@ function ItemEditor({
             onChange={option=>{
               if(!option)return;
               edit("shelf",option.name);
+              edit("shelfId",option.id);
               setPicker(null);
             }}
           />
