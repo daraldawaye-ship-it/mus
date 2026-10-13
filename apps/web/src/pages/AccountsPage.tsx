@@ -5,6 +5,9 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   accountCategories,
   accountCategoryLabels,
+  accountChoices,
+  accountChoiceLabels,
+  type AccountChoice,
   accountKinds,
   accountKindLabels,
   accountLinkCategories,
@@ -58,7 +61,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const canManage = moduleAccess(context, "accounts", true);
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["kind", "category", "active", ...optionFilterKeys])
+  for (const key of ["kind", "category", "accountChoice", "active", ...optionFilterKeys])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<OptionListRecord<Account>, OptionListMetadata & {baseCurrencyCode?: string|null}>(
     `/companies/${companyId}/accounts?${filters}`,
@@ -185,6 +188,12 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         cell: ({ row }) => accountCategoryLabels[row.original.category],
       },
       {
+        accessorKey: "accountChoice",
+        header: "خيار الحساب",
+        cell: ({ row }) => row.original.accountChoice
+          ? accountChoiceLabels[row.original.accountChoice] : "—",
+      },
+      {
         id: "actualBalance",
         header: "الرصيد الفعلي",
         enableSorting: false,
@@ -303,6 +312,16 @@ function AccountsManager({ context }: { context: CompanyContext }) {
               <option key={category} value={category}>
                 {accountCategoryLabels[category]}
               </option>
+            ))}
+          </Select>
+          <Select
+            label="خيار الحساب"
+            value={params.get("accountChoice") ?? ""}
+            onChange={(event) => filter("accountChoice", event.target.value)}
+          >
+            <option value="">جميع الخيارات</option>
+            {accountChoices.map((choice) => (
+              <option key={choice} value={choice}>{accountChoiceLabels[choice]}</option>
             ))}
           </Select>
           <Select
@@ -442,6 +461,7 @@ function AccountEditor({
   );
   const [name, setName] = useState(account?.name ?? "");
   const [active, setActive] = useState(account?.active ?? true);
+  const [accountChoice, setAccountChoice] = useState<AccountChoice | "">(account?.accountChoice ?? "");
   const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
@@ -454,13 +474,14 @@ function AccountEditor({
     event.preventDefault();
     if (saving) return;
     setError("");
-    let body: unknown = { name, active, cashOrBank };
+    let body: unknown = { name, active, cashOrBank, accountChoice: accountChoice || null };
     if (!account) {
       const parsed = accountSchema.safeParse({
         name,
         active,
         kind,
         category,
+        accountChoice: accountChoice || null,
         cashOrBank: kind === "posting" && category === "asset" && cashOrBank,
         parentId: parent?.id ?? null,
         rangeStart: kind === "group" && rangeStart ? rangeStart : null,
@@ -533,6 +554,17 @@ function AccountEditor({
           disabled={saving}
           autoFocus
         />
+        <Select
+          label="خيار الحساب"
+          value={accountChoice}
+          disabled={saving}
+          onChange={(event) => setAccountChoice(event.target.value as AccountChoice | "")}
+        >
+          <option value="">بدون خيار</option>
+          {accountChoices.map((choice) => (
+            <option key={choice} value={choice}>{accountChoiceLabels[choice]}</option>
+          ))}
+        </Select>
         {!account && (
           <>
             <Select
