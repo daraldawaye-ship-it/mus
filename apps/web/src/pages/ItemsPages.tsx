@@ -28,6 +28,7 @@ import {
   type CompanyCurrency,
   type Item,
   type ItemAgent,
+  type ItemComposition,
   type ItemInput,
   type ItemAgentInput,
   type ItemStatistics,
@@ -737,6 +738,7 @@ type ItemFields = {
   shelf: string;
   barcode: string;
   legacyId: string;
+  compositionId: number | null;
   unit1Name: string;
   unit2Name: string;
   unit3Name: string;
@@ -767,6 +769,7 @@ function initialItemFields(item: Item | null): ItemFields {
     shelf: item?.shelf ?? "",
     barcode: item?.barcode ?? "",
     legacyId: item?.legacyId ?? "",
+    compositionId: item?.compositionId ?? null,
     unit1Name: item?.unit1Name ?? "باكت",
     unit2Name: item?.unit2Name ?? "",
     unit3Name: item?.unit3Name ?? "",
@@ -859,7 +862,13 @@ function ItemEditor({
         }
       : null,
   );
-  const [picker, setPicker] = useState<"currency" | "agent" | null>(null);
+  const compositionDetail = useQuery({
+    queryKey: ["company", user?.id, companyId, "composition-detail", fields.compositionId],
+    queryFn: ({signal}) => api<{composition: ItemComposition}>(
+      `/companies/${companyId}/item-compositions/${fields.compositionId}`,{signal}),
+    enabled: !!user && !!fields.compositionId,
+  });
+  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [unknownCreation, setUnknownCreation] = useState(false);
@@ -1103,6 +1112,29 @@ function ItemEditor({
               {agent && !agent.active && (
                 <small className="muted">الوكيل مؤرشف</small>
               )}
+            </div>
+            <div className="field">
+              <label id="item-composition-label">التركيب</label>
+              <div className="item-reference-field">
+                <Button variant="secondary" disabled={disabled}
+                  aria-labelledby="item-composition-label item-composition-choice"
+                  onClick={() => setPicker("composition")}>
+                  <span id="item-composition-choice">
+                    {fields.compositionId
+                      ? compositionDetail.data?.composition.arabicName ??
+                        (fields.compositionId === item?.compositionId
+                          ? item?.compositionArabicName : null) ?? "جارٍ تحميل التركيب…"
+                      : "اختيار تركيب من كرت التركيب"}
+                  </span>
+                </Button>
+                {fields.compositionId && (
+                  <Button variant="ghost" disabled={disabled}
+                    aria-label="إزالة تركيب الصنف"
+                    onClick={() => edit("compositionId", null)}>×</Button>
+                )}
+              </div>
+              {fields.compositionId && compositionDetail.data?.composition.active === false &&
+                <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
             <div className="field">
               <label id="item-currency-label">عملة الأسعار</label>
@@ -1468,7 +1500,8 @@ function ItemEditor({
       <Dialog
         open={picker !== null}
         title={
-          picker === "currency" ? "اختيار عملة الأسعار" : "اختيار وكيل الصنف"
+          picker === "currency" ? "اختيار عملة الأسعار" :
+            picker === "composition" ? "اختيار تركيب الصنف" : "اختيار وكيل الصنف"
         }
         onClose={() => setPicker(null)}
       >
@@ -1484,6 +1517,20 @@ function ItemEditor({
               if (!option) return;
               setCurrency(option);
               setDirty(true);
+              setPicker(null);
+            }}
+          />
+        ) : picker === "composition" ? (
+          <ServerLookup<ItemComposition>
+            companyId={companyId}
+            resource={`/companies/${companyId}/item-options?type=compositions&active=true`}
+            label="التركيب"
+            value={compositionDetail.data?.composition ?? null}
+            display={(option) => `${option.arabicName} — ${option.englishName}`}
+            disabled={disabled}
+            onChange={(option) => {
+              if (!option) return;
+              edit("compositionId", option.id);
               setPicker(null);
             }}
           />
