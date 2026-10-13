@@ -202,7 +202,7 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
       />
       <Notice>
         تحدد الإدارة قيمة النقطة وسياسة التحويل؛ تبقى الحقول غير المحددة فارغة.
-        التحويل المباشر يرحّل المبلغ إلى حساب الموظف، وطلب الاعتماد يحجز النقاط
+        عند تحويل النقاط إلى مبلغ، يُرحّل إلى حساب «سلفة الموظف» المنشأ تلقائيًا، وطلب الاعتماد يحجز النقاط
         حتى قرار الإدارة. تبقى قيمة الطلب وحساباته ثابتة بعد إرساله.
       </Notice>
       {query.isPending && <Notice>جارٍ تحميل إعدادات المحفظة…</Notice>}
@@ -320,8 +320,8 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
       )}
       {query.data && (
         <Card
-          title="حساب الموظف"
-          description="حساب حركي فعّال داخل الشركة، مستقل عن هوية المستخدم في الموقع العام."
+          title="حساب تحويل نقاط الموظف"
+          description="يُربط تلقائيًا بحساب «سلفة اسم الموظف» عند إضافته. تظل حسابات الموظفين السابقة وربطها اليدوي محفوظة."
         >
           {!employees.length ? (
             <Notice>لا يوجد موظفون فعّالون لربط حساباتهم.</Notice>
@@ -357,7 +357,7 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
                   key={employeeId}
                   companyId={companyId}
                   resource={`${base}/accounts?kind=posting&active=true`}
-                  label="حساب الموظف المرتبط بالمحفظة"
+                  label="الحساب المحاسبي لتحويل النقاط إلى مبلغ"
                   value={binding.account}
                   display={accountLabel}
                   accept={(account) =>
