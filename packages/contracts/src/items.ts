@@ -49,6 +49,39 @@ export const itemAgentSchema = agentFields
   .strict();
 export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 
+// Composition is a reusable company-scoped item classification. Its
+// substitution flags are descriptive; they never auto-replace stock lines.
+const compositionFields = z.object({
+  arabicName: name,
+  englishName: name,
+  description: z.string().trim().max(2000).default(""),
+  active: z.boolean().default(true),
+  identicalAlternative: z.boolean().default(false),
+  nonInterchangeable: z.boolean().default(false),
+}).strict().superRefine((value, ctx) => {
+  if (value.identicalAlternative && value.nonInterchangeable)
+    ctx.addIssue({ code: "custom", path: ["nonInterchangeable"],
+      message: "لا يمكن تحديد البديل المطابق وغير القابل للتبديل معًا" });
+});
+export const itemCompositionSchema = compositionFields.safeExtend({ idempotencyKey: z.uuid() });
+export const itemCompositionPatchSchema = compositionFields.safeExtend({ revision });
+export type ItemCompositionInput = z.input<typeof itemCompositionSchema>;
+export type ItemCompositionPatchInput = z.input<typeof itemCompositionPatchSchema>;
+export interface ItemComposition {
+  id: number;
+  companyId: number;
+  revision: number;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+  arabicName: string;
+  englishName: string;
+  description: string;
+  active: boolean;
+  identicalAlternative: boolean;
+  nonInterchangeable: boolean;
+}
+
 const commissionPercent = z.string().trim().transform(normalizeDigits)
   .pipe(z.string().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "نسبة العمولة يجب أن تكون بين 0 و100 بأربع منازل كحد أقصى"))
   .refine((value) => {
@@ -65,6 +98,7 @@ const itemFields = z
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
+    compositionId: id.nullable().default(null),
     unit1Name: name.default("باكت"),
     unit2Name: z.string().trim().max(120).default(""),
     unit3Name: z.string().trim().max(120).default(""),
@@ -137,6 +171,7 @@ export const itemPatchSchema = itemFields
     revision,
     legacyId: z.string().trim().max(100).optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
+    compositionId: id.nullable().optional(),
   })
   .strict()
   .superRefine(validateNames);
@@ -169,6 +204,10 @@ export interface Item extends ItemIdentity {
   barcode: string;
   legacyId: string;
   agentId: number | null;
+  compositionId: number | null;
+  compositionArabicName: string | null;
+  compositionEnglishName: string | null;
+  compositionActive: boolean | null;
   agentName: string | null;
   agentActive: boolean | null;
   unit1Name: string;
