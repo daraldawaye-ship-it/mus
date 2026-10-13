@@ -67,7 +67,10 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "reversal";
+  kind: "manual" | "reversal" | "automatic";
+  taskCode: string | null;
+  invoiceId: number | null;
+  rewardedUnits: number | null;
   points: string;
   money: string;
   reason: string;
