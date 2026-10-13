@@ -28,6 +28,7 @@ import { configurationRoutes } from "./routes-configuration.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
 import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
+import { socialAuthRoutes } from "./routes-social-auth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
 
@@ -51,6 +52,9 @@ export async function createApp(options: AppOptions = {}) {
   // MCP and OAuth have dedicated bearer / PKCE / CSRF checks; they cannot use
   // the browser JSON API's Origin/CSRF middleware.
   app.use(chatgptOauthRoutes(pool, config.appOrigin, config.production));
+  // External IdPs redirect here (Apple uses form_post); dedicated one-use
+  // state/cookie and signed ID-token validation secure these callbacks.
+  app.use("/api", socialAuthRoutes(pool, config.appOrigin, config.production));
   app.use(chatgptMcpRoutes(pool, config.appOrigin));
   app.use(
     "/api",
