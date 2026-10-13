@@ -45,6 +45,8 @@ jobs:
         run: npm run check
       - name: Build web application
         run: npm run build
+      - name: Test first-unit stock quantity display and rounding
+        run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - name: Test wallets, page visits and daily company entry
         run: node --import tsx --test tests/wallet.test.ts
       - name: Test wallet conversion policy and read-only preview
