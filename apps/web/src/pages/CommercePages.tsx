@@ -1485,20 +1485,11 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   return (
     <div className="commerce-document-page">
-      {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-      {savedInvoice && (
-        <Notice tone="success">
-          تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-          <Link to={invoicePath(companyId, savedInvoice.id)}>
-            عرض الفاتورة المحفوظة
-          </Link>
-          . يمكنك إدخال الفاتورة التالية مباشرة.
-        </Notice>
-      )}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
+              <div className="commerce-header-half commerce-header-account">
               <ServerLookup<Account>
                 companyId={companyId}
                 resource={`/companies/${companyId}/commerce-options?type=accounts`}
@@ -1522,6 +1513,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               >
                 قائمة الفواتير
               </Link>
+              </div>
+              <div className="commerce-header-half commerce-header-secondary">
               <Field
                 label="تاريخ الفاتورة"
                 type="date"
@@ -1536,6 +1529,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               >
                 {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
               </Button>
+              </div>
+              <div className="commerce-header-options">
               <ServerLookup<CompanyCurrency>
                 companyId={companyId}
                 resource={`/companies/${companyId}/commerce-options?type=currencies`}
@@ -1581,6 +1576,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 }
                 required
               />
+              </div>
             </div>
             {showOriginalPicker && (
               <>
@@ -1685,6 +1681,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             )}
           </fieldset>
         </Card>
+        {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {savedInvoice && (
+          <Notice tone="success">
+            تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
+            <Link to={invoicePath(companyId, savedInvoice.id)}>
+              عرض الفاتورة المحفوظة
+            </Link>
+            . يمكنك إدخال الفاتورة التالية مباشرة.
+          </Notice>
+        )}
         <Card className="commerce-matrix-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div
@@ -2009,6 +2015,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                             .quantitySmallest,
                                           line.sourceItem,
                                           line.unit,
+                                          1,
                                         )
                                       : "—"
                                 : "—"}
