@@ -318,6 +318,7 @@ export async function initializeCompanyAccounts(
       parentId,
       kind: seed.purpose ? "posting" : "group",
       category: seed.category,
+      accountChoice: null,
       normalSide: seed.normalSide,
       active: true,
       cashOrBank: false,
