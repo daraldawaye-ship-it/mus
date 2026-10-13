@@ -124,10 +124,12 @@ export function publicRoutes(pool: Pool): Router {
           if (managers.rowCount) deny("أرشفة مدير عام فعال تتطلب مالك المنصة");
         }
         const afterValues = { ...before, ...input };
+        if (!afterValues.phone && !afterValues.email)
+          throw new HttpError(400, "missing_login_identity", "أدخل رقم هاتف أو بريدًا إلكترونيًا");
         if (afterValues.phone !== before.phone)
           await assertPhoneAvailable(client, afterValues.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=$11,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END WHERE id=$10 RETURNING *",
+          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END WHERE id=$10 RETURNING *",
           [
             afterValues.kind,
             afterValues.archived,
