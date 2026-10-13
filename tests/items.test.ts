@@ -15,6 +15,8 @@ import {
   type Item,
   type ItemAgent,
   type ItemComposition,
+  type ItemShelf,
+  arabicShelfLetters,
   type ItemConversion,
   type Page,
   type Permission,
@@ -1395,4 +1397,67 @@ test("composition bulk import duplicates a single source name into both fields w
     "POST",`/companies/${other.id}/item-compositions/import-batch`,
     {format:payload.format,items:[payload.items[0]]});
   assert.deepEqual(independent,{created:1,skipped:0});
+});
+
+test("Arabic shelf cards are seeded 28x12, company-scoped and editable without changing historical item shelf text",async(t)=>{
+  const f=await fixture(t);
+  const first=await f.company("أرفف صيدلية أولى");
+  const second=await f.company("أرفف شركة ثانية");
+  const root=`/companies/${first.id}/item-shelves`;
+  const count=await f.pool.query<{n:number;groups:number}>(
+    "SELECT count(*)::int AS n,count(DISTINCT group_letter)::int AS groups FROM item_shelves WHERE company_id=$1",
+    [first.id]);
+  assert.equal(count.rows[0]!.n,336);
+  assert.equal(count.rows[0]!.groups,28);
+  assert.equal(arabicShelfLetters.length,28);
+  for(const [index,letter] of arabicShelfLetters.entries()) {
+    const group=await f.owner.ok<Page<ItemShelf>>("GET",
+      `${root}?groupLetter=${encodeURIComponent(letter)}&pageSize=20`);
+    assert.equal(group.total,12);
+    assert.deepEqual(group.items.map(x=>x.slotNumber),Array.from({length:12},(_,i)=>i+1));
+    assert.deepEqual(group.items.map(x=>x.name),
+      Array.from({length:12},(_,i)=>`${letter}-${i+1}`));
+    assert(group.items.every(x=>x.groupOrder===index+1));
+    assert(group.items.every(x=>x.archived===false && x.vitrine===false));
+  }
+  const firstShelf=(await f.owner.ok<Page<ItemShelf>>("GET",
+    `${root}?q=${encodeURIComponent("ب-12")}`)).items.find(x=>x.name==="ب-12")!;
+  assert(firstShelf);
+  const updated=(await f.owner.ok<{shelf:ItemShelf}>(
+    "PATCH",`${root}/${firstShelf.id}`,
+    {revision:firstShelf.revision,archived:false,vitrine:true})).shelf;
+  assert.equal(updated.name,"ب-12");
+  assert.equal(updated.groupLetter,"ب");
+  assert.equal(updated.revision,firstShelf.revision+1);
+  assert.equal(updated.vitrine,true);
+  assert.equal((await f.owner.ok<Page<ItemShelf>>("GET",
+    `${root}?vitrine=true`)).total,1);
+  assert.equal((await f.owner.request("PATCH",`${root}/${updated.id}`,
+    {revision:firstShelf.revision,archived:true,vitrine:false})).status,409);
+  assert.equal((await f.owner.request("PATCH",`${root}/${updated.id}`,
+    {revision:updated.revision,archived:false,vitrine:true,name:"غير مصرح"})).status,400);
+  const archived=(await f.owner.ok<{shelf:ItemShelf}>(
+    "PATCH",`${root}/${updated.id}`,
+    {revision:updated.revision,archived:true,vitrine:true})).shelf;
+  assert.equal(archived.archived,true);
+  assert.equal((await f.owner.ok<Page<ItemShelf>>("GET",
+    `/companies/${first.id}/item-options?type=shelves&archived=false&q=${encodeURIComponent("ب-12")}`)).total,0);
+  const currencyId=(await f.owner.ok<Page<CompanyCurrency>>("GET",
+    `/companies/${first.id}/currencies`)).items.find(c=>c.code==="YER")!.id;
+  const previouslyShelved=await item(f,first.id,currencyId,{shelf:"ب-12"});
+  assert.equal(previouslyShelved.shelf,"ب-12",
+    "Archiving a shelf cannot remove the historical shelf location from an item");
+  const foreign=(await f.owner.ok<Page<ItemShelf>>("GET",
+    `/companies/${second.id}/item-shelves?q=${encodeURIComponent("ب-12")}`)).items[0]!;
+  assert.equal(foreign.vitrine,false);
+  assert.equal(foreign.archived,false);
+  // Company B's shelf must never be exposed as a record in company A.
+  assert.equal((await f.owner.request("GET",`${root}/${foreign.id}`)).status,404);
+  const reader=await f.member(first.id,["items.view"],45);
+  assert.equal((await reader.client.ok<Page<ItemShelf>>("GET",root)).total,336);
+  assert.equal((await reader.client.request("PATCH",`${root}/${archived.id}`,
+    {revision:archived.revision,archived:false,vitrine:false})).status,403);
+  assert.equal((await f.anonymous().request("GET",root)).status,401);
+  await assert.rejects(f.pool.query("DELETE FROM item_shelves WHERE company_id=$1 AND id=$2",
+    [first.id,updated.id]));
 });
