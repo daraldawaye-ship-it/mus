@@ -651,6 +651,42 @@ try {
       await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
     }
     await scenario(
+      "sales keyboard shortcut: zero Enter, notes Enter, discount Enter, then focused Save",
+      async () => {
+        const before = await call<ApiPage<Invoice>>(base + "/invoices?kind=sale");
+        await saleDraft("3");
+        const search = page.locator('[id^="invoice-item-search-"]').last();
+        await search.fill("0");
+        await search.press("Enter");
+        const notes = page.getByLabel("ملاحظات الفاتورة", { exact: true });
+        assert.equal(await search.inputValue(), "", "Zero must be cleared");
+        assert.equal(await notes.evaluate((input) => input === document.activeElement), true);
+        assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 1);
+        await notes.fill("فاتورة بالاختصار");
+        await notes.press("Enter");
+        const discount = page.getByLabel("الخصم", { exact: true });
+        assert.equal(await discount.evaluate((input) => input === document.activeElement), true);
+        await discount.fill("1");
+        await discount.press("Enter");
+        const save = page.getByRole("button", { name: "حفظ وترحيل الفاتورة", exact: true });
+        assert.equal(await save.evaluate((input) => input === document.activeElement), true);
+        assert.equal(await notes.inputValue(), "فاتورة بالاختصار");
+        assert.equal(await discount.inputValue(), "1");
+        assert.equal((await call<ApiPage<Invoice>>(base + "/invoices?kind=sale")).total,
+          before.total, "Enter in notes and discount must never auto-save");
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+
+        // Purchases retain the normal item search workflow; zero is not a shortcut.
+        await page.goto(base + "/invoices/new?kind=purchase");
+        const purchaseSearch = page.locator('[id^="invoice-item-search-"]').first();
+        await purchaseSearch.fill("0");
+        await purchaseSearch.press("Enter");
+        assert.equal(await purchaseSearch.inputValue(), "0");
+        assert.equal(await purchaseSearch.evaluate((input) => input === document.activeElement), true);
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+      },
+    );
+    await scenario(
       "sales preserve authoritative unit prices, showroom selection and linked discounted return",
       async () => {
         await saleDraft("3");
