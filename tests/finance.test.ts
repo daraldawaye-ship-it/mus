@@ -1598,7 +1598,7 @@ test("posted receipt/payment print requests reward eligible employees once per v
   assert.equal((await reward(first.client, otherDraft.id)).rewarded, false);
   const journal = await s.post(await s.draft());
   assert.equal((await reward(first.client, journal.id)).rewarded, false);
-  assert.equal((await first.client.request("POST", base + "/financial-documents/999999/print-request")).status, 200);
+  assert.equal((await first.client.request("POST", base + "/financial-documents/999999/print-request")).status, 404);
   assert.equal((await wallet(first.employee.id)).wallet.money, "0");
   assert.equal((await wallet(first.employee.id)).wallet.points, "12");
 
