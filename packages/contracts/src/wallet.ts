@@ -67,11 +67,15 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "reversal";
+  kind: "manual" | "automatic" | "reversal";
   points: string;
   money: string;
   reason: string;
   referenceId: number | null;
+  invoiceId: number | null;
+  taskCode: string | null;
+  taskRevision: number | null;
+  logicalLineCount: number | null;
   reversedByEntryId: number | null;
   createdAt: string;
   createdByName: string;
