@@ -122,7 +122,9 @@ async function insertAccount(
       input.parentId,
       input.kind,
       input.category,
-      input.normalSide,
+      input.category === "asset" || input.category === "expense"
+        ? "debit"
+        : "credit",
       input.active,
       input.rangeStart,
       input.rangeEnd,
@@ -352,7 +354,7 @@ export function accountRoutes(pool: Pool): Router {
         const companyId = id(req.params.companyId),
           user = await currentActor(client, actor(req), false);
         await companyAccess(client, user, companyId, "accounts.view");
-        return masterPage(
+        const page = await masterPage(
           client,
           req,
           companyId,
@@ -372,6 +374,53 @@ export function accountRoutes(pool: Pool): Router {
           "code:asc",
           "account",
         );
+        // A balance is an outcome of posted movements, not a permanent flag
+        // on the account. Use exact base-currency ledger amounts, including
+        // reversal entries, and only aggregate the posting accounts on this
+        // page (bounded query for large ledgers). Groups have no direct balance.
+        const postingIds = page.items
+          .filter((account) => account.kind === "posting")
+          .map((account) => account.id);
+        const balances = postingIds.length
+          ? await client.query<{account_id:number;net:string}>(
+            `SELECT l.account_id,
+               COALESCE(sum(l.base_debit-l.base_credit),0)::text AS net
+             FROM financial_document_lines l
+             JOIN financial_documents d
+               ON d.company_id=l.company_id AND d.id=l.document_id
+             WHERE l.company_id=$1 AND l.account_id=ANY($2::integer[])
+               AND d.status IN ('posted','reversed')
+             GROUP BY l.account_id`,
+            [companyId, postingIds],
+          )
+          : { rows: [] as {account_id:number;net:string}[] };
+        const byAccount = new Map(balances.rows.map(
+          (row) => [row.account_id, row.net],
+        ));
+        const currency = await client.query(
+          `SELECT c.code FROM finance_settings s
+           JOIN company_currencies c
+             ON c.company_id=s.company_id AND c.id=s.base_currency_id
+           WHERE s.company_id=$1`,
+          [companyId],
+        );
+        return {
+          ...page,
+          baseCurrencyCode: currency.rows[0]?.code ?? null,
+          items: page.items.map((account) => {
+            if (account.kind !== "posting")
+              return { ...account, balanceAmount: null, balanceDirection: null };
+            const net = byAccount.get(account.id) ?? "0";
+            const negative = net.startsWith("-");
+            const amount = negative ? net.slice(1) : net;
+            return {
+              ...account,
+              balanceAmount: amount,
+              balanceDirection: amount === "0" || Number(amount) === 0
+                ? "zero" : negative ? "credit" : "debit",
+            };
+          }),
+        };
       });
       res.json(result);
     }),
