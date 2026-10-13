@@ -43,7 +43,22 @@ const normalizePoints = (value: string) =>
         : "۰۱۲۳۴۵۶۷۸۹".indexOf(digit),
     ),
   );
-const invoiceTasks = new Set(["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES"]);
+const invoiceTasks = new Set([
+  "SALE_SAVED",
+  "PURCHASE_SAVED",
+  "SALE_LINES",
+  "PURCHASE_LINES",
+]);
+const automaticLabels: Record<string, string> = {
+  SALE_SAVED: "مكافأة فاتورة مبيعات",
+  PURCHASE_SAVED: "مكافأة فاتورة مشتريات",
+  SALE_LINES: "مكافأة سطور المبيعات",
+  PURCHASE_LINES: "مكافأة سطور المشتريات",
+  RECEIPT_PRINT: "مكافأة طلب طباعة سند قبض",
+  PAYMENT_PRINT: "مكافأة طلب طباعة سند صرف",
+  PAGE_VISIT: "مكافأة زيارة صفحة",
+  DAILY_LOGIN: "مكافأة دخول الشركة",
+};
 const repeatLabels: Record<RewardRepeatRule, string> = {
   "per-document": "لكل مستند",
   daily: "مرة يوميًا",
@@ -86,8 +101,12 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     (entry) => entry.key === "company.reward-tasks",
   );
   const canAward = !!list.data?.canManage && !!walletPage?.actionAccess.create;
-  const canViewInvoice = !!directory.data?.find((entry) => entry.key === "company.invoice")?.actionAccess.view;
-  const canViewVoucher = !!directory.data?.find((entry) => entry.key === "company.financial-document")?.actionAccess.view;
+  const canViewInvoice = !!directory.data?.find(
+    (entry) => entry.key === "company.invoice",
+  )?.actionAccess.view;
+  const canViewVoucher = !!directory.data?.find(
+    (entry) => entry.key === "company.financial-document",
+  )?.actionAccess.view;
   const canReverse =
     !!list.data?.canManage && !!walletPage?.actionAccess.reverse;
   const [award, setAward] = useState<AwardDraft | null>(null),
@@ -173,13 +192,13 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     {
       accessorKey: "kind",
       header: "العملية",
-      size: 115,
+      size: 185,
       enableSorting: false,
       cell: ({ row }) =>
         row.original.kind === "manual"
           ? "إضافة إدارية"
           : row.original.kind === "automatic"
-            ? "مكافأة فاتورة"
+            ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
             : "عكس مكافأة",
     },
     {
@@ -201,15 +220,23 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 120,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.financialDocumentId !== null && canViewVoucher
-          ? <Link to={`${base}/financial-documents/${row.original.financialDocumentId}`}>سند #{row.original.financialDocumentId}</Link>
-          : row.original.invoiceId !== null && canViewInvoice
-          ? <Link to={`${base}/invoices/${row.original.invoiceId}`}>فاتورة #{row.original.invoiceId}</Link>
-          : row.original.kind === "reversal"
-          ? `عكس #${row.original.referenceId}`
-          : row.original.reversedByEntryId
-            ? `عُكست #${row.original.reversedByEntryId}`
-            : `#${row.original.id}`,
+        row.original.financialDocumentId !== null && canViewVoucher ? (
+          <Link
+            to={`${base}/financial-documents/${row.original.financialDocumentId}`}
+          >
+            سند #{row.original.financialDocumentId}
+          </Link>
+        ) : row.original.invoiceId !== null && canViewInvoice ? (
+          <Link to={`${base}/invoices/${row.original.invoiceId}`}>
+            فاتورة #{row.original.invoiceId}
+          </Link>
+        ) : row.original.kind === "reversal" ? (
+          `عكس #${row.original.referenceId}`
+        ) : row.original.reversedByEntryId ? (
+          `عُكست #${row.original.reversedByEntryId}`
+        ) : (
+          `#${row.original.id}`
+        ),
     },
     ...(canReverse
       ? [
@@ -219,7 +246,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
             size: 130,
             enableSorting: false,
             cell: ({ row }: { row: { original: WalletEntry } }) =>
-              (row.original.kind === "manual" || row.original.kind === "automatic") &&
+              (row.original.kind === "manual" ||
+                row.original.kind === "automatic") &&
               !row.original.reversedByEntryId ? (
                 <Button
                   variant="ghost"
@@ -487,7 +515,15 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending) return;
-    const { points, repeatRule, enabled, roleIds, pageKey, dailyLimit, revision } = draft;
+    const {
+      points,
+      repeatRule,
+      enabled,
+      roleIds,
+      pageKey,
+      dailyLimit,
+      revision,
+    } = draft;
     const parsed = rewardTaskSettingsSchema.safeParse({
       points,
       repeatRule,
@@ -537,11 +573,16 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
         }
       />
       <Notice>
-        مكافآت حفظ فواتير المبيعات والمشتريات وسطورها متاحة للتفعيل الآن من كروتها؛
-        ولا تُمنح أي نقاط تلقائيًا قبل تفعيل المهمة. يمكن جمع مكافأة الفاتورة مع
-        مكافأة السطور: مثلًا 5 نقاط لحفظ فاتورة مبيعات + نقطتين لكل سطر منطقي
-        من ثلاثة سطور = 11 نقطة. تكرار نفس الصنف والوحدة والسعر وتاريخ الصلاحية
-        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. يمكن كذلك تفعيل نقاط طلب طباعة سند القبض أو الصرف المرحّل مرة لكل سند ولكل موظف؛ ولا يعد الطلب إثباتًا لخروج الورقة. مهمة زيارة صفحات الشركة متاحة للتفعيل كذلك، ويُحدد كرتها الصفحة وقاعدة التكرار وسقف اليوم. مكافأة الدخول ما زالت مخططة.
+        مكافآت حفظ فواتير المبيعات والمشتريات وسطورها متاحة للتفعيل الآن من
+        كروتها؛ ولا تُمنح أي نقاط تلقائيًا قبل تفعيل المهمة. يمكن جمع مكافأة
+        الفاتورة مع مكافأة السطور: مثلًا 5 نقاط لحفظ فاتورة مبيعات + نقطتين لكل
+        سطر منطقي من ثلاثة سطور = 11 نقطة. تكرار نفس الصنف والوحدة والسعر وتاريخ
+        الصلاحية لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. يمكن كذلك
+        تفعيل نقاط طلب طباعة سند القبض أو الصرف المرحّل مرة لكل سند ولكل موظف؛
+        ولا يعد الطلب إثباتًا لخروج الورقة. مهمة زيارة صفحات الشركة متاحة
+        للتفعيل كذلك، ويُحدد كرتها الصفحة وقاعدة التكرار وسقف اليوم. مكافأة دخول
+        الشركة متاحة للتفعيل، وتُمنح للموظف مرة في اليوم بحسب توقيت عدن عند فتح
+        نطاق شركته.
       </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {query.error && (
@@ -593,7 +634,18 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                         size="compact"
                         onClick={() => {
                           setError("");
-                          setDraft({ ...task, repeatRule: (invoiceTasks.has(task.code) || task.code === "RECEIPT_PRINT" || task.code === "PAYMENT_PRINT") ? "per-document" : task.repeatRule, roleIds: [...task.roleIds] });
+                          setDraft({
+                            ...task,
+                            repeatRule:
+                              task.code === "DAILY_LOGIN"
+                                ? "daily"
+                                : invoiceTasks.has(task.code) ||
+                                    task.code === "RECEIPT_PRINT" ||
+                                    task.code === "PAYMENT_PRINT"
+                                  ? "per-document"
+                                  : task.repeatRule,
+                            roleIds: [...task.roleIds],
+                          });
                         }}
                       >
                         تعديل الكرت
@@ -649,7 +701,13 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
               />
               <Select
                 label="قاعدة الاستحقاق"
-                disabled={pending || invoiceTasks.has(draft.code) || draft.code === "RECEIPT_PRINT" || draft.code === "PAYMENT_PRINT"}
+                disabled={
+                  pending ||
+                  invoiceTasks.has(draft.code) ||
+                  draft.code === "RECEIPT_PRINT" ||
+                  draft.code === "PAYMENT_PRINT" ||
+                  draft.code === "DAILY_LOGIN"
+                }
                 value={draft.repeatRule}
                 onChange={(event) =>
                   setDraft({
@@ -658,18 +716,39 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                   })
                 }
               >
-                {Object.entries(repeatLabels).filter(([key]) => draft.code !== "PAGE_VISIT" || key !== "per-document").map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(repeatLabels)
+                  .filter(
+                    ([key]) =>
+                      draft.code !== "PAGE_VISIT" || key !== "per-document",
+                  )
+                  .map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
               </Select>
             </div>
             {invoiceTasks.has(draft.code) && (
-              <Notice>تُحتسب هذه المهمة مرة لكل فاتورة جديدة بعد ترحيلها، ولا تتكرر عند إعادة فتحها أو إرسال الطلب ذاته. يمكن تفعيل مكافأة حفظ الفاتورة ومكافأة سطورها معًا؛ النقاط المحددة هنا للسطور هي لكل سطر منطقي.</Notice>
+              <Notice>
+                تُحتسب هذه المهمة مرة لكل فاتورة جديدة بعد ترحيلها، ولا تتكرر
+                عند إعادة فتحها أو إرسال الطلب ذاته. يمكن تفعيل مكافأة حفظ
+                الفاتورة ومكافأة سطورها معًا؛ النقاط المحددة هنا للسطور هي لكل
+                سطر منطقي.
+              </Notice>
             )}
-            {(draft.code === "RECEIPT_PRINT" || draft.code === "PAYMENT_PRINT") && (
-              <Notice>تُحتسب المكافأة عند طلب فتح طباعة سند مرحّل، مرة واحدة لكل سند ولكل موظف مؤهل. لا يؤكد النظام أن الورقة خرجت من الطابعة.</Notice>
+            {(draft.code === "RECEIPT_PRINT" ||
+              draft.code === "PAYMENT_PRINT") && (
+              <Notice>
+                تُحتسب المكافأة عند طلب فتح طباعة سند مرحّل، مرة واحدة لكل سند
+                ولكل موظف مؤهل. لا يؤكد النظام أن الورقة خرجت من الطابعة.
+              </Notice>
+            )}
+            {draft.code === "DAILY_LOGIN" && (
+              <Notice>
+                تُحتسب مرة واحدة لكل موظف عند دخول هذه الشركة في يوم عدن، ولا
+                تتكرر عند إعادة فتحها أو تحديثها. الدخول إلى الموقع العام وحده
+                لا يمنح هذه المكافأة.
+              </Notice>
             )}
             {draft.code === "PAGE_VISIT" && (
               <Select
@@ -689,11 +768,32 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
               </Select>
             )}
             {draft.code === "PAGE_VISIT" && (
-              <Notice>تُحتسب الزيارة عند فتح المستخدم صفحة شركة مصرحًا له بها، وليس عند تحديث بياناتها في الخلفية. الاستحقاق لكل موظف ومهمة وشركة وفق يوم عدن، أو سبعة أيام كاملة، أو أحداث الانتقال المختلفة.</Notice>
+              <Notice>
+                تُحتسب الزيارة عند فتح المستخدم صفحة شركة مصرحًا له بها، وليس
+                عند تحديث بياناتها في الخلفية. الاستحقاق لكل موظف ومهمة وشركة
+                وفق يوم عدن، أو سبعة أيام كاملة، أو أحداث الانتقال المختلفة.
+              </Notice>
             )}
-            {draft.code === "PAGE_VISIT" && draft.repeatRule === "unlimited" && (
-              <Field label="الحد الأقصى للمكافآت يوميًا (الافتراضي 100)" type="number" min={1} max={10000} disabled={pending} value={draft.dailyLimit ?? ""} onChange={(event) => setDraft({ ...draft, dailyLimit: event.target.value === "" ? null : Number(event.target.value) })} />
-            )}
+            {draft.code === "PAGE_VISIT" &&
+              draft.repeatRule === "unlimited" && (
+                <Field
+                  label="الحد الأقصى للمكافآت يوميًا (الافتراضي 100)"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  disabled={pending}
+                  value={draft.dailyLimit ?? ""}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      dailyLimit:
+                        event.target.value === ""
+                          ? null
+                          : Number(event.target.value),
+                    })
+                  }
+                />
+              )}
             <fieldset className="notification-recipients">
               <legend>الأدوار المستفيدة</legend>
               <p className="muted">

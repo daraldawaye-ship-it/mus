@@ -673,6 +673,12 @@ function Workspace() {
             ["last-company-sidebar", userId],
             selectedContext,
           );
+          void queryClient.invalidateQueries({
+            queryKey: ["wallet-summary", userId, companyId],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["list", userId, `company:${companyId}:wallet`],
+          });
         }
       })
       .catch(() => {});

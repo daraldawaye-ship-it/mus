@@ -184,7 +184,7 @@ try {
   );
   assert.equal(
     await page
-      .getByRole("button", { name: "عكس الإضافة", exact: true })
+      .getByRole("button", { name: "عكس المكافأة", exact: true })
       .count(),
     0,
   );
@@ -202,7 +202,7 @@ try {
   );
 
   await ownerPage
-    .getByRole("button", { name: "عكس الإضافة", exact: true })
+    .getByRole("button", { name: "عكس المكافأة", exact: true })
     .click();
   await dialog
     .getByLabel("سبب العكس", { exact: true })
@@ -211,12 +211,12 @@ try {
     .getByRole("button", { name: "تأكيد العكس", exact: true })
     .click();
   await ownerPage
-    .getByText("تم عكس الإضافة مع الاحتفاظ بسجلها الأصلي.", { exact: true })
+    .getByText("تم عكس المكافأة مع الاحتفاظ بسجلها الأصلي.", { exact: true })
     .waitFor();
   await ownerPage.locator('[data-wallet-points="0"]').waitFor();
   assert.equal(
     await ownerPage
-      .getByRole("button", { name: "عكس الإضافة", exact: true })
+      .getByRole("button", { name: "عكس المكافأة", exact: true })
       .count(),
     0,
   );
@@ -239,7 +239,7 @@ try {
     .click();
   const taskDialog = ownerPage.getByRole("dialog");
   assert(
-    await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isDisabled(),
+    await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isEnabled(),
   );
   assert.equal(
     await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isChecked(),
@@ -253,7 +253,8 @@ try {
     .selectOption("rolling-seven-days");
   await taskDialog
     .getByLabel("الصفحة المرتبطة", { exact: true })
-    .selectOption("company.items");
+    .selectOption("company.wallet");
+  await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).check();
   await taskDialog
     .getByRole("button", { name: "حفظ الكرت", exact: true })
     .click();
@@ -265,14 +266,117 @@ try {
   ).tasks.find((task) => task.code === "PAGE_VISIT")!;
   assert.equal(saved.points, "7");
   assert.equal(saved.repeatRule, "rolling-seven-days");
-  assert.equal(saved.pageKey, "company.items");
-  assert.equal(saved.enabled, false);
+  assert.equal(saved.pageKey, "company.wallet");
+  assert.equal(saved.enabled, true);
+
+  // Make the initial wallet read finish before its page-visit reward. The UI
+  // must refresh both the ledger and header after the later committed event.
+  const walletResponse = (response: import("playwright").Response) =>
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname === "/api" + base + "/wallet" &&
+    response.ok();
+  let visitRequests = 0;
+  page.on("request", (request) => {
+    if (
+      new URL(request.url()).pathname ===
+      "/api" + base + "/reward-events/page-visit"
+    )
+      visitRequests++;
+  });
+  const initialWallet = page.waitForResponse(walletResponse);
+  const visitRoute = "**/api" + base + "/reward-events/page-visit";
+  await page.route(visitRoute, async (route) => {
+    await initialWallet;
+    await route.continue();
+  });
+  await page.reload();
+  await page.locator('[data-wallet-points="7"]').waitFor();
+  await page
+    .getByRole("link", { name: "محفظتي، 7 نقطة", exact: true })
+    .waitFor();
+  await page
+    .getByRole("table", { name: "سجل النقاط والمحفظة", exact: true })
+    .getByText("مكافأة زيارة صفحة", { exact: true })
+    .waitFor();
+  assert.equal(visitRequests, 1);
+  const refreshedWallet = page.waitForResponse(walletResponse);
+  await page.getByRole("button", { name: "تحديث", exact: true }).click();
+  await refreshedWallet;
+  assert.equal(
+    visitRequests,
+    1,
+    "Refreshing wallet data is not another page visit",
+  );
+  await page.unroute(visitRoute);
+
+  await ownerPage
+    .getByLabel("بحث في المهام", { exact: true })
+    .fill("DAILY_LOGIN");
+  await ownerPage
+    .getByRole("button", { name: "تعديل الكرت", exact: true })
+    .click();
+  assert(
+    await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isEnabled(),
+  );
+  assert(
+    await taskDialog
+      .getByLabel("قاعدة الاستحقاق", { exact: true })
+      .isDisabled(),
+  );
+  assert.equal(
+    await taskDialog
+      .getByLabel("قاعدة الاستحقاق", { exact: true })
+      .inputValue(),
+    "daily",
+  );
+  await taskDialog
+    .getByLabel("قيمة المكافأة بالنقاط", { exact: true })
+    .fill("٥٠");
+  await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).check();
+  await taskDialog
+    .getByRole("button", { name: "حفظ الكرت", exact: true })
+    .click();
+  await taskDialog.waitFor({ state: "hidden" });
+  const loginTask = (
+    await ownerCall<RewardTaskDirectory>(base + "/reward-tasks")
+  ).tasks.find((task) => task.code === "DAILY_LOGIN")!;
+  assert.equal(loginTask.enabled, true);
+  assert.equal(loginTask.points, "50");
+  assert.equal(loginTask.repeatRule, "daily");
+
+  await page.goto("/profile");
+  await page
+    .getByRole("heading", { name: "حسابي العام", exact: true })
+    .waitFor();
+  assert.equal(
+    (await employeeCall<WalletDirectory>(base + "/wallet")).wallet!.points,
+    "7",
+    "Opening a public page alone must not grant a company entry reward",
+  );
+  const beforeEntry = page.waitForResponse(walletResponse);
+  const activateRoute = "**/api" + base + "/activate";
+  await page.route(activateRoute, async (route) => {
+    await beforeEntry;
+    await route.continue();
+  });
+  await page.goto(base + "/wallet");
+  await page.locator('[data-wallet-points="57"]').waitFor();
+  await page
+    .getByRole("link", { name: "محفظتي، 57 نقطة", exact: true })
+    .waitFor();
+  await page
+    .getByRole("table", { name: "سجل النقاط والمحفظة", exact: true })
+    .getByText("مكافأة دخول الشركة", { exact: true })
+    .waitFor();
+  await page.unroute(activateRoute);
+  await page.reload();
+  await page.locator('[data-wallet-points="57"]').waitFor();
   const finalLedger = await employeeCall<WalletDirectory>(base + "/wallet");
-  assert.equal(finalLedger.total, 2);
-  assert.equal(finalLedger.wallet!.points, "0");
+  assert.equal(finalLedger.total, 4);
+  assert.equal(finalLedger.wallet!.points, "57");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: wallet award/reversal, exact Arabic input, employee-only mobile ledger/header and planned task settings",
+    "PASS: wallet award/reversal, Arabic input, employee-only mobile ledger/header, page-visit and daily-entry task settings and committed balance refresh",
   );
   await ownerContext.close();
   await employeeContext.close();

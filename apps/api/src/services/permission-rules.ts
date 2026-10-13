@@ -136,6 +136,8 @@ export async function requestPermissionTargets(
     }
     if (segments[2] === "post") action = "post";
     if (segments[2] === "reverse") action = "reverse";
+    if (financial && segments[2] === "print-request" && verb === "POST")
+      action = "print";
     const kinds = financial
       ? { journal: "journals", receipt: "receipts", payment: "payments" }
       : { sale: "sales", purchase: "purchases" };
@@ -143,7 +145,7 @@ export async function requestPermissionTargets(
       typeof kind === "string" && Object.hasOwn(kinds, kind)
         ? [kind]
         : Object.keys(kinds);
-    return included.map((type) => {
+    return included.flatMap((type) => {
       const parent = `company.${kinds[type as keyof typeof kinds]}`;
       const primary = financial
         ? !detail && verb === "POST"
@@ -156,12 +158,24 @@ export async function requestPermissionTargets(
           : detail
             ? "company.invoice"
             : parent;
-      return [
-        ...new Set([
-          ...pagePermissionAliases(primary, action),
-          ...pagePermissionAliases(parent, action),
-        ]),
+      const targets = [
+        [
+          ...new Set([
+            ...pagePermissionAliases(primary, action),
+            ...pagePermissionAliases(parent, action),
+          ]),
+        ],
       ];
+      // A print reward is a print action, and also requires current access to
+      // the document. A print allow never bypasses an explicit view denial.
+      if (action === "print")
+        targets.push([
+          ...new Set([
+            ...pagePermissionAliases(primary, "view"),
+            ...pagePermissionAliases(parent, "view"),
+          ]),
+        ]);
+      return targets;
     });
   }
   const aliases = page ? pagePermissionAliases(page, action) : [];

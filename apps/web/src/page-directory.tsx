@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
 import { errorMessage } from "./phase2";
@@ -68,12 +74,31 @@ export function PageRouteGuard({
     // data and background API polling never execute this effect.
     void api<{ rewarded: boolean }>(
       `/companies/${companyId}/reward-events/page-visit`,
-      { method: "POST", body: { pageKey, idempotencyKey: crypto.randomUUID() } },
-    ).then((result) => {
-      if (result.rewarded)
-        void queryClient.invalidateQueries({ queryKey: ["wallet-summary", user.id, companyId] });
-    }).catch(() => {});
-  }, [user?.id, companyId, pageKey, route.pathname, admitted, allowed, queryClient]);
+      {
+        method: "POST",
+        body: { pageKey, idempotencyKey: crypto.randomUUID() },
+      },
+    )
+      .then((result) => {
+        if (result.rewarded) {
+          void queryClient.invalidateQueries({
+            queryKey: ["wallet-summary", user.id, companyId],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["list", user.id, `company:${companyId}:wallet`],
+          });
+        }
+      })
+      .catch(() => {});
+  }, [
+    user?.id,
+    companyId,
+    pageKey,
+    route.pathname,
+    admitted,
+    allowed,
+    queryClient,
+  ]);
   if (!user || !pageKey || admitted) return children;
   if (catalog.error)
     return (
