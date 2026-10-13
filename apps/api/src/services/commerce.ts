@@ -89,6 +89,8 @@ export function invoiceLineDTO(row: QueryResultRow): InvoiceLine {
     total: normalizeRate(row.total),
     baseTotal: normalizeRate(row.base_total),
     costBase: normalizeRate(row.cost_base),
+    commissionRate: normalizeRate(row.commission_rate),
+    commissionAmount: normalizeRate(row.commission_amount),
     expiryDate: row.expiry_text ?? null,
     originalLineId: row.original_line_id,
   };
@@ -163,6 +165,8 @@ interface PreparedLine {
   discount: bigint;
   total: bigint;
   baseTotal: bigint;
+  commissionRate: string;
+  commissionAmount: bigint;
   original: QueryResultRow | null;
   expiryDate: string | null;
 }
@@ -241,7 +245,7 @@ export async function createInvoice(
     (a, b) => a - b,
   );
   const items = await client.query(
-    "SELECT * FROM items WHERE company_id=$1 AND id=ANY($2::integer[]) ORDER BY id FOR SHARE",
+    "SELECT *, clearance_from::text AS clearance_from_text, clearance_to::text AS clearance_to_text FROM items WHERE company_id=$1 AND id=ANY($2::integer[]) ORDER BY id FOR SHARE",
     [companyId, itemIds],
   );
   if (
@@ -380,6 +384,8 @@ export async function createInvoice(
       discount,
       total: gross - discount,
       baseTotal: 0n,
+      commissionRate: "0",
+      commissionAmount: 0n,
       original,
       expiryDate,
     });
@@ -406,6 +412,52 @@ export async function createInvoice(
     for (const [index, line] of prepared.entries()) {
       line.discount = moneyUnits(totals.lineDiscounts[index]);
       line.total = moneyUnits(totals.lineTotals[index]);
+    }
+  }
+  // Store the effective rate and exact monetary commission at invoice posting.
+  // The dated item rule uses the invoice document date, inclusive at both ends.
+  // Nothing is paid or credited to an employee until a separate beneficiary
+  // and financial settlement policy is explicitly configured.
+  if (input.kind === "sale") {
+    for (const line of prepared) {
+      if (returning && line.original) {
+        const original = line.original;
+        line.commissionRate = normalizeRate(original.commission_rate);
+        const earned = moneyUnits(original.commission_amount);
+        if (earned > 0n) {
+          const returned = await client.query(
+            "SELECT COALESCE(sum(-commission_amount),0)::text AS amount,COALESCE(sum(-quantity),0)::text AS quantity FROM invoice_lines WHERE company_id=$1 AND original_line_id=$2",
+            [companyId, original.id],
+          );
+          const already = moneyUnits(returned.rows[0].amount);
+          const returnedQuantity = BigInt(returned.rows[0].quantity);
+          const requested = abs(line.quantity);
+          const available = earned - already;
+          if (available < 0n) conflict("عمولة المردود السابقة تتجاوز عمولة فاتورة الأصل");
+          const reversal = returnedQuantity + requested === BigInt(original.quantity)
+            ? available
+            : share(earned, requested, BigInt(original.quantity), quantum(currency.decimal_places));
+          line.commissionAmount = -(reversal > available ? available : reversal);
+        }
+      } else if (!returning && line.total > 0n) {
+        const item = line.item;
+        const rate = normalizeRate(item.commission_rate);
+        if (rate !== "0" && item.clearance_from_text && item.clearance_to_text &&
+            input.documentDate >= item.clearance_from_text &&
+            input.documentDate <= item.clearance_to_text) {
+          // 4 decimal places for percentage, 6 decimal places for currency units.
+          const [whole, frac = ""] = rate.split(".");
+          const scaledRate = BigInt(whole) * 10000n + BigInt(frac.padEnd(4, "0"));
+          const step = quantum(currency.decimal_places);
+          const denominator = 1000000n * step;
+          const numerator = line.total * scaledRate;
+          const rounded = ((numerator / denominator) +
+            ((numerator % denominator) * 2n >= denominator ? 1n : 0n)) * step;
+          assertAmount(rounded);
+          line.commissionRate = rate;
+          line.commissionAmount = rounded;
+        }
+      }
     }
   }
   const gross = prepared.reduce((sum, line) => sum + line.gross, 0n),
@@ -475,7 +527,7 @@ export async function createInvoice(
   for (const [index, line] of prepared.entries()) {
     const snapshot = line.original ?? line.item;
     const result = await client.query(
-      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id",
+      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id,commission_rate,commission_amount) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id",
       [
         companyId,
         invoiceId,
@@ -497,6 +549,8 @@ export async function createInvoice(
         moneyString(line.baseTotal),
         line.expiryDate,
         line.original?.id ?? null,
+        line.commissionRate,
+        moneyString(line.commissionAmount),
       ],
     );
     const lineId = result.rows[0].id as number;
