@@ -57,6 +57,7 @@ const itemColumns = {
   unit3Name: "i.unit3_name",
   factor2: "i.factor2",
   factor3: "i.factor3",
+  defaultSaleUnit: "i.default_sale_unit",
   salePrice1: "i.sale_price1",
   salePrice2: "i.sale_price2",
   salePrice3: "i.sale_price3",
@@ -421,6 +422,7 @@ export function itemRoutes(pool: Pool): Router {
           const fields = {
             ...input,
             legacyId: input.legacyId ?? before.legacyId,
+            defaultSaleUnit: input.defaultSaleUnit ?? before.defaultSaleUnit,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(

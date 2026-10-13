@@ -29,8 +29,12 @@ export async function itemIdempotent(
   key: string,
   payload: unknown,
 ): Promise<QueryResultRow | null> {
+  // Old accepted creates may predate these defaults; keep their payload immutable.
+  const samePayload = table === "items"
+    ? `('{"legacyId":"","defaultSaleUnit":1}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1}'::jsonb || $3::jsonb)`
+    : "creation_payload=$3::jsonb";
   const result = await db.query(
-    `SELECT id,(creation_payload=$3::jsonb ${table==="items"?"OR (NOT (creation_payload ? 'legacyId') AND $3::jsonb->>'legacyId'='' AND creation_payload=($3::jsonb-'legacyId'))":""}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
+    `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
     [companyId, key, JSON.stringify(payload)],
   );
   if (!result.rows[0]) return null;
@@ -70,6 +74,7 @@ export type ItemFields = Pick<
   | "unit3Name"
   | "factor2"
   | "factor3"
+  | "defaultSaleUnit"
   | "salePrice1"
   | "salePrice2"
   | "salePrice3"
@@ -93,6 +98,15 @@ export async function checkItemReferences(
   input: ItemFields,
   previous: Item | null = null,
 ): Promise<void> {
+  if (
+    (input.defaultSaleUnit === 2 && (input.factor2 <= 1 || !input.unit2Name)) ||
+    (input.defaultSaleUnit === 3 && (input.factor3 <= 1 || !input.unit3Name))
+  )
+    throw new HttpError(
+      400,
+      "inactive_default_sale_unit",
+      "اختر وحدة مفعلة كوحدة افتراضية للمبيعات",
+    );
   if(input.imageId){
     const image=await db.query("SELECT 1 FROM media_assets WHERE id=$1 AND company_id=$2 AND purpose='item'",[input.imageId,companyId]);
     if(!image.rowCount)conflict("اختر صورة مرفوعة لهذه الشركة فقط");
@@ -153,6 +167,7 @@ export const itemFieldColumns = [
   ["unit3Name", "unit3_name"],
   ["factor2", "factor2"],
   ["factor3", "factor3"],
+  ["defaultSaleUnit", "default_sale_unit"],
   ["salePrice1", "sale_price1"],
   ["salePrice2", "sale_price2"],
   ["salePrice3", "sale_price3"],

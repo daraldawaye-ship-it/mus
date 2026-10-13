@@ -1041,18 +1041,19 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   }
   function chooseItem(line: DraftLine, selected: Item) {
     setError("");
+    const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
       itemId: selected.id,
       itemCode: selected.code,
       itemName: selected.name,
       search: selected.name,
       sourceItem: selected,
-      unit: 1,
-      unitName: selected.unit1Name,
+      unit: selectedUnit,
+      unitName: unitName(selected, selectedUnit),
       quantity: "1",
       unitPrice:
         kind === "sale"
-          ? selected.salePrice1
+          ? salePrice(selected, selectedUnit)
           : currency?.id === selected.currencyId
             ? selected.purchasePrice
             : "0",
