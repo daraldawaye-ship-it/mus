@@ -1936,6 +1936,7 @@ function InvoiceViewer({
                 {invoice.kind === "purchase" && <th>الانتهاء</th>}
                 <th>الخصم</th>
                 <th>الصافي</th>
+                {invoice.kind === "sale" && context.general && <th className="commerce-no-print">عمولة التصريف</th>}
               </tr>
             </thead>
             <tbody>
@@ -1956,11 +1957,21 @@ function InvoiceViewer({
                   )}
                   <td>{amount(line.discount)}</td>
                   <td>{amount(line.total)}</td>
+                  {invoice.kind === "sale" && context.general && (
+                    <td className="commerce-no-print">{amount(line.commissionAmount)} ({line.commissionRate}%)</td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {invoice.kind === "sale" && context.general &&
+          invoice.lines.some((line) => line.commissionAmount !== "0") && (
+            <Notice>
+              مبالغ عمولة التصريف محسوبة ومثبتة على سطور هذه الفاتورة حسب فترة الصنف.
+              لا تمثل صرفًا نقديًا أو قيدًا على حساب موظف قبل اعتماد المستفيد والتسوية.
+            </Notice>
+          )}
         <div className="commerce-totals">
           <span>
             الإجمالي: <strong>{amount(invoice.gross)}</strong>

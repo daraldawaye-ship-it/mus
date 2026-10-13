@@ -596,6 +596,9 @@ type ItemFields = {
   salePrice2: string;
   salePrice3: string;
   purchasePrice: string;
+  commissionRate: string;
+  clearanceFrom: string;
+  clearanceTo: string;
   purchaseFactor: string;
   reorderLimit: string;
   orderQuantity: string;
@@ -622,6 +625,9 @@ function initialItemFields(item: Item | null): ItemFields {
     salePrice2: item?.salePrice2 ?? "0",
     salePrice3: item?.salePrice3 ?? "0",
     purchasePrice: item?.purchasePrice ?? "0",
+    commissionRate: item?.commissionRate ?? "0",
+    clearanceFrom: item?.clearanceFrom ?? "",
+    clearanceTo: item?.clearanceTo ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
@@ -725,6 +731,8 @@ function ItemEditor({
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
       orderStoppedUntil: fields.orderStoppedUntil || null,
+      clearanceFrom: fields.clearanceFrom || null,
+      clearanceTo: fields.clearanceTo || null,
     };
     const parsed = item
       ? itemPatchSchema.safeParse({ ...body, revision: item.revision })
@@ -1095,6 +1103,36 @@ function ItemEditor({
               </tbody>
             </table>
           </div>
+        </Card>
+        <Card title="عمولة التصريف">
+          <div className="item-fields-grid">
+            <Field
+              label="نسبة عمولة التصريف (%)"
+              inputMode="decimal"
+              dir="ltr"
+              value={fields.commissionRate}
+              disabled={disabled}
+              onChange={(event) => edit("commissionRate", event.target.value)}
+              hint="من صفر إلى 100%. تُطبق على صافي قيمة سطر البيع بعد الخصم، فقط خلال الفترة المحددة."
+            />
+            <Field
+              label="تاريخ التصريف من"
+              type="date"
+              value={fields.clearanceFrom}
+              disabled={disabled}
+              onChange={(event) => edit("clearanceFrom", event.target.value)}
+            />
+            <Field
+              label="تاريخ التصريف إلى"
+              type="date"
+              value={fields.clearanceTo}
+              disabled={disabled}
+              onChange={(event) => edit("clearanceTo", event.target.value)}
+            />
+          </div>
+          <small className="muted">
+            يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
+          </small>
         </Card>
         <Card title="إعدادات الشراء والطلب">
           <div className="item-fields-grid">

@@ -53,5 +53,7 @@ jobs:
         run: node --import tsx --test tests/wallet-conversions.test.ts
       - name: Test automatic invoice and invoice-line rewards
         run: node --import tsx --test --test-name-pattern="invoice reward tasks are opt-in" tests/commerce.test.ts
+      - name: Test dated item clearance commissions
+        run: node --import tsx --test --test-name-pattern="dated item clearance commissions" tests/commerce.test.ts
       - name: Test receipt and payment print rewards
         run: node --import tsx --test --test-name-pattern="posted receipt/payment print requests reward" tests/finance.test.ts

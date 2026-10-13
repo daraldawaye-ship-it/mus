@@ -49,6 +49,12 @@ export const itemAgentSchema = agentFields
   .strict();
 export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 
+const commissionPercent = z.string().trim().transform(normalizeDigits)
+  .pipe(z.string().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "نسبة العمولة يجب أن تكون بين 0 و100 بأربع منازل كحد أقصى"))
+  .refine((value) => {
+    const [integer, fraction = ""] = value.split(".");
+    return Number(integer) < 100 || (integer === "100" && (!fraction || /^0+$/.test(fraction)));
+  }, "نسبة العمولة لا تتجاوز 100%");
 const itemFields = z
   .object({
     name,
@@ -67,6 +73,9 @@ const itemFields = z
     salePrice2: amountSchema.default("0"),
     salePrice3: amountSchema.default("0"),
     purchasePrice: amountSchema.default("0"),
+    commissionRate: commissionPercent.default("0"),
+    clearanceFrom: documentDateSchema.nullable().default(null),
+    clearanceTo: documentDateSchema.nullable().default(null),
     purchaseFactor: itemFactorSchema.default(1),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
@@ -84,9 +93,16 @@ function validateNames(
     factor3: number;
     unit2Name: string;
     unit3Name: string;
+    commissionRate: string;
+    clearanceFrom: string | null;
+    clearanceTo: string | null;
   },
   context: z.RefinementCtx,
 ) {
+  if (value.commissionRate !== "0" && (!value.clearanceFrom || !value.clearanceTo))
+    context.addIssue({ code: "custom", path: ["clearanceFrom"], message: "حدد بداية ونهاية فترة التصريف لتفعيل العمولة" });
+  if (value.clearanceFrom && value.clearanceTo && value.clearanceFrom > value.clearanceTo)
+    context.addIssue({ code: "custom", path: ["clearanceTo"], message: "تاريخ نهاية التصريف لا يسبق بدايته" });
   if (value.factor2 > 1 && !value.unit2Name)
     context.addIssue({
       code: "custom",
@@ -148,6 +164,9 @@ export interface Item extends ItemIdentity {
   salePrice2: string;
   salePrice3: string;
   purchasePrice: string;
+  commissionRate: string;
+  clearanceFrom: string | null;
+  clearanceTo: string | null;
   purchaseFactor: number;
   currencyId: number;
   currencyCode: string;
@@ -261,6 +280,9 @@ export const itemCatalog = {
     salePrice2: "0",
     salePrice3: "0",
     purchasePrice: "0",
+    commissionRate: "0",
+    clearanceFrom: null,
+    clearanceTo: null,
     purchaseFactor: 1,
     reorderLimit: "0",
     orderQuantity: "0",
