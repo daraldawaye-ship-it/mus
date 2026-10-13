@@ -171,9 +171,18 @@ async function fixture(t: TestContext) {
     employeeId: number,
     approvalMode: "direct" | "approval",
     pointValue = "0.125",
+    useAutoAdvance = false,
   ) {
     const base = `/companies/${companyId}`;
-    const accountForEmployee = await account(companyId, "9810000001", "asset");
+    const originalBinding = (
+      await owner.ok<{ binding: EmployeeWalletAccount }>(
+        "GET", base + "/wallet-settings/employee-accounts/" + employeeId,
+      )
+    ).binding;
+    assert.equal(originalBinding.account?.code.startsWith("114"), true);
+    const accountForEmployee = useAutoAdvance
+      ? originalBinding.account!
+      : await account(companyId, "9810000001", "asset");
     const expense = await account(companyId, "9850000001", "expense");
     const currencies = await owner.ok<Page<CompanyCurrency>>(
       "GET",
@@ -191,11 +200,15 @@ async function fixture(t: TestContext) {
         revision: null,
       },
     );
-    const { binding } = await owner.ok<{ binding: EmployeeWalletAccount }>(
-      "PUT",
-      base + "/wallet-settings/employee-accounts/" + employeeId,
-      { accountId: accountForEmployee.id, revision: null },
-    );
+    const binding = useAutoAdvance
+      ? originalBinding
+      : (
+        await owner.ok<{ binding: EmployeeWalletAccount }>(
+          "PUT",
+          base + "/wallet-settings/employee-accounts/" + employeeId,
+          { accountId: accountForEmployee.id, revision: originalBinding.revision },
+        )
+      ).binding;
     return {
       base,
       policy,
@@ -440,6 +453,38 @@ test("direct conversion posts one exact balanced journal and point debit; retrie
     (await f.snapshot(company.id, recipient.employee.id)).wallet!.points,
     "0",
   );
+});
+
+test("a new employee redeems wallet points directly into the auto-created advance account", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company("Auto wallet advance company");
+  const recipient = await f.staff(company.id, "Advance recipient");
+  const setup = await f.configure(company.id, recipient.employee.id, "direct", "0.25", true);
+  assert.match(setup.account.code, /^1140/);
+  assert.equal(setup.binding.accountId, setup.account.id);
+  assert.equal(setup.binding.revision, 1);
+  await f.award(company.id, recipient.employee.id, "100");
+  const input = await f.quote(recipient.client, company.id);
+  assert.equal(input.expectedPoints, "100");
+  assert.equal(input.expectedAmount, "25");
+  const conversion = (
+    await recipient.client.ok<ConversionResponse>(
+      "POST", setup.base + "/wallet-conversions", input,
+    )
+  ).conversion;
+  assert.equal(conversion.status, "posted");
+  assert.equal(conversion.accountId, setup.account.id);
+  assert.equal(conversion.accountCode, setup.account.code);
+  assert(conversion.financialDocumentId);
+  assert.deepEqual(await f.journal(company.id, conversion.financialDocumentId), [
+    { accountId: setup.expense.id, debit: "25", credit: "0", baseDebit: "25", baseCredit: "0" },
+    { accountId: setup.account.id, debit: "0", credit: "25", baseDebit: "0", baseCredit: "25" },
+  ]);
+  const state = await f.snapshot(company.id, recipient.employee.id);
+  assert.equal(state.wallet!.points, "0");
+  assert.equal(state.entries, 2);
+  assert.equal(state.documents, 1);
+  assert.equal(state.lines, 2);
 });
 
 test("approval reserves only quoted points, protects them, and releases or consumes them exactly once", async (t) => {

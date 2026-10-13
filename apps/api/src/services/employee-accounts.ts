@@ -3,6 +3,7 @@ import type { Account, User } from "../../../../packages/contracts/src/index.ts"
 import { HttpError } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { accountDTO, accountSelect } from "../repositories/masters.ts";
+import { employeeWalletAccount } from "./wallet-policy.ts";
 
 type Kind = "advance" | "sales_cash" | "sales_pouch";
 interface GroupSpec {
@@ -156,9 +157,22 @@ export async function provisionEmployeeAccounts(
       "مجموعة الأصول 1000000000 غير جاهزة؛ جهز دليل الحسابات قبل إضافة الموظف",
     );
   const accounts: EmployeeAccountLink[] = [];
-  accounts.push(await createEmployeeAccount(
+  const advance = await createEmployeeAccount(
     client, user, companyId, employeeId, employeeName, base.id, "advance",
-  ));
+  );
+  accounts.push(advance);
+  // One financial destination for redeemed points: the employee's advance.
+  // Points accrue only in the wallet ledger; accounting journal entries are
+  // posted once, when an approved/direct point conversion is completed.
+  await client.query(
+    `INSERT INTO employee_wallet_accounts(company_id,employee_id,account_id,updated_by)
+     VALUES($1,$2,$3,$4)`,
+    [companyId, employeeId, advance.accountId, user.id],
+  );
+  await audit(
+    client, user, "wallet.account", "employee-wallet-account", employeeId,
+    null, await employeeWalletAccount(client, companyId, employeeId), companyId,
+  );
   if (createSalesCashbox) {
     accounts.push(await createEmployeeAccount(
       client, user, companyId, employeeId, employeeName, base.id, "sales_cash",

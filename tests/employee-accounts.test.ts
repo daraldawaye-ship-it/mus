@@ -114,6 +114,29 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
   assert.equal(firstEmployee.accounts.find(a=>a.kind==="sales_cash")?.name,"صندوق مبيعات أحمد");
   assert.equal(firstEmployee.accounts.find(a=>a.kind==="sales_pouch")?.name,"حافظة مبيعات أحمد");
   assert.equal(firstEmployee.accounts.find(a=>a.kind==="advance")?.name,"سلفة أحمد");
+  // Each newly provisioned advance is the default financial destination of
+  // wallet redemptions, without spending points or posting a journal.
+  const bindings = await runtime.pool.query<{
+    company_id:number;employee_id:number;account_id:number;revision:number;
+  }>(
+    `SELECT company_id,employee_id,account_id,revision FROM employee_wallet_accounts
+     WHERE company_id=ANY($1::int[]) ORDER BY company_id,employee_id`,
+    [[first.id,second.id]],
+  );
+  assert.equal(bindings.rowCount, 4);
+  for (const record of [firstEmployee,secondEmployee,thirdEmployee,outside]) {
+    const companyId=record===outside?second.id:first.id;
+    const binding=bindings.rows.find(b=>b.company_id===companyId &&
+      b.employee_id===record.employee.id);
+    assert.equal(binding?.account_id,
+      record.accounts.find(a=>a.kind==="advance")?.accountId);
+    assert.equal(binding?.revision,1);
+  }
+  assert.equal((await runtime.pool.query(
+    "SELECT count(*)::int AS n FROM financial_documents WHERE company_id=$1",
+    [first.id],
+  )).rows[0].n,0);
+
   const result=await runtime.pool.query<{
     employee_id:number;account_kind:string;name:string;code:string;
     parent_code:string;cash_or_bank:boolean;category:string;kind:string;

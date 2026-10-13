@@ -290,7 +290,14 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
   const { binding: emptyBinding } = await f.owner.ok<{
     binding: EmployeeWalletAccount;
   }>("GET", bindingPath);
-  assert.equal(emptyBinding.accountId, null);
+  // Newly created employee wallets are linked to their own advance by default.
+  const linked = await f.pool.query<{account_id:number;code:string}>(
+    "SELECT l.account_id,a.code FROM employee_account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.employee_id=$2 AND l.account_kind='advance'",
+    [company.id,recipient.employee.id],
+  );
+  assert.equal(emptyBinding.accountId, linked.rows[0]?.account_id);
+  assert.equal(emptyBinding.account?.code, linked.rows[0]?.code);
+  assert.equal(emptyBinding.revision, 1);
   for (const accountId of [foreignAccount.id, expenseAccount.id]) {
     assert.equal(
       (
