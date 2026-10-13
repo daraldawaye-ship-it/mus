@@ -573,6 +573,14 @@ try {
             "",
           );
           assert.equal(await search.evaluate((node) => node === document.activeElement), true);
+          assert.equal(
+            await page.getByText("على السطور الموجبة فقط؛ خصم المردود المرتبط من الأصل").count(),
+            0,
+          );
+          const footerHeight = await page.locator(".commerce-save-footer")
+            .evaluate((element) => element.getBoundingClientRect().height);
+          assert(footerHeight <= 95,
+            "Invoice footer should remain compact on desktop: " + footerHeight);
           assert.match(page.url(), new RegExp("/invoices/new\\?kind=" + kind));
         }
       },

@@ -2089,7 +2089,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
               disabled={locked || !hasPositiveLines}
-              hint="على السطور الموجبة فقط؛ خصم المردود المرتبط من الأصل"
               onChange={(event) => setDiscount(event.target.value)}
             />
             <div className="commerce-totals" aria-live="polite">

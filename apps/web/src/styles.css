@@ -2037,35 +2037,59 @@ ul {
   border: 0;
 }
 .commerce-save-footer {
-  /* Part of the invoice form after item rows, never pinned to the viewport. */
+  /* Keep the invoice actions in the document flow, but use a single
+     compact row instead of a full-height card on desktop. */
   position: static;
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  padding: 7px 9px;
   border-top: 2px solid var(--primary);
 }
 .commerce-footer-grid {
   display: grid;
   grid-template-columns:
-    minmax(180px, 2fr) minmax(100px, 1fr) minmax(170px, 1.5fr)
+    minmax(180px, 2fr) minmax(110px, 0.9fr) minmax(170px, 1.5fr)
     auto;
-  gap: 8px;
+  gap: 7px;
   align-items: center;
+}
+.commerce-save-footer .commerce-footer-grid .field {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+.commerce-save-footer .commerce-footer-grid .field label {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.commerce-save-footer .commerce-footer-grid .field input {
+  height: 34px;
+  padding-inline: 7px;
 }
 .commerce-save-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 5px;
 }
-.commerce-save-actions .button {
+.commerce-save-footer .commerce-save-actions .button {
   flex: 1 1 auto;
+  height: 34px;
+  padding-inline: 8px;
+  font-size: 12px;
 }
-.commerce-totals {
+.commerce-save-footer .commerce-totals {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 4px 9px;
   justify-content: space-between;
-  padding: 8px 0;
+  padding: 0;
+  font-size: 12px;
+}
+.commerce-save-footer .commerce-totals strong {
+  font-size: 14px;
 }
 .commerce-print-heading {
   display: none;
@@ -2098,6 +2122,11 @@ ul {
   }
   .commerce-save-footer {
     padding: 8px;
+  }
+}
+@container invoice-main (max-width: 940px) {
+  .invoice-workspace-main .commerce-footer-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
 }
 @container invoice-main (max-width: 800px) {
