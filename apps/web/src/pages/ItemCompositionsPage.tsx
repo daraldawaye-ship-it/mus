@@ -1,0 +1,218 @@
+import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import type { ColumnDef } from "@tanstack/react-table";
+import {
+  itemCompositionSchema,
+  itemCompositionPatchSchema,
+  type CompanyContext,
+  type ItemComposition,
+  type ItemCompositionInput,
+} from "../../../../packages/contracts/src/index";
+import { api, ApiFailure, usePagedQuery, useScopeGuard } from "../api";
+import { errorMessage } from "../phase2";
+import { itemsAccess } from "./ItemsPages";
+import {
+  Button, Card, DataTable, Dialog, Field, Notice,
+  PageHeader, Select, ValueCell,
+} from "../ui";
+
+export function ItemCompositionsPage({context}: {context: CompanyContext}) {
+  const companyId=context.company.id;
+  const canView=itemsAccess(context), canManage=itemsAccess(context,true);
+  const guard=useScopeGuard(`company:${companyId}:compositions`);
+  const [params,setParams]=useSearchParams();
+  const active=params.get("active");
+  const resource=`/companies/${companyId}/item-compositions${active ? `?active=${active}`: ""}`;
+  const list=usePagedQuery<ItemComposition>(resource,`company:${companyId}:item-compositions`);
+  const [editing,setEditing]=useState<ItemComposition|null|undefined>(undefined);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const [message,setMessage]=useState("");
+  const columns=useMemo<ColumnDef<ItemComposition,unknown>[]>(()=>[
+    {accessorKey:"arabicName",header:"الاسم العربي",size:210,
+      cell:({row})=><ValueCell>{row.original.arabicName}</ValueCell>},
+    {accessorKey:"englishName",header:"الاسم الإنجليزي",size:210,
+      cell:({row})=><ValueCell>{row.original.englishName}</ValueCell>},
+    {accessorKey:"description",header:"الشرح",size:260,
+      cell:({row})=><ValueCell>{row.original.description||"—"}</ValueCell>},
+    {accessorKey:"identicalAlternative",header:"البديل مطابق",size:120,
+      cell:({row})=>row.original.identicalAlternative?"نعم":"لا"},
+    {accessorKey:"nonInterchangeable",header:"غير قابل للتبديل",size:145,
+      cell:({row})=>row.original.nonInterchangeable?"نعم":"لا"},
+    {accessorKey:"active",header:"الحالة",size:100,
+      cell:({row})=>row.original.active?"فعال":"مؤرشف"},
+    {id:"actions",header:"الإجراء",enableSorting:false,size:110,
+      cell:({row})=><Button variant="secondary" size="compact" disabled={busy}
+        onClick={async ()=>{
+          setBusy(true);setError("");
+          try{
+            const result=await api<{composition:ItemComposition}>(
+              `/companies/${companyId}/item-compositions/${row.original.id}`,{signal:guard.signal});
+            if(guard.isCurrent())setEditing(result.composition);
+          }catch(e){if(guard.isCurrent())setError(errorMessage(e))}
+          finally{if(guard.isCurrent())setBusy(false)}
+        }}>{canManage?"تعديل":"عرض"}</Button>},
+  ],[companyId,canManage,busy,guard]);
+  if(!canView)return <Notice tone="warning">ليس لديك صلاحية عرض تراكيب الأصناف.</Notice>;
+  return <>
+    <PageHeader title="تراكيب الأصناف"
+      description="كروت التراكيب التي يمكن ربطها بالأصناف. خيارات الاستبدال للتصنيف فقط."
+      actions={canManage?<Button onClick={()=>setEditing(null)}>تركيب جديد</Button>:undefined}/>
+    {message&&<Notice tone="success">{message}</Notice>}
+    {error&&<Notice tone="error">{error}</Notice>}
+    <Card title="دليل التراكيب">
+      <div className="table-filters">
+        <Field label="بحث في التراكيب" type="search"
+          placeholder="الاسم العربي أو الإنجليزي أو الشرح"
+          value={list.query} onChange={e=>list.setQuery(e.target.value)}/>
+        <Select label="حالة التركيب" value={active??""} onChange={e=>{
+          setParams(previous=>{
+            const next=new URLSearchParams(previous);
+            e.target.value?next.set("active",e.target.value):next.delete("active");
+            next.delete("page");return next;
+          });
+        }}>
+          <option value="">كل الحالات</option>
+          <option value="true">فعال</option>
+          <option value="false">مؤرشف</option>
+        </Select>
+      </div>
+      {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
+      <DataTable columns={columns} data={list.data?.items??[]}
+        total={list.data?.total??0} page={list.page} pageSize={list.pageSize}
+        sorting={list.sorting} onSortingChange={list.setSorting}
+        onPageChange={list.setPage} onPageSizeChange={list.setPageSize}
+        loading={list.loading} ariaLabel="جدول تراكيب الأصناف"/>
+    </Card>
+    {editing!==undefined&&<CompositionEditor
+      key={editing?.id??"new"} companyId={companyId} canManage={canManage}
+      record={editing} onClose={()=>setEditing(undefined)}
+      onSaved={async(result)=>{
+        setEditing(undefined);
+        setMessage(`تم حفظ التركيب ${result.arabicName}.`);
+        await list.refetch();
+      }}/>}
+  </>;
+}
+function CompositionEditor({
+  companyId,record,canManage,onClose,onSaved,
+}:{
+  companyId:number;record:ItemComposition|null;canManage:boolean;
+  onClose:()=>void;onSaved:(value:ItemComposition)=>void;
+}){
+  const guard=useScopeGuard(`company:${companyId}:item-composition:${record?.id??"new"}`);
+  const [form,setForm]=useState({
+    arabicName:record?.arabicName??"",
+    englishName:record?.englishName??"",
+    description:record?.description??"",
+    active:record?.active??true,
+    identicalAlternative:record?.identicalAlternative??false,
+    nonInterchangeable:record?.nonInterchangeable??false,
+  });
+  const [revision,setRevision]=useState(record?.revision??0);
+  const [dirty,setDirty]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [unknown,setUnknown]=useState(false);
+  const [conflict,setConflict]=useState(false);
+  const [confirmClose,setConfirmClose]=useState(false);
+  const [error,setError]=useState("");
+  const [key]=useState(()=>crypto.randomUUID());
+  const submitted=useRef<ItemCompositionInput|null>(null);
+  const disabled=!canManage||saving||unknown;
+  function set<K extends keyof typeof form>(name:K,value:(typeof form)[K]) {
+    setDirty(true);
+    setForm(previous=>{
+      const next={...previous,[name]:value};
+      if(name==="identicalAlternative"&&value)next.nonInterchangeable=false;
+      if(name==="nonInterchangeable"&&value)next.identicalAlternative=false;
+      return next;
+    });
+  }
+  async function reload(){
+    if(!record||saving)return;
+    setSaving(true);setError("");
+    try{
+      const response=await api<{composition:ItemComposition}>(
+        `/companies/${companyId}/item-compositions/${record.id}`,{signal:guard.signal});
+      if(!guard.isCurrent())return;
+      const result=response.composition;
+      setForm({
+        arabicName:result.arabicName,englishName:result.englishName,
+        description:result.description,active:result.active,
+        identicalAlternative:result.identicalAlternative,
+        nonInterchangeable:result.nonInterchangeable,
+      });
+      setRevision(result.revision);setDirty(false);setConflict(false);
+    }catch(e){if(guard.isCurrent())setError(errorMessage(e))}
+    finally{if(guard.isCurrent())setSaving(false)}
+  }
+  async function save(event:FormEvent){
+    event.preventDefault();
+    if(!canManage||saving)return;
+    setError("");
+    const result=record
+      ? itemCompositionPatchSchema.safeParse({...form,revision})
+      : itemCompositionSchema.safeParse(unknown?submitted.current:{...form,idempotencyKey:key});
+    if(!result.success){setError(result.error.issues[0]?.message??"تحقق من الحقول");return}
+    if(!record)submitted.current=result.data as ItemCompositionInput;
+    setSaving(true);
+    try{
+      const saved=await api<{composition:ItemComposition}>(
+        `/companies/${companyId}/item-compositions${record?`/${record.id}`:""}`,{
+          method:record?"PATCH":"POST",body:result.data,signal:guard.signal,
+        });
+      if(!guard.isCurrent())return;
+      setUnknown(false);setDirty(false);setConflict(false);
+      onSaved(saved.composition);
+    }catch(e){
+      if(!guard.isCurrent())return;
+      if(!record&&(!(e instanceof ApiFailure)||e.status>=500))setUnknown(true);
+      if(record&&e instanceof ApiFailure&&e.status===409)setConflict(true);
+      setError(errorMessage(e));
+    }finally{if(guard.isCurrent())setSaving(false)}
+  }
+  return <>
+    <Dialog open title={record?"كرت التركيب — تعديل":"كرت تركيب جديد"}
+      onClose={()=>dirty||unknown?setConfirmClose(true):onClose()}>
+      <form className="form-grid" onSubmit={e=>void save(e)}>
+        {error&&<Notice tone="error">{error}</Notice>}
+        {unknown&&<Notice tone="warning">نتيجة الحفظ غير مؤكدة؛ أعد تأكيد الطلب نفسه لتجنب تكرار التركيب.</Notice>}
+        {conflict&&<Notice tone="warning">عدّل مستخدم آخر هذا الكرت.
+          <Button variant="secondary" onClick={()=>void reload()}>تحميل النسخة الحالية</Button></Notice>}
+        <Field label="الاسم بالعربي" value={form.arabicName} required maxLength={120}
+          disabled={disabled} onChange={e=>set("arabicName",e.target.value)}/>
+        <Field label="الاسم بالإنجليزي" value={form.englishName} required maxLength={120}
+          disabled={disabled} dir="ltr" onChange={e=>set("englishName",e.target.value)}/>
+        <div className="field form-full">
+          <label htmlFor="composition-description">الشرح</label>
+          <textarea id="composition-description" value={form.description}
+            maxLength={2000} rows={3} disabled={disabled}
+            onChange={e=>set("description",e.target.value)}/>
+        </div>
+        <label className="check-label"><input type="checkbox" disabled={disabled}
+          checked={!form.active} onChange={e=>set("active",!e.target.checked)}/>مؤرشف</label>
+        <label className="check-label"><input type="checkbox" disabled={disabled}
+          checked={form.identicalAlternative} onChange={e=>set("identicalAlternative",e.target.checked)}/>
+          البديل مطابق</label>
+        <label className="check-label"><input type="checkbox" disabled={disabled}
+          checked={form.nonInterchangeable} onChange={e=>set("nonInterchangeable",e.target.checked)}/>
+          غير قابل للتبديل</label>
+        {record&&<p className="muted form-full">الإصدار {revision} — لا تُحذف الكروت؛ يمكن أرشفتها.</p>}
+        <div className="form-actions form-full">
+          {canManage&&<Button type="submit" disabled={saving}>
+            {saving?"جارٍ الحفظ…":unknown?"إعادة تأكيد الحفظ":"حفظ التركيب"}</Button>}
+          <Button variant="secondary" disabled={saving}
+            onClick={()=>dirty||unknown?setConfirmClose(true):onClose()}>إغلاق</Button>
+        </div>
+      </form>
+    </Dialog>
+    <Dialog open={confirmClose} title="إغلاق كرت التركيب"
+      onClose={()=>setConfirmClose(false)}>
+      <p>{unknown?"قد تكون نتيجة الإنشاء محفوظة؛ تحقق من القائمة أولًا.":"هناك تغييرات لم تُحفظ."}</p>
+      <div className="form-actions">
+        <Button variant="secondary" onClick={()=>setConfirmClose(false)}>العودة للكرت</Button>
+        <Button variant="danger" onClick={onClose}>إغلاق دون حفظ</Button>
+      </div>
+    </Dialog>
+  </>;
+}
