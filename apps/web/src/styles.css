@@ -135,11 +135,12 @@ legend {
   color: var(--error-text);
 }
 .workspace {
+  --sidebar-width: 214px;
   display: flex;
   min-height: 100dvh;
 }
 .sidebar {
-  width: 214px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   position: fixed;
   inset-block: 0;
@@ -247,8 +248,8 @@ legend {
   flex-shrink: 0;
 }
 .workspace-body {
-  width: calc(100% - 214px);
-  margin-inline-start: 214px;
+  width: calc(100% - var(--sidebar-width));
+  margin-inline-start: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -273,6 +274,60 @@ legend {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+.topbar .desktop-sidebar-toggle {
+  width: 32px;
+  min-width: 32px;
+  padding-inline: 0;
+  flex-shrink: 0;
+}
+@media (min-width: 681px) {
+  .topbar-start {
+    flex: 1;
+  }
+  .scope-title > div {
+    min-width: 0;
+  }
+  .workspace.sidebar-collapsed {
+    --sidebar-width: 64px;
+  }
+  .workspace.sidebar-collapsed .sidebar {
+    padding: 19px 10px;
+    gap: 22px;
+  }
+  .workspace.sidebar-collapsed .brand {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+  }
+  .workspace.sidebar-collapsed .brand-copy,
+  .workspace.sidebar-collapsed .nav-text,
+  .workspace.sidebar-collapsed .nav-heading,
+  .workspace.sidebar-collapsed .nav-chevron,
+  .workspace.sidebar-collapsed .sidebar-bottom > span {
+    display: none;
+  }
+  .workspace.sidebar-collapsed .nav-link {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+  .workspace.sidebar-collapsed .company-nav-label + .nav-link {
+    position: relative;
+    margin-top: 13px;
+  }
+  .workspace.sidebar-collapsed .company-nav-label + .nav-link::before {
+    content: "";
+    position: absolute;
+    inset-inline: 4px;
+    top: -9px;
+    height: 1px;
+    background: var(--border);
+  }
+  .workspace.sidebar-collapsed .sidebar-bottom {
+    justify-content: center;
+    padding-inline: 0;
+  }
 }
 .wallet-indicator {
   max-width: 150px;
@@ -1083,12 +1138,8 @@ ul {
   gap: 6px;
 }
 @media (max-width: 900px) {
-  .sidebar {
-    width: 190px;
-  }
-  .workspace-body {
-    width: calc(100% - 190px);
-    margin-inline-start: 190px;
+  .workspace {
+    --sidebar-width: 190px;
   }
   .main-content {
     padding: 17px;
@@ -1139,6 +1190,9 @@ ul {
     display: inline-flex !important;
   }
   .desktop-only {
+    display: none !important;
+  }
+  .desktop-sidebar-toggle {
     display: none !important;
   }
   .topbar-actions,
