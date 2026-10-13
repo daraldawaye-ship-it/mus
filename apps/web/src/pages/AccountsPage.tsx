@@ -10,14 +10,11 @@ import {
   accountLinkCategories,
   accountLinkLabels,
   accountSchema,
-  normalSides,
-  normalSideLabels,
   type Account,
   type AccountCategory,
   type AccountKind,
   type AccountLink,
   type CompanyContext,
-  type NormalSide,
   type Page,
   type OptionListMetadata,
   type OptionListRecord,
@@ -63,7 +60,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const filters = new URLSearchParams();
   for (const key of ["kind", "category", "active", ...optionFilterKeys])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<OptionListRecord<Account>, OptionListMetadata>(
+  const list = usePagedQuery<OptionListRecord<Account>, OptionListMetadata & {baseCurrencyCode?: string|null}>(
     `/companies/${companyId}/accounts?${filters}`,
     `company:${companyId}:accounts`,
   );
@@ -188,9 +185,24 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         cell: ({ row }) => accountCategoryLabels[row.original.category],
       },
       {
-        accessorKey: "normalSide",
-        header: "الجانب الطبيعي",
-        cell: ({ row }) => normalSideLabels[row.original.normalSide],
+        id: "actualBalance",
+        header: "الرصيد الفعلي",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const amount = row.original.balanceAmount;
+          const direction = row.original.balanceDirection;
+          if (!amount || !direction) return "—";
+          if (direction === "zero") return "صفر";
+          const [whole, fractions] = amount.split(".");
+          const grouped = whole!.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+          return (
+            <ValueCell value={amount}>
+              <bdi>{grouped}{fractions ? `.${fractions}` : ""}</bdi>{" "}
+              {direction === "credit" ? "له" : "عليه"}
+              {list.data?.baseCurrencyCode ? ` (${list.data.baseCurrencyCode})` : ""}
+            </ValueCell>
+          );
+        },
       },
       {
         accessorKey: "active",
@@ -237,7 +249,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     <>
       <PageHeader
         title="دليل الحسابات"
-        description="مجموعات وحسابات حركية بأكواد ثابتة من عشرة أرقام."
+        description="الحسابات بأكواد من عشرة أرقام، ورصيد كل حساب حركي يتحدد من القيود المرحّلة: له أو عليه."
         actions={
           canManage && (
             <>
@@ -434,7 +446,6 @@ function AccountEditor({
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
   const [category, setCategory] = useState<AccountCategory>("asset");
-  const [normalSide, setNormalSide] = useState<NormalSide>("debit");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [saving, setSaving] = useState(false);
@@ -450,7 +461,6 @@ function AccountEditor({
         active,
         kind,
         category,
-        normalSide,
         cashOrBank: kind === "posting" && category === "asset" && cashOrBank,
         parentId: parent?.id ?? null,
         rangeStart: kind === "group" && rangeStart ? rangeStart : null,
@@ -499,8 +509,6 @@ function AccountEditor({
                 {accountKindLabels[account.kind]} /{" "}
                 {accountCategoryLabels[account.category]}
               </dd>
-              <dt>الجانب الطبيعي</dt>
-              <dd>{normalSideLabels[account.normalSide]}</dd>
               <dt>مجال الترقيم</dt>
               <dd>
                 <bdi>
@@ -555,7 +563,6 @@ function AccountEditor({
                 if (next) {
                   setCategory(next.category);
                   if (next.category !== "asset") setCashOrBank(false);
-                  setNormalSide(next.normalSide);
                 }
               }}
               display={(item) =>
@@ -573,28 +580,11 @@ function AccountEditor({
                   const next = event.target.value as AccountCategory;
                   setCategory(next);
                   if (next !== "asset") setCashOrBank(false);
-                  setNormalSide(
-                    ["asset", "expense"].includes(next) ? "debit" : "credit",
-                  );
                 }}
               >
                 {accountCategories.map((item) => (
                   <option key={item} value={item}>
                     {accountCategoryLabels[item]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="الجانب الطبيعي"
-                value={normalSide}
-                disabled={saving}
-                onChange={(event) =>
-                  setNormalSide(event.target.value as NormalSide)
-                }
-              >
-                {normalSides.map((item) => (
-                  <option key={item} value={item}>
-                    {normalSideLabels[item]}
                   </option>
                 ))}
               </Select>
