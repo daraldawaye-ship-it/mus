@@ -190,7 +190,9 @@ export const accountSchema = z
     parentId: id.nullable().optional().default(null),
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
-    normalSide: z.enum(normalSides),
+    // Accepted for compatibility with existing integrations; the server sets
+    // the accounting classification automatically from the account category.
+    normalSide: z.enum(normalSides).optional(),
     active: z.boolean().default(true),
     cashOrBank: z.boolean().default(false),
     rangeStart: code.nullable().optional().default(null),
