@@ -11,6 +11,7 @@ import {
 import { api, ApiFailure, usePagedQuery, useScopeGuard } from "../api";
 import { errorMessage } from "../phase2";
 import { itemsAccess } from "./ItemsPages";
+import { CompositionImportDialog } from "../CompositionImportDialog";
 import {
   Button, Card, DataTable, Dialog, Field, Notice,
   PageHeader, Select, ValueCell,
@@ -25,6 +26,7 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const resource=`/companies/${companyId}/item-compositions${active ? `?active=${active}`: ""}`;
   const list=usePagedQuery<ItemComposition>(resource,`company:${companyId}:item-compositions`);
   const [editing,setEditing]=useState<ItemComposition|null|undefined>(undefined);
+  const [importing,setImporting]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
@@ -57,7 +59,10 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   return <>
     <PageHeader title="تراكيب الأصناف"
       description="كروت التراكيب التي يمكن ربطها بالأصناف. خيارات الاستبدال للتصنيف فقط."
-      actions={canManage?<Button onClick={()=>setEditing(null)}>تركيب جديد</Button>:undefined}/>
+      actions={canManage?<>
+        <Button variant="secondary" onClick={()=>setImporting(true)}>استيراد التراكيب</Button>
+        <Button onClick={()=>setEditing(null)}>تركيب جديد</Button>
+      </>:undefined}/>
     {message&&<Notice tone="success">{message}</Notice>}
     {error&&<Notice tone="error">{error}</Notice>}
     <Card title="دليل التراكيب">
@@ -84,6 +89,9 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
         onPageChange={list.setPage} onPageSizeChange={list.setPageSize}
         loading={list.loading} ariaLabel="جدول تراكيب الأصناف"/>
     </Card>
+    {importing&&<CompositionImportDialog context={context}
+      onClose={()=>setImporting(false)}
+      onImported={()=>{void list.refetch();}}/>}
     {editing!==undefined&&<CompositionEditor
       key={editing?.id??"new"} companyId={companyId} canManage={canManage}
       record={editing} onClose={()=>setEditing(undefined)}
@@ -179,9 +187,9 @@ function CompositionEditor({
         {unknown&&<Notice tone="warning">نتيجة الحفظ غير مؤكدة؛ أعد تأكيد الطلب نفسه لتجنب تكرار التركيب.</Notice>}
         {conflict&&<Notice tone="warning">عدّل مستخدم آخر هذا الكرت.
           <Button variant="secondary" onClick={()=>void reload()}>تحميل النسخة الحالية</Button></Notice>}
-        <Field label="الاسم بالعربي" value={form.arabicName} required maxLength={120}
+        <Field label="الاسم بالعربي" value={form.arabicName} required maxLength={240}
           disabled={disabled} onChange={e=>set("arabicName",e.target.value)}/>
-        <Field label="الاسم بالإنجليزي" value={form.englishName} required maxLength={120}
+        <Field label="الاسم بالإنجليزي" value={form.englishName} required maxLength={240}
           disabled={disabled} dir="ltr" onChange={e=>set("englishName",e.target.value)}/>
         <div className="field form-full">
           <label htmlFor="composition-description">الشرح</label>
