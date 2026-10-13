@@ -57,6 +57,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="Arabic shelf cards are seeded" tests/items.test.ts
       - name: Test relational shelf linkage in item cards
         run: node --import tsx --test --test-name-pattern="Item shelf cards are real company-scoped" tests/items.test.ts
+      - name: Test audited legacy item metadata updates
+        run: node --import tsx --test --test-name-pattern="bulk metadata update links existing" tests/items.test.ts
       - name: Test safe composition bulk import and long names
         run: node --import tsx --test --test-name-pattern="composition bulk import" tests/items.test.ts
       - name: Test wallets, page visits and daily company entry
