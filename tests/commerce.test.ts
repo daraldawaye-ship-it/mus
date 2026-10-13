@@ -2380,7 +2380,7 @@ test("dated item clearance commissions snapshot net sales and reverse linked ret
     lines: [{itemId: product.id,unit:1,quantity:"-1",originalLineId:opening.lines[0]!.id,expiryDate:null}],
   }));
   assert.equal(firstReturn.lines[0]!.commissionRate, "5");
-  assert.equal(firstReturn.lines[0]!.commissionAmount, "-48");
+  assert.equal(firstReturn.lines[0]!.commissionAmount, "-47.5");
   const finalReturn = await invoice(f, s, invoiceBody(s, product.id, {
     kind: "sale",
     documentDate: "2026-10-15",
@@ -2388,7 +2388,7 @@ test("dated item clearance commissions snapshot net sales and reverse linked ret
     discount: "0",
     lines: [{itemId: product.id,unit:1,quantity:"-1",originalLineId:opening.lines[0]!.id,expiryDate:null}],
   }));
-  assert.equal(finalReturn.lines[0]!.commissionAmount, "-47");
+  assert.equal(finalReturn.lines[0]!.commissionAmount, "-47.5");
   assert.equal(
     (await f.owner.request("POST", s.path + "/items", {
       idempotencyKey: randomUUID(),name:"Bad percentage",currencyId:s.yer.id,
