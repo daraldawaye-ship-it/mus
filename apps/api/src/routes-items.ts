@@ -106,6 +106,7 @@ export function itemRoutes(pool: Pool): Router {
     base = "/companies/:companyId";
   const shelfColumns = {
     id: "s.id",
+    code: "s.name",
     name: "s.name",
     groupLetter: "s.group_letter",
     groupOrder: "s.group_order",
