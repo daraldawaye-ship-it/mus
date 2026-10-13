@@ -31,7 +31,7 @@ class Client {
       this.cookie = /max-age=0/i.test(cookie) ? "" : cookie.split(";",1)[0]!;
     const result = (await r.json()) as T;
     if(result && typeof result === "object" && "csrf" in result)
-      this.csrf = (result as SessionResponse).csrf;
+      this.csrf = (result as unknown as SessionResponse).csrf;
     return {status:r.status,body:result};
   }
   async ok<T>(method:string,path:string,body?:unknown,expected=200):Promise<T>{
