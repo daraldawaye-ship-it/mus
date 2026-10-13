@@ -94,6 +94,8 @@ export interface InvoiceLine {
   total: string;
   baseTotal: string;
   costBase: string;
+  commissionRate: string;
+  commissionAmount: string;
   expiryDate: string | null;
   originalLineId: number | null;
 }
