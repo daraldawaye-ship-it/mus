@@ -151,11 +151,10 @@ function providerFrom(value:string):Provider {
 export function socialAuthRoutes(pool:Pool,origin:string,production:boolean):Router {
   const router=Router();
   const config=oauthConfig(),limit=authLimiter();
-  router.use(loadSession(pool));
   router.get("/auth/social/providers",(_req,res)=>res.json({
     google:Boolean(config.google),apple:Boolean(config.apple),
   }));
-  router.get("/auth/social/:provider/start",handler(async(req,res)=>{
+  router.get("/auth/social/:provider/start",loadSession(pool),handler(async(req,res)=>{
     const provider=providerFrom(req.params.provider as string);
     const client=config[provider];
     if(!client) throw new HttpError(503,"social_not_configured","لم يُجهَّز الدخول بواسطة هذا المزود بعد");
