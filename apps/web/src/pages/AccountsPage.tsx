@@ -550,7 +550,7 @@ function AccountEditor({
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
-          maxLength={120}
+          maxLength={240}
           disabled={saving}
           autoFocus
         />
