@@ -15,6 +15,7 @@ import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
 import { awardCompanyDailyLogin } from "./services/wallet-login.ts";
+import { provisionEmployeeAccounts } from "./services/employee-accounts.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   currentActor,
@@ -343,7 +344,7 @@ export function companyRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const companyId = id(req.params.companyId),
         input = parse(employeeSchema, req.body);
-      const employee = await transaction(pool, async (client) => {
+      const createdEmployee = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
         const context = await companyAccess(
           client,
@@ -377,6 +378,9 @@ export function companyRoutes(pool: Pool): Router {
           created.rows[0].id,
         ]);
         const next = employeeDTO(result.rows[0]);
+        const accounts = await provisionEmployeeAccounts(
+          client, user, companyId, next.id, next.name, input.createSalesCashbox,
+        );
         await audit(
           client,
           user,
@@ -387,9 +391,9 @@ export function companyRoutes(pool: Pool): Router {
           next,
           companyId,
         );
-        return next;
+        return { employee: next, accounts };
       });
-      res.status(201).json({ employee });
+      res.status(201).json(createdEmployee);
     }),
   );
   router.patch(

@@ -634,6 +634,7 @@ function EmployeeEditor({
   const [phone, setPhone] = useState(employee?.phone ?? "");
   const [role, setRole] = useState<EmployeeRole>(employee?.role ?? "employee");
   const [active, setActive] = useState(employee?.active ?? true);
+  const [createSalesCashbox, setCreateSalesCashbox] = useState(false);
   const [permissions, setPermissions] = useState<Permission[]>(
     employee?.permissions ?? [],
   );
@@ -685,7 +686,7 @@ function EmployeeEditor({
         role,
         active,
         permissions,
-        ...(employee ? {} : { userId: selectedUser?.id }),
+        ...(employee ? {} : { userId: selectedUser?.id, createSalesCashbox }),
       };
       await api<{ employee: Employee }>(
         `/companies/${companyId}/employees${employee ? `/${employee.id}` : ""}`,
@@ -815,6 +816,22 @@ function EmployeeEditor({
           />
           موظف فعال
         </label>
+        {!employee && (
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={createSalesCashbox}
+              onChange={(event) => setCreateSalesCashbox(event.target.checked)}
+              disabled={saving}
+            />
+            إضافة صندوق مبيعات (ينشئ صندوق مبيعات وحافظة مبيعات باسم الموظف)
+          </label>
+        )}
+        {!employee && (
+          <small className="muted">
+            ينشأ حساب «سلفة اسم الموظف» تلقائيًا لكل موظف جديد، سواء فُعّل خيار الصندوق أم لا.
+          </small>
+        )}
         {employee?.isGeneralManager && (
           <Notice tone="warning">
             هذا الموظف مدير عام. إيقافه يسحب وصوله الفعال إلى الشركة، وتعيين
