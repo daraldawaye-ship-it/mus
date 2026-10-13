@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Pool, PoolClient } from "pg";
 import {
   accountCategories,
+  accountChoices,
   accountKinds,
   accountLinkCategories,
   accountLinkPurposes,
@@ -45,6 +46,7 @@ const columns = {
   parentName: "p.name",
   kind: "a.kind",
   category: "a.category",
+  accountChoice: "a.account_choice",
   normalSide: "a.normal_side",
   active: "a.active",
   cashOrBank: "a.cash_or_bank",
@@ -114,7 +116,7 @@ async function insertAccount(
     code = next.toString().padStart(10, "0");
   }
   const result = await client.query(
-    "INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
+    "INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank,account_choice) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
     [
       companyId,
       code,
@@ -130,6 +132,7 @@ async function insertAccount(
       input.rangeEnd,
       user.id,
       input.cashOrBank,
+      input.accountChoice,
     ],
   );
   await client.query(
@@ -315,6 +318,7 @@ export async function initializeCompanyAccounts(
       parentId,
       kind: seed.purpose ? "posting" : "group",
       category: seed.category,
+      accountChoice: null,
       normalSide: seed.normalSide,
       active: true,
       cashOrBank: false,
@@ -367,6 +371,7 @@ export function accountRoutes(pool: Pool): Router {
           {
             kind: accountKinds,
             category: accountCategories,
+            accountChoice: accountChoices,
             active: "boolean",
             cashOrBank: "boolean",
             parentId: "id",
@@ -540,13 +545,14 @@ export function accountRoutes(pool: Pool): Router {
             if (!parent.active) conflict("يجب تفعيل الأب أولًا");
           }
           await client.query(
-            "UPDATE accounts SET name=$1,active=$2,cash_or_bank=$5 WHERE company_id=$3 AND id=$4",
+            "UPDATE accounts SET name=$1,active=$2,cash_or_bank=$5,account_choice=$6 WHERE company_id=$3 AND id=$4",
             [
               input.name ?? before.name,
               input.active ?? before.active,
               companyId,
               accountId,
               input.cashOrBank ?? before.cashOrBank,
+              input.accountChoice === undefined ? before.accountChoice : input.accountChoice,
             ],
           );
           const next = accountDTO(

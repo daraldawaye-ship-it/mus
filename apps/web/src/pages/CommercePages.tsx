@@ -1643,6 +1643,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         parentName: null,
                         kind: "posting",
                         category: "asset",
+                        accountChoice: null,
                         normalSide: "debit",
                         active: true,
                         cashOrBank: false,

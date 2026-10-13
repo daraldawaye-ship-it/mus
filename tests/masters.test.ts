@@ -8,6 +8,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { accountChoices, accountChoiceLabels } from "../packages/contracts/src/index.ts";
 import type {
   Account,
   AccountLink,
@@ -1932,4 +1933,82 @@ test("master lists paginate and combine server filters deterministically without
       400,
       invalid,
     );
+});
+
+test("account card choice labels retain exact order and support create, update, filtering and legacy accounts", async (t) => {
+  const labels = accountChoices.map(choice => accountChoiceLabels[choice]);
+  assert.deepEqual(labels, [
+    "شركة", "عميل", "مصروف", "جملة", "موزع", "طبيب", "موظف",
+    "الرهونات", "صندوق", "عهدة", "حافظة", "حساب اداري",
+    "صندوق مشتريات", "صندوق", "صيدلية", "مؤرشف", "موقف", "متابعة",
+  ]);
+  assert.equal(new Set(accountChoices).size, 18);
+  assert.equal(accountChoices[8], "cashbox");
+  assert.equal(accountChoices[13], "cashboxSecond");
+
+  const f = await fixture(t);
+  const company = await f.company("Company account choices");
+  const other = await f.company("Company other");
+  const existing = (await f.owner.ok<Page<Account>>("GET",
+    `/companies/${company.id}/accounts?pageSize=100`,
+  )).items.find(row => row.code === "1000000000")!;
+  assert(existing, "The company chart includes a seeded base account");
+  assert.equal(existing.accountChoice, null, "Legacy/unspecified accounts remain without choice");
+  const chosen = await account(f, company.id, {
+    code: "1000000998",
+    name: "حساب صندوق",
+    kind: "posting",
+    accountChoice: "cashboxSecond",
+  });
+  assert.equal(chosen.accountChoice, "cashboxSecond");
+  assert.equal(chosen.normalSide, existing.normalSide);
+  assert.equal(chosen.category, existing.category);
+  assert.equal(chosen.active, true);
+  const detail = await f.owner.ok<{account: Account}>(
+    "GET", `/companies/${company.id}/accounts/${chosen.id}`,
+  );
+  assert.equal(detail.account.accountChoice, "cashboxSecond");
+  const filtered = await f.owner.ok<Page<Account>>(
+    "GET", `/companies/${company.id}/accounts?accountChoice=cashboxSecond`,
+  );
+  assert.equal(filtered.total, 1);
+  assert.equal(filtered.items[0]?.id, chosen.id);
+  assert.equal((await f.owner.ok<Page<Account>>(
+    "GET", `/companies/${company.id}/accounts?accountChoice=cashbox`,
+  )).total, 0);
+  const updated = (await f.owner.ok<{account: Account}>(
+    "PATCH", `/companies/${company.id}/accounts/${chosen.id}`,
+    {accountChoice:"stopped"},
+  )).account;
+  assert.equal(updated.accountChoice,"stopped");
+  assert.equal(updated.active,true, "The descriptive choice must not deactivate an account");
+  const archived = (await f.owner.ok<{account: Account}>(
+    "PATCH", `/companies/${company.id}/accounts/${chosen.id}`,
+    {accountChoice:"archived"},
+  )).account;
+  assert.equal(archived.active,true, "Archived label is descriptive and not the active flag");
+  const cleared = (await f.owner.ok<{account: Account}>(
+    "PATCH", `/companies/${company.id}/accounts/${chosen.id}`,
+    {accountChoice:null},
+  )).account;
+  assert.equal(cleared.accountChoice,null);
+  for (const invalid of ["cashbox-third","nonexistent",1]) {
+    assert.equal((await f.owner.request("PATCH",
+      `/companies/${company.id}/accounts/${chosen.id}`,
+      {accountChoice:invalid})).status, 400);
+  }
+  assert.equal((await f.owner.request("GET",
+    `/companies/${company.id}/accounts?accountChoice=invalid`)).status, 400);
+  const otherAccount = await account(f,other.id,{
+    code:"1000000999",accountChoice:"cashboxSecond"
+  });
+  assert.equal(otherAccount.accountChoice, "cashboxSecond");
+  assert.equal((await f.owner.ok<Page<Account>>("GET",
+    `/companies/${company.id}/accounts?accountChoice=cashboxSecond`)).total,0);
+  const reader = await f.member(company.id,["accounts.view"],21);
+  assert.equal((await reader.client.ok<{account:Account}>(
+    "GET",`/companies/${company.id}/accounts/${chosen.id}`)).account.accountChoice,null);
+  assert.equal((await reader.client.request("PATCH",
+    `/companies/${company.id}/accounts/${chosen.id}`,
+    {accountChoice:"customer"})).status,403);
 });

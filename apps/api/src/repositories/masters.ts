@@ -28,6 +28,7 @@ export function accountDTO(row: Row): Account {
     parentName: row.parent_name ?? null,
     kind: row.kind,
     category: row.category,
+    accountChoice: row.account_choice ?? null,
     normalSide: row.normal_side,
     active: row.active,
     cashOrBank: row.cash_or_bank,

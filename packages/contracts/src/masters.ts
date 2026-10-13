@@ -35,6 +35,51 @@ export const accountCategories = [
   "income",
   "expense",
 ] as const;
+// Optional descriptive choice on an account card. This is NOT an accounting
+// category, ledger side, cash-account setting or active/archived status.
+// The two "صندوق" entries are deliberately distinct IDs to preserve the
+// exact ordering and labels requested by the user.
+export const accountChoices = [
+  "company",
+  "customer",
+  "expense",
+  "wholesale",
+  "distributor",
+  "doctor",
+  "employee",
+  "pledges",
+  "cashbox",
+  "custody",
+  "pouch",
+  "administrative",
+  "purchaseCashbox",
+  "cashboxSecond",
+  "pharmacy",
+  "archived",
+  "stopped",
+  "followUp",
+] as const;
+export type AccountChoice = (typeof accountChoices)[number];
+export const accountChoiceLabels: Record<AccountChoice, string> = {
+  company: "شركة",
+  customer: "عميل",
+  expense: "مصروف",
+  wholesale: "جملة",
+  distributor: "موزع",
+  doctor: "طبيب",
+  employee: "موظف",
+  pledges: "الرهونات",
+  cashbox: "صندوق",
+  custody: "عهدة",
+  pouch: "حافظة",
+  administrative: "حساب اداري",
+  purchaseCashbox: "صندوق مشتريات",
+  cashboxSecond: "صندوق",
+  pharmacy: "صيدلية",
+  archived: "مؤرشف",
+  stopped: "موقف",
+  followUp: "متابعة",
+};
 export const normalSides = ["debit", "credit"] as const;
 export const accountLinkPurposes = [
   "salesRevenue",
@@ -106,6 +151,7 @@ export interface Account {
   kind: AccountKind;
   category: AccountCategory;
   normalSide: NormalSide;
+  accountChoice: AccountChoice | null;
   // Page-only derived posted balance in the company's base currency.
   // No fixed debit/credit direction exists for the current balance.
   balanceAmount?: string | null;
@@ -194,6 +240,7 @@ export const accountSchema = z
     parentId: id.nullable().optional().default(null),
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
+    accountChoice: z.enum(accountChoices).nullable().default(null),
     // Accepted for compatibility with existing integrations; the server sets
     // the accounting classification automatically from the account category.
     normalSide: z.enum(normalSides).optional(),
@@ -237,6 +284,7 @@ export const accountPatchSchema = z
     name: name.optional(),
     active: z.boolean().optional(),
     cashOrBank: z.boolean().optional(),
+    accountChoice: z.enum(accountChoices).nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
