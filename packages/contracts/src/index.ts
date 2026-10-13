@@ -471,6 +471,7 @@ export const employeeSchema = z
     phone,
     role: z.enum(employeeRoles),
     active: z.boolean().default(true),
+    createSalesCashbox: z.boolean().default(false),
     permissions: z
       .array(z.enum(permissionKeys))
       .max(permissionKeys.length)
@@ -478,7 +479,7 @@ export const employeeSchema = z
   })
   .strict();
 export const employeePatchSchema = employeeSchema
-  .omit({ userId: true })
+  .omit({ userId: true, createSalesCashbox: true })
   .extend({ active: z.boolean() })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
