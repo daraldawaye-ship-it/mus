@@ -104,6 +104,61 @@ const compositionKey = (arabicName: string, englishName: string) =>
 export function itemRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  const shelfColumns = {
+    id: "s.id",
+    name: "s.name",
+    groupLetter: "s.group_letter",
+    groupOrder: "s.group_order",
+    slotNumber: "s.slot_number",
+    archived: "s.archived",
+    vitrine: "s.vitrine",
+    createdAt: "s.created_at",
+    updatedAt: "s.updated_at",
+  };
+  router.get(
+    `${base}/item-shelves`,
+    handler(async (req,res) => {
+      res.json(await readItems(pool,req,(client,companyId)=>
+        masterPage(client,req,companyId,itemShelfSelect,
+          "FROM item_shelves s","s",shelfColumns,
+          ["s.name","s.group_letter"],itemShelfDTO,
+          { groupLetter: arabicShelfLetters, archived: "boolean", vitrine: "boolean" },
+          "groupOrder:asc,slotNumber:asc"),
+      ));
+    }),
+  );
+  router.get(
+    `${base}/item-shelves/:id`,
+    handler(async(req,res)=>{
+      const rowId=id(req.params.id);
+      res.json(await readItems(pool,req,async(client,companyId)=>({
+        shelf:itemShelfDTO(await masterRow(client,itemShelfSelect,"s",companyId,rowId)),
+      })));
+    }),
+  );
+  router.patch(
+    `${base}/item-shelves/:id`,
+    handler(async(req,res)=>{
+      const input=parse(itemShelfPatchSchema,req.body);
+      const rowId=id(req.params.id);
+      const shelf=await mutateMaster(pool,req,"items.manage",async(client,user,companyId)=>{
+        const before=itemShelfDTO(await masterRow(client,itemShelfSelect,"s",companyId,rowId));
+        if(before.revision!==input.revision)
+          conflict("تم تعديل الرف بواسطة مستخدم آخر؛ أعد تحميل الكرت");
+        const updated=await client.query(
+          `UPDATE item_shelves SET archived=$1,vitrine=$2,revision=revision+1,
+            updated_at=clock_timestamp()
+            WHERE company_id=$3 AND id=$4 AND revision=$5 RETURNING *`,
+          [input.archived,input.vitrine,companyId,rowId,input.revision],
+        );
+        if(!updated.rows[0])conflict("تم تعديل الرف بواسطة مستخدم آخر؛ أعد تحميل الكرت");
+        const next=itemShelfDTO(updated.rows[0]);
+        await audit(client,user,"itemShelf.update","itemShelf",rowId,before,next,companyId);
+        return next;
+      });
+      res.json({shelf});
+    }),
+  );
   const compositionColumns = {
     id: "f.id",
     arabicName: "f.arabic_name",
@@ -677,6 +732,13 @@ export function itemRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       res.json(
         await readItems(pool, req, async (client, companyId) => {
+          if (req.query.type === "shelves")
+            return masterPage(client,req,companyId,
+              "SELECT s.* FROM item_shelves s",
+              "FROM item_shelves s","s",shelfColumns,
+              ["s.name","s.group_letter"],itemShelfDTO,
+              { archived:"boolean", groupLetter:arabicShelfLetters },
+              "groupOrder:asc,slotNumber:asc");
           if (req.query.type === "compositions")
             return masterPage(
               client,req,companyId,
