@@ -238,8 +238,10 @@ try {
     .getByRole("button", { name: "تعديل الكرت", exact: true })
     .click();
   const taskDialog = ownerPage.getByRole("dialog");
-  assert(
+  assert.equal(
     await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isDisabled(),
+    false,
+    "Page-visit reward can now be activated when configured",
   );
   assert.equal(
     await taskDialog.getByLabel("تفعيل المهمة", { exact: true }).isChecked(),
