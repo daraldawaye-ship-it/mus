@@ -416,7 +416,7 @@ export function accountRoutes(pool: Pool): Router {
             return {
               ...account,
               balanceAmount: amount,
-              balanceDirection: amount === "0" || Number(amount) === 0
+              balanceDirection: /^0(?:\\.0+)?$/.test(amount)
                 ? "zero" : negative ? "credit" : "debit",
             };
           }),
