@@ -307,7 +307,61 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           </div>
         </form>
       </Card>
+      <SocialProviderOptions intent="login" returnTo={safeReturn}/>
     </div>
+  );
+}
+
+type SocialProviderStatus = {google:boolean;apple:boolean};
+const socialErrors:Record<string,string> = {
+  social_existing_email:"يوجد حساب مرتبط بهذا البريد. ادخل إلى حسابك باستخدام الهاتف أو البريد وكلمة المرور، ثم اربط Google أو Apple من ملفك الشخصي.",
+  social_email_required:"لم يقدم المزود بريدًا إلكترونيًا موثقًا. ادخل إلى حسابك الحالي ثم اربط المزود من ملفك الشخصي.",
+  invalid_state:"تعذر التحقق من أمان جلسة الربط. ابدأ العملية من جديد.",
+  expired_state:"انتهت صلاحية طلب الربط. حاول مرة أخرى.",
+  cancelled:"تم إلغاء التسجيل لدى مزود الدخول.",
+  social_taken:"هذا الحساب لدى Google أو Apple مرتبط بمستخدم آخر.",
+  social_conflict:"تعذر ربط الحساب؛ تحقق من عدم وجود ارتباط آخر.",
+  oidc_token:"تعذر التحقق من هوية الحساب.",
+  oidc_exchange:"تعذر إتمام الاتصال بمزود الدخول.",
+  social_unavailable:"تعذر إكمال تسجيل الدخول الخارجي.",
+};
+function SocialProviderOptions({ intent, returnTo }: {
+  intent: "login"|"link";returnTo?:string|null;
+}) {
+  const [available,setAvailable]=useState<SocialProviderStatus|null>(null);
+  const [params]=useSearchParams();
+  useEffect(()=>{
+    let active=true;
+    void api<SocialProviderStatus>("/auth/social/providers")
+      .then(result=>{if(active)setAvailable(result);})
+      .catch(()=>{if(active)setAvailable({google:false,apple:false});});
+    return ()=>{active=false;};
+  },[]);
+  function proceed(provider:"google"|"apple") {
+    const query = new URLSearchParams();
+    if (intent==="link") query.set("intent","link");
+    if (returnTo) query.set("returnTo",returnTo);
+    window.location.assign(`/api/auth/social/${provider}/start?${query.toString()}`);
+  }
+  const error=params.get("socialError");
+  const connected=params.get("socialConnected");
+  return (
+    <Card title={intent==="link"?"ربط حسابات الدخول":"الدخول أو التسجيل بواسطة"}
+      description={intent==="link"
+        ?"اربط حسابك الحالي بهوية Google أو Apple. لن تُربط الحسابات اعتمادًا على تشابه البريد الإلكتروني وحده."
+        :"يمكنك إنشاء حساب جديد أو الدخول بحساب مرتبط باستخدام Google أو Apple."}>
+      {error && <Notice tone="error">{socialErrors[error]??"تعذر إتمام تسجيل الدخول الخارجي."}</Notice>}
+      {connected && <Notice tone="success">تم ربط حساب {connected==="google"?"Google":"Apple"} بنجاح.</Notice>}
+      <div className="actions">
+        <Button type="button" variant="secondary" disabled={!available?.google}
+          onClick={()=>proceed("google")}>{intent==="link"?"ربط Google":"المتابعة باستخدام Google"}</Button>
+        <Button type="button" variant="secondary" disabled={!available?.apple}
+          onClick={()=>proceed("apple")}>{intent==="link"?"ربط Apple":"المتابعة باستخدام Apple"}</Button>
+      </div>
+      {available && !available.google && !available.apple && (
+        <p className="muted">خيارا Google وApple جاهزان للربط، لكن يلزم إدخال بيانات OAuth من حسابات المطور قبل تفعيلهـما.</p>
+      )}
+    </Card>
   );
 }
 
@@ -496,6 +550,7 @@ function ProfileForms({ user }: { user: User }) {
           </div>
         </form>
       </Card>
+      <SocialProviderOptions intent="link"/>
       <Card
         title="تغيير كلمة المرور"
         description="تحتاج إلى كلمة المرور الحالية لتأكيد التغيير."
