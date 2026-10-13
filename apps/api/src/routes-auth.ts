@@ -142,10 +142,12 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           const owned=await client.query("SELECT 1 FROM media_assets WHERE id=$1 AND purpose='avatar' AND uploaded_by=$2",[assetId,before.id]);
           if(!owned.rowCount)throw new HttpError(403,"invalid_image","هذه الصورة لا تخص حسابك");
         }
+        if (!input.phone && !input.email)
+          throw new HttpError(400, "missing_login_identity", "أدخل رقم هاتف أو بريدًا إلكترونيًا");
         if (input.phone !== before.phone)
           await assertPhoneAvailable(client, input.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5,phone_login_key=$7,phone_verified_at=CASE WHEN phone<>$4 THEN NULL ELSE phone_verified_at END WHERE id=$6 RETURNING *",
+          "UPDATE users SET name=$1,display_name=$2,email=$3,phone=$4,image=$5,phone_login_key=CASE WHEN phone<>$4 THEN $7 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$4 THEN NULL ELSE phone_verified_at END WHERE id=$6 RETURNING *",
           [
             input.name,
             input.displayName,
