@@ -173,7 +173,11 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 115,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.kind === "manual" ? "إضافة إدارية" : "عكس إضافة",
+        row.original.kind === "manual"
+          ? "إضافة إدارية"
+          : row.original.kind === "automatic"
+            ? "مكافأة آلية"
+            : "عكس إضافة",
     },
     {
       accessorKey: "points",
@@ -194,8 +198,12 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 120,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.kind === "reversal"
-          ? `عكس #${row.original.referenceId}`
+        row.original.kind === "automatic" && row.original.invoiceId !== null
+          ? context.permissions.includes("commerce.view") || context.general
+            ? <Link to={`${base}/invoices/${row.original.invoiceId}`}>فاتورة #{row.original.invoiceId}</Link>
+            : `فاتورة #${row.original.invoiceId}`
+          : row.original.kind === "reversal"
+            ? `عكس #${row.original.referenceId}`
           : row.original.reversedByEntryId
             ? `عُكست #${row.original.reversedByEntryId}`
             : `#${row.original.id}`,
@@ -525,9 +533,10 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
         }
       />
       <Notice>
-        مهام المكافآت الآلية مخططة وموقوفة حاليًا. يمكن إعداد كروتها، ويُتاح
-        تفعيل كل مهمة بعد ربطها بحدث النظام. الإضافة الإدارية للنقاط متاحة في
-        المحفظة.
+        مكافآت حفظ فواتير المبيعات والمشتريات وسطورها جاهزة للتفعيل من كروتها،
+        وتظل معطلة حتى تختار الإدارة تفعيلها. يمكن تشغيل مكافأة الفاتورة
+        ومكافأة السطور معًا فتُجمع النقاط. مهام الدخول والطباعة والصفحات
+        غير مفعّلة بعد.
       </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {query.error && (
@@ -611,6 +620,14 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
               <bdi>{draft.code}</bdi>
             </div>
             {error && <Notice tone="error">{error}</Notice>}
+            {draft.implemented && (
+              <Notice>
+                مكافأة الحفظ ومكافأة السطور مستقلتان؛ عند تفعيل 5 نقاط للحفظ
+                ونقطتين لكل سطر منطقي، تمنح فاتورة من ثلاثة سطور مختلفة 11
+                نقطة. السطر المكرر بالصنف والوحدة والسعر والصلاحية لا يحتسب مرة
+                ثانية. المردودات تستحق نقاط العمل الموجبة أيضًا.
+              </Notice>
+            )}
             {!draft.implemented && (
               <Notice>
                 هذه المهمة مخططة. حفظ إعداداتها لا يمنح نقاطًا تلقائية؛ تفعيلها
