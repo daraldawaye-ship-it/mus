@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -18,7 +20,7 @@ import {
 } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, Printer, Trash2 } from "lucide-react";
+import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
   invoiceSchema,
@@ -44,6 +46,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { saleStockQuantity } from "../sale-stock-quantity";
+import { usePageDirectory } from "../page-directory";
 import {
   Button,
   Card,
@@ -55,6 +58,12 @@ import {
   Select,
   ValueCell,
 } from "../ui";
+
+const InvoiceItemEditor = lazy(() =>
+  import("./ItemsPages").then((module) => ({
+    default: module.InvoiceItemEditor,
+  })),
+);
 
 export function commerceAccess(context: CompanyContext, manage = false) {
   return (
@@ -771,6 +780,20 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
 function InvoiceEditor({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const client = useQueryClient();
+  const directory = usePageDirectory(companyId);
+  const canEditItem =
+    (context.general || context.permissions.includes("items.manage")) &&
+    ["company.items", "company.item-card"].every((key) => {
+      const page = directory.data?.find((entry) => entry.key === key);
+      return page?.enabled && page.actionAccess.view && page.actionAccess.edit;
+    });
+  const [editingItem, setEditingItem] = useState<{
+    itemId: number;
+    lineKey: string;
+  } | null>(null);
+  const [editingBusy, setEditingBusy] = useState(false);
+  const [itemNotice, setItemNotice] = useState("");
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -1040,6 +1063,35 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     });
     focus(lineInputId(line, "quantity"));
   }
+  function closeItemEditor() {
+    if (!editingBusy) setEditingItem(null);
+  }
+  function itemSaved(item: Item) {
+    if (!guard.isCurrent() || item.companyId !== companyId) return;
+    setLines((current) =>
+      current.map((line) => {
+        if (line.itemId !== item.id) return line;
+        if (line.originalLineId) return { ...line, sourceItem: item };
+        return {
+          ...line,
+          itemCode: item.code,
+          itemName: item.name,
+          search: item.name,
+          sourceItem: item,
+          unitName: unitName(item, line.unit),
+          ...(kind === "sale"
+            ? { unitPrice: salePrice(item, line.unit) }
+            : {}),
+        };
+      }),
+    );
+    void client.invalidateQueries({
+      queryKey: ["sale-stock-preview", user?.id, companyId],
+    });
+    setItemNotice(`تم حفظ كرت الصنف ${item.name}.`);
+    setEditingItem(null);
+    setEditingBusy(false);
+  }
   function validateQuantity(line: DraftLine) {
     const normalized = normalizeDigits(line.quantity.trim());
     if (!/^-?\d{1,22}$/.test(normalized) || BigInt(normalized) === 0n) {
@@ -1270,7 +1322,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   }
   async function save(event?: FormEvent) {
     event?.preventDefault();
-    if (saving || !guard.isCurrent()) return;
+    if (saving || editingItem || !guard.isCurrent()) return;
     setError("");
     let payload = pending.current;
     if (!unknown) {
@@ -1363,6 +1415,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const handler = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
+        if (editingItem) {
+          document
+            .querySelector<HTMLFormElement>(".invoice-item-sheet form")
+            ?.requestSubmit();
+          return;
+        }
         void save();
       }
     };
@@ -1371,6 +1429,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   return (
     <div className="commerce-document-page">
+      {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
       {savedInvoice && (
         <Notice tone="success">
           تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
@@ -1600,7 +1659,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                       {kind === "sale" ? "سعر البيع" : "سعر الشراء"}
                     </th>
                     {showExpiry && <th scope="col">تاريخ الانتهاء</th>}
-                    <th scope="col">إجمالي الصنف</th>
+                    <th scope="col">إجمالي</th>
                     {kind === "sale" && (
                       <>
                         <th
@@ -1613,7 +1672,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                       </>
                     )}
                     <th scope="col">
-                      <span className="visually-hidden">حذف</span>
+                      <span className="visually-hidden">تعديل وحذف</span>
                     </th>
                   </tr>
                 </thead>
@@ -1909,15 +1968,39 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                           </>
                         )}
                         <td>
-                          <Button
-                            variant="ghost"
-                            size="compact"
-                            aria-label={`حذف ${line.itemName || "السطر الفارغ"}`}
-                            className="commerce-delete-line"
-                            onClick={() => deleteLine(line)}
-                          >
-                            <Trash2 size={15} />
-                          </Button>
+                          <div className="commerce-line-actions">
+                            <Button
+                              variant="ghost"
+                              size="compact"
+                              aria-label={`تعديل كرت ${line.itemName || "الصنف"}`}
+                              title={
+                                !line.itemId
+                                  ? "اختر الصنف أولًا"
+                                  : canEditItem
+                                    ? "تعديل كرت الصنف"
+                                    : "تعديل كرت الصنف يحتاج صلاحية تعديل الأصناف"
+                              }
+                              disabled={!line.itemId || !canEditItem || locked}
+                              onClick={() => {
+                                setEditingBusy(false);
+                                setEditingItem({
+                                  itemId: line.itemId,
+                                  lineKey: line.key,
+                                });
+                              }}
+                            >
+                              <Pencil size={15} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="compact"
+                              aria-label={`حذف ${line.itemName || "السطر الفارغ"}`}
+                              className="commerce-delete-line"
+                              onClick={() => deleteLine(line)}
+                            >
+                              <Trash2 size={15} />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1992,6 +2075,25 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           )}
         </footer>
       </form>
+      <Dialog
+        open={editingItem !== null}
+        className="invoice-item-sheet"
+        title="تعديل كرت الصنف"
+        onClose={closeItemEditor}
+      >
+        {editingItem && (
+          <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
+            <InvoiceItemEditor
+              key={`${user?.id}:${companyId}:${editingItem.itemId}`}
+              context={context}
+              itemId={editingItem.itemId}
+              onSaved={itemSaved}
+              onClose={closeItemEditor}
+              onSavingChange={setEditingBusy}
+            />
+          </Suspense>
+        )}
+      </Dialog>
       <Dialog
         open={blocker.state === "blocked"}
         title="مغادرة الفاتورة"

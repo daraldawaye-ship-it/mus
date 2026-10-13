@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import {
   useBlocker,
   useNavigate,
@@ -37,6 +44,7 @@ import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { ImageUpload } from "../ImageUpload";
+import { usePageDirectory } from "../page-directory";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -84,8 +92,10 @@ function useEditorNavigation(
   saving: boolean,
   unknown: boolean,
   label: string,
+  allowedNavigation?: RefObject<boolean>,
 ) {
-  const allowNavigation = useRef(false);
+  const defaultNavigation = useRef(false);
+  const allowNavigation = allowedNavigation ?? defaultNavigation;
   useEffect(() => {
     if (!dirty && !saving && !unknown) return;
     const leaving = (event: BeforeUnloadEvent) => {
@@ -139,6 +149,27 @@ function useEditorNavigation(
     </Dialog>
   );
   return { allowNavigation, prompt };
+}
+
+function ItemEditorNavigation({
+  dirty,
+  saving,
+  unknown,
+  allowNavigation,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  unknown: boolean;
+  allowNavigation: RefObject<boolean>;
+}) {
+  const navigation = useEditorNavigation(
+    dirty,
+    saving,
+    unknown,
+    "كرت الصنف",
+    allowNavigation,
+  );
+  return navigation.prompt;
 }
 
 export function ItemsPage({ context }: { context: CompanyContext }) {
@@ -391,6 +422,121 @@ export function ItemPage({ context }: { context: CompanyContext }) {
       key={`${context.company.id}:${itemId}`}
       context={context}
       itemId={itemId}
+    />
+  );
+}
+
+type InvoiceItemEditorProps = {
+  context: CompanyContext;
+  itemId: number;
+  onSaved: (item: Item) => void;
+  onClose: () => void;
+  onSavingChange?: (saving: boolean) => void;
+};
+
+export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
+  const { user } = useSession();
+  const directory = usePageDirectory(props.context.company.id);
+  const allowed =
+    itemsAccess(props.context, true) &&
+    ["company.items", "company.item-card"].every((key) => {
+      const page = directory.data?.find((entry) => entry.key === key);
+      return !!page?.enabled && page.actionAccess.view && page.actionAccess.edit;
+    });
+  if (directory.isPending)
+    return <Notice>جارٍ التحقق من صلاحية تعديل الصنف…</Notice>;
+  if (directory.error)
+    return (
+      <Notice tone="error">
+        {errorMessage(directory.error)}{" "}
+        <Button variant="secondary" onClick={() => void directory.refetch()}>
+          إعادة المحاولة
+        </Button>
+      </Notice>
+    );
+  if (!allowed)
+    return (
+      <>
+        <Notice tone="warning">ليس لديك صلاحية تعديل كرت الصنف.</Notice>
+        <Button variant="secondary" onClick={props.onClose}>
+          إغلاق
+        </Button>
+      </>
+    );
+  return (
+    <InvoiceItemDetail
+      key={`${user?.id}:${props.context.company.id}:${props.itemId}`}
+      {...props}
+    />
+  );
+}
+
+function InvoiceItemDetail({
+  context,
+  itemId,
+  onSaved,
+  onClose,
+  onSavingChange,
+}: InvoiceItemEditorProps) {
+  const { user } = useSession();
+  const [openingKey] = useState(() => crypto.randomUUID());
+  const [reloadedItem, setReloadedItem] = useState<Item | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const result = useQuery({
+    queryKey: [
+      "items",
+      user?.id,
+      context.company.id,
+      "invoice-detail",
+      itemId,
+      openingKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const response = await api<{ item: Item }>(
+        `/companies/${context.company.id}/items/${itemId}`,
+        { signal },
+      );
+      if (
+        response.item.companyId !== context.company.id ||
+        response.item.id !== itemId
+      )
+        throw new Error("تعذر تحميل الصنف في الشركة الحالية.");
+      return response;
+    },
+    gcTime: 0,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  if (result.isPending) return <Notice>جارٍ تحميل كرت الصنف…</Notice>;
+  if (result.error)
+    return (
+      <>
+        <Notice tone="error">{errorMessage(result.error)}</Notice>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => void result.refetch()}>
+            إعادة المحاولة
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            إغلاق
+          </Button>
+        </div>
+      </>
+    );
+  const item = reloadedItem ?? result.data.item;
+  return (
+    <ItemEditor
+      key={`${item.id}:${item.revision}:${epoch}`}
+      context={context}
+      item={item}
+      embedded
+      onClose={onClose}
+      onSavingChange={onSavingChange}
+      onSaved={onSaved}
+      onReloaded={(value) => {
+        setReloadedItem(value);
+        setEpoch((previous) => previous + 1);
+      }}
     />
   );
 }
@@ -647,10 +793,18 @@ function ItemEditor({
   context,
   item,
   onSaved,
+  embedded = false,
+  onClose,
+  onReloaded,
+  onSavingChange,
 }: {
   context: CompanyContext;
   item: Item | null;
   onSaved: (item: Item, message: string) => void;
+  embedded?: boolean;
+  onClose?: () => void;
+  onReloaded?: (item: Item) => void;
+  onSavingChange?: (saving: boolean) => void;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -709,12 +863,11 @@ function ItemEditor({
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
   const disabled = !manage || saving || unknownCreation;
-  const navigation = useEditorNavigation(
-    dirty,
-    saving,
-    unknownCreation,
-    "كرت الصنف",
-  );
+  const allowNavigation = useRef(false);
+  useEffect(() => {
+    onSavingChange?.(saving);
+    return () => onSavingChange?.(false);
+  }, [saving, onSavingChange]);
   function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
     setDirty(true);
     setFields((previous) => ({ ...previous, [key]: value }));
@@ -762,7 +915,7 @@ function ItemEditor({
       setConflict(false);
       if (item) onSaved(result.item, `تم حفظ الصنف ${result.item.code}.`);
       else {
-        navigation.allowNavigation.current = true;
+        allowNavigation.current = true;
         navigate(`/companies/${companyId}/items/${result.item.id}`, {
           replace: true,
         });
@@ -792,7 +945,8 @@ function ItemEditor({
       if (!guard.isCurrent()) return;
       setDirty(false);
       setReloadConfirmation(false);
-      onSaved(result.item, "تم تحميل النسخة الحالية من الصنف.");
+      if (onReloaded) onReloaded(result.item);
+      else onSaved(result.item, "تم تحميل النسخة الحالية من الصنف.");
     } catch (reason) {
       if (guard.isCurrent()) setError(errorMessage(reason));
     } finally {
@@ -805,24 +959,26 @@ function ItemEditor({
   const factor3 = parsedFactor3.success ? parsedFactor3.data : NaN;
   return (
     <div className="item-editor">
-      <PageHeader
-        title={
-          item ? `${manage ? "تعديل" : "عرض"} الصنف ${item.code}` : "صنف جديد"
-        }
-        description={
-          item
-            ? `أُنشئ ${new Date(item.createdAt).toLocaleString("ar-YE")} · الإصدار ${item.revision}`
-            : "يُنشأ رمز الصنف تلقائيًا بعد تأكيد الحفظ."
-        }
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/companies/${companyId}/items`)}
-          >
-            العودة للأصناف
-          </Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title={
+            item ? `${manage ? "تعديل" : "عرض"} الصنف ${item.code}` : "صنف جديد"
+          }
+          description={
+            item
+              ? `أُنشئ ${new Date(item.createdAt).toLocaleString("ar-YE")} · الإصدار ${item.revision}`
+              : "يُنشأ رمز الصنف تلقائيًا بعد تأكيد الحفظ."
+          }
+          actions={
+            <Button
+              variant="secondary"
+              onClick={() => navigate(`/companies/${companyId}/items`)}
+            >
+              العودة للأصناف
+            </Button>
+          }
+        />
+      )}
       {error && <Notice tone="error">{error}</Notice>}
       {unknownCreation && (
         <Notice tone="warning">
@@ -1194,6 +1350,14 @@ function ItemEditor({
           names={[fields.unit1Name, fields.unit2Name, fields.unit3Name]}
           disabled={saving || unknownCreation}
         />
+        {embedded && item && (
+          <RecordOptionCard
+            companyId={companyId}
+            recordKind="item"
+            recordId={item.id}
+            canEdit={manage && !saving}
+          />
+        )}
         <div className="form-actions item-save-actions">
           {manage && (
             <Button type="submit" disabled={saving}>
@@ -1201,10 +1365,12 @@ function ItemEditor({
                 ? "جارٍ الحفظ…"
                 : unknownCreation
                   ? "إعادة تأكيد الحفظ"
-                  : "حفظ الصنف"}
+                  : embedded
+                    ? "حفظ"
+                    : "حفظ الصنف"}
             </Button>
           )}
-          {item && manage && (
+          {item && manage && !embedded && (
             <Button
               variant="secondary"
               disabled={saving || unknownCreation}
@@ -1216,13 +1382,15 @@ function ItemEditor({
           <Button
             variant="secondary"
             disabled={saving}
-            onClick={() => navigate(`/companies/${companyId}/items`)}
+            onClick={() =>
+              embedded ? onClose?.() : navigate(`/companies/${companyId}/items`)
+            }
           >
-            العودة للقائمة
+            {embedded ? "إغلاق" : "العودة للقائمة"}
           </Button>
         </div>
       </form>
-      {item && (
+      {item && !embedded && (
         <RecordOptionCard
           companyId={companyId}
           recordKind="item"
@@ -1293,7 +1461,14 @@ function ItemEditor({
           </Button>
         </div>
       </Dialog>
-      {navigation.prompt}
+      {!embedded && (
+        <ItemEditorNavigation
+          dirty={dirty}
+          saving={saving}
+          unknown={unknownCreation}
+          allowNavigation={allowNavigation}
+        />
+      )}
     </div>
   );
 }

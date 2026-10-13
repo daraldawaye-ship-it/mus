@@ -155,12 +155,14 @@ export function Dialog({
   title,
   children,
   footer,
+  className = "",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
@@ -179,7 +181,7 @@ export function Dialog({
   return (
     <dialog
       ref={dialog}
-      className="dialog"
+      className={`dialog ${className}`}
       aria-labelledby={heading}
       onCancel={(event) => {
         event.preventDefault();
