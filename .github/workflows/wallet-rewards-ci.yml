@@ -61,5 +61,7 @@ jobs:
         run: node --import tsx --test tests/employee-accounts.test.ts
       - name: Test dated item clearance commissions
         run: node --import tsx --test --test-name-pattern="dated item clearance commissions" tests/commerce.test.ts
+      - name: Test dynamic debit and credit account balances
+        run: node --import tsx --test --test-name-pattern="dynamic account balances" tests/finance.test.ts
       - name: Test receipt and payment print rewards
         run: node --import tsx --test --test-name-pattern="posted receipt/payment print requests reward" tests/finance.test.ts
