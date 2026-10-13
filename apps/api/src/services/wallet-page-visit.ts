@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import { audit } from "./audit.ts";
 import { directoryEntries } from "./pages.ts";
+import { HttpError } from "../errors.ts";
 
 /**
  * A route transition in the company workspace (not background data fetching).
@@ -20,7 +21,15 @@ export async function awardCompanyPageVisit(
      WHERE company_id=$1 AND idempotency_key=$2`,
     [companyId, eventKey],
   );
-  if (previous.rows[0]) return { rewarded: false };
+  if (previous.rows[0]) {
+    const accepted = previous.rows[0];
+    if (accepted.created_by !== user.id || accepted.task_code !== "PAGE_VISIT" || accepted.page_key !== pageKey)
+      throw new HttpError(
+        409, "idempotency_conflict",
+        "استُخدم مفتاح العملية سابقًا ببيانات أخرى؛ لا يمكن تكراره بتغيير المستخدم أو الصفحة",
+      );
+    return { rewarded: false };
+  }
   const task = await client.query(
     `SELECT s.points::text AS points,s.repeat_rule,s.revision,s.page_key,s.daily_limit
      FROM reward_task_settings s JOIN reward_task_definitions d ON d.code=s.code

@@ -103,6 +103,7 @@ function useCommerceChanges(companyId: number) {
         ((queryKey[0] === "commerce" && queryKey[2] === companyId) ||
           (queryKey[0] === "inventory" && queryKey[2] === companyId) ||
           (queryKey[0] === "finance" && queryKey[2] === companyId) ||
+          (queryKey[0] === "wallet-summary" && queryKey[2] === companyId) ||
           (queryKey[0] === "list" &&
             String(queryKey[2]).startsWith(`company:${companyId}:`))),
     });

@@ -1531,6 +1531,44 @@ test("concurrent document numbering is unique per company and deterministic filt
 });
 
 
+test("voucher print rewards enforce print and view permissions independently of creation", async (t) => {
+  const f = await fixture(t), s = await setup(f, "Print permission company");
+  const createDenied = await f.member(s.company.id, ["finance.view"], 941);
+  const printDenied = await f.member(s.company.id, ["finance.view"], 942);
+  const viewDenied = await f.member(s.company.id, ["finance.view"], 943);
+  const receipt = await s.post(await s.draft({ kind: "receipt", cashAccountId: s.cash.id }));
+  const task = (await f.owner.ok<{ tasks: { code: string; revision: number | null }[] }>(
+    "GET", s.path + "/reward-tasks",
+  )).tasks.find((row) => row.code === "RECEIPT_PRINT")!;
+  await f.owner.ok("PUT", s.path + "/reward-tasks/RECEIPT_PRINT", {
+    points: "5", enabled: true, repeatRule: "per-document",
+    roleIds: [], pageKey: null, revision: task.revision,
+  });
+  for (const [staff, permissionKey] of [
+    [createDenied, "company.financial-document:create"],
+    [printDenied, "company.financial-document:print"],
+    [viewDenied, "company.receipts:view"],
+  ] as const) {
+    await f.owner.ok("PUT", s.path + "/configuration/employee-rules", {
+      employeeId: staff.employee.id, permissionKey, effect: "deny", revision: null,
+    });
+  }
+  const endpoint = s.path + `/financial-documents/${receipt.id}/print-request`;
+  await printDenied.client.ok("GET", s.path + `/financial-documents/${receipt.id}`);
+  assert.equal((await printDenied.client.request("POST", endpoint)).status, 403,
+    "Viewing a voucher cannot bypass its explicit print deny");
+  assert.equal((await viewDenied.client.request("POST", endpoint)).status, 403,
+    "Printing requires current access to the voucher kind");
+  assert.equal((await createDenied.client.ok<{ rewarded: boolean }>("POST", endpoint)).rewarded, true,
+    "A creation deny must not prevent an authorized print action");
+  for (const [staff, points] of [[createDenied, "5"], [printDenied, "0"], [viewDenied, "0"]] as const) {
+    const summary = await f.owner.ok<{ wallet: { points: string } }>(
+      "GET", s.path + "/wallet?employeeId=" + staff.employee.id,
+    );
+    assert.equal(summary.wallet.points, points);
+  }
+});
+
 test("posted receipt/payment print requests reward eligible employees once per voucher", async (t) => {
   const f = await fixture(t), s = await setup(f, "Print reward company");
   const first = await f.member(s.company.id, ["finance.view"], 951);

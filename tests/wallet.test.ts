@@ -600,8 +600,24 @@ test("company page-visit rewards require an admitted configured page, role and t
     [co.id, staff.employee.id, role.id],
   );
   assert.equal((await visit(staff.client, "company.accounts")).rewarded, false, "Only configured page");
-  const first = await visit(staff.client);
+  const acceptedVisit = { pageKey: "company.wallet", idempotencyKey: randomUUID() };
+  const first = await staff.client.ok<{ rewarded: boolean }>(
+    "POST", base + "/reward-events/page-visit", acceptedVisit,
+  );
   assert.equal(first.rewarded, true);
+  assert.equal((await staff.client.ok<{ rewarded: boolean }>(
+    "POST", base + "/reward-events/page-visit", acceptedVisit,
+  )).rewarded, false, "An accepted event retry never adds points again");
+  for (const [client, input] of [
+    [staff.client, { ...acceptedVisit, pageKey: "company.accounts" }],
+    [peer.client, acceptedVisit],
+  ] as const) {
+    const replay = await client.request<{ error: { code: string } }>(
+      "POST", base + "/reward-events/page-visit", input,
+    );
+    assert.equal(replay.status, 409, "An accepted UUID cannot change actor or target page");
+    assert.equal(replay.body.error.code, "idempotency_conflict");
+  }
   assert.equal((await wallet(staff.employee.id)).wallet?.points, "4");
   assert.equal((await visit(staff.client)).rewarded, false, "Daily repeat in Asia/Aden blocked");
   assert.equal((await wallet(staff.employee.id)).items[0]!.pageKey, "company.wallet");
