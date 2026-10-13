@@ -448,6 +448,8 @@ function DocumentEditor({
   onSaved: (document: FinancialDocument, message: string) => void;
 }) {
   const companyId = context.company.id;
+  const queryClient = useQueryClient();
+  const { user: sessionUser } = useSession();
   const navigate = useNavigate();
   const guard = useScopeGuard(
     `company:${companyId}:financial-document:${document?.id ?? "new"}`,
@@ -740,6 +742,25 @@ function DocumentEditor({
       if (guard.isCurrent()) setSaving(false);
     }
   }
+  function requestPrint() {
+    if (!document) return;
+    // Keep window.print() in the direct click handler so popup blockers do not
+    // suppress the browser's native print dialog.
+    if (document.status === "posted" && (kind === "receipt" || kind === "payment")) {
+      const request = api<{ rewarded: boolean }>(
+        `/companies/${companyId}/financial-documents/${document.id}/print-request`,
+        { method: "POST" },
+      );
+      void request.then((result) => {
+        if (guard.isCurrent() && result.rewarded)
+          void queryClient.invalidateQueries({ queryKey: ["wallet-summary", sessionUser?.id, companyId] });
+      }).catch((reason) => {
+        if (guard.isCurrent())
+          setError("فُتح طلب الطباعة لكن تعذر تسجيل مكافأته: " + errorMessage(reason));
+      });
+    }
+    window.print();
+  }
   function pickerButton(
     label: string,
     value: string,
@@ -790,7 +811,7 @@ function DocumentEditor({
               {document && (
                 <Button
                   variant="secondary"
-                  onClick={() => window.print()}
+                  onClick={requestPrint}
                   disabled={saving || dirty}
                 >
                   <Printer size={16} />
