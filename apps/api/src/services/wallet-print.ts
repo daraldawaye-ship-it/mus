@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import { audit } from "./audit.ts";
+import { missing } from "../errors.ts";
 
 /**
  * Logs a server-observed request to open printing for a posted cash voucher.
@@ -20,7 +21,7 @@ export async function rewardVoucherPrintRequest(
     [companyId, documentId],
   );
   const voucher = doc.rows[0];
-  if (!voucher) return { rewarded: false, entryId: null };
+  if (!voucher) missing();
   if (voucher.status !== "posted" || !["receipt", "payment"].includes(voucher.kind))
     return { rewarded: false, entryId: null };
   const code = voucher.kind === "receipt" ? "RECEIPT_PRINT" : "PAYMENT_PRINT";
