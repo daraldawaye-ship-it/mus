@@ -284,7 +284,7 @@ export const accountPatchSchema = z
   .object({
     name: accountName.optional(),
     active: z.boolean().optional(),
-    cashOrBank: z.boolean().optional()
+    cashOrBank: z.boolean().optional(),
     accountChoice: z.enum(accountChoices).nullable().optional(),
   })
   .strict()
