@@ -406,6 +406,8 @@ const phone = text(40)
     "رقم الهاتف غير صالح",
   );
 const email = z.string().trim().toLowerCase().email().max(254);
+const optionalEmail = z.union([z.literal(""), email]).default("");
+const requiredPhone = phone.refine((value) => value !== "", "رقم الهاتف مطلوب");
 const image = z.union([
   z.literal(""),
   z.string().regex(/^\/api\/media\/[a-f0-9-]{36}\/full$/),
@@ -421,7 +423,7 @@ export const passwordSchema = z
   .min(12, "كلمة المرور يجب ألا تقل عن 12 حرفًا")
   .max(128);
 const profileFields = z
-  .object({ name, displayName: text(120), email, phone, image })
+  .object({ name, displayName: text(120), email: optionalEmail, phone, image })
   .strict();
 export const profileSchema = profileFields.transform((value) => ({
   ...value,
@@ -436,8 +438,17 @@ export const registerSchema = profileFields
     displayName: value.displayName || value.name,
   }));
 export const loginSchema = z
-  .object({ email, password: z.string().min(1).max(128) })
-  .strict();
+  .object({ email: email.optional(), phone: requiredPhone.optional(), password: z.string().min(1).max(128) })
+  .strict()
+  .refine((value) => Boolean(value.email) !== Boolean(value.phone), "أدخل رقم الهاتف أو البريد الإلكتروني");
+export const ownerUserSchema = z.object({
+  name,
+  displayName: text(120).default(""),
+  phone: requiredPhone,
+  email: optionalEmail,
+  password: passwordSchema,
+}).strict();
+export const ownerPasswordResetSchema = z.object({newPassword: passwordSchema}).strict();
 export const passwordChangeSchema = z
   .object({
     currentPassword: z.string().min(1).max(128),
@@ -448,7 +459,7 @@ export const userPatchSchema = z
   .object({
     name: name.optional(),
     displayName: text(120).optional(),
-    email: email.optional(),
+    email: optionalEmail.optional(),
     phone: phone.optional(),
     kind: z.enum(userKinds).optional(),
     archived: z.boolean().optional(),
@@ -466,7 +477,8 @@ export const companyPatchSchema = companySchema
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
 export const employeeSchema = z
   .object({
-    userId: z.number().int().positive().max(MAX_ID),
+    userId: z.number().int().positive().max(MAX_ID).optional(),
+    newUser: ownerUserSchema.optional(),
     name,
     phone,
     role: z.enum(employeeRoles),
@@ -477,9 +489,10 @@ export const employeeSchema = z
       .max(permissionKeys.length)
       .transform((values) => [...new Set(values)].sort()),
   })
-  .strict();
+  .strict()
+  .refine((value) => Boolean(value.userId) !== Boolean(value.newUser), "اختر حسابًا موجودًا أو أنشئ مستخدمًا برقم الهاتف");
 export const employeePatchSchema = employeeSchema
-  .omit({ userId: true, createSalesCashbox: true })
+  .omit({ userId: true, newUser: true, createSalesCashbox: true })
   .extend({ active: z.boolean() })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
