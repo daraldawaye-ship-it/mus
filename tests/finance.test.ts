@@ -1522,3 +1522,100 @@ test("concurrent document numbering is unique per company and deterministic filt
       query,
     );
 });
+
+
+test("posted receipt/payment print requests reward eligible employees once per voucher", async (t) => {
+  const f = await fixture(t), s = await setup(f, "Print reward company");
+  const first = await f.member(s.company.id, ["finance.view"], 951);
+  const second = await f.member(s.company.id, ["finance.view"], 952);
+  const base = s.path;
+  const wallet = async (employeeId: number) =>
+    f.owner.ok<{ wallet: { points: string; money: string }; items: { kind: string; points: string; taskCode: string | null; financialDocumentId: number | null }[] }>(
+      "GET", base + "/wallet?employeeId=" + employeeId + "&pageSize=100",
+    );
+  const reward = async (client: Client, id: number) =>
+    client.ok<{ rewarded: boolean; entryId: number | null }>(
+      "POST", base + `/financial-documents/${id}/print-request`,
+    );
+  const receiptDraft = await s.draft({
+    kind: "receipt", cashAccountId: s.cash.id,
+  });
+  const receipt = await s.post(receiptDraft);
+  assert.equal((await reward(first.client, receipt.id)).rewarded, false, "Not enabled by default");
+  assert.equal((await wallet(first.employee.id)).wallet.points, "0");
+
+  const tasks = await f.owner.ok<{ tasks: { code: string; revision: number | null }[] }>("GET", base + "/reward-tasks");
+  const receiptTask = tasks.tasks.find((row) => row.code === "RECEIPT_PRINT")!;
+  assert.equal((await f.owner.request("PUT", base + "/reward-tasks/RECEIPT_PRINT", {
+    points: "5", enabled: true, repeatRule: "daily",
+    roleIds: [], pageKey: null, revision: receiptTask.revision,
+  })).status, 400, "Voucher rewards are per document");
+  await f.owner.ok("PUT", base + "/reward-tasks/RECEIPT_PRINT", {
+    points: "5", enabled: true, repeatRule: "per-document",
+    roleIds: [], pageKey: null, revision: receiptTask.revision,
+  });
+  const firstRequest = await reward(first.client, receipt.id);
+  assert.equal(firstRequest.rewarded, true);
+  assert.equal((await wallet(first.employee.id)).wallet.points, "5");
+  assert.equal((await reward(first.client, receipt.id)).rewarded, false);
+  assert.equal((await wallet(first.employee.id)).items.length, 1);
+  assert.equal((await wallet(first.employee.id)).items[0]!.financialDocumentId, receipt.id);
+  assert.equal((await wallet(second.employee.id)).wallet.points, "0");
+  assert.equal((await reward(second.client, receipt.id)).rewarded, true);
+  assert.equal((await wallet(second.employee.id)).wallet.points, "5");
+
+  const paymentDraft = await s.draft({
+    kind: "payment", cashAccountId: s.cash.id,
+    lines: [
+      { accountId: s.counter.id, debit: "100.25", credit: "0", description: "recipient" },
+      { accountId: s.cash.id, debit: "0", credit: "100.25", description: "paid" },
+    ],
+  });
+  const payment = await s.post(paymentDraft);
+  assert.equal((await reward(first.client, payment.id)).rewarded, false, "Payment task still disabled");
+  const paymentTask = (await f.owner.ok<{ tasks: { code: string; revision: number | null }[] }>(
+    "GET", base + "/reward-tasks",
+  )).tasks.find((row) => row.code === "PAYMENT_PRINT")!;
+  const role = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM company_roles WHERE company_id=$1 AND key='accountant'",
+    [s.company.id],
+  )).rows[0]!;
+  await f.owner.ok("PUT", base + "/reward-tasks/PAYMENT_PRINT", {
+    points: "7", enabled: true, repeatRule: "per-document",
+    roleIds: [role.id], pageKey: null, revision: paymentTask.revision,
+  });
+  assert.equal((await reward(first.client, payment.id)).rewarded, false, "Role restrictions");
+  await f.pool.query(
+    "INSERT INTO employee_role_assignments(company_id,employee_id,role_id,active) VALUES($1,$2,$3,true)",
+    [s.company.id, first.employee.id, role.id],
+  );
+  assert.equal((await reward(first.client, payment.id)).rewarded, true);
+  assert.equal((await wallet(first.employee.id)).wallet.points, "12");
+  assert.equal((await reward(first.client, payment.id)).rewarded, false);
+
+  // A draft receipt and a posted journal cannot generate voucher-print rewards.
+  const otherDraft = await s.draft({ kind: "receipt", cashAccountId: s.cash.id });
+  assert.equal((await reward(first.client, otherDraft.id)).rewarded, false);
+  const journal = await s.post(await s.draft());
+  assert.equal((await reward(first.client, journal.id)).rewarded, false);
+  assert.equal((await first.client.request("POST", base + "/financial-documents/999999/print-request")).status, 200);
+  assert.equal((await wallet(first.employee.id)).wallet.money, "0");
+  assert.equal((await wallet(first.employee.id)).wallet.points, "12");
+
+  // A failed ledger write must not credit balance or leave an orphan request.
+  await f.pool.query(
+    `CREATE FUNCTION fail_print_reward() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.financial_document_id IS NOT NULL THEN RAISE EXCEPTION 'reject print'; END IF;
+      RETURN NEW; END $$;
+     CREATE TRIGGER fail_print_reward BEFORE INSERT ON employee_wallet_entries
+     FOR EACH ROW EXECUTE FUNCTION fail_print_reward()`,
+  );
+  const newReceipt = await s.post(await s.draft({kind:"receipt",cashAccountId:s.cash.id}));
+  try {
+    assert.equal((await first.client.request("POST", base + `/financial-documents/${newReceipt.id}/print-request`)).status, 500);
+  } finally {
+    await f.pool.query("DROP TRIGGER fail_print_reward ON employee_wallet_entries");
+    await f.pool.query("DROP FUNCTION fail_print_reward()");
+  }
+  assert.equal((await wallet(first.employee.id)).wallet.points, "12");
+});
