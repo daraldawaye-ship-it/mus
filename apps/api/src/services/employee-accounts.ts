@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
+import type { Database } from "../db.ts";
 import type { Account, User } from "../../../../packages/contracts/src/index.ts";
-import { HttpError } from "../errors.ts";
+import { HttpError, missing } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { accountDTO, accountSelect } from "../repositories/masters.ts";
 import { employeeWalletAccount } from "./wallet-policy.ts";
@@ -182,4 +183,98 @@ export async function provisionEmployeeAccounts(
     ));
   }
   return accounts;
+}
+
+export interface EmployeeAccountsSnapshot {
+  employeeId: number;
+  links: Array<EmployeeAccountLink & { active: boolean }>;
+  walletAccount: { id: number; code: string; name: string } | null;
+}
+
+/** Read exact employee-owned account codes, never infer ownership from names. */
+export async function employeeAccountsSnapshot(
+  db: Database,
+  companyId: number,
+  employeeId: number,
+): Promise<EmployeeAccountsSnapshot> {
+  const employee = await db.query(
+    "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+    [companyId, employeeId],
+  );
+  if (!employee.rowCount) missing("الموظف غير موجود في هذه الشركة");
+  const linked = await db.query(
+    `SELECT l.account_kind,a.id,a.code,a.name,a.active
+     FROM employee_account_links l JOIN accounts a
+       ON a.company_id=l.company_id AND a.id=l.account_id
+     WHERE l.company_id=$1 AND l.employee_id=$2`,
+    [companyId, employeeId],
+  );
+  const wallet = await db.query(
+    `SELECT a.id,a.code,a.name FROM employee_wallet_accounts w
+     JOIN accounts a ON a.company_id=w.company_id AND a.id=w.account_id
+     WHERE w.company_id=$1 AND w.employee_id=$2`,
+    [companyId, employeeId],
+  );
+  return {
+    employeeId,
+    links: linked.rows.map((r) => ({
+      kind: r.account_kind as EmployeeAccountLink["kind"],
+      accountId: r.id,
+      code: r.code,
+      name: r.name,
+      active: r.active,
+    })),
+    walletAccount: wallet.rows[0] ?? null,
+  };
+}
+
+/** Explicit opt-in repair for an existing employee; never change posted history. */
+export async function completeEmployeeAccounts(
+  client: PoolClient,
+  actor: User,
+  companyId: number,
+  employeeId: number,
+  createSalesCashbox: boolean,
+): Promise<EmployeeAccountsSnapshot> {
+  const employee = await client.query(
+    "SELECT id,name FROM employees WHERE company_id=$1 AND id=$2 FOR UPDATE",
+    [companyId, employeeId],
+  );
+  if (!employee.rows[0]) missing("الموظف غير موجود في هذه الشركة");
+  const old = await employeeAccountsSnapshot(client, companyId, employeeId);
+  const existing = new Map(old.links.map((link) => [link.kind, link]));
+  const needs = ["advance", ...(createSalesCashbox ? ["sales_cash", "sales_pouch"] : [])] as Kind[];
+  if (needs.some((kind) => !existing.has(kind))) {
+    const root = await client.query(
+      "SELECT id,kind,category,normal_side,active FROM accounts WHERE company_id=$1 AND code='1000000000' FOR SHARE",
+      [companyId],
+    );
+    const row = root.rows[0];
+    if (!row || !row.active || row.kind !== "group" ||
+        row.category !== "asset" || row.normal_side !== "debit")
+      throw new HttpError(409, "missing_assets_group", "مجموعة الأصول غير جاهزة لإنشاء حسابات الموظف");
+    for (const kind of needs) {
+      if (!existing.has(kind)) {
+        const added = await createEmployeeAccount(
+          client, actor, companyId, employeeId, employee.rows[0].name, row.id, kind,
+        );
+        existing.set(kind, { ...added, active: true });
+      }
+    }
+  }
+  // Preserve any explicitly configured binding, including a deliberately
+  // cleared one. Only new, unbound wallets are assigned to employee advances.
+  const advance = existing.get("advance");
+  if (advance) {
+    const result = await client.query(
+      `INSERT INTO employee_wallet_accounts(company_id,employee_id,account_id,updated_by)
+       VALUES($1,$2,$3,$4) ON CONFLICT(company_id,employee_id) DO NOTHING RETURNING employee_id`,
+      [companyId, employeeId, advance.accountId, actor.id],
+    );
+    if (result.rowCount) {
+      await audit(client, actor, "wallet.account", "employee-wallet-account", employeeId,
+        null, await employeeWalletAccount(client, companyId, employeeId), companyId);
+    }
+  }
+  return employeeAccountsSnapshot(client, companyId, employeeId);
 }

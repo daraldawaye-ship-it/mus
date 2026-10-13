@@ -1,6 +1,7 @@
 import { initializeCompanyAccounts } from "./routes-accounts.ts";
 import { initializeCompanyCurrencies } from "./routes-currencies.ts";
 import { Router } from "express";
+import { z } from "zod";
 import type { Pool } from "pg";
 import {
   companySchema,
@@ -17,7 +18,7 @@ import { audit } from "./services/audit.ts";
 import { awardCompanyDailyLogin } from "./services/wallet-login.ts";
 import { passwordHash } from "./services/auth.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
-import { provisionEmployeeAccounts } from "./services/employee-accounts.ts";
+import { provisionEmployeeAccounts, employeeAccountsSnapshot, completeEmployeeAccounts } from "./services/employee-accounts.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   currentActor,
@@ -411,6 +412,38 @@ export function companyRoutes(pool: Pool): Router {
         return { employee: next, accounts };
       });
       res.status(201).json(createdEmployee);
+    }),
+  );
+  router.get(
+    "/companies/:companyId/employees/:employeeId/accounts",
+    handler(async (req, res) => {
+      const companyId = id(req.params.companyId);
+      const employeeId = id(req.params.employeeId);
+      await companyAccess(pool, actor(req), companyId, "employees.view");
+      const accounts = await employeeAccountsSnapshot(pool, companyId, employeeId);
+      res.json({ accounts });
+    }),
+  );
+  router.post(
+    "/companies/:companyId/employees/:employeeId/accounts",
+    handler(async (req, res) => {
+      const companyId = id(req.params.companyId);
+      const employeeId = id(req.params.employeeId);
+      const input = parse(
+        z.object({ createSalesCashbox: z.boolean().default(false) }).strict(),
+        req.body,
+      );
+      const accounts = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        const context = await companyAccess(
+          client, user, companyId, undefined, true,
+        );
+        manageEmployees(user, context);
+        return completeEmployeeAccounts(
+          client, user, companyId, employeeId, input.createSalesCashbox,
+        );
+      });
+      res.json({ accounts });
     }),
   );
   router.patch(

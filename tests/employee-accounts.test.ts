@@ -194,4 +194,65 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
     "SELECT count(*)::int AS total FROM employees WHERE company_id=$1 AND user_id=$2",
     [first.id,unknownUser.id],
   )).rows[0].total,0);
+  // Existing users who predate auto-provisioning have no inferred account.
+  const legacyUser = await identity();
+  const legacyRow = await runtime.pool.query(
+    `INSERT INTO employees(company_id,user_id,name,phone,role,active,permissions,created_by)
+     VALUES($1,$2,$3,'','sales',true,'{}'::text[],$4) RETURNING id`,
+    [first.id, legacyUser.id, "موظف سابق", owner.id],
+  );
+  const legacyId: number=legacyRow.rows[0].id;
+  const linkPath=`/companies/${first.id}/employees/${legacyId}/accounts`;
+  type Details = {accounts:{
+    employeeId:number;
+    links: {kind:string;accountId:number;code:string;name:string}[];
+    walletAccount:{id:number;code:string;name:string}|null;
+  }};
+  const beforeLegacy=await admin.ok<Details>("GET",linkPath);
+  assert.equal(beforeLegacy.accounts.links.length,0);
+  assert.equal(beforeLegacy.accounts.walletAccount,null);
+  assert.equal((await legacyUser.client.request("POST",linkPath,{createSalesCashbox:true})).status,403);
+  const filled=await admin.ok<Details>("POST",linkPath,{createSalesCashbox:false});
+  assert.equal(filled.accounts.links.length,1);
+  assert.match(filled.accounts.links[0]!.name,/سلفة موظف سابق/);
+  assert.equal(filled.accounts.walletAccount?.id,filled.accounts.links[0]!.accountId);
+  const repeated=await admin.ok<Details>("POST",linkPath,{createSalesCashbox:false});
+  assert.deepEqual(repeated.accounts,filled.accounts);
+  const ready=await admin.ok<Details>("POST",linkPath,{createSalesCashbox:true});
+  assert.deepEqual(ready.accounts.links.map(x=>x.kind).sort(),
+    ["advance","sales_cash","sales_pouch"]);
+  assert.equal(ready.accounts.walletAccount?.id,filled.accounts.walletAccount?.id);
+  assert.equal((await admin.ok<Details>("POST",linkPath,{createSalesCashbox:true})).accounts.links.length,3);
+  // The platform owner can link their EXISTING login as an employee in a company:
+  // it is not necessary to register a second admin identity.
+  const selfEmployee=await create(first.id, owner.id, "admin المالك", false);
+  assert.match(selfEmployee.accounts[0]!.code,/^1140/);
+  const selfDetails=await admin.ok<Details>(
+    "GET",`/companies/${first.id}/employees/${selfEmployee.employee.id}/accounts`,
+  );
+  assert.equal(selfDetails.accounts.walletAccount?.id,
+    selfEmployee.accounts[0]!.accountId);
+  // A pre-existing manual wallet destination is not silently overwritten.
+  const manualUser=await identity();
+  const manualEmployee=await runtime.pool.query(
+    `INSERT INTO employees(company_id,user_id,name,phone,role,active,permissions,created_by)
+     VALUES($1,$2,'سلفة يدوية','','sales',true,'{}'::text[],$3) RETURNING id`,
+    [first.id, manualUser.id, owner.id],
+  );
+  const manualId=manualEmployee.rows[0].id as number;
+  const legacyTarget=firstEmployee.accounts.find(a=>a.kind==="advance")!;
+  await runtime.pool.query(
+    `INSERT INTO employee_wallet_accounts(company_id,employee_id,account_id,updated_by)
+     VALUES($1,$2,$3,$4)`,
+    [first.id,manualId,legacyTarget.accountId,owner.id],
+  );
+  const manualResult=await admin.ok<Details>(
+    "POST",`/companies/${first.id}/employees/${manualId}/accounts`,
+    {createSalesCashbox:true},
+  );
+  assert.equal(manualResult.accounts.links.length,3);
+  assert.notEqual(manualResult.accounts.links.find(a=>a.kind==="advance")?.accountId,
+    legacyTarget.accountId);
+  assert.equal(manualResult.accounts.walletAccount?.id,legacyTarget.accountId);
+
 });
