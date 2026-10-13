@@ -499,6 +499,98 @@ test("finance permissions separate drafting, posting and reading, with scoped se
   assert.deepEqual(stored, ["accounts.manage", "currencies.manage"]);
 });
 
+test("dynamic account balances show له/عليه by actual postings, not a creation-time side", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Dynamic account balance company");
+
+  const liability = (await f.owner.ok<{account:Account}>(
+    "POST", s.path+"/accounts", {
+      code:"9920000001",name:"New liability",parentId:null,
+      kind:"posting",category:"liability",cashOrBank:false,
+    },201,
+  )).account;
+  assert.equal(liability.normalSide,"credit","no direction field required when creating an account");
+
+  const expense = (await f.owner.ok<{account:Account}>(
+    "POST", s.path+"/accounts", {
+      code:"9950000001",name:"New expense",parentId:null,
+      kind:"posting",category:"expense",cashOrBank:false,
+    },201,
+  )).account;
+  assert.equal(expense.normalSide,"debit");
+
+  const misleading = (await f.owner.ok<{account:Account}>(
+    "POST", s.path+"/accounts", {
+      code:"9920000002",name:"Legacy request direction",parentId:null,
+      kind:"posting",category:"liability",normalSide:"debit",
+    },201,
+  )).account;
+  assert.equal(misleading.normalSide,"credit",
+    "a legacy client direction does not override the accounting category");
+
+  type LedgerAccount = Account & {
+    balanceAmount:string|null;balanceDirection:"debit"|"credit"|"zero"|null;
+  };
+  async function listing(){
+    const directory = await f.owner.ok<Page<LedgerAccount> & {baseCurrencyCode:string|null}>(
+      "GET", s.path+"/accounts?pageSize=100",
+    );
+    assert.equal(directory.baseCurrencyCode,"YER");
+    const byId = (id:number)=>{
+      const item=directory.items.find(a=>a.id===id);
+      assert(item,`account ${id} missing from paged directory`);
+      return item;
+    };
+    return byId;
+  }
+  let find=await listing();
+  assert.deepEqual(
+    {amount:find(s.cash.id).balanceAmount,side:find(s.cash.id).balanceDirection},
+    {amount:"0",side:"zero"},
+  );
+  assert.equal(find(s.group.id).balanceDirection,null,
+    "group accounts must not be presented as posting ledger balances");
+
+  const draft=await s.draft();
+  find=await listing();
+  assert.equal(find(s.cash.id).balanceAmount,"0",
+    "unposted drafts never affect the account's displayed balance");
+  await s.post(draft);
+  find=await listing();
+  assert.deepEqual(
+    {amount:find(s.cash.id).balanceAmount,side:find(s.cash.id).balanceDirection},
+    {amount:"100.25",side:"debit"},
+  );
+  assert.deepEqual(
+    {amount:find(s.counter.id).balanceAmount,side:find(s.counter.id).balanceDirection},
+    {amount:"100.25",side:"credit"},
+  );
+  assert.equal(find(s.income.id).balanceDirection,"zero");
+
+  const turning = await s.draft({
+    lines:[
+      {accountId:s.cash.id,debit:"0",credit:"150.25",description:"Cash becomes owed"},
+      {accountId:s.counter.id,debit:"150.25",credit:"0",description:"Reverse balance"},
+    ],
+  });
+  await s.post(turning);
+  find=await listing();
+  assert.deepEqual(
+    {amount:find(s.cash.id).balanceAmount,side:find(s.cash.id).balanceDirection},
+    {amount:"50",side:"credit"},
+    "the same asset account may finish with a credit/له balance without reclassification",
+  );
+  assert.deepEqual(
+    {amount:find(s.counter.id).balanceAmount,side:find(s.counter.id).balanceDirection},
+    {amount:"50",side:"debit"},
+  );
+  assert.equal((await f.pool.query(
+    "SELECT normal_side FROM accounts WHERE company_id=$1 AND id=$2",
+    [s.company.id,s.cash.id],
+  )).rows[0].normal_side,"debit",
+    "the historical chart classification is unchanged");
+});
+
 test("journals keep exact large decimals, drafts have no ledger effect, and stale edits cannot replace a newer revision", async (t) => {
   const f = await fixture(t),
     s = await setup(f);
