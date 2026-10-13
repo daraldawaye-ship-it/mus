@@ -27,6 +27,8 @@ import {
   ListTree,
   LogIn,
   Menu,
+  PanelRightClose,
+  PanelRightOpen,
   MapPin,
   Package,
   Settings2,
@@ -324,6 +326,8 @@ function Navigation({
         <NavLink
           key={entry.key}
           to={entry.href!}
+          aria-label={entry.name}
+          title={entry.name}
           end={["public.home", "public.companies", "company.overview"].includes(
             entry.key,
           )}
@@ -331,23 +335,29 @@ function Navigation({
           className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
         >
           {icons[entry.key] ?? <ListTree size={17} />}
-          <span>{entry.name}</span>
+          <span className="nav-text">{entry.name}</span>
           <ChevronLeft size={13} className="nav-chevron" />
         </NavLink>
       ));
   return (
     <nav aria-label="التنقل الرئيسي">
-      <div className="nav-label">الموقع العام</div>
+      <div className="nav-label nav-heading">الموقع العام</div>
       {links("public")}
       {!user && (
-        <NavLink to="/login" onClick={close} className="nav-link">
+        <NavLink
+          to="/login"
+          onClick={close}
+          className="nav-link"
+          aria-label="تسجيل الدخول"
+          title="تسجيل الدخول"
+        >
           <LogIn size={17} />
-          <span>تسجيل الدخول</span>
+          <span className="nav-text">تسجيل الدخول</span>
         </NavLink>
       )}
       {context && (
         <>
-          <div className="nav-label company-nav-label">
+          <div className="nav-label nav-heading company-nav-label">
             {context.company.name}
           </div>
           {links("company")}
@@ -618,6 +628,13 @@ function Protected({ children }: { children: React.ReactNode }) {
     <Navigate to={pendingLogoutRedirect ? "/" : "/login"} replace />
   );
 }
+function storedDesktopNavigation(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "collapsed";
+  } catch {
+    return false;
+  }
+}
 function Workspace() {
   const {
     user,
@@ -633,6 +650,39 @@ function Workspace() {
   const scope = inCompany ? `company:${companyId}` : "public";
   const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState(false);
+  const navigationPreferenceKey = `tijara:desktop-navigation:${user?.id ?? "guest"}`;
+  const [navigationPreferences, setNavigationPreferences] = useState<
+    Record<string, boolean>
+  >({});
+  const navigationCollapsed =
+    navigationPreferences[navigationPreferenceKey] ??
+    storedDesktopNavigation(navigationPreferenceKey);
+  function toggleDesktopNavigation() {
+    const collapsed = !navigationCollapsed;
+    setNavigationPreferences((previous) => ({
+      ...previous,
+      [navigationPreferenceKey]: collapsed,
+    }));
+    try {
+      localStorage.setItem(
+        navigationPreferenceKey,
+        collapsed ? "collapsed" : "expanded",
+      );
+    } catch {
+      // The toggle still works when browser storage is unavailable.
+    }
+  }
+  useEffect(() => {
+    const synchronize = (event: StorageEvent) => {
+      if (event.key === navigationPreferenceKey || event.key === null)
+        setNavigationPreferences((previous) => ({
+          ...previous,
+          [navigationPreferenceKey]: event.newValue === "collapsed",
+        }));
+    };
+    window.addEventListener("storage", synchronize);
+    return () => window.removeEventListener("storage", synchronize);
+  }, [navigationPreferenceKey]);
   const [logoutError, setLogoutError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -719,11 +769,22 @@ function Workspace() {
     );
   return (
     <AppearanceProvider key={`${user?.id ?? "guest"}:${scope}`} scope={scope}>
-      <div className="workspace">
-        <aside className="sidebar">
-          <NavLink to="/" className="brand">
+      <div
+        className={`workspace${navigationCollapsed ? " sidebar-collapsed" : ""}`}
+      >
+        <aside
+          id="desktop-navigation"
+          className="sidebar"
+          aria-label="قائمة التنقل"
+        >
+          <NavLink
+            to="/"
+            className="brand"
+            aria-label="تجارة — الموقع العام"
+            title="تجارة — الموقع العام"
+          >
             <span className="brand-symbol">ت</span>
-            <span>
+            <span className="brand-copy">
               تجارة<small>مساحة العمل</small>
             </span>
           </NavLink>
@@ -742,6 +803,25 @@ function Workspace() {
         <div className="workspace-body">
           <header className="topbar">
             <div className="topbar-start">
+              <Button
+                variant="ghost"
+                className="desktop-sidebar-toggle"
+                aria-label={
+                  navigationCollapsed ? "توسيع قائمة التنقل" : "طي قائمة التنقل"
+                }
+                title={
+                  navigationCollapsed ? "توسيع قائمة التنقل" : "طي قائمة التنقل"
+                }
+                aria-expanded={!navigationCollapsed}
+                aria-controls="desktop-navigation"
+                onClick={toggleDesktopNavigation}
+              >
+                {navigationCollapsed ? (
+                  <PanelRightOpen size={20} />
+                ) : (
+                  <PanelRightClose size={20} />
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 className="mobile-menu"
