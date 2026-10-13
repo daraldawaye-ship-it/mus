@@ -2,6 +2,7 @@ import type { QueryResultRow } from "pg";
 import type {
   Item,
   ItemAgent,
+  ItemComposition,
 } from "../../../../packages/contracts/src/index.ts";
 import { normalizeRate } from "../../../../packages/contracts/src/index.ts";
 
@@ -24,6 +25,19 @@ export function itemAgentDTO(row: QueryResultRow): ItemAgent {
     active: row.active,
   };
 }
+export function itemCompositionDTO(row: QueryResultRow): ItemComposition {
+  return {
+    ...identity(row),
+    arabicName: row.arabic_name,
+    englishName: row.english_name,
+    description: row.description,
+    active: row.active,
+    identicalAlternative: row.identical_alternative,
+    nonInterchangeable: row.non_interchangeable,
+  };
+}
+export const itemCompositionSelect = "SELECT f.* FROM item_compositions f";
+
 export function itemDTO(row: QueryResultRow): Item {
   return {
     ...identity(row),
@@ -35,6 +49,10 @@ export function itemDTO(row: QueryResultRow): Item {
     barcode: row.barcode,
     legacyId: row.legacy_id,
     agentId: row.agent_id,
+    compositionId: row.composition_id ?? null,
+    compositionArabicName: row.composition_arabic_name ?? null,
+    compositionEnglishName: row.composition_english_name ?? null,
+    compositionActive: row.composition_active ?? null,
     agentName: row.agent_name ?? null,
     agentActive: row.agent_active ?? null,
     unit1Name: row.unit1_name,
@@ -67,7 +85,7 @@ export function itemDTO(row: QueryResultRow): Item {
 }
 export const itemAgentSelect = "SELECT a.* FROM item_agents a";
 export const itemFrom =
-  "FROM items i JOIN company_currencies c ON c.company_id=i.company_id AND c.id=i.currency_id LEFT JOIN item_agents a ON a.company_id=i.company_id AND a.id=i.agent_id";
+  "FROM items i JOIN company_currencies c ON c.company_id=i.company_id AND c.id=i.currency_id LEFT JOIN item_agents a ON a.company_id=i.company_id AND a.id=i.agent_id LEFT JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id";
 export const itemSelect =
-  "SELECT i.*,i.order_stopped_until::text AS order_stopped_until,i.clearance_from::text AS clearance_from_text,i.clearance_to::text AS clearance_to_text,a.name AS agent_name,a.active AS agent_active,c.code AS currency_code,c.name AS currency_name,c.decimal_places AS currency_decimal_places,c.active AS currency_active " +
+  "SELECT i.*,i.order_stopped_until::text AS order_stopped_until,i.clearance_from::text AS clearance_from_text,i.clearance_to::text AS clearance_to_text,a.name AS agent_name,a.active AS agent_active,f.arabic_name AS composition_arabic_name,f.english_name AS composition_english_name,f.active AS composition_active,c.code AS currency_code,c.name AS currency_name,c.decimal_places AS currency_decimal_places,c.active AS currency_active " +
   itemFrom;
