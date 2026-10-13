@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   employeeRoleLabels,
@@ -399,6 +399,7 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
   );
   const [editor, setEditor] = useState<Employee | "new" | null>(null);
   const [managerTarget, setManagerTarget] = useState<Employee | null>(null);
+  const [accountTarget, setAccountTarget] = useState<Employee | null>(null);
   const [notice, setNotice] = useState("");
   const allowed =
     context.general || context.permissions.includes("employees.view");
@@ -465,6 +466,14 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
         enableSorting: false,
         cell: ({ row }) => (
           <div className="row-actions">
+            <Button
+              size="compact"
+              variant="secondary"
+              onClick={() => setAccountTarget(row.original)}
+              aria-label={`عرض حسابات ${row.original.name}`}
+            >
+              الحسابات
+            </Button>
             {mayManage && (user?.owner || !row.original.isGeneralManager) && (
               <Button
                 size="compact"
@@ -521,6 +530,11 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
       {user?.owner && (
         <Notice>
           يمكنك تعيين أكثر من مدير عام. التعيين متاح للموظفين الفعالين فقط.
+        </Notice>
+      )}
+      {user?.owner && !context.employee && (
+        <Notice>
+          حسابك كمالك أو مدير للمنصة ليس مرتبطًا بموظف داخل هذه الشركة. إذا أردت حساب سلفة خاصًا بك، اضغط «إضافة موظف»، ثم «ربط حساب موجود»، وابحث عن بريد حسابك أو هاتفك واختره؛ لا تنشئ مستخدمًا ثانيًا.
         </Notice>
       )}
       <Card title="موظفو الشركة">
@@ -593,6 +607,15 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
           }
         />
       )}
+      {accountTarget && (
+        <EmployeeAccountsDialog
+          key={accountTarget.id}
+          companyId={companyId}
+          employee={accountTarget}
+          mayManage={mayManage}
+          onClose={() => setAccountTarget(null)}
+        />
+      )}
       {managerTarget && (
         <ManagerDialog
           companyId={companyId}
@@ -608,6 +631,138 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
         />
       )}
     </>
+  );
+}
+
+type LinkedEmployeeAccount = {
+  kind: "advance" | "sales_cash" | "sales_pouch";
+  accountId: number;
+  code: string;
+  name: string;
+  active: boolean;
+};
+type EmployeeAccountDetails = {
+  employeeId: number;
+  links: LinkedEmployeeAccount[];
+  walletAccount: { id: number; code: string; name: string } | null;
+};
+
+function EmployeeAccountsDialog({
+  companyId, employee, mayManage, onClose,
+}: {
+  companyId: number;
+  employee: Employee;
+  mayManage: boolean;
+  onClose: () => void;
+}) {
+  const { user } = useSession();
+  const guard = useScopeGuard(`company:${companyId}:employee-accounts:${employee.id}`);
+  const queryClient = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const path = `/companies/${companyId}/employees/${employee.id}/accounts`;
+  const query = useQuery({
+    queryKey: ["employee-account-links", user?.id, companyId, employee.id],
+    queryFn: ({signal}) => api<{accounts:EmployeeAccountDetails}>(path, {signal}),
+  });
+  const info = query.data?.accounts;
+  const lookup = (kind: LinkedEmployeeAccount["kind"]) =>
+    info?.links.find((entry) => entry.kind === kind);
+  const advance=lookup("advance");
+  const cash=lookup("sales_cash");
+  const pouch=lookup("sales_pouch");
+  async function complete(createSalesCashbox:boolean) {
+    if (!mayManage || saving) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<{accounts:EmployeeAccountDetails}>(path,{
+        method:"POST",body:{createSalesCashbox},signal:guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      queryClient.setQueryData(
+        ["employee-account-links",user?.id,companyId,employee.id],
+        result,
+      );
+      setNotice("تم استكمال الحسابات الناقصة وحفظ ربطها بالموظف دون تعديل القيود السابقة.");
+      await queryClient.invalidateQueries({queryKey:["wallet-settings",user?.id,companyId]});
+    } catch (cause) {
+      if (guard.isCurrent()) setError(errorMessage(cause));
+    } finally {
+      if (guard.isCurrent()) setSaving(false);
+    }
+  }
+  const types=[
+    {key:"advance" as const,label:"حساب السلفة",linked:advance},
+    {key:"sales_cash" as const,label:"صندوق المبيعات",linked:cash},
+    {key:"sales_pouch" as const,label:"حافظة المبيعات",linked:pouch},
+  ];
+  return (
+    <Dialog open title={`الحسابات المحاسبية — ${employee.name}`}
+      onClose={() => {if (!saving) onClose();}}>
+      <p className="muted">
+        هذه هي أرقام الحسابات المرتبطة بهذا الموظف فعليًا في دليل الحسابات، وليست أرقامًا مستنتجة من الاسم.
+      </p>
+      {query.isPending && <Notice>جارٍ تحميل حسابات الموظف…</Notice>}
+      {query.error && <Notice tone="error">{errorMessage(query.error)}</Notice>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {info && (
+        <div className="form-stack">
+          {types.map((item) => (
+            <div key={item.key}>
+              <b>{item.label}:</b>{" "}
+              {item.linked ? (
+                <span>
+                  <bdi>{item.linked.code}</bdi> — {item.linked.name}
+                  {!item.linked.active && " (موقوف)"}
+                </span>
+              ) : (
+                <span className="muted">لم يُنشأ لهذا الموظف</span>
+              )}
+            </div>
+          ))}
+          <div>
+            <b>حساب ترحيل النقاط:</b>{" "}
+            {info.walletAccount ? (
+              <span>
+                <bdi>{info.walletAccount.code}</bdi> — {info.walletAccount.name}
+                {advance && info.walletAccount.id!==advance.accountId &&
+                  " (مرتبط سابقًا بحساب آخر، لم يُغيّر تلقائيًا)"}
+              </span>
+            ) : (
+              <span className="muted">غير مرتبط بعد</span>
+            )}
+          </div>
+          {mayManage && (!advance || !cash || !pouch) && (
+            <div className="form-actions">
+              {!advance && (
+                <Button type="button" variant="secondary" disabled={saving}
+                  onClick={() => void complete(false)}>
+                  {saving ? "جارٍ الاستكمال…" : "إنشاء السلفة الناقصة"}
+                </Button>
+              )}
+              {(!cash || !pouch) && (
+                <Button type="button" variant="secondary" disabled={saving}
+                  onClick={() => void complete(true)}>
+                  {saving ? "جارٍ الاستكمال…" : "إنشاء صندوق وحافظة المبيعات الناقصين"}
+                </Button>
+              )}
+            </div>
+          )}
+          <p className="muted">
+            تُنشأ الحسابات الناقصة فقط، ولا تُحذف الحسابات الحالية أو تُغيّر روابط المحفظة اليدوية السابقة. يمكنك مراجعة دليل الحسابات لاختيار الصندوق عند إعداد السندات.
+          </p>
+        </div>
+      )}
+      <div className="form-actions">
+        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+          إغلاق
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 
