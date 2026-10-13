@@ -51,9 +51,10 @@ export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 
 // Composition is a reusable company-scoped item classification. Its
 // substitution flags are descriptive; they never auto-replace stock lines.
+const compositionName = z.string().trim().min(1, "الاسم مطلوب").max(240);
 const compositionFields = z.object({
-  arabicName: name,
-  englishName: name,
+  arabicName: compositionName,
+  englishName: compositionName,
   description: z.string().trim().max(2000).default(""),
   active: z.boolean().default(true),
   identicalAlternative: z.boolean().default(false),
