@@ -14,6 +14,7 @@ import {
   type Employee,
   type Item,
   type ItemAgent,
+  type ItemComposition,
   type ItemConversion,
   type Page,
   type Permission,
@@ -1251,4 +1252,88 @@ test("conversion endpoint checks scoped read permission, rejects inactive units 
     ).status,
     401,
   );
+});
+
+test("item compositions support multilingual cards, strict flags, archived links and company isolation", async (t) => {
+  const f = await fixture(t);
+  const companyA = await f.company("تركيب الشركة الأولى");
+  const companyB = await f.company("تركيب الشركة الثانية");
+  const currencyA = await currency(f, companyA.id);
+  const currencyB = await currency(f, companyB.id);
+  const url = `/companies/${companyA.id}/item-compositions`;
+  const body = {
+    arabicName:"باراسيتامول",englishName:"Paracetamol",
+    description:"مادة تركيب الدواء",active:true,
+    identicalAlternative:true,nonInterchangeable:false,
+    idempotencyKey:randomUUID(),
+  };
+  const created = (await f.owner.ok<{composition:ItemComposition}>(
+    "POST",url,body,201)).composition;
+  assert.equal(created.arabicName,body.arabicName);
+  assert.equal(created.englishName,body.englishName);
+  assert.equal(created.identicalAlternative,true);
+  assert.equal(created.nonInterchangeable,false);
+  assert.equal((await f.owner.ok<{composition:ItemComposition}>("POST",url,body)).composition.id,created.id);
+  assert.equal((await f.owner.request("POST",url,{...body,englishName:"Other"})).status,409);
+  assert.equal((await f.owner.request("POST",url,{
+    ...body,idempotencyKey:randomUUID(),nonInterchangeable:true,
+  })).status,400);
+  const list = await f.owner.ok<Page<ItemComposition>>("GET",url+"?q=Parac");
+  assert.equal(list.total,1);
+  assert.equal(list.items[0]!.id,created.id);
+  const filter = await f.owner.ok<Page<ItemComposition>>(
+    "GET",`/companies/${companyA.id}/item-options?type=compositions&active=true`);
+  assert.equal(filter.items[0]!.id,created.id);
+  const foreign = (await f.owner.ok<{composition:ItemComposition}>("POST",
+    `/companies/${companyB.id}/item-compositions`,
+    {...body,arabicName:"تركيب مختلف",idempotencyKey:randomUUID()},201)).composition;
+  assert.equal((await f.owner.request("GET",url+"/"+foreign.id)).status,404);
+  assert.equal((await f.owner.request("POST",`/companies/${companyA.id}/items`,
+    itemBody(currencyA.id,{compositionId:foreign.id}))).status,409);
+  const itemA = await item(f,companyA.id,currencyA.id,{compositionId:created.id});
+  const itemB = await item(f,companyB.id,currencyB.id,{compositionId:foreign.id});
+  assert.equal(itemA.compositionArabicName,body.arabicName);
+  assert.equal(itemA.compositionId,created.id);
+  assert.equal(itemB.compositionId,foreign.id);
+  assert.equal((await f.owner.ok<Page<Item>>("GET",
+    `/companies/${companyA.id}/items?compositionId=${created.id}`)).total,1);
+  const stale = await f.owner.request("PATCH",url+"/"+created.id,{
+    arabicName:"جديد",englishName:"New",description:"",active:false,
+    identicalAlternative:false,nonInterchangeable:true,revision:99,
+  });
+  assert.equal(stale.status,409);
+  const archived = (await f.owner.ok<{composition:ItemComposition}>("PATCH",
+    url+"/"+created.id,{
+      arabicName:body.arabicName,englishName:body.englishName,
+      description:body.description,active:false,
+      identicalAlternative:false,nonInterchangeable:true,revision:created.revision,
+    })).composition;
+  assert.equal(archived.revision,created.revision+1);
+  assert.equal(archived.nonInterchangeable,true);
+  assert.equal((await f.owner.ok<Page<ItemComposition>>("GET",
+    `/companies/${companyA.id}/item-options?type=compositions`)).items.length,0);
+  assert.equal((await f.owner.ok<{item:Item}>("GET",
+    `/companies/${companyA.id}/items/${itemA.id}`)).item.compositionActive,false);
+  // Unchanged archived link is valid; linking it to another item is not.
+  const updated=(await f.owner.ok<{item:Item}>("PATCH",
+    `/companies/${companyA.id}/items/${itemA.id}`,
+    patchItem(itemA,{searchKeys:"مرتبط بتركيب مؤرشف"}))).item;
+  assert.equal(updated.compositionId,created.id);
+  assert.equal((await f.owner.request("POST",
+    `/companies/${companyA.id}/items`,
+    itemBody(currencyA.id,{compositionId:created.id}))).status,409);
+  const existing = await item(f,companyA.id,currencyA.id,{name:"صنف بلا تركيب"});
+  assert.equal(existing.compositionId,null);
+  assert.equal((await f.owner.request("PATCH",
+    `/companies/${companyA.id}/items/${existing.id}`,
+    patchItem(existing,{compositionId:created.id}))).status,409);
+  const viewOnly = await f.member(companyA.id,["items.view"],15);
+  const listing = await viewOnly.client.ok<Page<ItemComposition>>("GET",url);
+  assert.equal(listing.total,1);
+  assert.equal((await viewOnly.client.request("POST",url,{
+    ...body,idempotencyKey:randomUUID()})).status,403);
+  const anonymous = f.anonymous();
+  assert.equal((await anonymous.request("GET",url)).status,401);
+  await assert.rejects(f.pool.query("DELETE FROM item_compositions WHERE id=$1",
+    [created.id]));
 });
