@@ -2224,3 +2224,142 @@ test("zero-net purchases and free sale returns finalize without dummy journals a
     );
   await assertBalanced(f, s.company.id);
 });
+
+
+test("invoice reward tasks award exact logical lines atomically, respect roles and survive retries", async (t) => {
+  const f = await fixture(t), s = await setup(f, "Invoice wallet awards");
+  const staff = await f.member(
+    s.company.id, ["commerce.view", "commerce.manage", "finance.post"], 901,
+  );
+  const item = await s.item();
+  const base = s.path;
+  type Task = { code: string; points: string; enabled: boolean; repeatRule: string; roleIds: number[]; pageKey: string | null; revision: number | null; implemented: boolean };
+  const tasks = async () =>
+    (await f.owner.ok<{ tasks: Task[] }>("GET", base + "/reward-tasks")).tasks;
+  const enable = async (code: string, points: string, roleIds: number[] = [], repeatRule = "per-document") => {
+    const task = (await tasks()).find((row) => row.code === code)!;
+    assert.equal(task.implemented, true);
+    await f.owner.ok("PUT", base + "/reward-tasks/" + code, {
+      points, enabled: true, repeatRule, roleIds, pageKey: null, revision: task.revision,
+    });
+  };
+  const wallet = async () =>
+    f.owner.ok<{ wallet: { points: string; money: string }; items: { kind: string; points: string; taskCode: string | null; invoiceId: number | null; rewardedUnits: number | null }[] }>(
+      "GET", base + "/wallet?employeeId=" + staff.employee.id + "&pageSize=100",
+    );
+  const invoiceEntries = async () =>
+    (await wallet()).items.filter((row) => row.kind === "automatic");
+
+  // Tasks exist without retroactive awards, and zero-valued line work cannot be enabled.
+  assert.equal((await wallet()).wallet.points, "0");
+  const emptyPurchase = (await tasks()).find((row) => row.code === "PURCHASE_LINES")!;
+  assert.equal((await f.owner.request("PUT", base + "/reward-tasks/PURCHASE_LINES", {
+    points: "0", enabled: true, repeatRule: "per-document",
+    roleIds: [], pageKey: null, revision: emptyPurchase.revision,
+  })).status, 400);
+  await enable("PURCHASE_SAVED", "10");
+  await enable("PURCHASE_LINES", "3");
+  await enable("SALE_SAVED", "5");
+  await enable("SALE_LINES", "2");
+
+  const purchaseBody = invoiceBody(s, item.id, {
+    lines: [{ itemId: item.id, unit: 1, quantity: "10", unitPrice: "800", expiryDate: "2027-01-31" }],
+  });
+  const purchase = await invoice(f, s, purchaseBody, staff.client);
+  assert.equal((await wallet()).wallet.points, "13");
+  assert.deepEqual(
+    (await invoiceEntries()).filter((row) => row.invoiceId === purchase.id)
+      .map((row) => [row.taskCode, row.points, row.rewardedUnits]).sort(),
+    [["PURCHASE_LINES", "3", 1], ["PURCHASE_SAVED", "10", 1]].sort(),
+  );
+
+  const saleBody = invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" },
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" },
+      { itemId: item.id, unit: 2, quantity: "1", unitPrice: "500" },
+      { itemId: item.id, unit: 3, quantity: "1", unitPrice: "50" },
+    ],
+  });
+  const sale = await invoice(f, s, saleBody, staff.client);
+  assert.equal((await wallet()).wallet.points, "24", "5 invoice + 3 logical lines x 2, not 4 physical rows");
+  assert.deepEqual(
+    (await invoiceEntries()).filter((row) => row.invoiceId === sale.id)
+      .map((row) => [row.taskCode, row.points, row.rewardedUnits]).sort(),
+    [["SALE_LINES", "6", 3], ["SALE_SAVED", "5", 1]].sort(),
+  );
+  const replay = await Promise.all([
+    invoice(f, s, saleBody, staff.client),
+    invoice(f, s, saleBody, staff.client),
+  ]);
+  assert(replay.every((row) => row.id === sale.id));
+  assert.equal((await wallet()).wallet.points, "24");
+  assert.equal((await invoiceEntries()).length, 4, "Retries cannot mint extra points");
+
+  // Role-restricted invoice task must not grant rewards without an active role assignment.
+  const salesRole = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM company_roles WHERE company_id=$1 AND key='sales'",
+    [s.company.id],
+  )).rows[0]!;
+  await enable("SALE_SAVED", "7", [salesRole.id]);
+  const next = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" }],
+  }), staff.client);
+  assert.equal((await wallet()).wallet.points, "26");
+  assert.deepEqual(
+    (await invoiceEntries()).filter((row) => row.invoiceId === next.id).map((row) => row.taskCode),
+    ["SALE_LINES"],
+  );
+  await f.pool.query(
+    "INSERT INTO employee_role_assignments(company_id,employee_id,role_id,active) VALUES($1,$2,$3,true)",
+    [s.company.id, staff.employee.id, salesRole.id],
+  );
+  const afterRole = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" }],
+  }), staff.client);
+  assert.equal((await wallet()).wallet.points, "35", "Role eligible: 7 invoice + 2 line points");
+  assert.deepEqual(
+    (await invoiceEntries()).filter((row) => row.invoiceId === afterRole.id)
+      .map((row) => [row.taskCode, row.points]).sort(),
+    [["SALE_LINES", "2"], ["SALE_SAVED", "7"]].sort(),
+  );
+
+  // Return is a fresh rewarded operation; it never negates earned work points.
+  const returned = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "-1", originalLineId: afterRole.lines[0]!.id }],
+  }), staff.client);
+  assert.equal(returned.returning, true);
+  assert.equal((await wallet()).wallet.points, "44");
+  assert((await invoiceEntries()).filter((row) => row.invoiceId === returned.id)
+    .every((row) => BigInt(row.points) > 0n));
+
+  // A ledger insert failure must roll back the entire new invoice posting.
+  await f.pool.query(
+    `CREATE FUNCTION reject_invoice_reward() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.kind='automatic' THEN RAISE EXCEPTION 'reject test invoice reward'; END IF;
+      RETURN NEW; END $$;
+     CREATE TRIGGER reject_invoice_reward BEFORE INSERT ON employee_wallet_entries
+     FOR EACH ROW EXECUTE FUNCTION reject_invoice_reward()`,
+  );
+  const failing = invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" }],
+  });
+  try {
+    assert.equal((await staff.client.request("POST", base + "/invoices", failing)).status, 500);
+  } finally {
+    await f.pool.query("DROP TRIGGER reject_invoice_reward ON employee_wallet_entries");
+    await f.pool.query("DROP FUNCTION reject_invoice_reward()");
+  }
+  assert.equal((await wallet()).wallet.points, "44");
+  const persisted = await f.pool.query(
+    "SELECT count(*)::integer AS total FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    [s.company.id, failing.idempotencyKey],
+  );
+  assert.equal(persisted.rows[0].total, 0, "Failed reward leaves no invoice or stock posting");
+  assert.equal((await wallet()).wallet.money, "0");
+});
