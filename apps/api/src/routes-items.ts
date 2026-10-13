@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { Pool } from "pg";
 import {
   convertItemQuantity,
@@ -84,6 +86,17 @@ const itemColumns = {
   updatedAt: "i.updated_at",
 };
 
+const compositionImportRow = z.object({
+  arabicName: z.string().trim().min(1).max(240),
+  englishName: z.string().trim().min(1).max(240),
+}).strict();
+const compositionImportBatch = z.object({
+  format: z.literal("tijara-compositions-v1"),
+  items: z.array(compositionImportRow).min(1).max(80),
+}).strict();
+const compositionKey = (arabicName: string, englishName: string) =>
+  JSON.stringify([arabicName.trim().toLowerCase(), englishName.trim().toLowerCase()]);
+
 export function itemRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
@@ -106,6 +119,71 @@ export function itemRoutes(pool: Pool): Router {
           ["f.arabic_name", "f.english_name", "f.description"],
           itemCompositionDTO, { active: "boolean" }, "arabicName:asc"),
       ));
+    }),
+  );
+  // Bulk import is additive: no item association is changed, and importing
+  // the same file twice skips names already present in this company.
+  router.post(
+    `${base}/item-compositions/import-batch`,
+    handler(async (req, res) => {
+      const input = parse(compositionImportBatch, req.body);
+      const result = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+        // Serialize imports per company, including retries from multiple tabs.
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtext('item-composition-import'),$1::integer)",
+          [companyId],
+        );
+        const rows = await client.query(
+          "SELECT arabic_name,english_name FROM item_compositions WHERE company_id=$1",
+          [companyId],
+        );
+        const present = new Set<string>(rows.rows.map(
+          (row) => compositionKey(row.arabic_name as string, row.english_name as string),
+        ));
+        const fresh: z.output<typeof compositionImportRow>[] = [];
+        let skipped = 0;
+        for (const row of input.items) {
+          const key = compositionKey(row.arabicName, row.englishName);
+          if (present.has(key)) { skipped++; continue; }
+          present.add(key);
+          fresh.push(row);
+        }
+        if (!fresh.length) return { created: 0, skipped };
+        const bindings: unknown[] = [];
+        const values: string[] = [];
+        for (const row of fresh) {
+          const entries: unknown[] = [
+            companyId, row.arabicName, row.englishName, "",
+            true, false, false, user.id, randomUUID(),
+            JSON.stringify({
+              arabicName: row.arabicName, englishName: row.englishName,
+              description: "", active: true,
+              identicalAlternative: false, nonInterchangeable: false,
+            }),
+          ];
+          const start = bindings.length;
+          bindings.push(...entries);
+          values.push("(" + entries.map((_, i) => "$" + (start + i + 1)).join(",") + ")");
+        }
+        const inserted = await client.query(
+          `INSERT INTO item_compositions
+           (company_id,arabic_name,english_name,description,active,
+            identical_alternative,non_interchangeable,created_by,idempotency_key,creation_payload)
+           VALUES ${values.join(",")} RETURNING id`,
+          bindings,
+        );
+        const ids: number[] = inserted.rows.map((row) => row.id as number);
+        await client.query(
+          `INSERT INTO audit_events
+             (actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value)
+           SELECT $2,$3,'company',$1,'itemComposition.create','itemComposition',
+                  f.id,NULL,to_jsonb(f)
+           FROM item_compositions f WHERE f.company_id=$1 AND f.id=ANY($4::integer[])`,
+          [companyId,user.id,user.displayName,ids],
+        );
+        return { created: ids.length, skipped };
+      });
+      res.json(result);
     }),
   );
   router.post(
