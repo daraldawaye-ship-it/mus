@@ -191,10 +191,14 @@ async function fixture(t: TestContext) {
         revision: null,
       },
     );
+    const existing = await owner.ok<{ binding: EmployeeWalletAccount }>(
+      "GET", base + "/wallet-settings/employee-accounts/" + employeeId,
+    );
+    assert.equal(existing.binding.account?.code.slice(0, 3), "114");
     const { binding } = await owner.ok<{ binding: EmployeeWalletAccount }>(
       "PUT",
       base + "/wallet-settings/employee-accounts/" + employeeId,
-      { accountId: accountForEmployee.id, revision: null },
+      { accountId: accountForEmployee.id, revision: existing.binding.revision },
     );
     return {
       base,
