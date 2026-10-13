@@ -256,11 +256,11 @@ export function walletRoutes(pool: Pool) {
         );
         if (!found.rows[0]) missing();
         const original = walletEntryDTO(found.rows[0]);
-        if (original.kind !== "manual")
+        if (!["manual", "automatic"].includes(original.kind))
           throw new HttpError(
             400,
             "invalid_reversal",
-            "يمكن عكس مكافأة أصلية فقط",
+            "يمكن عكس مكافأة أصلية إدارية أو آلية فقط",
           );
         if (original.reversedByEntryId !== null)
           throw new HttpError(
@@ -363,6 +363,16 @@ export function walletRoutes(pool: Pool) {
             400,
             "not_implemented",
             "هذه المهمة مخططة؛ لا يمكن تفعيلها قبل ربط الحدث الآلي في النظام",
+          );
+        if (
+          input.enabled &&
+          ["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES"].includes(code) &&
+          input.repeatRule !== "per-document"
+        )
+          throw new HttpError(
+            400,
+            "invalid_repeat_rule",
+            "مكافآت الفواتير والسطور تُحتسب مرة لكل فاتورة جديدة فقط",
           );
         if (input.revision !== before.revision)
           throw new HttpError(
