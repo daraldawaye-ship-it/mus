@@ -31,7 +31,7 @@ export async function itemIdempotent(
 ): Promise<QueryResultRow | null> {
   // Old accepted creates may predate these defaults; keep their payload immutable.
   const samePayload = table === "items"
-    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null}'::jsonb || $3::jsonb)`
+    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null}'::jsonb || $3::jsonb)`
     : "creation_payload=$3::jsonb";
   const result = await db.query(
     `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -66,6 +66,7 @@ export type ItemFields = Pick<
   | "imageId"
   | "englishName"
   | "shelf"
+  | "shelfId"
   | "barcode"
   | "legacyId"
   | "agentId"
@@ -141,6 +142,18 @@ export async function checkItemReferences(
         "سعر الصنف يتجاوز دقة العملة المختارة",
       );
   }
+  if (input.shelfId !== null) {
+    const shelf=await db.query(
+      "SELECT name,archived FROM item_shelves WHERE company_id=$1 AND id=$2 FOR SHARE",
+      [companyId,input.shelfId],
+    );
+    if (!shelf.rows[0]) conflict("اختر رفًا تابعًا للشركة نفسها");
+    if (shelf.rows[0].name !== input.shelf)
+      conflict("اسم الرف لا يطابق كرت الرف المرتبط");
+    if ((!previous || reactivated || previous.shelfId !== input.shelfId)
+      && shelf.rows[0].archived)
+      conflict("لا يمكن ربط صنف برف مؤرشف جديد");
+  }
   if (input.compositionId !== null) {
     const composition = await db.query(
       "SELECT active FROM item_compositions WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -170,6 +183,7 @@ export const itemFieldColumns = [
   ["imageId", "image_id"],
   ["englishName", "english_name"],
   ["shelf", "shelf"],
+  ["shelfId", "shelf_id"],
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],

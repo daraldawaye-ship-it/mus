@@ -121,6 +121,7 @@ const itemFields = z
     imageId: z.uuid().nullable().default(null),
     englishName: z.string().trim().max(120).default(""),
     shelf: z.string().trim().max(100).default(""),
+    shelfId: id.nullable().default(null),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
@@ -198,6 +199,7 @@ export const itemPatchSchema = itemFields
     legacyId: z.string().trim().max(100).optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
     compositionId: id.nullable().optional(),
+    shelfId: id.nullable().optional(),
   })
   .strict()
   .superRefine(validateNames);
@@ -227,6 +229,7 @@ export interface Item extends ItemIdentity {
   name: string;
   englishName: string;
   shelf: string;
+  shelfId: number | null;
   barcode: string;
   legacyId: string;
   agentId: number | null;
