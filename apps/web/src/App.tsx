@@ -663,12 +663,14 @@ function Workspace() {
     const controller = new AbortController();
     const userId = user.id;
     const selectedContext = company.data;
-    void api(`/companies/${companyId}/activate`, {
+    void api<{ rewarded: boolean }>(`/companies/${companyId}/activate`, {
       method: "POST",
       signal: controller.signal,
     })
-      .then(() => {
+      .then((activation) => {
         if (!controller.signal.aborted) {
+          if (activation.rewarded)
+            void queryClient.invalidateQueries({ queryKey: ["wallet-summary", userId, companyId] });
           queryClient.setQueryData(
             ["last-company-sidebar", userId],
             selectedContext,
