@@ -72,8 +72,8 @@ export async function awardCompanyPageVisit(
        max(created_at) AS last_visit
      FROM employee_wallet_entries
      WHERE company_id=$1 AND employee_id=$2 AND task_code='PAGE_VISIT'
-       AND page_key=$3 AND kind='automatic'`,
-    [companyId, staff.id, pageKey],
+       AND kind='automatic'`,
+    [companyId, staff.id],
   );
   const counts = stats.rows[0];
   if (repeat === "daily" && counts.today > 0) return { rewarded: false };
