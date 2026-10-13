@@ -1740,7 +1740,7 @@ ul {
 }
 .invoice-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(210px, 22vw, 280px);
+  grid-template-columns: minmax(0, 1fr) clamp(170px, 18vw, 225px);
   grid-template-areas: "invoice side";
   gap: 12px;
   align-items: start;
@@ -1763,8 +1763,7 @@ ul {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-  padding: 8px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   background: var(--surface);
