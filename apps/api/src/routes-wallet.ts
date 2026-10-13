@@ -358,6 +358,12 @@ export function walletRoutes(pool: Pool) {
         manageEmployees(user, context);
         const before = await rewardTask(client, companyId, code);
         if (!before) missing();
+        if (input.enabled && input.points === "0")
+          throw new HttpError(
+            400,
+            "zero_reward",
+            "حدد قيمة نقاط أكبر من صفر قبل تفعيل المهمة",
+          );
         if (input.enabled && !before.implemented)
           throw new HttpError(
             400,
