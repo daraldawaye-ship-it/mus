@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -725,6 +726,22 @@ function OriginalInvoicePicker({
   );
 }
 
+function InvoiceWorkspace({ children }: { children: ReactNode }) {
+  return (
+    <div className="invoice-workspace">
+      <div className="invoice-workspace-main">{children}</div>
+      <aside
+        className="invoice-side-space"
+        aria-label="المساحة الجانبية للفاتورة"
+        tabIndex={0}
+      >
+        <section className="invoice-empty-panel" aria-label="المساحة الأولى" />
+        <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
+      </aside>
+    </div>
+  );
+}
+
 export function InvoicePage({ context }: { context: CompanyContext }) {
   const { invoiceId } = useParams();
   const [params] = useSearchParams();
@@ -734,16 +751,22 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
   if (invoiceId === "new")
     return canPost(context) ? (
-      <InvoiceEditor
-        key={`${user?.id}:${context.company.id}:${kind}`}
-        context={context}
-      />
+      <InvoiceWorkspace>
+        <InvoiceEditor
+          key={`${user?.id}:${context.company.id}:${kind}`}
+          context={context}
+        />
+      </InvoiceWorkspace>
     ) : (
       <Notice tone="warning">
         إنشاء الفاتورة يحتاج صلاحية إدارة الفواتير والترحيل المالي.
       </Notice>
     );
-  return <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />;
+  return (
+    <InvoiceWorkspace>
+      <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
+    </InvoiceWorkspace>
+  );
 }
 function InvoiceEditor({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
