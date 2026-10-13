@@ -46,7 +46,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
       const result = await transaction(pool, async (client) => {
         await assertPhoneAvailable(client, input.phone);
         const inserted = await client.query(
-          "INSERT INTO users(name,display_name,email,phone,phone_login_key,image,password_hash) VALUES($1,$2,$3,$4,$4,$5,$6) RETURNING *",
+          "INSERT INTO users(name,display_name,email,phone,phone_login_key,image,password_hash) VALUES($1,$2,$3,$4,NULLIF($4,''),$5,$6) RETURNING *",
           [
             input.name,
             input.displayName,
