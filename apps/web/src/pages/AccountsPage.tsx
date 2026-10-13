@@ -461,7 +461,7 @@ function AccountEditor({
   );
   const [name, setName] = useState(account?.name ?? "");
   const [active, setActive] = useState(account?.active ?? true);
-  const [accountChoice, setAccountChoice] = useState<AccountChoice | "">(account?.accountChoice ?? "");
+  const [accountChoice, setAccountChoice] = useState<AccountChoice | "">(account?.accountChoice ?? "administrative");
   const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
