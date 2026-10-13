@@ -1952,7 +1952,7 @@ test("account card choice labels retain exact order and support create, update, 
   const existing = await account(f, company.id);
   assert.equal(existing.accountChoice, null, "Legacy/unspecified accounts remain without choice");
   const chosen = await account(f, company.id, {
-    code: "1000000001",
+    code: "1000000998",
     name: "حساب صندوق",
     kind: "posting",
     accountChoice: "cashboxSecond",
