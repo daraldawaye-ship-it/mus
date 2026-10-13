@@ -1199,11 +1199,6 @@ ul {
     --sidebar-width: 190px;
     --sidebar-expanded-width: 190px;
   }
-  @media (min-width: 681px) and (hover: hover) and (pointer: fine) {
-    .workspace {
-      --sidebar-width: 64px;
-    }
-  }
   .main-content {
     padding: 17px;
   }
@@ -1218,6 +1213,11 @@ ul {
   }
   .account-name {
     max-width: 100px;
+  }
+}
+@media (min-width: 681px) and (max-width: 900px) and (hover: hover) and (pointer: fine) {
+  .workspace {
+    --sidebar-width: 64px;
   }
 }
 @media (max-width: 680px) {
