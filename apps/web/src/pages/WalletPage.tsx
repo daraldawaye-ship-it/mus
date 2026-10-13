@@ -87,6 +87,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   );
   const canAward = !!list.data?.canManage && !!walletPage?.actionAccess.create;
   const canViewInvoice = !!directory.data?.find((entry) => entry.key === "company.invoice")?.actionAccess.view;
+  const canViewVoucher = !!directory.data?.find((entry) => entry.key === "company.financial-document")?.actionAccess.view;
   const canReverse =
     !!list.data?.canManage && !!walletPage?.actionAccess.reverse;
   const [award, setAward] = useState<AwardDraft | null>(null),
@@ -200,7 +201,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 120,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.invoiceId !== null && canViewInvoice
+        row.original.financialDocumentId !== null && canViewVoucher
+          ? <Link to={`${base}/financial-documents/${row.original.financialDocumentId}`}>سند #{row.original.financialDocumentId}</Link>
+          : row.original.invoiceId !== null && canViewInvoice
           ? <Link to={`${base}/invoices/${row.original.invoiceId}`}>فاتورة #{row.original.invoiceId}</Link>
           : row.original.kind === "reversal"
           ? `عكس #${row.original.referenceId}`
@@ -537,7 +540,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
         ولا تُمنح أي نقاط تلقائيًا قبل تفعيل المهمة. يمكن جمع مكافأة الفاتورة مع
         مكافأة السطور: مثلًا 5 نقاط لحفظ فاتورة مبيعات + نقطتين لكل سطر منطقي
         من ثلاثة سطور = 11 نقطة. تكرار نفس الصنف والوحدة والسعر وتاريخ الصلاحية
-        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. بقية المهام لا تزال مخططة.
+        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. يمكن كذلك تفعيل نقاط طلب طباعة سند القبض أو الصرف المرحّل مرة لكل سند ولكل موظف؛ ولا يعد الطلب إثباتًا لخروج الورقة. مكافآت الدخول والصفحات مخططة لاحقًا.
       </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {query.error && (
@@ -589,7 +592,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                         size="compact"
                         onClick={() => {
                           setError("");
-                          setDraft({ ...task, repeatRule: invoiceTasks.has(task.code) ? "per-document" : task.repeatRule, roleIds: [...task.roleIds] });
+                          setDraft({ ...task, repeatRule: (invoiceTasks.has(task.code) || task.code === "RECEIPT_PRINT" || task.code === "PAYMENT_PRINT") ? "per-document" : task.repeatRule, roleIds: [...task.roleIds] });
                         }}
                       >
                         تعديل الكرت
@@ -645,7 +648,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
               />
               <Select
                 label="قاعدة الاستحقاق"
-                disabled={pending || invoiceTasks.has(draft.code)}
+                disabled={pending || invoiceTasks.has(draft.code) || draft.code === "RECEIPT_PRINT" || draft.code === "PAYMENT_PRINT"}
                 value={draft.repeatRule}
                 onChange={(event) =>
                   setDraft({
@@ -663,6 +666,9 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
             </div>
             {invoiceTasks.has(draft.code) && (
               <Notice>تُحتسب هذه المهمة مرة لكل فاتورة جديدة بعد ترحيلها، ولا تتكرر عند إعادة فتحها أو إرسال الطلب ذاته. يمكن تفعيل مكافأة حفظ الفاتورة ومكافأة سطورها معًا؛ النقاط المحددة هنا للسطور هي لكل سطر منطقي.</Notice>
+            )}
+            {(draft.code === "RECEIPT_PRINT" || draft.code === "PAYMENT_PRINT") && (
+              <Notice>تُحتسب المكافأة عند طلب فتح طباعة سند مرحّل، مرة واحدة لكل سند ولكل موظف مؤهل. لا يؤكد النظام أن الورقة خرجت من الطابعة.</Notice>
             )}
             {draft.code === "PAGE_VISIT" && (
               <Select
