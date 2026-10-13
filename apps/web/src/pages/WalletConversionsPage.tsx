@@ -502,9 +502,11 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
                 <div className="form-actions">
                   {canManage && (
                     <>
-                      <Button onClick={() => choose("approve")}>
-                        اعتماد التحويل
-                      </Button>
+                      {selected.employeeId !== context.employee?.id && (
+                        <Button onClick={() => choose("approve")}>
+                          اعتماد التحويل
+                        </Button>
+                      )}
                       <Button
                         variant="secondary"
                         onClick={() => choose("reject")}
