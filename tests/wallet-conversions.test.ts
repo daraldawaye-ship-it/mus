@@ -636,6 +636,69 @@ test("approval reserves only quoted points, protects them, and releases or consu
   assert.equal(state.entries, 3);
 });
 
+test("a general manager cannot approve their own wallet conversion; independent approval is required", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company("Separation of duties company");
+  const manager = await f.staff(company.id, "General manager and recipient");
+  const setup = await f.configure(company.id, manager.employee.id, "approval");
+  await f.owner.ok(
+    "PATCH",
+    setup.base + "/employees/" + manager.employee.id + "/manager",
+    { isGeneralManager: true },
+  );
+  await f.award(company.id, manager.employee.id, "80");
+  const path = setup.base + "/wallet-conversions";
+  const { conversion: pending } = await manager.client.ok<ConversionResponse>(
+    "POST",
+    path,
+    await f.quote(manager.client, company.id),
+  );
+  assert.equal(pending.status, "pending");
+  const original = await f.snapshot(company.id, manager.employee.id);
+  const response = await manager.client.request(
+    "POST",
+    path + "/" + pending.id + "/approve",
+    transition(pending, "Try approving own reward"),
+  );
+  assert.equal(response.status, 403, "Manager cannot credit their own payable");
+  assert.deepEqual(
+    await f.snapshot(company.id, manager.employee.id),
+    original,
+    "Self-approval has no journal, point debit or audit side effect",
+  );
+  const { conversion: approved } = await f.owner.ok<ConversionResponse>(
+    "POST",
+    path + "/" + pending.id + "/approve",
+    transition(pending, "Independent owner approval"),
+  );
+  assert.equal(approved.status, "posted");
+  assert.equal(approved.amount, "10");
+  assert(approved.financialDocumentId);
+  assert.deepEqual(
+    await f.journal(company.id, approved.financialDocumentId),
+    [
+      {
+        accountId: setup.expense.id,
+        debit: "10",
+        credit: "0",
+        baseDebit: "10",
+        baseCredit: "0",
+      },
+      {
+        accountId: setup.account.id,
+        debit: "0",
+        credit: "10",
+        baseDebit: "0",
+        baseCredit: "10",
+      },
+    ],
+  );
+  assert.equal(
+    (await f.snapshot(company.id, manager.employee.id)).wallet!.points,
+    "0",
+  );
+});
+
 test("conversion rejects changed quotes, foreign and archived references, and disabled new work while confirming accepted UUIDs", async (t) => {
   const f = await fixture(t);
   const company = await f.company();

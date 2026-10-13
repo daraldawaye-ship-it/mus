@@ -427,6 +427,20 @@ export async function decideWalletConversion(
   );
   if (!found.rowCount) missing();
   const before = await loadConversion(client, companyId, conversionId);
+  // A manager may request their own points conversion, but must never authorize
+  // the resulting expense and employee payable. Keep approval independent.
+  if (action === "approve") {
+    const ownRequest = await client.query(
+      "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2 AND user_id=$3",
+      [companyId, before.employeeId, user.id],
+    );
+    if (ownRequest.rowCount)
+      throw new HttpError(
+        403,
+        "self_approval_forbidden",
+        "لا يجوز اعتماد تحويل نقاطك بنفسك؛ يجب أن يعتمده مدير آخر أو المالك",
+      );
+  }
   if (before.status !== "pending" || before.revision !== input.revision)
     throw new HttpError(
       409,
