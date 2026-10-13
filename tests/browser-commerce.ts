@@ -680,6 +680,31 @@ try {
       await page.locator('[id^="invoice-quantity-"]').first().press("Enter");
     }
     await scenario(
+      "sales stock stays in first item unit with one decimal when sale unit changes",
+      async () => {
+        await saleDraft("3");
+        const preview = await call<{
+          items: { itemId: number; quantitySmallest: string }[];
+        }>(base + "/invoice-stock-preview?locationId=" + showroom.id +
+          "&itemIds=" + item.id);
+        const available = preview.items.find((entry) => entry.itemId === item.id)!;
+        const expected = Number((
+          Number(available.quantitySmallest) / (item.factor2 * item.factor3)
+        ).toFixed(1)).toString();
+        const stock = page.locator(".commerce-matrix tr[data-selected='true']")
+          .first().locator(".commerce-line-available");
+        await eventually(() => stock.innerText(), (shown) =>
+          assert.equal(shown.trim(), expected));
+        for (const saleUnit of ["1", "2", "3"]) {
+          await page.getByLabel("الوحدة " + item.name, { exact: true })
+            .selectOption(saleUnit);
+          assert.equal((await stock.innerText()).trim(), expected,
+            "Available stock must not switch from first unit to sale unit " + saleUnit);
+        }
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+      },
+    );
+    await scenario(
       "sales keyboard shortcut: zero Enter, notes Enter, discount Enter, then focused Save",
       async () => {
         const before = await call<ApiPage<Invoice>>(base + "/invoices?kind=sale");
