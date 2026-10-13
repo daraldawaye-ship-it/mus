@@ -357,6 +357,7 @@ function ItemSearch({
   onQueryChange,
   onChoose,
   onConfirmSelected,
+  onFinishEntry,
 }: {
   companyId: number;
   id: string;
@@ -366,6 +367,7 @@ function ItemSearch({
   onQueryChange: (value: string) => void;
   onChoose: (item: Item) => void;
   onConfirmSelected: () => void;
+  onFinishEntry?: () => void;
 }) {
   const { user } = useSession();
   const query = value;
@@ -517,6 +519,20 @@ function ItemSearch({
           }
           if (event.key === "Enter") {
             event.preventDefault();
+            // In sales only, entering exactly zero ends item entry; it must
+            // never pick a product, submit the form or leave "0" behind.
+            if (
+              !selected && onFinishEntry &&
+              !event.nativeEvent.isComposing &&
+              normalizeDigits(query.trim()) === "0"
+            ) {
+              setOpen(false);
+              setSearch("");
+              setAutoChoose("");
+              onQueryChange("");
+              onFinishEntry();
+              return;
+            }
             if (selected) {
               onConfirmSelected();
               return;
@@ -1795,6 +1811,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                               onConfirmSelected={() =>
                                 focus(lineInputId(line, "quantity"))
                               }
+                              onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
                           )}
                         </td>
@@ -2078,18 +2095,30 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           )}
           <div className="commerce-footer-grid">
             <Field
+              id="invoice-notes"
               label="ملاحظات الفاتورة"
               value={description}
               maxLength={1000}
               disabled={locked}
               onChange={(event) => setDescription(event.target.value)}
+              onKeyDown={(event) => {
+                if (kind !== "sale" || event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                focus("invoice-discount");
+              }}
             />
             <Field
+              id="invoice-discount"
               label="الخصم"
               value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
               disabled={locked || !hasPositiveLines}
               onChange={(event) => setDiscount(event.target.value)}
+              onKeyDown={(event) => {
+                if (kind !== "sale" || event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                focus("invoice-save");
+              }}
             />
             <div className="commerce-totals" aria-live="polite">
               <span>
@@ -2110,7 +2139,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
               >
                 تصفير الفاتورة
               </Button>
-              <Button type="submit" disabled={saving || !selectedLines.length}>
+              <Button id="invoice-save" type="submit" disabled={saving || !selectedLines.length}>
                 {saving
                   ? "جارٍ الحفظ والترحيل…"
                   : unknown
