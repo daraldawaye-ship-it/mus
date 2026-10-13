@@ -53,6 +53,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="legacy account import permits" tests/masters.test.ts
       - name: Test item composition cards and company scoping
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
+      - name: Test Arabic shelf cards, grouping and vitrine flags
+        run: node --import tsx --test --test-name-pattern="Arabic shelf cards are seeded" tests/items.test.ts
       - name: Test safe composition bulk import and long names
         run: node --import tsx --test --test-name-pattern="composition bulk import" tests/items.test.ts
       - name: Test wallets, page visits and daily company entry

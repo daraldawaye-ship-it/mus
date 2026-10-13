@@ -83,6 +83,31 @@ export interface ItemComposition {
   nonInterchangeable: boolean;
 }
 
+export const arabicShelfLetters = [
+  "ا","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش",
+  "ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","ه","و","ي",
+] as const;
+export type ArabicShelfLetter = (typeof arabicShelfLetters)[number];
+export const itemShelfPatchSchema = z.object({
+  revision,
+  archived: z.boolean(),
+  vitrine: z.boolean(),
+}).strict();
+export interface ItemShelf {
+  id: number;
+  companyId: number;
+  name: string;
+  groupLetter: ArabicShelfLetter;
+  groupOrder: number;
+  slotNumber: number;
+  archived: boolean;
+  vitrine: boolean;
+  revision: number;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const commissionPercent = z.string().trim().transform(normalizeDigits)
   .pipe(z.string().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "نسبة العمولة يجب أن تكون بين 0 و100 بأربع منازل كحد أقصى"))
   .refine((value) => {
