@@ -111,6 +111,13 @@ export async function invoiceDTOs(
     kind: row.kind,
     status: "posted",
     returning: row.is_return,
+    mixed:
+      lines.rows.some(
+        (line) => line.invoice_id === row.id && BigInt(line.quantity) > 0n,
+      ) &&
+      lines.rows.some(
+        (line) => line.invoice_id === row.id && BigInt(line.quantity) < 0n,
+      ),
     documentDate: row.date_text,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
@@ -240,7 +247,7 @@ export async function createInvoice(
       conflict("سجل سعر صرف فعال بتاريخ الفاتورة قبل الترحيل");
     rate = normalizeRate(rates.rows[0].rate);
   }
-  const returning = BigInt(input.lines[0].quantity) < 0n;
+  const returning = input.lines.every((line) => BigInt(line.quantity) < 0n);
   const itemIds = [...new Set(input.lines.map((line) => line.itemId))].sort(
     (a, b) => a - b,
   );
@@ -250,14 +257,18 @@ export async function createInvoice(
   );
   if (
     items.rows.length !== itemIds.length ||
-    (!returning && items.rows.some((item) => !item.active))
+    input.lines.some(
+      (line) =>
+        BigInt(line.quantity) > 0n &&
+        !items.rows.find((item) => item.id === line.itemId)?.active,
+    )
   )
     conflict("اختر أصنافًا فعالة من الشركة");
   const originals = new Map<number, QueryResultRow>();
-  if (returning && input.lines.some((line) => line.originalLineId !== null)) {
-    const ids = input.lines.map((line) => line.originalLineId).filter(
-      (value): value is number => value !== null,
-    );
+  if (input.lines.some((line) => line.originalLineId !== null)) {
+    const ids = input.lines
+      .map((line) => line.originalLineId)
+      .filter((value): value is number => value !== null);
     if (new Set(ids).size !== ids.length)
       conflict("لا تكرر سطر الأصل في فاتورة المردود");
     const rows = await client.query(
@@ -277,7 +288,8 @@ export async function createInvoice(
       original: QueryResultRow | null = null;
     const smallest = quantity * stockUnitMultiplier(item, line.unit);
     let expiryDate = line.expiryDate;
-    if (returning && line.originalLineId !== null) {
+    if (line.originalLineId !== null) {
+      if (quantity >= 0n) conflict("يرتبط سطر الأصل بكمية مرتجعة سالبة فقط");
       original = originals.get(line.originalLineId)!;
       if (
         original.item_id !== line.itemId ||
@@ -332,7 +344,7 @@ export async function createInvoice(
       }
     } else {
       if (input.kind === "sale") {
-        if (returning && line.originalLineId === null) {
+        if (quantity < 0n) {
           if (item.currency_id !== input.currencyId)
             conflict("عملة مردود المبيعات يجب أن تطابق عملة أسعار كرت الصنف.");
           price = normalizeRate(item[`sale_price${line.unit}`]);
@@ -346,19 +358,21 @@ export async function createInvoice(
           if (item.has_expiry && expiryDate && expiryDate < input.documentDate)
             conflict("لا تقبل دفعة مردود منتهية الصلاحية دون مراجعة.");
         } else {
-        if (expiryDate !== null)
-          conflict(
-            "دفعات المبيعات تختار تلقائيًا بحسب أقرب انتهاء؛ لا تدخل تاريخ انتهاء",
-          );
-        if (item.currency_id !== input.currencyId)
-          conflict(
-            "عملة البيع يجب أن تطابق عملة أسعار الصنف؛ لا تحويل أسعار ضمني",
-          );
-        price = normalizeRate(item[`sale_price${line.unit}`]);
-        if (line.unitPrice !== undefined && line.unitPrice !== price)
-          conflict("سعر البيع يؤخذ من كرت الصنف ولا يعدل داخل الفاتورة");
+          if (expiryDate !== null)
+            conflict(
+              "دفعات المبيعات تختار تلقائيًا بحسب أقرب انتهاء؛ لا تدخل تاريخ انتهاء",
+            );
+          if (item.currency_id !== input.currencyId)
+            conflict(
+              "عملة البيع يجب أن تطابق عملة أسعار الصنف؛ لا تحويل أسعار ضمني",
+            );
+          price = normalizeRate(item[`sale_price${line.unit}`]);
+          if (line.unitPrice !== undefined && line.unitPrice !== price)
+            conflict("سعر البيع يؤخذ من كرت الصنف ولا يعدل داخل الفاتورة");
         }
       } else {
+        if (quantity < 0n && line.unitPrice === undefined)
+          conflict("أدخل سعر مردود المشتريات المباشر بعملة الفاتورة");
         if (
           line.unitPrice === undefined &&
           item.currency_id !== input.currencyId
@@ -390,12 +404,21 @@ export async function createInvoice(
       expiryDate,
     });
   }
-  if (!returning) {
-    checkQuantum(input.discount, currency.decimal_places);
+  // A header discount applies only to ordinary positive rows. Linked returns
+  // keep their original prorated discount; unlinked returns have no discount.
+  checkQuantum(input.discount, currency.decimal_places);
+  const positiveLines = prepared.filter((line) => line.quantity > 0n);
+  if (!positiveLines.length && moneyUnits(input.discount) !== 0n)
+    throw new HttpError(
+      400,
+      "invalid_discount",
+      "الخصم الإضافي يطبق على السطور الموجبة فقط",
+    );
+  if (positiveLines.length) {
     let totals: ReturnType<typeof calculateInvoiceTotals>;
     try {
       totals = calculateInvoiceTotals(
-        prepared.map((line) => ({
+        positiveLines.map((line) => ({
           quantity: line.quantity.toString(),
           unitPrice: line.price,
         })),
@@ -409,7 +432,7 @@ export async function createInvoice(
         error instanceof Error ? error.message : "الخصم غير صالح",
       );
     }
-    for (const [index, line] of prepared.entries()) {
+    for (const [index, line] of positiveLines.entries()) {
       line.discount = moneyUnits(totals.lineDiscounts[index]);
       line.total = moneyUnits(totals.lineTotals[index]);
     }
@@ -420,7 +443,7 @@ export async function createInvoice(
   // and financial settlement policy is explicitly configured.
   if (input.kind === "sale") {
     for (const line of prepared) {
-      if (returning && line.original) {
+      if (line.quantity < 0n && line.original) {
         const original = line.original;
         line.commissionRate = normalizeRate(original.commission_rate);
         const earned = moneyUnits(original.commission_amount);
@@ -433,26 +456,42 @@ export async function createInvoice(
           const returnedQuantity = BigInt(returned.rows[0].quantity);
           const requested = abs(line.quantity);
           const available = earned - already;
-          if (available < 0n) conflict("عمولة المردود السابقة تتجاوز عمولة فاتورة الأصل");
-          const reversal = returnedQuantity + requested === BigInt(original.quantity)
+          if (available < 0n)
+            conflict("عمولة المردود السابقة تتجاوز عمولة فاتورة الأصل");
+          const reversal =
+            returnedQuantity + requested === BigInt(original.quantity)
+              ? available
+              : share(
+                  earned,
+                  requested,
+                  BigInt(original.quantity),
+                  quantum(currency.decimal_places),
+                );
+          line.commissionAmount = -(reversal > available
             ? available
-            : share(earned, requested, BigInt(original.quantity), quantum(currency.decimal_places));
-          line.commissionAmount = -(reversal > available ? available : reversal);
+            : reversal);
         }
-      } else if (!returning && line.total > 0n) {
+      } else if (line.quantity > 0n && line.total > 0n) {
         const item = line.item;
         const rate = normalizeRate(item.commission_rate);
-        if (rate !== "0" && item.clearance_from_text && item.clearance_to_text &&
-            input.documentDate >= item.clearance_from_text &&
-            input.documentDate <= item.clearance_to_text) {
+        if (
+          rate !== "0" &&
+          item.clearance_from_text &&
+          item.clearance_to_text &&
+          input.documentDate >= item.clearance_from_text &&
+          input.documentDate <= item.clearance_to_text
+        ) {
           // 4 decimal places for percentage, 6 decimal places for currency units.
           const [whole, frac = ""] = rate.split(".");
-          const scaledRate = BigInt(whole) * 10000n + BigInt(frac.padEnd(4, "0"));
+          const scaledRate =
+            BigInt(whole) * 10000n + BigInt(frac.padEnd(4, "0"));
           const step = quantum(currency.decimal_places);
           const denominator = 1000000n * step;
           const numerator = line.total * scaledRate;
-          const rounded = ((numerator / denominator) +
-            ((numerator % denominator) * 2n >= denominator ? 1n : 0n)) * step;
+          const rounded =
+            (numerator / denominator +
+              ((numerator % denominator) * 2n >= denominator ? 1n : 0n)) *
+            step;
           assertAmount(rounded);
           line.commissionRate = rate;
           line.commissionAmount = rounded;
@@ -476,14 +515,32 @@ export async function createInvoice(
       "conversion_zero",
       "صافي الفاتورة أصغر من دقة العملة الأساسية",
     );
-  const baseParts = allocate(
-    baseMagnitude,
-    prepared.map((line) => abs(line.total)),
-    quantum(settings.baseDecimalPlaces),
+  const baseTotal = total < 0n ? -baseMagnitude : baseMagnitude;
+  const negatives = prepared.filter((line) => line.total < 0n);
+  const positives = prepared.filter((line) => line.total > 0n);
+  const negativeMagnitude = convertedUnits(
+    moneyString(negatives.reduce((sum, line) => sum - line.total, 0n)),
+    rate,
+    settings.baseDecimalPlaces,
   );
-  for (const [index, line] of prepared.entries())
-    line.baseTotal = returning ? -baseParts[index] : baseParts[index];
-  const baseTotal = returning ? -baseMagnitude : baseMagnitude;
+  // Allocate each sign independently. Use the exact converted net to absorb
+  // any single-quantum subtotal rounding difference on the positive side.
+  const positiveMagnitude = baseTotal + negativeMagnitude;
+  const baseStep = quantum(settings.baseDecimalPlaces);
+  const negativeParts = allocate(
+    negativeMagnitude,
+    negatives.map((row) => -row.total),
+    baseStep,
+  );
+  for (const [index, line] of negatives.entries())
+    line.baseTotal = -negativeParts[index];
+  const positiveParts = allocate(
+    positiveMagnitude,
+    positives.map((row) => row.total),
+    baseStep,
+  );
+  for (const [index, line] of positives.entries())
+    line.baseTotal = positiveParts[index];
   const counter = await client.query(
     "INSERT INTO invoice_counters(company_id,next_number) VALUES($1,2) ON CONFLICT(company_id) DO UPDATE SET next_number=invoice_counters.next_number+1 RETURNING (next_number-1)::text AS number",
     [companyId],
@@ -524,6 +581,8 @@ export async function createInvoice(
   );
   const invoiceId = inserted.rows[0].id as number;
   let totalCost = 0n;
+  let positivePurchaseVariance = 0n,
+    negativePurchaseVariance = 0n;
   for (const [index, line] of prepared.entries()) {
     const snapshot = line.original ?? line.item;
     const result = await client.query(
@@ -555,10 +614,10 @@ export async function createInvoice(
     );
     const lineId = result.rows[0].id as number;
     let cost: bigint;
-    if (returning && input.kind === "sale") {
+    if (line.quantity < 0n && input.kind === "sale" && line.original) {
       const moves = await client.query(
         "SELECT m.*,COALESCE((SELECT sum(r.quantity_smallest) FROM stock_movements r WHERE r.company_id=m.company_id AND r.original_movement_id=m.id),0)::text AS returned_quantity,COALESCE((SELECT sum(r.cost_base) FROM stock_movements r WHERE r.company_id=m.company_id AND r.original_movement_id=m.id),0)::text AS returned_cost FROM stock_movements m WHERE m.company_id=$1 AND m.invoice_line_id=$2 AND m.kind='sale' ORDER BY m.id",
-        [companyId, line.original!.id],
+        [companyId, line.original.id],
       );
       let remaining = abs(line.smallest);
       cost = 0n;
@@ -603,19 +662,39 @@ export async function createInvoice(
     } else {
       const delta = input.kind === "sale" ? -line.smallest : line.smallest;
       let directReturnCost: bigint | undefined;
-      if (input.kind === "sale" && returning && line.original === null) {
+      if (input.kind === "sale" && line.quantity < 0n) {
         // Derive an available historical unit-cost estimate; unlike a linked
         // customer return there is no original movement to reverse precisely.
         const previousSale = await client.query(
           "SELECT quantity_smallest,cost_base FROM stock_movements WHERE company_id=$1 AND item_id=$2 AND kind='sale' AND quantity_smallest<0 AND cost_base<0 ORDER BY id DESC LIMIT 1",
-          [companyId,line.item.id],
+          [companyId, line.item.id],
         );
-        const returnedQuantity = line.smallest;
-        directReturnCost = previousSale.rows[0]
-          ? share(-moneyUnits(previousSale.rows[0].cost_base),returnedQuantity,
-              -BigInt(previousSale.rows[0].quantity_smallest),
-              quantum(settings.baseDecimalPlaces))
-          : 0n;
+        const returnedQuantity = abs(line.smallest);
+        if (previousSale.rows[0]) {
+          directReturnCost = share(
+            -moneyUnits(previousSale.rows[0].cost_base),
+            returnedQuantity,
+            -BigInt(previousSale.rows[0].quantity_smallest),
+            quantum(settings.baseDecimalPlaces),
+          );
+        } else {
+          const pooled = await client.query(
+            "SELECT quantity_smallest,value_base FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+            [companyId, line.item.id],
+          );
+          const pooledQuantity = pooled.rows[0]
+            ? abs(BigInt(pooled.rows[0].quantity_smallest))
+            : 0n;
+          directReturnCost =
+            pooledQuantity > 0n
+              ? share(
+                  abs(moneyUnits(pooled.rows[0].value_base)),
+                  returnedQuantity,
+                  pooledQuantity,
+                  quantum(settings.baseDecimalPlaces),
+                )
+              : 0n;
+        }
       }
       const movement = await applyStock(client, companyId, user.id, {
         itemId: line.item.id,
@@ -623,22 +702,30 @@ export async function createInvoice(
         quantitySmallest: delta,
         kind:
           input.kind === "sale"
-            ? (returning ? "sales_return" : "sale")
-            : returning
+            ? line.quantity < 0n
+              ? "sales_return"
+              : "sale"
+            : line.quantity < 0n
               ? "purchase_return"
               : "purchase",
         documentDate: input.documentDate,
         expiryDate: line.expiryDate,
         costBase:
-          input.kind === "purchase" && !returning ? line.baseTotal : directReturnCost,
+          input.kind === "purchase" && line.quantity > 0n
+            ? line.baseTotal
+            : directReturnCost,
         invoiceId,
         invoiceLineId: lineId,
-        allowExpired: returning,
-        allowInactive: returning,
+        allowExpired: line.quantity < 0n,
+        allowInactive: line.quantity < 0n,
       });
       cost = input.kind === "sale" ? -movement.costBase : movement.costBase;
     }
     totalCost += cost;
+    if (input.kind === "purchase") {
+      if (line.quantity > 0n) positivePurchaseVariance += cost - line.baseTotal;
+      else negativePurchaseVariance += cost - line.baseTotal;
+    }
     await client.query(
       "UPDATE invoice_lines SET cost_base=$1 WHERE company_id=$2 AND id=$3",
       [moneyString(cost), companyId, lineId],
@@ -729,69 +816,37 @@ export async function createInvoice(
       ],
     });
   }
-  if (input.kind === "purchase" && totalCost !== baseTotal) {
-    const variance = totalCost - baseTotal;
-    varianceDocumentId = await postCommerceJournal(client, companyId, user, {
-      documentDate: input.documentDate,
-      branchId: input.branchId,
-      currencyId: settings.baseCurrencyId,
-      description: `${returning ? "فرق تكلفة مردود مشتريات" : "تسوية تكلفة المخزون السالب"} ${number}`,
-      idempotencyKey: randomUUID(),
-      lines: !returning ? (
-        variance > 0n ? [
-          {
-            accountId: settings.inventoryAccountId,
-            debit: moneyString(variance), credit: "0",
-            description: "تسوية تكلفة مخزون سالب",
-          },
-          {
-            accountId: settings.cogsAccountId,
-            debit: "0", credit: moneyString(variance),
-            description: "تسوية تكلفة مخزون سالب",
-          },
-        ] : [
-          {
-            accountId: settings.cogsAccountId,
-            debit: moneyString(-variance), credit: "0",
-            description: "تسوية تكلفة مخزون سالب",
-          },
-          {
-            accountId: settings.inventoryAccountId,
-            debit: "0", credit: moneyString(-variance),
-            description: "تسوية تكلفة مخزون سالب",
-          },
-        ]
-      ) :
-        variance > 0n
-          ? [
-              {
-                accountId: settings.inventoryAccountId,
-                debit: moneyString(variance),
-                credit: "0",
-                description: "فرق تكلفة المردود",
-              },
-              {
-                accountId: settings.surplusAccountId,
-                debit: "0",
-                credit: moneyString(variance),
-                description: "فرق تكلفة المردود",
-              },
-            ]
-          : [
-              {
-                accountId: settings.shortageAccountId,
-                debit: moneyString(-variance),
-                credit: "0",
-                description: "فرق تكلفة المردود",
-              },
-              {
-                accountId: settings.inventoryAccountId,
-                debit: "0",
-                credit: moneyString(-variance),
-                description: "فرق تكلفة المردود",
-              },
-            ],
-    });
+  if (input.kind === "purchase") {
+    const effects = new Map<number, bigint>();
+    const addEffect = (accountId: number, value: bigint) =>
+      effects.set(accountId, (effects.get(accountId) ?? 0n) + value);
+    // Receipts correcting negative inventory reconcile provisional COGS.
+    addEffect(settings.inventoryAccountId, positivePurchaseVariance);
+    addEffect(settings.cogsAccountId, -positivePurchaseVariance);
+    // Purchase returns preserve current book cost, with original-price
+    // differences recorded to the configured surplus/shortage accounts.
+    addEffect(settings.inventoryAccountId, negativePurchaseVariance);
+    if (negativePurchaseVariance > 0n)
+      addEffect(settings.surplusAccountId, -negativePurchaseVariance);
+    else if (negativePurchaseVariance < 0n)
+      addEffect(settings.shortageAccountId, -negativePurchaseVariance);
+    const varianceLines = [...effects]
+      .filter(([, value]) => value !== 0n)
+      .map(([accountId, value]) => ({
+        accountId,
+        debit: value > 0n ? moneyString(value) : "0",
+        credit: value < 0n ? moneyString(-value) : "0",
+        description: "فروق تكلفة المشتريات والمردود",
+      }));
+    if (varianceLines.length)
+      varianceDocumentId = await postCommerceJournal(client, companyId, user, {
+        documentDate: input.documentDate,
+        branchId: input.branchId,
+        currencyId: settings.baseCurrencyId,
+        description: `فروق تكلفة مشتريات ${number}`,
+        idempotencyKey: randomUUID(),
+        lines: varianceLines,
+      });
   }
   await client.query(
     "UPDATE invoices SET financial_document_id=$1,cost_document_id=$2,variance_document_id=$3,posted=true WHERE company_id=$4 AND id=$5",
@@ -804,7 +859,14 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  await awardPostedInvoice(client, companyId, invoiceId, input.kind, user, number);
+  await awardPostedInvoice(
+    client,
+    companyId,
+    invoiceId,
+    input.kind,
+    user,
+    number,
+  );
   await audit(
     client,
     user,

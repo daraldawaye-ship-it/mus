@@ -169,7 +169,8 @@ function InvoiceList({
         size: 90,
         enableSorting: false,
         cell: ({ row }) =>
-          row.original.lines.some((line) => line.quantity.startsWith("-"))
+          row.original.lines.length > 0 &&
+          row.original.lines.every((line) => line.quantity.startsWith("-"))
             ? "مردود"
             : kind === "sale"
               ? "بيع"
@@ -227,7 +228,7 @@ function InvoiceList({
     <>
       <PageHeader
         title={kind === "sale" ? "فواتير المبيعات" : "فواتير المشتريات"}
-        description="حفظ الفاتورة يثبت المخزون والقيد المحاسبي معًا. المردود مرتبط بسطور الفاتورة الأصلية."
+        description="الموجب بيع أو شراء، والسالب مردود في السطر نفسه؛ يمكن جمعهما في فاتورة واحدة."
         actions={
           canPost(context) && (
             <Link
@@ -310,6 +311,8 @@ interface DraftLine {
   unitPrice: string;
   expiryDate: string | null;
   originalLineId: number | null;
+  originalSelection: boolean;
+  originalSource?: InvoiceLine;
   sourceItem?: Item;
 }
 
@@ -326,6 +329,8 @@ function emptyLine(returning = false): DraftLine {
     unitPrice: "0",
     expiryDate: null,
     originalLineId: null,
+    originalSelection: returning,
+    originalSource: undefined,
     sourceItem: undefined,
   };
 }
@@ -756,7 +761,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const automaticCurrencyId = useRef<number | null>(null);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
-  const [isReturn, setIsReturn] = useState(false);
+  const [showOriginalPicker, setShowOriginalPicker] = useState(false);
   const branchManuallyChosen = useRef(false);
   const locationManuallyChosen = useRef(false);
   const automaticBranchId = useRef<number | null>(null);
@@ -781,7 +786,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   const showroomQuery = useQuery({
     queryKey: ["invoice-default-showroom", user?.id, companyId, branch?.id],
-    enabled: !!user && !!branch && !isReturn,
+    enabled: !!user && !!branch,
     queryFn: ({ signal }) =>
       api<Page<Location>>(
         `/companies/${companyId}/commerce-options?type=locations&active=true&branchId=${branch!.id}&kind=showroom&pageSize=100`,
@@ -792,21 +797,20 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
   useEffect(() => {
-    if (isReturn || !defaultYer || currencyManuallyChosen.current) return;
+    if (!defaultYer || currencyManuallyChosen.current) return;
     if (currency === null) {
       automaticCurrencyId.current = defaultYer.id;
       setCurrency(defaultYer);
     }
-  }, [defaultYer, currency, isReturn]);
+  }, [defaultYer, currency]);
   useEffect(() => {
     const main = mainBranchQuery.data;
-    if (isReturn || !main || branchManuallyChosen.current || branch) return;
+    if (!main || branchManuallyChosen.current || branch) return;
     automaticBranchId.current = main.id;
     setBranch(main);
-  }, [mainBranchQuery.data, branch, isReturn]);
+  }, [mainBranchQuery.data, branch]);
   useEffect(() => {
     if (
-      isReturn ||
       !branch ||
       !showroomQuery.data ||
       locationManuallyChosen.current ||
@@ -832,24 +836,55 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     if (!defaultShowroom) return;
     automaticLocationId.current = defaultShowroom.id;
     setLocation(defaultShowroom);
-  }, [showroomQuery.data, branch, location, isReturn]);
+  }, [showroomQuery.data, branch, location]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const selectedLines = lines.filter((line) => line.itemId > 0);
-  const stockItemIds = [...new Set(selectedLines.map((line) => line.itemId))].sort((a,b) => a-b).join(",");
+  const hasLinkedLines = selectedLines.some(
+    (line) => line.originalLineId !== null,
+  );
+  const hasPositiveLines = selectedLines.some(
+    (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
+  );
+  const showExpiry =
+    kind === "purchase" ||
+    selectedLines.some(
+      (line) =>
+        normalizeDigits(line.quantity.trim()).startsWith("-") &&
+        !line.originalLineId &&
+        line.sourceItem?.hasExpiry,
+    );
+  const stockItemIds = [...new Set(selectedLines.map((line) => line.itemId))]
+    .sort((a, b) => a - b)
+    .join(",");
   const stockPreview = useQuery<{
-    items: {itemId:number;quantitySmallest:string;shelf:string}[];
+    items: { itemId: number; quantitySmallest: string; shelf: string }[];
   }>({
-    queryKey: ["sale-stock-preview", user?.id, companyId, location?.id, stockItemIds],
+    queryKey: [
+      "sale-stock-preview",
+      user?.id,
+      companyId,
+      location?.id,
+      stockItemIds,
+    ],
     enabled: kind === "sale" && !!user && !!location && !!stockItemIds,
-    queryFn: ({signal}) => api(
-      `/companies/${companyId}/invoice-stock-preview?${new URLSearchParams({
-        locationId: String(location!.id), itemIds: stockItemIds,
-      })}`, {signal}),
+    queryFn: ({ signal }) =>
+      api(
+        `/companies/${companyId}/invoice-stock-preview?${new URLSearchParams({
+          locationId: String(location!.id),
+          itemIds: stockItemIds,
+        })}`,
+        { signal },
+      ),
   });
-  const stockByItem = new Map((stockPreview.data?.items ?? []).map((row) => [row.itemId, row]));
+  const stockByItem = new Map(
+    (stockPreview.data?.items ?? []).map((row) => [row.itemId, row]),
+  );
   const [error, setError] = useState("");
-  const [savedInvoice, setSavedInvoice] = useState<{ id: number; number: string } | null>(null);
+  const [savedInvoice, setSavedInvoice] = useState<{
+    id: number;
+    number: string;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
@@ -910,22 +945,49 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       : level === 2
         ? selected.unit2Name
         : selected.unit3Name;
+  function calculationLine(line: DraftLine) {
+    let inheritedDiscount: string | undefined;
+    if (
+      line.originalLineId &&
+      line.originalSource &&
+      normalizeDigits(line.quantity.trim()).startsWith("-")
+    ) {
+      const quantity = -BigInt(normalizeDigits(line.quantity.trim()));
+      const [whole, fraction = ""] = line.originalSource.discount.split(".");
+      const originalDiscount =
+        BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
+      const step = 10n ** BigInt(6 - (currency?.decimalPlaces ?? 6));
+      const denominator = BigInt(line.originalSource.quantity) * step;
+      const numerator = originalDiscount * quantity;
+      const value =
+        (numerator / denominator +
+          ((numerator % denominator) * 2n >= denominator ? 1n : 0n)) *
+        step;
+      const digits = (value % 1_000_000n)
+        .toString()
+        .padStart(6, "0")
+        .replace(/0+$/, "");
+      inheritedDiscount = `${value ? "-" : ""}${value / 1_000_000n}${digits ? `.${digits}` : ""}`;
+    }
+    return {
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      ...(inheritedDiscount !== undefined
+        ? { discount: inheritedDiscount }
+        : {}),
+    };
+  }
   const totals = useMemo(() => {
     try {
       return calculateInvoiceTotals(
-        lines
-          .filter((line) => line.itemId > 0)
-          .map((line) => ({
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-          })),
-        isReturn ? "0" : discount,
+        lines.filter((line) => line.itemId > 0).map(calculationLine),
+        hasPositiveLines ? discount : "0",
         currency?.decimalPlaces ?? 6,
       );
     } catch {
       return null;
     }
-  }, [lines, discount, currency?.decimalPlaces, isReturn]);
+  }, [lines, discount, currency?.decimalPlaces, hasPositiveLines]);
   function updateLine(key: string, patch: Partial<DraftLine>) {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
@@ -941,7 +1003,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       sourceItem: selected,
       unit: 1,
       unitName: selected.unit1Name,
-      quantity: isReturn ? "-1" : "1",
+      quantity: "1",
       unitPrice:
         kind === "sale"
           ? selected.salePrice1
@@ -950,6 +1012,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             : "0",
       expiryDate: null,
       originalLineId: null,
+      originalSelection: false,
+      originalSource: undefined,
     });
     focus(lineInputId(line, "quantity"));
   }
@@ -957,15 +1021,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const normalized = normalizeDigits(line.quantity.trim());
     if (!/^-?\d{1,22}$/.test(normalized) || BigInt(normalized) === 0n) {
       setError("الكمية عدد صحيح غير صفري حتى 22 رقمًا.");
-      focus(lineInputId(line, "quantity"));
-      return false;
-    }
-    if (isReturn !== normalized.startsWith("-")) {
-      setError(
-        isReturn
-          ? "أدخل كمية سالبة للمردود."
-          : "اختر عملية مردود عند إدخال كمية سالبة.",
-      );
       focus(lineInputId(line, "quantity"));
       return false;
     }
@@ -981,16 +1036,14 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     if (
       !currency ||
       (kind === "sale" &&
-        (!isReturn || !original) &&
+        !line.originalLineId &&
         line.sourceItem?.currencyId !== currency.id)
     ) {
       setError("اختر عملة الفاتورة؛ عملة سعر البيع يجب أن تطابقها.");
       return false;
     }
-    if (isReturn && original) {
-      const source = original.lines.find(
-        (entry) => entry.id === line.originalLineId,
-      );
+    if (line.originalLineId) {
+      const source = line.originalSource;
       if (!source) {
         setError("اختر الصنف المرتجع من الفاتورة الأصلية.");
         return false;
@@ -1014,9 +1067,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         focus(lineInputId(line, "quantity"));
         return false;
       }
-    } else if (isReturn && kind === "purchase") {
-      setError("مردود المشتريات يتطلب اختيار فاتورة أصلية.");
-      return false;
     } else if (
       kind === "purchase" &&
       line.sourceItem?.hasExpiry &&
@@ -1028,7 +1078,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     }
     try {
       calculateInvoiceTotals(
-        [{ quantity: line.quantity, unitPrice: line.unitPrice }],
+        [calculationLine(line)],
         "0",
         currency.decimalPlaces,
       );
@@ -1038,6 +1088,120 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       return false;
     }
     return true;
+  }
+  async function loadOriginalItem(lineKey: string, source: InvoiceLine) {
+    try {
+      const response = await api<Page<Item>>(
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: source.itemCode, pageSize: "20" })}`,
+        { signal: guard.signal },
+      );
+      const currentItem = response.items.find(
+        (item) => item.id === source.itemId,
+      );
+      if (!guard.isCurrent() || !currentItem) return;
+      setLines((current) =>
+        current.map((line) => {
+          if (
+            line.key !== lineKey ||
+            line.itemId !== currentItem.id ||
+            line.sourceItem
+          )
+            return line;
+          return {
+            ...line,
+            sourceItem: currentItem,
+            ...(!line.originalLineId
+              ? {
+                  unit: 1 as const,
+                  unitName: currentItem.unit1Name,
+                  ...(kind === "sale"
+                    ? { unitPrice: currentItem.salePrice1 }
+                    : {}),
+                }
+              : {}),
+          };
+        }),
+      );
+    } catch {
+      // A historical return remains usable if its archived card is unavailable.
+      // Changing it into an ordinary row requires choosing an active item card.
+    }
+  }
+  function chooseOriginalLine(line: DraftLine, source?: InvoiceLine) {
+    updateLine(
+      line.key,
+      source
+        ? {
+            itemId: source.itemId,
+            itemCode: source.itemCode,
+            itemName: source.itemName,
+            search: source.itemName,
+            unit: source.unit,
+            unitName: source.unitName,
+            quantity: "-1",
+            unitPrice: source.unitPrice,
+            expiryDate: source.expiryDate,
+            originalLineId: source.id,
+            originalSelection: true,
+            originalSource: source,
+            sourceItem: undefined,
+          }
+        : { ...emptyLine(true), key: line.key },
+    );
+    if (source) {
+      focus(lineInputId(line, "quantity"));
+      void loadOriginalItem(line.key, source);
+    }
+  }
+  function addOriginalRow() {
+    if (selectedLines.length >= 100) {
+      setError("الحد الأقصى 100 سطر للفاتورة.");
+      return;
+    }
+    const empty = lines.find((line) => !line.itemId && !line.search.trim());
+    const row = empty
+      ? { ...empty, originalSelection: true, quantity: "-1" }
+      : emptyLine(true);
+    setLines((current) =>
+      empty
+        ? current.map((line) => (line.key === empty.key ? row : line))
+        : [...current, row],
+    );
+    focus(lineInputId(row, "original-line"));
+  }
+  function changeQuantity(line: DraftLine, value: string) {
+    const positive =
+      /^\d+$/.test(normalizeDigits(value.trim())) &&
+      BigInt(normalizeDigits(value.trim())) > 0n;
+    if (line.originalLineId && positive) {
+      if (!line.sourceItem) {
+        // Clear the historical item as well when no active card is available;
+        // it must be chosen again before this becomes an ordinary sale/purchase.
+        updateLine(line.key, {
+          ...emptyLine(),
+          key: line.key,
+          search: line.itemName,
+          quantity: value,
+        });
+        focus(lineInputId(line, "item-search"));
+        return;
+      }
+      updateLine(line.key, {
+        quantity: value,
+        originalLineId: null,
+        originalSelection: false,
+        originalSource: undefined,
+        unit: 1,
+        unitName: line.sourceItem.unit1Name,
+        ...(kind === "sale"
+          ? { unitPrice: line.sourceItem.salePrice1, expiryDate: null }
+          : {}),
+      });
+    } else
+      updateLine(line.key, {
+        quantity: value,
+        ...(positive && kind === "sale" ? { expiryDate: null } : {}),
+      });
   }
   function nextLine(line?: DraftLine) {
     if (locked) return;
@@ -1050,26 +1214,34 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       (line ? lines[index + 1] : undefined) ??
       lines.find((entry) => !entry.itemId && !entry.search.trim());
     if (next) {
-      focus(lineInputId(next, isReturn ? "original-line" : "item-search"));
+      focus(
+        lineInputId(
+          next,
+          next.originalSelection ? "original-line" : "item-search",
+        ),
+      );
       return;
     }
     if (selectedLines.length >= 100) {
       setError("الحد الأقصى 100 سطر للفاتورة.");
       return;
     }
-    const created = emptyLine(isReturn);
+    const created = emptyLine();
     setLines((current) => [...current, created]);
-    focus(lineInputId(created, isReturn ? "original-line" : "item-search"));
+    focus(lineInputId(created, "item-search"));
   }
   function deleteLine(line: DraftLine) {
     setError("");
     const remaining = lines.filter((entry) => entry.key !== line.key);
-    const replacement = remaining.length ? remaining : [emptyLine(isReturn)];
+    const replacement = remaining.length ? remaining : [emptyLine()];
     setLines(replacement);
     focus(
       lineInputId(
         replacement[Math.min(lines.indexOf(line), replacement.length - 1)],
-        isReturn ? "original-line" : "item-search",
+        replacement[Math.min(lines.indexOf(line), replacement.length - 1)]
+          .originalSelection
+          ? "original-line"
+          : "item-search",
       ),
     );
   }
@@ -1097,7 +1269,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         locationId: location?.id,
         counterpartyAccountId: account?.id,
         description,
-        discount: isReturn ? "0" : discount,
+        discount: hasPositiveLines ? discount : "0",
         lines: selectedLines.map((line) => ({
           itemId: line.itemId,
           unit: line.unit,
@@ -1132,7 +1304,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       setLines([next]);
       setAccount(null);
       setOriginal(null);
-      setIsReturn(false);
+      setShowOriginalPicker(false);
       setDocumentDate(today());
       setDescription("");
       setDiscount("0");
@@ -1144,7 +1316,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       automaticCurrencyId.current = currency?.id ?? null;
       automaticBranchId.current = branch?.id ?? null;
       automaticLocationId.current = location?.id ?? null;
-      setSavedInvoice({ id: response.invoice.id, number: response.invoice.number });
+      setSavedInvoice({
+        id: response.invoice.id,
+        number: response.invoice.number,
+      });
       focus(lineInputId(next, "item-search"));
     } catch (error) {
       if (!guard.isCurrent()) return;
@@ -1175,8 +1350,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     <div className="commerce-document-page">
       {savedInvoice && (
         <Notice tone="success">
-          تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.
-          {" "}
+          تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
           <Link to={invoicePath(companyId, savedInvoice.id)}>
             عرض الفاتورة المحفوظة
           </Link>
@@ -1198,7 +1372,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 value={account}
                 onChange={setAccount}
                 display={itemLabel}
-                disabled={locked || isReturn}
+                disabled={locked || hasLinkedLines}
                 required
               />
               <Link
@@ -1214,38 +1388,13 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 value={documentDate}
                 onChange={(event) => setDocumentDate(event.target.value)}
               />
-              <Select
-                label="العملية"
-                disabled={selectedLines.length > 0}
-                value={isReturn ? "return" : "invoice"}
-                onChange={(event) => {
-                  const returning = event.target.value === "return";
-                  setIsReturn(returning);
-                  setLines([emptyLine(returning)]);
-                  setOriginal(null);
-                  setDiscount("0");
-                  if (!returning) {
-                    // Switch back to a fresh invoice rather than retain an original
-                    // return's branch, showroom and currency.
-                    branchManuallyChosen.current = false;
-                    locationManuallyChosen.current = false;
-                    currencyManuallyChosen.current = false;
-                    automaticBranchId.current = null;
-                    automaticLocationId.current = null;
-                    automaticCurrencyId.current = null;
-                    setBranch(null);
-                    setLocation(null);
-                    setCurrency(null);
-                  }
-                }}
+              <Button
+                variant="secondary"
+                disabled={locked}
+                onClick={() => setShowOriginalPicker((shown) => !shown)}
               >
-                <option value="invoice">
-                  {kind === "sale" ? "بيع" : "شراء"}
-                </option>
-                <option value="return">
-                  {kind === "sale" ? "مردود مبيعات" : "مردود مشتريات"}
-                </option>
-              </Select>
+                {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
+              </Button>
               <ServerLookup<CompanyCurrency>
                 companyId={companyId}
                 resource={`/companies/${companyId}/commerce-options?type=currencies`}
@@ -1256,7 +1405,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setCurrency(value);
                 }}
                 display={(value) => `${value.code} — ${value.name}`}
-                disabled={locked || isReturn}
+                disabled={locked || hasLinkedLines}
                 required
               />
               <ServerLookup<Branch>
@@ -1272,9 +1421,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   setLocation(null);
                 }}
                 display={itemLabel}
-                disabled={
-                  locked || (!!branch && selectedLines.length > 0) || isReturn
-                }
+                disabled={locked || (!!branch && selectedLines.length > 0)}
                 required
               />
               <ServerLookup<Location>
@@ -1289,88 +1436,110 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 display={itemLabel}
                 accept={(value) => kind !== "sale" || value.kind === "showroom"}
                 disabled={
-                  locked ||
-                  !branch ||
-                  (!!location && selectedLines.length > 0) ||
-                  isReturn
+                  locked || !branch || (!!location && selectedLines.length > 0)
                 }
                 required
               />
             </div>
-            {isReturn && kind === "sale" && (
-              <small className="muted">يمكن إدخال كمية سالبة مباشرة كمردود مبيعات دون فاتورة أصلية، أو اختيار فاتورة أصلية لاسترداد تكلفتها وخصمها بدقة.</small>
-            )}
-            {isReturn && (
-              <OriginalInvoicePicker
-                companyId={companyId}
-                kind={kind}
-                value={original}
-                disabled={locked || selectedLines.length > 0}
-                onChange={(value) => {
-                  setOriginal(value);
-                  setLines([emptyLine(true)]);
-                  if (value) {
-                    setCurrency({
-                      id: value.currencyId,
-                      companyId,
-                      code: value.currencyCode,
-                      name: value.currencyCode,
-                      decimalPlaces: value.decimalPlaces,
-                      active: true,
-                      createdBy: user?.id ?? 0,
-                      createdAt: "",
-                    });
-                    setBranch({
-                      id: value.branchId,
-                      companyId,
-                      code: "",
-                      name: value.branchName,
-                      active: true,
-                      phone: "",
-                      address: "",
-                      createdBy: 0,
-                      createdAt: "",
-                    });
-                    setLocation({
-                      id: value.locationId,
-                      companyId,
-                      branchId: value.branchId,
-                      code: "",
-                      name: value.locationName,
-                      kind: kind === "sale" ? "showroom" : "warehouse",
-                      active: true,
-                      branchName: value.branchName,
-                      branchActive: true,
-                      effectiveActive: true,
-                      createdBy: 0,
-                      createdAt: "",
-                    });
-                    setAccount({
-                      id: value.counterpartyAccountId,
-                      companyId,
-                      code: value.counterpartyAccountCode,
-                      name: value.counterpartyAccountName,
-                      parentId: null,
-                      parentCode: null,
-                      parentName: null,
-                      kind: "posting",
-                      category: "asset",
-                      normalSide: "debit",
-                      active: true,
-                      cashOrBank: false,
-                      rangeStart: null,
-                      rangeEnd: null,
-                      createdBy: 0,
-                      createdAt: "",
-                    });
-                  } else {
-                    setCurrency(null);
-                    setBranch(null);
-                    setLocation(null);
-                    setAccount(null);
-                  }
-                }}
-              />
+            {showOriginalPicker && (
+              <>
+                <OriginalInvoicePicker
+                  companyId={companyId}
+                  kind={kind}
+                  value={original}
+                  disabled={locked || hasLinkedLines}
+                  onChange={(value) => {
+                    if (
+                      value &&
+                      selectedLines.length &&
+                      ((currency && currency.id !== value.currencyId) ||
+                        (account &&
+                          account.id !== value.counterpartyAccountId) ||
+                        (branch && branch.id !== value.branchId) ||
+                        (location && location.id !== value.locationId))
+                    ) {
+                      setError(
+                        "اختر أصلًا يطابق حساب الفاتورة وعملتها وفرعها وموقعها؛ ستبقى السطور الحالية محفوظة.",
+                      );
+                      return;
+                    }
+                    setOriginal(value);
+                    if (value) {
+                      addOriginalRow();
+                      setCurrency({
+                        id: value.currencyId,
+                        companyId,
+                        code: value.currencyCode,
+                        name: value.currencyCode,
+                        decimalPlaces: value.decimalPlaces,
+                        active: true,
+                        createdBy: user?.id ?? 0,
+                        createdAt: "",
+                      });
+                      setBranch({
+                        id: value.branchId,
+                        companyId,
+                        code: "",
+                        name: value.branchName,
+                        active: true,
+                        phone: "",
+                        address: "",
+                        createdBy: 0,
+                        createdAt: "",
+                      });
+                      setLocation({
+                        id: value.locationId,
+                        companyId,
+                        branchId: value.branchId,
+                        code: "",
+                        name: value.locationName,
+                        kind: kind === "sale" ? "showroom" : "warehouse",
+                        active: true,
+                        branchName: value.branchName,
+                        branchActive: true,
+                        effectiveActive: true,
+                        createdBy: 0,
+                        createdAt: "",
+                      });
+                      setAccount({
+                        id: value.counterpartyAccountId,
+                        companyId,
+                        code: value.counterpartyAccountCode,
+                        name: value.counterpartyAccountName,
+                        parentId: null,
+                        parentCode: null,
+                        parentName: null,
+                        kind: "posting",
+                        category: "asset",
+                        normalSide: "debit",
+                        active: true,
+                        cashOrBank: false,
+                        rangeStart: null,
+                        rangeEnd: null,
+                        createdBy: 0,
+                        createdAt: "",
+                      });
+                    } else
+                      setLines((current) =>
+                        current.map((line) =>
+                          line.originalSelection && !line.originalLineId
+                            ? { ...emptyLine(), key: line.key }
+                            : line,
+                        ),
+                      );
+                  }}
+                />
+                {original && (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    disabled={locked || selectedLines.length >= 100}
+                    onClick={addOriginalRow}
+                  >
+                    <Plus size={15} /> سطر مردود من الأصل
+                  </Button>
+                )}
+              </>
             )}
           </fieldset>
         </Card>
@@ -1389,14 +1558,14 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   <col className="commerce-col-unit" />
                   <col className="commerce-col-quantity" />
                   <col className="commerce-col-price" />
-                  {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && (
-                    <col className="commerce-col-expiry" />
-                  )}
+                  {showExpiry && <col className="commerce-col-expiry" />}
                   <col className="commerce-col-total" />
-                  {kind === "sale" && <>
-                    <col className="commerce-col-available" />
-                    <col className="commerce-col-shelf" />
-                  </>}
+                  {kind === "sale" && (
+                    <>
+                      <col className="commerce-col-available" />
+                      <col className="commerce-col-shelf" />
+                    </>
+                  )}
                   <col className="commerce-col-delete" />
                 </colgroup>
                 <thead>
@@ -1407,12 +1576,19 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     <th scope="col">
                       {kind === "sale" ? "سعر البيع" : "سعر الشراء"}
                     </th>
-                    {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && <th scope="col">تاريخ الانتهاء</th>}
+                    {showExpiry && <th scope="col">تاريخ الانتهاء</th>}
                     <th scope="col">إجمالي الصنف</th>
-                    {kind === "sale" && <>
-                      <th scope="col" title="الرصيد المتاح في الموقع المختار، بوحدة السطر">الكمية</th>
-                      <th scope="col">الرف</th>
-                    </>}
+                    {kind === "sale" && (
+                      <>
+                        <th
+                          scope="col"
+                          title="الرصيد المتاح في الموقع المختار، بوحدة السطر"
+                        >
+                          الكمية
+                        </th>
+                        <th scope="col">الرف</th>
+                      </>
+                    )}
                     <th scope="col">
                       <span className="visually-hidden">حذف</span>
                     </th>
@@ -1424,15 +1600,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     try {
                       if (line.itemId)
                         lineTotal = calculateInvoiceTotals(
-                          [
-                            {
-                              quantity: line.quantity,
-                              unitPrice: line.unitPrice,
-                            },
-                          ],
+                          [calculationLine(line)],
                           "0",
                           currency?.decimalPlaces ?? 6,
-                        ).gross;
+                        ).total;
                     } catch {
                       lineTotal = "—";
                     }
@@ -1443,7 +1614,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         data-selected={!!line.itemId}
                       >
                         <td>
-                          {isReturn && original ? (
+                          {line.originalSelection && original ? (
                             <Select
                               id={lineInputId(line, "original-line")}
                               className="item-cell-field"
@@ -1455,25 +1626,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                   (entry) =>
                                     entry.id === Number(event.target.value),
                                 );
-                                updateLine(
-                                  line.key,
-                                  source
-                                    ? {
-                                        itemId: source.itemId,
-                                        itemCode: source.itemCode,
-                                        itemName: source.itemName,
-                                        search: source.itemName,
-                                        unit: source.unit,
-                                        unitName: source.unitName,
-                                        quantity: "-1",
-                                        unitPrice: source.unitPrice,
-                                        expiryDate: source.expiryDate,
-                                        originalLineId: source.id,
-                                      }
-                                    : { ...emptyLine(true), key: line.key },
-                                );
-                                if (source)
-                                  focus(lineInputId(line, "quantity"));
+                                chooseOriginalLine(line, source);
                               }}
                             >
                               <option value="">اختر سطر الأصل</option>
@@ -1524,7 +1677,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             className="item-cell-field"
                             label={`الوحدة${line.itemName ? ` ${line.itemName}` : ""}`}
                             value={line.unit}
-                            disabled={(isReturn && !!original) || !line.itemId}
+                            disabled={!!line.originalLineId || !line.itemId}
                             onChange={(event) => {
                               if (!line.sourceItem) return;
                               const level = Number(event.target.value) as
@@ -1543,27 +1696,35 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                               });
                             }}
                             onKeyDown={(event) => {
-                              if (event.key !== "Enter" || !line.sourceItem || (isReturn && !!original))
+                              if (
+                                event.key !== "Enter" ||
+                                !line.sourceItem ||
+                                line.originalLineId
+                              )
                                 return;
                               // The selected native option must be committed without
                               // submitting the invoice form.
                               event.preventDefault();
-                              const level = Number(event.currentTarget.value) as
-                                1 | 2 | 3;
+                              const level = Number(
+                                event.currentTarget.value,
+                              ) as 1 | 2 | 3;
                               if (![1, 2, 3].includes(level)) return;
                               updateLine(line.key, {
                                 unit: level,
                                 unitName: unitName(line.sourceItem, level),
                                 ...(kind === "sale"
                                   ? {
-                                      unitPrice: salePrice(line.sourceItem, level),
+                                      unitPrice: salePrice(
+                                        line.sourceItem,
+                                        level,
+                                      ),
                                     }
                                   : {}),
                               });
                               focus(lineInputId(line, "quantity"));
                             }}
                           >
-                            {isReturn ? (
+                            {line.originalLineId ? (
                               <option value={line.unit}>
                                 {line.unitName || "—"}
                               </option>
@@ -1598,22 +1759,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             inputMode="text"
                             disabled={!line.itemId}
                             value={line.quantity}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              updateLine(line.key, { quantity: value });
-                              if (kind === "sale" && /^-\d/.test(value) && !isReturn) {
-                                setIsReturn(true);
-                                setOriginal(null);
-                                setDiscount("0");
-                              }
-                            }}
+                            onChange={(event) =>
+                              changeQuantity(line, event.target.value)
+                            }
                             onFocus={(event) => event.target.select()}
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               event.preventDefault();
                               setError("");
                               if (!validateQuantity(line)) return;
-                              if (kind === "purchase" && !isReturn)
+                              if (kind === "purchase" && !line.originalLineId)
                                 focus(lineInputId(line, "price"));
                               else nextLine(line);
                             }}
@@ -1629,7 +1784,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                 : "سعر الوحدة"
                             }
                             inputMode="decimal"
-                            readOnly={kind === "sale" || isReturn}
+                            readOnly={kind === "sale" || !!line.originalLineId}
                             disabled={!line.itemId}
                             value={line.unitPrice}
                             title={
@@ -1648,7 +1803,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                               event.preventDefault();
                               if (
                                 kind === "purchase" &&
-                                !isReturn &&
+                                !line.originalLineId &&
                                 line.sourceItem?.hasExpiry
                               )
                                 focus(lineInputId(line, "expiry"));
@@ -1656,17 +1811,21 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                             }}
                           />
                         </td>
-                        {(kind === "purchase" || (kind === "sale" && isReturn && !original)) && (
+                        {showExpiry && (
                           <td>
-                            {isReturn && original ? (
+                            {line.originalLineId ? (
                               line.expiryDate || "—"
-                            ) : line.sourceItem?.hasExpiry ? (
+                            ) : line.sourceItem?.hasExpiry &&
+                              (kind === "purchase" ||
+                                normalizeDigits(
+                                  line.quantity.trim(),
+                                ).startsWith("-")) ? (
                               <Field
                                 id={lineInputId(line, "expiry")}
                                 className="item-cell-field"
                                 label={`تاريخ انتهاء ${line.itemName}`}
                                 type="date"
-                                required
+                                required={kind === "purchase"}
                                 value={line.expiryDate ?? ""}
                                 onChange={(event) =>
                                   updateLine(line.key, {
@@ -1688,22 +1847,44 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         <td className="commerce-line-total" aria-live="polite">
                           {amount(lineTotal)}
                         </td>
-                        {kind === "sale" && <>
-                          <td className="commerce-line-available" title="المتاح في المعرض/المخزن المختار، حسب وحدة السطر">
-                            {line.itemId && location
-                              ? stockPreview.isFetching && !stockByItem.has(line.itemId)
-                                ? "…" : stockPreview.isError ? "—"
-                                : stockByItem.has(line.itemId) && line.sourceItem
-                                  ? saleStockQuantity(stockByItem.get(line.itemId)!.quantitySmallest, line.sourceItem, line.unit)
-                                  : "—"
-                              : "—"}
-                          </td>
-                          <td className="commerce-line-shelf">
-                            <span title={line.sourceItem?.shelf || stockByItem.get(line.itemId)?.shelf || "الرف غير محدد"}>
-                              {line.sourceItem?.shelf || stockByItem.get(line.itemId)?.shelf || "—"}
-                            </span>
-                          </td>
-                        </>}
+                        {kind === "sale" && (
+                          <>
+                            <td
+                              className="commerce-line-available"
+                              title="المتاح في المعرض/المخزن المختار، حسب وحدة السطر"
+                            >
+                              {line.itemId && location
+                                ? stockPreview.isFetching &&
+                                  !stockByItem.has(line.itemId)
+                                  ? "…"
+                                  : stockPreview.isError
+                                    ? "—"
+                                    : stockByItem.has(line.itemId) &&
+                                        line.sourceItem
+                                      ? saleStockQuantity(
+                                          stockByItem.get(line.itemId)!
+                                            .quantitySmallest,
+                                          line.sourceItem,
+                                          line.unit,
+                                        )
+                                      : "—"
+                                : "—"}
+                            </td>
+                            <td className="commerce-line-shelf">
+                              <span
+                                title={
+                                  line.sourceItem?.shelf ||
+                                  stockByItem.get(line.itemId)?.shelf ||
+                                  "الرف غير محدد"
+                                }
+                              >
+                                {line.sourceItem?.shelf ||
+                                  stockByItem.get(line.itemId)?.shelf ||
+                                  "—"}
+                              </span>
+                            </td>
+                          </>
+                        )}
                         <td>
                           <Button
                             variant="ghost"
@@ -1739,7 +1920,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           aria-label="إجمالي الفاتورة والحفظ"
         >
           {error && <Notice tone="error">{error}</Notice>}
-          {!isReturn && selectedLines.length > 0 && totals?.total === "0" && (
+          {selectedLines.length > 0 && totals?.total === "0" && (
             <Notice>
               الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
               المقابل.
@@ -1755,14 +1936,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             />
             <Field
               label="الخصم"
-              value={isReturn ? "0" : discount}
+              value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
-              disabled={locked || isReturn}
-              hint={
-                isReturn
-                  ? "خصم المردود مأخوذ من الأصل عند الحفظ."
-                  : "مبلغ بعملة الفاتورة"
-              }
+              disabled={locked || !hasPositiveLines}
+              hint="على السطور الموجبة فقط؛ خصم المردود المرتبط من الأصل"
               onChange={(event) => setDiscount(event.target.value)}
             />
             <div className="commerce-totals" aria-live="polite">
@@ -1784,10 +1961,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   : "حفظ وترحيل الفاتورة"}
             </Button>
           </div>
-          {isReturn && (
+          {hasLinkedLines && (
             <small className="muted">
-              الصافي المعروض قبل استرداد خصم الأصل؛ المبلغ النهائي يؤكده الخادم.
-              لا يسمح بتجاوز الكمية الأصلية.
+              خصم المردود المعروض تقديري من الأصل؛ المبلغ النهائي بعد المردودات
+              السابقة يؤكده الخادم. لا يسمح بتجاوز الكمية الأصلية.
             </small>
           )}
         </footer>
@@ -1860,7 +2037,9 @@ function InvoiceViewer({
     );
   const invoice = result.data?.invoice;
   if (!invoice) return <Notice tone="error">الفاتورة غير موجودة.</Notice>;
-  const returning = invoice.lines.some((line) => line.quantity.startsWith("-"));
+  const returning =
+    invoice.lines.length > 0 &&
+    invoice.lines.every((line) => line.quantity.startsWith("-"));
   return (
     <div className="commerce-document-page">
       <div className="commerce-no-print">
@@ -1936,7 +2115,9 @@ function InvoiceViewer({
                 {invoice.kind === "purchase" && <th>الانتهاء</th>}
                 <th>الخصم</th>
                 <th>الصافي</th>
-                {invoice.kind === "sale" && context.general && <th className="commerce-no-print">عمولة التصريف</th>}
+                {invoice.kind === "sale" && context.general && (
+                  <th className="commerce-no-print">عمولة التصريف</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -1958,18 +2139,22 @@ function InvoiceViewer({
                   <td>{amount(line.discount)}</td>
                   <td>{amount(line.total)}</td>
                   {invoice.kind === "sale" && context.general && (
-                    <td className="commerce-no-print">{amount(line.commissionAmount)} ({line.commissionRate}%)</td>
+                    <td className="commerce-no-print">
+                      {amount(line.commissionAmount)} ({line.commissionRate}%)
+                    </td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {invoice.kind === "sale" && context.general &&
+        {invoice.kind === "sale" &&
+          context.general &&
           invoice.lines.some((line) => line.commissionAmount !== "0") && (
             <Notice>
-              مبالغ عمولة التصريف محسوبة ومثبتة على سطور هذه الفاتورة حسب فترة الصنف.
-              لا تمثل صرفًا نقديًا أو قيدًا على حساب موظف قبل اعتماد المستفيد والتسوية.
+              مبالغ عمولة التصريف محسوبة ومثبتة على سطور هذه الفاتورة حسب فترة
+              الصنف. لا تمثل صرفًا نقديًا أو قيدًا على حساب موظف قبل اعتماد
+              المستفيد والتسوية.
             </Notice>
           )}
         <div className="commerce-totals">

@@ -18,7 +18,7 @@ export const invoiceQuantitySchema = z
       .string()
       .regex(
         /^-?\d{1,22}$/,
-        "الكمية عدد صحيح غير صفر؛ السالب مردود مرتبط بالأصل",
+        "الكمية عدد صحيح غير صفر؛ السالب مردود لهذا الصنف",
       ),
   )
   .transform((value) => BigInt(value).toString())
@@ -50,28 +50,26 @@ export const invoiceSchema = z
   .superRefine((value, context) => {
     if (value.lines.length === 0) return;
     if (value.lines.some((line) => !/^-?\d+$/.test(line.quantity))) return;
-    const returning = BigInt(value.lines[0].quantity) < 0n;
     for (const [index, line] of value.lines.entries()) {
-      if (BigInt(line.quantity) < 0n !== returning)
-        context.addIssue({
-          code: "custom",
-          path: ["lines", index, "quantity"],
-          message:
-            "الفاتورة تحوي بيعًا/شراءً أو مردودًا فقط؛ لا تجمع الاتجاهين",
-        });
-      if ((!returning && line.originalLineId !== null) ||
-          (returning && value.kind === "purchase" && line.originalLineId === null))
+      const returning = BigInt(line.quantity) < 0n;
+      if (!returning && line.originalLineId !== null)
         context.addIssue({
           code: "custom",
           path: ["lines", index, "originalLineId"],
-          message: "مردود المشتريات يتطلب سطر الأصل، والبيع العادي لا يرتبط بمردود",
+          message: "السطر الموجب لا يرتبط بسطر مردود أصلي",
+        });
+      if (returning && value.kind === "purchase" && line.originalLineId === null && line.unitPrice === undefined)
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "unitPrice"],
+          message: "أدخل سعر سطر مردود المشتريات غير المرتبط بأصل",
         });
     }
-    if (returning && value.discount !== "0")
+    if (value.lines.every((line) => BigInt(line.quantity) < 0n) && value.discount !== "0")
       context.addIssue({
         code: "custom",
         path: ["discount"],
-        message: "خصم المردود يحسب من الأصل تلقائيًا",
+        message: "خصم الفاتورة يخص السطور الموجبة فقط؛ خصم المردود المرتبط يؤخذ من الأصل",
       });
   });
 export type InvoiceInput = z.input<typeof invoiceSchema>;
@@ -106,6 +104,7 @@ export interface Invoice {
   kind: InvoiceKind;
   status: "posted";
   returning: boolean;
+  mixed: boolean;
   documentDate: string;
   currencyId: number;
   currencyCode: string;
@@ -140,15 +139,17 @@ function units(value: string): bigint {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
 }
 function amount(value: bigint): string {
-  const fraction = (value % 1_000_000n)
+  const negative = value < 0n;
+  const magnitude = negative ? -value : value;
+  const fraction = (magnitude % 1_000_000n)
     .toString()
     .padStart(6, "0")
     .replace(/0+$/, "");
-  return `${value / 1_000_000n}${fraction ? `.${fraction}` : ""}`;
+  return `${negative ? "-" : ""}${magnitude / 1_000_000n}${fraction ? `.${fraction}` : ""}`;
 }
-/** Exact absolute document discount apportioned in currency minor units, stable line order. */
+/** Signed line totals; header discount applies only to positive lines. */
 export function calculateInvoiceTotals(
-  lines: { quantity: string; unitPrice: string }[],
+  lines: { quantity: string; unitPrice: string; discount?: string }[],
   discount: string,
   decimalPlaces: number,
 ) {
@@ -159,20 +160,19 @@ export function calculateInvoiceTotals(
   )
     throw new Error("دقة العملة غير صالحة");
   const step = 10n ** BigInt(6 - decimalPlaces);
-  const grossLines = lines.map((line) => {
-    const quantity = invoiceQuantitySchema.parse(line.quantity);
+  const quantities = lines.map((line) => BigInt(invoiceQuantitySchema.parse(line.quantity)));
+  const grossLines = lines.map((line, index) => {
     const price = units(amountSchema.parse(line.unitPrice));
     if (price % step !== 0n) throw new Error("سعر السطر يتجاوز دقة العملة");
-    return (
-      (BigInt(quantity) < 0n ? -BigInt(quantity) : BigInt(quantity)) * price
-    );
+    return quantities[index] * price;
   });
   const gross = grossLines.reduce((sum, value) => sum + value, 0n);
+  const positiveGross = grossLines.reduce((sum, value) => sum + (value > 0n ? value : 0n), 0n);
   const discountUnits = units(amountSchema.parse(discount));
-  if (discountUnits % step !== 0n || discountUnits > gross)
-    throw new Error("الخصم يتجاوز الإجمالي أو دقة العملة");
+  if (discountUnits % step !== 0n || discountUnits > positiveGross)
+    throw new Error("الخصم يتجاوز إجمالي السطور الموجبة أو دقة العملة");
   const shares = grossLines.map((value) =>
-    gross === 0n ? 0n : ((discountUnits * value) / gross / step) * step,
+    positiveGross === 0n || value <= 0n ? 0n : ((discountUnits * value) / positiveGross / step) * step,
   );
   let remaining =
     discountUnits - shares.reduce((sum, value) => sum + value, 0n);
@@ -183,10 +183,19 @@ export function calculateInvoiceTotals(
     }
   }
   if (remaining !== 0n) throw new Error("تعذر توزيع الخصم");
+  for (const [index, line] of lines.entries()) {
+    if (quantities[index] >= 0n || line.discount === undefined) continue;
+    const text = normalizeDigits(line.discount.trim()).replace(/٫/g, ".");
+    const inherited = (text.startsWith("-") ? -1n : 1n) * units(amountSchema.parse(text.replace(/^-/, "")));
+    if (inherited > 0n || inherited < grossLines[index] || inherited % step !== 0n)
+      throw new Error("خصم المردود غير مطابق لقيمة السطر أو دقة العملة");
+    shares[index] = inherited;
+  }
+  const totalDiscount = shares.reduce((sum, value) => sum + value, 0n);
   return {
     gross: amount(gross),
-    discount: amount(discountUnits),
-    total: amount(gross - discountUnits),
+    discount: amount(totalDiscount),
+    total: amount(gross - totalDiscount),
     lineDiscounts: shares.map(amount),
     lineTotals: grossLines.map((value, index) => amount(value - shares[index])),
   };

@@ -2326,6 +2326,451 @@ test("invoice reward tasks are opt-in, grouped by logical lines, idempotent and 
 });
 
 
+test("mixed signed sale and purchase rows preserve each direction for positive, negative and zero nets", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({
+    factor2: 1,
+    factor3: 1,
+    hasExpiry: false,
+    salePrice1: "10",
+  });
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "20", unitPrice: "4" }],
+    }),
+  );
+  let expectedQuantity = 20n;
+  for (const kind of ["sale", "purchase"] as const) {
+    for (const quantities of [
+      ["3", "-1"],
+      ["-1", "1"],
+      ["-3", "1"],
+    ]) {
+      const signedQuantity = quantities.reduce(
+        (sum, quantity) => sum + BigInt(quantity),
+        0n,
+      );
+      const price = kind === "sale" ? 10n : 4n;
+      const body = invoiceBody(s, item.id, {
+        kind,
+        counterpartyAccountId: kind === "sale" ? s.customer.id : s.supplier.id,
+        lines: quantities.map((quantity) => ({
+          itemId: item.id,
+          unit: 1 as const,
+          quantity,
+          ...(kind === "purchase" ? { unitPrice: "4" } : {}),
+        })),
+      });
+      const saved = await invoice(f, s, body);
+      assert.equal(
+        saved.returning,
+        false,
+        "A negative first row or net must not change positive rows",
+      );
+      assert.equal(saved.mixed, true);
+      assert.equal(saved.total, (signedQuantity * price).toString());
+      assert.equal(saved.gross, saved.total);
+      assert.equal(saved.baseTotal, saved.total);
+      assert.deepEqual(
+        saved.lines.map((line) => line.quantity),
+        quantities,
+      );
+      assert.deepEqual(
+        saved.lines.map((line) => line.costBase),
+        quantities.map((quantity) => (BigInt(quantity) * 4n).toString()),
+      );
+      expectedQuantity += kind === "sale" ? -signedQuantity : signedQuantity;
+      const stock = (await balances(f, s, item.id))[0]!;
+      assert.equal(stock.pooledQuantitySmallest, expectedQuantity.toString());
+      assert.equal(stock.pooledValueBase, (expectedQuantity * 4n).toString());
+      const ownMovements = (await movements(f, s, item.id)).filter(
+        (row) => row.invoiceId === saved.id,
+      );
+      assert.deepEqual(
+        ownMovements.map((row) => row.kind).sort(),
+        kind === "sale"
+          ? ["sale", "sales_return"]
+          : ["purchase", "purchase_return"],
+      );
+      if (signedQuantity === 0n) assert.equal(saved.financialDocumentId, null);
+      else assert(saved.financialDocumentId);
+      const snapshot = await stockSnapshot(f, s.company.id);
+      assert.equal((await invoice(f, s, body)).id, saved.id);
+      assert.deepEqual(await stockSnapshot(f, s.company.id), snapshot);
+      assert.equal(
+        (
+          await f.owner.request("POST", `${s.path}/invoices`, {
+            ...body,
+            description: "Different signed retry",
+          })
+        ).status,
+        409,
+      );
+      assert.deepEqual(await stockSnapshot(f, s.company.id), snapshot);
+    }
+  }
+  const beforeFailure = await stockSnapshot(f, s.company.id);
+  await rejectAudit(f, async () => {
+    const failed = await f.owner.request(
+      "POST",
+      `${s.path}/invoices`,
+      invoiceBody(s, item.id, {
+        kind: "sale",
+        counterpartyAccountId: s.customer.id,
+        lines: [
+          { itemId: item.id, unit: 1, quantity: "-1" },
+          { itemId: item.id, unit: 1, quantity: "2" },
+        ],
+      }),
+    );
+    assert.equal(failed.status, 500);
+  });
+  assert.deepEqual(await stockSnapshot(f, s.company.id), beforeFailure);
+  await assertBalanced(f, s.company.id);
+});
+
+test("mixed linked returns retain original discount cost commission and limits independently of positive rows", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({
+    factor2: 1,
+    factor3: 1,
+    hasExpiry: false,
+    salePrice1: "10",
+    commissionRate: "5",
+    clearanceFrom: "2026-10-01",
+    clearanceTo: "2026-10-31",
+  });
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "20", unitPrice: "4" }],
+    }),
+  );
+  const original = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      discount: "4",
+      lines: [{ itemId: item.id, unit: 1, quantity: "2" }],
+    }),
+  );
+  const mixed = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      discount: "1",
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: original.lines[0]!.id,
+        },
+        { itemId: item.id, unit: 1, quantity: "1" },
+      ],
+    }),
+  );
+  assert.equal(mixed.mixed, true);
+  assert.equal(mixed.gross, "0");
+  assert.equal(mixed.discount, "-1");
+  assert.equal(mixed.total, "1");
+  assert.deepEqual(
+    mixed.lines.map((line) => [
+      line.total,
+      line.discount,
+      line.costBase,
+      line.commissionAmount,
+    ]),
+    [
+      ["-8", "-2", "-4", "-0.4"],
+      ["9", "1", "4", "0.45"],
+    ],
+  );
+  assert(
+    mixed.financialDocumentId,
+    "A zero gross with a nonzero signed discount still posts a balanced journal",
+  );
+  assert.equal(mixed.costDocumentId, null);
+  const returnFromMixed = await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: mixed.lines[1]!.id,
+        },
+      ],
+    }),
+  );
+  assert.equal(returnFromMixed.total, "-9");
+  assert.equal(returnFromMixed.lines[0]!.commissionAmount, "-0.45");
+  const beforeOverreturn = await stockSnapshot(f, s.company.id);
+  const overreturn = await f.owner.request(
+    "POST",
+    `${s.path}/invoices`,
+    invoiceBody(s, item.id, {
+      kind: "sale",
+      counterpartyAccountId: s.customer.id,
+      lines: [
+        { itemId: item.id, unit: 1, quantity: "1" },
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-2",
+          originalLineId: original.lines[0]!.id,
+        },
+      ],
+    }),
+  );
+  assert.equal(overreturn.status, 409);
+  assert.deepEqual(await stockSnapshot(f, s.company.id), beforeOverreturn);
+
+  const purchasedItem = await s.item({
+    factor2: 1,
+    factor3: 1,
+    hasExpiry: true,
+  });
+  const purchased = await invoice(
+    f,
+    s,
+    invoiceBody(s, purchasedItem.id, {
+      lines: [
+        {
+          itemId: purchasedItem.id,
+          unit: 1,
+          quantity: "2",
+          unitPrice: "4",
+          expiryDate: "2027-01-31",
+        },
+      ],
+    }),
+  );
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, purchasedItem.id, {
+      lines: [
+        {
+          itemId: purchasedItem.id,
+          unit: 1,
+          quantity: "2",
+          unitPrice: "6",
+          expiryDate: "2027-01-31",
+        },
+      ],
+    }),
+  );
+  const purchaseMixed = await invoice(
+    f,
+    s,
+    invoiceBody(s, purchasedItem.id, {
+      lines: [
+        {
+          itemId: purchasedItem.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: purchased.lines[0]!.id,
+        },
+        {
+          itemId: purchasedItem.id,
+          unit: 1,
+          quantity: "1",
+          unitPrice: "6",
+          expiryDate: "2027-01-31",
+        },
+      ],
+    }),
+  );
+  assert.equal(purchaseMixed.total, "2");
+  assert.equal(purchaseMixed.mixed, true);
+  assert.deepEqual(
+    purchaseMixed.lines.map((line) => line.costBase),
+    ["-5", "6"],
+  );
+  assert(purchaseMixed.varianceDocumentId);
+  const stock = (await balances(f, s, purchasedItem.id))[0]!;
+  assert.equal(stock.pooledQuantitySmallest, "4");
+  assert.equal(stock.pooledValueBase, "21");
+  const beforeInvalid = await stockSnapshot(f, s.company.id);
+  assert.equal(
+    (
+      await f.owner.request(
+        "POST",
+        `${s.path}/invoices`,
+        invoiceBody(s, purchasedItem.id, {
+          lines: [
+            {
+              itemId: purchasedItem.id,
+              unit: 1,
+              quantity: "-2",
+              originalLineId: purchased.lines[0]!.id,
+            },
+            {
+              itemId: purchasedItem.id,
+              unit: 1,
+              quantity: "1",
+              unitPrice: "6",
+              expiryDate: "2027-01-31",
+            },
+          ],
+        }),
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await f.owner.request(
+        "POST",
+        `${s.path}/invoices`,
+        invoiceBody(s, purchasedItem.id, {
+          lines: [
+            {
+              itemId: purchasedItem.id,
+              unit: 1,
+              quantity: "-1",
+              unitPrice: "4",
+            },
+            {
+              itemId: purchasedItem.id,
+              unit: 1,
+              quantity: "1",
+              unitPrice: "6",
+              expiryDate: "2027-01-31",
+            },
+          ],
+        }),
+      )
+    ).status,
+    409,
+  );
+  assert.deepEqual(await stockSnapshot(f, s.company.id), beforeInvalid);
+  await assertBalanced(f, s.company.id);
+});
+
+test("mixed invoice work rewards remain positive and direct purchase returns use explicit price expiry", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({
+    factor2: 1,
+    factor3: 1,
+    hasExpiry: true,
+    salePrice1: "10",
+  });
+  await invoice(
+    f,
+    s,
+    invoiceBody(s, item.id, {
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "10",
+          unitPrice: "4",
+          expiryDate: "2027-01-31",
+        },
+      ],
+    }),
+  );
+  const staff = await f.member(
+    s.company.id,
+    ["commerce.manage", "commerce.view", "finance.post"],
+    78,
+  );
+  for (const [code, points] of [
+    ["SALE_SAVED", "5"],
+    ["SALE_LINES", "2"],
+    ["PURCHASE_SAVED", "10"],
+    ["PURCHASE_LINES", "3"],
+  ]) {
+    const { tasks } = await f.owner.ok<{
+      tasks: { code: string; revision: number | null }[];
+    }>("GET", `${s.path}/reward-tasks`);
+    const task = tasks.find((entry) => entry.code === code)!;
+    await f.owner.ok("PUT", `${s.path}/reward-tasks/${code}`, {
+      points,
+      repeatRule: "per-document",
+      enabled: true,
+      roleIds: [],
+      pageKey: null,
+      revision: task.revision,
+    });
+  }
+  const points = async () =>
+    (
+      await f.owner.ok<{ wallet: { points: string } }>(
+        "GET",
+        `${s.path}/wallet?employeeId=${staff.employee.id}`,
+      )
+    ).wallet.points;
+  const saleBody = invoiceBody(s, item.id, {
+    kind: "sale",
+    counterpartyAccountId: s.customer.id,
+    lines: [
+      { itemId: item.id, unit: 1, quantity: "-1", expiryDate: "2027-01-31" },
+      { itemId: item.id, unit: 1, quantity: "1" },
+    ],
+  });
+  const sale = await invoice(f, s, saleBody, staff.client);
+  assert.equal(sale.lines[0]!.costBase, "-4");
+  assert.equal(sale.total, "0");
+  assert.equal(
+    await points(),
+    "9",
+    "Both expiry-distinct work groups earn positive points",
+  );
+  assert.equal((await invoice(f, s, saleBody, staff.client)).id, sale.id);
+  assert.equal(await points(), "9");
+  const purchaseBody = invoiceBody(s, item.id, {
+    lines: [
+      {
+        itemId: item.id,
+        unit: 1,
+        quantity: "-2",
+        unitPrice: "4",
+        expiryDate: "2027-01-31",
+      },
+      {
+        itemId: item.id,
+        unit: 1,
+        quantity: "1",
+        unitPrice: "6",
+        expiryDate: "2027-01-31",
+      },
+    ],
+  });
+  const purchase = await invoice(f, s, purchaseBody, staff.client);
+  assert.equal(purchase.total, "-2");
+  assert.equal(purchase.returning, false);
+  assert.equal(purchase.lines[0]!.unitPrice, "4");
+  assert.equal(purchase.lines[0]!.costBase, "-8");
+  assert.equal(
+    await points(),
+    "25",
+    "10 save + two distinct purchase work groups * 3",
+  );
+  assert.equal(
+    (await invoice(f, s, purchaseBody, staff.client)).id,
+    purchase.id,
+  );
+  assert.equal(await points(), "25");
+  await assertBalanced(f, s.company.id);
+});
+
 test("dated item clearance commissions snapshot net sales and reverse linked returns without repricing", async (t) => {
   const f = await fixture(t);
   const s = await setup(f);
