@@ -13,6 +13,7 @@ import {
   type RewardTask,
   type RewardTaskDirectory,
   type RewardRepeatRule,
+  type WalletConversionPreview,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
@@ -100,6 +101,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   const tasksPage = directory.data?.find(
     (entry) => entry.key === "company.reward-tasks",
   );
+  const settingsPage = directory.data?.find(
+    (entry) => entry.key === "company.wallet-settings",
+  );
   const canAward = !!list.data?.canManage && !!walletPage?.actionAccess.create;
   const canViewInvoice = !!directory.data?.find(
     (entry) => entry.key === "company.invoice",
@@ -111,6 +115,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     !!list.data?.canManage && !!walletPage?.actionAccess.reverse;
   const [award, setAward] = useState<AwardDraft | null>(null),
     [reversal, setReversal] = useState<ReversalDraft | null>(null);
+  const [previewEmployeeId, setPreviewEmployeeId] = useState<number | null>(
+    null,
+  );
   const [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -280,6 +287,15 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         description="رصيد الموظف وسجل المكافآت الآلية والإضافات الإدارية والتصحيحات داخل الشركة."
         actions={
           <>
+            {settingsPage?.enabled && settingsPage.actionAccess.view && (
+              <Link
+                to={`${base}/wallet-settings`}
+                className="button button-secondary"
+              >
+                <Settings2 size={15} />
+                إعدادات المحفظة
+              </Link>
+            )}
             {tasksPage?.enabled && tasksPage.actionAccess.view && (
               <Link
                 to={`${base}/reward-tasks`}
@@ -328,6 +344,15 @@ export function WalletPage({ context }: { context: CompanyContext }) {
               <bdi>{pointValue(wallet.points)}</bdi>
             </strong>
             <span> نقطة</span>
+            <div className="form-actions">
+              <Button
+                variant="secondary"
+                size="compact"
+                onClick={() => setPreviewEmployeeId(wallet.employeeId)}
+              >
+                معاينة تحويل النقاط
+              </Button>
+            </div>
           </Card>
           <Card
             title="الرصيد المالي"
@@ -480,7 +505,111 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           </div>
         </form>
       </Dialog>
+      {previewEmployeeId !== null && (
+        <ConversionPreviewDialog
+          key={previewEmployeeId}
+          companyId={companyId}
+          employeeId={previewEmployeeId}
+          onClose={() => setPreviewEmployeeId(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function ConversionPreviewDialog({
+  companyId,
+  employeeId,
+  onClose,
+}: {
+  companyId: number;
+  employeeId: number;
+  onClose: () => void;
+}) {
+  const { user } = useSession();
+  const query = useQuery({
+    queryKey: ["wallet-conversion-preview", user?.id, companyId, employeeId],
+    queryFn: ({ signal }) =>
+      api<{ preview: WalletConversionPreview }>(
+        `/companies/${companyId}/wallet/conversion-preview?employeeId=${employeeId}`,
+        { signal },
+      ),
+    enabled: !!user,
+    staleTime: 0,
+  });
+  const preview = query.data?.preview;
+  return (
+    <Dialog open title="معاينة تحويل النقاط" onClose={onClose}>
+      <div className="form-stack">
+        {query.isPending && <Notice>جارٍ حساب معاينة التحويل…</Notice>}
+        {query.error && (
+          <Notice tone="error">
+            {errorMessage(query.error)}{" "}
+            <Button variant="ghost" onClick={() => void query.refetch()}>
+              إعادة المحاولة
+            </Button>
+          </Notice>
+        )}
+        {preview && (
+          <>
+            <Field
+              label="النقاط المتاحة"
+              value={pointValue(preview.points)}
+              readOnly
+            />
+            <Field
+              label="قيمة النقطة الواحدة"
+              value={
+                preview.pointValue !== null
+                  ? `${preview.pointValue} ${preview.currency?.code ?? ""}`.trim()
+                  : "لم تحدد بعد"
+              }
+              readOnly
+            />
+            <Field
+              label="مبلغ التحويل المتوقع"
+              value={
+                preview.amount !== null
+                  ? `${preview.amount} ${preview.currency?.code ?? ""}`.trim()
+                  : "الإعدادات غير مكتملة"
+              }
+              readOnly
+            />
+            <Field
+              label="حساب الموظف"
+              value={
+                preview.account
+                  ? `${preview.account.code} — ${preview.account.name}`
+                  : "لا يوجد حساب مرتبط"
+              }
+              readOnly
+            />
+            <Field
+              label="طريقة الاعتماد"
+              value={
+                preview.approvalMode === "approval"
+                  ? "يتطلب اعتماد الإدارة"
+                  : preview.approvalMode === "direct"
+                    ? "تحويل مباشر"
+                    : "لم تحدد بعد"
+              }
+              readOnly
+            />
+            {preview.unavailableReason && (
+              <Notice tone="warning">{preview.unavailableReason}</Notice>
+            )}
+            <Notice>
+              هذه معاينة فقط. لم تُخصم نقاط ولم يُسجل تحويل في حساب الموظف.
+            </Notice>
+          </>
+        )}
+        <div className="form-actions">
+          <Button variant="secondary" onClick={onClose}>
+            إغلاق
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
