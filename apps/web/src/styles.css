@@ -1854,9 +1854,28 @@ ul {
 }
 .commerce-header-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Two strictly equal top header halves; no empty placeholders or future UI. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   align-items: start;
+}
+.commerce-header-half {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+.commerce-header-options {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.commerce-header-half > *,
+.commerce-header-options > * {
+  min-width: 0;
 }
 .commerce-header-card {
   /* Roughly half the former height; remaining invoice fields scroll here. */
@@ -2139,7 +2158,7 @@ ul {
   overflow-wrap: anywhere;
 }
 @media (max-width: 1100px) {
-  .commerce-header-grid {
+  .commerce-header-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .commerce-footer-grid {
@@ -2151,6 +2170,7 @@ ul {
     grid-template-columns: minmax(0, 1fr);
   }
   .commerce-header-grid,
+  .commerce-header-options,
   .commerce-original-picker {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2173,12 +2193,16 @@ ul {
   .invoice-workspace-main .commerce-header-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .invoice-workspace-main .commerce-header-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .invoice-workspace-main .commerce-footer-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
 }
 @container invoice-main (max-width: 480px) {
   .invoice-workspace-main .commerce-header-grid,
+  .invoice-workspace-main .commerce-header-options,
   .invoice-workspace-main .commerce-footer-grid {
     grid-template-columns: minmax(0, 1fr);
   }

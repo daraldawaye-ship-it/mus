@@ -458,6 +458,30 @@ try {
   if (process.env.COMMERCE_BROWSER_INVENTORY_ONLY !== "1") {
     let savedSale: Invoice | undefined;
     await scenario(
+      "invoice header halves are equal width and preserve account/date controls",
+      async () => {
+        for (const kind of ["sale", "purchase"] as const) {
+          await page.goto(base + "/invoices/new?kind=" + kind);
+          await page.locator("form.commerce-editor").waitFor();
+          const halves = await page.locator(".commerce-header-half")
+            .evaluateAll((nodes) => nodes.map((element) => {
+              const rect = element.getBoundingClientRect();
+              return { width: rect.width, top: rect.top };
+            }));
+          assert.equal(halves.length, 2);
+          assert(Math.abs(halves[0]!.width - halves[1]!.width) <= 2,
+            "Header halves must occupy equal width: " + JSON.stringify(halves));
+          assert(Math.abs(halves[0]!.top - halves[1]!.top) <= 2);
+          assert.equal(await page.locator(".commerce-header-account")
+            .getByLabel(kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد")
+            .count(), 1);
+          assert.equal(await page.locator(".commerce-header-secondary")
+            .getByLabel("تاريخ الفاتورة").count(), 1);
+        }
+        await geometry(page, 1440);
+      },
+    );
+    await scenario(
       "invoice purchase screen supports keyboard entry and exact totals",
       async () => {
         await page.goto(base + "/invoices/new?kind=purchase");
@@ -522,6 +546,10 @@ try {
         await page
           .getByText(/تم حفظ وترحيل الفاتورة رقم/)
           .waitFor();
+        assert.equal(await page.locator("form.commerce-editor > .commerce-header-card")
+          .evaluate((header) => Boolean(header.nextElementSibling?.textContent?.includes(
+            "تم حفظ وترحيل الفاتورة رقم",
+          ))), true, "Save confirmation belongs immediately below the header");
         const readyItem1 = page.locator('[id^="invoice-item-search-"]').first();
         await readyItem1.waitFor();
         assert.equal(await readyItem1.inputValue(), "");

@@ -1485,102 +1485,98 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   return (
     <div className="commerce-document-page">
-      {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-      {savedInvoice && (
-        <Notice tone="success">
-          تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-          <Link to={invoicePath(companyId, savedInvoice.id)}>
-            عرض الفاتورة المحفوظة
-          </Link>
-          . يمكنك إدخال الفاتورة التالية مباشرة.
-        </Notice>
-      )}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className="commerce-header-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
-              <ServerLookup<Account>
-                companyId={companyId}
-                resource={`/companies/${companyId}/commerce-options?type=accounts`}
-                label={
-                  kind === "sale"
-                    ? "حساب العميل / النقد"
-                    : "حساب المورد / النقد"
-                }
-                value={account}
-                onChange={(value) => {
-                  accountManuallyChosen.current = true;
-                  setAccount(value);
-                }}
-                display={itemLabel}
-                disabled={locked || hasLinkedLines}
-                required
-              />
-              <Link
-                className="button button-secondary commerce-list-link"
-                to={listPath(companyId, kind)}
-              >
-                قائمة الفواتير
-              </Link>
-              <Field
-                label="تاريخ الفاتورة"
-                type="date"
-                required
-                value={documentDate}
-                onChange={(event) => setDocumentDate(event.target.value)}
-              />
-              <Button
-                variant="secondary"
-                disabled={locked}
-                onClick={() => setShowOriginalPicker((shown) => !shown)}
-              >
-                {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
-              </Button>
-              <ServerLookup<CompanyCurrency>
-                companyId={companyId}
-                resource={`/companies/${companyId}/commerce-options?type=currencies`}
-                label="عملة الفاتورة"
-                value={currency}
-                onChange={(value) => {
-                  currencyManuallyChosen.current = true;
-                  setCurrency(value);
-                }}
-                display={(value) => `${value.code} — ${value.name}`}
-                disabled={locked || hasLinkedLines}
-                required
-              />
-              <ServerLookup<Branch>
-                companyId={companyId}
-                resource={`/companies/${companyId}/commerce-options?type=branches`}
-                label="الفرع"
-                value={branch}
-                onChange={(value) => {
-                  branchManuallyChosen.current = true;
-                  locationManuallyChosen.current = false;
-                  automaticLocationId.current = null;
-                  setBranch(value);
-                  setLocation(null);
-                }}
-                display={itemLabel}
-                disabled={locked || (!!branch && selectedLines.length > 0)}
-                required
-              />
-              <ServerLookup<Location>
-                companyId={companyId}
-                resource={`/companies/${companyId}/commerce-options?type=locations${branch ? `&branchId=${branch.id}` : ""}${kind === "sale" ? "&kind=showroom" : ""}`}
-                label="المعرض / المخزن"
-                value={location}
-                onChange={(value) => {
-                  locationManuallyChosen.current = true;
-                  setLocation(value);
-                }}
-                display={itemLabel}
-                accept={(value) => kind !== "sale" || value.kind === "showroom"}
-                disabled={
-                  locked || !branch || (!!location && selectedLines.length > 0)
-                }
-                required
-              />
+              <div className="commerce-header-half commerce-header-account">
+                <ServerLookup<Account>
+                  companyId={companyId}
+                  resource={`/companies/${companyId}/commerce-options?type=accounts`}
+                  label={
+                    kind === "sale"
+                      ? "حساب العميل / النقد"
+                      : "حساب المورد / النقد"
+                  }
+                  value={account}
+                  onChange={(value) => {
+                    accountManuallyChosen.current = true;
+                    setAccount(value);
+                  }}
+                  display={itemLabel}
+                  disabled={locked || hasLinkedLines}
+                  required
+                />
+                <Link
+                  className="button button-secondary commerce-list-link"
+                  to={listPath(companyId, kind)}
+                >
+                  قائمة الفواتير
+                </Link>
+              </div>
+              <div className="commerce-header-half commerce-header-secondary">
+                <Field
+                  label="تاريخ الفاتورة"
+                  type="date"
+                  required
+                  value={documentDate}
+                  onChange={(event) => setDocumentDate(event.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={locked}
+                  onClick={() => setShowOriginalPicker((shown) => !shown)}
+                >
+                  {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
+                </Button>
+              </div>
+              <div className="commerce-header-options">
+                <ServerLookup<CompanyCurrency>
+                  companyId={companyId}
+                  resource={`/companies/${companyId}/commerce-options?type=currencies`}
+                  label="عملة الفاتورة"
+                  value={currency}
+                  onChange={(value) => {
+                    currencyManuallyChosen.current = true;
+                    setCurrency(value);
+                  }}
+                  display={(value) => `${value.code} — ${value.name}`}
+                  disabled={locked || hasLinkedLines}
+                  required
+                />
+                <ServerLookup<Branch>
+                  companyId={companyId}
+                  resource={`/companies/${companyId}/commerce-options?type=branches`}
+                  label="الفرع"
+                  value={branch}
+                  onChange={(value) => {
+                    branchManuallyChosen.current = true;
+                    locationManuallyChosen.current = false;
+                    automaticLocationId.current = null;
+                    setBranch(value);
+                    setLocation(null);
+                  }}
+                  display={itemLabel}
+                  disabled={locked || (!!branch && selectedLines.length > 0)}
+                  required
+                />
+                <ServerLookup<Location>
+                  companyId={companyId}
+                  resource={`/companies/${companyId}/commerce-options?type=locations${branch ? `&branchId=${branch.id}` : ""}${kind === "sale" ? "&kind=showroom" : ""}`}
+                  label="المعرض / المخزن"
+                  value={location}
+                  onChange={(value) => {
+                    locationManuallyChosen.current = true;
+                    setLocation(value);
+                  }}
+                  display={itemLabel}
+                  accept={(value) => kind !== "sale" || value.kind === "showroom"}
+                  disabled={
+                    locked || !branch || (!!location && selectedLines.length > 0)
+                  }
+                  required
+                />
+              </div>
             </div>
             {showOriginalPicker && (
               <>
@@ -1685,6 +1681,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             )}
           </fieldset>
         </Card>
+        {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {savedInvoice && (
+          <Notice tone="success">
+            تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
+            <Link to={invoicePath(companyId, savedInvoice.id)}>
+              عرض الفاتورة المحفوظة
+            </Link>
+            . يمكنك إدخال الفاتورة التالية مباشرة.
+          </Notice>
+        )}
         <Card className="commerce-matrix-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div
@@ -2009,6 +2015,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                             .quantitySmallest,
                                           line.sourceItem,
                                           line.unit,
+                                          1,
                                         )
                                       : "—"
                                 : "—"}
