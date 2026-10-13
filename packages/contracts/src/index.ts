@@ -149,6 +149,7 @@ export const auditActionLabels = {
   "notification.remind": "تكرار تنبيه",
   "notification.settings": "إعداد نوع تنبيه",
   "wallet.award": "إضافة نقاط إدارية",
+  "wallet.automatic": "مكافأة تلقائية عن فاتورة",
   "wallet.reverse": "تصحيح حركة نقاط",
   "wallet.task": "إعداد مهمة مكافأة",
   "attendance.schedule": "إعداد دوام الموظف",
@@ -194,6 +195,7 @@ export const publicAuditActions: AuditAction[] = [
 ];
 export const companyAuditActions: AuditAction[] = [
   "wallet.award",
+  "wallet.automatic",
   "wallet.reverse",
   "wallet.task",
   "notification.create",
