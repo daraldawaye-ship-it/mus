@@ -1680,6 +1680,17 @@ ul {
 .item-units-table th:first-child {
   width: 90px;
 }
+.item-units-table .item-unit-default-cell {
+  width: 110px;
+  text-align: center;
+}
+.item-default-sale-unit {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+  vertical-align: middle;
+}
 .item-units-table thead {
   background: var(--table-head);
 }

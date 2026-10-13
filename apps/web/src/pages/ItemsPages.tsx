@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -81,6 +82,9 @@ function useItemChanges(companyId: number) {
       predicate: ({ queryKey }) =>
         queryKey[1] === user?.id &&
         ((queryKey[0] === "items" && queryKey[2] === companyId) ||
+          (queryKey[0] === "commerce" &&
+            queryKey[2] === companyId &&
+            queryKey[3] === "item-search") ||
           (queryKey[0] === "master" && queryKey[2] === companyId) ||
           (queryKey[0] === "list" &&
             String(queryKey[2]).startsWith(`company:${companyId}:`))),
@@ -741,6 +745,7 @@ type ItemFields = {
   salePrice1: string;
   salePrice2: string;
   salePrice3: string;
+  defaultSaleUnit: 1 | 2 | 3;
   purchasePrice: string;
   commissionRate: string;
   clearanceFrom: string;
@@ -770,6 +775,7 @@ function initialItemFields(item: Item | null): ItemFields {
     salePrice1: item?.salePrice1 ?? "0",
     salePrice2: item?.salePrice2 ?? "0",
     salePrice3: item?.salePrice3 ?? "0",
+    defaultSaleUnit: item?.defaultSaleUnit ?? 1,
     purchasePrice: item?.purchasePrice ?? "0",
     commissionRate: item?.commissionRate ?? "0",
     clearanceFrom: item?.clearanceFrom ?? "",
@@ -807,6 +813,7 @@ function ItemEditor({
   onSavingChange?: (saving: boolean) => void;
 }) {
   const companyId = context.company.id;
+  const defaultSaleUnitGroup = useId();
   const { user } = useSession();
   const navigate = useNavigate();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
@@ -870,7 +877,23 @@ function ItemEditor({
   }, [saving, onSavingChange]);
   function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
     setDirty(true);
-    setFields((previous) => ({ ...previous, [key]: value }));
+    setFields((previous) => {
+      const next = { ...previous, [key]: value };
+      const secondFactor = itemFactorSchema.safeParse(next.factor2);
+      const thirdFactor = itemFactorSchema.safeParse(next.factor3);
+      if (
+        (next.defaultSaleUnit === 2 &&
+          (!secondFactor.success ||
+            secondFactor.data <= 1 ||
+            !next.unit2Name.trim())) ||
+        (next.defaultSaleUnit === 3 &&
+          (!thirdFactor.success ||
+            thirdFactor.data <= 1 ||
+            !next.unit3Name.trim()))
+      )
+        next.defaultSaleUnit = 1;
+      return next;
+    });
   }
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -1143,6 +1166,7 @@ function ItemEditor({
                   <th>اسم الوحدة</th>
                   <th>عددها داخل السابقة</th>
                   <th>سعر البيع</th>
+                  <th className="item-unit-default-cell">افتراضية للمبيعات</th>
                 </tr>
               </thead>
               <tbody>
@@ -1173,6 +1197,19 @@ function ItemEditor({
                       onChange={(event) =>
                         edit("salePrice1", event.target.value)
                       }
+                    />
+                  </td>
+                  <td className="item-unit-default-cell">
+                    <input
+                      type="radio"
+                      className="item-default-sale-unit"
+                      name={defaultSaleUnitGroup}
+                      aria-label="الوحدة الأولى افتراضية للمبيعات"
+                      title="الوحدة الأولى افتراضية للمبيعات"
+                      value="1"
+                      checked={fields.defaultSaleUnit === 1}
+                      disabled={disabled}
+                      onChange={() => edit("defaultSaleUnit", 1)}
                     />
                   </td>
                 </tr>
@@ -1215,6 +1252,21 @@ function ItemEditor({
                       }
                     />
                   </td>
+                  <td className="item-unit-default-cell">
+                    <input
+                      type="radio"
+                      className="item-default-sale-unit"
+                      name={defaultSaleUnitGroup}
+                      aria-label="الوحدة الثانية افتراضية للمبيعات"
+                      title="الوحدة الثانية افتراضية للمبيعات"
+                      value="2"
+                      checked={fields.defaultSaleUnit === 2}
+                      disabled={
+                        disabled || !(factor2 > 1) || !fields.unit2Name.trim()
+                      }
+                      onChange={() => edit("defaultSaleUnit", 2)}
+                    />
+                  </td>
                 </tr>
                 <tr>
                   <th>الثالثة</th>
@@ -1253,6 +1305,21 @@ function ItemEditor({
                       onChange={(event) =>
                         edit("salePrice3", event.target.value)
                       }
+                    />
+                  </td>
+                  <td className="item-unit-default-cell">
+                    <input
+                      type="radio"
+                      className="item-default-sale-unit"
+                      name={defaultSaleUnitGroup}
+                      aria-label="الوحدة الثالثة افتراضية للمبيعات"
+                      title="الوحدة الثالثة افتراضية للمبيعات"
+                      value="3"
+                      checked={fields.defaultSaleUnit === 3}
+                      disabled={
+                        disabled || !(factor3 > 1) || !fields.unit3Name.trim()
+                      }
+                      onChange={() => edit("defaultSaleUnit", 3)}
                     />
                   </td>
                 </tr>

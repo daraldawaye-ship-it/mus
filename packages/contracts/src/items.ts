@@ -55,6 +55,7 @@ const commissionPercent = z.string().trim().transform(normalizeDigits)
     const [integer, fraction = ""] = value.split(".");
     return Number(integer) < 100 || (integer === "100" && (!fraction || /^0+$/.test(fraction)));
   }, "نسبة العمولة لا تتجاوز 100%");
+const defaultSaleUnitSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const itemFields = z
   .object({
     name,
@@ -69,6 +70,7 @@ const itemFields = z
     unit3Name: z.string().trim().max(120).default(""),
     factor2: itemFactorSchema.default(1),
     factor3: itemFactorSchema.default(1),
+    defaultSaleUnit: defaultSaleUnitSchema.default(1),
     salePrice1: amountSchema.default("0"),
     salePrice2: amountSchema.default("0"),
     salePrice3: amountSchema.default("0"),
@@ -93,6 +95,7 @@ function validateNames(
     factor3: number;
     unit2Name: string;
     unit3Name: string;
+    defaultSaleUnit?: 1 | 2 | 3;
     commissionRate: string;
     clearanceFrom: string | null;
     clearanceTo: string | null;
@@ -115,13 +118,26 @@ function validateNames(
       path: ["unit3Name"],
       message: "اسم الوحدة الثالثة مطلوب عند تفعيل التجزئة",
     });
+  if (
+    (value.defaultSaleUnit === 2 && (value.factor2 <= 1 || !value.unit2Name)) ||
+    (value.defaultSaleUnit === 3 && (value.factor3 <= 1 || !value.unit3Name))
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["defaultSaleUnit"],
+      message: "اختر وحدة مفعلة كوحدة افتراضية للمبيعات",
+    });
 }
 export const itemSchema = itemFields
   .extend({ idempotencyKey: z.uuid() })
   .strict()
   .superRefine(validateNames);
 export const itemPatchSchema = itemFields
-  .extend({ revision, legacyId: z.string().trim().max(100).optional() })
+  .extend({
+    revision,
+    legacyId: z.string().trim().max(100).optional(),
+    defaultSaleUnit: defaultSaleUnitSchema.optional(),
+  })
   .strict()
   .superRefine(validateNames);
 export type ItemInput = z.input<typeof itemSchema>;
@@ -160,6 +176,7 @@ export interface Item extends ItemIdentity {
   unit3Name: string;
   factor2: number;
   factor3: number;
+  defaultSaleUnit: 1 | 2 | 3;
   salePrice1: string;
   salePrice2: string;
   salePrice3: string;
@@ -276,6 +293,7 @@ export const itemCatalog = {
     unit3Name: "",
     factor2: 1,
     factor3: 1,
+    defaultSaleUnit: 1,
     salePrice1: "0",
     salePrice2: "0",
     salePrice3: "0",

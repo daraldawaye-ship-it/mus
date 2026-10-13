@@ -42,6 +42,7 @@ export function itemDTO(row: QueryResultRow): Item {
     unit3Name: row.unit3_name,
     factor2: row.factor2,
     factor3: row.factor3,
+    defaultSaleUnit: row.default_sale_unit,
     salePrice1: normalizeRate(row.sale_price1),
     salePrice2: normalizeRate(row.sale_price2),
     salePrice3: normalizeRate(row.sale_price3),
