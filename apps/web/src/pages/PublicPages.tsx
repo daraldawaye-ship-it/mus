@@ -150,11 +150,13 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     password: "",
   });
   const registering = mode === "register";
+  const [loginId, setLoginId] = useState("");
 
   useEffect(() => {
     setBusy(false);
     setError("");
     setDraft({ name: "", displayName: "", email: "", phone: "", password: "" });
+    setLoginId("");
   }, [mode]);
 
   if (user) return <Navigate to="/" replace />;
@@ -171,7 +173,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           method: "POST",
           body: registering
             ? { ...draft, image: "" }
-            : { email: draft.email, password: draft.password },
+            : { ...(loginId.trim().includes("@") ? { email: loginId.trim() } : { phone: loginId.trim() }), password: draft.password },
           signal: guard.signal,
         },
       );
@@ -231,28 +233,44 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
               />
             </>
           )}
-          <Field
-            label="البريد الإلكتروني"
-            name="email"
-            type="email"
-            dir="ltr"
-            autoComplete="email"
-            value={draft.email}
-            onChange={(event) => update("email", event.target.value)}
-            required
-            maxLength={254}
-            disabled={busy}
-          />
-          {registering && (
+          {registering ? (
+            <>
+              <Field
+                label="رقم الهاتف الأساسي"
+                name="phone"
+                type="tel"
+                dir="ltr"
+                autoComplete="tel"
+                value={draft.phone}
+                onChange={(event) => update("phone", event.target.value)}
+                required
+                maxLength={40}
+                disabled={busy}
+                hint="الرقم مطلوب للدخول، وسيُضاف التحقق برسالة SMS لاحقًا."
+              />
+              <Field
+                label="البريد الإلكتروني (اختياري)"
+                name="email"
+                type="email"
+                dir="ltr"
+                autoComplete="email"
+                value={draft.email}
+                onChange={(event) => update("email", event.target.value)}
+                maxLength={254}
+                disabled={busy}
+              />
+            </>
+          ) : (
             <Field
-              label="الهاتف"
-              name="phone"
-              type="tel"
+              label="رقم الهاتف أو البريد الإلكتروني"
+              name="login"
+              type="text"
               dir="ltr"
-              autoComplete="tel"
-              value={draft.phone}
-              onChange={(event) => update("phone", event.target.value)}
-              maxLength={40}
+              autoComplete="username"
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              required
+              maxLength={254}
               disabled={busy}
             />
           )}
@@ -447,11 +465,10 @@ function ProfileForms({ user }: { user: User }) {
             autoComplete="email"
             value={draft.email}
             onChange={(event) => updateProfile("email", event.target.value)}
-            required
             maxLength={254}
           />
           <Field
-            label="الهاتف"
+            label="رقم الهاتف الأساسي"
             name="phone"
             type="tel"
             dir="ltr"
@@ -842,7 +859,7 @@ function UserList() {
           <p className="form-full">المعرف: {editTarget.id}</p>
           <Field label="الاسم" value={editDraft.name} required maxLength={120} onChange={event=>setEditDraft({...editDraft,name:event.target.value})}/>
           <Field label="اسم الظهور" value={editDraft.displayName} maxLength={120} onChange={event=>setEditDraft({...editDraft,displayName:event.target.value})}/>
-          <Field label="البريد الإلكتروني" type="email" dir="ltr" value={editDraft.email} required maxLength={254} onChange={event=>setEditDraft({...editDraft,email:event.target.value})}/>
+          <Field label="البريد الإلكتروني (اختياري)" type="email" dir="ltr" value={editDraft.email} maxLength={254} onChange={event=>setEditDraft({...editDraft,email:event.target.value})}/>
           <Field label="الهاتف" type="tel" dir="ltr" value={editDraft.phone} maxLength={40} onChange={event=>setEditDraft({...editDraft,phone:event.target.value})}/>
           <Select label="نوع الحساب" value={editDraft.kind} onChange={event=>setEditDraft({...editDraft,kind:event.target.value as User["kind"]})}>
             {userKinds.map(kind=><option key={kind} value={kind}>{userKindLabels[kind]}</option>)}
