@@ -43,6 +43,7 @@ const normalizePoints = (value: string) =>
         : "۰۱۲۳۴۵۶۷۸۹".indexOf(digit),
     ),
   );
+const invoiceTasks = new Set(["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES"]);
 const repeatLabels: Record<RewardRepeatRule, string> = {
   "per-document": "لكل مستند",
   daily: "مرة يوميًا",
@@ -85,6 +86,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     (entry) => entry.key === "company.reward-tasks",
   );
   const canAward = !!list.data?.canManage && !!walletPage?.actionAccess.create;
+  const canViewInvoice = !!directory.data?.find((entry) => entry.key === "company.invoice")?.actionAccess.view;
   const canReverse =
     !!list.data?.canManage && !!walletPage?.actionAccess.reverse;
   const [award, setAward] = useState<AwardDraft | null>(null),
@@ -151,7 +153,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         setNotice(
           isAward
             ? "تمت إضافة النقاط وحفظها في السجل."
-            : "تم عكس الإضافة مع الاحتفاظ بسجلها الأصلي.",
+            : "تم عكس المكافأة مع الاحتفاظ بسجلها الأصلي.",
         );
       }
     } catch (cause) {
@@ -173,7 +175,11 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 115,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.kind === "manual" ? "إضافة إدارية" : "عكس إضافة",
+        row.original.kind === "manual"
+          ? "إضافة إدارية"
+          : row.original.kind === "automatic"
+            ? "مكافأة فاتورة"
+            : "عكس مكافأة",
     },
     {
       accessorKey: "points",
@@ -194,7 +200,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       size: 120,
       enableSorting: false,
       cell: ({ row }) =>
-        row.original.kind === "reversal"
+        row.original.invoiceId !== null && canViewInvoice
+          ? <Link to={`${base}/invoices/${row.original.invoiceId}`}>فاتورة #{row.original.invoiceId}</Link>
+          : row.original.kind === "reversal"
           ? `عكس #${row.original.referenceId}`
           : row.original.reversedByEntryId
             ? `عُكست #${row.original.reversedByEntryId}`
@@ -208,7 +216,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
             size: 130,
             enableSorting: false,
             cell: ({ row }: { row: { original: WalletEntry } }) =>
-              row.original.kind === "manual" &&
+              (row.original.kind === "manual" || row.original.kind === "automatic") &&
               !row.original.reversedByEntryId ? (
                 <Button
                   variant="ghost"
@@ -224,7 +232,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
                   }}
                 >
                   <RotateCcw size={14} />
-                  عكس الإضافة
+                  عكس المكافأة
                 </Button>
               ) : (
                 "—"
@@ -238,7 +246,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     <div className="wallet-page">
       <PageHeader
         title="النقاط والمحفظة"
-        description="رصيد الموظف وسجل الإضافات والتصحيحات داخل الشركة."
+        description="رصيد الموظف وسجل المكافآت الآلية والإضافات الإدارية والتصحيحات داخل الشركة."
         actions={
           <>
             {tasksPage?.enabled && tasksPage.actionAccess.view && (
@@ -525,9 +533,11 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
         }
       />
       <Notice>
-        مهام المكافآت الآلية مخططة وموقوفة حاليًا. يمكن إعداد كروتها، ويُتاح
-        تفعيل كل مهمة بعد ربطها بحدث النظام. الإضافة الإدارية للنقاط متاحة في
-        المحفظة.
+        مكافآت حفظ فواتير المبيعات والمشتريات وسطورها متاحة للتفعيل الآن من كروتها؛
+        ولا تُمنح أي نقاط تلقائيًا قبل تفعيل المهمة. يمكن جمع مكافأة الفاتورة مع
+        مكافأة السطور: مثلًا 5 نقاط لحفظ فاتورة مبيعات + نقطتين لكل سطر منطقي
+        من ثلاثة سطور = 11 نقطة. تكرار نفس الصنف والوحدة والسعر وتاريخ الصلاحية
+        لا يضاعف عدد السطور المستحقة، والمردودات تُحسب أيضًا. بقية المهام لا تزال مخططة.
       </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {query.error && (
@@ -579,7 +589,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                         size="compact"
                         onClick={() => {
                           setError("");
-                          setDraft({ ...task, roleIds: [...task.roleIds] });
+                          setDraft({ ...task, repeatRule: invoiceTasks.has(task.code) ? "per-document" : task.repeatRule, roleIds: [...task.roleIds] });
                         }}
                       >
                         تعديل الكرت
@@ -635,7 +645,7 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
               />
               <Select
                 label="قاعدة الاستحقاق"
-                disabled={pending}
+                disabled={pending || invoiceTasks.has(draft.code)}
                 value={draft.repeatRule}
                 onChange={(event) =>
                   setDraft({
@@ -651,6 +661,9 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
                 ))}
               </Select>
             </div>
+            {invoiceTasks.has(draft.code) && (
+              <Notice>تُحتسب هذه المهمة مرة لكل فاتورة جديدة بعد ترحيلها، ولا تتكرر عند إعادة فتحها أو إرسال الطلب ذاته. يمكن تفعيل مكافأة حفظ الفاتورة ومكافأة سطورها معًا؛ النقاط المحددة هنا للسطور هي لكل سطر منطقي.</Notice>
+            )}
             {draft.code === "PAGE_VISIT" && (
               <Select
                 label="الصفحة المرتبطة"
