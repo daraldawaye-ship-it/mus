@@ -194,7 +194,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           if (!amount || !direction) return "—";
           if (direction === "zero") return "صفر";
           const [whole, fractions] = amount.split(".");
-          const grouped = whole!.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+          const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
           return (
             <ValueCell value={amount}>
               <bdi>{grouped}{fractions ? `.${fractions}` : ""}</bdi>{" "}
