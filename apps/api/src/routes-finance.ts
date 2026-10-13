@@ -542,6 +542,8 @@ export function financeRoutes(pool: Pool): Router {
           const before = await loadDocument(client, companyId, documentId);
           const linkedStock = await client.query("SELECT 1 FROM invoices WHERE company_id=$1 AND $2 IN(financial_document_id,cost_document_id,variance_document_id) UNION ALL SELECT 1 FROM stock_operations WHERE company_id=$1 AND financial_document_id=$2 LIMIT 1", [companyId, documentId]);
           if (linkedStock.rowCount) conflict("هذا القيد مرتبط بفاتورة أو حركة مخزون؛ صححه بمردود مرتبط أو تسوية مخزون موثقة");
+          const linkedWallet = await client.query("SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND financial_document_id=$2", [companyId, documentId]);
+          if (linkedWallet.rowCount) conflict("هذا القيد مرتبط بتحويل نقاط؛ لا يمكن عكسه مستقلاً عن المحفظة");
           if (before.status !== "posted")
             conflict("يمكن عكس المستند المرحل مرة واحدة فقط");
           if (before.reversesDocumentId !== null)

@@ -361,19 +361,19 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
   assert.equal(preview.currency?.id, yer.id);
   assert.equal(preview.account?.id, employeeAccount.id);
   assert.equal(preview.configurationComplete, true);
-  assert.equal(
-    preview.canConvert,
-    false,
-    "This increment has no transfer action",
-  );
-  assert(preview.unavailableReason.length > 0);
+  assert.equal(preview.canConvert, true);
+  assert.equal(preview.unavailableReason, "");
   const ownerPreview = (
     await f.owner.ok<{ preview: WalletConversionPreview }>(
       "GET",
       previewPath + "?employeeId=" + recipient.employee.id,
     )
   ).preview;
-  assert.deepEqual(ownerPreview, preview);
+  assert.deepEqual(ownerPreview, {
+    ...preview,
+    canConvert: false,
+    unavailableReason: ownerPreview.unavailableReason,
+  });
   assert.deepEqual(
     await financialSnapshot(),
     before,
@@ -391,7 +391,11 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
       previewPath + "?employeeId=" + recipient.employee.id,
     )
   ).preview;
-  assert.deepEqual(generalPreview, preview);
+  assert.deepEqual(generalPreview, {
+    ...preview,
+    canConvert: false,
+    unavailableReason: generalPreview.unavailableReason,
+  });
   const concurrent = await Promise.all([
     f.owner.request<{ policy: WalletPolicy }>("PUT", policyPath, {
       ...policyInput(policy),

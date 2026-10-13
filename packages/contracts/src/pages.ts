@@ -286,6 +286,14 @@ page(
   "إعداد قيمة النقطة وعملة التحويل وحساب المصروف وربط الموظفين بحساباتهم.",
 );
 page(
+  "company.wallet-conversions",
+  "تحويلات النقاط",
+  "الموظفون",
+  "/companies/:companyId/wallet-conversions",
+  { view: member, create: member, edit: member, post: general },
+  "تحويل نقاطك إلى حسابك، ومتابعة الطلبات واعتمادها أو رفضها من الإدارة.",
+);
+page(
   "company.attendance",
   "الحضور والانصراف",
   "الموظفون",

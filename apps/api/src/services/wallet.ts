@@ -7,8 +7,9 @@ import type {
 } from "../../../../packages/contracts/src/wallet.ts";
 import { HttpError } from "../errors.ts";
 
-export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,w.points::text,w.money::text,c.code AS currency_code
+export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,(w.points-COALESCE(reserved.points,0))::text AS points,w.points::text AS total_points,COALESCE(reserved.points,0)::text AS reserved_points,w.money::text,c.code AS currency_code
  FROM employee_wallets w JOIN employees e ON e.company_id=w.company_id AND e.id=w.employee_id
+ LEFT JOIN LATERAL (SELECT sum(points) AS points FROM wallet_conversions WHERE company_id=w.company_id AND employee_id=w.employee_id AND status='pending') reserved ON true
  LEFT JOIN finance_settings f ON f.company_id=w.company_id
  LEFT JOIN company_currencies c ON c.company_id=f.company_id AND c.id=f.base_currency_id`;
 export const walletEntryQuery = `SELECT l.*,l.points::text,l.money::text,r.id AS reversed_by_entry_id
@@ -22,6 +23,8 @@ export const walletSummaryDTO = (row: QueryResultRow): WalletSummary => ({
   employeeId: row.employee_id,
   employeeName: row.employee_name,
   points: row.points,
+  totalPoints: row.total_points,
+  reservedPoints: row.reserved_points,
   money: row.money === "0.000000" ? "0" : row.money,
   currencyCode: row.currency_code ?? "",
 });
@@ -35,6 +38,7 @@ export const walletEntryDTO = (row: QueryResultRow): WalletEntry => ({
   reason: row.reason,
   referenceId: row.reference_id,
   invoiceId: row.invoice_id ?? null,
+  conversionId: row.conversion_id ?? null,
   financialDocumentId: row.financial_document_id ?? null,
   pageKey: row.page_key ?? null,
   taskCode: row.task_code ?? null,

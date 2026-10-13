@@ -202,8 +202,8 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
       />
       <Notice>
         تحدد الإدارة قيمة النقطة وسياسة التحويل؛ تبقى الحقول غير المحددة فارغة.
-        تعرض هذه المرحلة معاينة المبلغ فقط، ولا تخصم نقاطًا أو تنشئ قيدًا
-        محاسبيًا.
+        التحويل المباشر يرحّل المبلغ إلى حساب الموظف، وطلب الاعتماد يحجز النقاط
+        حتى قرار الإدارة. تبقى قيمة الطلب وحساباته ثابتة بعد إرساله.
       </Notice>
       {query.isPending && <Notice>جارٍ تحميل إعدادات المحفظة…</Notice>}
       {query.error && <Notice tone="error">{errorMessage(query.error)}</Notice>}
@@ -295,10 +295,8 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
               }
             >
               <option value="">لم تحدد بعد</option>
-              <option value="direct">تحويل مباشر عند تفعيل التنفيذ</option>
-              <option value="approval">
-                يتطلب اعتماد الإدارة عند تفعيل التنفيذ
-              </option>
+              <option value="direct">تحويل مباشر إلى حساب الموظف</option>
+              <option value="approval">يتطلب اعتماد الإدارة</option>
             </Select>
             {canEdit && (
               <div className="form-actions form-full">

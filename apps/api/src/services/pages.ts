@@ -261,6 +261,7 @@ export async function requestPageKeys(
     wallet: "wallet",
     "reward-tasks": "reward-tasks",
     "wallet-settings": "wallet-settings",
+    "wallet-conversions": "wallet-conversions",
     notifications: "notifications",
     "notification-templates": "notification-templates",
     users: "employees",
@@ -320,6 +321,9 @@ export async function requestPageKeys(
       keys.push("company.item-new");
     if (/^items\/\d+/.test(rest)) keys.push("company.item-card");
   }
+  if (resource === "wallet-conversions" && req.method === "POST" &&
+      (rest === "wallet-conversions" || /^wallet-conversions\/[1-9]\d*\/approve$/.test(rest)))
+    keys.push("company.wallet");
   if (resource === "financial-documents" || resource === "invoices") {
     const financial = resource === "financial-documents";
     let kind: unknown =
@@ -378,7 +382,7 @@ export async function assertRequestPagesEnabled(
   // a changed payload can only fail with conflict, never create a new record.
   const path = req.originalUrl.split("?")[0]!.replace(/^\/api/, "");
   const creation = path.match(
-    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals)$/,
+    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals|wallet-conversions)$/,
   );
   const requestKey: unknown = req.body?.idempotencyKey;
   if (
@@ -397,10 +401,20 @@ export async function assertRequestPagesEnabled(
       "stock-adjustments": "stock_operations",
       "wallet/awards": "employee_wallet_entries",
       "wallet/reversals": "employee_wallet_entries",
+      "wallet-conversions": "wallet_conversions",
     };
     const existing = await db.query(
       `SELECT 1 FROM ${tables[creation[1]!]} WHERE company_id=$1 AND idempotency_key=$2`,
       [companyId, requestKey],
+    );
+    if (existing.rowCount) return;
+  }
+  const decision = path.match(/^\/companies\/[1-9]\d*\/wallet-conversions\/([1-9]\d*)\/(approve|reject|cancel)$/);
+  if (companyId && req.method === "POST" && decision && typeof requestKey === "string" &&
+      /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)) {
+    const existing = await db.query(
+      "SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND id=$2 AND decision_key=$3",
+      [companyId, decision[1], requestKey],
     );
     if (existing.rowCount) return;
   }
