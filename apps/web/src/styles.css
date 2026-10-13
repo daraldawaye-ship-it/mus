@@ -1738,6 +1738,44 @@ ul {
   gap: 8px;
   min-width: 0;
 }
+.invoice-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(210px, 22vw, 280px);
+  grid-template-areas: "invoice side";
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+.invoice-workspace-main {
+  grid-area: invoice;
+  min-width: 0;
+  container: invoice-main / inline-size;
+}
+.invoice-side-space {
+  grid-area: side;
+  position: sticky;
+  top: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: calc(100dvh - 114px);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+}
+.invoice-empty-panel {
+  flex: 0 0 calc(50% - 5px);
+  min-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--card-radius) - 2px);
+  background: var(--surface);
+}
 .commerce-fieldset {
   border: 0;
   padding: 0;
@@ -2009,7 +2047,55 @@ ul {
     padding: 8px;
   }
 }
+@container invoice-main (max-width: 800px) {
+  .invoice-workspace-main .commerce-header-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .invoice-workspace-main .commerce-footer-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+@container invoice-main (max-width: 480px) {
+  .invoice-workspace-main .commerce-header-grid,
+  .invoice-workspace-main .commerce-footer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 680px) {
+  .invoice-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 25dvh;
+    grid-template-areas: "invoice" "side";
+    gap: 10px;
+    /* Reserve the 44px topbar, shell footer and existing content padding. */
+    height: calc(100dvh - 110px);
+    align-items: stretch;
+  }
+  .invoice-workspace-main {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .invoice-side-space {
+    position: static;
+    height: 100%;
+  }
+  .invoice-empty-panel {
+    min-height: 80px;
+  }
+}
 @media print {
+  .invoice-workspace {
+    display: block;
+    height: auto;
+  }
+  .invoice-workspace-main {
+    container-type: normal;
+    overflow: visible;
+  }
+  .invoice-side-space {
+    display: none !important;
+  }
   .commerce-no-print,
   .commerce-save-footer {
     display: none !important;
