@@ -328,6 +328,11 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
           </>
         }
       />
+      <Notice>
+        اعتماد التحويل يثبت مستحقًا في حساب الموظف ولا يعني صرف مبلغ نقدي.
+        السداد الفعلي يحتاج سند صرف منفصلًا وترحيلًا بصلاحية مالية،
+        ولا تُنشأ أي عمولة تصريف أو دفعة رواتب تلقائيًا.
+      </Notice>
       {notice && <Notice tone="success">{notice}</Notice>}
       {list.error && (
         <Notice tone="error">
