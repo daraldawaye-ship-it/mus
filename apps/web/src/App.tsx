@@ -27,8 +27,6 @@ import {
   ListTree,
   LogIn,
   Menu,
-  PanelRightClose,
-  PanelRightOpen,
   MapPin,
   Package,
   Settings2,
@@ -628,13 +626,6 @@ function Protected({ children }: { children: React.ReactNode }) {
     <Navigate to={pendingLogoutRedirect ? "/" : "/login"} replace />
   );
 }
-function storedDesktopNavigation(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === "collapsed";
-  } catch {
-    return false;
-  }
-}
 function Workspace() {
   const {
     user,
@@ -650,39 +641,6 @@ function Workspace() {
   const scope = inCompany ? `company:${companyId}` : "public";
   const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState(false);
-  const navigationPreferenceKey = `tijara:desktop-navigation:${user?.id ?? "guest"}`;
-  const [navigationPreferences, setNavigationPreferences] = useState<
-    Record<string, boolean>
-  >({});
-  const navigationCollapsed =
-    navigationPreferences[navigationPreferenceKey] ??
-    storedDesktopNavigation(navigationPreferenceKey);
-  function toggleDesktopNavigation() {
-    const collapsed = !navigationCollapsed;
-    setNavigationPreferences((previous) => ({
-      ...previous,
-      [navigationPreferenceKey]: collapsed,
-    }));
-    try {
-      localStorage.setItem(
-        navigationPreferenceKey,
-        collapsed ? "collapsed" : "expanded",
-      );
-    } catch {
-      // The toggle still works when browser storage is unavailable.
-    }
-  }
-  useEffect(() => {
-    const synchronize = (event: StorageEvent) => {
-      if (event.key === navigationPreferenceKey || event.key === null)
-        setNavigationPreferences((previous) => ({
-          ...previous,
-          [navigationPreferenceKey]: event.newValue === "collapsed",
-        }));
-    };
-    window.addEventListener("storage", synchronize);
-    return () => window.removeEventListener("storage", synchronize);
-  }, [navigationPreferenceKey]);
   const [logoutError, setLogoutError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -769,9 +727,7 @@ function Workspace() {
     );
   return (
     <AppearanceProvider key={`${user?.id ?? "guest"}:${scope}`} scope={scope}>
-      <div
-        className={`workspace${navigationCollapsed ? " sidebar-collapsed" : ""}`}
-      >
+      <div className="workspace">
         <aside
           id="desktop-navigation"
           className="sidebar"
@@ -803,25 +759,6 @@ function Workspace() {
         <div className="workspace-body">
           <header className="topbar">
             <div className="topbar-start">
-              <Button
-                variant="ghost"
-                className="desktop-sidebar-toggle"
-                aria-label={
-                  navigationCollapsed ? "توسيع قائمة التنقل" : "طي قائمة التنقل"
-                }
-                title={
-                  navigationCollapsed ? "توسيع قائمة التنقل" : "طي قائمة التنقل"
-                }
-                aria-expanded={!navigationCollapsed}
-                aria-controls="desktop-navigation"
-                onClick={toggleDesktopNavigation}
-              >
-                {navigationCollapsed ? (
-                  <PanelRightOpen size={20} />
-                ) : (
-                  <PanelRightClose size={20} />
-                )}
-              </Button>
               <Button
                 variant="ghost"
                 className="mobile-menu"
