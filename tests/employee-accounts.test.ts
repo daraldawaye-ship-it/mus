@@ -161,9 +161,9 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
 
   const result=await runtime.pool.query<{
     employee_id:number;account_kind:string;name:string;code:string;
-    parent_code:string;cash_or_bank:boolean;category:string;kind:string;
+    parent_code:string;cash_or_bank:boolean;category:string;kind:string;account_choice:string;
   }>(`SELECT l.employee_id,l.account_kind,a.name,a.code,
-     p.code AS parent_code,a.cash_or_bank,a.category,a.kind
+     p.code AS parent_code,a.cash_or_bank,a.category,a.kind,a.account_choice
      FROM employee_account_links l
      JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
      JOIN accounts p ON p.company_id=a.company_id AND p.id=a.parent_id
@@ -176,14 +176,16 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
     assert.equal(link.parent_code,link.account_kind==="advance"?"1140000000":
       link.account_kind==="sales_pouch"?"1113000000":"1111000000");
     assert.equal(link.cash_or_bank,link.account_kind==="sales_cash");
+    assert.equal(link.account_choice,link.account_kind==="advance"?"employee":
+      link.account_kind==="sales_pouch"?"pouch":"cashbox");
   }
-  const groups=await runtime.pool.query<{code:string;name:string}>(
-    `SELECT code,name FROM accounts WHERE company_id=$1 AND code IN ('1113000000','1140000000') ORDER BY code`,
+  const groups=await runtime.pool.query<{code:string;name:string;account_choice:string}>(
+    `SELECT code,name,account_choice FROM accounts WHERE company_id=$1 AND code IN ('1113000000','1140000000') ORDER BY code`,
     [first.id],
   );
   assert.deepEqual(groups.rows,[
-    {code:"1113000000",name:"الحوافظ"},
-    {code:"1140000000",name:"سلف الموظفين"},
+    {code:"1113000000",name:"الحوافظ",account_choice:"administrative"},
+    {code:"1140000000",name:"سلف الموظفين",account_choice:"administrative"},
   ]);
   const duplicate=await admin.request("POST",`/companies/${first.id}/employees`,{
     userId:id1.id,name:"أحمد",phone:"",role:"sales",permissions:[],createSalesCashbox:true,

@@ -71,8 +71,8 @@ async function ensureGroup(
     return row.id;
   }
   const created = await client.query(
-    `INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank)
-     VALUES($1,$2,$3,$4,'group','asset','debit',true,$5,$6,$7,false) RETURNING id`,
+    `INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank,account_choice)
+     VALUES($1,$2,$3,$4,'group','asset','debit',true,$5,$6,$7,false,'administrative') RETURNING id`,
     [companyId, spec.code, spec.name, rootId, spec.start, spec.end, user.id],
   );
   const id = created.rows[0].id as number;
@@ -112,10 +112,12 @@ async function createEmployeeAccount(
   if (next > BigInt(spec.end))
     throw new HttpError(409, "account_range_exhausted", `نفد ترقيم المجموعة ${spec.code}`);
   const code = next.toString().padStart(10, "0");
+  const choice = kind === "advance" ? "employee" :
+    kind === "sales_cash" ? "cashbox" : "pouch";
   const created = await client.query(
-    `INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank)
-     VALUES($1,$2,$3,$4,'posting','asset','debit',true,NULL,NULL,$5,$6) RETURNING id`,
-    [companyId, code, name, parentId, user.id, kind === "sales_cash"],
+    `INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,active,range_start,range_end,created_by,cash_or_bank,account_choice)
+     VALUES($1,$2,$3,$4,'posting','asset','debit',true,NULL,NULL,$5,$6,$7) RETURNING id`,
+    [companyId, code, name, parentId, user.id, kind === "sales_cash", choice],
   );
   const accountId = created.rows[0].id as number;
   await client.query(

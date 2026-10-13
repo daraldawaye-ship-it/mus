@@ -240,7 +240,7 @@ export const accountSchema = z
     parentId: id.nullable().optional().default(null),
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
-    accountChoice: z.enum(accountChoices).nullable().default(null),
+    accountChoice: z.enum(accountChoices).nullable().default("administrative"),
     // Accepted for compatibility with existing integrations; the server sets
     // the accounting classification automatically from the account category.
     normalSide: z.enum(normalSides).optional(),
