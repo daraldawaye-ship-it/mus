@@ -14,6 +14,7 @@ import type {
   WalletPolicyDirectory,
   EmployeeWalletAccount,
   WalletConversionPreview,
+  WalletConversionDirectory,
   Account,
   Page,
 } from "../packages/contracts/src/index.ts";
@@ -475,11 +476,10 @@ try {
     await previewDialog.getByLabel("حساب الموظف", { exact: true }).inputValue(),
     employeeAccount.code + " — " + employeeAccount.name,
   );
-  assert.equal(await previewDialog.locator('button[type="submit"]').count(), 0);
   const preview = await employeeCall<{ preview: WalletConversionPreview }>(
     base + "/wallet/conversion-preview?employeeId=" + employee.id,
   );
-  assert.equal(preview.preview.canConvert, false);
+  assert.equal(preview.preview.canConvert, true);
   assert.equal(preview.preview.configurationComplete, true);
   assert.equal(preview.preview.amount, "7.13");
   const afterPreview = await employeeCall<WalletDirectory>(base + "/wallet");
@@ -489,14 +489,158 @@ try {
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
-    "The readonly conversion preview fits the mobile viewport",
+    "The conversion preview fits the mobile viewport",
+  );
+  let conversionRequests = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api" + base + "/wallet-conversions"
+    )
+      conversionRequests++;
+  });
+  await previewDialog
+    .getByRole("button", { name: "إرسال طلب الاعتماد", exact: true })
+    .dblclick();
+  await previewDialog
+    .getByText("أُرسل طلب التحويل وحُجزت نقاطه حتى قرار الإدارة.", {
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(
+    conversionRequests,
+    1,
+    "Double clicking sends one immutable request",
   );
   await previewDialog
     .getByRole("button", { name: "إغلاق", exact: true })
     .click();
+  await page.locator('[data-wallet-points="0"]').waitFor();
+  await page
+    .getByRole("link", { name: "محفظتي، 0 نقطة", exact: true })
+    .waitFor();
+  await page.getByText("محجوزة لطلبات الاعتماد:", { exact: false }).waitFor();
+  const reservedWallet = await employeeCall<WalletDirectory>(base + "/wallet");
+  assert.equal(reservedWallet.wallet!.points, "0");
+  assert.equal(reservedWallet.wallet!.totalPoints, "57");
+  assert.equal(reservedWallet.wallet!.reservedPoints, "57");
+  assert.equal(
+    reservedWallet.total,
+    4,
+    "Pending requests reserve points without consuming history",
+  );
+  await page.getByRole("link", { name: "تحويلات النقاط", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "تحويلات النقاط", exact: true })
+    .waitFor();
+  const conversionTable = page.getByRole("table", {
+    name: "سجل تحويلات النقاط",
+    exact: true,
+  });
+  await conversionTable
+    .getByText("بانتظار الاعتماد", { exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "عرض ومتابعة", exact: true }).click();
+  const requestDialog = page.getByRole("dialog");
+  assert.equal(
+    await requestDialog
+      .getByRole("button", { name: "اعتماد التحويل", exact: true })
+      .count(),
+    0,
+  );
+  await requestDialog
+    .getByRole("button", { name: "إلغاء طلبي", exact: true })
+    .waitFor();
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    "Employee conversion history fits the mobile viewport",
+  );
+  await requestDialog
+    .getByRole("button", { name: "إغلاق", exact: true })
+    .click();
+
+  await ownerPage.goto(base + "/wallet");
+  await ownerPage
+    .getByRole("link", { name: "تحويلات النقاط", exact: true })
+    .click();
+  await ownerPage
+    .getByRole("heading", { name: "تحويلات النقاط", exact: true })
+    .waitFor();
+  await ownerPage
+    .getByRole("button", { name: "عرض ومتابعة", exact: true })
+    .click();
+  const approvalDialog = ownerPage.getByRole("dialog");
+  assert.equal(
+    await approvalDialog.getByLabel("المبلغ", { exact: true }).inputValue(),
+    "7.13 YER",
+  );
+  await approvalDialog
+    .getByRole("button", { name: "اعتماد التحويل", exact: true })
+    .click();
+  await approvalDialog
+    .getByLabel("سبب القرار", { exact: true })
+    .fill("اعتماد مكافأة الموظف التجريبية");
+  await approvalDialog
+    .locator("form")
+    .getByRole("button", { name: "اعتماد التحويل", exact: true })
+    .dblclick();
+  await ownerPage
+    .getByText("تم اعتماد التحويل وترحيل المبلغ إلى حساب الموظف.", {
+      exact: true,
+    })
+    .waitFor();
+  await approvalDialog.getByRole("link", { name: /^فتح القيد / }).waitFor();
+  const posted = await ownerCall<WalletConversionDirectory>(
+    base + "/wallet-conversions",
+  );
+  assert.equal(posted.total, 1);
+  assert.equal(posted.items[0]!.status, "posted");
+  assert.equal(posted.items[0]!.amount, "7.13");
+  assert(posted.items[0]!.financialDocumentId);
+  const journal = (
+    await runtime.pool.query(
+      `SELECT account_id,debit::text,credit::text FROM financial_document_lines
+     WHERE company_id=$1 AND document_id=$2 ORDER BY line_number`,
+      [company.id, posted.items[0]!.financialDocumentId],
+    )
+  ).rows;
+  assert.deepEqual(journal, [
+    { account_id: expenseAccount.id, debit: "7.130000", credit: "0.000000" },
+    { account_id: employeeAccount.id, debit: "0.000000", credit: "7.130000" },
+  ]);
+  await approvalDialog
+    .getByRole("button", { name: "إغلاق", exact: true })
+    .click();
+  await ownerPage
+    .getByRole("table", { name: "سجل تحويلات النقاط", exact: true })
+    .getByText("مُرحّل إلى الحساب", { exact: true })
+    .waitFor();
+  await page.goto(base + "/wallet");
+  await page.locator('[data-wallet-points="0"]').waitFor();
+  await page
+    .getByRole("link", { name: "محفظتي، 0 نقطة", exact: true })
+    .waitFor();
+  await page
+    .getByRole("table", { name: "سجل النقاط والمحفظة", exact: true })
+    .getByText("تحويل النقاط إلى الحساب", { exact: true })
+    .waitFor();
+  const convertedWallet = await employeeCall<WalletDirectory>(base + "/wallet");
+  assert.equal(convertedWallet.total, 5);
+  assert.equal(convertedWallet.wallet!.totalPoints, "0");
+  assert.equal(convertedWallet.wallet!.reservedPoints, "0");
+  assert.equal(
+    convertedWallet.items.filter((item) => item.kind === "conversion").length,
+    1,
+  );
+  assert.equal(
+    convertedWallet.items.find((item) => item.kind === "conversion")!.points,
+    "-57",
+  );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: wallet award/reversal, automatic task settings/refresh, revisioned policy/account setup and readonly exact mobile conversion preview",
+    "PASS: wallet rewards, exact conversion preview, mobile reservation and manager approval with one balanced journal and preserved ledger",
   );
   await ownerContext.close();
   await employeeContext.close();

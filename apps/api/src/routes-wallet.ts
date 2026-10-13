@@ -7,6 +7,8 @@ import {
   pageVisitEventSchema,
   walletPolicySchema,
   employeeWalletAccountSchema,
+  walletConversionSchema,
+  walletConversionDecisionSchema,
 } from "../../../packages/contracts/src/wallet.ts";
 import { pageDefinitions } from "../../../packages/contracts/src/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -19,7 +21,10 @@ import {
 import { HttpError, missing, deny } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { awardCompanyPageVisit } from "./services/wallet-page-visit.ts";
-import { assertRequestPagesEnabled } from "./services/pages.ts";
+import {
+  assertRequestPagesEnabled,
+  directoryEntries,
+} from "./services/pages.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
   walletPolicy,
@@ -29,6 +34,12 @@ import {
   saveEmployeeWalletAccount,
   walletConversionPreview,
 } from "./services/wallet-policy.ts";
+import {
+  walletConversionQuery,
+  walletConversionDTO,
+  createWalletConversion,
+  decideWalletConversion,
+} from "./services/wallet-conversions.ts";
 import {
   walletEntryQuery,
   walletEntryDTO,
@@ -81,15 +92,20 @@ export function walletRoutes(pool: Pool) {
     base + "/wallet-settings",
     handler(async (req, res) => {
       const result = await transaction(pool, async (client) => {
-        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
         const { companyId, user, context } = await scope(client, req);
         manageEmployees(user, context);
         const policy = await walletPolicy(client, companyId),
           baseCurrency = await walletBaseCurrency(client, companyId),
-          employees = (await client.query(
-            `SELECT e.id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
-             WHERE e.company_id=$1 AND e.active ORDER BY e.name,e.id`, [companyId],
-          )).rows;
+          employees = (
+            await client.query(
+              `SELECT e.id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
+             WHERE e.company_id=$1 AND e.active ORDER BY e.name,e.id`,
+              [companyId],
+            )
+          ).rows;
         return { policy, baseCurrency, employees };
       });
       res.json(result);
@@ -111,10 +127,16 @@ export function walletRoutes(pool: Pool) {
     base + "/wallet-settings/employee-accounts/:employeeId",
     handler(async (req, res) => {
       const binding = await transaction(pool, async (client) => {
-        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
         const { companyId, user, context } = await scope(client, req);
         manageEmployees(user, context);
-        return employeeWalletAccount(client, companyId, id(req.params.employeeId));
+        return employeeWalletAccount(
+          client,
+          companyId,
+          id(req.params.employeeId),
+        );
       });
       res.json({ binding });
     }),
@@ -122,11 +144,18 @@ export function walletRoutes(pool: Pool) {
   router.put(
     base + "/wallet-settings/employee-accounts/:employeeId",
     handler(async (req, res) => {
-      const input = parse(employeeWalletAccountSchema, req.body), employeeId = id(req.params.employeeId);
+      const input = parse(employeeWalletAccountSchema, req.body),
+        employeeId = id(req.params.employeeId);
       const binding = await transaction(pool, async (client) => {
         const { companyId, user, context } = await scope(client, req, true);
         manageEmployees(user, context);
-        return saveEmployeeWalletAccount(client, user, companyId, employeeId, input);
+        return saveEmployeeWalletAccount(
+          client,
+          user,
+          companyId,
+          employeeId,
+          input,
+        );
       });
       res.json({ binding });
     }),
@@ -135,24 +164,189 @@ export function walletRoutes(pool: Pool) {
     base + "/wallet/conversion-preview",
     handler(async (req, res) => {
       const preview = await transaction(pool, async (client) => {
-        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-        const { companyId, context, ownId } = await scope(client, req),
-          employeeId = req.query.employeeId === undefined ? ownId : id(typeof req.query.employeeId === "string" ? req.query.employeeId : undefined);
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        const { companyId, user, context, ownId } = await scope(client, req),
+          employeeId =
+            req.query.employeeId === undefined
+              ? ownId
+              : id(
+                  typeof req.query.employeeId === "string"
+                    ? req.query.employeeId
+                    : undefined,
+                );
         if (employeeId === null)
-          throw new HttpError(400, "employee_required", "اختر موظفًا لمعاينة قيمة نقاط محفظته");
-        if (!context.general && employeeId !== ownId) deny("يمكنك معاينة محفظتك فقط");
-        return walletConversionPreview(client, companyId, employeeId);
+          throw new HttpError(
+            400,
+            "employee_required",
+            "اختر موظفًا لمعاينة قيمة نقاط محفظته",
+          );
+        if (!context.general && employeeId !== ownId)
+          deny("يمكنك معاينة محفظتك فقط");
+        const preview = await walletConversionPreview(
+            client,
+            companyId,
+            employeeId,
+          ),
+          pages = await directoryEntries(client, user, companyId),
+          allowed =
+            employeeId === ownId &&
+            pages.some(
+              (page) =>
+                page.key === "company.wallet-conversions" &&
+                page.actionAccess.create && page.actionAccess.view,
+            );
+        return {
+          ...preview,
+          canConvert: preview.canConvert && allowed,
+          unavailableReason: allowed
+            ? preview.unavailableReason
+            : employeeId !== ownId
+              ? "يمكن للموظف طلب تحويل محفظته فقط"
+              : "طلب التحويل غير متاح ضمن صلاحياتك أو إعدادات الصفحات",
+        };
       });
       res.json({ preview });
     }),
   );
+  router.get(
+    base + "/wallet-conversions",
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (client) => {
+        await client.query(
+          "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        const { companyId, context, ownId } = await scope(client, req);
+        const employeeId =
+          req.query.employeeId === undefined
+            ? context.general
+              ? null
+              : ownId
+            : id(
+                typeof req.query.employeeId === "string"
+                  ? req.query.employeeId
+                  : undefined,
+              );
+        if (!context.general && employeeId !== ownId)
+          deny("يمكنك عرض تحويلات محفظتك فقط");
+        if (
+          employeeId !== null &&
+          !(
+            await client.query(
+              "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+              [companyId, employeeId],
+            )
+          ).rowCount
+        )
+          missing();
+        const status = req.query.status ?? "";
+        if (
+          typeof status !== "string" ||
+          (status !== "" &&
+            !["pending", "posted", "rejected", "cancelled"].includes(status))
+        )
+          throw new HttpError(400, "invalid_query", "حالة التحويل غير صالحة");
+        const query = listQuery(
+          req.query,
+          {
+            id: "x.id",
+            employeeName: "x.employee_name",
+            status: "x.status",
+            points: "x.points",
+            amount: "x.amount",
+            createdAt: "x.created_at",
+            createdByName: "x.created_by_name",
+          },
+          "createdAt:desc,id:desc",
+        );
+        const args = [companyId, employeeId, status, searchPattern(query.q)],
+          filter = ` WHERE x.company_id=$1 AND ($2::integer IS NULL OR x.employee_id=$2)
+            AND ($3='' OR x.status=$3) AND (x.employee_name ILIKE $4 ESCAPE '\\' OR x.account_name ILIKE $4 ESCAPE '\\'
+              OR x.created_by_name ILIKE $4 ESCAPE '\\' OR COALESCE(x.decision_reason,'') ILIKE $4 ESCAPE '\\')`;
+        const total = Number(
+            (
+              await client.query(
+                "SELECT count(*) FROM wallet_conversions x" + filter,
+                args,
+              )
+            ).rows[0].count,
+          ),
+          found = await client.query(
+            walletConversionQuery +
+              filter +
+              ` ORDER BY ${query.order} LIMIT $5 OFFSET $6`,
+            [...args, query.pageSize, query.offset],
+          );
+        return {
+          items: found.rows.map(walletConversionDTO),
+          total,
+          page: query.page,
+          pageSize: query.pageSize,
+          canManage: context.general,
+        };
+      });
+      res.json(result);
+    }),
+  );
+  router.post(
+    base + "/wallet-conversions",
+    handler(async (req, res) => {
+      const input = parse(walletConversionSchema, req.body);
+      const conversion = await transaction(pool, async (client) => {
+        const { companyId, user, ownId } = await scope(client, req, true);
+        if (input.employeeId !== ownId) deny("يمكنك طلب تحويل محفظتك فقط");
+        return createWalletConversion(client, companyId, user, input);
+      });
+      res.json({ conversion });
+    }),
+  );
+  for (const action of ["approve", "reject", "cancel"] as const)
+    router.post(
+      base + `/wallet-conversions/:id/${action}`,
+      handler(async (req, res) => {
+        const input = parse(walletConversionDecisionSchema, req.body),
+          conversionId = id(req.params.id);
+        const conversion = await transaction(pool, async (client) => {
+          const { companyId, user, context, ownId } = await scope(
+            client,
+            req,
+            true,
+          );
+          if (action === "cancel") {
+            const found = await client.query(
+              "SELECT employee_id FROM wallet_conversions WHERE company_id=$1 AND id=$2",
+              [companyId, conversionId],
+            );
+            if (!found.rows[0]) missing();
+            if (found.rows[0].employee_id !== ownId)
+              deny("يمكنك إلغاء طلب تحويلك فقط");
+          } else manageEmployees(user, context);
+          return decideWalletConversion(
+            client,
+            companyId,
+            user,
+            conversionId,
+            action,
+            input,
+          );
+        });
+        res.json({ conversion });
+      }),
+    );
   router.post(
     base + "/reward-events/page-visit",
     handler(async (req, res) => {
       const input = parse(pageVisitEventSchema, req.body);
       const result = await transaction(pool, async (client) => {
         const { companyId, user } = await scope(client, req, true);
-        return awardCompanyPageVisit(client, companyId, user, input.pageKey, input.idempotencyKey);
+        return awardCompanyPageVisit(
+          client,
+          companyId,
+          user,
+          input.pageKey,
+          input.idempotencyKey,
+        );
       });
       res.json(result);
     }),
@@ -458,7 +652,14 @@ export function walletRoutes(pool: Pool) {
           );
         if (
           input.enabled &&
-          ["SALE_SAVED", "PURCHASE_SAVED", "SALE_LINES", "PURCHASE_LINES", "RECEIPT_PRINT", "PAYMENT_PRINT"].includes(code) &&
+          [
+            "SALE_SAVED",
+            "PURCHASE_SAVED",
+            "SALE_LINES",
+            "PURCHASE_LINES",
+            "RECEIPT_PRINT",
+            "PAYMENT_PRINT",
+          ].includes(code) &&
           input.repeatRule !== "per-document"
         )
           throw new HttpError(
@@ -466,16 +667,26 @@ export function walletRoutes(pool: Pool) {
             "invalid_repeat_rule",
             "مكافآت الفواتير والطباعة تُحتسب مرة لكل مستند جديد فقط",
           );
-        if (input.enabled && code === "PAGE_VISIT" &&
-          (!input.pageKey || input.points === "0" || input.repeatRule === "per-document"))
+        if (
+          input.enabled &&
+          code === "PAGE_VISIT" &&
+          (!input.pageKey ||
+            input.points === "0" ||
+            input.repeatRule === "per-document")
+        )
           throw new HttpError(
-            400, "invalid_page_visit",
+            400,
+            "invalid_page_visit",
             "مكافأة زيارة الصفحة تتطلب صفحة محددة ونقاطًا موجبة وتكرارًا زمنيًا",
           );
-        if (input.enabled && code === "DAILY_LOGIN" &&
-          (input.repeatRule !== "daily" || input.points === "0"))
+        if (
+          input.enabled &&
+          code === "DAILY_LOGIN" &&
+          (input.repeatRule !== "daily" || input.points === "0")
+        )
           throw new HttpError(
-            400, "invalid_daily_login",
+            400,
+            "invalid_daily_login",
             "مكافأة دخول الشركة تتطلب نقاطًا موجبة وتكرارًا يوميًا",
           );
         if (input.revision !== before.revision)

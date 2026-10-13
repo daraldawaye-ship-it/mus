@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Page } from "./index.ts";
 import { normalizeDigits, rateSchema } from "./masters.ts";
+import { amountSchema } from "./finance.ts";
 
 const id = z.number().int().positive().max(2147483647);
 const points = z
@@ -55,6 +56,22 @@ export const employeeWalletAccountSchema = z.object({
   accountId: id.nullable(),
   revision: id.nullable(),
 }).strict();
+export const walletConversionSchema = z.object({
+  employeeId: id,
+  expectedPoints: z.string().trim().transform(normalizeDigits)
+    .pipe(z.string().regex(/^[0-9]{1,28}$/))
+    .transform((value) => BigInt(value).toString())
+    .refine((value) => value !== "0", "لا يوجد رصيد نقاط للتحويل"),
+  expectedAmount: amountSchema.refine((value) => value !== "0", "مبلغ التحويل يجب أن يكون موجبًا"),
+  policyRevision: id,
+  accountRevision: id,
+  idempotencyKey: z.uuid(),
+}).strict();
+export const walletConversionDecisionSchema = z.object({
+  revision: id,
+  reason,
+  idempotencyKey: z.uuid(),
+}).strict();
 
 export interface WalletCurrency {
   id: number;
@@ -102,8 +119,44 @@ export interface WalletConversionPreview {
   account: WalletAccount | null;
   approvalMode: "direct" | "approval" | null;
   configurationComplete: boolean;
-  canConvert: false;
+  policyRevision: number | null;
+  accountRevision: number | null;
+  canConvert: boolean;
   unavailableReason: string;
+}
+export interface WalletConversion {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  points: string;
+  pointValue: string;
+  amount: string;
+  currencyId: number;
+  currencyCode: string;
+  decimalPlaces: number;
+  accountId: number;
+  accountCode: string;
+  accountName: string;
+  expenseAccountId: number;
+  expenseAccountCode: string;
+  expenseAccountName: string;
+  approvalMode: "direct" | "approval";
+  policyRevision: number;
+  accountRevision: number;
+  status: "pending" | "posted" | "rejected" | "cancelled";
+  revision: number;
+  financialDocumentId: number | null;
+  financialDocumentNumber: string | null;
+  entryId: number | null;
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+}
+export interface WalletConversionDirectory extends Page<WalletConversion> {
+  canManage: boolean;
 }
 
 export const rewardTaskSettingsSchema = z
@@ -128,6 +181,8 @@ export interface WalletSummary {
   employeeId: number;
   employeeName: string;
   points: string;
+  totalPoints: string;
+  reservedPoints: string;
   money: string;
   currencyCode: string;
 }
@@ -135,13 +190,14 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "automatic" | "reversal";
+  kind: "manual" | "automatic" | "reversal" | "conversion";
   points: string;
   money: string;
   reason: string;
   referenceId: number | null;
   invoiceId: number | null;
   financialDocumentId: number | null;
+  conversionId: number | null;
   pageKey: string | null;
   taskCode: string | null;
   taskRevision: number | null;

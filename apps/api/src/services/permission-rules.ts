@@ -81,6 +81,7 @@ export async function requestPermissionTargets(
     wallet: "company.wallet",
     "reward-tasks": "company.reward-tasks",
     "wallet-settings": "company.wallet-settings",
+    "wallet-conversions": "company.wallet-conversions",
     notifications: "company.notifications",
     "notification-templates": "company.notification-templates",
     users: "company.employees",
@@ -104,6 +105,17 @@ export async function requestPermissionTargets(
   if (resource === "notifications" && verb === "POST") action = "edit";
   if (resource === "wallet" && detail === "reversals" && verb === "POST")
     action = "reverse";
+  if (resource === "wallet-conversions" && verb === "POST") {
+    if (segments[2] === "approve" || segments[2] === "reject") action = "post";
+    if (segments[2] === "cancel") action = "edit";
+    return [
+      pagePermissionAliases("company.wallet-conversions", action),
+      pagePermissionAliases("company.wallet-conversions", "view"),
+      ...(!detail || segments[2] === "approve"
+        ? [pagePermissionAliases("company.wallet", "view")]
+        : []),
+    ];
+  }
   let page = direct[resource];
   if (resource === "commerce-options" && permission === "inventory.view")
     page = "company.stock-balances";

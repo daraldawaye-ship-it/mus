@@ -14,10 +14,19 @@ import {
   type RewardTaskDirectory,
   type RewardRepeatRule,
   type WalletConversionPreview,
+  type WalletConversion,
+  walletConversionSchema,
 } from "../../../../packages/contracts/src/index";
-import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import {
+  ApiFailure,
+  api,
+  usePagedQuery,
+  useScopeGuard,
+  useSession,
+} from "../api";
 import { errorMessage } from "../phase2";
 import { usePageDirectory } from "../page-directory";
+import { refreshWalletConversions } from "./WalletConversionsPage";
 import {
   Button,
   Card,
@@ -103,6 +112,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   );
   const settingsPage = directory.data?.find(
     (entry) => entry.key === "company.wallet-settings",
+  );
+  const conversionsPage = directory.data?.find(
+    (entry) => entry.key === "company.wallet-conversions",
   );
   const canAward = !!list.data?.canManage && !!walletPage?.actionAccess.create;
   const canViewInvoice = !!directory.data?.find(
@@ -206,7 +218,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           ? "إضافة إدارية"
           : row.original.kind === "automatic"
             ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
-            : "عكس مكافأة",
+            : row.original.kind === "conversion"
+              ? "تحويل النقاط إلى الحساب"
+              : "عكس مكافأة",
     },
     {
       accessorKey: "points",
@@ -231,7 +245,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           <Link
             to={`${base}/financial-documents/${row.original.financialDocumentId}`}
           >
-            سند #{row.original.financialDocumentId}
+            {row.original.kind === "conversion" ? "قيد" : "سند"} #
+            {row.original.financialDocumentId}
           </Link>
         ) : row.original.invoiceId !== null && canViewInvoice ? (
           <Link to={`${base}/invoices/${row.original.invoiceId}`}>
@@ -287,6 +302,15 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         description="رصيد الموظف وسجل المكافآت الآلية والإضافات الإدارية والتصحيحات داخل الشركة."
         actions={
           <>
+            {conversionsPage?.enabled && conversionsPage.actionAccess.view && (
+              <Link
+                to={`${base}/wallet-conversions`}
+                className="button button-secondary"
+              >
+                <Coins size={15} />
+                تحويلات النقاط
+              </Link>
+            )}
             {settingsPage?.enabled && settingsPage.actionAccess.view && (
               <Link
                 to={`${base}/wallet-settings`}
@@ -344,6 +368,13 @@ export function WalletPage({ context }: { context: CompanyContext }) {
               <bdi>{pointValue(wallet.points)}</bdi>
             </strong>
             <span> نقطة</span>
+            {BigInt(wallet.reservedPoints) > 0n && (
+              <p>
+                محجوزة لطلبات الاعتماد:{" "}
+                <bdi>{pointValue(wallet.reservedPoints)}</bdi> نقطة. إجمالي
+                الرصيد: <bdi>{pointValue(wallet.totalPoints)}</bdi> نقطة.
+              </p>
+            )}
             <div className="form-actions">
               <Button
                 variant="secondary"
@@ -356,7 +387,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           </Card>
           <Card
             title="الرصيد المالي"
-            description="المكافآت المالية والتحويل لم يُفعّلا بعد."
+            description="تحويل النقاط يُرحّل إلى حساب الموظف. عمولة التصريف لم تُفعّل بعد."
           >
             <strong className="wallet-balance">
               <bdi>
@@ -510,6 +541,11 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           key={previewEmployeeId}
           companyId={companyId}
           employeeId={previewEmployeeId}
+          canRequest={
+            previewEmployeeId === context.employee?.id &&
+            !!conversionsPage?.enabled &&
+            !!conversionsPage.actionAccess.create
+          }
           onClose={() => setPreviewEmployeeId(null)}
         />
       )}
@@ -517,16 +553,45 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   );
 }
 
+type ConversionRequestDraft = {
+  preview: WalletConversionPreview;
+  payload: {
+    employeeId: number;
+    expectedPoints: string;
+    expectedAmount: string;
+    policyRevision: number;
+    accountRevision: number;
+    idempotencyKey: string;
+  };
+};
+
 function ConversionPreviewDialog({
   companyId,
   employeeId,
+  canRequest,
   onClose,
 }: {
   companyId: number;
   employeeId: number;
+  canRequest: boolean;
   onClose: () => void;
 }) {
-  const { user } = useSession();
+  const { user } = useSession(),
+    client = useQueryClient(),
+    guard = useScopeGuard(
+      `company:${companyId}:wallet-conversion:${employeeId}`,
+    );
+  const draftKey = ["wallet-conversion-draft", user?.id, companyId, employeeId];
+  const [draft, setDraft] = useState<ConversionRequestDraft | null>(
+    () => client.getQueryData<ConversionRequestDraft>(draftKey) ?? null,
+  );
+  const [saving, setSaving] = useState(false),
+    [error, setError] = useState(""),
+    [result, setResult] = useState<WalletConversion | null>(null);
+  const directory = usePageDirectory(companyId);
+  const canViewJournal = !!directory.data?.find(
+    (page) => page.key === "company.financial-document" && page.enabled,
+  )?.actionAccess.view;
   const query = useQuery({
     queryKey: ["wallet-conversion-preview", user?.id, companyId, employeeId],
     queryFn: ({ signal }) =>
@@ -534,15 +599,84 @@ function ConversionPreviewDialog({
         `/companies/${companyId}/wallet/conversion-preview?employeeId=${employeeId}`,
         { signal },
       ),
-    enabled: !!user,
+    enabled: !!user && !draft && !result,
     staleTime: 0,
   });
-  const preview = query.data?.preview;
+  const preview = draft?.preview ?? query.data?.preview;
+  async function convert() {
+    if (saving || result || !preview || (!draft && !canRequest)) return;
+    if (
+      !draft &&
+      (!preview.canConvert ||
+        preview.amount === null ||
+        preview.policyRevision === null ||
+        preview.accountRevision === null)
+    )
+      return;
+    const request = draft ?? {
+      preview,
+      payload: {
+        employeeId,
+        expectedPoints: preview.points,
+        expectedAmount: preview.amount!,
+        policyRevision: preview.policyRevision!,
+        accountRevision: preview.accountRevision!,
+        idempotencyKey: crypto.randomUUID(),
+      },
+    };
+    const parsed = walletConversionSchema.safeParse(request.payload);
+    if (!parsed.success) {
+      setError(parsed.error.issues.map((issue) => issue.message).join(" · "));
+      return;
+    }
+    setDraft(request);
+    client.setQueryDefaults(["wallet-conversion-draft"], { gcTime: Infinity });
+    client.setQueryData(draftKey, request);
+    setSaving(true);
+    setError("");
+    try {
+      const response = await api<{ conversion: WalletConversion }>(
+        `/companies/${companyId}/wallet-conversions`,
+        { method: "POST", body: parsed.data, signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      client.removeQueries({ queryKey: draftKey, exact: true });
+      setDraft(null);
+      setResult(response.conversion);
+      await refreshWalletConversions(
+        client,
+        user?.id,
+        companyId,
+        response.conversion.status === "posted",
+      );
+    } catch (cause) {
+      if (!guard.isCurrent()) return;
+      setError(errorMessage(cause));
+      if (
+        cause instanceof ApiFailure &&
+        cause.status >= 400 &&
+        cause.status < 500 &&
+        !draft
+      ) {
+        client.removeQueries({ queryKey: draftKey, exact: true });
+        setDraft(null);
+        await query.refetch();
+      }
+    } finally {
+      if (guard.isCurrent()) setSaving(false);
+    }
+  }
   return (
-    <Dialog open title="معاينة تحويل النقاط" onClose={onClose}>
+    <Dialog
+      open
+      title="معاينة تحويل النقاط"
+      onClose={() => !saving && onClose()}
+    >
       <div className="form-stack">
-        {query.isPending && <Notice>جارٍ حساب معاينة التحويل…</Notice>}
-        {query.error && (
+        {!draft && !result && query.isPending && (
+          <Notice>جارٍ حساب معاينة التحويل…</Notice>
+        )}
+        {!draft && !result && query.error && (
           <Notice tone="error">
             {errorMessage(query.error)}{" "}
             <Button variant="ghost" onClick={() => void query.refetch()}>
@@ -550,61 +684,127 @@ function ConversionPreviewDialog({
             </Button>
           </Notice>
         )}
-        {preview && (
+        {error && <Notice tone="error">{error}</Notice>}
+        {draft && !saving && !result && (
+          <Notice tone="warning">
+            لم نتأكد من نتيجة الطلب. أعد تأكيده للتحقق دون تكرار التحويل. يمكنك
+            إغلاق النافذة والعودة إلى الطلب نفسه.
+          </Notice>
+        )}
+        {result ? (
           <>
-            <Field
-              label="النقاط المتاحة"
-              value={pointValue(preview.points)}
-              readOnly
-            />
-            <Field
-              label="قيمة النقطة الواحدة"
-              value={
-                preview.pointValue !== null
-                  ? `${preview.pointValue} ${preview.currency?.code ?? ""}`.trim()
-                  : "لم تحدد بعد"
-              }
-              readOnly
-            />
-            <Field
-              label="مبلغ التحويل المتوقع"
-              value={
-                preview.amount !== null
-                  ? `${preview.amount} ${preview.currency?.code ?? ""}`.trim()
-                  : "الإعدادات غير مكتملة"
-              }
-              readOnly
-            />
-            <Field
-              label="حساب الموظف"
-              value={
-                preview.account
-                  ? `${preview.account.code} — ${preview.account.name}`
-                  : "لا يوجد حساب مرتبط"
-              }
-              readOnly
-            />
-            <Field
-              label="طريقة الاعتماد"
-              value={
-                preview.approvalMode === "approval"
-                  ? "يتطلب اعتماد الإدارة"
-                  : preview.approvalMode === "direct"
-                    ? "تحويل مباشر"
-                    : "لم تحدد بعد"
-              }
-              readOnly
-            />
-            {preview.unavailableReason && (
-              <Notice tone="warning">{preview.unavailableReason}</Notice>
-            )}
-            <Notice>
-              هذه معاينة فقط. لم تُخصم نقاط ولم يُسجل تحويل في حساب الموظف.
+            <Notice tone="success">
+              {result.status === "posted"
+                ? "تم تحويل النقاط إلى حساب الموظف وحفظ القيد المحاسبي."
+                : result.status === "pending"
+                  ? "أُرسل طلب التحويل وحُجزت نقاطه حتى قرار الإدارة."
+                  : result.status === "rejected"
+                    ? "رُفض طلب التحويل وأُعيدت نقاطه إلى الرصيد المتاح."
+                    : "أُلغي طلب التحويل وأُعيدت نقاطه إلى الرصيد المتاح."}
             </Notice>
+            <Field label="رقم طلب التحويل" value={`#${result.id}`} readOnly />
+            <Field label="النقاط" value={pointValue(result.points)} readOnly />
+            <Field
+              label="المبلغ"
+              value={`${result.amount} ${result.currencyCode}`}
+              readOnly
+            />
+            <Field
+              label="الحساب"
+              value={`${result.accountCode} — ${result.accountName}`}
+              readOnly
+            />
+            {result.financialDocumentId !== null && canViewJournal && (
+              <Link
+                to={`/companies/${companyId}/financial-documents/${result.financialDocumentId}`}
+              >
+                فتح القيد{" "}
+                {result.financialDocumentNumber ??
+                  `#${result.financialDocumentId}`}
+              </Link>
+            )}
+            <Link to={`/companies/${companyId}/wallet-conversions`}>
+              متابعة طلبات التحويل
+            </Link>
           </>
+        ) : (
+          preview && (
+            <>
+              <Field
+                label="النقاط المتاحة"
+                value={pointValue(preview.points)}
+                readOnly
+              />
+              <Field
+                label="قيمة النقطة الواحدة"
+                value={
+                  preview.pointValue !== null
+                    ? `${preview.pointValue} ${preview.currency?.code ?? ""}`.trim()
+                    : "لم تحدد بعد"
+                }
+                readOnly
+              />
+              <Field
+                label="مبلغ التحويل المتوقع"
+                value={
+                  preview.amount !== null
+                    ? `${preview.amount} ${preview.currency?.code ?? ""}`.trim()
+                    : "الإعدادات غير مكتملة"
+                }
+                readOnly
+              />
+              <Field
+                label="حساب الموظف"
+                value={
+                  preview.account
+                    ? `${preview.account.code} — ${preview.account.name}`
+                    : "لا يوجد حساب مرتبط"
+                }
+                readOnly
+              />
+              <Field
+                label="طريقة الاعتماد"
+                value={
+                  preview.approvalMode === "approval"
+                    ? "يتطلب اعتماد الإدارة"
+                    : preview.approvalMode === "direct"
+                      ? "تحويل مباشر"
+                      : "لم تحدد بعد"
+                }
+                readOnly
+              />
+              {preview.unavailableReason && (
+                <Notice tone="warning">{preview.unavailableReason}</Notice>
+              )}
+              {canRequest && (draft || preview.canConvert) && (
+                <Notice tone="warning">
+                  {preview.approvalMode === "approval"
+                    ? "سيُحجز كامل الرصيد المعروض حتى اعتماد الإدارة أو رفض الطلب أو إلغائه."
+                    : "سيُخصم كامل الرصيد المعروض ويُسجل المبلغ في حسابك. هذه العملية ليست سند صرف نقدي."}
+                </Notice>
+              )}
+              {!canRequest && preview.canConvert && (
+                <Notice>طلب التحويل متاح للموظف من محفظته الشخصية.</Notice>
+              )}
+            </>
+          )
         )}
         <div className="form-actions">
-          <Button variant="secondary" onClick={onClose}>
+          {!result && (draft || (canRequest && preview?.canConvert)) && (
+            <Button
+              onClick={() => void convert()}
+              disabled={saving || (!draft && query.isFetching)}
+            >
+              {saving
+                ? "جارٍ تأكيد التحويل…"
+                : draft
+                  ? "إعادة تأكيد الطلب"
+                  : preview?.approvalMode === "approval"
+                    ? "إرسال طلب الاعتماد"
+                    : "تأكيد تحويل النقاط"}
+            </Button>
+          )}
+          <Button variant="secondary" disabled={saving} onClick={onClose}>
             إغلاق
           </Button>
         </div>

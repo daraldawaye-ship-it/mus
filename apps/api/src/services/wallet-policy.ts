@@ -17,10 +17,15 @@ import type { Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { moneyString, quantum } from "./finance.ts";
+import { walletSummary } from "./wallet.ts";
 
-const accountJSON = (alias: string) => `CASE WHEN ${alias}.id IS NULL THEN NULL ELSE json_build_object(
+const accountJSON = (
+  alias: string,
+) => `CASE WHEN ${alias}.id IS NULL THEN NULL ELSE json_build_object(
  'id',${alias}.id,'code',${alias}.code,'name',${alias}.name,'active',${alias}.active,'kind',${alias}.kind,'category',${alias}.category) END`;
-const currencyJSON = (alias: string) => `CASE WHEN ${alias}.id IS NULL THEN NULL ELSE json_build_object(
+const currencyJSON = (
+  alias: string,
+) => `CASE WHEN ${alias}.id IS NULL THEN NULL ELSE json_build_object(
  'id',${alias}.id,'code',${alias}.code,'name',${alias}.name,'active',${alias}.active,'decimalPlaces',${alias}.decimal_places) END`;
 
 export async function walletPolicy(
@@ -98,11 +103,18 @@ async function validAccount(
     [companyId, accountId],
   );
   const account = found.rows[0] as WalletAccount | undefined;
-  if (!account?.active || account.kind !== "posting" ||
-    (expense && account.category !== "expense"))
-    throw new HttpError(400, "invalid_account", expense
-      ? "اختر حساب مصروفات فعالًا وترحيليًا من الشركة نفسها"
-      : "اختر حسابًا فعالًا وترحيليًا من الشركة نفسها");
+  if (
+    !account?.active ||
+    account.kind !== "posting" ||
+    (expense && account.category !== "expense")
+  )
+    throw new HttpError(
+      400,
+      "invalid_account",
+      expense
+        ? "اختر حساب مصروفات فعالًا وترحيليًا من الشركة نفسها"
+        : "اختر حسابًا فعالًا وترحيليًا من الشركة نفسها",
+    );
   return account;
 }
 
@@ -114,11 +126,19 @@ export async function saveWalletPolicy(
 ): Promise<WalletPolicy> {
   const before = await walletPolicy(db, companyId);
   if (input.revision !== before.revision)
-    throw new HttpError(409, "conflict", "تغيرت إعدادات المحفظة؛ أعد تحميلها قبل الحفظ");
+    throw new HttpError(
+      409,
+      "conflict",
+      "تغيرت إعدادات المحفظة؛ أعد تحميلها قبل الحفظ",
+    );
   if (input.currencyId !== null) {
     const base = await walletBaseCurrency(db, companyId);
     if (!base?.active || base.id !== input.currencyId)
-      throw new HttpError(400, "invalid_currency", "اختر عملة الشركة الأساسية الفعالة؛ التحويل بعملات أخرى غير متاح بعد");
+      throw new HttpError(
+        400,
+        "invalid_currency",
+        "اختر عملة الشركة الأساسية الفعالة؛ التحويل بعملات أخرى غير متاح بعد",
+      );
     await db.query(
       "SELECT 1 FROM company_currencies WHERE company_id=$1 AND id=$2 FOR SHARE",
       [companyId, input.currencyId],
@@ -126,21 +146,45 @@ export async function saveWalletPolicy(
   }
   if (input.expenseAccountId !== null) {
     await validAccount(db, companyId, input.expenseAccountId, true);
-    if ((await db.query(
-      "SELECT 1 FROM employee_wallet_accounts WHERE company_id=$1 AND account_id=$2 LIMIT 1",
-      [companyId, input.expenseAccountId],
-    )).rowCount)
-      throw new HttpError(400, "account_conflict", "حساب مصروف المكافآت يجب أن يختلف عن الحساب المرتبط بمحفظة الموظف");
+    if (
+      (
+        await db.query(
+          "SELECT 1 FROM employee_wallet_accounts WHERE company_id=$1 AND account_id=$2 LIMIT 1",
+          [companyId, input.expenseAccountId],
+        )
+      ).rowCount
+    )
+      throw new HttpError(
+        400,
+        "account_conflict",
+        "حساب مصروف المكافآت يجب أن يختلف عن الحساب المرتبط بمحفظة الموظف",
+      );
   }
   await db.query(
     `INSERT INTO wallet_conversion_policies(company_id,point_value,currency_id,expense_account_id,approval_mode,updated_by)
      VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(company_id) DO UPDATE SET point_value=EXCLUDED.point_value,
      currency_id=EXCLUDED.currency_id,expense_account_id=EXCLUDED.expense_account_id,approval_mode=EXCLUDED.approval_mode,
      updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp(),revision=wallet_conversion_policies.revision+1`,
-    [companyId, input.pointValue, input.currencyId, input.expenseAccountId, input.approvalMode, user.id],
+    [
+      companyId,
+      input.pointValue,
+      input.currencyId,
+      input.expenseAccountId,
+      input.approvalMode,
+      user.id,
+    ],
   );
   const after = await walletPolicy(db, companyId);
-  await audit(db, user, "wallet.policy", "wallet-policy", companyId, before, after, companyId);
+  await audit(
+    db,
+    user,
+    "wallet.policy",
+    "wallet-policy",
+    companyId,
+    before,
+    after,
+    companyId,
+  );
   return after;
 }
 
@@ -153,14 +197,26 @@ export async function saveEmployeeWalletAccount(
 ): Promise<EmployeeWalletAccount> {
   const before = await employeeWalletAccount(db, companyId, employeeId);
   if (!before.active)
-    throw new HttpError(400, "invalid_employee", "اختر موظفًا فعالًا من الشركة نفسها");
+    throw new HttpError(
+      400,
+      "invalid_employee",
+      "اختر موظفًا فعالًا من الشركة نفسها",
+    );
   if (input.revision !== before.revision)
-    throw new HttpError(409, "conflict", "تغير حساب المحفظة؛ أعد تحميله قبل الحفظ");
+    throw new HttpError(
+      409,
+      "conflict",
+      "تغير حساب المحفظة؛ أعد تحميله قبل الحفظ",
+    );
   if (input.accountId !== null) {
     await validAccount(db, companyId, input.accountId);
     const policy = await walletPolicy(db, companyId);
     if (policy.expenseAccountId === input.accountId)
-      throw new HttpError(400, "account_conflict", "حساب الموظف يجب أن يختلف عن حساب مصروف المكافآت");
+      throw new HttpError(
+        400,
+        "account_conflict",
+        "حساب الموظف يجب أن يختلف عن حساب مصروف المكافآت",
+      );
   }
   await db.query(
     `INSERT INTO employee_wallet_accounts(company_id,employee_id,account_id,updated_by) VALUES($1,$2,$3,$4)
@@ -169,22 +225,40 @@ export async function saveEmployeeWalletAccount(
     [companyId, employeeId, input.accountId, user.id],
   );
   const after = await employeeWalletAccount(db, companyId, employeeId);
-  await audit(db, user, "wallet.account", "employee-wallet-account", employeeId, before, after, companyId);
+  await audit(
+    db,
+    user,
+    "wallet.account",
+    "employee-wallet-account",
+    employeeId,
+    before,
+    after,
+    companyId,
+  );
   return after;
 }
 
-// Read-only estimate, never an authorization or executable financial quote.
+// Exact snapshot estimate. Execution must revalidate every current reference and revision.
 // Points and the 12-place rate are multiplied exactly, then rounded half-up
 // to the current base currency's precision before checking NUMERIC(28,6).
-export function pointConversionAmount(points: string, pointValue: string, places: number): string {
+export function pointConversionAmount(
+  points: string,
+  pointValue: string,
+  places: number,
+): string {
   const [whole, fraction = ""] = pointValue.split(".");
   const rate = BigInt(whole) * 10n ** 12n + BigInt(fraction.padEnd(12, "0"));
   const numerator = BigInt(points) * rate;
   const divisor = 10n ** BigInt(12 - places);
-  const rounded = numerator / divisor + ((numerator % divisor) * 2n >= divisor ? 1n : 0n);
+  const rounded =
+    numerator / divisor + ((numerator % divisor) * 2n >= divisor ? 1n : 0n);
   const units = rounded * quantum(places);
   if (units > 10n ** 28n - 1n)
-    throw new HttpError(400, "amount_overflow", "المبلغ المتوقع يتجاوز الحد المالي المدعوم");
+    throw new HttpError(
+      400,
+      "amount_overflow",
+      "المبلغ المتوقع يتجاوز الحد المالي المدعوم",
+    );
   return moneyString(units);
 }
 
@@ -195,36 +269,83 @@ export async function walletConversionPreview(
 ): Promise<WalletConversionPreview> {
   const binding = await employeeWalletAccount(db, companyId, employeeId);
   if (!binding.active)
-    throw new HttpError(400, "invalid_employee", "لا يمكن معاينة تحويل محفظة موظف غير فعال");
+    throw new HttpError(
+      400,
+      "invalid_employee",
+      "لا يمكن معاينة تحويل محفظة موظف غير فعال",
+    );
   const policy = await walletPolicy(db, companyId),
     base = await walletBaseCurrency(db, companyId),
-    found = await db.query("SELECT points::text FROM employee_wallets WHERE company_id=$1 AND employee_id=$2", [companyId, employeeId]);
-  if (!found.rows[0]) missing();
-  const points = found.rows[0].points as string,
-    currencyValid = !!policy.currency?.active && !!base?.active && policy.currency.id === base.id,
-    expenseValid = !!policy.expenseAccount?.active && policy.expenseAccount.kind === "posting" && policy.expenseAccount.category === "expense",
-    accountValid = !!binding.account?.active && binding.account.kind === "posting" && binding.account.id !== policy.expenseAccountId,
-    configurationComplete = !!policy.pointValue && currencyValid && expenseValid && accountValid && policy.approvalMode !== null;
+    summary = await walletSummary(db, companyId, employeeId);
+  if (!summary) missing();
+  const points = summary.points,
+    currencyValid =
+      !!policy.currency?.active &&
+      !!base?.active &&
+      policy.currency.id === base.id,
+    expenseValid =
+      !!policy.expenseAccount?.active &&
+      policy.expenseAccount.kind === "posting" &&
+      policy.expenseAccount.category === "expense",
+    accountValid =
+      !!binding.account?.active &&
+      binding.account.kind === "posting" &&
+      binding.account.id !== policy.expenseAccountId,
+    configurationComplete =
+      !!policy.pointValue &&
+      currencyValid &&
+      expenseValid &&
+      accountValid &&
+      policy.approvalMode !== null;
   let amount: string | null = null,
-    unavailableReason = !policy.pointValue ? "لم تحدد الإدارة قيمة النقطة بعد"
-      : !currencyValid ? "حدد عملة الشركة الأساسية الفعالة في إعدادات المحفظة"
-      : !expenseValid ? "حدد حساب مصروف مكافآت فعالًا وترحيليًا"
-      : !accountValid ? "اربط الموظف بحساب فعال وترحيلي يختلف عن حساب المصروف"
-      : policy.approvalMode === null ? "لم تحدد الإدارة طريقة اعتماد التحويل بعد"
-      : "هذه معاينة فقط؛ تنفيذ التحويل المحاسبي متاح في الدفعة التالية";
+    unavailableReason = !policy.pointValue
+      ? "لم تحدد الإدارة قيمة النقطة بعد"
+      : !currencyValid
+        ? "حدد عملة الشركة الأساسية الفعالة في إعدادات المحفظة"
+        : !expenseValid
+          ? "حدد حساب مصروف مكافآت فعالًا وترحيليًا"
+          : !accountValid
+            ? "اربط الموظف بحساب فعال وترحيلي يختلف عن حساب المصروف"
+            : policy.approvalMode === null
+              ? "لم تحدد الإدارة طريقة اعتماد التحويل بعد"
+              : "";
   if (policy.pointValue && currencyValid) {
     try {
-      amount = pointConversionAmount(points, policy.pointValue, policy.currency!.decimalPlaces);
-      if (configurationComplete && points === "0") unavailableReason = "لا يوجد رصيد نقاط للتحويل";
-      else if (configurationComplete && amount === "0") unavailableReason = "قيمة الرصيد أقل من أصغر جزء في العملة بعد التقريب";
+      amount = pointConversionAmount(
+        points,
+        policy.pointValue,
+        policy.currency!.decimalPlaces,
+      );
+      if (configurationComplete && points === "0")
+        unavailableReason = "لا يوجد رصيد نقاط للتحويل";
+      else if (configurationComplete && amount === "0")
+        unavailableReason = "قيمة الرصيد أقل من أصغر جزء في العملة بعد التقريب";
     } catch (error) {
-      if (!(error instanceof HttpError) || error.code !== "amount_overflow") throw error;
+      if (!(error instanceof HttpError) || error.code !== "amount_overflow")
+        throw error;
       unavailableReason = error.message;
     }
   }
+  if (summary.reservedPoints !== "0")
+    unavailableReason =
+      "لديك طلب تحويل ينتظر الاعتماد؛ أكمله أو ألغِه قبل طلب تحويل آخر";
   return {
-    employeeId, points, pointValue: policy.pointValue, amount,
-    currency: policy.currency, account: binding.account, approvalMode: policy.approvalMode,
-    configurationComplete, canConvert: false, unavailableReason,
+    employeeId,
+    points,
+    pointValue: policy.pointValue,
+    amount,
+    currency: policy.currency,
+    account: binding.account,
+    approvalMode: policy.approvalMode,
+    configurationComplete,
+    canConvert:
+      configurationComplete &&
+      summary.reservedPoints === "0" &&
+      amount !== null &&
+      amount !== "0" &&
+      points !== "0",
+    unavailableReason,
+    policyRevision: policy.revision,
+    accountRevision: binding.revision,
   };
 }
