@@ -641,8 +641,8 @@ try {
         assert(savedSale.costDocumentId);
         await page.goto(base + "/invoices/new?kind=sale");
         await page
-          .getByLabel("العملية", { exact: true })
-          .selectOption("return");
+          .getByRole("button", { name: "ربط مردود بأصل", exact: true })
+          .click();
         await page
           .getByLabel("الفاتورة الأصلية", { exact: true })
           .selectOption(String(savedSale.id));
@@ -848,8 +848,8 @@ try {
         );
         await page.goto(base + "/invoices/new?kind=purchase");
         await page
-          .getByLabel("العملية", { exact: true })
-          .selectOption("return");
+          .getByRole("button", { name: "ربط مردود بأصل", exact: true })
+          .click();
         await page
           .getByLabel("الفاتورة الأصلية", { exact: true })
           .selectOption(String(zero.id));
