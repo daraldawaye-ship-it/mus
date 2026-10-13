@@ -53,6 +53,8 @@ jobs:
         run: node --import tsx --test tests/wallet-conversions.test.ts
       - name: Test automatic invoice and invoice-line rewards
         run: node --import tsx --test --test-name-pattern="invoice reward tasks are opt-in" tests/commerce.test.ts
+      - name: Test Google and Apple OAuth authentication
+        run: node --import tsx --test tests/social-auth.test.ts
       - name: Test phone-first identities and owner password reset
         run: node --import tsx --test tests/phone-identities.test.ts
       - name: Test automatic employee accounts and cashbox provisioning
