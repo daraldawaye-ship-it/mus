@@ -2324,3 +2324,88 @@ test("invoice reward tasks are opt-in, grouped by logical lines, idempotent and 
   assert.deepEqual(await stockSnapshot(f, s.company.id), snapshot, "Audit failure must undo all invoice/stock/accounting writes");
   assert.equal(await points(), "43", "Audit failure must not leave wallet credits");
 });
+
+
+test("dated item clearance commissions snapshot net sales and reverse linked returns without repricing", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const product = await s.item({
+    name: "Dated commission product",
+    commissionRate: "5",
+    clearanceFrom: "2026-10-10",
+    clearanceTo: "2026-10-12",
+  });
+  assert.equal(product.commissionRate, "5");
+  assert.equal(product.clearanceFrom, "2026-10-10");
+  assert.equal(product.clearanceTo, "2026-10-12");
+  await invoice(f, s, invoiceBody(s, product.id, {
+    documentDate: "2026-10-01",
+    lines: [{itemId:product.id,unit:1,quantity:"20",unitPrice:"800",expiryDate:"2027-12-31"}],
+  }));
+  async function sell(date: string, quantity = "1", discount = "0") {
+    return invoice(f, s, invoiceBody(s, product.id, {
+      kind: "sale",
+      documentDate: date,
+      counterpartyAccountId: s.customer.id,
+      discount,
+      lines: [{itemId:product.id,unit:1,quantity,expiryDate:null}],
+    }));
+  }
+  const before = await sell("2026-10-09");
+  assert.equal(before.lines[0]!.commissionRate, "0");
+  assert.equal(before.lines[0]!.commissionAmount, "0");
+  const opening = await sell("2026-10-10", "2", "100");
+  assert.equal(opening.lines[0]!.total, "1900");
+  assert.equal(opening.lines[0]!.commissionRate, "5");
+  assert.equal(opening.lines[0]!.commissionAmount, "95");
+  const ending = await sell("2026-10-12");
+  assert.equal(ending.lines[0]!.commissionAmount, "50");
+  const after = await sell("2026-10-13");
+  assert.equal(after.lines[0]!.commissionAmount, "0");
+  assert.equal(after.lines[0]!.commissionRate, "0");
+  await f.pool.query(
+    "UPDATE items SET commission_rate=12,clearance_from='2026-11-01',clearance_to='2026-11-30',revision=revision+1 WHERE company_id=$1 AND id=$2",
+    [s.company.id, product.id],
+  );
+  const history = await f.owner.ok<{invoice:Invoice}>(
+    "GET", s.path + "/invoices/" + opening.id,
+  );
+  assert.equal(history.invoice.lines[0]!.commissionRate, "5");
+  assert.equal(history.invoice.lines[0]!.commissionAmount, "95");
+  const firstReturn = await invoice(f, s, invoiceBody(s, product.id, {
+    kind: "sale",
+    documentDate: "2026-10-14",
+    counterpartyAccountId: s.customer.id,
+    discount: "0",
+    lines: [{itemId: product.id,unit:1,quantity:"-1",originalLineId:opening.lines[0]!.id,expiryDate:null}],
+  }));
+  assert.equal(firstReturn.lines[0]!.commissionRate, "5");
+  assert.equal(firstReturn.lines[0]!.commissionAmount, "-48");
+  const finalReturn = await invoice(f, s, invoiceBody(s, product.id, {
+    kind: "sale",
+    documentDate: "2026-10-15",
+    counterpartyAccountId: s.customer.id,
+    discount: "0",
+    lines: [{itemId: product.id,unit:1,quantity:"-1",originalLineId:opening.lines[0]!.id,expiryDate:null}],
+  }));
+  assert.equal(finalReturn.lines[0]!.commissionAmount, "-47");
+  assert.equal(
+    (await f.owner.request("POST", s.path + "/items", {
+      idempotencyKey: randomUUID(),name:"Bad percentage",currencyId:s.yer.id,
+      commissionRate:"101",clearanceFrom:"2026-10-10",clearanceTo:"2026-10-20",
+    })).status, 400,
+  );
+  assert.equal(
+    (await f.owner.request("POST", s.path + "/items", {
+      idempotencyKey: randomUUID(),name:"Bad interval",currencyId:s.yer.id,
+      commissionRate:"5",clearanceFrom:"2026-10-20",clearanceTo:"2026-10-10",
+    })).status, 400,
+  );
+  assert.equal(
+    (await f.owner.request("POST", s.path + "/items", {
+      idempotencyKey: randomUUID(),name:"Unbounded commission",currencyId:s.yer.id,
+      commissionRate:"5",
+    })).status, 400,
+  );
+  await assertBalanced(f, s.company.id);
+});
