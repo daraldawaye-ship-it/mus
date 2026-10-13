@@ -2193,6 +2193,9 @@ ul {
   }
 }
 @container invoice-main (max-width: 800px) {
+  .invoice-workspace-main .commerce-header-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .invoice-workspace-main .commerce-footer-grid {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
