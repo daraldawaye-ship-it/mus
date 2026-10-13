@@ -1258,8 +1258,12 @@ test("item compositions support multilingual cards, strict flags, archived links
   const f = await fixture(t);
   const companyA = await f.company("تركيب الشركة الأولى");
   const companyB = await f.company("تركيب الشركة الثانية");
-  const currencyA = await currency(f, companyA.id);
-  const currencyB = await currency(f, companyB.id);
+  const currencyA = (await f.owner.ok<Page<CompanyCurrency>>(
+    "GET", `/companies/${companyA.id}/currencies`
+  )).items.find((value) => value.code === "YER")!;
+  const currencyB = (await f.owner.ok<Page<CompanyCurrency>>(
+    "GET", `/companies/${companyB.id}/currencies`
+  )).items.find((value) => value.code === "YER")!;
   const url = `/companies/${companyA.id}/item-compositions`;
   const body = {
     arabicName:"باراسيتامول",englishName:"Paracetamol",
