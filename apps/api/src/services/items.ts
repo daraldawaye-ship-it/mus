@@ -24,14 +24,14 @@ export async function readItems<T>(
 }
 export async function itemIdempotent(
   db: Database,
-  table: "items" | "item_agents",
+  table: "items" | "item_agents" | "item_compositions",
   companyId: number,
   key: string,
   payload: unknown,
 ): Promise<QueryResultRow | null> {
   // Old accepted creates may predate these defaults; keep their payload immutable.
   const samePayload = table === "items"
-    ? `('{"legacyId":"","defaultSaleUnit":1}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1}'::jsonb || $3::jsonb)`
+    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null}'::jsonb || $3::jsonb)`
     : "creation_payload=$3::jsonb";
   const result = await db.query(
     `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -69,6 +69,7 @@ export type ItemFields = Pick<
   | "barcode"
   | "legacyId"
   | "agentId"
+  | "compositionId"
   | "unit1Name"
   | "unit2Name"
   | "unit3Name"
@@ -140,6 +141,16 @@ export async function checkItemReferences(
         "سعر الصنف يتجاوز دقة العملة المختارة",
       );
   }
+  if (input.compositionId !== null) {
+    const composition = await db.query(
+      "SELECT active FROM item_compositions WHERE company_id=$1 AND id=$2 FOR SHARE",
+      [companyId, input.compositionId],
+    );
+    if (!composition.rows[0]) conflict("التركيب يجب أن يكون من الشركة نفسها");
+    if ((!previous || reactivated || previous.compositionId !== input.compositionId)
+      && !composition.rows[0].active)
+      conflict("اختر تركيبًا غير مؤرشف من الشركة نفسها");
+  }
   if (input.agentId !== null) {
     const agent = await db.query(
       "SELECT active FROM item_agents WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -162,6 +173,7 @@ export const itemFieldColumns = [
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],
+  ["compositionId", "composition_id"],
   ["unit1Name", "unit1_name"],
   ["unit2Name", "unit2_name"],
   ["unit3Name", "unit3_name"],

@@ -370,6 +370,15 @@ page(
   { parentKey: "company.items", navigation: false, type: "form" },
 );
 page(
+  "company.item-compositions",
+  "تراكيب الأصناف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/item-compositions",
+  manage("items"),
+  "كروت التركيب ومحددات البديل المطابق أو عدم قابلية التبديل.",
+  { keywords: ["تركيب", "تركيبة", "composition", "بدائل"] },
+);
+page(
   "company.item-agents",
   "وكلاء الأصناف",
   "الأصناف والمخزون",

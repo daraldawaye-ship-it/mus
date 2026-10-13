@@ -4,6 +4,8 @@ import {
   convertItemQuantity,
   itemAgentSchema,
   itemAgentPatchSchema,
+  itemCompositionSchema,
+  itemCompositionPatchSchema,
   itemSchema,
   itemPatchSchema,
   itemConversionSchema,
@@ -14,6 +16,8 @@ import { HttpError, missing } from "./errors.ts";
 import {
   itemAgentDTO,
   itemAgentSelect,
+  itemCompositionDTO,
+  itemCompositionSelect,
   itemDTO,
   itemSelect,
   itemFrom,
@@ -51,6 +55,8 @@ const itemColumns = {
   barcode: "i.barcode",
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
+  compositionId: "i.composition_id",
+  compositionArabicName: "f.arabic_name",
   agentName: "a.name",
   unit1Name: "i.unit1_name",
   unit2Name: "i.unit2_name",
@@ -81,6 +87,102 @@ const itemColumns = {
 export function itemRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  const compositionColumns = {
+    id: "f.id",
+    arabicName: "f.arabic_name",
+    englishName: "f.english_name",
+    active: "f.active",
+    identicalAlternative: "f.identical_alternative",
+    nonInterchangeable: "f.non_interchangeable",
+    createdAt: "f.created_at",
+    updatedAt: "f.updated_at",
+  };
+  router.get(
+    `${base}/item-compositions`,
+    handler(async (req, res) => {
+      res.json(await readItems(pool, req, (client, companyId) =>
+        masterPage(client, req, companyId, itemCompositionSelect,
+          "FROM item_compositions f", "f", compositionColumns,
+          ["f.arabic_name", "f.english_name", "f.description"],
+          itemCompositionDTO, { active: "boolean" }, "arabicName:asc"),
+      ));
+    }),
+  );
+  router.post(
+    `${base}/item-compositions`,
+    handler(async (req, res) => {
+      const input = parse(itemCompositionSchema, req.body);
+      const result = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+        const existing = await itemIdempotent(
+          client, "item_compositions", companyId, input.idempotencyKey, input,
+        );
+        if (existing) return {
+          composition: itemCompositionDTO(await masterRow(
+            client, itemCompositionSelect, "f", companyId, existing.id,
+          )),
+          created: false,
+        };
+        const added = await client.query(
+          `INSERT INTO item_compositions
+          (company_id,arabic_name,english_name,description,active,
+           identical_alternative,non_interchangeable,created_by,idempotency_key,creation_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+          [companyId,input.arabicName,input.englishName,input.description,input.active,
+           input.identicalAlternative,input.nonInterchangeable,user.id,input.idempotencyKey,
+           JSON.stringify(input)],
+        );
+        const composition = itemCompositionDTO(await masterRow(
+          client, itemCompositionSelect, "f", companyId, added.rows[0].id,
+        ));
+        await audit(client,user,"itemComposition.create","itemComposition",
+          composition.id,null,composition,companyId);
+        return { composition, created: true };
+      });
+      res.status(result.created ? 201 : 200).json({ composition: result.composition });
+    }),
+  );
+  router.get(
+    `${base}/item-compositions/:id`,
+    handler(async (req, res) => {
+      const compositionId = id(req.params.id);
+      res.json(await readItems(pool,req,async (client,companyId) => ({
+        composition: itemCompositionDTO(await masterRow(
+          client,itemCompositionSelect,"f",companyId,compositionId,
+        )),
+      })));
+    }),
+  );
+  router.patch(
+    `${base}/item-compositions/:id`,
+    handler(async (req,res) => {
+      const input = parse(itemCompositionPatchSchema,req.body);
+      const compositionId = id(req.params.id);
+      const composition = await mutateMaster(pool,req,"items.manage",async (client,user,companyId)=>{
+        const before = itemCompositionDTO(await masterRow(
+          client,itemCompositionSelect,"f",companyId,compositionId,
+        ));
+        if (before.revision !== input.revision)
+          conflict("تم تعديل التركيب بواسطة مستخدم آخر؛ حمّل النسخة الحالية قبل الحفظ");
+        await client.query(
+          `UPDATE item_compositions
+          SET arabic_name=$1,english_name=$2,description=$3,active=$4,
+              identical_alternative=$5,non_interchangeable=$6,
+              revision=revision+1,updated_at=clock_timestamp()
+          WHERE company_id=$7 AND id=$8`,
+          [input.arabicName,input.englishName,input.description,input.active,
+            input.identicalAlternative,input.nonInterchangeable,companyId,compositionId],
+        );
+        const next = itemCompositionDTO(await masterRow(
+          client,itemCompositionSelect,"f",companyId,compositionId,
+        ));
+        await audit(client,user,"itemComposition.update","itemComposition",
+          compositionId,before,next,companyId);
+        return next;
+      });
+      res.json({ composition });
+    }),
+  );
+
   router.get(
     `${base}/item-agents`,
     handler(async (req, res) => {
@@ -254,12 +356,15 @@ export function itemRoutes(pool: Pool): Router {
               "i.legacy_id",
               "i.search_keys",
               "a.name",
+              "f.arabic_name",
+              "f.english_name",
             ],
             itemDTO,
             {
               active: "boolean",
               hasExpiry: "boolean",
               agentId: "id",
+              compositionId: "id",
               currencyId: "id",
             },
             "code:asc",
@@ -423,6 +528,7 @@ export function itemRoutes(pool: Pool): Router {
             ...input,
             legacyId: input.legacyId ?? before.legacyId,
             defaultSaleUnit: input.defaultSaleUnit ?? before.defaultSaleUnit,
+            compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
@@ -489,6 +595,15 @@ export function itemRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       res.json(
         await readItems(pool, req, async (client, companyId) => {
+          if (req.query.type === "compositions")
+            return masterPage(
+              client,req,companyId,
+              "SELECT f.* FROM (SELECT * FROM item_compositions WHERE active) f",
+              "FROM (SELECT * FROM item_compositions WHERE active) f","f",
+              compositionColumns,
+              ["f.arabic_name","f.english_name","f.description"],
+              itemCompositionDTO,{active:"boolean"},"arabicName:asc",
+            );
           if (req.query.type === "agents")
             return masterPage(
               client,
