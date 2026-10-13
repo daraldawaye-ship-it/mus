@@ -27,6 +27,7 @@ import {
   stockUnitMultiplier,
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
+import { awardPostedInvoice } from "./invoice-rewards.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -749,6 +750,7 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
+  await awardPostedInvoice(client, companyId, invoiceId, input.kind, user, number);
   await audit(
     client,
     user,
