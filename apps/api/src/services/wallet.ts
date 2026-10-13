@@ -35,6 +35,7 @@ export const walletEntryDTO = (row: QueryResultRow): WalletEntry => ({
   reason: row.reason,
   referenceId: row.reference_id,
   invoiceId: row.invoice_id ?? null,
+  financialDocumentId: row.financial_document_id ?? null,
   taskCode: row.task_code ?? null,
   taskRevision: row.task_revision ?? null,
   logicalLineCount: row.logical_line_count ?? null,
