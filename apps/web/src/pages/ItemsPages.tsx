@@ -46,6 +46,7 @@ import {
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
+import { ItemMetadataUpdateDialog } from "../ItemMetadataUpdateDialog";
 import { ImageUpload } from "../ImageUpload";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -196,6 +197,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   );
   const canManage = itemsAccess(context, true);
   const [importOpen, setImportOpen] = useState(false);
+  const [metadataOpen,setMetadataOpen]=useState(false);
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -346,6 +348,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         actions={
           canManage && (
             <>
+              <Button variant="secondary" onClick={() => setMetadataOpen(true)}>
+                تحديث التركيب والرف والوحدة
+              </Button>
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 استيراد الأصناف
               </Button>
@@ -406,6 +411,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           ariaLabel="جدول الأصناف"
         />
       </Card>
+      {canManage&&metadataOpen&&<ItemMetadataUpdateDialog context={context}
+        onClose={()=>setMetadataOpen(false)}
+        onUpdated={()=>void list.refetch()}/>}
       {canManage && importOpen && (
         <ItemImportDialog
           context={context}
