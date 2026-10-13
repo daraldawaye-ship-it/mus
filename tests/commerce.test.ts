@@ -2224,3 +2224,92 @@ test("zero-net purchases and free sale returns finalize without dummy journals a
     );
   await assertBalanced(f, s.company.id);
 });
+
+test("invoice reward tasks are opt-in, grouped by logical lines, idempotent and shared with posting", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Invoice-rewards company");
+  const item = await s.item();
+  const staff = await f.member(s.company.id, ["commerce.manage", "commerce.view", "finance.post"], 77);
+  const walletUrl = `${s.path}/wallet?employeeId=${staff.employee.id}`;
+  const points = async () =>
+    (await f.owner.ok<{ wallet: { points: string } }>("GET", walletUrl)).wallet.points;
+  const configure = async (code: string, value: string, enabled = true) => {
+    const { tasks } = await f.owner.ok<{ tasks: { code: string; revision: number | null }[] }>("GET", `${s.path}/reward-tasks`);
+    const task = tasks.find((entry) => entry.code === code)!;
+    return f.owner.ok("PUT", `${s.path}/reward-tasks/${code}`, {
+      points: value, repeatRule: "per-document", enabled, roleIds: [], pageKey: null, revision: task.revision,
+    });
+  };
+
+  const beforeBody = invoiceBody(s, item.id);
+  const before = await invoice(f, s, beforeBody, staff.client);
+  assert.equal(await points(), "0", "Tasks must not award before explicit activation");
+  await configure("PURCHASE_SAVED", "10");
+  await configure("PURCHASE_LINES", "3");
+  const replayBefore = await invoice(f, s, beforeBody, staff.client);
+  assert.equal(replayBefore.id, before.id);
+  assert.equal(await points(), "0", "Old invoice replay must not award retroactively");
+
+  const body = invoiceBody(s, item.id, {
+    lines: [
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "800", expiryDate: "2027-01-31" },
+      { itemId: item.id, unit: 1, quantity: "2", unitPrice: "800", expiryDate: "2027-01-31" },
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "700", expiryDate: "2027-01-31" },
+    ],
+  });
+  const saved = await invoice(f, s, body, staff.client);
+  assert.equal(await points(), "16", "10 invoice + 2 distinct item/unit/price/batch groups * 3");
+  assert.equal((await invoice(f, s, body, staff.client)).id, saved.id);
+  assert.equal(await points(), "16", "Retry must not award again");
+  let rewards = await f.pool.query(
+    "SELECT task_code,points::text,logical_line_count,invoice_id,task_revision FROM employee_wallet_entries WHERE company_id=$1 AND invoice_id=$2 ORDER BY task_code",
+    [s.company.id, saved.id],
+  );
+  assert.deepEqual(rewards.rows.map((row) => [row.task_code, row.points, row.logical_line_count]), [
+    ["PURCHASE_LINES", "6", 2],
+    ["PURCHASE_SAVED", "10", 1],
+  ]);
+  assert(rewards.rows.every((row) => row.invoice_id === saved.id && row.task_revision > 0));
+
+  await configure("SALE_SAVED", "5");
+  await configure("SALE_LINES", "2");
+  const sale = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000", expiryDate: "2027-01-31" },
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000", expiryDate: "2027-01-31" },
+    ],
+  }), staff.client);
+  assert.equal(await points(), "23", "5 sale + 2 grouped lines; previous purchase points remain");
+
+  await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale", counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "-1", originalLineId: sale.lines[0]!.id }],
+  }), staff.client);
+  assert.equal(await points(), "30", "A sale return earns positive work points");
+
+  await configure("PURCHASE_SAVED", "20");
+  assert.equal(await points(), "30", "Changing task settings cannot reprice past awards");
+  await invoice(f, s, invoiceBody(s, item.id, {
+    lines: [{ itemId: item.id, unit: 1, quantity: "-1", originalLineId: saved.lines[0]!.id }],
+  }), staff.client);
+  assert.equal(await points(), "53", "Purchase return earns the new 20+3 points");
+
+  const originalEntry = (await f.pool.query(
+    "SELECT id FROM employee_wallet_entries WHERE company_id=$1 AND invoice_id=$2 AND task_code='PURCHASE_SAVED'",
+    [s.company.id, saved.id],
+  )).rows[0]!.id as number;
+  await f.owner.ok("POST", `${s.path}/wallet/reversals`, {
+    entryId: originalEntry, reason: "تصحيح مكافأة فاتورة", idempotencyKey: randomUUID(),
+  });
+  assert.equal(await points(), "43", "Original automatic award remains immutable after a compensating reversal");
+
+  const snapshot = await stockSnapshot(f, s.company.id);
+  await rejectAudit(f, async () => {
+    const failed = invoiceBody(s, item.id);
+    const response = await staff.client.request("POST", `${s.path}/invoices`, failed);
+    assert.equal(response.status, 500);
+  });
+  assert.deepEqual(await stockSnapshot(f, s.company.id), snapshot, "Audit failure must undo all invoice/stock/accounting writes");
+  assert.equal(await points(), "43", "Audit failure must not leave wallet credits");
+});
