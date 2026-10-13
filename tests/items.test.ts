@@ -1491,3 +1491,65 @@ test("Item shelf cards are real company-scoped references while legacy labels re
   assert.equal((await f.owner.request("PATCH",`/companies/${a.id}/items/${after.id}`,
     patchItem(after,{shelf:"ا-1",shelfId:shelfa.id}))).status,409);
 });
+
+test("bulk metadata update links existing pharmacy items to compositions and shelves without inventory changes",async(t)=>{
+  const f=await fixture(t);
+  const company=await f.company("صيدلية دار الدواء");
+  const currencyId=(await f.owner.ok<Page<CompanyCurrency>>("GET",
+    `/companies/${company.id}/currencies`)).items.find(x=>x.code==="YER")!.id;
+  const composition=(await f.owner.ok<{composition:ItemComposition}>("POST",
+    `/companies/${company.id}/item-compositions`,{
+      arabicName:"Ceftriaxone 1000mg vial",englishName:"Ceftriaxone 1000mg vial",
+      description:"",active:true,identicalAlternative:false,
+      nonInterchangeable:false,idempotencyKey:randomUUID(),
+    },201)).composition;
+  const original=await item(f,company.id,currencyId,{
+    legacyId:"8247",name:"اختبار بضاعة",shelf:"",
+    compositionId:null,defaultSaleUnit:1,
+  });
+  const route=`/companies/${company.id}/items/metadata-update-batch`;
+  const body={format:"tijara-item-metadata-v1",
+    companyHint:"صيدلية دار الدواء",items:[{
+      legacyId:"8247",compositionName:"CEFTRIAXONE 1000MG VIAL",
+      shelf:"ك-2",defaultSaleUnit:2,
+    }]};
+  const first=await f.owner.ok<{processed:number;updated:number;linkedComposition:number;linkedShelf:number;unitChanged:number}>("POST",route,body);
+  assert.deepEqual(first,{processed:1,updated:1,unchanged:0,linkedComposition:1,linkedShelf:1,legacyShelf:0,unitChanged:1});
+  const changed=(await f.owner.ok<{item:Item}>("GET",
+    `/companies/${company.id}/items/${original.id}`)).item;
+  assert.equal(changed.compositionId,composition.id);
+  assert.equal(changed.shelf,"ك-2");
+  assert(changed.shelfId!==null);
+  assert.equal(changed.defaultSaleUnit,2);
+  assert.equal(changed.salePrice1,original.salePrice1);
+  assert.equal(changed.salePrice2,original.salePrice2);
+  assert.equal(changed.revision,original.revision+1);
+  assert.equal((await f.owner.ok<{updated:number}>("POST",route,body)).updated,0);
+  const unusual=(await f.owner.ok<{updated:number}>("POST",route,{
+    ...body,items:[{legacyId:"8247",compositionName:null,shelf:"ب-تر",defaultSaleUnit:null}],
+  }));
+  assert.equal(unusual.updated,1);
+  const manual=(await f.owner.ok<{item:Item}>("GET",
+    `/companies/${company.id}/items/${original.id}`)).item;
+  assert.equal(manual.shelf,"ب-تر");
+  assert.equal(manual.shelfId,null);
+  assert.equal(manual.compositionId,composition.id);
+  assert.equal(manual.defaultSaleUnit,2);
+  const invalid=await f.owner.request("POST",route,{
+    ...body,items:[{legacyId:"8247",compositionName:"غير موجود",shelf:"ا-1",defaultSaleUnit:1}],
+  });
+  assert.equal(invalid.status,409);
+  assert.equal((await f.owner.request("POST",route,{
+    ...body,companyHint:"شركة أخرى",
+  })).status,409);
+  assert.equal((await f.owner.request("POST",route,{
+    ...body,items:[{legacyId:"999999",compositionName:null,shelf:null,defaultSaleUnit:null}],
+  })).status,409);
+  const visitor=await f.member(company.id,["items.view"],51);
+  assert.equal((await visitor.client.request("POST",route,body)).status,403);
+  const audits=await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM audit_events WHERE company_id=$1 AND action='item.update' AND target_id=$2",
+    [company.id,original.id],
+  );
+  assert.equal(audits.rows[0]!.n,2);
+});
