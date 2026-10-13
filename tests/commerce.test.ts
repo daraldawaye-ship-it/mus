@@ -2276,8 +2276,8 @@ test("invoice reward tasks are opt-in, grouped by logical lines, idempotent and 
   const sale = await invoice(f, s, invoiceBody(s, item.id, {
     kind: "sale", counterpartyAccountId: s.customer.id,
     lines: [
-      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000", expiryDate: "2027-01-31" },
-      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000", expiryDate: "2027-01-31" },
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" },
+      { itemId: item.id, unit: 1, quantity: "1", unitPrice: "1000" },
     ],
   }), staff.client);
   assert.equal(await points(), "23", "5 sale + 2 grouped lines; previous purchase points remain");
