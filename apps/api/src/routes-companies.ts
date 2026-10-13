@@ -32,7 +32,7 @@ import {
   employeeSelect,
   userDTO,
 } from "./repositories/models.ts";
-import { branchDTO, locationDTO } from "./repositories/masters.ts";
+import { accountDTO, accountSelect, branchDTO, locationDTO } from "./repositories/masters.ts";
 import { auditPage } from "./routes-public.ts";
 import { deny, missing, HttpError } from "./errors.ts";
 
@@ -288,6 +288,31 @@ export function companyRoutes(pool: Pool): Router {
         [search, phone],
       );
       res.json({ items: found.rows.map(userDTO) });
+    }),
+  );
+  // A signed-in employee may read ONLY their own linked, active sales
+  // cash account, independent of the employee-directory permission.
+  // Never infer cashbox ownership from the name or an unrelated account.
+  router.get(
+    "/companies/:companyId/my-sales-cashbox",
+    handler(async (req, res) => {
+      const companyId = id(req.params.companyId);
+      const context = await companyAccess(pool, actor(req), companyId);
+      if (!context.employee) {
+        res.json({ account: null });
+        return;
+      }
+      const result = await pool.query(
+        `${accountSelect}
+         JOIN employee_account_links l
+           ON l.company_id=a.company_id AND l.account_id=a.id
+         WHERE l.company_id=$1 AND l.employee_id=$2
+           AND l.account_kind='sales_cash'
+           AND a.active=true AND a.kind='posting' AND a.cash_or_bank=true
+         LIMIT 1`,
+        [companyId, context.employee.id],
+      );
+      res.json({ account: result.rows[0] ? accountDTO(result.rows[0]) : null });
     }),
   );
   router.get(

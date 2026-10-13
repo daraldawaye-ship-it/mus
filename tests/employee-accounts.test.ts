@@ -100,6 +100,28 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
   const secondEmployee=await create(first.id,id2.id,"سارة",false);
   const thirdEmployee=await create(first.id,id3.id,"محمد",true);
   const outside=await create(second.id,id4.id,"أحمد",true);
+  // Default cashbox: scoped to the signed-in employee, not the company owner,
+  // another employee or a similarly named account in another company.
+  type CashReply = {account:{
+    id:number;code:string;name:string;active:boolean;cashOrBank:boolean;
+  }|null};
+  const cashPath=`/companies/${first.id}/my-sales-cashbox`;
+  const own=await id1.client.ok<CashReply>("GET",cashPath);
+  assert.equal(own.account?.id,firstEmployee.accounts.find(a=>a.kind==="sales_cash")?.accountId);
+  assert.equal(own.account?.cashOrBank,true);
+  assert.equal(own.account?.active,true);
+  const another=await id3.client.ok<CashReply>("GET",cashPath);
+  assert.equal(another.account?.id,thirdEmployee.accounts.find(a=>a.kind==="sales_cash")?.accountId);
+  assert.notEqual(own.account?.id,another.account?.id);
+  assert.equal((await id2.client.ok<CashReply>("GET",cashPath)).account,null);
+  assert.equal((await admin.ok<CashReply>("GET",cashPath)).account,null);
+  assert.equal((await id1.client.request("GET",
+    `/companies/${second.id}/my-sales-cashbox`)).status,403);
+  await runtime.pool.query("UPDATE accounts SET active=false WHERE company_id=$1 AND id=$2",
+    [first.id,own.account!.id]);
+  assert.equal((await id1.client.ok<CashReply>("GET",cashPath)).account,null);
+  await runtime.pool.query("UPDATE accounts SET active=true WHERE company_id=$1 AND id=$2",
+    [first.id,own.account!.id]);
   const simplify=(employee:Created)=>Object.fromEntries(employee.accounts.map(a=>[a.kind,a.code]));
   assert.deepEqual(simplify(firstEmployee),{
     advance:"1140000001",sales_cash:"1111000001",sales_pouch:"1113000001",

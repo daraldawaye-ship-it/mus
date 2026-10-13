@@ -37,6 +37,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { useEmployeeCashbox } from "../employee-cashbox";
 import {
   Button,
   Card,
@@ -505,6 +506,8 @@ function DocumentEditor({
   const otherLine = document?.lines.find(
     (line) => line.accountId !== document.cashAccountId,
   );
+  const defaultCashbox = useEmployeeCashbox(context);
+  const cashManuallyChosen = useRef(false);
   const [cash, setCash] = useState<PickAccount | null>(
     cashLine
       ? {
@@ -514,6 +517,13 @@ function DocumentEditor({
         }
       : null,
   );
+  useEffect(() => {
+    if (
+      document || kind === "journal" || !defaultCashbox ||
+      cashManuallyChosen.current || cash
+    ) return;
+    setCash(defaultCashbox);
+  }, [document, kind, defaultCashbox, cash]);
   const [counterparty, setCounterparty] = useState<PickAccount | null>(
     otherLine
       ? {
@@ -1224,7 +1234,10 @@ function DocumentEditor({
               onChange={(item) => {
                 if (!item) return;
                 touch();
-                if (picker.type === "cash") setCash(item);
+                if (picker.type === "cash") {
+                  cashManuallyChosen.current = true;
+                  setCash(item);
+                }
                 else if (picker.type === "counterparty") setCounterparty(item);
                 else if (picker.type === "account")
                   editLine(picker.row, { account: item });

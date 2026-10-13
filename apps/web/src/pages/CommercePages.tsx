@@ -45,6 +45,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { useEmployeeCashbox } from "../employee-cashbox";
 import { saleStockQuantity } from "../sale-stock-quantity";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -840,6 +841,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const defaultCashbox = useEmployeeCashbox(context);
+  const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
   useEffect(() => {
@@ -889,6 +892,13 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
+  useEffect(() => {
+    if (
+      !defaultCashbox || accountManuallyChosen.current ||
+      account || original || hasLinkedLines
+    ) return;
+    setAccount(defaultCashbox);
+  }, [defaultCashbox, account, original, hasLinkedLines]);
   const hasPositiveLines = selectedLines.some(
     (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
   );
@@ -939,7 +949,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
-    !!account ||
+    accountManuallyChosen.current ||
+    (!!account && account.id !== defaultCashbox?.id) ||
     (!!branch &&
       (branchManuallyChosen.current ||
         branch.id !== automaticBranchId.current)) ||
@@ -1321,6 +1332,33 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ),
     );
   }
+  function resetInvoice() {
+    if (locked || editingItem) return;
+    // Reset only this unsaved editor; posted invoices are never changed.
+    const first = emptyLine();
+    pending.current = null;
+    setLines([first]);
+    setAccount(defaultCashbox);
+    accountManuallyChosen.current = false;
+    setOriginal(null);
+    setShowOriginalPicker(false);
+    setDocumentDate(today());
+    setCurrency(null);
+    setBranch(null);
+    setLocation(null);
+    currencyManuallyChosen.current = false;
+    branchManuallyChosen.current = false;
+    locationManuallyChosen.current = false;
+    automaticCurrencyId.current = null;
+    automaticBranchId.current = null;
+    automaticLocationId.current = null;
+    setDescription("");
+    setDiscount("0");
+    setError("");
+    setSavedInvoice(null);
+    setItemNotice("");
+    focus(lineInputId(first, "item-search"));
+  }
   async function save(event?: FormEvent) {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
@@ -1378,7 +1416,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       const next = emptyLine();
       pending.current = null;
       setLines([next]);
-      setAccount(null);
+      setAccount(defaultCashbox);
+      accountManuallyChosen.current = false;
       setOriginal(null);
       setShowOriginalPicker(false);
       setDocumentDate(today());
@@ -1453,7 +1492,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     : "حساب المورد / النقد"
                 }
                 value={account}
-                onChange={setAccount}
+                onChange={(value) => {
+                  accountManuallyChosen.current = true;
+                  setAccount(value);
+                }}
                 display={itemLabel}
                 disabled={locked || hasLinkedLines}
                 required
@@ -1584,6 +1626,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         createdBy: 0,
                         createdAt: "",
                       });
+                      accountManuallyChosen.current = true;
                       setAccount({
                         id: value.counterpartyAccountId,
                         companyId,
@@ -2060,13 +2103,22 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 </strong>
               </span>
             </div>
-            <Button type="submit" disabled={saving || !selectedLines.length}>
-              {saving
-                ? "جارٍ الحفظ والترحيل…"
-                : unknown
-                  ? "تأكيد نتيجة الطلب نفسه"
-                  : "حفظ وترحيل الفاتورة"}
-            </Button>
+            <div className="commerce-save-actions">
+              <Button
+                variant="secondary"
+                onClick={resetInvoice}
+                disabled={locked || !!editingItem}
+              >
+                تصفير الفاتورة
+              </Button>
+              <Button type="submit" disabled={saving || !selectedLines.length}>
+                {saving
+                  ? "جارٍ الحفظ والترحيل…"
+                  : unknown
+                    ? "تأكيد نتيجة الطلب نفسه"
+                    : "حفظ وترحيل الفاتورة"}
+              </Button>
+            </div>
           </div>
           {hasLinkedLines && (
             <small className="muted">

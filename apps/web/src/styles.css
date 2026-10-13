@@ -2051,6 +2051,15 @@ ul {
   gap: 8px;
   align-items: center;
 }
+.commerce-save-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.commerce-save-actions .button {
+  flex: 1 1 auto;
+}
 .commerce-totals {
   display: flex;
   flex-wrap: wrap;
