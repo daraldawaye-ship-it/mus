@@ -39,11 +39,17 @@ export const walletAwardSchema = z
 export const walletReversalSchema = z
   .object({ entryId: id, reason, idempotencyKey: z.uuid() })
   .strict();
+export const pageVisitEventSchema = z.object({
+  pageKey: z.string().min(1).max(100),
+  idempotencyKey: z.uuid(),
+}).strict();
+
 export const rewardTaskSettingsSchema = z
   .object({
     points,
     repeatRule: rewardRepeatRuleSchema,
     enabled: z.boolean(),
+    dailyLimit: z.number().int().min(1).max(10000).nullable().default(null),
     roleIds: z
       .array(id)
       .max(100)
@@ -74,6 +80,7 @@ export interface WalletEntry {
   referenceId: number | null;
   invoiceId: number | null;
   financialDocumentId: number | null;
+  pageKey: string | null;
   taskCode: string | null;
   taskRevision: number | null;
   logicalLineCount: number | null;
@@ -96,6 +103,7 @@ export interface RewardTask {
   enabled: boolean;
   roleIds: number[];
   pageKey: string | null;
+  dailyLimit: number | null;
   revision: number | null;
 }
 export interface RewardTaskDirectory {
