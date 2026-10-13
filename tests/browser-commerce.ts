@@ -705,6 +705,69 @@ try {
       },
     );
     await scenario(
+      "RTL arrows navigate sales and purchases within one invoice line",
+      async () => {
+        const focused = async (locator: import("playwright").Locator) =>
+          assert.equal(await locator.evaluate((node) => node === document.activeElement),
+            true, "Arrow must move focus to the expected invoice control");
+
+        await saleDraft("3");
+        const salesRow = page.locator(".commerce-matrix tr[data-selected='true']").first();
+        const salesSearch = salesRow.locator('input[id^="invoice-item-search-"]');
+        const salesUnit = salesRow.getByLabel("الوحدة " + item.name, { exact: true });
+        const salesQuantity = salesRow.locator('input[id^="invoice-quantity-"]');
+        const salesPrice = salesRow.locator('input[id^="invoice-price-"]');
+        await salesQuantity.focus();
+        await salesQuantity.press("ArrowRight");
+        await focused(salesUnit);
+        await salesUnit.press("ArrowLeft");
+        await focused(salesQuantity);
+        await salesQuantity.press("ArrowLeft");
+        await focused(salesPrice);
+        await salesPrice.press("ArrowRight");
+        await focused(salesQuantity);
+        await salesUnit.focus();
+        await salesUnit.press("ArrowRight");
+        await focused(salesSearch);
+        await salesSearch.press("ArrowLeft");
+        await focused(salesUnit);
+        const firstAction = salesRow.locator("button:not(:disabled)").first();
+        await salesPrice.focus();
+        await salesPrice.press("ArrowLeft");
+        await focused(firstAction);
+        await firstAction.press("ArrowRight");
+        await focused(salesPrice);
+        assert.equal(await salesQuantity.inputValue(), "3");
+        assert.equal(await salesUnit.inputValue(), "3");
+        assert.equal(await salesRow.count(), 1);
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+
+        await page.goto(base + "/invoices/new?kind=purchase");
+        await page.locator("form.commerce-editor").waitFor();
+        await page.locator('[id^="invoice-item-search-"]').first().fill(item.barcode);
+        await page.getByRole("listbox", { name: "نتائج الأصناف" })
+          .getByRole("button", { name: new RegExp(item.name) }).click();
+        const purchaseRow = page.locator(".commerce-matrix tr[data-selected='true']").first();
+        const purchaseUnit = purchaseRow.getByLabel("الوحدة " + item.name, { exact: true });
+        const purchaseQuantity = purchaseRow.locator('input[id^="invoice-quantity-"]');
+        const purchasePrice = purchaseRow.locator('input[id^="invoice-price-"]');
+        const purchaseExpiry = purchaseRow.locator('input[id^="invoice-expiry-"]');
+        await purchaseQuantity.press("ArrowRight");
+        await focused(purchaseUnit);
+        await purchaseUnit.press("ArrowLeft");
+        await focused(purchaseQuantity);
+        await purchaseQuantity.press("ArrowLeft");
+        await focused(purchasePrice);
+        await purchasePrice.press("ArrowLeft");
+        await focused(purchaseExpiry);
+        await purchaseExpiry.press("ArrowRight");
+        await focused(purchasePrice);
+        assert.equal(await purchaseQuantity.inputValue(), "1");
+        assert.equal(await purchaseRow.count(), 1);
+        await page.getByRole("button", { name: "تصفير الفاتورة", exact: true }).click();
+      },
+    );
+    await scenario(
       "sales keyboard shortcut: zero Enter, notes Enter, discount Enter, then focused Save",
       async () => {
         const before = await call<ApiPage<Invoice>>(base + "/invoices?kind=sale");
