@@ -9,12 +9,33 @@ export const memoTypeLabels: Record<MemoType, string> = {
   review: "مراجعة",
   approval: "طلب اعتماد",
 };
+export const memoFollowerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("employee"), employeeId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
+  z.object({ kind: z.literal("role"), roleId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
+]);
+export type MemoFollowerInput = z.input<typeof memoFollowerSchema>;
+export const memoFollowersUpdateSchema = z.object({
+  revision: z.number().int().positive(),
+  followers: z.array(memoFollowerSchema).max(100),
+}).strict();
+export interface MemoFollower {
+  id: number;
+  kind: "employee" | "role";
+  employeeId: number | null;
+  roleId: number | null;
+  name: string;
+  accessLevel: "view" | "comment";
+  addedBy: number;
+  addedAt: string;
+}
+export interface MemoFollowerRole { id: number; name: string; }
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
     body: z.string().trim().min(1, "نص المذكرة مطلوب").max(20000),
     recipientEmployeeId: z.number().int().positive().max(2147483647),
     type: memoTypeSchema,
+    followers: z.array(memoFollowerSchema).max(100).optional(),
     idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
   })
   .strict();
@@ -114,6 +135,10 @@ export interface MemoEvent {
 }
 export interface MemoDetail extends MemoRecord {
   events: MemoEvent[];
+  followers: MemoFollower[];
+  followerRevision: number;
+  canManageFollowers: boolean;
+  canComment: boolean;
   canReply: boolean;
   canTransfer: boolean;
   canRequestCompletion: boolean;
