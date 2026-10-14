@@ -3048,3 +3048,17 @@ test("memo followup defers independently, wakes once and cancels on transfer",as
  assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
  "GET",`${base}?box=deferred`)).items.length,0);
 });
+
+test("memo report scopes employee totals and approval intervals",async t=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const first=await company(platform.client,"Memo report first");
+ const second=await company(platform.client,"Memo report second");
+ const employeeUser=await register(f,"memo-report-worker@example.test");
+ const stranger=await register(f,"memo-report-other@example.test");
+ const employeeCard=await employee(platform.client,first.id,employeeUser.user.id);
+ await employee(platform.client,first.id,stranger.user.id);
+ const base=`/companies/${first.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{title:"Reconcile stock",body:"Review batches",type:"task",
+   recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID()},201)).memo;
