@@ -42,12 +42,19 @@ export const invoiceSchema = z
     branchId: id,
     locationId: id,
     counterpartyAccountId: id,
+    supplierAccountId: id.nullable().default(null),
     description: z.string().trim().max(1000).default(""),
     discount: amountSchema.default("0"),
     lines: z.array(invoiceLineSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.kind === "sale" && value.supplierAccountId !== null)
+      context.addIssue({
+        code: "custom",
+        path: ["supplierAccountId"],
+        message: "المورد المستقل مخصص لفواتير المشتريات فقط",
+      });
     if (value.lines.length === 0) return;
     if (value.lines.some((line) => !/^-?\d+$/.test(line.quantity))) return;
     for (const [index, line] of value.lines.entries()) {
@@ -121,6 +128,9 @@ export interface Invoice {
   counterpartyAccountId: number;
   counterpartyAccountCode: string;
   counterpartyAccountName: string;
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
   description: string;
   gross: string;
   discount: string;
