@@ -801,6 +801,109 @@ export function memoRoutes(pool: Pool) {
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
     }),
   );
+  router.get(base + "/reminder-settings",handler(async(req,res)=>{
+    const result=await transaction(pool,async(client)=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current=await scope(client,req);
+      await access(client,req,current,"view");
+      const settings=(await client.query(
+        "SELECT to_char(default_time,'HH24:MI') AS \"defaultTime\",notify_sender AS \"notifySender\",revision FROM memo_reminder_settings WHERE company_id=$1",
+        [current.companyId],
+      )).rows[0];
+      return {settings,canManage:current.context.general};
+    });
+    res.json(result);
+  }));
+  router.put(base + "/reminder-settings",handler(async(req,res)=>{
+    const input=parse(z.object({
+      defaultTime:z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/),
+      notifySender:z.boolean(),revision:z.number().int().positive(),
+    }).strict(),req.body);
+    const result=await transaction(pool,async(client)=>{
+      const current=await scope(client,req,true);
+      await access(client,req,current,"edit",false,true);
+      if(!current.context.general)deny("إعدادات تذكير المذكرات للإدارة فقط");
+      const before=(await client.query(
+        "SELECT revision,to_char(default_time,'HH24:MI') AS time,notify_sender FROM memo_reminder_settings WHERE company_id=$1 FOR UPDATE",
+        [current.companyId],
+      )).rows[0];
+      if(!before || before.revision!==input.revision)
+        throw new HttpError(409,"revision_conflict","تغيرت إعدادات الشركة");
+      await client.query(
+        "UPDATE memo_reminder_settings SET default_time=$2::time,notify_sender=$3,revision=revision+1,changed_by=$4,changed_at=clock_timestamp() WHERE company_id=$1",
+        [current.companyId,input.defaultTime,input.notifySender,current.user.id],
+      );
+      await audit(client,current.user,"memo.reminder-settings","memo-settings",current.companyId,
+       before,{...input,revision:before.revision+1},current.companyId);
+      return {settings:{defaultTime:input.defaultTime,notifySender:input.notifySender,revision:before.revision+1}};
+    });
+    res.json(result);
+  }));
+  router.put(base + "/:memoId/schedule",handler(async(req,res)=>{
+    const memoId=id(req.params.memoId),input=parse(memoScheduleInputSchema,req.body);
+    const memo=await transaction(pool,async(client)=>{
+      const current=await scope(client,req,true);
+      await access(client,req,current,"edit",true,true);
+      await client.query("SELECT id FROM memos WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [current.companyId,memoId]);
+      const before=await detail(client,current,memoId);
+      if(!before.canSchedule)deny("تأجيل المتابعة للمسؤول الحالي أو المرسل أو الإدارة المصرح لها فقط");
+      const previous=(await client.query(
+       "SELECT * FROM memo_schedules WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+       [current.companyId,memoId],
+      )).rows[0];
+      const version=previous?.revision??0;
+      if(version!==input.revision)
+        throw new HttpError(409,"revision_conflict","تغير موعد المتابعة؛ أعد تحميل المذكرة");
+      if(input.action==="cancel"){
+        if(!previous?.active)
+          throw new HttpError(409,"not_deferred","المذكرة ليست مؤجلة حاليًا");
+        await client.query(
+          "UPDATE memo_schedules SET active=false,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId]);
+        await addScheduleHistory(client,current.companyId,memoId,version+1,"cancelled",
+          input.reason,current.user,previous.due_at,{before:before.schedule});
+      }else{
+        if(input.repeatInterval!=="none")
+          throw new HttpError(400,"repeat_not_enabled","التذكير المتكرر سيتاح في الدفعة الثانية");
+        const setting=(await client.query(
+          "SELECT to_char(default_time,'HH24:MI') AS time FROM memo_reminder_settings WHERE company_id=$1",
+          [current.companyId])).rows[0];
+        const localTime=input.localTime??setting?.time??"09:00";
+        const due=(await client.query(
+          "SELECT (($1::date+$2::time) AT TIME ZONE 'Asia/Aden') AS due",
+          [input.localDate,localTime])).rows[0].due as Date;
+        const now=(await client.query("SELECT clock_timestamp() AS now")).rows[0].now as Date;
+        if(due.getTime()<=now.getTime())
+          throw new HttpError(400,"past_reminder","اختر موعدًا مستقبليًا بتوقيت اليمن");
+        await client.query(
+          `INSERT INTO memo_schedules(company_id,memo_id,due_at,local_day,local_time,repeat_interval,
+            assignment_revision,assignee_user_id,reason,actor_user_id,actor_name)
+            VALUES($1,$2,$3,$4::date,$5::time,$6,$7,$8,$9,$10,$11)
+            ON CONFLICT(company_id,memo_id) DO UPDATE SET
+            revision=memo_schedules.revision+1,active=true,due_at=excluded.due_at,
+            local_day=excluded.local_day,local_time=excluded.local_time,
+            repeat_interval=excluded.repeat_interval,assignment_revision=excluded.assignment_revision,
+            assignee_user_id=excluded.assignee_user_id,reason=excluded.reason,
+            actor_user_id=excluded.actor_user_id,actor_name=excluded.actor_name,
+            last_triggered_at=NULL,updated_at=clock_timestamp()`,
+          [current.companyId,memoId,due,input.localDate,localTime,"none",
+           before.currentAssignmentRevision,before.currentUserId,input.reason,
+           current.user.id,current.user.displayName]);
+        await addScheduleHistory(client,current.companyId,memoId,version+1,
+          previous?"changed":"scheduled",input.reason,current.user,due,
+          {before:before.schedule,after:{localDate:input.localDate,localTime}});
+      }
+      await closeScheduleNotice(client,current.companyId,memoId,current.user,
+        input.action==="cancel"?"schedule-cancelled":"schedule-updated");
+      const saved=await detail(client,current,memoId);
+      await audit(client,current.user,"memo.schedule","memo",memoId,
+        {revision:version,schedule:before.schedule},
+        {revision:saved.scheduleRevision,schedule:saved.schedule,reason:input.reason},current.companyId);
+      return saved;
+    });
+    res.json({memo});
+  }));
   router.get(
     base + "/options",
     handler(async (req,res) => {
