@@ -4,6 +4,7 @@ import {audit} from "./audit.ts";
 import {userDTO} from "../repositories/models.ts";
 import {directoryEntries} from "./pages.ts";
 import {emitNotification,effectiveTemplate} from "./notifications.ts";
+import {notifyDueMemoSender} from "./memo-sender-alert.ts";
 export const scheduleSelect=`SELECT s.*,s.local_day::text AS local_date, to_char(s.local_time,'HH24:MI') AS local_clock FROM memo_schedules s`;
 export function scheduleDTO(row:any):MemoSchedule {
  return {revision:row.revision,active:row.active,returned:Boolean(row.returned),reminderCount:row.cycle_index??0,dueAt:row.due_at.toISOString(),
