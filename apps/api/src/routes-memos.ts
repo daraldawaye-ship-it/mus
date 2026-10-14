@@ -9,6 +9,7 @@ import {
   memoLinksUpdateSchema,
   memoLinksSchema,
   memoOptionsUpdateSchema,
+  memoScheduleInputSchema,
   type MemoFollower,
   type MemoFollowerChange,
   type MemoFollowerInput,
@@ -26,6 +27,8 @@ import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
+import {scheduleDTO,scheduleDetails,addScheduleHistory,
+  closeScheduleNotice,cancelScheduleForTransition} from "./services/memo-reminders.ts";
 import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
 import {definitionsForMemo,validateMemoOptionEntries,saveMemoOptionValues,memoOptionDetails} from "./services/memo-options.ts";
 import { userDTO } from "./repositories/models.ts";
@@ -81,6 +84,12 @@ function summary(row: QueryResultRow): MemoSummary {
     title: row.title,
     type: row.type,
     status: row.status,
+    schedule:row.schedule_revision!=null?scheduleDTO({
+      revision:row.schedule_revision,active:row.schedule_active,due_at:row.schedule_due_at,
+      local_date:row.schedule_local_date,local_clock:row.schedule_local_time,
+      repeat_interval:row.schedule_repeat_interval,reason:row.schedule_reason,
+      actor_name:row.schedule_actor,last_triggered_at:row.schedule_last_triggered_at,
+    }):null,
     revision: row.revision,
     senderUserId: row.sender_user_id,
     senderName: row.sender_name,
@@ -208,6 +217,7 @@ async function detail(
   const senderAssignee =
     row.sender_user_id === current.user.id &&
     row.current_user_id === current.user.id;
+  const scheduleState=await scheduleDetails(client,current.companyId,memoId);
   const links = await memoLinkView(client,current.user,current.companyId,memoId);
   const optionDetails = await memoOptionDetails(client,current.companyId,memoId);
   const canManageLinks = row.status !== "completed" &&
@@ -223,6 +233,13 @@ async function detail(
     entry.actionAccess.edit;
   return {
     ...record(row),
+    ...scheduleState,
+    canSchedule:row.status!=="completed" &&
+      (currentAssignee || row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
+    canManageSchedule:row.status!=="completed" &&
+      (row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
     events,
     followers,
     followerRevision: followRevision,
@@ -442,6 +459,7 @@ export function memoRoutes(pool: Pool) {
           "completed",
           "all",
           "watching",
+          "deferred",
         ].includes(box)
       )
         throw new HttpError(400, "invalid_query", "قائمة المذكرات غير صالحة");
@@ -472,6 +490,15 @@ export function memoRoutes(pool: Pool) {
             filter = "m.status='awaiting_approval' AND m.sender_user_id=$2";
           else if (box === "sent") filter = "m.sender_user_id=$2";
           else if (box === "watching") { values.push(current.ownId); filter = memoFollowerSql("m","$3"); }
+          else if(box==="deferred"){
+            values.push(current.ownId);
+            filter=`EXISTS(SELECT 1 FROM memo_schedules sch WHERE sch.company_id=m.company_id AND sch.memo_id=m.id AND sch.active)
+              AND (${current.context.general?"TRUE":`m.sender_user_id=$2 OR (m.current_user_id=$2 AND
+                (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer))
+                OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id
+                   AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))
+                OR ${memoFollowerSql("m","$3")}`})`;
+          }
           else if (box === "completed" && current.context.general)
             filter = "m.status='completed'";
           else if (box === "following" || box === "completed") {
@@ -532,7 +559,13 @@ export function memoRoutes(pool: Pool) {
           const rows = (
             await client.query(
               `SELECT m.id,m.company_id,m.title,m.type,m.sender_user_id,m.sender_name,m.recipient_employee_id,m.recipient_user_id,m.recipient_name,m.created_at,m.revision,m.current_user_id,m.current_employee_id,m.current_name,m.current_assigned_at,m.current_assignment_revision,m.status,m.completion_requested_by_user_id,m.completion_requested_by_employee_id,m.completion_requested_by_name,m.completion_requested_at,m.completed_at,m.completed_by_user_id,m.completed_by_name,
-         own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at FROM memos m ${readJoins} WHERE ${where}
+         own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at,
+         sch.revision AS schedule_revision,sch.active AS schedule_active,sch.due_at AS schedule_due_at,
+         sch.local_day::text AS schedule_local_date,to_char(sch.local_time,'HH24:MI') AS schedule_local_time,
+         sch.repeat_interval AS schedule_repeat_interval,sch.reason AS schedule_reason,
+         sch.actor_name AS schedule_actor,sch.last_triggered_at AS schedule_last_triggered_at
+         FROM memos m ${readJoins} LEFT JOIN memo_schedules sch ON sch.company_id=m.company_id AND sch.memo_id=m.id
+         WHERE ${where}
          ORDER BY ${query.order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
               [...values, query.pageSize, query.offset],
             )
@@ -1067,7 +1100,7 @@ export function memoRoutes(pool: Pool) {
         const alerts = (
           await client.query(
             `UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()
-           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW') AND subject_key=$2 AND recipient_user_id=$3
+           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW','MEMO_DUE') AND subject_key=$2 AND recipient_user_id=$3
            AND subject_employee_id IS NOT DISTINCT FROM $4::integer AND read_at IS NULL AND completed_at IS NULL RETURNING id,read_at,revision`,
             [
               current.companyId,
@@ -1172,6 +1205,8 @@ export function memoRoutes(pool: Pool) {
           true,
           true,
         );
+        await client.query("SELECT id FROM memos WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [current.companyId,memoId]);
         const before = await detail(client, current, memoId);
         if (before.status === "completed")
           throw new HttpError(
@@ -1364,6 +1399,9 @@ export function memoRoutes(pool: Pool) {
             action.id,
           ],
         );
+        if(target || close || request || reopen)
+          await cancelScheduleForTransition(client,current.companyId,memoId,
+            current.user,"memo-workflow-transition");
         const saved = await detail(client, current, memoId);
         await audit(
           client,
