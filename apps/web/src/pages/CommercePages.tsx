@@ -155,7 +155,7 @@ function InvoiceList({
     return () => window.clearTimeout(timer);
   }, [saved, navigation]);
   const filters = new URLSearchParams({ kind });
-  for (const key of ["dateFrom", "dateTo", "branchId", "locationId"])
+  for (const key of ["dateFrom", "dateTo", "branchId", "locationId", "supplierQ", "payerQ"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<Invoice>(
     `/companies/${companyId}/invoices?${filters}`,
@@ -189,13 +189,22 @@ function InvoiceList({
       },
       {
         accessorKey: "counterpartyAccountName",
-        header: kind === "sale" ? "العميل / الحساب" : "المورد / الحساب",
+        header: kind === "sale" ? "العميل / الحساب" : "حساب السداد / الذمة",
         size: 190,
         enableSorting: false,
         cell: ({ row }) => (
           <ValueCell>{row.original.counterpartyAccountName}</ValueCell>
         ),
       },
+      ...(kind === "purchase" ? [{
+        accessorKey: "supplierAccountName",
+        header: "المورد الفعلي",
+        size: 190,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>
+        ),
+      } satisfies ColumnDef<Invoice, unknown>] : []),
       {
         accessorKey: "locationName",
         header: "الموقع",
@@ -267,6 +276,24 @@ function InvoiceList({
             onChange={(event) => list.setQuery(event.target.value)}
             placeholder="الرقم أو البيان"
           />
+          {kind === "purchase" && (
+            <>
+              <Field
+                label="بحث المورد الفعلي"
+                type="search"
+                value={params.get("supplierQ") ?? ""}
+                onChange={(event) => filter(setParams, "supplierQ", event.target.value)}
+                placeholder="اسم المورد أو رمزه"
+              />
+              <Field
+                label="بحث حساب السداد / الذمة"
+                type="search"
+                value={params.get("payerQ") ?? ""}
+                onChange={(event) => filter(setParams, "payerQ", event.target.value)}
+                placeholder="اسم الصندوق أو رمز الحساب"
+              />
+            </>
+          )}
           <Field
             label="من تاريخ"
             type="date"
@@ -1655,6 +1682,29 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         createdAt: "",
                       });
                       accountManuallyChosen.current = true;
+                      setSupplier(
+                        kind === "purchase" && value.supplierAccountId !== null
+                          ? {
+                              id: value.supplierAccountId,
+                              companyId,
+                              code: value.supplierAccountCode ?? "",
+                              name: value.supplierAccountName ?? "",
+                              parentId: null,
+                              parentCode: null,
+                              parentName: null,
+                              kind: "posting",
+                              category: "liability",
+                              accountChoice: null,
+                              normalSide: "credit",
+                              active: true,
+                              cashOrBank: false,
+                              rangeStart: null,
+                              rangeEnd: null,
+                              createdBy: 0,
+                              createdAt: "",
+                            }
+                          : null,
+                      );
                       setAccount({
                         id: value.counterpartyAccountId,
                         companyId,
@@ -2347,9 +2397,20 @@ function InvoiceViewer({
           <span>الفرع: {invoice.branchName}</span>
           <span>الموقع: {invoice.locationName}</span>
           <span>
-            الحساب: <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
+            {invoice.kind === "purchase" ? "حساب السداد / الذمة" : "الحساب"}:{" "}
+            <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
             {invoice.counterpartyAccountName}
           </span>
+          {invoice.kind === "purchase" && (
+            <span>
+              المورد:{" "}
+              {invoice.supplierAccountId !== null ? (
+                <>
+                  <bdi>{invoice.supplierAccountCode}</bdi> — {invoice.supplierAccountName}
+                </>
+              ) : "غير محدد"}
+            </span>
+          )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
           </span>
