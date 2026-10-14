@@ -116,3 +116,57 @@ export async function memoReport(client:PoolClient,actor:MemoReportActor,filters
    approvedExecution:row.status==="completed" && row.completion_requested_by_user_id!=null,
   };
  });
+ const staff=(await client.query(scoped+`,
+ actors AS (
+   SELECT sender_user_id AS user_id FROM visible
+   UNION SELECT current_user_id FROM visible
+   UNION SELECT recipient_user_id FROM visible
+   UNION SELECT completion_requested_by_user_id FROM visible
+     WHERE completion_requested_by_user_id IS NOT NULL
+   UNION SELECT ev.target_user_id FROM memo_events ev JOIN visible v
+     ON v.company_id=ev.company_id AND v.id=ev.memo_id WHERE ev.target_user_id IS NOT NULL
+ ),
+ epochs AS(
+  SELECT v.id memo_id,
+   CASE WHEN e.kind='created' THEN v.recipient_user_id ELSE e.target_user_id END user_id,
+   CASE WHEN e.kind='completion_requested' THEN 'approval' ELSE 'execution' END role,
+   e.created_at started,
+   LEAD(e.created_at) OVER(PARTITION BY v.id ORDER BY e.created_at,e.id) next_start,
+   v.completed_at
+  FROM visible v JOIN memo_events e ON e.company_id=v.company_id AND e.memo_id=v.id
+  WHERE e.kind IN('created','forwarded','returned','completion_requested','reopened')
+ ),
+ times AS(
+  SELECT user_id,role,
+   SUM(GREATEST(0,EXTRACT(EPOCH FROM
+     (LEAST(COALESCE(next_start,clock_timestamp()),COALESCE(completed_at,clock_timestamp()))-started)))/3600) hours
+  FROM epochs WHERE user_id IS NOT NULL GROUP BY user_id,role
+ )
+ SELECT a.user_id,u.display_name,
+   COUNT(DISTINCT v.id) FILTER(WHERE v.status='pending' AND v.current_user_id=a.user_id)::integer AS required,
+   COUNT(DISTINCT v.id) FILTER(WHERE v.status='awaiting_approval' AND v.sender_user_id=a.user_id)::integer AS approval,
+   COUNT(DISTINCT v.id) FILTER(WHERE v.status='pending' AND v.current_user_id=a.user_id AND v.deferred)::integer AS deferred,
+   COUNT(DISTINCT v.id) FILTER(WHERE v.status='completed' AND v.completion_requested_by_user_id=a.user_id)::integer AS approved_work,
+   COUNT(DISTINCT v.id) FILTER(WHERE v.status='awaiting_approval' AND v.completion_requested_by_user_id=a.user_id)::integer AS requested,
+   MIN(v.current_assigned_at) FILTER(WHERE v.status='pending' AND v.current_user_id=a.user_id) AS oldest,
+   (SELECT count(*) FROM memo_events ev JOIN visible mv ON mv.id=ev.memo_id
+    WHERE ev.company_id=$1 AND ev.kind='reopened' AND ev.target_user_id=a.user_id)::integer AS reopened,
+   COALESCE((SELECT SUM(hours) FROM times WHERE user_id=a.user_id AND role='execution'),0) execution_hours,
+   COALESCE((SELECT SUM(hours) FROM times WHERE user_id=a.user_id AND role='approval'),0) approval_hours
+ FROM actors a JOIN users u ON u.id=a.user_id LEFT JOIN visible v
+ ON v.sender_user_id=a.user_id OR v.current_user_id=a.user_id OR v.recipient_user_id=a.user_id
+ OR v.completion_requested_by_user_id=a.user_id OR EXISTS(
+ SELECT 1 FROM memo_events ev WHERE ev.company_id=v.company_id AND ev.memo_id=v.id
+  AND ev.target_user_id=a.user_id)
+ GROUP BY a.user_id,u.display_name ORDER BY required DESC,u.display_name LIMIT 200`,params)).rows;
+ return {items,total:result.total,page:filters.page,pageSize:filters.pageSize,
+  metrics:{total:result.total,pending:result.pending,awaitingApproval:result.approval,
+    completed:result.completed,deferred:result.deferred_count,
+    averageCompletedHours:result.average_hours===null?null:number(result.average_hours)},
+  employees:staff.map(s=>({
+   userId:s.user_id,name:s.display_name,required:s.required,awaitingApproval:s.approval,
+   deferred:s.deferred,approvedWork:s.approved_work,requestedApproval:s.requested,
+   reopened:s.reopened,oldestRequiredAt:iso(s.oldest),
+   executionHours:number(s.execution_hours),approvalHours:number(s.approval_hours),
+  }))};
+}
