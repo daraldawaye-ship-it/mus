@@ -218,7 +218,6 @@ export interface MemoDetail extends MemoRecord {
   links: MemoLinkedView;
   canManageLinks: boolean;
   optionDefinitions: import("./configuration.ts").OptionDefinition[];
-  searchOptions: import("./configuration.ts").OptionDefinition[];
   optionValues: MemoOptionValue[];
   optionRevision: number;
   optionChanges: MemoOptionChange[];
@@ -235,5 +234,6 @@ export interface MemoDetail extends MemoRecord {
 export type MemoSummary = Omit<MemoRecord, "body"> & {optionValues?:Record<string,boolean|string|null>};
 export interface MemoList extends Page<MemoSummary> {
   optionDefinitions: import("./configuration.ts").OptionDefinition[];
+  searchOptions: import("./configuration.ts").OptionDefinition[];
   canViewAll: boolean;
 }
