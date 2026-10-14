@@ -138,6 +138,7 @@ export async function invoiceDTOs(
     supplierAccountId: row.supplier_account_id ?? null,
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
+    supplierReceiptNumber: row.supplier_receipt_number ?? "",
     description: row.description,
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
@@ -188,7 +189,7 @@ export async function createInvoice(
   input: InvoiceFields,
 ): Promise<Invoice> {
   const replay = await client.query(
-    "SELECT id,(creation_payload=$3::jsonb OR (NOT (creation_payload ? 'supplierAccountId') AND creation_payload=($3::jsonb - 'supplierAccountId') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    "SELECT id, (((creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierReceiptNumber') OR (NOT (creation_payload ? 'supplierAccountId') AND (creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierAccountId' - 'supplierReceiptNumber') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AND COALESCE(creation_payload->>'supplierReceiptNumber','')=COALESCE($3::jsonb->>'supplierReceiptNumber','')) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
     [companyId, input.idempotencyKey, JSON.stringify(input)],
   );
   if (replay.rows[0]) {
@@ -584,7 +585,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) RETURNING id",
     [
       companyId,
       number,
@@ -617,6 +618,7 @@ export async function createInvoice(
       supplier?.id ?? null,
       supplier?.code ?? null,
       supplier?.name ?? null,
+      input.supplierReceiptNumber,
     ],
   );
   const invoiceId = inserted.rows[0].id as number;

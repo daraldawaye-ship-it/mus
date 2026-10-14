@@ -74,6 +74,7 @@ const documentColumns = {
   currencyCode: "COALESCE(d.currency_code,c.code)",
   branchId: "d.branch_id",
   description: "d.description",
+  supplierReceiptNumber: "d.supplier_receipt_number",
   totalDebit: "d.total_debit",
   totalCredit: "d.total_credit",
   createdAt: "d.created_at",
@@ -87,6 +88,7 @@ function fieldsOf(
     currencyId: document.currencyId,
     branchId: document.branchId,
     cashAccountId: document.cashAccountId,
+    supplierReceiptNumber: document.supplierReceiptNumber,
     description: document.description,
     lines: document.lines.map((line) => ({
       accountId: line.accountId,
@@ -107,7 +109,7 @@ async function insertDraft(
   const number = await nextDocumentNumber(client, companyId);
   const total = documentTotals(input.lines);
   const result = await client.query(
-    "INSERT INTO financial_documents(company_id,number,kind,document_date,currency_id,branch_id,cash_account_id,description,total_debit,total_credit,created_by,idempotency_key,creation_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
+    "INSERT INTO financial_documents(company_id,number,kind,document_date,currency_id,branch_id,cash_account_id,description,total_debit,total_credit,created_by,idempotency_key,creation_payload,supplier_receipt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id",
     [
       companyId,
       number,
@@ -122,6 +124,7 @@ async function insertDraft(
       user.id,
       key,
       JSON.stringify(payload),
+      input.supplierReceiptNumber,
     ],
   );
   const documentId = result.rows[0].id as number;
@@ -301,7 +304,7 @@ export function financeRoutes(pool: Pool): Router {
           );
           const params: unknown[] = [companyId, searchPattern(query.q)];
           let where =
-            "d.company_id=$1 AND (d.number ILIKE $2 OR d.description ILIKE $2)";
+            "d.company_id=$1 AND (d.number ILIKE $2 OR d.supplier_receipt_number ILIKE $2 OR d.description ILIKE $2)";
           for (const [field, allowed] of [
             ["kind", documentKinds],
             ["status", documentStatuses],
@@ -439,7 +442,7 @@ export function financeRoutes(pool: Pool): Router {
           await checkDocumentReferences(client, companyId, input);
           const totals = documentTotals(input.lines);
           await client.query(
-            "UPDATE financial_documents SET kind=$1,document_date=$2,currency_id=$3,branch_id=$4,cash_account_id=$5,description=$6,total_debit=$7,total_credit=$8,revision=revision+1 WHERE company_id=$9 AND id=$10",
+            "UPDATE financial_documents SET kind=$1,document_date=$2,currency_id=$3,branch_id=$4,cash_account_id=$5,description=$6,total_debit=$7,total_credit=$8,supplier_receipt_number=$9,revision=revision+1 WHERE company_id=$10 AND id=$11",
             [
               input.kind,
               input.documentDate,
@@ -449,6 +452,7 @@ export function financeRoutes(pool: Pool): Router {
               input.description,
               totals.debit,
               totals.credit,
+              input.supplierReceiptNumber,
               companyId,
               documentId,
             ],
@@ -558,6 +562,7 @@ export function financeRoutes(pool: Pool): Router {
             ...fieldsOf(before),
             kind: "journal",
             cashAccountId: null,
+            supplierReceiptNumber: "",
             documentDate: input.documentDate,
             description: input.reason,
             lines: before.lines.map((line) => ({
