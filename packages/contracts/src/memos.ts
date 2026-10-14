@@ -33,6 +33,14 @@ export interface MemoFollower {
   addedAt: string;
 }
 export interface MemoFollowerRole { id: number; name: string; }
+export interface MemoFollowerChange {
+  id: number;
+  revision: number;
+  actorName: string;
+  createdAt: string;
+  beforeFollowers: MemoFollowerInput[];
+  afterFollowers: MemoFollowerInput[];
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
@@ -142,6 +150,7 @@ export interface MemoDetail extends MemoRecord {
   events: MemoEvent[];
   followers: MemoFollower[];
   followerRevision: number;
+  followerChanges: MemoFollowerChange[];
   canManageFollowers: boolean;
   canComment: boolean;
   canReply: boolean;
