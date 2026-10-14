@@ -17,9 +17,6 @@ export function MemoReportPage({context}:{context:CompanyContext}){
  const get=(key:string)=>params.get(key)??"";
  const page=Math.max(1,Number(get("page"))||1);
  const [lookup,setLookup]=useState("");
- const [employee,setEmployee]=useState<{id:number;name:string}|null>(null);
- const [item,setItem]=useState<{id:number;name:string}|null>(null);
- const [account,setAccount]=useState<{id:number;name:string}|null>(null);
  function change(key:string,value:string){setParams(prev=>{
   const next=new URLSearchParams(prev);
   if(value)next.set(key,value);else next.delete(key);
@@ -37,7 +34,7 @@ export function MemoReportPage({context}:{context:CompanyContext}){
  });
  const staff=useQuery({
   queryKey:["memo-report-employees",user?.id,companyId,lookup],
-  queryFn:({signal})=>api<{items:MemoRecipient[]}>(`/companies/${companyId}/memos/recipients?search=${encodeURIComponent(lookup)}&pageSize=100`,{signal}),
+  queryFn:({signal})=>api<{items:MemoRecipient[]}>(`/companies/${companyId}/memos/recipients?q=${encodeURIComponent(lookup)}&pageSize=100`,{signal}),
   enabled:!!user&&canView,
  });
  const metric=report.data?.metrics;
