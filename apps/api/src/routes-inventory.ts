@@ -438,10 +438,7 @@ export function inventoryRoutes(pool: Pool): Router {
               conflict("الوحدة الثانية غير مفعلة في كرت هذا الصنف");
             if (item.factor3 <= 1 && input.countedUnits.unit3 !== undefined)
               conflict("الوحدة الثالثة غير مفعلة في كرت هذا الصنف");
-            counted =
-              BigInt(input.countedUnits.unit1) * stockUnitMultiplier(item, 1) +
-              BigInt(input.countedUnits.unit2 ?? "0") * stockUnitMultiplier(item, 2) +
-              BigInt(input.countedUnits.unit3 ?? "0") * stockUnitMultiplier(item, 3);
+            counted = countedStockSmallest(input.countedUnits, item);
           } else {
             counted = BigInt(input.countedQuantity!) * multiplier;
           }
