@@ -21,3 +21,13 @@ export function memoFeatureRuleRoutes(pool:Pool){
   assertDirectoryAccess(directory.find(e=>e.key==="company.memo-feature-rules")!,write?"edit":"view");
   return {companyId,user};
  }
+ router.get(base,handler(async(req,res)=>{
+  const result=await transaction(pool,async client=>{
+   const current=await guard(client,req);
+   const rules=(await client.query(
+    "SELECT * FROM memo_feature_rules WHERE company_id=$1 ORDER BY id DESC",
+    [current.companyId])).rows.map(featureRuleDTO);
+   return {rules};
+  });
+  res.json(result);
+ }));
