@@ -701,6 +701,48 @@ export function memoRoutes(pool: Pool) {
     }),
   );
   router.get(
+    base + "/link-records",
+    handler(async (req,res) => {
+      const pageKey=String(req.query.pageKey??"");
+      const resource:Record<string,{table:string;parent:string;title:string}>={
+        "company.invoice":{table:"invoices",parent:"company.sales",title:"فاتورة"},
+        "company.financial-document":{table:"financial_documents",parent:"company.financial-documents",title:"مستند"},
+        "company.item-card":{table:"items",parent:"company.items",title:"صنف"},
+      };
+      const target=resource[pageKey];
+      if(!target) throw new HttpError(400,"invalid_page","اختر صفحة سجل مدعومة");
+      const query=listQuery(req.query,{id:"r.id",code:"r.id",name:"r.id"},"id:desc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key===pageKey)!);
+        assertDirectoryAccess(entries.find(e=>e.key===target.parent)!);
+        const kindFilter=target.table==="invoices"
+          ? (!entries.find(e=>e.key==="company.sales")?.actionAccess.view
+              ? "AND r.kind='purchase'" : !entries.find(e=>e.key==="company.purchases")?.actionAccess.view
+                ? "AND r.kind='sale'" : "")
+          : target.table==="financial_documents"
+          ? "AND r.kind IN ("+["journal","receipt","payment"].filter(kind=>
+              entries.find(e=>e.key==="company."+
+                ({journal:"journals",receipt:"receipts",payment:"payments"} as const)[kind as "journal"|"receipt"|"payment"])?.actionAccess.view)
+              .map(kind=>"'"+kind+"'").join(",") + ")"
+          : "";
+        const condition=`FROM ${target.table} r WHERE r.company_id=$1 AND r.id::text ILIKE $2 ${kindFilter}`;
+        const values=[current.companyId,searchPattern(query.q)];
+        const total=Number((await client.query(`SELECT count(*) ${condition}`,values)).rows[0].count);
+        const rows=(await client.query(
+          `SELECT r.id ${condition} ORDER BY r.id DESC LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset],
+        )).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${target.title} #${r.id}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
     base + "/link-items",
     handler(async (req,res) => {
       const query=listQuery(req.query,{id:"i.id",code:"i.code",name:"i.name"},"name:asc");
