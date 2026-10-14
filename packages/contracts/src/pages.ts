@@ -271,6 +271,15 @@ page(
   { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
 );
 page(
+  "company.memo-report",
+  "تقرير المذكرات",
+  "الشركة",
+  "/companies/:companyId/memo-report",
+  {view:member},
+  "تقارير التكليفات وحركة مسؤوليتها ومدد التنفيذ وانتظار الاعتماد.",
+  {parentKey:"company.memos",type:"report",keywords:["مذكرات","تقارير","تأجيل","مدة","مهام"]},
+);
+page(
   "company.memo-detail",
   "عرض المذكرة",
   "الشركة",

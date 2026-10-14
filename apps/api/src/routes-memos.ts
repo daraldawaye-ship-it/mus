@@ -27,6 +27,7 @@ import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
+import {memoReport,memoReportQuerySchema} from "./services/memo-report.ts";
 import {scheduleDTO,scheduleDetails,addScheduleHistory,
   closeScheduleNotice,cancelScheduleForTransition} from "./services/memo-reminders.ts";
 import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
@@ -598,6 +599,32 @@ export function memoRoutes(pool: Pool) {
       res.json(result);
     }),
   );
+  router.get(base + "/report",handler(async(req,res)=>{
+    const filters=parse(memoReportQuerySchema,req.query);
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current=await scope(client,req);
+      await access(client,req,current,"view",true);
+      const entries=await directoryEntries(client,current.user,current.companyId);
+      assertDirectoryAccess(entries.find(entry=>entry.key==="company.memo-report")!);
+      if(filters.pageKey && !entries.some(entry=>entry.key===filters.pageKey && entry.actionAccess.view))
+        deny("لا تملك صلاحية صفحة المتابعة");
+      if(filters.itemId && !entries.some(entry=>entry.key==="company.items" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الأصناف");
+      if(filters.accountId && !entries.some(entry=>entry.key==="company.accounts" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الحسابات");
+      if(filters.employeeId && !(await client.query(
+        "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+        [current.companyId,filters.employeeId],
+      )).rowCount) throw new HttpError(404,"invalid_employee","الموظف غير موجود في الشركة");
+
+      return memoReport(client,{
+        companyId:current.companyId,userId:current.user.id,
+        employeeId:current.ownId,general:current.context.general,
+      },filters);
+    });
+    res.json(result);
+  }));
   router.get(
     base + "/recipients",
     handler(async (req, res) => {

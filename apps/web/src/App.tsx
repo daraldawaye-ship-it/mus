@@ -124,6 +124,9 @@ const NotificationTemplatesPage = lazy(() =>
 const MemosPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemosPage })),
 );
+const MemoReportPage = lazy(() =>
+  import("./pages/MemoReportPage").then(module=>({default:module.MemoReportPage})),
+);
 const MemoDetailPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
 );
@@ -229,6 +232,7 @@ const companySections = [
   "notifications",
   "notification-templates",
   "memos",
+  "memo-report",
   "memo-detail",
   "attendance",
   "wallet",
@@ -441,6 +445,10 @@ function CompanyContent({
           <MemosPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "memo-report":
+      return <Suspense fallback={<Notice>جارٍ تحميل تقرير المذكرات…</Notice>}>
+        <MemoReportPage key={context.company.id} context={context}/>
+      </Suspense>;
     case "memo-detail":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل المذكرة…</Notice>}>

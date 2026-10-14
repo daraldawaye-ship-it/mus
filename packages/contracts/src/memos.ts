@@ -138,6 +138,42 @@ export interface MemoScheduleHistory {
 export interface MemoReminderSettings {
  defaultTime:string;notifySender:boolean;revision:number;
 }
+export interface MemoReportRow {
+ id:number;
+ title:string;
+ type:MemoType;
+ status:MemoStatus;
+ senderName:string;
+ senderUserId:number;
+ currentName:string;
+ currentUserId:number;
+ currentEmployeeId:number|null;
+ createdAt:string;
+ assignedAt:string;
+ completedAt:string|null;
+ dueAt:string|null;
+ deferred:boolean;
+ ageHours:number;
+ assignmentHours:number;
+ approvalHours:number;
+ executionHours:number;
+ assignmentPeriods:{userId:number;name:string;role:"execution"|"approval";hours:number}[];
+ returnCount:number;
+ approvedExecution:boolean;
+}
+export interface MemoReportEmployee {
+ userId:number;name:string;
+ required:number;awaitingApproval:number;deferred:number;
+ approvedWork:number;requestedApproval:number;reopened:number;
+ oldestRequiredAt:string|null;executionHours:number;approvalHours:number;
+}
+export interface MemoReportResult {
+ items:MemoReportRow[];
+ total:number;
+ page:number;pageSize:number;
+ metrics:{pending:number;awaitingApproval:number;completed:number;deferred:number;averageCompletedHours:number|null;total:number};
+ employees:MemoReportEmployee[];
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
