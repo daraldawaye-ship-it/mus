@@ -1765,6 +1765,11 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {memoImpact.data?.matches.filter(rule=>rule.effect==="warn").map(rule=>
+          <Notice key={rule.ruleId} tone="warning">
+            {rule.message} ({rule.count} تكليفات).
+            {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
+          </Notice>)}
         {savedInvoice && (
           <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
