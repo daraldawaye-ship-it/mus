@@ -355,6 +355,8 @@ export function notificationRoutes(pool: Pool) {
               [input.importance, row.id],
             );
           } else if (input.action === "assign") {
+            if (row.code === "MEMO_RECEIVED")
+              deny("لا يمكن إسناد تنبيه مذكرة إلى موظف آخر");
             if (!before.canAssign || !row.company_id || !context?.general)
               deny("إسناد المتابعة للمدير داخل الشركة");
             if (input.repeatInterval !== "none" && !before.canRepeat)

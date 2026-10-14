@@ -121,6 +121,12 @@ const NotificationTemplatesPage = lazy(() =>
     default: module.NotificationTemplatesPage,
   })),
 );
+const MemosPage = lazy(() =>
+  import("./pages/MemosPage").then((module) => ({ default: module.MemosPage })),
+);
+const MemoDetailPage = lazy(() =>
+  import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
+);
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -222,6 +228,8 @@ const InvoicePage = lazy(() =>
 const companySections = [
   "notifications",
   "notification-templates",
+  "memos",
+  "memo-detail",
   "attendance",
   "wallet",
   "reward-tasks",
@@ -298,6 +306,7 @@ function Navigation({
     "company.wallet-conversions": <Wallet size={17} />,
     "company.notifications": <Bell size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
+    "company.memos": <FileText size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.items": <Package size={17} />,
@@ -407,7 +416,7 @@ function CompanyView({
       </Card>
     );
   if (!context) return <Notice tone="error">تعذر العثور على الشركة.</Notice>;
-  const pageKey = pageKeyForLocation(location.pathname, location.search);
+  const pageKey = section === "memo-detail" ? "company.memo-detail" : pageKeyForLocation(location.pathname, location.search);
   return (
     <PageRouteGuard
       key={`${user?.id}:${context.company.id}:${pageKey}`}
@@ -426,6 +435,18 @@ function CompanyContent({
   section: CompanySection;
 }) {
   switch (section) {
+    case "memos":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل المذكرات…</Notice>}>
+          <MemosPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "memo-detail":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل المذكرة…</Notice>}>
+          <MemoDetailPage key={context.company.id} context={context} />
+        </Suspense>
+      );
     case "notifications":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل التنبيهات…</Notice>}>
@@ -959,7 +980,7 @@ function Workspace() {
               {companySections.map((section) => (
                 <Route
                   key={section}
-                  path={`/companies/:companyId${section === "overview" ? "" : section === "financial-document" ? "/financial-documents/:documentId" : section === "item" ? "/items/:itemId" : section === "invoice" ? "/invoices/:invoiceId" : `/${section}`}`}
+                  path={`/companies/:companyId${section === "overview" ? "" : section === "memo-detail" ? "/memos/:memoId" : section === "financial-document" ? "/financial-documents/:documentId" : section === "item" ? "/items/:itemId" : section === "invoice" ? "/invoices/:invoiceId" : `/${section}`}`}
                   element={
                     <Protected>
                       <CompanyView

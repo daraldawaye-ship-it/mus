@@ -2706,3 +2706,17 @@ ul {
 .image-upload-preview{width:60px;height:60px;object-fit:cover;border:1px solid var(--border);border-radius:8px}
 .image-upload-error{color:var(--error-text)}
 .item-list-thumbnail{display:block;width:32px;height:32px;object-fit:cover;border-radius:5px}
+
+.memo-textarea {
+  height: auto;
+  min-height: 130px;
+  padding-block: 8px;
+}
+.memo-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.memo-event {
+  display: contents;
+}

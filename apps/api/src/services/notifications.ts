@@ -56,7 +56,8 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
  OR (COALESCE(s.notify_subject,true) AND n.subject_employee_id=$3::integer)
  OR $3::integer=ANY(COALESCE(s.employee_ids,'{}'::integer[]))
  OR EXISTS(SELECT 1 FROM employee_role_assignments a JOIN company_roles r ON r.company_id=a.company_id AND r.id=a.role_id AND r.active
- WHERE a.company_id=n.company_id AND a.employee_id=$3 AND a.active AND a.role_id=ANY(COALESCE(s.role_ids,'{}'::integer[]))))`;
+ WHERE a.company_id=n.company_id AND a.employee_id=$3 AND a.active AND a.role_id=ANY(COALESCE(s.role_ids,'{}'::integer[]))))
+ AND (n.code<>'MEMO_RECEIVED' OR n.subject_employee_id=$3::integer OR $4::boolean)`;
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
@@ -78,7 +79,7 @@ export const notificationDTO = (
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
-  canAssign: !r.completed_at && general && r.company_id !== null,
+  canAssign: !r.completed_at && general && r.company_id !== null && r.code !== "MEMO_RECEIVED",
   href: r.href ?? null,
 });
 export async function nextReminder(
@@ -115,6 +116,10 @@ export async function emitNotification(
     eventKey: string;
     message: string;
     href?: string | null;
+    title?: string;
+    // Individually addressed records must never go to configured followers
+    // who may have no permission to read the underlying record.
+    explicitSubjectOnly?: boolean;
   },
 ) {
   const template = await effectiveTemplate(client, input.companyId, input.code);
@@ -131,7 +136,15 @@ export async function emitNotification(
       ).rowCount
     )
       throw new Error("Invalid notification subject");
-    recipients = (
+    recipients = input.explicitSubjectOnly
+      ? (
+          await client.query(
+            `SELECT u.id FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
+             WHERE e.company_id=$1 AND e.id=$2 AND e.active`,
+            [input.companyId, input.subjectEmployeeId ?? null],
+          )
+        ).rows.map((r) => r.id)
+      : (
       await client.query(
         `SELECT DISTINCT u.id FROM users u LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
    WHERE NOT u.archived AND (($2::boolean AND (u.owner OR e.is_general_manager)) OR ($3::boolean AND e.id=$4) OR e.id=ANY($5::integer[])
@@ -168,8 +181,8 @@ export async function emitNotification(
   for (const userId of recipients) {
     const created = (
       await client.query(
-        `INSERT INTO notifications(company_id,code,recipient_user_id,subject_employee_id,subject_key,event_key,title,message,importance,href,repeat_interval,next_reminder_at,created_at)
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING RETURNING *`,
+        `INSERT INTO notifications(company_id,code,recipient_user_id,subject_employee_id,subject_key,event_key,title,message,importance,href,repeat_interval,next_reminder_at,created_at,assigned)
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING RETURNING *`,
         [
           input.companyId,
           input.code,
@@ -177,13 +190,14 @@ export async function emitNotification(
           input.subjectEmployeeId ?? null,
           input.subjectKey,
           input.eventKey,
-          template.name,
+          input.title ?? template.name,
           input.message,
           template.importance,
           input.href ?? null,
           template.allowRepeat ? template.repeatInterval : "none",
           next,
           now,
+          input.explicitSubjectOnly ?? false,
         ],
       )
     ).rows[0];

@@ -47,7 +47,7 @@ export interface PageDefinition {
   critical: boolean;
   actions: Partial<Record<PageAction, PageRule>>;
   parentKey?: string;
-  record?: "item" | "invoice" | "financial-document";
+  record?: "item" | "invoice" | "financial-document" | "memo";
 }
 const rule = (role: PageRule["role"], label: string): PageRule => ({
   role,
@@ -260,6 +260,24 @@ page(
   "/companies/:companyId/notification-templates",
   { view: general, edit: general },
   "إعداد أنواع التنبيهات الآلية والأهمية والأدوار والمتابعين والتكرار.",
+);
+page(
+  "company.memos",
+  "المذكرات",
+  "الشركة",
+  "/companies/:companyId/memos",
+  { view: member, create: member },
+  "المذكرات المرسلة إليك والصادرة منك؛ تعرض الإدارة جميع مذكرات الشركة.",
+  { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
+);
+page(
+  "company.memo-detail",
+  "عرض المذكرة",
+  "الشركة",
+  "/companies/:companyId/memos/:recordId",
+  { view: member },
+  "عرض المذكرة وسجل قراءتها؛ فتح المذكرة لا ينجزها.",
+  { parentKey: "company.memos", record: "memo", navigation: false },
 );
 page(
   "company.wallet",

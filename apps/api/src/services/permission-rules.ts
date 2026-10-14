@@ -32,6 +32,7 @@ export function pagePermissionAliases(
     pages.push("company.financial-documents");
   if (page === "company.sale-new") pages.push("company.sales");
   if (page === "company.purchase-new") pages.push("company.purchases");
+  if (page === "company.memo-detail") pages.push("company.memos");
   return [
     ...new Set(
       pages
@@ -83,6 +84,7 @@ export async function requestPermissionTargets(
     "wallet-settings": "company.wallet-settings",
     "wallet-conversions": "company.wallet-conversions",
     notifications: "company.notifications",
+    memos: "company.memos",
     "notification-templates": "company.notification-templates",
     users: "company.employees",
     "item-agents": "company.item-agents",
@@ -103,6 +105,16 @@ export async function requestPermissionTargets(
     "inventory-options": "company.stock-operations",
   };
   if (resource === "notifications" && verb === "POST") action = "edit";
+  if (resource === "memos") {
+    const picker = detail === "recipients";
+    const memoDetail = !!detail && /^[1-9]\d*$/.test(detail);
+    return [
+      pagePermissionAliases(memoDetail ? "company.memo-detail" : "company.memos", "view"),
+      ...((picker || (verb === "POST" && !detail))
+        ? [pagePermissionAliases("company.memos", "create")]
+        : []),
+    ];
+  }
   if (resource === "wallet" && detail === "reversals" && verb === "POST")
     action = "reverse";
   if (resource === "wallet-conversions" && verb === "POST") {
