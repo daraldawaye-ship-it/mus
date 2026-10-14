@@ -7,6 +7,7 @@ import {
   memoFollowersUpdateSchema,
   memoFollowerCommentSchema,
   type MemoFollower,
+  type MemoFollowerChange,
   type MemoFollowerInput,
   type MemoDetail,
   type MemoRecord,
@@ -157,7 +158,16 @@ async function detail(
     addedBy: f.added_by,
     addedAt: f.added_at.toISOString(),
   }));
-  const followRevision = (await client.query(
+  const followerChanges: MemoFollowerChange[] = (await client.query(
+    "SELECT id,revision,actor_name,created_at,before_value,after_value FROM memo_follow_changes WHERE company_id=$1 AND memo_id=$2 ORDER BY revision,id",
+    [current.companyId,memoId],
+  )).rows.map(row => ({
+    id:row.id, revision:row.revision, actorName:row.actor_name,
+    createdAt:row.created_at.toISOString(),
+    beforeFollowers:row.before_value,
+    afterFollowers:row.after_value,
+  }));
+    const followRevision = (await client.query(
     "SELECT revision FROM memo_follow_versions WHERE company_id=$1 AND memo_id=$2",
     [current.companyId,memoId],
   )).rows[0]?.revision ?? 1;
@@ -205,6 +215,7 @@ async function detail(
     events,
     followers,
     followerRevision: followRevision,
+    followerChanges,
     canManageFollowers: row.status !== "completed" &&
       (row.sender_user_id === current.user.id || current.context.general) &&
       entry.enabled && entry.actionAccess.edit,
@@ -637,6 +648,7 @@ export function memoRoutes(pool: Pool) {
           canComment: _comment,
           followers: _followers,
           followerRevision: _followerRevision,
+          followerChanges: _followerChanges,
           ...snapshot
         } = saved;
         await audit(
