@@ -280,6 +280,15 @@ page(
   {parentKey:"company.memos",type:"report",keywords:["مذكرات","تقارير","تأجيل","مدة","مهام"]},
 );
 page(
+  "company.memo-feature-rules",
+  "قواعد ميزات المذكرات",
+  "الشركة",
+  "/companies/:companyId/memo-feature-rules",
+  {view:general,edit:general},
+  "قواعد مراقبة التكليفات المعلقة وتنبيه الموظفين حسب العدد والمدة والأدوار.",
+  {parentKey:"company.memos",keywords:["قواعد","تكليفات","مراقبة","تنبيه"]},
+);
+page(
   "company.memo-detail",
   "عرض المذكرة",
   "الشركة",
