@@ -134,7 +134,6 @@ export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
    if(!["company.memos","company.memo-detail","company.notifications"]
      .every(k=>pages.find(e=>e.key===k)?.actionAccess.view))continue;
   }catch{continue;}
-  const template=await effectiveTemplate(client,companyId,"MEMO_DUE");
   if(!template?.enabled)continue;
   await closeScheduleNotice(client,companyId,row.memo_id,null,"new-due-reminder");
   await emitNotification(client,{
