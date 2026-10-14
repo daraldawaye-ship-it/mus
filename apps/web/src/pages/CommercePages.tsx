@@ -940,13 +940,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
+  // Sales start from the employee's cashbox. Purchases intentionally require
+  // choosing the settlement/liability account on every new invoice.
   useEffect(() => {
     if (
-      !defaultCashbox || accountManuallyChosen.current ||
+      kind !== "sale" || !defaultCashbox || accountManuallyChosen.current ||
       account || original || hasLinkedLines
     ) return;
     setAccount(defaultCashbox);
-  }, [defaultCashbox, account, original, hasLinkedLines]);
+  }, [kind, defaultCashbox, account, original, hasLinkedLines]);
   const hasPositiveLines = selectedLines.some(
     (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
   );
@@ -1387,7 +1389,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const first = emptyLine();
     pending.current = null;
     setLines([first]);
-    setAccount(defaultCashbox);
+    setAccount(kind === "sale" ? defaultCashbox : null);
     setSupplier(null);
     accountManuallyChosen.current = false;
     setOriginal(null);
@@ -1467,7 +1469,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       const next = emptyLine();
       pending.current = null;
       setLines([next]);
-      setAccount(defaultCashbox);
+      setAccount(kind === "sale" ? defaultCashbox : null);
       setSupplier(null);
       accountManuallyChosen.current = false;
       setOriginal(null);
