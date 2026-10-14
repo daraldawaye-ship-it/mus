@@ -2016,7 +2016,9 @@ ul {
   min-width: 640px;
 }
 .commerce-matrix-purchase {
-  min-width: 650px;
+  /* Give the expiry date enough space without enlarging the whole row.
+     On narrower screens the matrix scrolls instead of clipping dates. */
+  min-width: 780px;
 }
 .commerce-matrix-sale {
   min-width: 700px;
@@ -2039,6 +2041,19 @@ ul {
 }
 .commerce-col-expiry {
   width: 110px;
+}
+/* Purchase invoice: larger expiry input, smaller item-name column. */
+.commerce-matrix-purchase .commerce-col-item { width: 28%; }
+.commerce-matrix-purchase .commerce-col-unit { width: 11%; }
+.commerce-matrix-purchase .commerce-col-quantity { width: 9%; }
+.commerce-matrix-purchase .commerce-col-price { width: 12%; }
+.commerce-matrix-purchase .commerce-col-expiry { width: 23%; }
+.commerce-matrix-purchase .commerce-col-total { width: 11%; }
+.commerce-matrix-purchase .commerce-col-delete { width: 6%; }
+.commerce-matrix-purchase input[type="date"] {
+  direction: ltr;
+  font-size: 13px;
+  padding-inline: 2px;
 }
 .commerce-col-total {
   width: 85px;
