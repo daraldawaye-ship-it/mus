@@ -1505,6 +1505,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
+      setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
       setUnknown(uncertain);
       if (!uncertain) pending.current = null;
       setError(
