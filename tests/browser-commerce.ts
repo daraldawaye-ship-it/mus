@@ -497,6 +497,16 @@ try {
       async () => {
         await page.goto(base + "/invoices/new?kind=purchase");
         await page.locator("form.commerce-editor").waitFor();
+        // The expiry column must not absorb the leftover space from the item
+        // name. Check actual rendered table widths, not only the input width.
+        const widths = await page.locator(".commerce-matrix-purchase thead th")
+          .evaluateAll((columns) => columns.map((cell) =>
+            cell.getBoundingClientRect().width,
+          ));
+        assert(widths[4]! >= 125 && widths[4]! <= 175,
+          "Purchase expiry date column must be compact: " + widths[4]);
+        assert(widths[0]! > widths[4]!,
+          "The item-name column must be wider than expiry: " + JSON.stringify(widths));
         assert.equal(
           await page.locator('[id^="invoice-item-search-"]').first()
             .evaluate((input) => input === document.activeElement),
