@@ -28,6 +28,7 @@ import {
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { awardPostedInvoice } from "./invoice-rewards.ts";
+import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -195,6 +196,13 @@ export async function createInvoice(
       conflict("مفتاح الفاتورة مستخدم لبيانات مختلفة؛ أعد إرسال الطلب الأصلي");
     return loadInvoice(client, companyId, replay.rows[0].id);
   }
+  const activeMemoRules=await matchingMemoFeatureRules(client,companyId,user.id,
+    input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+  for(const matched of activeMemoRules)
+    await audit(client,user,"memo.feature-trigger","memo-feature-rule",matched.ruleId,
+      null,{actionCode:input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create",
+      effect:matched.effect,matchedCount:matched.count,
+      relatedMemos:matched.memoIds,invoiceIdempotencyKey:input.idempotencyKey},companyId);
   const settings = await requireInventorySettings(client, companyId);
   const location = await checkStockLocation(
     client,
