@@ -344,7 +344,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
       header: "الحالة",
       size: 130,
       enableSorting: false,
-      cell: ({ row }) => row.original.schedule?.active
+      cell: ({ row }) => row.original.schedule?.active && !row.original.schedule.returned
        ? `${memoStatusLabels[row.original.status]} — مؤجلة`
        : memoStatusLabels[row.original.status],
     },
