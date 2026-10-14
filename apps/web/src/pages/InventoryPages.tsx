@@ -14,6 +14,7 @@ import {
   inventorySettingsSchema,
   stockAdjustmentSchema,
   stockMovementKinds,
+  countedStockSmallest,
   stockMovementKindLabels,
   stockTransferSchema,
   type InventorySettings,
