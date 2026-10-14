@@ -1221,11 +1221,22 @@ function OperationEditor({
   }
   return (
     <>
-      <PageHeader
-        title="المناقلات والجرد"
-        description="تُرحّل المناقلة أو تسوية الجرد كاملة بعد تأكيد الخادم."
+      {onClose && <div className="inventory-sheet-backdrop" onClick={closeSheet} aria-hidden="true" />}
+      <section className={onClose ? "inventory-sheet-panel" : undefined}
+        role={onClose ? "dialog" : undefined} aria-modal={onClose ? true : undefined}
+        aria-label={onClose ? `جرد الصنف ${preselectedItem?.name ?? ""}` : undefined}>
+      {onClose ? (
+        <div className="inventory-sheet-header">
+          <strong>جرد وتسوية الصنف: {preselectedItem?.name}</strong>
+          <Button variant="secondary" disabled={saving || unknown} onClick={closeSheet}>إغلاق</Button>
+        </div>
+      ) : <PageHeader
+        title={mode === "adjustment" ? "تسوية الأصناف" : "المناقلات"}
+        description={mode === "adjustment"
+          ? "جرد الصنف بجميع وحداته مع حفظ أقرب تاريخ انتهاء في كرت الصنف."
+          : "ترحيل مناقلة المخزون بين موقعين."}
         actions={<InventoryLinks companyId={companyId} />}
-      />
+      />}
       {error && <Notice tone="error">{error}</Notice>}
       {unknown && (
         <Notice tone="warning">
@@ -1288,7 +1299,7 @@ function OperationEditor({
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات العملية">
           <div className="form-grid">
-            <Select
+            {!lockedMode && <Select
               label="نوع العملية"
               value={mode}
               disabled={saving || unknown || !!result}
@@ -1299,7 +1310,7 @@ function OperationEditor({
             >
               <option value="transfer">مناقلة بين موقعين</option>
               <option value="adjustment">جرد وتسوية رصيد دفعة</option>
-            </Select>
+            </Select>}
             <Field
               label="تاريخ المستند"
               type="date"
@@ -1313,7 +1324,7 @@ function OperationEditor({
               type="items"
               label="الصنف"
               value={item}
-              disabled={disabled}
+              disabled={disabled || !!preselectedItem}
               nullable={false}
               onChange={selectItem}
             />
@@ -1343,7 +1354,7 @@ function OperationEditor({
                 }}
               />
             )}
-            <Select
+            {mode === "transfer" && <Select
               label="الوحدة"
               value={fields.unit}
               disabled={disabled || !item}
@@ -1358,7 +1369,7 @@ function OperationEditor({
               {item && item.factor3 > 1 && (
                 <option value={3}>{item.unit3Name}</option>
               )}
-            </Select>
+            </Select>}
             {mode === "transfer" ? (
               <Field
                 label="كمية المناقلة"
@@ -1372,19 +1383,27 @@ function OperationEditor({
                 onChange={(event) => edit("quantity", event.target.value)}
               />
             ) : (
-              <Field
-                label="الكمية الفعلية بعد الجرد"
-                inputMode="numeric"
-                dir="ltr"
-                required
-                value={fields.countedQuantity}
-                maxLength={22}
-                disabled={disabled}
-                hint="رصيد الدفعة الكامل بالوحدة المختارة؛ الصفر مسموح"
-                onChange={(event) =>
-                  edit("countedQuantity", event.target.value)
-                }
-              />
+              <>
+                <Field label={`الكمية المعدودة — ${item?.unit1Name || "الوحدة الأولى"}`}
+                  inputMode="numeric" dir="ltr" required maxLength={22}
+                  value={fields.countUnit1} disabled={disabled}
+                  onChange={(event) => edit("countUnit1", event.target.value)}
+                  hint="عدد الوحدات الأولى الكاملة" />
+                {item && item.factor2 > 1 && (
+                  <Field label={`الكمية المعدودة — ${item.unit2Name}`}
+                    inputMode="numeric" dir="ltr" required maxLength={22}
+                    value={fields.countUnit2} disabled={disabled}
+                    onChange={(event) => edit("countUnit2", event.target.value)}
+                    hint="عدد الوحدات الثانية الإضافية" />
+                )}
+                {item && item.factor3 > 1 && (
+                  <Field label={`الكمية المعدودة — ${item.unit3Name}`}
+                    inputMode="numeric" dir="ltr" required maxLength={22}
+                    value={fields.countUnit3} disabled={disabled}
+                    onChange={(event) => edit("countUnit3", event.target.value)}
+                    hint="عدد الوحدات الثالثة الإضافية" />
+                )}
+              </>
             )}
             {item?.hasExpiry && (
               <Field
@@ -1396,9 +1415,19 @@ function OperationEditor({
                 onChange={(event) => edit("expiryDate", event.target.value)}
               />
             )}
+            {mode === "adjustment" && item?.hasExpiry && (
+              <Field
+                label="أقرب تاريخ انتهاء في كرت الصنف"
+                type="date"
+                value={fields.nearestExpiryDate}
+                disabled={disabled}
+                onChange={(event) => edit("nearestExpiryDate", event.target.value)}
+                hint="معلومة كرت الصنف؛ لا تغيّر تاريخ انتهاء دفعة المخزون."
+              />
+            )}
             {mode === "adjustment" && (
               <Field
-                label="تكلفة الوحدة بالعملة الأساسية"
+                label="تكلفة الوحدة الأولى بالعملة الأساسية"
                 inputMode="decimal"
                 dir="ltr"
                 required
@@ -1492,6 +1521,7 @@ function OperationEditor({
         </Card>
       </form>
       {navigation}
+      </section>
     </>
   );
 }
