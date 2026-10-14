@@ -3132,3 +3132,23 @@ test("memo feature block rejects new invoice but allows exact saved retry and di
   message:"يرجى معالجة المذكرة قبل حفظ الفاتورة"};
  const rule=(await ownerUser.client.ok<{rule:{id:number;revision:number}}>(
   "POST",base+"/memo-feature-rules",config,201)).rule;
+ const currencies=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/currencies")).items;
+ const currency=currencies.find(r=>r.code==="YER")!;
+ const branches=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/branches")).items;
+ const branch=branches.find(r=>r.code==="HQ")!;
+ const locations=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+`/locations?branchId=${branch.id}`)).items;
+ const location=locations.find(r=>r.code==="SHOWROOM")!;
+ const accounts=(await ownerUser.client.ok<Page<{id:number;category:string;kind:string}>>(
+  "GET",base+"/accounts?pageSize=100")).items;
+ const excluded=new Set((await f.pool.query<{id:number}>(
+  "SELECT inventory_account_id AS id FROM inventory_settings WHERE company_id=$1 UNION SELECT sales_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT cogs_account_id FROM inventory_settings WHERE company_id=$1",
+  [co.id])).rows.map(r=>r.id));
+ const account=accounts.find(r=>r.category==="asset"&&r.kind==="posting"&&!excluded.has(r.id))!;
+ assert.ok(account);
+ const item=(await ownerUser.client.ok<{item:{id:number}}>("POST",base+"/items",{
+  idempotencyKey:randomUUID(),name:"Task restricted item",currencyId:currency.id,
+  unit1Name:"وحدة",salePrice1:"30",purchasePrice:"15",hasExpiry:false,
+ },201)).item;
