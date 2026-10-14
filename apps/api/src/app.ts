@@ -12,6 +12,7 @@ import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
 import { walletRoutes } from "./routes-wallet.ts";
 import { notificationRoutes } from "./routes-notifications.ts";
+import { memoRoutes } from "./routes-memos.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
 import { accountRoutes } from "./routes-accounts.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
@@ -74,6 +75,7 @@ export async function createApp(options: AppOptions = {}) {
     companyRoutes(pool),
     attendanceRoutes(pool),
     notificationRoutes(pool),
+    memoRoutes(pool),
     walletRoutes(pool),
     configurationRoutes(pool),
     configurationAdministrationRoutes(pool),

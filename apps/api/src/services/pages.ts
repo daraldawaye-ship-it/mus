@@ -191,12 +191,20 @@ export async function resolvePage(
       item: "items",
       invoice: "invoices",
       "financial-document": "financial_documents",
+      memo: "memos",
     }[definition.record];
     const record = await db.query(
-      `SELECT id${definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
+      `SELECT id${definition.record === "memo" ? ",sender_user_id,recipient_employee_id,recipient_user_id" : definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
       [reference.companyId, reference.recordId],
     );
     if (!record.rows[0]) missing();
+    if (definition.record === "memo") {
+      const context = await companyAccess(db, user, reference.companyId!);
+      const memo = record.rows[0];
+      if (!context.general && memo.sender_user_id !== user.id &&
+          !(memo.recipient_user_id === user.id && memo.recipient_employee_id === context.employee?.id))
+        missing();
+    }
     if (definition.record === "invoice")
       assertDirectoryAccess(
         entries.find(
@@ -263,6 +271,7 @@ export async function requestPageKeys(
     "wallet-settings": "wallet-settings",
     "wallet-conversions": "wallet-conversions",
     notifications: "notifications",
+    memos: "memos",
     "notification-templates": "notification-templates",
     users: "employees",
     accounts: "accounts",
@@ -289,6 +298,8 @@ export async function requestPageKeys(
     "financial-options": "financial-documents",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (resource === "memos" && /^memos\/[1-9]\d*(?:\/read)?$/.test(rest))
+    keys.push("company.memo-detail");
   if (resource === "configuration" && rest.split("/")[1] === "record-options") {
     if (req.query.recordKind === "item")
       keys.push("company.items", "company.item-card");
@@ -382,7 +393,7 @@ export async function assertRequestPagesEnabled(
   // a changed payload can only fail with conflict, never create a new record.
   const path = req.originalUrl.split("?")[0]!.replace(/^\/api/, "");
   const creation = path.match(
-    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals|wallet-conversions)$/,
+    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals|wallet-conversions|memos)$/,
   );
   const requestKey: unknown = req.body?.idempotencyKey;
   if (
@@ -402,6 +413,7 @@ export async function assertRequestPagesEnabled(
       "wallet/awards": "employee_wallet_entries",
       "wallet/reversals": "employee_wallet_entries",
       "wallet-conversions": "wallet_conversions",
+      memos: "memos",
     };
     const existing = await db.query(
       `SELECT 1 FROM ${tables[creation[1]!]} WHERE company_id=$1 AND idempotency_key=$2`,

@@ -151,6 +151,8 @@ export const auditActionLabels = {
   "notification.assign": "إسناد متابعة تنبيه",
   "notification.remind": "تكرار تنبيه",
   "notification.settings": "إعداد نوع تنبيه",
+  "memo.create": "إنشاء مذكرة",
+  "memo.read": "قراءة مذكرة",
   "wallet.award": "إضافة نقاط إدارية",
   "wallet.auto-award": "احتساب مكافأة آلية",
   "wallet.reverse": "تصحيح حركة نقاط",
@@ -275,6 +277,7 @@ export const companyAuditActions: AuditAction[] = [
   "audit.view",
 ];
 export const auditTargetLabels: Record<string, string> = {
+  memo: "مذكرة",
   user: "مستخدم",
   company: "شركة",
   employee: "موظف",
@@ -537,5 +540,6 @@ export * from "./pages.ts";
 export * from "./configuration.ts";
 export * from "./attendance.ts";
 export * from "./notifications.ts";
+export * from "./memos.ts";
 
 export * from "./wallet.ts";
