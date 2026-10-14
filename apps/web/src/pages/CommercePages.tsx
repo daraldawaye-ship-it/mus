@@ -845,6 +845,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const kind: InvoiceKind =
     params.get("kind") === "purchase" ? "purchase" : "sale";
   const guard = useScopeGuard(`company:${companyId}:invoice-editor:${kind}`);
+  const memoImpact=useQuery({
+    queryKey:["memo-feature-impact",user?.id,companyId,kind],
+    queryFn:({signal})=>api<{matches:{
+      ruleId:number;ruleName:string;effect:"monitor"|"warn"|"block";
+      message:string;count:number;memoIds:number[];
+    }[]}>(`/companies/${companyId}/memo-feature-impact?kind=${kind}`,{signal}),
+    enabled:!!user,refetchInterval:60000,
+  });
+
   const invalidate = useCommerceChanges(companyId);
   const [documentDate, setDocumentDate] = useState(today);
   const [currency, setCurrency] = useState<CompanyCurrency | null>(null);
