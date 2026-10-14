@@ -554,6 +554,7 @@ export function memoRoutes(pool: Pool) {
                 .map(o=>[o.key,o.value])),
             })),
             optionDefinitions:listDefinitions,
+            searchOptions:optionDefs.filter(d=>d.active && d.searchable),
             total,
             page: query.page,
             pageSize: query.pageSize,
