@@ -3078,7 +3078,7 @@ test("memo feature rules target current executor and preview scoped warnings",as
  const worker=await register(f,"memo-rule-employee@example.test");
  const outsider=await register(f,"memo-rule-outsider@example.test");
  const employeeCard=await employee(platform.client,co.id,worker.user.id,["commerce.view"]);
- await employee(platform.client,co.id,outsider.user.id);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
  const base=`/companies/${co.id}`;
  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
   "POST",base+"/memos",{
