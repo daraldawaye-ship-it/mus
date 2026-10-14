@@ -51,17 +51,22 @@ const documentFields = z
     description: z.string().trim().max(1000).default(""),
     lines: z.array(financialLineSchema).min(2).max(100),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.kind !== "payment" && value.supplierReceiptNumber)
-      context.addIssue({ code: "custom", path: ["supplierReceiptNumber"], message: "رقم وصل المورد مخصص لسندات الصرف فقط" });
-  });
+  .strict();
+const validateSupplierReceipt = (
+  value: { kind: FinancialDocumentKind; supplierReceiptNumber: string },
+  context: z.RefinementCtx,
+) => {
+  if (value.kind !== "payment" && value.supplierReceiptNumber)
+    context.addIssue({ code: "custom", path: ["supplierReceiptNumber"], message: "رقم وصل المورد مخصص لسندات الصرف فقط" });
+};
 export const financialDocumentSchema = documentFields
   .extend({ idempotencyKey: z.uuid() })
-  .strict();
+  .strict()
+  .superRefine(validateSupplierReceipt);
 export const financialDocumentPatchSchema = documentFields
   .extend({ revision: z.number().int().positive().max(2_147_483_647) })
-  .strict();
+  .strict()
+  .superRefine(validateSupplierReceipt);
 export const financialPostSchema = z
   .object({ revision: z.number().int().positive().max(2_147_483_647) })
   .strict();
