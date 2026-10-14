@@ -950,6 +950,10 @@ interface OperationFields {
   documentDate: string;
   quantity: string;
   countedQuantity: string;
+  countUnit1: string;
+  countUnit2: string;
+  countUnit3: string;
+  nearestExpiryDate: string;
   unit: 1 | 2 | 3;
   expiryDate: string;
   unitCostBase: string;
@@ -959,37 +963,66 @@ const initialOperationFields = (): OperationFields => ({
   documentDate: today(),
   quantity: "1",
   countedQuantity: "0",
+  countUnit1: "0",
+  countUnit2: "0",
+  countUnit3: "0",
+  nearestExpiryDate: "",
   unit: 1,
   expiryDate: "",
   unitCostBase: "0",
   description: "",
 });
 
-export function InventoryOperationsPage({
-  context,
-}: {
-  context: CompanyContext;
-}) {
+export function InventoryOperationsPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   if (!inventoryAccess(context, "post"))
-    return (
-      <Notice tone="warning">ليس لديك صلاحية ترحيل عمليات المخزون.</Notice>
-    );
-  return (
-    <OperationEditor
-      key={`${user?.id}:${context.company.id}`}
-      context={context}
-    />
-  );
+    return <Notice tone="warning">ليس لديك صلاحية ترحيل المناقلات.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:transfer`}
+    context={context} initialMode="transfer" lockedMode />;
 }
-function OperationEditor({ context }: { context: CompanyContext }) {
+export function InventoryAdjustmentsPage({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
+  if (!adjustmentAccess(context))
+    return <Notice tone="warning">تسوية الأصناف تحتاج صلاحية ترحيل المخزون والترحيل المالي.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:adjustment`}
+    context={context} initialMode="adjustment" lockedMode />;
+}
+export function InventoryAdjustmentSheet({
+  context, item, onClose, onSaved,
+}: {
+  context: CompanyContext;
+  item: Item;
+  onClose: () => void;
+  onSaved?: (nearestExpiryDate: string | null) => void;
+}) {
+  const { user } = useSession();
+  if (!adjustmentAccess(context))
+    return <Notice tone="warning">ليس لديك صلاحية تسوية الصنف.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:adjust:${item.id}`}
+    context={context} initialMode="adjustment" lockedMode preselectedItem={item}
+    onClose={onClose} onSaved={onSaved} />;
+}
+function OperationEditor({
+  context, initialMode = "transfer", lockedMode = false,
+  preselectedItem = null, onClose, onSaved,
+}: {
+  context: CompanyContext;
+  initialMode?: OperationMode;
+  lockedMode?: boolean;
+  preselectedItem?: Item | null;
+  onClose?: () => void;
+  onSaved?: (nearestExpiryDate: string | null) => void;
+}) {
   const companyId = context.company.id;
   const { user } = useSession();
   const guard = useScopeGuard(`company:${companyId}:stock-operation`);
   const changed = useInventoryChanges(companyId);
-  const [mode, setMode] = useState<OperationMode>("transfer");
-  const [fields, setFields] = useState(initialOperationFields);
-  const [item, setItem] = useState<Item | null>(null);
+  const [mode, setMode] = useState<OperationMode>(initialMode);
+  const [fields, setFields] = useState(() => ({
+    ...initialOperationFields(),
+    nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "",
+  }));
+  const [item, setItem] = useState<Item | null>(preselectedItem);
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [createKey, setCreateKey] = useState(() => crypto.randomUUID());
@@ -1059,21 +1092,32 @@ function OperationEditor({ context }: { context: CompanyContext }) {
   }
   function selectItem(value: Item | null) {
     setItem(value);
-    setFields((current) => ({ ...current, unit: 1, expiryDate: "" }));
+    setFields((current) => ({
+      ...current, unit: 1, expiryDate: "",
+      countUnit1: "0", countUnit2: "0", countUnit3: "0",
+      nearestExpiryDate: value?.nearestExpiryDate ?? "",
+    }));
     setDirty(true);
+  }
+  function closeSheet() {
+    if (!onClose || saving || unknown) return;
+    if (dirty && !window.confirm("توجد بيانات جرد غير محفوظة. هل تريد الإغلاق دون حفظ؟")) return;
+    onClose();
   }
   let preview = "";
   if (item) {
     try {
-      const conversion = convertItemQuantity(
-        {
-          quantity:
-            mode === "transfer" ? fields.quantity : fields.countedQuantity,
-          unit: fields.unit,
-        },
-        item,
-      );
-      preview = `${quantityText(conversion.unit1)} ${item.unit1Name} · ${conversion.smallestUnits} من أصغر جزء`;
+      if (mode === "adjustment") {
+        const count1 = BigInt(fields.countUnit1 || "0");
+        const count2 = BigInt(fields.countUnit2 || "0");
+        const count3 = BigInt(fields.countUnit3 || "0");
+        const total = count1 * BigInt(item.factor2) * BigInt(item.factor3)
+          + count2 * BigInt(item.factor3) + count3;
+        preview = `الإجمالي ${total.toString()} من أصغر جزء`;
+      } else {
+        const conversion = convertItemQuantity({ quantity: fields.quantity, unit: fields.unit }, item);
+        preview = `${quantityText(conversion.unit1)} ${item.unit1Name} · ${conversion.smallestUnits} من أصغر جزء`;
+      }
     } catch {
       /* Keep the user's incomplete input intact. */
     }
@@ -1122,7 +1166,13 @@ function OperationEditor({ context }: { context: CompanyContext }) {
           : stockAdjustmentSchema.safeParse({
               ...common,
               locationId: fromLocation.id,
-              countedQuantity: fields.countedQuantity,
+              unit: 1,
+              countedUnits: {
+                unit1: fields.countUnit1 || "0",
+                ...(item.factor2 > 1 ? { unit2: fields.countUnit2 || "0" } : {}),
+                ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
+              },
+              nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
               expectedQuantitySmallest: batchQuantity,
               unitCostBase: fields.unitCostBase,
             });
@@ -1144,6 +1194,8 @@ function OperationEditor({ context }: { context: CompanyContext }) {
       setUnknown(false);
       setDirty(false);
       setResult(response.operation);
+      if (action === "adjustment")
+        onSaved?.(item?.hasExpiry ? (fields.nearestExpiryDate || null) : null);
       void changed();
     } catch (reason) {
       if (guard.isCurrent()) {
@@ -1159,8 +1211,8 @@ function OperationEditor({ context }: { context: CompanyContext }) {
     if (saving || unknown) return;
     setResult(null);
     setError("");
-    setFields(initialOperationFields());
-    setItem(null);
+    setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "" });
+    setItem(preselectedItem);
     setFromLocation(null);
     setToLocation(null);
     setCreateKey(crypto.randomUUID());
