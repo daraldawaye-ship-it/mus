@@ -1,18 +1,27 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
-  attendanceScheduleSchema,
+  attendanceAdjustmentSchema,
   type AttendanceDirectory,
   type AttendanceRecord,
   type AttendanceReport,
   type AttendanceReportRow,
-  type AttendanceStatus,
-  type AttendanceSchedule,
   type CompanyContext,
 } from "../../../../packages/contracts/src/index";
-import { api, usePagedQuery, useSession, useScopeGuard } from "../api";
+import {
+  ApiFailure,
+  api,
+  usePagedQuery,
+  useSession,
+  useScopeGuard,
+} from "../api";
+import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import {
   Button,
@@ -24,15 +33,7 @@ import {
   PageHeader,
   Select,
 } from "../ui";
-const days = [
-  "الأحد",
-  "الاثنين",
-  "الثلاثاء",
-  "الأربعاء",
-  "الخميس",
-  "الجمعة",
-  "السبت",
-];
+
 const time = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("ar-YE", {
@@ -41,65 +42,139 @@ const time = (value: string | null) =>
         timeZone: "Asia/Aden",
       }).format(new Date(value))
     : "—";
-const statusLabels: Record<AttendanceStatus, string> = {
-  present: "حضور مكتمل",
-  open: "حاضر",
-  missingCheckout: "انصراف غير مسجل",
-  absent: "غياب",
-  waiting: "لم يبدأ الدوام",
-  notRecorded: "حضور غير مسجل",
-  rest: "خارج أيام الدوام",
-  unconfigured: "لا يوجد إعداد محفوظ لهذا اليوم",
-};
+const pointsText = (value: string) => BigInt(value).toLocaleString("ar-YE");
 const duration = (minutes: number | null) =>
   minutes === null ? "—" : `${Math.floor(minutes / 60)} س ${minutes % 60} د`;
-type Draft = {
-  employeeId: number;
-  branchId: number;
-  workDays: number[];
-  startTime: string;
-  endTime: string;
-  active: boolean;
-  revision: number | null;
+const secondsDuration = (seconds: string) =>
+  duration(Number(BigInt(seconds) / 60n));
+const hoursInSeconds = (hours: string) => {
+  const [whole, fraction = ""] = hours.split(".");
+  return (BigInt(whole!) * 100n + BigInt(fraction.padEnd(2, "0"))) * 36n;
 };
+const statusLabels: Record<string, string> = {
+  present: "جلسات مكتملة",
+  open: "جلسة مفتوحة",
+  missingCheckout: "تحتاج مراجعة",
+  review: "تحتاج مراجعة",
+  notRecorded: "لا توجد جلسات مسجلة",
+  unconfigured: "إعداد النقاط غير محدد",
+};
+type PunchRequest =
+  { out: false; idempotencyKey: string } | { out: true; recordId: number };
+type AdjustmentRequest = {
+  record: AttendanceRecord;
+  payload: {
+    recordId: number;
+    points: string;
+    reason: string;
+    idempotencyKey: string;
+  };
+};
+function refreshAttendance(
+  client: QueryClient,
+  userId: number | undefined,
+  companyId: number,
+) {
+  return Promise.all([
+    client.invalidateQueries({
+      queryKey: ["list", userId, `company:${companyId}:attendance`],
+    }),
+    client.invalidateQueries({
+      queryKey: ["wallet-summary", userId, companyId],
+    }),
+    client.invalidateQueries({
+      queryKey: ["list", userId, `company:${companyId}:wallet`],
+    }),
+    client.invalidateQueries({ queryKey: ["notifications", userId] }),
+    client.invalidateQueries({
+      queryKey: ["list", userId, `company:${companyId}:notifications`],
+    }),
+  ]);
+}
 export function AttendancePage({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
+  return (
+    <AttendanceContent
+      key={`${user?.id}:${context.company.id}`}
+      context={context}
+    />
+  );
+}
+function AttendanceContent({ context }: { context: CompanyContext }) {
   const companyId = context.company.id,
-    { user } = useSession(),
-    guard = useScopeGuard(`company:${companyId}:attendance`),
-    client = useQueryClient();
-  const [params, setParams] = useSearchParams(),
-    filters = new URLSearchParams();
+    base = `/companies/${companyId}/attendance`;
+  const { user } = useSession(),
+    client = useQueryClient(),
+    guard = useScopeGuard(`company:${companyId}:attendance`);
+  const directory = usePageDirectory(companyId);
+  const attendanceEntry = directory.data?.find(
+    (entry) => entry.key === "company.attendance",
+  );
+  const employeesEntry = directory.data?.find(
+    (entry) => entry.key === "company.employees",
+  );
+  const mayAdjust =
+    context.general &&
+    !!attendanceEntry?.enabled &&
+    !!attendanceEntry.actionAccess.edit;
+  const mayEditEmployees =
+    context.general &&
+    !!employeesEntry?.enabled &&
+    !!employeesEntry.actionAccess.view &&
+    !!employeesEntry.actionAccess.edit;
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "sessions" ? "sessions" : "daily";
+  const filters = new URLSearchParams();
   for (const key of ["day", "employeeId", "status"])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<AttendanceReportRow, AttendanceReport>(
-    `/companies/${companyId}/attendance/report?${filters}`,
-    `company:${companyId}:attendance`,
-    "workDate:desc,id:desc",
-  );
-  const base = `/companies/${companyId}/attendance`;
   const overview = useQuery({
     queryKey: ["list", user?.id, `company:${companyId}:attendance`, "overview"],
     queryFn: ({ signal }) => api<AttendanceDirectory>(base, { signal }),
     enabled: !!user,
   });
   const data = overview.data;
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void list.refetch();
-        void overview.refetch();
-      }
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [base, list.refetch, overview.refetch]);
+  const punchKey = ["attendance-punch", user?.id, companyId];
+  const [submittedPunch, setSubmittedPunch] = useState<PunchRequest | null>(
+    () => client.getQueryData<PunchRequest>(punchKey) ?? null,
+  );
   const [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  const [draft, setDraft] = useState<Draft | null>(null),
-    [checkInKey, setCheckInKey] = useState(() => crypto.randomUUID());
-  const ownSchedule = data?.schedules.find(
-    (s) => s.employeeId === data.selfEmployeeId,
+  const punchLock = useRef(false);
+  const adjustmentKey = ["attendance-adjustment", user?.id, companyId];
+  const restored = client.getQueryData<AdjustmentRequest>(adjustmentKey);
+  const [submittedAdjustment, setSubmittedAdjustment] =
+    useState<AdjustmentRequest | null>(() => restored ?? null);
+  const [target, setTarget] = useState<AttendanceRecord | null>(
+    restored?.record ?? null,
   );
+  const [adjustmentPoints, setAdjustmentPoints] = useState(
+    restored?.payload.points ?? "",
+  );
+  const [reason, setReason] = useState(restored?.payload.reason ?? "");
+  const [adjusting, setAdjusting] = useState(false),
+    [adjustmentError, setAdjustmentError] = useState("");
+  const adjustmentLock = useRef(false),
+    adjustmentFormId = useId();
+  const lockedAdjustment = adjusting || !!submittedAdjustment;
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible")
+        void client.invalidateQueries({
+          queryKey: ["list", user?.id, `company:${companyId}:attendance`],
+        });
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [client, user?.id, companyId]);
+  useEffect(() => {
+    if (!submittedPunch && !submittedAdjustment) return;
+    const preventLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventLeave);
+    return () => window.removeEventListener("beforeunload", preventLeave);
+  }, [submittedPunch, submittedAdjustment]);
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -108,88 +183,573 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
       return next;
     });
   }
-  async function refresh() {
-    await client.invalidateQueries({
-      queryKey: ["list", user?.id, `company:${companyId}:attendance`],
-    });
-  }
   async function punch(out: boolean) {
-    if (pending || !data) return;
+    if (punchLock.current || !data) return;
+    if (
+      !submittedPunch &&
+      (out ? !data.canCheckOut || !data.openRecord : !data.canCheckIn)
+    )
+      return;
+    const retry = !!submittedPunch;
+    const frozen: PunchRequest =
+      submittedPunch ??
+      (out
+        ? { out: true, recordId: data.openRecord!.id }
+        : { out: false, idempotencyKey: crypto.randomUUID() });
+    client.setQueryDefaults(["attendance-punch"], { gcTime: Infinity });
+    client.setQueryData(punchKey, frozen);
+    setSubmittedPunch(frozen);
+    punchLock.current = true;
     setPending(true);
     setError("");
     setNotice("");
     try {
       const response = await api<{ record: AttendanceRecord }>(
-        base + (out ? "/check-out" : "/check-in"),
+        base + (frozen.out ? "/check-out" : "/check-in"),
         {
           method: "POST",
           signal: guard.signal,
-          body: out
-            ? { recordId: data.openRecord!.id }
-            : { idempotencyKey: checkInKey },
+          body: frozen.out
+            ? { recordId: frozen.recordId }
+            : { idempotencyKey: frozen.idempotencyKey },
         },
       );
       if (!guard.isCurrent()) return;
-      if (!out) setCheckInKey(crypto.randomUUID());
-      await refresh();
-      if (guard.isCurrent())
-        setNotice(
-          `${out ? "تم تسجيل الانصراف" : "تم تسجيل الحضور"}: ${time(out ? response.record.checkedOutAt : response.record.checkedInAt)}`,
-        );
+      client.removeQueries({ queryKey: punchKey, exact: true });
+      setSubmittedPunch(null);
+      void refreshAttendance(client, user?.id, companyId);
+      setNotice(
+        response.record.closeSource === "automatic"
+          ? "أُغلقت الجلسة تلقائيًا بعد 16 ساعة وتحتاج مراجعة."
+          : `${frozen.out ? "تم تسجيل الانصراف" : "تم تسجيل الحضور"}: ${time(frozen.out ? response.record.checkedOutAt : response.record.checkedInAt)}`,
+      );
     } catch (cause) {
-      if (guard.isCurrent()) setError(errorMessage(cause));
+      if (!guard.isCurrent()) return;
+      setError(errorMessage(cause));
+      if (
+        !retry &&
+        cause instanceof ApiFailure &&
+        cause.status >= 400 &&
+        cause.status < 500
+      ) {
+        client.removeQueries({ queryKey: punchKey, exact: true });
+        setSubmittedPunch(null);
+      }
     } finally {
+      punchLock.current = false;
       if (guard.isCurrent()) setPending(false);
     }
   }
-  function openSchedule(employeeId: number) {
-    const previous = data?.schedules.find((s) => s.employeeId === employeeId);
-    setDraft({
-      employeeId,
-      branchId: previous?.branchId ?? data?.branches[0]?.id ?? 0,
-      workDays: previous?.workDays ?? [0, 1, 2, 3, 4],
-      startTime: previous?.startTime ?? "08:00",
-      endTime: previous?.endTime ?? "16:00",
-      active: previous?.active ?? true,
-      revision: previous?.revision ?? null,
-    });
-    setError("");
+  function openAdjustment(record: AttendanceRecord) {
+    if (lockedAdjustment || !mayAdjust) return;
+    setTarget(record);
+    setAdjustmentPoints("");
+    setReason("");
+    setAdjustmentError("");
   }
-  async function saveSchedule(event: FormEvent) {
+  function closeAdjustment() {
+    if (lockedAdjustment) return;
+    setTarget(null);
+    setAdjustmentError("");
+  }
+  async function adjust(event: FormEvent) {
     event.preventDefault();
-    if (!draft || pending) return;
-    const { employeeId, ...body } = draft,
-      parsed = attendanceScheduleSchema.safeParse(body);
+    if (
+      adjustmentLock.current ||
+      !target ||
+      (!mayAdjust && !submittedAdjustment)
+    )
+      return;
+    const parsed = attendanceAdjustmentSchema.safeParse(
+      submittedAdjustment?.payload ?? {
+        recordId: target.id,
+        points: adjustmentPoints,
+        reason,
+        idempotencyKey: crypto.randomUUID(),
+      },
+    );
     if (!parsed.success) {
-      setError(parsed.error.issues.map((i) => i.message).join(" · "));
+      setAdjustmentError(
+        parsed.error.issues.map((issue) => issue.message).join(" · "),
+      );
       return;
     }
-    setPending(true);
-    setError("");
+    const retry = !!submittedAdjustment,
+      frozen: AdjustmentRequest = { record: target, payload: parsed.data };
+    client.setQueryDefaults(["attendance-adjustment"], { gcTime: Infinity });
+    client.setQueryData(adjustmentKey, frozen);
+    setSubmittedAdjustment(frozen);
+    adjustmentLock.current = true;
+    setAdjusting(true);
+    setAdjustmentError("");
+    setNotice("");
     try {
-      await api(base + `/schedules/${employeeId}`, {
-        method: "PUT",
-        body: parsed.data,
+      await api(`${base}/adjustments`, {
+        method: "POST",
+        body: frozen.payload,
         signal: guard.signal,
       });
       if (!guard.isCurrent()) return;
-      await refresh();
-      if (guard.isCurrent()) {
-        setDraft(null);
-        setNotice("تم حفظ إعداد الدوام.");
-      }
+      client.removeQueries({ queryKey: adjustmentKey, exact: true });
+      setSubmittedAdjustment(null);
+      setTarget(null);
+      setAdjustmentPoints("");
+      setReason("");
+      setNotice(
+        "تم تسجيل تعديل النقاط في المحفظة دون تغيير أوقات الحضور والانصراف.",
+      );
+      void refreshAttendance(client, user?.id, companyId);
     } catch (cause) {
-      if (guard.isCurrent()) setError(errorMessage(cause));
+      if (!guard.isCurrent()) return;
+      setAdjustmentError(errorMessage(cause));
+      if (
+        !retry &&
+        cause instanceof ApiFailure &&
+        cause.status >= 400 &&
+        cause.status < 500
+      ) {
+        client.removeQueries({ queryKey: adjustmentKey, exact: true });
+        setSubmittedAdjustment(null);
+      }
     } finally {
-      if (guard.isCurrent()) setPending(false);
+      adjustmentLock.current = false;
+      if (guard.isCurrent()) setAdjusting(false);
     }
   }
+  return (
+    <div className="wallet-page">
+      <PageHeader
+        title="الحضور والانصراف"
+        description="سجّل الحضور والانصراف في أي وقت، ويمكنك تسجيل أكثر من جلسة في اليوم. التوقيت: عدن."
+      />
+      {error && <Notice tone="error">{error}</Notice>}
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {overview.error && (
+        <Notice tone="error">
+          {errorMessage(overview.error)}{" "}
+          <Button variant="ghost" onClick={() => void overview.refetch()}>
+            إعادة المحاولة
+          </Button>
+        </Notice>
+      )}
+      <Card title="حضورك اليوم">
+        {data && !data.selfEmployeeId ? (
+          <Notice>
+            حسابك غير مرتبط بموظف في هذه الشركة. يمكنك متابعة سجلات الموظفين.
+          </Notice>
+        ) : (
+          <>
+            {data?.ownSettings && (
+              <dl className="details-list">
+                <dt>قيمة الساعة</dt>
+                <dd>
+                  {data.ownSettings.hourlyPoints === null
+                    ? "غير محددة"
+                    : `${pointsText(data.ownSettings.hourlyPoints)} نقطة`}
+                </dd>
+                <dt>الساعات الافتراضية</dt>
+                <dd>
+                  {(data.dailySummary?.defaultDailyHours ??
+                    data.ownSettings.defaultDailyHours) === null
+                    ? "غير محددة"
+                    : `${data.dailySummary?.defaultDailyHours ?? data.ownSettings.defaultDailyHours} ساعة يوميًا`}
+                </dd>
+                <dt>السماح بالإضافي</dt>
+                <dd>
+                  {(data.dailySummary?.allowOvertime ??
+                  data.ownSettings.allowOvertime)
+                    ? "نعم"
+                    : "لا"}
+                </dd>
+                {data.ownSettings.expectedStartTime && (
+                  <>
+                    <dt>وقت الحضور الافتراضي</dt>
+                    <dd>
+                      <bdi>{data.ownSettings.expectedStartTime}</bdi> للمتابعة؛
+                      يمكنك التسجيل في أي وقت.
+                    </dd>
+                  </>
+                )}
+              </dl>
+            )}
+            {data?.dailySummary && (
+              <p aria-label="ملخص حضورك اليوم">
+                الجلسات: {data.dailySummary.sessionCount} · المدة المكتملة:{" "}
+                {secondsDuration(data.dailySummary.closedSeconds)} · المدة
+                المحتسبة: {secondsDuration(data.dailySummary.paidSeconds)} ·
+                نقاط الساعات: {pointsText(data.dailySummary.points)}
+              </p>
+            )}
+            {!!data?.dailySummary.reviewCount && (
+              <Notice tone="warning">
+                لديك {data.dailySummary.reviewCount} جلسة تحتاج مراجعة. لا تُمنح
+                نقاط الساعات للجلسة التي أُغلقت تلقائيًا؛ يمكن للإدارة تسجيل
+                تعويض مستقل.
+              </Notice>
+            )}
+            {data?.dailySummary.defaultDailyHours &&
+              data.dailySummary.allowOvertime === false &&
+              BigInt(data.dailySummary.paidSeconds) >=
+                hoursInSeconds(data.dailySummary.defaultDailyHours) && (
+                <Notice tone="warning">
+                  بلغت الساعات الافتراضية لليوم. يمكنك تسجيل جلسات جديدة،
+                  وتُحتسب نقاط الساعات حتى السقف اليومي المحدد.
+                </Notice>
+              )}
+            <div className="form-actions">
+              <Button
+                disabled={pending || !!submittedPunch || !data?.canCheckIn}
+                onClick={() => void punch(false)}
+              >
+                تسجيل الحضور
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={pending || !!submittedPunch || !data?.canCheckOut}
+                onClick={() => void punch(true)}
+              >
+                تسجيل الانصراف
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() =>
+                  void refreshAttendance(client, user?.id, companyId)
+                }
+              >
+                تحديث
+              </Button>
+              {pending && <span>جارٍ الحفظ…</span>}
+            </div>
+            {submittedPunch && !pending && (
+              <Notice tone="warning">
+                لم تتأكد نتيجة التسجيل بعد.{" "}
+                <Button onClick={() => void punch(submittedPunch.out)}>
+                  التحقق من نتيجة التسجيل
+                </Button>
+              </Notice>
+            )}
+            {data?.openRecord && (
+              <p>الجلسة المفتوحة منذ: {time(data.openRecord.checkedInAt)}</p>
+            )}
+            {!data?.openRecord && data?.todayRecord?.checkedOutAt && (
+              <p>آخر انصراف: {time(data.todayRecord.checkedOutAt)}</p>
+            )}
+            <p className="muted">
+              بعد 16 ساعة دون انصراف، تُغلق الجلسة تلقائيًا وتُحال للمراجعة.
+              أوقات التسجيل محفوظة ولا تُعدّل يدويًا.
+            </p>
+          </>
+        )}
+      </Card>
+      <Card title={context.general ? "سجل حضور الموظفين" : "سجل حضورك"}>
+        <div className="wallet-filters" role="tablist" aria-label="عرض الحضور">
+          {[
+            { value: "daily", label: "الملخص اليومي" },
+            { value: "sessions", label: "جلسات الحضور" },
+          ].map((item) => (
+            <Button
+              key={item.value}
+              role="tab"
+              aria-selected={view === item.value}
+              variant={view === item.value ? "primary" : "secondary"}
+              onClick={() =>
+                setParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  item.value === "daily"
+                    ? next.delete("view")
+                    : next.set("view", item.value);
+                  next.delete("page");
+                  next.delete("sort");
+                  next.delete("status");
+                  return next;
+                })
+              }
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+        <div className="table-filters">
+          <Field
+            label="يوم السجل"
+            type="date"
+            value={params.get("day") ?? data?.today ?? ""}
+            onChange={(event) => filter("day", event.target.value)}
+          />
+          {context.general && (
+            <Select
+              label="الموظف"
+              value={params.get("employeeId") ?? ""}
+              onChange={(event) => filter("employeeId", event.target.value)}
+            >
+              <option value="">جميع الموظفين</option>
+              {data?.employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
+                </option>
+              ))}
+            </Select>
+          )}
+          {view === "daily" && (
+            <Select
+              label="حالة الحضور"
+              value={params.get("status") ?? ""}
+              onChange={(event) => filter("status", event.target.value)}
+            >
+              <option value="">جميع الحالات</option>
+              {["present", "open", "missingCheckout", "notRecorded"].map(
+                (status) => (
+                  <option key={status} value={status}>
+                    {statusLabels[status]}
+                  </option>
+                ),
+              )}
+            </Select>
+          )}
+        </div>
+        {view === "sessions" ? (
+          <AttendanceSessions
+            key="sessions"
+            context={context}
+            resource={`${base}?${filters}`}
+            onAdjust={openAdjustment}
+            mayAdjust={mayAdjust}
+          />
+        ) : (
+          <AttendanceDailyReport
+            key="daily"
+            context={context}
+            resource={`${base}/report?${filters}`}
+          />
+        )}
+      </Card>
+      {mayEditEmployees && (
+        <Card title="إعداد الحضور والنقاط">
+          <p>
+            حدد قيمة الساعة والساعات اليومية الافتراضية وإمكانية الدوام الإضافي
+            من كرت الموظف.
+          </p>
+          <Link
+            className="button button-secondary"
+            to={`/companies/${companyId}/employees`}
+          >
+            فتح الموظفين
+          </Link>
+        </Card>
+      )}
+      <Dialog
+        open={!!target}
+        title="تعويض / خصم نقاط"
+        onClose={closeAdjustment}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              disabled={lockedAdjustment}
+              onClick={closeAdjustment}
+            >
+              إغلاق
+            </Button>
+            <Button
+              type="submit"
+              form={adjustmentFormId}
+              disabled={adjusting || (!mayAdjust && !submittedAdjustment)}
+            >
+              {adjusting
+                ? "جارٍ الحفظ…"
+                : submittedAdjustment
+                  ? "إعادة محاولة الحفظ"
+                  : "حفظ تعديل النقاط"}
+            </Button>
+          </>
+        }
+      >
+        {target && (
+          <form
+            id={adjustmentFormId}
+            className="form-stack"
+            onSubmit={(event) => void adjust(event)}
+          >
+            {adjustmentError && <Notice tone="error">{adjustmentError}</Notice>}
+            {submittedAdjustment && !adjusting && (
+              <Notice tone="warning">
+                لم تتأكد نتيجة الحفظ بعد. أعد المحاولة بنفس التعديل للتحقق دون
+                تكرار النقاط.
+              </Notice>
+            )}
+            <p>
+              {target.employeeName} · جلسة {time(target.checkedInAt)}
+            </p>
+            <Field
+              label="النقاط"
+              inputMode="text"
+              value={adjustmentPoints}
+              onChange={(event) => setAdjustmentPoints(event.target.value)}
+              disabled={lockedAdjustment}
+              required
+              maxLength={25}
+              hint="عدد موجب للتعويض، أو سالب للخصم، مثل 20 أو -20."
+            />
+            <Field
+              label="سبب التعويض أو الخصم"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              disabled={lockedAdjustment}
+              required
+              maxLength={500}
+            />
+            <p className="muted">
+              يُسجل التعديل في محفظة الموظف ويرتبط بهذه الجلسة. يبقى وقت الحضور
+              والانصراف كما هو.
+            </p>
+          </form>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+function AttendanceDailyReport({
+  context,
+  resource,
+}: {
+  context: CompanyContext;
+  resource: string;
+}) {
+  const list = usePagedQuery<AttendanceReportRow, AttendanceReport>(
+    resource,
+    `company:${context.company.id}:attendance`,
+    "workDate:desc,id:desc",
+  );
   const columns: ColumnDef<AttendanceReportRow, unknown>[] = [
-    { accessorKey: "workDate", header: "يوم الدوام" },
+    { accessorKey: "workDate", header: "اليوم" },
     ...(context.general
       ? [{ accessorKey: "employeeName", header: "الموظف" }]
       : []),
-    { accessorKey: "branchName", header: "الفرع", enableSorting: false },
+    {
+      accessorKey: "checkedInAt",
+      header: "أول حضور",
+      cell: ({ row }) => time(row.original.checkedInAt),
+    },
+    {
+      accessorKey: "checkedOutAt",
+      header: "آخر انصراف",
+      cell: ({ row }) => time(row.original.checkedOutAt),
+    },
+    { accessorKey: "sessionCount", header: "الجلسات", enableSorting: false },
+    {
+      accessorKey: "status",
+      header: "الحالة",
+      cell: ({ row }) => statusLabels[row.original.status] ?? "—",
+    },
+    {
+      accessorKey: "workedMinutes",
+      header: "المدة المكتملة",
+      cell: ({ row }) => duration(row.original.workedMinutes),
+    },
+    {
+      id: "paid",
+      header: "المدة المحتسبة",
+      enableSorting: false,
+      cell: ({ row }) => secondsDuration(row.original.paidSeconds),
+    },
+    {
+      id: "points",
+      header: "نقاط الساعات",
+      enableSorting: false,
+      cell: ({ row }) => pointsText(row.original.points),
+    },
+    {
+      id: "review",
+      header: "جلسات للمراجعة",
+      enableSorting: false,
+      cell: ({ row }) => row.original.reviewCount || "—",
+    },
+  ];
+  return (
+    <>
+      <p className="muted">
+        يُجمع وقت الجلسات المكتملة لكل موظف يوميًا؛ عدم تسجيل جلسة لا يُحسب
+        غيابًا.
+      </p>
+      {list.data && (
+        <p aria-label="ملخص السجل">
+          الجلسات: {list.data.summary.sessionCount} · المدة المكتملة:{" "}
+          {secondsDuration(list.data.summary.closedSeconds)} · المدة المحتسبة:{" "}
+          {secondsDuration(list.data.summary.paidSeconds)} · نقاط الساعات:{" "}
+          {pointsText(list.data.summary.points)} · جلسات للمراجعة:{" "}
+          {list.data.summary.reviewCount}
+        </p>
+      )}
+      {list.error && (
+        <Notice tone="error">
+          {errorMessage(list.error)}{" "}
+          <Button variant="ghost" onClick={() => void list.refetch()}>
+            إعادة المحاولة
+          </Button>
+        </Notice>
+      )}
+      <Field
+        label="بحث في الحضور"
+        type="search"
+        value={list.query}
+        onChange={(event) => list.setQuery(event.target.value)}
+      />
+      <DataTable
+        columns={columns}
+        data={list.data?.items ?? []}
+        total={list.data?.total ?? 0}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
+        sorting={list.sorting}
+        onSortingChange={list.setSorting}
+        loading={list.loading}
+        ariaLabel="الملخص اليومي للحضور"
+      />
+    </>
+  );
+}
+function AttendanceSessions({
+  context,
+  resource,
+  mayAdjust,
+  onAdjust,
+}: {
+  context: CompanyContext;
+  resource: string;
+  mayAdjust: boolean;
+  onAdjust: (record: AttendanceRecord) => void;
+}) {
+  const list = usePagedQuery<AttendanceRecord, AttendanceDirectory>(
+    resource,
+    `company:${context.company.id}:attendance`,
+    "workDate:desc,id:desc",
+  );
+  const columns: ColumnDef<AttendanceRecord, unknown>[] = [
+    ...(mayAdjust
+      ? [
+          {
+            id: "adjust",
+            header: "الإجراء",
+            enableSorting: false,
+            cell: ({ row }: { row: { original: AttendanceRecord } }) => (
+              <Button
+                size="compact"
+                variant="secondary"
+                onClick={() => onAdjust(row.original)}
+              >
+                تعويض / خصم نقاط
+              </Button>
+            ),
+          },
+        ]
+      : []),
+    { accessorKey: "workDate", header: "اليوم" },
+    ...(context.general
+      ? [{ accessorKey: "employeeName", header: "الموظف" }]
+      : []),
     {
       accessorKey: "checkedInAt",
       header: "الحضور",
@@ -198,346 +758,79 @@ export function AttendancePage({ context }: { context: CompanyContext }) {
     {
       accessorKey: "checkedOutAt",
       header: "الانصراف",
-      cell: ({ row }) =>
-        row.original.checkedOutAt ? time(row.original.checkedOutAt) : "—",
+      cell: ({ row }) => time(row.original.checkedOutAt),
     },
     {
-      id: "schedule",
-      header: "الدوام المقرر",
+      id: "worked",
+      header: "المدة الفعلية",
       enableSorting: false,
-      cell: ({ row }) => (
-        <bdi>
-          {row.original.startTime ?? "—"} — {row.original.endTime ?? "—"}
-        </bdi>
-      ),
+      cell: ({ row }) =>
+        row.original.checkedOutAt
+          ? duration(
+              Math.max(
+                0,
+                Math.floor(
+                  (Date.parse(row.original.checkedOutAt) -
+                    Date.parse(row.original.checkedInAt)) /
+                    60000,
+                ),
+              ),
+            )
+          : "—",
     },
     {
-      accessorKey: "status",
-      header: "الحالة",
-      cell: ({ row }) => statusLabels[row.original.status],
+      id: "paid",
+      header: "المدة المحتسبة",
+      enableSorting: false,
+      cell: ({ row }) => secondsDuration(row.original.paidSeconds),
     },
     {
-      accessorKey: "lateMinutes",
-      header: "التأخير",
-      cell: ({ row }) => duration(row.original.lateMinutes),
+      id: "points",
+      header: "نقاط الساعات",
+      enableSorting: false,
+      cell: ({ row }) => pointsText(row.original.points),
     },
     {
-      accessorKey: "workedMinutes",
-      header: "مدة العمل",
-      cell: ({ row }) => duration(row.original.workedMinutes),
-    },
-    {
-      accessorKey: "earlyLeaveMinutes",
-      header: "الانصراف المبكر",
-      cell: ({ row }) => duration(row.original.earlyLeaveMinutes),
+      id: "close",
+      header: "الإغلاق",
+      enableSorting: false,
+      cell: ({ row }) =>
+        row.original.closeSource === "automatic"
+          ? "تلقائي · تحتاج مراجعة"
+          : row.original.closeSource === "manual"
+            ? "انصراف مسجل"
+            : "جلسة مفتوحة",
     },
   ];
   return (
     <>
-      <PageHeader
-        title="الحضور والانصراف"
-        description="توقيت الشركة: عدن. التسجيل بوقت الخادم، وسجل واحد لكل يوم دوام."
-      />
-      {error && <Notice tone="error">{error}</Notice>}
-      {notice && <Notice tone="success">{notice}</Notice>}
-      {(list.error || overview.error) && (
+      {list.error && (
         <Notice tone="error">
-          {errorMessage(list.error || overview.error)}{" "}
-          <Button
-            onClick={() => {
-              void list.refetch();
-              void overview.refetch();
-            }}
-          >
+          {errorMessage(list.error)}{" "}
+          <Button variant="ghost" onClick={() => void list.refetch()}>
             إعادة المحاولة
           </Button>
         </Notice>
       )}
-      <Card title="حضورك اليوم">
-        {data && !data.selfEmployeeId ? (
-          <Notice>
-            حسابك غير مرتبط بموظف في هذه الشركة؛ يمكنك إدارة الدوام وسجل
-            الموظفين.
-          </Notice>
-        ) : (
-          <>
-            {ownSchedule ? (
-              <p>
-                الفرع: {ownSchedule.branchName} · الدوام:{" "}
-                <bdi>
-                  {ownSchedule.startTime} — {ownSchedule.endTime}
-                </bdi>{" "}
-                · الأيام: {ownSchedule.workDays.map((d) => days[d]).join("، ")}
-                {!ownSchedule.active ? " — الدوام غير مفعّل" : ""}
-              </p>
-            ) : (
-              <Notice>
-                اطلب من المدير إعداد فرعك وأيام دوامك ومواعيده قبل تسجيل الحضور.
-              </Notice>
-            )}
-            <div className="form-actions">
-              <Button
-                disabled={pending || !data?.canCheckIn}
-                onClick={() => void punch(false)}
-              >
-                تسجيل الحضور
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={pending || !data?.canCheckOut}
-                onClick={() => void punch(true)}
-              >
-                تسجيل الانصراف
-              </Button>
-              {pending && <span>جارٍ الحفظ…</span>}
-              <Button
-                variant="ghost"
-                disabled={pending || list.loading}
-                onClick={() => {
-                  void list.refetch();
-                  void overview.refetch();
-                }}
-              >
-                تحديث
-              </Button>
-            </div>
-            {data?.openRecord && (
-              <p>
-                حضور مفتوح ليوم {data.openRecord.workDate}:{" "}
-                {time(data.openRecord.checkedInAt)}
-              </p>
-            )}
-            {!data?.openRecord && data?.todayRecord?.checkedOutAt && (
-              <p>سُجل الانصراف: {time(data.todayRecord.checkedOutAt)}</p>
-            )}
-          </>
-        )}
-      </Card>
-      <Card
-        title={context.general ? "تقرير الدوام اليومي" : "تقرير دوامك"}
-        description="يُحسب الغياب بعد نهاية الدوام، والتأخير والانصراف المبكر بالدقائق الكاملة دون سماح تلقائي. مدة العمل للحضور المكتمل فقط؛ لا تُحسب خصومات أو رواتب."
-      >
-        {list.data && (
-          <p aria-label="ملخص الدوام">
-            الحضور: {list.data.summary.attended} · الغياب:{" "}
-            {list.data.summary.absent} · المتأخرون: {list.data.summary.late} ·
-            انصراف غير مسجل: {list.data.summary.missingCheckout} · مجموع مدة
-            العمل: {duration(list.data.summary.workedMinutes)}
-          </p>
-        )}
-        <div className="table-filters">
-          <Field
-            label="يوم السجل"
-            type="date"
-            value={params.get("day") ?? data?.workDate ?? ""}
-            onChange={(e) => filter("day", e.target.value)}
-          />
-          {context.general && (
-            <Select
-              label="الموظف"
-              value={params.get("employeeId") ?? ""}
-              onChange={(e) => filter("employeeId", e.target.value)}
-            >
-              <option value="">جميع الموظفين</option>
-              {data?.employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </Select>
-          )}
-          <Select
-            label="حالة الدوام"
-            value={params.get("status") ?? ""}
-            onChange={(e) => filter("status", e.target.value)}
-          >
-            <option value="">جميع الحالات</option>
-            <option value="late">المتأخرون</option>
-            {Object.entries(statusLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Field
-            label="بحث في الحضور"
-            type="search"
-            value={list.query}
-            onChange={(e) => list.setQuery(e.target.value)}
-          />
-        </div>
-        <DataTable
-          columns={columns}
-          data={list.data?.items ?? []}
-          total={list.data?.total ?? 0}
-          page={list.page}
-          pageSize={list.pageSize}
-          onPageChange={list.setPage}
-          onPageSizeChange={list.setPageSize}
-          sorting={list.sorting}
-          onSortingChange={list.setSorting}
-          loading={list.loading}
-          ariaLabel="سجل الحضور والانصراف"
-        />
-      </Card>
-      {context.general && (
-        <Card
-          title="إعداد دوام الموظفين"
-          description="حدد الفرع والأيام ووقت البداية والنهاية. انتهاء الدوام قبل بدايته يعني امتداده لليوم التالي."
-        >
-          {!data?.employees.length && (
-            <Notice>أضف موظفًا واربطه بمستخدم من صفحة الموظفين أولًا.</Notice>
-          )}
-          <div className="table-scroll">
-            <table aria-label="إعداد دوام الموظفين">
-              <thead>
-                <tr>
-                  <th>الإجراء</th>
-                  <th>الموظف</th>
-                  <th>الفرع</th>
-                  <th>الدوام</th>
-                  <th>أيام العمل</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data?.employees.map((e) => {
-                  const schedule = data.schedules.find(
-                    (s) => s.employeeId === e.id,
-                  );
-                  return (
-                    <tr key={e.id}>
-                      <td>
-                        <Button
-                          size="compact"
-                          variant="secondary"
-                          disabled={pending}
-                          aria-label={`إعداد دوام ${e.name}`}
-                          onClick={() => openSchedule(e.id)}
-                        >
-                          إعداد الدوام
-                        </Button>
-                      </td>
-                      <td>{e.name}</td>
-                      <td>{schedule?.branchName ?? "غير محدد"}</td>
-                      <td>
-                        <bdi>
-                          {schedule
-                            ? `${schedule.startTime} — ${schedule.endTime}`
-                            : "غير محدد"}
-                        </bdi>
-                      </td>
-                      <td>
-                        {schedule?.workDays.map((d) => days[d]).join("، ")}
-                        {schedule && !schedule.active ? " (غير مفعّل)" : ""}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-      <Dialog
-        open={!!draft}
-        title="إعداد الدوام"
-        onClose={() => {
-          if (!pending) setDraft(null);
-        }}
-      >
-        {draft && (
-          <form
-            className="form-stack"
-            onSubmit={(event) => void saveSchedule(event)}
-          >
-            {error && <Notice tone="error">{error}</Notice>}
-            <p>
-              {data?.employees.find((e) => e.id === draft.employeeId)?.name}
-            </p>
-            <div className="form-grid">
-              <Select
-                label="فرع الدوام"
-                required
-                value={draft.branchId || ""}
-                disabled={pending}
-                onChange={(e) =>
-                  setDraft({ ...draft, branchId: Number(e.target.value) })
-                }
-              >
-                <option value="">اختر الفرع</option>
-                {data?.branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </Select>
-              <Field
-                label="بداية الدوام"
-                type="time"
-                required
-                disabled={pending}
-                value={draft.startTime}
-                onChange={(e) =>
-                  setDraft({ ...draft, startTime: e.target.value })
-                }
-              />
-              <Field
-                label="نهاية الدوام"
-                type="time"
-                required
-                disabled={pending}
-                value={draft.endTime}
-                onChange={(e) =>
-                  setDraft({ ...draft, endTime: e.target.value })
-                }
-              />
-            </div>
-            <div className="form-actions">
-              {days.map((day, index) => (
-                <label key={day} className="check-label">
-                  <input
-                    type="checkbox"
-                    disabled={pending}
-                    checked={draft.workDays.includes(index)}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        workDays: e.target.checked
-                          ? [...draft.workDays, index]
-                          : draft.workDays.filter((d) => d !== index),
-                      })
-                    }
-                  />
-                  {day}
-                </label>
-              ))}
-            </div>
-            <label className="check-label">
-              <input
-                type="checkbox"
-                disabled={pending}
-                checked={draft.active}
-                onChange={(e) =>
-                  setDraft({ ...draft, active: e.target.checked })
-                }
-              />
-              الدوام مفعّل
-            </label>
-            <div className="form-actions">
-              <Button type="submit" disabled={pending}>
-                {pending ? "جارٍ الحفظ…" : "حفظ الدوام"}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() => setDraft(null)}
-              >
-                إلغاء
-              </Button>
-            </div>
-          </form>
-        )}
-      </Dialog>
+      <Field
+        label="بحث في جلسات الحضور"
+        type="search"
+        value={list.query}
+        onChange={(event) => list.setQuery(event.target.value)}
+      />
+      <DataTable
+        columns={columns}
+        data={list.data?.items ?? []}
+        total={list.data?.total ?? 0}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
+        sorting={list.sorting}
+        onSortingChange={list.setSorting}
+        loading={list.loading}
+        ariaLabel="جلسات الحضور والانصراف"
+      />
     </>
   );
 }

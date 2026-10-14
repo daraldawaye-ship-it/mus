@@ -105,15 +105,49 @@ export async function requestPermissionTargets(
     "inventory-options": "company.stock-operations",
   };
   if (resource === "notifications" && verb === "POST") action = "edit";
+  if (resource === "employees" && segments[2] === "attendance-settings")
+    return [
+      pagePermissionAliases("company.attendance", "view"),
+      ...(verb === "GET" || verb === "HEAD"
+        ? []
+        : [
+            pagePermissionAliases("company.attendance", "edit"),
+            pagePermissionAliases("company.employees", "edit"),
+          ]),
+    ];
+  if (resource === "attendance") {
+    if (detail === "adjustments" && verb === "POST") action = "edit";
+    return [
+      pagePermissionAliases("company.attendance", "view"),
+      ...(action === "view"
+        ? []
+        : [pagePermissionAliases("company.attendance", action)]),
+    ];
+  }
   if (resource === "memos") {
     const memoDetail = !!detail && /^[1-9]\d*$/.test(detail);
     return [
-      pagePermissionAliases(memoDetail ? "company.memo-detail" : "company.memos", "view"),
-      ...((verb === "POST" && !detail)
+      pagePermissionAliases(
+        memoDetail ? "company.memo-detail" : "company.memos",
+        "view",
+      ),
+      ...(verb === "POST" && !detail
         ? [pagePermissionAliases("company.memos", "create")]
         : []),
-      ...((verb === "POST" && segments[2] === "actions")
-        ? [pagePermissionAliases("company.memos", ["request-completion", "approve-completion", "reopen-completion", "complete"].includes(req.body?.action) ? "post" : "edit")]
+      ...(verb === "POST" && segments[2] === "actions"
+        ? [
+            pagePermissionAliases(
+              "company.memos",
+              [
+                "request-completion",
+                "approve-completion",
+                "reopen-completion",
+                "complete",
+              ].includes(req.body?.action)
+                ? "post"
+                : "edit",
+            ),
+          ]
         : []),
     ];
   }
@@ -139,7 +173,9 @@ export async function requestPermissionTargets(
       page =
         req.query.recordKind === "item"
           ? "company.item-card"
-          : "company.accounts";
+          : req.query.recordKind === "employee"
+            ? "company.employees"
+            : "company.accounts";
   }
   if (resource === "items")
     page =

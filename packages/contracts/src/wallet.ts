@@ -40,38 +40,54 @@ export const walletAwardSchema = z
 export const walletReversalSchema = z
   .object({ entryId: id, reason, idempotencyKey: z.uuid() })
   .strict();
-export const pageVisitEventSchema = z.object({
-  pageKey: z.string().min(1).max(100),
-  idempotencyKey: z.uuid(),
-}).strict();
+export const pageVisitEventSchema = z
+  .object({
+    pageKey: z.string().min(1).max(100),
+    idempotencyKey: z.uuid(),
+  })
+  .strict();
 
-export const walletPolicySchema = z.object({
-  pointValue: rateSchema.nullable(),
-  currencyId: id.nullable(),
-  expenseAccountId: id.nullable(),
-  approvalMode: z.enum(["direct", "approval"]).nullable(),
-  revision: id.nullable(),
-}).strict();
-export const employeeWalletAccountSchema = z.object({
-  accountId: id.nullable(),
-  revision: id.nullable(),
-}).strict();
-export const walletConversionSchema = z.object({
-  employeeId: id,
-  expectedPoints: z.string().trim().transform(normalizeDigits)
-    .pipe(z.string().regex(/^[0-9]{1,28}$/))
-    .transform((value) => BigInt(value).toString())
-    .refine((value) => value !== "0", "لا يوجد رصيد نقاط للتحويل"),
-  expectedAmount: amountSchema.refine((value) => value !== "0", "مبلغ التحويل يجب أن يكون موجبًا"),
-  policyRevision: id,
-  accountRevision: id,
-  idempotencyKey: z.uuid(),
-}).strict();
-export const walletConversionDecisionSchema = z.object({
-  revision: id,
-  reason,
-  idempotencyKey: z.uuid(),
-}).strict();
+export const walletPolicySchema = z
+  .object({
+    pointValue: rateSchema.nullable(),
+    currencyId: id.nullable(),
+    expenseAccountId: id.nullable(),
+    approvalMode: z.enum(["direct", "approval"]).nullable(),
+    revision: id.nullable(),
+  })
+  .strict();
+export const employeeWalletAccountSchema = z
+  .object({
+    accountId: id.nullable(),
+    revision: id.nullable(),
+  })
+  .strict();
+export const walletConversionSchema = z
+  .object({
+    employeeId: id,
+    expectedPoints: z
+      .string()
+      .trim()
+      .transform(normalizeDigits)
+      .pipe(z.string().regex(/^[0-9]{1,28}$/))
+      .transform((value) => BigInt(value).toString())
+      .refine((value) => value !== "0", "لا يوجد رصيد نقاط للتحويل"),
+    expectedAmount: amountSchema.refine(
+      (value) => value !== "0",
+      "مبلغ التحويل يجب أن يكون موجبًا",
+    ),
+    policyRevision: id,
+    accountRevision: id,
+    idempotencyKey: z.uuid(),
+  })
+  .strict();
+export const walletConversionDecisionSchema = z
+  .object({
+    revision: id,
+    reason,
+    idempotencyKey: z.uuid(),
+  })
+  .strict();
 
 export interface WalletCurrency {
   id: number;
@@ -190,7 +206,9 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "automatic" | "reversal" | "conversion";
+  kind: "manual" | "automatic" | "reversal" | "conversion" | "attendance";
+  attendanceEntryId?: number | null;
+  attendanceRecordId?: number | null;
   points: string;
   money: string;
   reason: string;

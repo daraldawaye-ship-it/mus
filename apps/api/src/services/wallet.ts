@@ -12,8 +12,9 @@ export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,
  LEFT JOIN LATERAL (SELECT sum(points) AS points FROM wallet_conversions WHERE company_id=w.company_id AND employee_id=w.employee_id AND status='pending') reserved ON true
  LEFT JOIN finance_settings f ON f.company_id=w.company_id
  LEFT JOIN company_currencies c ON c.company_id=f.company_id AND c.id=f.base_currency_id`;
-export const walletEntryQuery = `SELECT l.*,l.points::text,l.money::text,r.id AS reversed_by_entry_id
- FROM employee_wallet_entries l LEFT JOIN employee_wallet_entries r ON r.company_id=l.company_id AND r.reference_id=l.id AND r.kind='reversal'`;
+export const walletEntryQuery = `SELECT l.*,l.points::text,l.money::text,r.id AS reversed_by_entry_id,attendance_source.attendance_record_id
+ FROM employee_wallet_entries l LEFT JOIN employee_wallet_entries r ON r.company_id=l.company_id AND r.reference_id=l.id AND r.kind='reversal'
+ LEFT JOIN attendance_point_entries attendance_source ON attendance_source.company_id=l.company_id AND attendance_source.id=l.attendance_entry_id`;
 export const rewardTaskQuery = `SELECT d.*,COALESCE(s.points,d.default_points)::text AS points,
  COALESCE(s.repeat_rule,d.default_repeat_rule) AS repeat_rule,COALESCE(s.enabled,false) AS enabled,s.page_key,s.daily_limit,s.revision,
  COALESCE((SELECT array_agg(r.role_id ORDER BY r.role_id) FROM reward_task_roles r WHERE r.company_id=s.company_id AND r.code=s.code),'{}'::integer[]) AS role_ids
@@ -33,6 +34,8 @@ export const walletEntryDTO = (row: QueryResultRow): WalletEntry => ({
   employeeId: row.employee_id,
   employeeName: row.employee_name,
   kind: row.kind,
+  attendanceEntryId: row.attendance_entry_id ?? null,
+  attendanceRecordId: row.attendance_record_id ?? null,
   points: row.points,
   money: row.money === "0.000000" ? "0" : row.money,
   reason: row.reason,

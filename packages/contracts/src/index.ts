@@ -173,6 +173,9 @@ export const auditActionLabels = {
   "attendance.schedule": "إعداد دوام الموظف",
   "attendance.checkIn": "تسجيل الحضور",
   "attendance.checkOut": "تسجيل الانصراف",
+  "attendance.settings": "إعداد نقاط وساعات الدوام",
+  "attendance.autoCheckOut": "انصراف آلي يحتاج مراجعة",
+  "attendance.adjustment": "تعويض أو خصم نقاط الدوام",
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
   "page.settings": "تعديل إعدادات صفحة",
@@ -230,6 +233,9 @@ export const companyAuditActions: AuditAction[] = [
   "attendance.schedule",
   "attendance.checkIn",
   "attendance.checkOut",
+  "attendance.settings",
+  "attendance.autoCheckOut",
+  "attendance.adjustment",
   "configuration.options.seed",
   "configuration.roles.seed",
   "configuration.options.create",
@@ -430,10 +436,7 @@ const image = z.union([
   z.string().regex(/^\/api\/media\/[a-f0-9-]{36}\/full$/),
   z
     .url()
-    .refine(
-      (value) => value.startsWith("https://"),
-      "الصورة تتطلب رابط HTTPS",
-    ),
+    .refine((value) => value.startsWith("https://"), "الصورة تتطلب رابط HTTPS"),
 ]);
 export const passwordSchema = z
   .string()
@@ -455,17 +458,28 @@ export const registerSchema = profileFields
     displayName: value.displayName || value.name,
   }));
 export const loginSchema = z
-  .object({ email: email.optional(), phone: requiredPhone.optional(), password: z.string().min(1).max(128) })
+  .object({
+    email: email.optional(),
+    phone: requiredPhone.optional(),
+    password: z.string().min(1).max(128),
+  })
   .strict()
-  .refine((value) => Boolean(value.email) !== Boolean(value.phone), "أدخل رقم الهاتف أو البريد الإلكتروني");
-export const ownerUserSchema = z.object({
-  name,
-  displayName: text(120).default(""),
-  phone: requiredPhone,
-  email: optionalEmail,
-  password: passwordSchema,
-}).strict();
-export const ownerPasswordResetSchema = z.object({newPassword: passwordSchema}).strict();
+  .refine(
+    (value) => Boolean(value.email) !== Boolean(value.phone),
+    "أدخل رقم الهاتف أو البريد الإلكتروني",
+  );
+export const ownerUserSchema = z
+  .object({
+    name,
+    displayName: text(120).default(""),
+    phone: requiredPhone,
+    email: optionalEmail,
+    password: passwordSchema,
+  })
+  .strict();
+export const ownerPasswordResetSchema = z
+  .object({ newPassword: passwordSchema })
+  .strict();
 export const passwordChangeSchema = z
   .object({
     currentPassword: z.string().min(1).max(128),
@@ -507,8 +521,10 @@ const employeeFieldsSchema = z
       .transform((values) => [...new Set(values)].sort()),
   })
   .strict();
-export const employeeSchema = employeeFieldsSchema
-  .refine((value) => Boolean(value.userId) !== Boolean(value.newUser), "اختر حسابًا موجودًا أو أنشئ مستخدمًا برقم الهاتف");
+export const employeeSchema = employeeFieldsSchema.refine(
+  (value) => Boolean(value.userId) !== Boolean(value.newUser),
+  "اختر حسابًا موجودًا أو أنشئ مستخدمًا برقم الهاتف",
+);
 export const employeePatchSchema = employeeFieldsSchema
   .omit({ userId: true, newUser: true, createSalesCashbox: true })
   .extend({ active: z.boolean() })

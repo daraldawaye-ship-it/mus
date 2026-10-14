@@ -1,10 +1,11 @@
-import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { transaction } from "../db.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
 import {
   emitNotification,
   refreshNotificationReminders,
 } from "./notifications.ts";
+import { closeAttendanceRecord } from "./attendance-rewards.ts";
 
 // These users are locked before the company, matching the request mutation order.
 // Lock every possible follower, including the owner, before recipient FKs can be written.
@@ -33,98 +34,32 @@ async function attendanceEvents(client: PoolClient, companyId: number) {
     )
   ).rows[0];
   if (!clock) return;
-  const href = (day: string) => `/companies/${companyId}/attendance?day=${day}`;
-  const emit = async (code: string, row: QueryResultRow, message: string) =>
-    emitNotification(client, {
-      code,
-      companyId,
-      subjectEmployeeId: row.employee_id,
-      subjectKey: `employee:${row.employee_id}`,
-      eventKey: `${code}:${row.employee_id}:${row.work_date}`,
-      message,
-      href: href(row.work_date),
-    });
-
-  // Presence has its own immutable schedule snapshot; later schedule edits cannot change lateness.
+  // Optional expected arrival is descriptive; it never gates a flexible punch.
   const lateRecords = (
     await client.query(
       `WITH actual AS (
-         SELECT r.employee_id,r.employee_name,r.work_date::text AS work_date,r.checked_in_at,
-           FLOOR(EXTRACT(EPOCH FROM r.checked_in_at-((r.work_date+r.start_time) AT TIME ZONE 'Asia/Aden'))/60)::integer AS late_minutes
+         SELECT r.id,r.employee_id,r.employee_name,r.work_date::text AS work_date,r.checked_in_at,
+           FLOOR(EXTRACT(EPOCH FROM r.checked_in_at-((r.work_date+r.expected_start_time) AT TIME ZONE 'Asia/Aden'))/60)::integer AS late_minutes
          FROM attendance_records r JOIN employees e ON e.company_id=r.company_id AND e.id=r.employee_id
          JOIN users u ON u.id=e.user_id
          WHERE r.company_id=$1 AND e.active AND NOT u.archived AND r.work_date BETWEEN $2::date-1 AND $2::date
-         AND r.checked_in_at>=$3 AND r.checked_in_at<=$4
-       ) SELECT * FROM actual WHERE late_minutes>0 ORDER BY employee_id,work_date`,
+         AND r.checked_in_at>=$3 AND r.checked_in_at<=$4 AND r.expected_start_time IS NOT NULL
+         AND r.checked_in_at>((r.work_date+r.expected_start_time) AT TIME ZONE 'Asia/Aden')+interval '10 minutes'
+         AND r.id=(SELECT first.id FROM attendance_records first WHERE first.company_id=r.company_id AND first.employee_id=r.employee_id AND first.work_date=r.work_date ORDER BY first.checked_in_at,first.id LIMIT 1)
+       ) SELECT * FROM actual ORDER BY employee_id,work_date`,
       [companyId, clock.today, clock.activatedAt, clock.now],
     )
   ).rows;
   for (const row of lateRecords)
-    await emit(
-      "ATTENDANCE_LATE",
-      row,
-      `${row.employee_name}: تأخر عن بداية دوام ${row.work_date} بمقدار ${row.late_minutes} دقيقة.`,
-    );
-
-  // Scan only today and yesterday. Yesterday is required for a shift ending after midnight.
-  // Unknown historical schedules and rest days never become inferred absence.
-  const missingRecords = (
-    await client.query(
-      `WITH expected AS (
-         SELECT e.id AS employee_id,e.name AS employee_name,d.work_date,h.start_time,h.end_time
-         FROM employees e JOIN users u ON u.id=e.user_id
-         CROSS JOIN (VALUES($2::date),($2::date-1)) d(work_date)
-         JOIN LATERAL(SELECT sh.* FROM employee_schedule_history sh
-           WHERE sh.company_id=e.company_id AND sh.employee_id=e.id AND sh.effective_date<=d.work_date
-           ORDER BY sh.effective_date DESC,sh.revision DESC LIMIT 1) h ON true
-         WHERE e.company_id=$1 AND e.active AND NOT u.archived AND h.active
-         AND EXTRACT(DOW FROM d.work_date)::smallint=ANY(h.work_days)
-         AND NOT EXISTS(SELECT 1 FROM attendance_records r WHERE r.company_id=e.company_id AND r.employee_id=e.id AND r.work_date=d.work_date)
-       ),timed AS (
-         SELECT *, (work_date+start_time) AT TIME ZONE 'Asia/Aden' AS scheduled_start,
-          (work_date+end_time+CASE WHEN end_time<start_time THEN interval '1 day' ELSE interval '0' END) AT TIME ZONE 'Asia/Aden' AS scheduled_end
-         FROM expected
-       ) SELECT *,work_date::text AS work_date,
-          scheduled_start+interval '30 minutes'>=$3 AND $4>=scheduled_start+interval '30 minutes' AND $4<scheduled_end AS missed,
-          scheduled_end>=$3 AND $4>=scheduled_end AS absent
-         FROM timed WHERE (scheduled_start+interval '30 minutes'>=$3 AND $4>=scheduled_start+interval '30 minutes' AND $4<scheduled_end)
-            OR (scheduled_end>=$3 AND $4>=scheduled_end)
-         ORDER BY timed.employee_id,timed.work_date`,
-      [companyId, clock.today, clock.activatedAt, clock.now],
-    )
-  ).rows;
-  for (const row of missingRecords) {
-    if (row.missed)
-      await emit(
-        "ATTENDANCE_MISSED_30",
-        row,
-        `${row.employee_name}: لم يسجل الحضور بعد مرور 30 دقيقة على بداية دوام ${row.work_date}.`,
-      );
-    if (row.absent)
-      await emit(
-        "ATTENDANCE_ABSENT",
-        row,
-        `${row.employee_name}: انتهى دوام ${row.work_date} دون تسجيل حضور.`,
-      );
-  }
-
-  // An open punch can outlive a calendar day; scan all open records, without backfilling old thresholds.
-  const openRecords = (
-    await client.query(
-      `SELECT r.employee_id,r.employee_name,r.work_date::text AS work_date
-       FROM attendance_records r JOIN employees e ON e.company_id=r.company_id AND e.id=r.employee_id
-       JOIN users u ON u.id=e.user_id WHERE r.company_id=$1 AND e.active AND NOT u.archived
-       AND r.checked_out_at IS NULL AND r.checked_in_at+interval '16 hours'>=$2 AND r.checked_in_at+interval '16 hours'<=$3
-       ORDER BY r.employee_id,r.id`,
-      [companyId, clock.activatedAt, clock.now],
-    )
-  ).rows;
-  for (const row of openRecords)
-    await emit(
-      "ATTENDANCE_OPEN_16H",
-      row,
-      `${row.employee_name}: تجاوز الحضور المسجل ليوم ${row.work_date} مدة 16 ساعة دون تسجيل انصراف.`,
-    );
+    await emitNotification(client, {
+      code: "ATTENDANCE_LATE",
+      companyId,
+      subjectEmployeeId: row.employee_id,
+      subjectKey: `employee:${row.employee_id}`,
+      eventKey: `attendance:${row.id}:late`,
+      message: `${row.employee_name}: الحضور بعد الوقت المتوقع بمقدار ${row.late_minutes} دقيقة، مع سماح عشر دقائق.`,
+      href: `/companies/${companyId}/attendance?day=${row.work_date}`,
+    });
 }
 
 /** Server-only producer. It never creates history before the notification module activation. */
@@ -157,6 +92,19 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
           companyId,
         ]);
         if (current.rows.some((user) => !userIds.has(user.id))) return;
+        // Auto-close protects the raw punch even when notification/attendance pages are disabled.
+        const overdue = (
+          await client.query(
+            "SELECT id FROM attendance_records WHERE company_id=$1 AND checked_out_at IS NULL AND checked_in_at+interval '16 hours'<=clock_timestamp() ORDER BY id FOR UPDATE",
+            [companyId],
+          )
+        ).rows;
+        for (const record of overdue)
+          await closeAttendanceRecord(client, {
+            companyId,
+            recordId: record.id,
+            actorUser: null,
+          });
         if (!(await pageEnabled(client, companyId, "company.notifications")))
           return;
         await refreshNotificationReminders(client, companyId);
