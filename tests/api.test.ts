@@ -2876,3 +2876,62 @@ test("memo followers isolate companies, respect roles and explicit denies, and c
   )).rows.map(row=>row.revision);
   assert.deepEqual(changes,[1,2]);
 });
+
+test("memo links resolve safely, redact unauthorized account details and reject cross-company records", async(t)=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const coA=await company(platform.client,"Memo links A");
+ const coB=await company(platform.client,"Memo links B");
+ const recipient=await register(f,"memo-link-reader@example.test");
+ const staff=await employee(platform.client,coA.id,recipient.user.id);
+ const accountA=(await f.pool.query("SELECT id FROM accounts WHERE company_id=$1 ORDER BY id LIMIT 1",[coA.id])).rows[0].id;
+ const accountB=(await f.pool.query("SELECT id FROM accounts WHERE company_id=$1 ORDER BY id LIMIT 1",[coB.id])).rows[0].id;
+ const base=`/companies/${coA.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{title:"Review supplier account",body:"Review purchases",
+    recipientEmployeeId:staff.id,type:"task",idempotencyKey:randomUUID(),
+    links:{
+      followPage:{pageKey:"company.purchases",recordId:null},
+      referencePage:{pageKey:"company.account-ledger",recordId:null},
+      itemId:null,accountId:accountA,
+    },
+  },201)).memo;
+ assert.equal(created.links.followPage?.pageKey,"company.purchases");
+ assert.equal(created.links.account?.id,accountA);
+ assert.equal(created.links.revision,1);
+ const viewed=(await recipient.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "GET",`${base}/${created.id}`
+ )).memo;
+ assert.equal(viewed.links.account,null);
+ assert.equal(viewed.links.hiddenAccount,true);
+ assert.equal(viewed.links.referencePage,null);
+ assert.equal(viewed.links.hiddenReferencePage,true);
+ assert.equal(viewed.links.followPage,null);
+ assert.equal(viewed.links.hiddenFollowPage,true);
+ assert.equal(JSON.stringify(viewed.links).includes(String(accountA)),false);
+ assert.equal(viewed.canManageLinks,false);
+ const changed=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "PUT",`${base}/${created.id}/links`,{
+     revision:1,followPage:{pageKey:"company.accounts",recordId:null},
+     referencePage:null,itemId:null,accountId:accountA,
+   }
+ )).memo;
+ assert.equal(changed.links.revision,2);
+ assert.equal(changed.revision,created.revision);
+ assert.equal(changed.currentUserId,recipient.user.id);
+ assert.equal(changed.links.changes.length,1);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:1,followPage:null,referencePage:null,itemId:null,accountId:null,
+ })).status,409);
+ assert.equal((await recipient.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:null,referencePage:null,itemId:null,accountId:null,
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:null,referencePage:null,itemId:null,accountId:accountB,
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:{pageKey:"company.invoice",recordId:999999999},
+   referencePage:null,itemId:null,accountId:null,
+ })).status,404);
+ assert.equal((await recipient.client.request("GET",`${base}/link-accounts`)).status,403);
+});
