@@ -37,6 +37,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { formatMoney } from "../format-money";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import {
   Button,
@@ -80,7 +81,7 @@ const listTitles: Record<FinancialDocumentKind, string> = {
 const accountLabel = (account: { code: string; name: string }) =>
   `${account.code} — ${account.name}`;
 const money = (value: string | null) => (
-  <bdi className="financial-number">{value ?? "—"}</bdi>
+  <bdi className="financial-number">{formatMoney(value)}</bdi>
 );
 
 // Six decimal places match the amount contract; arithmetic never uses Number.
@@ -100,7 +101,7 @@ function exactText(value: bigint): string {
 }
 function balanceText(value: string) {
   if (/^-?0(?:\.0+)?$/.test(value)) return "0";
-  return value.startsWith("-") ? `${value.slice(1)} دائن` : `${value} مدين`;
+  return value.startsWith("-") ? `${formatMoney(value.slice(1))} دائن` : `${formatMoney(value)} مدين`;
 }
 function updateFilter(
   setParams: ReturnType<typeof useSearchParams>[1],
@@ -932,6 +933,7 @@ function DocumentEditor({
               )}
               <Field
                 label={`المبلغ${currency ? ` (${currency.code})` : ""}`}
+                money
                 dir="ltr"
                 inputMode="decimal"
                 required
@@ -994,6 +996,7 @@ function DocumentEditor({
                       <td>
                         <Field
                           label={`مدين السطر ${index + 1}`}
+                          money
                           className="financial-cell-field"
                           dir="ltr"
                           inputMode="decimal"
@@ -1007,6 +1010,7 @@ function DocumentEditor({
                       <td>
                         <Field
                           label={`دائن السطر ${index + 1}`}
+                          money
                           className="financial-cell-field"
                           dir="ltr"
                           inputMode="decimal"
