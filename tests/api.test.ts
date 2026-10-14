@@ -3089,3 +3089,14 @@ test("memo feature rules target current executor and preview scoped warnings",as
   roleIds:[],actionCode:"invoice.sale.create",effect:"warn",minimumCount:1,
   minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
   message:"راجع مذكرة التكليف قبل البيع"};
+ const rule=(await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "POST",base+"/memo-feature-rules",input,201)).rule;
+ assert.equal(rule.enabled,true);
+ const preview=await platform.client.ok<import("../packages/contracts/src/index.ts").MemoFeaturePreview>(
+  "GET",base+`/memo-feature-rules/${rule.id}/preview`);
+ assert.equal(preview.totalImpacted,1);
+ assert.equal(preview.impacted[0]?.employeeId,employeeCard.id);
+ const impacted=await worker.client.ok<{matches:{ruleId:number;effect:string}[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(impacted.matches[0]?.ruleId,rule.id);
+ assert.equal(impacted.matches[0]?.effect,"warn");
