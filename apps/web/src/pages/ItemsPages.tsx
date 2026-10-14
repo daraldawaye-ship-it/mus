@@ -47,6 +47,7 @@ import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { ImageUpload } from "../ImageUpload";
+import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { usePageDirectory } from "../page-directory";
 import {
   OptionListTools,
@@ -187,8 +188,11 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const selectedActivity = itemActiveFilter(params.get("active"));
   const filters = new URLSearchParams();
-  for (const key of ["active", "hasExpiry", "agentId", ...optionFilterKeys])
+  const activityQuery = itemActiveQueryValue(selectedActivity);
+  if (activityQuery !== null) filters.set("active", activityQuery);
+  for (const key of ["hasExpiry", "agentId", ...optionFilterKeys])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<OptionListRecord<Item>, OptionListMetadata>(
     `/companies/${companyId}/items?${filters}`,
@@ -369,12 +373,12 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           />
           <Select
             label="حالة الصنف"
-            value={params.get("active") ?? ""}
+            value={selectedActivity}
             onChange={(event) => filter("active", event.target.value)}
           >
-            <option value="">كل الحالات</option>
             <option value="true">فعال</option>
             <option value="false">مؤرشف</option>
+            <option value="all">كل الحالات</option>
           </Select>
           <Select
             label="انتهاء الصلاحية"

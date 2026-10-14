@@ -47,6 +47,8 @@ jobs:
         run: npm run build
       - name: Test first-unit stock quantity display and rounding
         run: node --import tsx --test tests/sale-stock-quantity.test.ts
+      - name: Test default active item list and archived/all filters
+        run: node --import tsx --test tests/item-active-filter.test.ts
       - name: Test account choice creation, editing and strict ordered labels
         run: node --import tsx --test --test-name-pattern="account card choice labels retain" tests/masters.test.ts
       - name: Test full-length account names and legacy identifiers
