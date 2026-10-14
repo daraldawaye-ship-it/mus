@@ -3025,3 +3025,20 @@ test("memo followup defers independently, wakes once and cancels on transfer",as
  "POST",base,{title:"Followup test",body:"Wait for supplier",type:"task",
  recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201)).memo;
  const localDate=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
+ const deferred=(await receiver.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"set",revision:0,
+ localDate,localTime:"10:00",reason:"انتظار رد المورد",repeatInterval:"none"})).memo;
+ assert.equal(deferred.schedule?.active,true);
+ assert.equal(deferred.currentUserId,receiver.user.id);
+ assert.equal(deferred.revision,created.revision);
+ assert.equal((await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "GET",`${base}/${created.id}`)).memo.schedule?.reason,"انتظار رد المورد");
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items[0]?.id,created.id);
+ assert.equal((await outsider.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+ assert.equal((await outsider.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"cancel",revision:1,reason:"not permitted"})).status,404);
+ assert.equal((await receiver.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"set",revision:0,localDate,localTime:"10:00",
+ reason:"stale",repeatInterval:"none"})).status,409);
