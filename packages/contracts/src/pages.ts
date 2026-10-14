@@ -451,14 +451,26 @@ page(
 );
 page(
   "company.stock-operations",
-  "المناقلات والجرد",
+  "المناقلات",
   "الأصناف والمخزون",
   "/companies/:companyId/stock-operations",
   {
     view: permission("inventory.view", "inventory.post"),
     create: permission("inventory.post", "finance.post"),
   },
-  "نقل المخزون والجرد الفعلي؛ الترحيل يتحقق من الرصيد وصلاحية المحاسبة.",
+  "مناقلات المخزون بين المواقع داخل الشركة.",
+);
+page(
+  "company.stock-adjustments",
+  "تسوية الأصناف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/stock-adjustments",
+  {
+    view: permission("inventory.view", "inventory.post"),
+    create: permission("inventory.post", "finance.post"),
+  },
+  "الجرد الفعلي بكميات كل وحدة وتحديث أقرب انتهاء الصنف.",
+  { keywords: ["تسوية", "جرد", "مخزون", "انتهاء"] },
 );
 page(
   "company.inventory-settings",

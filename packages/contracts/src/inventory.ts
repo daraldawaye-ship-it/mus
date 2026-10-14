@@ -66,12 +66,27 @@ export const stockTransferSchema = z
     path: ["toLocationId"],
     message: "اختر موقعًا مختلفًا لاستلام المناقلة",
   });
+/** Convert an exact physical count across all active unit sizes to the persisted smallest unit. */
+export function countedStockSmallest(
+  counts: { unit1: string; unit2?: string; unit3?: string },
+  factors: { factor2: number; factor3: number },
+): bigint {
+  return BigInt(counts.unit1) * BigInt(factors.factor2) * BigInt(factors.factor3)
+    + BigInt(counts.unit2 ?? "0") * BigInt(factors.factor3)
+    + BigInt(counts.unit3 ?? "0");
+}
 export const stockAdjustmentSchema = z
   .object({
     documentDate: documentDateSchema,
     itemId: id,
     locationId: id,
-    countedQuantity: itemWholeQuantitySchema,
+    countedQuantity: itemWholeQuantitySchema.optional(),
+    countedUnits: z.object({
+      unit1: itemWholeQuantitySchema,
+      unit2: itemWholeQuantitySchema.optional(),
+      unit3: itemWholeQuantitySchema.optional(),
+    }).strict().optional(),
+    nearestExpiryDate: documentDateSchema.nullable().optional(),
     expectedQuantitySmallest: stockSmallestQuantitySchema,
     unit,
     expiryDate: documentDateSchema.nullable().default(null),
@@ -79,7 +94,11 @@ export const stockAdjustmentSchema = z
     description: z.string().trim().max(1000).default(""),
     idempotencyKey: z.uuid(),
   })
-  .strict();
+  .strict()
+  .refine(value => value.countedQuantity !== undefined || value.countedUnits !== undefined, {
+    path: ["countedUnits"],
+    message: "أدخل الكمية الفعلية للوحدات قبل الترحيل",
+  });
 export type StockTransferInput = z.input<typeof stockTransferSchema>;
 export type StockAdjustmentInput = z.input<typeof stockAdjustmentSchema>;
 export const stockMovementKinds = [
