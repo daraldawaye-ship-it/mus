@@ -1217,7 +1217,7 @@ function OperationEditor({
     if (saving || unknown) return;
     setResult(null);
     setError("");
-    setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "" });
+    setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
     setItem(preselectedItem);
     setFromLocation(null);
     setToLocation(null);
