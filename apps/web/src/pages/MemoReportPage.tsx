@@ -92,3 +92,62 @@ export function MemoReportPage({context}:{context:CompanyContext}){
    </div>
    <Button variant="secondary" onClick={()=>setParams(new URLSearchParams())}>مسح التصفية</Button>
   </Card>
+  <Card title="ملخص المذكرات ضمن نطاق الوصول">
+   {metric?<div className="form-grid">
+    <p>الإجمالي: <strong>{metric.total.toLocaleString("en-US")}</strong></p>
+    <p>معلقة: <strong>{metric.pending.toLocaleString("en-US")}</strong></p>
+    <p>بانتظار الاعتماد: <strong>{metric.awaitingApproval.toLocaleString("en-US")}</strong></p>
+    <p>منجزة: <strong>{metric.completed.toLocaleString("en-US")}</strong></p>
+    <p>مؤجلة: <strong>{metric.deferred.toLocaleString("en-US")}</strong></p>
+    <p>متوسط إنجاز الأعمال المنجزة: <strong>{metric.averageCompletedHours===null?"—":hours(metric.averageCompletedHours)}</strong></p>
+   </div>:<p className="muted">لا توجد نتائج بعد.</p>}
+  </Card>
+  <Card title="مؤشرات الموظفين">
+   <div className="table-scroll">
+    <table><thead><tr>
+      <th>الموظف</th><th>مطلوب منه</th><th>بانتظار اعتماده</th>
+      <th>مؤجلة لديه</th><th>أنجزها واعتمدت</th><th>طلب اعتمادها</th>
+      <th>مرات إعادتها</th><th>أقدم إسناد</th>
+      <th>وقت التنفيذ</th><th>وقت الاعتماد</th>
+    </tr></thead><tbody>
+      {report.data?.employees.map(e=><tr key={e.userId}>
+       <td>{e.name}</td><td>{e.required}</td><td>{e.awaitingApproval}</td>
+       <td>{e.deferred}</td><td>{e.approvedWork}</td><td>{e.requestedApproval}</td>
+       <td>{e.reopened}</td><td>{fmtDate(e.oldestRequiredAt)}</td>
+       <td>{hours(e.executionHours)}</td><td>{hours(e.approvalHours)}</td>
+      </tr>)}
+    </tbody></table>
+   </div>
+   <p className="muted">المدد بالأوقات الفعلية، ولا تدخل فترة انتظار اعتماد المرسل ضمن وقت التنفيذ.</p>
+  </Card>
+  <Card title="تفاصيل المذكرات">
+   <div className="table-scroll"><table><thead><tr>
+    <th>المذكرة</th><th>المرسل</th><th>المسؤول الحالي</th>
+    <th>الحالة</th><th>عمر المذكرة</th><th>الإسناد الحالي</th>
+    <th>التنفيذ</th><th>الاعتماد</th><th>العودة</th><th>مرات الإعادة</th>
+   </tr></thead><tbody>
+    {report.data?.items.map(row=><tr key={row.id}>
+     <td><Link to={`/companies/${companyId}/memos/${row.id}`}>{row.title}</Link></td>
+     <td>{row.senderName}</td><td>{row.currentName}</td><td>{
+      row.status==="pending"?"معلقة":row.status==="awaiting_approval"?"بانتظار الاعتماد":"منجزة"
+     }</td>
+     <td>{hours(row.ageHours)}</td><td>{hours(row.assignmentHours)}</td>
+     <td>{hours(row.executionHours)}</td><td>{hours(row.approvalHours)}</td>
+     <td>{row.deferred?fmtDate(row.dueAt):"—"}</td><td>{row.returnCount}</td>
+    </tr>)}
+   </tbody></table></div>
+   {report.data?.items.map(row=>row.assignmentPeriods.length>0&&
+    <details key={row.id}><summary>توزيع مدة المذكرة: {row.title}</summary>
+     {row.assignmentPeriods.map((period,i)=><p key={i} className="muted">
+      {period.name}: {hours(period.hours)} ({period.role==="approval"?"انتظار الاعتماد":"تنفيذ"})
+     </p>)}
+    </details>)}
+   <div className="memo-action-buttons">
+    <Button variant="secondary" disabled={page<=1} onClick={()=>change("page",String(page-1))}>السابق</Button>
+    <span>صفحة {page} — {report.data?.total??0} نتيجة</span>
+    <Button variant="secondary" disabled={page*20 >= (report.data?.total??0)}
+     onClick={()=>change("page",String(page+1))}>التالي</Button>
+   </div>
+  </Card>
+ </div>;
+}
