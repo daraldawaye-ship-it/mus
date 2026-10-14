@@ -3010,3 +3010,18 @@ test("memo options use shared typed definitions, capture defaults, filter lists,
    idempotencyKey:randomUUID(),options:[{definitionId:urgent.id,value:true}],
  })).status,400);
 });
+
+test("memo followup defers independently, wakes once and cancels on transfer",async(t)=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Memo return to work");
+ const receiver=await register(f,"memo-followup-recipient@example.test");
+ const outsider=await register(f,"memo-followup-outsider@example.test");
+ const another=await register(f,"memo-followup-another@example.test");
+ const staff=await employee(platform.client,co.id,receiver.user.id);
+ await employee(platform.client,co.id,outsider.user.id);
+ const anotherStaff=await employee(platform.client,co.id,another.user.id);
+ const base=`/companies/${co.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "POST",base,{title:"Followup test",body:"Wait for supplier",type:"task",
+ recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201)).memo;
+ const localDate=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
