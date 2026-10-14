@@ -104,3 +104,16 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
     onChange={e=>setDraft({...draft,excludeDeferredUntilDue:e.target.checked})}/> استثناء المؤجلة حتى موعد العودة</label>
    <Field label="الرسالة التي تظهر للموظف" value={draft.message}
     onChange={e=>setDraft({...draft,message:e.target.value})}/>
+   <h3>الأدوار المشمولة</h3>
+   <div className="form-grid">{roles.data?.roles.map(role=>
+    <label key={role.id}><input type="checkbox" checked={draft.roleIds.includes(role.id)}
+     onChange={()=>toggle("roleIds",role.id)}/> {role.name}</label>)}</div>
+   <h3>الموظفون المشمولون</h3>
+   <div className="form-grid">{employees.data?.items.map(employee=>
+    <label key={employee.id}><input type="checkbox" checked={draft.employeeIds.includes(employee.id)}
+     onChange={()=>toggle("employeeIds",employee.id)}/> {employee.name}</label>)}</div>
+   <p className="muted">عند عدم اختيار موظفين أو أدوار، تشمل القاعدة جميع الموظفين.</p>
+   <Button disabled={saving||!draft.name||(!draft.minimumCount&&draft.minimumHours===null)}
+    onClick={()=>void save()}>حفظ القاعدة</Button>
+   <Button variant="secondary" disabled={saving} onClick={()=>setEditing(null)}>إلغاء</Button>
+  </Card>}
