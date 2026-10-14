@@ -31,3 +31,10 @@ export function memoFeatureRuleRoutes(pool:Pool){
   });
   res.json(result);
  }));
+ router.get(base+"/:ruleId/preview",handler(async(req,res)=>{
+  const result=await transaction(pool,async client=>{
+   const current=await guard(client,req);
+   const row=(await client.query("SELECT * FROM memo_feature_rules WHERE company_id=$1 AND id=$2",
+    [current.companyId,id(req.params.ruleId)])).rows[0];
+   if(!row)missing();
+   const rule=featureRuleDTO(row);
