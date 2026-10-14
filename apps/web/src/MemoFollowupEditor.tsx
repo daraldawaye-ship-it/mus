@@ -20,3 +20,17 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
  const preview=/^\d{4}-\d\d-\d\d$/.test(date)&&/^\d\d:\d\d$/.test(chosen)
   ?new Date(`${date}T${chosen}:00+03:00`):null;
  const future=!!preview&&Number.isFinite(preview.getTime())&&preview.getTime()>Date.now();
+ async function submit(event:FormEvent,action:"set"|"cancel"){
+  event.preventDefault();if(pending || !memo.canSchedule || (action==="set"&&(!future||!reason.trim())))return;
+  setPending(true);setError("");setNotice("");
+  try{
+    const body=action==="set"
+      ?{action,revision:memo.scheduleRevision,localDate:date,localTime:clock||null,
+        reason:reason.trim(),repeatInterval:"none"}
+      :{action,revision:memo.scheduleRevision,reason:reason.trim()||"عودة للمتابعة"};
+    const result=await api<{memo:MemoDetail}>(`/companies/${companyId}/memos/${memo.id}/schedule`,
+      {method:"PUT",body,signal:guard.signal});
+    if(guard.isCurrent()){onSaved(result.memo);setEditing(false);setNotice("تم حفظ تغيير موعد المتابعة.");}
+  }catch(cause){if(guard.isCurrent())setError(errorMessage(cause));}
+  finally{if(guard.isCurrent())setPending(false);}
+ }
