@@ -190,7 +190,7 @@ export const memoFeatureRuleSchema=z.object({
  message:z.string().max(1000),
 }).strict().refine(x=>x.minimumCount!==null||x.minimumHours!==null,
  "يجب تحديد شرط العدد أو المدة");
-export const memoFeatureRuleUpdateSchema=memoFeatureRuleSchema.extend({
+export const memoFeatureRuleUpdateSchema=memoFeatureRuleSchema.safeExtend({
  revision:z.number().int().positive(),
 });
 export interface MemoFeatureRule extends z.infer<typeof memoFeatureRuleSchema>{
