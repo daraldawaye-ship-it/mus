@@ -47,3 +47,18 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
    {memo.schedule?.active&&<Button variant="secondary" disabled={pending}
     onClick={e=>void submit(e,"cancel")}>إلغاء التأجيل</Button>}
   </div>}
+  {editing&&<form className="form-stack" onSubmit={e=>void submit(e,"set")}>
+    <Field label="مؤجلة حتى" type="date" required value={date}
+      onChange={e=>setDate(e.target.value)} disabled={pending}/>
+    <Field label="وقت التذكير (اختياري)" type="time" value={clock}
+      onChange={e=>setClock(e.target.value)} disabled={pending}/>
+    <p className="muted">الوقت الافتراضي للشركة: {settings.data?.settings.defaultTime??"09:00"} (بتوقيت اليمن).</p>
+    <div className="field"><label htmlFor="memo-followup-reason">سبب التأجيل</label>
+     <textarea id="memo-followup-reason" rows={3} maxLength={2000}
+      required value={reason} disabled={pending} onChange={e=>setReason(e.target.value)}/></div>
+    {preview&&<p>التذكير القادم: {local(preview.toISOString())}{!future?" — موعد سابق":""}</p>}
+    <div className="memo-action-buttons">
+      <Button type="submit" disabled={pending||!future||!reason.trim()}>حفظ التأجيل</Button>
+      <Button variant="secondary" disabled={pending} onClick={()=>setEditing(false)}>إلغاء</Button>
+    </div>
+  </form>}
