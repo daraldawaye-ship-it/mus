@@ -50,3 +50,25 @@ export function memoFeatureRuleRoutes(pool:Pool){
   });
   res.json(result);
  }));
+ router.post(base,handler(async(req,res)=>{
+  const input=parse(memoFeatureRuleSchema,req.body);
+  if(input.effect==="block")throw new HttpError(400,"block_not_ready","المنع غير متاح قبل اكتمال اختبار الربط");
+  const result=await transaction(pool,async client=>{
+   const current=await guard(client,req,true);
+   if(!await validateFeatureRuleTargets(client,current.companyId,input.employeeIds,input.roleIds))
+    throw new HttpError(400,"invalid_targets","اختر موظفين وأدوارًا تابعة للشركة");
+   const row=(await client.query(
+    `INSERT INTO memo_feature_rules(company_id,name,enabled,employee_ids,role_ids,action_code,effect,
+     minimum_count,minimum_hours,match_mode,exclude_deferred_until_due,message,created_by,changed_by)
+     VALUES($1,$2,$3,$4::integer[],$5::integer[],$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
+    [current.companyId,input.name,input.enabled,input.employeeIds,input.roleIds,input.actionCode,
+     input.effect,input.minimumCount,input.minimumHours,input.matchMode,input.excludeDeferredUntilDue,
+     input.message,current.user.id])).rows[0];
+   await client.query(
+     "INSERT INTO memo_feature_rule_changes(company_id,rule_id,revision,actor_user_id,previous_value,next_value) VALUES($1,$2,1,$3,NULL,$4::jsonb)",
+     [current.companyId,row.id,current.user.id,JSON.stringify(input)]);
+   await audit(client,current.user,"memo.feature-rule","memo-feature-rule",row.id,null,input,current.companyId);
+   return {rule:featureRuleDTO(row)};
+  });
+  res.status(201).json(result);
+ }));
