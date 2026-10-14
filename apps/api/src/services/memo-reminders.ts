@@ -135,8 +135,18 @@ export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
      .every(k=>pages.find(e=>e.key===k)?.actionAccess.view))continue;
   }catch{continue;}
   if(!template?.enabled)continue;
-  await closeScheduleNotice(client,companyId,row.memo_id,null,"new-due-reminder");
-  await emitNotification(client,{
+  const previousNotice=(await client.query(
+    "SELECT id,reminder_count FROM notifications WHERE company_id=$1 AND code='MEMO_DUE' AND subject_key=$2 AND recipient_user_id=$3 AND completed_at IS NULL FOR UPDATE",
+    [companyId,`memo:${row.memo_id}`,row.assignee_user_id],
+  )).rows[0];
+  if(previousNotice){
+    await client.query(
+      "UPDATE notifications SET read_at=NULL,reminder_count=reminder_count+1,last_reminded_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp() WHERE id=$1",
+      [previousNotice.id]);
+    await audit(client,null,"notification.remind","notification",previousNotice.id,
+      {reminderCount:previousNotice.reminder_count},
+      {reminderCount:previousNotice.reminder_count+1,reason:"memo-repeat"},companyId);
+  }else await emitNotification(client,{
    code:"MEMO_DUE",companyId,recipientUserId:row.assignee_user_id,
    subjectEmployeeId:row.current_employee_id,explicitSubjectOnly:true,
    subjectKey:`memo:${row.memo_id}`,
