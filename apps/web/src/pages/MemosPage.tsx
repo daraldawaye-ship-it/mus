@@ -30,6 +30,7 @@ import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
 import { MemoFollowersEditor } from "../MemoFollowersEditor";
 import { MemoLinksEditor, emptyMemoLinks } from "../MemoLinksEditor";
+import {MemoFollowupEditor} from "../MemoFollowupEditor";
 import { MemoOptionFields, memoOptionLabel } from "../MemoOptionFields";
 import {
   Button,
@@ -138,6 +139,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
       ? "sent"
       : params.get("box") === "following"
         ? "following"
+        : params.get("box") === "deferred"
+          ? "deferred"
         : params.get("box") === "watching"
           ? "watching"
         : params.get("box") === "approval"
@@ -363,6 +366,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
     { value: "watching", label: "أتابعها" },
+    { value: "deferred", label: "المؤجلة" },
     { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
