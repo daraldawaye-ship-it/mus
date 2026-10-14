@@ -46,6 +46,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useEmployeeCashbox } from "../employee-cashbox";
+import { initialInvoiceAccount } from "../invoice-account-default";
 import { saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
@@ -1389,7 +1390,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const first = emptyLine();
     pending.current = null;
     setLines([first]);
-    setAccount(kind === "sale" ? defaultCashbox : null);
+    setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
     accountManuallyChosen.current = false;
     setOriginal(null);
@@ -1469,7 +1470,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       const next = emptyLine();
       pending.current = null;
       setLines([next]);
-      setAccount(kind === "sale" ? defaultCashbox : null);
+      setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
       accountManuallyChosen.current = false;
       setOriginal(null);
