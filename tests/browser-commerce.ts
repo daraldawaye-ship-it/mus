@@ -170,10 +170,16 @@ async function geometry(page: Page, width: number) {
     const order = await page.locator(".commerce-header-content").evaluate((element) => ({
       firstLabel: element.children.item(0)?.textContent?.trim() ?? "",
       secondLabel: element.children.item(1)?.textContent?.trim() ?? "",
+      thirdLabel: element.children.item(2)?.textContent?.trim() ?? "",
       linkInside: !!element.querySelector(".commerce-list-link"),
     }));
-    assert.match(order.firstLabel, /حساب العميل|حساب المورد/);
-    assert.match(order.secondLabel, /قائمة الفواتير/);
+    assert.match(order.firstLabel, /حساب العميل|حساب السداد/);
+    if (/حساب السداد/.test(order.firstLabel)) {
+      assert.match(order.secondLabel, /المورد الفعلي/);
+      assert.match(order.thirdLabel, /قائمة الفواتير/);
+    } else {
+      assert.match(order.secondLabel, /قائمة الفواتير/);
+    }
     assert.equal(order.linkInside, true);
     assert.equal(await page.locator(".commerce-document-page > .page-header").count(), 0);
   }
@@ -470,11 +476,15 @@ try {
           assert.equal(await blank.innerText(), "");
           assert.equal(await blank.locator("input,button,a,select").count(), 0);
           assert.equal(await occupied.getByLabel(
-            kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد").count(), 1);
+            kind === "sale" ? "حساب العميل / النقد" : "حساب السداد / الذمة").count(), 1);
           assert.equal(await occupied.getByLabel("تاريخ الفاتورة").count(), 1);
           assert.equal(await occupied.getByLabel("عملة الفاتورة").count(), 1);
           assert.equal(await occupied.getByLabel("الفرع").count(), 1);
           assert.equal(await occupied.getByLabel("المعرض / المخزن").count(), 1);
+          if (kind === "purchase") {
+            assert.equal(await occupied.getByLabel("حساب السداد / الذمة", { exact: true }).inputValue(), "");
+            assert.equal(await occupied.getByLabel("المورد الفعلي", { exact: true }).count(), 1);
+          }
           await occupied.evaluate((node) => { node.scrollTop = node.scrollHeight; });
           assert((await occupied.evaluate((node) => node.scrollTop)) > 0,
             "Only the occupied half should scroll down to the remaining fields");
@@ -497,7 +507,7 @@ try {
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
         await page
-          .getByLabel("حساب المورد / النقد", { exact: true })
+          .getByLabel("حساب السداد / الذمة", { exact: true })
           .selectOption(String(accounts.supplier!.id));
         await page
           .getByLabel("الفرع", { exact: true })
@@ -561,6 +571,8 @@ try {
         );
         assert.equal(await page.locator(".commerce-matrix tbody tr").count(), 1);
         assert.equal(await page.locator(".commerce-matrix tr[data-selected='true']").count(), 0);
+        assert.equal(await page.getByLabel("حساب السداد / الذمة", { exact: true }).inputValue(), "",
+          "Saving purchase should clear its account instead of restoring a cashbox");
         assert.match(page.url(), /\/invoices\/new\?kind=(purchase|sale)$/);
         const invoices = await call<ApiPage<Invoice>>(
           base + "/invoices?kind=purchase",
@@ -578,7 +590,7 @@ try {
           await page.goto(base + "/invoices/new?kind=" + kind);
           await page.locator("form.commerce-editor").waitFor();
           await page.getByLabel(
-            kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد",
+            kind === "sale" ? "حساب العميل / النقد" : "حساب السداد / الذمة",
             { exact: true },
           ).selectOption(String(kind === "sale" ? accounts.customer!.id : accounts.supplier!.id));
           await page.getByLabel("تاريخ الفاتورة", { exact: true }).fill("2026-01-01");
@@ -594,13 +606,10 @@ try {
           assert.equal(await page.getByLabel("ملاحظات الفاتورة", { exact: true }).inputValue(), "");
           assert.equal(await page.getByLabel("الخصم", { exact: true }).inputValue(), "0");
           assert.notEqual(await page.getByLabel("تاريخ الفاتورة", { exact: true }).inputValue(), "2026-01-01");
-          assert.equal(
-            await page.getByLabel(
-              kind === "sale" ? "حساب العميل / النقد" : "حساب المورد / النقد",
-              { exact: true },
-            ).inputValue(),
-            "",
-          );
+          if (kind === "purchase") {
+            assert.equal(await page.getByLabel("حساب السداد / الذمة", { exact: true }).inputValue(), "");
+            assert.equal(await page.getByLabel("المورد الفعلي", { exact: true }).inputValue(), "");
+          }
           assert.equal(await search.evaluate((node) => node === document.activeElement), true);
           assert.equal(
             await page.getByText("على السطور الموجبة فقط؛ خصم المردود المرتبط من الأصل").count(),
@@ -966,7 +975,7 @@ try {
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
         await page
-          .getByLabel("حساب المورد / النقد", { exact: true })
+          .getByLabel("حساب السداد / الذمة", { exact: true })
           .selectOption(String(accounts.supplier!.id));
         await page
           .getByLabel("الفرع", { exact: true })
@@ -1245,7 +1254,7 @@ try {
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
         await page
-          .getByLabel("حساب المورد / النقد", { exact: true })
+          .getByLabel("حساب السداد / الذمة", { exact: true })
           .selectOption(String(accounts.supplier!.id));
         await page
           .getByLabel("الفرع", { exact: true })
