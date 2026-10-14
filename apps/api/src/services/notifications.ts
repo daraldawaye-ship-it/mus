@@ -7,7 +7,7 @@ import { audit } from "./audit.ts";
 import { HttpError } from "../errors.ts";
 import { memoFollowerSql } from "./memo-followers.ts";
 
-export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPROVAL", "MEMO_COMPLETED", "MEMO_FOLLOW", "MEMO_DUE"];
+export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPROVAL", "MEMO_COMPLETED", "MEMO_FOLLOW", "MEMO_DUE", "MEMO_DELAYED"];
 
 export const templateQuery = `SELECT t.*,s.id AS setting_id,s.revision,
  COALESCE(s.importance,t.default_importance) AS importance,COALESCE(s.enabled,t.implemented) AS enabled,
@@ -60,7 +60,12 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
  OR $3::integer=ANY(COALESCE(s.employee_ids,'{}'::integer[]))
  OR EXISTS(SELECT 1 FROM employee_role_assignments a JOIN company_roles r ON r.company_id=a.company_id AND r.id=a.role_id AND r.active
  WHERE a.company_id=n.company_id AND a.employee_id=$3 AND a.active AND a.role_id=ANY(COALESCE(s.role_ids,'{}'::integer[]))))
- AND (n.code NOT IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW','MEMO_DUE') OR n.subject_employee_id=$3::integer OR $4::boolean)
+ AND (n.code NOT IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW','MEMO_DUE','MEMO_DELAYED') OR n.subject_employee_id=$3::integer OR $4::boolean)
+ AND (n.code<>'MEMO_DELAYED' OR EXISTS(
+   SELECT 1 FROM memos overdue_m WHERE overdue_m.company_id=n.company_id
+   AND n.subject_key=('memo:'||overdue_m.id::text)
+   AND overdue_m.sender_user_id=$1 AND overdue_m.status<>'completed'
+ ))
  AND (n.code<>'MEMO_DUE' OR EXISTS(
    SELECT 1 FROM memos due_m WHERE due_m.company_id=n.company_id
    AND n.subject_key=('memo:'||due_m.id::text)
