@@ -52,7 +52,6 @@ export function memoFeatureRuleRoutes(pool:Pool){
  }));
  router.post(base,handler(async(req,res)=>{
   const input=parse(memoFeatureRuleSchema,req.body);
-  if(input.effect==="block")throw new HttpError(400,"block_not_ready","المنع غير متاح قبل اكتمال اختبار الربط");
   const result=await transaction(pool,async client=>{
    const current=await guard(client,req,true);
    if(!await validateFeatureRuleTargets(client,current.companyId,input.employeeIds,input.roleIds))
