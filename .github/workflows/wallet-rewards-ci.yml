@@ -45,6 +45,8 @@ jobs:
         run: npm run check
       - name: Test exact money display with thousands separators
         run: node --import tsx --test tests/format-money.test.ts
+      - name: Check lookup option widths and purchase account defaults
+        run: node --import tsx --test tests/lookup-option-label.test.ts tests/invoice-account-default.test.ts
       - name: Build web application
         run: npm run build
       - name: Test first-unit stock quantity display and rounding
