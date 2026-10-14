@@ -159,5 +159,7 @@ export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
   await client.query(
    "UPDATE notifications SET repeat_interval='none',next_reminder_at=NULL,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND code='MEMO_DUE' AND event_key=$2 AND completed_at IS NULL AND (repeat_interval<>'none' OR next_reminder_at IS NOT NULL)",
    [companyId,`memo:${row.memo_id}:due:${row.revision+1}`]);
+  await notifyDueMemoSender(client,companyId,row.memo_id,row.title,
+    row.sender_user_id,row.assignee_user_id,row.revision+1);
  }
 }
