@@ -71,7 +71,13 @@ export const stockAdjustmentSchema = z
     documentDate: documentDateSchema,
     itemId: id,
     locationId: id,
-    countedQuantity: itemWholeQuantitySchema,
+    countedQuantity: itemWholeQuantitySchema.optional(),
+    countedUnits: z.object({
+      unit1: itemWholeQuantitySchema,
+      unit2: itemWholeQuantitySchema.optional(),
+      unit3: itemWholeQuantitySchema.optional(),
+    }).strict().optional(),
+    nearestExpiryDate: documentDateSchema.nullable().optional(),
     expectedQuantitySmallest: stockSmallestQuantitySchema,
     unit,
     expiryDate: documentDateSchema.nullable().default(null),
@@ -79,7 +85,11 @@ export const stockAdjustmentSchema = z
     description: z.string().trim().max(1000).default(""),
     idempotencyKey: z.uuid(),
   })
-  .strict();
+  .strict()
+  .refine(value => value.countedQuantity !== undefined || value.countedUnits !== undefined, {
+    path: ["countedUnits"],
+    message: "أدخل الكمية الفعلية للوحدات قبل الترحيل",
+  });
 export type StockTransferInput = z.input<typeof stockTransferSchema>;
 export type StockAdjustmentInput = z.input<typeof stockAdjustmentSchema>;
 export const stockMovementKinds = [
