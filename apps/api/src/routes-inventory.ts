@@ -5,6 +5,7 @@ import {
   stockTransferSchema,
   stockAdjustmentSchema,
   stockMovementKinds,
+  countedStockSmallest,
 } from "../../../packages/contracts/src/inventory.ts";
 import { documentDateSchema } from "../../../packages/contracts/src/finance.ts";
 import { actor, handler, id, parse } from "./http.ts";
