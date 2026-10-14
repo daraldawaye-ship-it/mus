@@ -45,3 +45,8 @@ export function memoFeatureRuleRoutes(pool:Pool){
     const value=await previewMemoFeatureEmployee(client,rule,employee);
     if(value.matched)impacted.push(value);
    }
+   return {ruleId:rule.id,actionCode:rule.actionCode,effect:rule.effect,
+    impacted,totalImpacted:impacted.length};
+  });
+  res.json(result);
+ }));
