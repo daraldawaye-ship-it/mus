@@ -38,3 +38,10 @@ export function memoFeatureRuleRoutes(pool:Pool){
     [current.companyId,id(req.params.ruleId)])).rows[0];
    if(!row)missing();
    const rule=featureRuleDTO(row);
+   const employees=(await client.query("SELECT id,name,role FROM employees WHERE company_id=$1 AND active ORDER BY id",
+    [current.companyId])).rows;
+   const impacted=[];
+   for(const employee of employees){
+    const value=await previewMemoFeatureEmployee(client,rule,employee);
+    if(value.matched)impacted.push(value);
+   }
