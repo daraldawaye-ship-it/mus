@@ -174,6 +174,36 @@ export interface MemoReportResult {
  metrics:{pending:number;awaitingApproval:number;completed:number;deferred:number;averageCompletedHours:number|null;total:number};
  employees:MemoReportEmployee[];
 }
+export const memoFeatureActionSchema=z.enum(["invoice.sale.create","invoice.purchase.create"]);
+export const memoFeatureEffectSchema=z.enum(["monitor","warn","block"]);
+export const memoFeatureRuleSchema=z.object({
+ name:z.string().trim().min(1).max(200),
+ enabled:z.boolean(),
+ employeeIds:z.array(z.number().int().positive()).max(100),
+ roleIds:z.array(z.number().int().positive()).max(100),
+ actionCode:memoFeatureActionSchema,
+ effect:memoFeatureEffectSchema,
+ minimumCount:z.number().int().min(1).max(100000).nullable(),
+ minimumHours:z.number().min(0).max(100000).nullable(),
+ matchMode:z.enum(["all","any"]),
+ excludeDeferredUntilDue:z.boolean(),
+ message:z.string().max(1000),
+}).strict().refine(x=>x.minimumCount!==null||x.minimumHours!==null,
+ "يجب تحديد شرط العدد أو المدة");
+export const memoFeatureRuleUpdateSchema=memoFeatureRuleSchema.extend({
+ revision:z.number().int().positive(),
+});
+export interface MemoFeatureRule extends z.infer<typeof memoFeatureRuleSchema>{
+ id:number;companyId:number;revision:number;changedAt:string;
+}
+export interface MemoFeatureImpact{
+ employeeId:number;employeeName:string;pendingCount:number;eligibleCount:number;
+ oldestHours:number;matched:boolean;memoIds:number[];
+}
+export interface MemoFeaturePreview{
+ ruleId:number;actionCode:string;effect:string;
+ impacted:MemoFeatureImpact[];totalImpacted:number;
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
