@@ -3042,3 +3042,10 @@ test("memo followup defers independently, wakes once and cancels on transfer",as
  assert.equal((await receiver.client.request("PUT",`${base}/${created.id}/schedule`,{
  action:"set",revision:0,localDate,localTime:"10:00",
  reason:"stale",repeatInterval:"none"})).status,409);
+ const cancelled=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"cancel",revision:1,reason:"متابعة الآن"})).memo;
+ assert.equal(cancelled.schedule?.active,false);
+ assert.equal(cancelled.revision,created.revision);
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+});
