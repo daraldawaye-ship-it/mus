@@ -34,7 +34,7 @@ export async function closeScheduleNotice(client:PoolClient,companyId:number,mem
   `UPDATE notifications SET completed_at=clock_timestamp(),
     read_at=COALESCE(read_at,clock_timestamp()),snoozed_until=NULL,next_reminder_at=NULL,
     revision=revision+1,updated_at=clock_timestamp()
-   WHERE company_id=$1 AND code='MEMO_DUE' AND subject_key=$2 AND completed_at IS NULL
+   WHERE company_id=$1 AND code IN ('MEMO_DUE','MEMO_DELAYED') AND subject_key=$2 AND completed_at IS NULL
    RETURNING id`,[companyId,`memo:${memoId}`],
  )).rows;
  for(const row of rows)
