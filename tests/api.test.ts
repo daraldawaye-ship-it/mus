@@ -3070,3 +3070,22 @@ test("memo report scopes employee totals and approval intervals",async t=>{
  const hidden=await stranger.client.ok<{total:number}>("GET",base+"/report");
  assert.equal(hidden.total,0);
 });
+
+test("memo feature rules target current executor and preview scoped warnings",async t=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Rules A");
+ const other=await company(platform.client,"Rules B");
+ const worker=await register(f,"memo-rule-employee@example.test");
+ const outsider=await register(f,"memo-rule-outsider@example.test");
+ const employeeCard=await employee(platform.client,co.id,worker.user.id);
+ await employee(platform.client,co.id,outsider.user.id);
+ const base=`/companies/${co.id}`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base+"/memos",{
+   title:"Task to follow",body:"Complete inspection",type:"task",
+   recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID(),
+  },201)).memo;
+ const input={name:"Sales pending work",enabled:true,employeeIds:[employeeCard.id],
+  roleIds:[],actionCode:"invoice.sale.create",effect:"warn",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"راجع مذكرة التكليف قبل البيع"};
