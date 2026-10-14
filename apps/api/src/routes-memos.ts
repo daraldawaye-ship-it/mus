@@ -493,7 +493,7 @@ export function memoRoutes(pool: Pool) {
           else if (box === "watching") { values.push(current.ownId); filter = memoFollowerSql("m","$3"); }
           else if(box==="deferred"){
             values.push(current.ownId);
-            filter=`EXISTS(SELECT 1 FROM memo_schedules sch WHERE sch.company_id=m.company_id AND sch.memo_id=m.id AND sch.active)
+            filter=`EXISTS(SELECT 1 FROM memo_schedules sch WHERE sch.company_id=m.company_id AND sch.memo_id=m.id AND sch.active AND NOT sch.returned)
               AND (${current.context.general?"TRUE":`m.sender_user_id=$2 OR (m.current_user_id=$2 AND
                 (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer))
                 OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id
