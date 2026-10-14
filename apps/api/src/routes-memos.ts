@@ -4,6 +4,11 @@ import { z } from "zod";
 import {
   memoCreateSchema,
   memoActionSchema,
+  memoFollowersUpdateSchema,
+  memoFollowerCommentSchema,
+  type MemoFollower,
+  type MemoFollowerChange,
+  type MemoFollowerInput,
   type MemoDetail,
   type MemoRecord,
   type MemoList,
@@ -17,6 +22,8 @@ import { HttpError, missing, deny } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { memoFollowerSql } from "./services/memo-followers.ts";
+import { userDTO } from "./repositories/models.ts";
 import {
   assertDirectoryAccess,
   assertRequestPagesEnabled,
@@ -104,7 +111,7 @@ async function detail(
   const row = (
     await client.query(
       `SELECT m.*,own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at FROM memos m ${readJoins}
-     WHERE m.company_id=$1 AND m.id=$3 AND ($4::boolean OR m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$5::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$5::integer)))`,
+     WHERE m.company_id=$1 AND m.id=$3 AND ($4::boolean OR m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$5::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$5::integer)) OR ${memoFollowerSql("m", "$5")})`,
       [
         current.companyId,
         current.user.id,
@@ -132,6 +139,54 @@ async function detail(
     targetName: event.target_name,
     assignmentRevision: event.assignment_revision,
   }));
+  const followerRows = (await client.query(
+    `SELECT f.id,f.employee_id,f.role_id,f.access_level,f.added_by,f.added_at,
+       COALESCE(e.name,r.name) AS name
+       FROM memo_followers f
+       LEFT JOIN employees e ON e.company_id=f.company_id AND e.id=f.employee_id
+       LEFT JOIN company_roles r ON r.company_id=f.company_id AND r.id=f.role_id
+       WHERE f.company_id=$1 AND f.memo_id=$2 ORDER BY f.id`,
+    [current.companyId,memoId],
+  )).rows;
+  const followers: MemoFollower[] = followerRows.map((f) => ({
+    id: f.id,
+    kind: f.employee_id === null ? "role" : "employee",
+    employeeId: f.employee_id,
+    roleId: f.role_id,
+    name: f.name,
+    accessLevel: f.access_level,
+    addedBy: f.added_by,
+    addedAt: f.added_at.toISOString(),
+  }));
+  const followerChanges: MemoFollowerChange[] = (await client.query(
+    "SELECT id,revision,actor_name,created_at,before_value,after_value FROM memo_follow_changes WHERE company_id=$1 AND memo_id=$2 ORDER BY revision,id",
+    [current.companyId,memoId],
+  )).rows.map(row => ({
+    id:row.id, revision:row.revision, actorName:row.actor_name,
+    createdAt:row.created_at.toISOString(),
+    beforeFollowers:row.before_value,
+    afterFollowers:row.after_value,
+  }));
+    const followRevision = (await client.query(
+    "SELECT revision FROM memo_follow_versions WHERE company_id=$1 AND memo_id=$2",
+    [current.companyId,memoId],
+  )).rows[0]?.revision ?? 1;
+  const followerComment = !!(await client.query(
+    `SELECT 1 FROM memos m WHERE m.company_id=$1 AND m.id=$2 AND ${memoFollowerSql("m", "$3", "comment")}`,
+    [current.companyId,memoId,current.ownId],
+  )).rowCount;
+  const comments=(await client.query(
+    "SELECT id,actor_user_id,actor_name,created_at,body FROM memo_follow_comments WHERE company_id=$1 AND memo_id=$2 ORDER BY created_at,id",
+    [current.companyId,memoId],
+  )).rows;
+  for (const note of comments)
+    events.push({
+      id: -note.id, kind:"follower_comment",
+      actorUserId:note.actor_user_id,actorName:note.actor_name,
+      createdAt:note.created_at.toISOString(),body:note.body,
+      targetUserId:null,targetEmployeeId:null,targetName:null,assignmentRevision:null,
+    });
+  events.sort((a,b) => a.createdAt.localeCompare(b.createdAt) || a.id-b.id);
   const participant = !!(
     await client.query(
       "SELECT 1 FROM memo_participants WHERE company_id=$1 AND memo_id=$2 AND user_id=$3 AND (employee_id IS NULL OR employee_id=$4::integer)",
@@ -158,6 +213,14 @@ async function detail(
   return {
     ...record(row),
     events,
+    followers,
+    followerRevision: followRevision,
+    followerChanges,
+    canManageFollowers: row.status !== "completed" &&
+      (row.sender_user_id === current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
+    canComment: row.status !== "completed" && followerComment &&
+      entry.enabled && entry.actionAccess.edit,
     canReply,
     canTransfer: row.status === "pending" && canReply && currentAssignee,
     canRequestCompletion:
@@ -182,6 +245,92 @@ async function detail(
       entry.enabled &&
       entry.actionAccess.post,
   };
+}
+async function storeFollowers(
+  client: PoolClient, current: Scope, memoId: number,
+  followers: MemoFollowerInput[], revision: number, before: unknown[] = [],
+) {
+  const keys = new Set<string>();
+  for (const follower of followers) {
+    const key = follower.kind === "employee" ? `e:${follower.employeeId}` : `r:${follower.roleId}`;
+    if (keys.has(key)) throw new HttpError(400, "duplicate_follower", "لا يمكن تكرار المتابع نفسه");
+    keys.add(key);
+    const found = follower.kind === "employee"
+      ? await client.query(
+          "SELECT 1 FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived WHERE e.company_id=$1 AND e.id=$2 AND e.active FOR SHARE OF e",
+          [current.companyId,follower.employeeId],
+        )
+      : await client.query(
+          "SELECT 1 FROM company_roles WHERE company_id=$1 AND id=$2 AND active FOR SHARE",
+          [current.companyId,follower.roleId],
+        );
+    if (!found.rowCount) throw new HttpError(400, "invalid_follower", "الموظف أو الدور غير فعّال في هذه الشركة");
+  }
+  await client.query("DELETE FROM memo_followers WHERE company_id=$1 AND memo_id=$2",
+    [current.companyId,memoId]);
+  for (const follower of followers)
+    await client.query(
+      "INSERT INTO memo_followers(company_id,memo_id,employee_id,role_id,access_level,added_by) VALUES($1,$2,$3,$4,$5,$6)",
+      [current.companyId,memoId,follower.kind==="employee"?follower.employeeId:null,
+        follower.kind==="role"?follower.roleId:null,follower.accessLevel,current.user.id],
+    );
+  const after = followers.map((f) => ({...f}));
+  await client.query(
+    "INSERT INTO memo_follow_changes(company_id,memo_id,revision,actor_user_id,actor_name,before_value,after_value) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)",
+    [current.companyId,memoId,revision,current.user.id,current.user.displayName,JSON.stringify(before),JSON.stringify(after)],
+  );
+  await audit(client,current.user,"memo.followers","memo",memoId,{revision:revision-1,followers:before},
+    {revision,followers:after},current.companyId);
+  if (followers.length) {
+    const title = (await client.query("SELECT title FROM memos WHERE company_id=$1 AND id=$2",
+      [current.companyId,memoId])).rows[0].title as string;
+    await notifyMemoFollowers(client,current,memoId,title,
+      "تحديث صلاحيات متابعة مذكرة",`revision:${revision}`);
+  }
+}
+async function notifyMemoFollowers(
+  client: PoolClient, current: Scope, memoId: number,
+  title: string, reason: string, eventKey: string,
+) {
+  // The currently authorized employee/role grants are resolved afresh.
+  const recipients = (await client.query(
+    `SELECT DISTINCT e.id AS employee_id,e.user_id FROM employees e
+     JOIN users u ON u.id=e.user_id AND NOT u.archived
+     WHERE e.company_id=$1 AND e.active AND e.user_id<>$3
+       AND EXISTS (
+         SELECT 1 FROM memo_followers f
+         WHERE f.company_id=e.company_id AND f.memo_id=$2
+           AND (f.employee_id=e.id OR EXISTS(
+             SELECT 1 FROM company_roles r
+             WHERE r.company_id=f.company_id AND r.id=f.role_id AND r.active
+               AND (e.role=r.key OR EXISTS(
+                 SELECT 1 FROM employee_role_assignments a
+                 WHERE a.company_id=e.company_id AND a.employee_id=e.id
+                   AND a.role_id=r.id AND a.active
+               ))
+           ))
+       ) ORDER BY e.user_id,e.id`,
+    [current.companyId,memoId,current.user.id],
+  )).rows;
+  for(const recipient of recipients) {
+    const account=(await client.query("SELECT * FROM users WHERE id=$1",[recipient.user_id])).rows[0];
+    const entries=await directoryEntries(client,userDTO(account),current.companyId);
+    if(!entries.find(e=>e.key==="company.memos")?.actionAccess.view ||
+       !entries.find(e=>e.key==="company.memo-detail")?.actionAccess.view) continue;
+    await supersedeMemoAlerts(client,current,memoId,"MEMO_FOLLOW",recipient.user_id,"new-memo-follow-update");
+    await emitNotification(client,{
+      code:"MEMO_FOLLOW",
+      companyId:current.companyId,
+      subjectEmployeeId:recipient.employee_id,
+      recipientUserId:recipient.user_id,
+      explicitSubjectOnly:true,
+      subjectKey:`memo:${memoId}`,
+      eventKey:`memo:${memoId}:follow:${eventKey}`,
+      title:`${current.user.displayName}: ${title}`,
+      message:`${reason} — ${title}`,
+      href:`/companies/${current.companyId}/memos/${memoId}`,
+    });
+  }
 }
 async function supersedeMemoAlerts(
   client: PoolClient,
@@ -275,6 +424,7 @@ export function memoRoutes(pool: Pool) {
           "approval",
           "completed",
           "all",
+          "watching",
         ].includes(box)
       )
         throw new HttpError(400, "invalid_query", "قائمة المذكرات غير صالحة");
@@ -303,12 +453,13 @@ export function memoRoutes(pool: Pool) {
           } else if (box === "approval")
             filter = "m.status='awaiting_approval' AND m.sender_user_id=$2";
           else if (box === "sent") filter = "m.sender_user_id=$2";
+          else if (box === "watching") { values.push(current.ownId); filter = memoFollowerSql("m","$3"); }
           else if (box === "completed" && current.context.general)
             filter = "m.status='completed'";
           else if (box === "following" || box === "completed") {
             values.push(current.ownId);
             filter =
-              "m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))";
+              "m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer)) OR " + memoFollowerSql("m","$3");
           }
           if (box === "completed")
             filter = `m.status='completed' AND (${current.context.general ? "TRUE" : filter})`;
@@ -397,6 +548,7 @@ export function memoRoutes(pool: Pool) {
         body: input.body,
         recipientEmployeeId: input.recipientEmployeeId,
         type: input.type,
+        followers: input.followers ?? [],
       };
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
@@ -477,6 +629,12 @@ export function memoRoutes(pool: Pool) {
             memo.created_at,
           ],
         );
+        await client.query(
+          "INSERT INTO memo_follow_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
+          [current.companyId,memo.id,current.user.id],
+        );
+        if (payload.followers.length)
+          await storeFollowers(client,current,memo.id,payload.followers,1);
         const saved = await detail(client, current, memo.id);
         const {
           events: _events,
@@ -486,6 +644,11 @@ export function memoRoutes(pool: Pool) {
           canApproveCompletion: _approve,
           canReopenCompletion: _reopen,
           canComplete: _complete,
+          canManageFollowers: _manageFollowers,
+          canComment: _comment,
+          followers: _followers,
+          followerRevision: _followerRevision,
+          followerChanges: _followerChanges,
           ...snapshot
         } = saved;
         await audit(
@@ -513,6 +676,52 @@ export function memoRoutes(pool: Pool) {
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
+    }),
+  );
+  router.get(
+    base + "/roles",
+    handler(async (req,res) => {
+      const roles = await transaction(pool,async client => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        return (await client.query(
+          "SELECT id,name FROM company_roles WHERE company_id=$1 AND active ORDER BY name,id",
+          [current.companyId],
+        )).rows;
+      });
+      res.json({roles});
+    }),
+  );
+  router.put(
+    base + "/:memoId/followers",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId), input=parse(memoFollowersUpdateSchema,req.body);
+      const memo=await transaction(pool,async client => {
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageFollowers) deny("تعديل المتابعين للمرسل أو الإدارة المصرح لها فقط");
+        await client.query("SELECT id FROM memos WHERE company_id=$1 AND id=$2 FOR SHARE",[current.companyId,memoId]);
+        const version=(await client.query(
+          "SELECT revision FROM memo_follow_versions WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId],
+        )).rows[0];
+        if(!version || input.revision!==version.revision)
+          throw new HttpError(409,"revision_conflict","تغير المتابعون؛ حدث المذكرة قبل الحفظ");
+        const beforeFollowers=before.followers.map(f => ({
+          kind:f.kind,
+          ...(f.kind==="employee"?{employeeId:f.employeeId}:{roleId:f.roleId}),
+          accessLevel:f.accessLevel,
+        }));
+        await storeFollowers(client,current,memoId,input.followers,version.revision+1,beforeFollowers);
+        await client.query(
+          "UPDATE memo_follow_versions SET revision=revision+1,changed_by=$3,changed_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId,current.user.id],
+        );
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
     }),
   );
   router.get(
@@ -596,7 +805,7 @@ export function memoRoutes(pool: Pool) {
         const alerts = (
           await client.query(
             `UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()
-           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED') AND subject_key=$2 AND recipient_user_id=$3
+           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW') AND subject_key=$2 AND recipient_user_id=$3
            AND subject_employee_id IS NOT DISTINCT FROM $4::integer AND read_at IS NULL AND completed_at IS NULL RETURNING id,read_at,revision`,
             [
               current.companyId,
@@ -624,6 +833,37 @@ export function memoRoutes(pool: Pool) {
         return detail(client, current, memoId);
       });
       res.json({ memo });
+    }),
+  );
+  router.post(
+    base + "/:memoId/comments",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoFollowerCommentSchema,req.body);
+      const memo=await transaction(pool,async client => {
+        const current=await scope(client,req,true);
+        const previous=(await client.query(
+          "SELECT actor_user_id,memo_id,request_payload=$3::jsonb AS matches FROM memo_follow_comments WHERE company_id=$1 AND idempotency_key=$2",
+          [current.companyId,input.idempotencyKey,JSON.stringify({body:input.body})],
+        )).rows[0];
+        if(previous && (previous.actor_user_id!==current.user.id || previous.memo_id!==memoId || !previous.matches))
+          throw new HttpError(409,"conflict","مفتاح التعليق مستخدم لتعليق مختلف");
+        // A previously accepted request can be confirmed without reposting.
+        await access(client,req,current,previous?"view":"edit",true,!previous);
+        const before=await detail(client,current,memoId);
+        if(previous) return before;
+        if(!before.canComment) deny("التعليق متاح للمتابع المصرح له فقط");
+        const row=(await client.query(
+          "INSERT INTO memo_follow_comments(company_id,memo_id,actor_user_id,actor_name,body,idempotency_key,request_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id",
+          [current.companyId,memoId,current.user.id,current.user.displayName,input.body,input.idempotencyKey,
+           JSON.stringify({body:input.body})],
+        )).rows[0];
+        await audit(client,current.user,"memo.follower-comment","memo",memoId,null,
+          {commentId:row.id,body:input.body},current.companyId);
+        await notifyMemoFollowers(client,current,memoId,before.title,
+          `تعليق متابعة جديد من ${current.user.displayName}`,`comment:${row.id}`);
+        return detail(client,current,memoId);
+      });
+      res.status(201).json({memo});
     }),
   );
   router.post(
@@ -993,6 +1233,9 @@ export function memoRoutes(pool: Pool) {
             href: `/companies/${current.companyId}/memos/${memoId}`,
           });
         }
+        if (target || close || request)
+          await notifyMemoFollowers(client,current,memoId,saved.title,
+            `تحديث سير عمل المذكرة بواسطة ${current.user.displayName}`,`action:${idempotencyKey}`);
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
