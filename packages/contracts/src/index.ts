@@ -145,6 +145,8 @@ export const auditActionLabels = {
   "item.create": "إضافة صنف",
   "item.update": "تعديل صنف",
   "invoice.post": "حفظ وترحيل فاتورة",
+  "memo.feature-rule": "تعديل قاعدة متابعة المذكرات",
+  "memo.feature-trigger": "تحقق قاعدة ميزات مرتبطة بالمذكرات",
   "inventory.settings": "حفظ إعدادات المخزون",
   "notification.create": "إنشاء تنبيه آلي",
   "notification.follow": "متابعة تنبيه",

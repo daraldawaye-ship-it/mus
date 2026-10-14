@@ -3017,7 +3017,7 @@ test("memo followup defers independently, wakes once and cancels on transfer",as
  const outsider=await register(f,"memo-followup-outsider@example.test");
  const another=await register(f,"memo-followup-another@example.test");
  const staff=await employee(platform.client,co.id,receiver.user.id);
- await employee(platform.client,co.id,outsider.user.id);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
  const anotherStaff=await employee(platform.client,co.id,another.user.id);
  const base=`/companies/${co.id}/memos`;
  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
@@ -3069,4 +3069,49 @@ test("memo report scopes employee totals and approval intervals",async t=>{
  assert.equal(report.employees.find(p=>p.userId===employeeUser.user.id)?.required,1);
  const hidden=await stranger.client.ok<{total:number}>("GET",base+"/report");
  assert.equal(hidden.total,0);
+});
+
+test("memo feature rules target current executor and preview scoped warnings",async t=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Rules A");
+ const other=await company(platform.client,"Rules B");
+ const worker=await register(f,"memo-rule-employee@example.test");
+ const outsider=await register(f,"memo-rule-outsider@example.test");
+ const employeeCard=await employee(platform.client,co.id,worker.user.id,["commerce.view"]);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
+ const base=`/companies/${co.id}`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base+"/memos",{
+   title:"Task to follow",body:"Complete inspection",type:"task",
+   recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID(),
+  },201)).memo;
+ const input={name:"Sales pending work",enabled:true,employeeIds:[employeeCard.id],
+  roleIds:[],actionCode:"invoice.sale.create",effect:"warn",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"راجع مذكرة التكليف قبل البيع"};
+ const rule=(await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "POST",base+"/memo-feature-rules",input,201)).rule;
+ assert.equal(rule.enabled,true);
+ const preview=await platform.client.ok<import("../packages/contracts/src/index.ts").MemoFeaturePreview>(
+  "GET",base+`/memo-feature-rules/${rule.id}/preview`);
+ assert.equal(preview.totalImpacted,1);
+ assert.equal(preview.impacted[0]?.employeeId,employeeCard.id);
+ const impacted=await worker.client.ok<{matches:{ruleId:number;effect:string}[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(impacted.matches[0]?.ruleId,rule.id);
+ assert.equal(impacted.matches[0]?.effect,"warn");
+ const quiet=await outsider.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(quiet.matches.length,0);
+ assert.equal((await worker.client.request("GET",base+"/memo-feature-rules")).status,403);
+ assert.equal((await worker.client.request("POST",base+"/memo-feature-rules",input)).status,403);
+ assert.equal((await worker.client.request("GET",
+  `/companies/${other.id}/memo-feature-impact?kind=sale`)).status,403);
+ const revised=await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,{...input,revision:rule.revision,enabled:false});
+ assert.equal(revised.rule.enabled,false);
+ assert.equal((await worker.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale")).matches.length,0);
+ assert.equal((await platform.client.request("PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...input,revision:rule.revision})).status,409);
 });

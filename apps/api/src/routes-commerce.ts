@@ -18,6 +18,7 @@ import {
 } from "./services/commerce.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
+import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -195,6 +196,20 @@ export function commerceRoutes(pool: Pool): Router {
       }),
     ),
   );
+  router.get(`${base}/memo-feature-impact`,handler(async(req,res)=>{
+    const kind=req.query.kind;
+    if(kind!=="sale"&&kind!=="purchase")
+      throw new HttpError(400,"invalid_kind","اختر نوع فاتورة صالحًا");
+    const matches=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      const companyId=id(req.params.companyId);
+      await companyAccess(client,user,companyId,"commerce.view");
+      return matchingMemoFeatureRules(client,companyId,user.id,
+        kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+    });
+    res.json({matches});
+  }));
   router.post(
     `${base}/invoices`,
     handler(async (req, res) => {

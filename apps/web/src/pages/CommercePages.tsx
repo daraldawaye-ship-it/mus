@@ -845,6 +845,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const kind: InvoiceKind =
     params.get("kind") === "purchase" ? "purchase" : "sale";
   const guard = useScopeGuard(`company:${companyId}:invoice-editor:${kind}`);
+  const memoImpact=useQuery({
+    queryKey:["memo-feature-impact",user?.id,companyId,kind],
+    queryFn:({signal})=>api<{matches:{
+      ruleId:number;ruleName:string;effect:"monitor"|"warn"|"block";
+      message:string;count:number;memoIds:number[];
+    }[]}>(`/companies/${companyId}/memo-feature-impact?kind=${kind}`,{signal}),
+    enabled:!!user,refetchInterval:60000,
+  });
+
   const invalidate = useCommerceChanges(companyId);
   const [documentDate, setDocumentDate] = useState(today);
   const [currency, setCurrency] = useState<CompanyCurrency | null>(null);
@@ -1756,6 +1765,11 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {memoImpact.data?.matches.filter(rule=>rule.effect==="warn").map(rule=>
+          <Notice key={rule.ruleId} tone="warning">
+            {rule.message} ({rule.count} تكليفات).
+            {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
+          </Notice>)}
         {savedInvoice && (
           <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
