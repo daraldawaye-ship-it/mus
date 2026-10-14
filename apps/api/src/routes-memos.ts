@@ -24,7 +24,7 @@ import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError, missing, deny } from "./errors.ts";
 import { audit } from "./services/audit.ts";
-import { emitNotification } from "./services/notifications.ts";
+import { emitNotification,effectiveTemplate } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
 import {scheduleDTO,scheduleDetails,addScheduleHistory,
@@ -864,8 +864,9 @@ export function memoRoutes(pool: Pool) {
         await addScheduleHistory(client,current.companyId,memoId,version+1,"cancelled",
           input.reason,current.user,previous.due_at,{before:before.schedule});
       }else{
-        if(input.repeatInterval!=="none")
-          throw new HttpError(400,"repeat_not_enabled","التذكير المتكرر سيتاح في الدفعة الثانية");
+        if(input.repeatInterval!=="none" &&
+          !(await effectiveTemplate(client,current.companyId,"MEMO_DUE"))?.allowRepeat)
+          throw new HttpError(403,"repeat_not_allowed","فعّل السماح بالتكرار في إعدادات نوع التنبيه أولًا");
         const setting=(await client.query(
           "SELECT to_char(default_time,'HH24:MI') AS time FROM memo_reminder_settings WHERE company_id=$1",
           [current.companyId])).rows[0];
