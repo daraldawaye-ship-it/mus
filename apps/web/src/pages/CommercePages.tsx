@@ -46,6 +46,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useEmployeeCashbox } from "../employee-cashbox";
+import { initialInvoiceAccount } from "../invoice-account-default";
 import { saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
@@ -940,13 +941,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
+  // Sales start from the employee's cashbox. Purchases intentionally require
+  // choosing the settlement/liability account on every new invoice.
   useEffect(() => {
     if (
-      !defaultCashbox || accountManuallyChosen.current ||
+      kind !== "sale" || !defaultCashbox || accountManuallyChosen.current ||
       account || original || hasLinkedLines
     ) return;
     setAccount(defaultCashbox);
-  }, [defaultCashbox, account, original, hasLinkedLines]);
+  }, [kind, defaultCashbox, account, original, hasLinkedLines]);
   const hasPositiveLines = selectedLines.some(
     (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
   );
@@ -1387,7 +1390,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const first = emptyLine();
     pending.current = null;
     setLines([first]);
-    setAccount(defaultCashbox);
+    setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
     accountManuallyChosen.current = false;
     setOriginal(null);
@@ -1467,7 +1470,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       const next = emptyLine();
       pending.current = null;
       setLines([next]);
-      setAccount(defaultCashbox);
+      setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
       accountManuallyChosen.current = false;
       setOriginal(null);

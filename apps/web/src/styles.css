@@ -1127,6 +1127,17 @@ select {
   align-items: start;
   gap: 9px 12px;
   margin-block: 9px;
+  min-width: 0;
+}
+/* A long account name must never expand the native select past the form. */
+.server-lookup > .field,
+.server-lookup select {
+  min-width: 0;
+  max-width: 100%;
+}
+.server-lookup select {
+  width: 100%;
+  text-overflow: ellipsis;
 }
 .server-lookup > .notice,
 .lookup-pages {
@@ -2016,8 +2027,7 @@ ul {
   min-width: 640px;
 }
 .commerce-matrix-purchase {
-  /* Give the expiry date enough space without enlarging the whole row.
-     On narrower screens the matrix scrolls instead of clipping dates. */
+  /* Moderate expiry width, leaving usable room for the item name. */
   min-width: 780px;
 }
 .commerce-matrix-sale {
@@ -2042,12 +2052,13 @@ ul {
 .commerce-col-expiry {
   width: 110px;
 }
-/* Purchase invoice: larger expiry input, smaller item-name column. */
-.commerce-matrix-purchase .commerce-col-item { width: 28%; }
+/* Purchase invoice: cap the expiry date to a practical, readable width.
+   The flexible item-name column takes up the space previously used by date. */
+.commerce-matrix-purchase .commerce-col-item { width: auto; }
 .commerce-matrix-purchase .commerce-col-unit { width: 11%; }
 .commerce-matrix-purchase .commerce-col-quantity { width: 9%; }
 .commerce-matrix-purchase .commerce-col-price { width: 12%; }
-.commerce-matrix-purchase .commerce-col-expiry { width: 23%; }
+.commerce-matrix-purchase .commerce-col-expiry { width: clamp(132px, 16%, 156px); }
 .commerce-matrix-purchase .commerce-col-total { width: 11%; }
 .commerce-matrix-purchase .commerce-col-delete { width: 6%; }
 .commerce-matrix-purchase input[type="date"] {
