@@ -23,7 +23,7 @@ type MemoReportActor={companyId:number;userId:number;employeeId:number|null;gene
 const number=(v:unknown)=>Number(v??0);
 const iso=(v:Date|null|undefined)=>v?.toISOString()??null;
 export async function memoReport(client:PoolClient,actor:MemoReportActor,filters:MemoReportQuery):Promise<MemoReportResult>{
- const params:unknown[]=[actor.companyId,actor.userId,actor.employeeId];
+ const params:unknown[]=actor.general?[actor.companyId]:[actor.companyId,actor.userId,actor.employeeId];
  const where:string[]=["m.company_id=$1"];
  if(!actor.general)where.push(`(m.sender_user_id=$2 OR
    (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3))
