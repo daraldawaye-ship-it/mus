@@ -14,6 +14,10 @@ export const memoFollowerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("role"), roleId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
 ]);
 export type MemoFollowerInput = z.input<typeof memoFollowerSchema>;
+export const memoFollowerCommentSchema = z.object({
+  body: z.string().trim().min(1).max(20000),
+  idempotencyKey: z.uuid().transform(value => value.toLowerCase()),
+}).strict();
 export const memoFollowersUpdateSchema = z.object({
   revision: z.number().int().positive(),
   followers: z.array(memoFollowerSchema).max(100),
@@ -123,7 +127,8 @@ export interface MemoEvent {
     | "forwarded"
     | "completion_requested"
     | "completed"
-    | "reopened";
+    | "reopened"
+    | "follower_comment";
   actorUserId: number;
   actorName: string;
   createdAt: string;
