@@ -29,3 +29,30 @@ export async function addScheduleHistory(client:PoolClient,
   "INSERT INTO memo_schedule_history(company_id,memo_id,revision,kind,actor_user_id,actor_name,reason,due_at,details) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)",
   [companyId,memoId,revision,kind,actor?.id??null,actor?.displayName??null,reason,dueAt,JSON.stringify(details)]);
 }
+export async function closeScheduleNotice(client:PoolClient,companyId:number,memoId:number,actor:User|null,reason:string) {
+ const rows=(await client.query(
+  `UPDATE notifications SET completed_at=clock_timestamp(),
+    read_at=COALESCE(read_at,clock_timestamp()),snoozed_until=NULL,next_reminder_at=NULL,
+    revision=revision+1,updated_at=clock_timestamp()
+   WHERE company_id=$1 AND code='MEMO_DUE' AND subject_key=$2 AND completed_at IS NULL
+   RETURNING id`,[companyId,`memo:${memoId}`],
+ )).rows;
+ for(const row of rows)
+  await audit(client,actor,"notification.follow","notification",row.id,{completedAt:null},
+   {action:"supersede",reason},companyId);
+}
+export async function cancelScheduleForTransition(client:PoolClient,companyId:number,
+ memoId:number,actor:User,reason:string) {
+ const previous=(await client.query(
+  "SELECT * FROM memo_schedules WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+  [companyId,memoId],
+ )).rows[0];
+ if(previous?.active){
+  await client.query(
+   "UPDATE memo_schedules SET active=false,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+   [companyId,memoId]);
+  await addScheduleHistory(client,companyId,memoId,previous.revision+1,"transition",
+   reason,actor,previous.due_at,{priorAssignment:previous.assignment_revision});
+ }
+ await closeScheduleNotice(client,companyId,memoId,actor,reason);
+}
