@@ -3115,3 +3115,20 @@ test("memo feature rules target current executor and preview scoped warnings",as
  assert.equal((await platform.client.request("PUT",base+`/memo-feature-rules/${rule.id}`,
   {...input,revision:rule.revision})).status,409);
 });
+
+test("memo feature block rejects new invoice but allows exact saved retry and disappears on rule change",async t=>{
+ const f=await fixture(t),ownerUser=await owner(f);
+ const co=await company(ownerUser.client,"Memo block invoice");
+ const base=`/companies/${co.id}`;
+ const worker=await register(f,"memo-block-worker@example.test");
+ const staff=await employee(ownerUser.client,co.id,worker.user.id,
+  ["commerce.view","commerce.manage","finance.post"]);
+ await ownerUser.client.ok("POST",base+"/memos",{
+  title:"Pending payment review",body:"Review supplier balance",type:"task",
+  recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201);
+ const config={name:"Block pending sales",enabled:true,employeeIds:[staff.id],roleIds:[],
+  actionCode:"invoice.sale.create",effect:"block",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"يرجى معالجة المذكرة قبل حفظ الفاتورة"};
+ const rule=(await ownerUser.client.ok<{rule:{id:number;revision:number}}>(
+  "POST",base+"/memo-feature-rules",config,201)).rule;
