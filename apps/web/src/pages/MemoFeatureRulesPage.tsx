@@ -81,3 +81,16 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
   {editing!==null && <Card title="بيانات القاعدة">
    <Field label="اسم القاعدة" value={draft.name}
     onChange={e=>setDraft({...draft,name:e.target.value})}/>
+   <Select label="الإجراء المرتبط" value={draft.actionCode}
+    onChange={e=>setDraft({...draft,actionCode:e.target.value as Draft["actionCode"]})}>
+    <option value="invoice.sale.create">إنشاء فاتورة مبيعات</option>
+    <option value="invoice.purchase.create">إنشاء فاتورة مشتريات</option>
+   </Select>
+   <Select label="الأثر" value={draft.effect}
+    onChange={e=>setDraft({...draft,effect:e.target.value as Draft["effect"]})}>
+    <option value="monitor">مراقبة</option><option value="warn">تنبيه</option>
+   </Select>
+   <Field label="العدد الأدنى" type="number" value={draft.minimumCount??""}
+    onChange={e=>setDraft({...draft,minimumCount:e.target.value?Number(e.target.value):null})}/>
+   <Field label="المدة الدنيا بالساعات" type="number" value={draft.minimumHours??""}
+    onChange={e=>setDraft({...draft,minimumHours:e.target.value?Number(e.target.value):null})}/>
