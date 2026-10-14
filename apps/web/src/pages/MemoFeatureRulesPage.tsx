@@ -117,3 +117,17 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
     onClick={()=>void save()}>حفظ القاعدة</Button>
    <Button variant="secondary" disabled={saving} onClick={()=>setEditing(null)}>إلغاء</Button>
   </Card>}
+  {previewId!==null&&<Card title="معاينة الموظفين المشمولين">
+   <Button variant="secondary" onClick={()=>setPreviewId(null)}>إغلاق المعاينة</Button>
+   {preview.error&&<Notice tone="error">{errorMessage(preview.error)}</Notice>}
+   <p>عدد الموظفين الذين تنطبق عليهم القاعدة: {preview.data?.totalImpacted??"…"}</p>
+   {preview.data?.impacted.map(impact=>
+    <div key={impact.employeeId} className="form-stack">
+     <strong>{impact.employeeName}</strong>
+     <p>التكليفات: {impact.pendingCount}، المطابقة للمدة: {impact.eligibleCount}،
+      أقدم إسناد: {impact.oldestHours.toFixed(1)} ساعة</p>
+     <Link to={`${base}/memo-report?employeeId=${impact.employeeId}`}>عرض التقرير</Link>
+    </div>)}
+  </Card>}
+ </div>;
+}
