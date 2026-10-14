@@ -1114,11 +1114,11 @@ function OperationEditor({
   if (item) {
     try {
       if (mode === "adjustment") {
-        const count1 = BigInt(fields.countUnit1 || "0");
-        const count2 = BigInt(fields.countUnit2 || "0");
-        const count3 = BigInt(fields.countUnit3 || "0");
-        const total = count1 * BigInt(item.factor2) * BigInt(item.factor3)
-          + count2 * BigInt(item.factor3) + count3;
+        const total = countedStockSmallest({
+          unit1: fields.countUnit1 || "0",
+          unit2: item.factor2 > 1 ? fields.countUnit2 || "0" : undefined,
+          unit3: item.factor3 > 1 ? fields.countUnit3 || "0" : undefined,
+        }, item);
         preview = `الإجمالي ${total.toString()} من أصغر جزء`;
       } else {
         const conversion = convertItemQuantity({ quantity: fields.quantity, unit: fields.unit }, item);
