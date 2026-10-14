@@ -705,7 +705,7 @@ export function memoRoutes(pool: Pool) {
     handler(async (req,res) => {
       const pageKey=String(req.query.pageKey??"");
       const resource:Record<string,{table:string;parent:string;title:string}>={
-        "company.invoice":{table:"invoices",parent:"company.sales",title:"فاتورة"},
+        "company.invoice":{table:"invoices",parent:"",title:"فاتورة"},
         "company.financial-document":{table:"financial_documents",parent:"company.financial-documents",title:"مستند"},
         "company.item-card":{table:"items",parent:"company.items",title:"صنف"},
       };
@@ -718,10 +718,10 @@ export function memoRoutes(pool: Pool) {
         await access(client,req,current,"view");
         const entries=await directoryEntries(client,current.user,current.companyId);
         assertDirectoryAccess(entries.find(e=>e.key===pageKey)!);
-        assertDirectoryAccess(entries.find(e=>e.key===target.parent)!);
+        if(target.parent) assertDirectoryAccess(entries.find(e=>e.key===target.parent)!);
         const kindFilter=target.table==="invoices"
           ? (!entries.find(e=>e.key==="company.sales")?.actionAccess.view
-              ? "AND r.kind='purchase'" : !entries.find(e=>e.key==="company.purchases")?.actionAccess.view
+              ? (entries.find(e=>e.key==="company.purchases")?.actionAccess.view ? "AND r.kind='purchase'" : "AND FALSE") : !entries.find(e=>e.key==="company.purchases")?.actionAccess.view
                 ? "AND r.kind='sale'" : "")
           : target.table==="financial_documents"
           ? "AND r.kind IN ("+["journal","receipt","payment"].filter(kind=>
