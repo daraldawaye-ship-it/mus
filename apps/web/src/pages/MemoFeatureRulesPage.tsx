@@ -90,6 +90,7 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
    <Select label="الأثر" value={draft.effect}
     onChange={e=>setDraft({...draft,effect:e.target.value as Draft["effect"]})}>
     <option value="monitor">مراقبة</option><option value="warn">تنبيه</option>
+    <option value="block">منع الحفظ</option>
    </Select>
    <Field label="العدد الأدنى" type="number" value={draft.minimumCount??""}
     onChange={e=>setDraft({...draft,minimumCount:e.target.value?Number(e.target.value):null})}/>
