@@ -1,9 +1,9 @@
 import {useState,type FormEvent} from "react";
 import {useQuery} from "@tanstack/react-query";
-import type {MemoDetail,MemoReminderSettings} from "../../../packages/contracts/src/index";
+import type {MemoDetail,MemoReminderSettings,MemoScheduleRepeat} from "../../../packages/contracts/src/index";
 import {api,useScopeGuard,useSession} from "./api";
 import {errorMessage} from "./phase2";
-import {Button,Card,Field,Notice} from "./ui";
+import {Button,Card,Field,Notice,Select} from "./ui";
 const local=(iso:string)=>new Intl.DateTimeFormat("ar-YE",{timeZone:"Asia/Aden",
  year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(iso));
 export function MemoFollowupEditor({companyId,memo,onSaved}:{
@@ -15,6 +15,7 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
  const [editing,setEditing]=useState(false),[date,setDate]=useState(memo.schedule?.localDate??""),
   [clock,setClock]=useState(memo.schedule?.localTime??""),
   [reason,setReason]=useState(memo.schedule?.reason??""),
+  [repeat,setRepeat]=useState<MemoScheduleRepeat>(memo.schedule?.repeatInterval??"none"),
   [pending,setPending]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const chosen=clock||settings.data?.settings.defaultTime||"09:00";
  const preview=/^\d{4}-\d\d-\d\d$/.test(date)&&/^\d\d:\d\d$/.test(chosen)
@@ -26,7 +27,7 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
   try{
     const body=action==="set"
       ?{action,revision:memo.scheduleRevision,localDate:date,localTime:clock||null,
-        reason:reason.trim(),repeatInterval:"none"}
+        reason:reason.trim(),repeatInterval:repeat}
       :{action,revision:memo.scheduleRevision,reason:reason.trim()||"عودة للمتابعة"};
     const result=await api<{memo:MemoDetail}>(`/companies/${companyId}/memos/${memo.id}/schedule`,
       {method:"PUT",body,signal:guard.signal});
