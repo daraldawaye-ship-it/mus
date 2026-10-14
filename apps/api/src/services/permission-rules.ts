@@ -112,6 +112,12 @@ export async function requestPermissionTargets(
       ...((verb === "POST" && !detail)
         ? [pagePermissionAliases("company.memos", "create")]
         : []),
+      ...((verb === "PUT" && segments[2] === "followers")
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
+      ...((verb === "POST" && segments[2] === "comments")
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
       ...((verb === "POST" && segments[2] === "actions")
         ? [pagePermissionAliases("company.memos", ["request-completion", "approve-completion", "reopen-completion", "complete"].includes(req.body?.action) ? "post" : "edit")]
         : []),
