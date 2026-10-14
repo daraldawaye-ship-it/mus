@@ -198,6 +198,10 @@ export async function createInvoice(
   }
   const activeMemoRules=await matchingMemoFeatureRules(client,companyId,user.id,
     input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+  const blocking=activeMemoRules.find(rule=>rule.effect==="block");
+  if(blocking)
+    throw new HttpError(409,"memo_feature_block",
+      blocking.message+" ("+blocking.count+" تكليفات). افتح «مطلوب مني» لمراجعتها.");
   for(const matched of activeMemoRules)
     await audit(client,user,"memo.feature-trigger","memo-feature-rule",matched.ruleId,
       null,{actionCode:input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create",
