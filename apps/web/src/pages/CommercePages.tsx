@@ -857,6 +857,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const [supplier, setSupplier] = useState<Account | null>(null);
+  const creditPurchase = kind === "purchase" && account?.category === "liability" &&
+    !account.cashOrBank;
+  const selectedSupplier = creditPurchase ? account : supplier;
   const defaultCashbox = useEmployeeCashbox(context);
   const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
@@ -965,6 +969,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
+    (kind === "purchase" && !!supplier) ||
     accountManuallyChosen.current ||
     (!!account && account.id !== defaultCashbox?.id) ||
     (!!branch &&
@@ -1355,6 +1360,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     pending.current = null;
     setLines([first]);
     setAccount(defaultCashbox);
+    setSupplier(null);
     accountManuallyChosen.current = false;
     setOriginal(null);
     setShowOriginalPicker(false);
@@ -1398,6 +1404,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         branchId: branch?.id,
         locationId: location?.id,
         counterpartyAccountId: account?.id,
+        supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
         description,
         discount: hasPositiveLines ? discount : "0",
         lines: selectedLines.map((line) => ({
@@ -1433,6 +1440,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       pending.current = null;
       setLines([next]);
       setAccount(defaultCashbox);
+      setSupplier(null);
       accountManuallyChosen.current = false;
       setOriginal(null);
       setShowOriginalPicker(false);
@@ -1496,12 +1504,14 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   label={
                     kind === "sale"
                       ? "حساب العميل / النقد"
-                      : "حساب المورد / النقد"
+                      : "حساب السداد / الذمة"
                   }
                   value={account}
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
+                    if (kind === "purchase" && value?.category === "liability" && !value.cashOrBank)
+                      setSupplier(value);
                   }}
                   display={itemLabel}
                   disabled={locked || hasLinkedLines}
@@ -1513,6 +1523,18 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 >
                   قائمة الفواتير
                 </Link>
+                {kind === "purchase" && (
+                  <ServerLookup<Account>
+                    companyId={companyId}
+                    resource={`/companies/${companyId}/commerce-options?type=accounts`}
+                    label="المورد الفعلي"
+                    value={selectedSupplier}
+                    onChange={setSupplier}
+                    display={itemLabel}
+                    accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
+                    disabled={locked || hasLinkedLines || creditPurchase}
+                  />
+                )}
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
