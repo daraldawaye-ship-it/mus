@@ -2924,3 +2924,29 @@ test("purchase supplier is independent from cash settlement but matches credit l
   assert.equal(cashRetry.id, cashInvoice.id);
   await assertBalanced(f, s.company.id);
 });
+
+test("supplier receipt reference preserves external purchase invoice numbers", async (t) => {
+  const f = await fixture(t), s = await setup(f);
+  const item = await s.item();
+  const payload = invoiceBody(s, item.id, { supplierReceiptNumber: "  00077-A/26  " });
+  const saved = await invoice(f, s, payload);
+  assert.equal(saved.supplierReceiptNumber, "00077-A/26");
+  const loaded = await f.owner.ok<{ invoice: Invoice }>(
+    "GET", `${s.path}/invoices/${saved.id}`,
+  );
+  assert.equal(loaded.invoice.supplierReceiptNumber, "00077-A/26");
+  const searched = await f.owner.ok<{ items: Invoice[]; total: number }>(
+    "GET", `${s.path}/invoices?kind=purchase&q=00077-A`,
+  );
+  assert.equal(searched.total, 1);
+  assert.equal(searched.items[0]?.supplierReceiptNumber, "00077-A/26");
+  assert.notEqual(saved.number, saved.supplierReceiptNumber);
+  const replay = await invoice(f, s, payload);
+  assert.equal(replay.id, saved.id);
+  const bad = await f.owner.request(
+    "POST", `${s.path}/invoices`,
+    invoiceBody(s, item.id, { kind: "sale", supplierReceiptNumber: "MUST-REJECT" }),
+  );
+  assert.equal(bad.status, 400);
+  await assertBalanced(f, s.company.id);
+});
