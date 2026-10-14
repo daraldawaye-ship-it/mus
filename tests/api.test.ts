@@ -3168,3 +3168,17 @@ test("memo feature block rejects new invoice but allows exact saved retry and di
   "SELECT count(*)::int AS count FROM audit_events WHERE company_id=$1 AND action='memo.feature-trigger' AND after_value->>'outcome'='rejected'",
   [co.id])).rows[0].count;
  assert.equal(rejectionAudit,1);
+ const disabled=(await ownerUser.client.ok<{rule:{revision:number}}>(
+   "PUT",base+`/memo-feature-rules/${rule.id}`,{...config,revision:rule.revision,enabled:false})).rule;
+ const saved=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.ok(saved.id);
+ const reactivated=await ownerUser.client.ok(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...config,revision:disabled.revision,enabled:true});
+ const repeated=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.equal(repeated.id,saved.id,"An already posted invoice may be confirmed under a new block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,1);
+});
