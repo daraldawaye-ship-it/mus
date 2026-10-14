@@ -19,3 +19,13 @@ export async function notifyDueMemoSender(client:PoolClient,companyId:number,
   if(!["company.memos","company.memo-detail","company.notifications"]
     .every(key=>pages.find(page=>page.key===key)?.actionAccess.view))return;
  }catch{return;}
+ const alert=(await client.query(
+  "SELECT id,reminder_count FROM notifications WHERE company_id=$1 AND code='MEMO_DELAYED' AND subject_key=$2 AND recipient_user_id=$3 AND completed_at IS NULL FOR UPDATE",
+  [companyId,`memo:${memoId}`,senderUserId])).rows[0];
+ if(alert){
+  await client.query(
+    "UPDATE notifications SET read_at=NULL,reminder_count=reminder_count+1,last_reminded_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp() WHERE id=$1",
+    [alert.id]);
+  await audit(client,null,"notification.remind","notification",alert.id,
+    {reminderCount:alert.reminder_count},{reminderCount:alert.reminder_count+1,reason:"memo-sender-due"},companyId);
+ }else {
