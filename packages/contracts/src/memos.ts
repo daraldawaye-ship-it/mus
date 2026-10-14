@@ -231,7 +231,8 @@ export interface MemoDetail extends MemoRecord {
   canReopenCompletion: boolean;
   canComplete: boolean;
 }
-export type MemoSummary = Omit<MemoRecord, "body">;
+export type MemoSummary = Omit<MemoRecord, "body"> & {optionValues?:Record<string,boolean|string|null>};
 export interface MemoList extends Page<MemoSummary> {
+  optionDefinitions: import("./configuration.ts").OptionDefinition[];
   canViewAll: boolean;
 }
