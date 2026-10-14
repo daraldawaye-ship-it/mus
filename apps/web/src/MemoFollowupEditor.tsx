@@ -34,3 +34,8 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
   }catch(cause){if(guard.isCurrent())setError(errorMessage(cause));}
   finally{if(guard.isCurrent())setPending(false);}
  }
+ return <Card title="تأجيل المتابعة والتذكيرات">
+  {error&&<Notice tone="error">{error}</Notice>}
+  {notice&&<Notice tone="success">{notice}</Notice>}
+  {memo.schedule?.active?<p>مؤجلة حتى {local(memo.schedule.dueAt)} — {memo.schedule.reason}</p>:
+  <p className="muted">لا يوجد تأجيل فعال.</p>}
