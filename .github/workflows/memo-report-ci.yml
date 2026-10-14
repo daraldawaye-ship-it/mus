@@ -1,0 +1,2 @@
+name: Memo report integration
+on: pull_request
