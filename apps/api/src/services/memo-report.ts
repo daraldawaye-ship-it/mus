@@ -41,3 +41,42 @@ export async function memoReport(client:PoolClient,actor:MemoReportActor,filters
  const dateColumn={created:"m.created_at",assigned:"m.current_assigned_at",completed:"m.completed_at"}[filters.dateField];
  if(filters.from){params.push(filters.from);where.push(`${dateColumn}>=($${params.length}::date AT TIME ZONE 'Asia/Aden')`);}
  if(filters.to){params.push(filters.to);where.push(`${dateColumn}<(($${params.length}::date+1) AT TIME ZONE 'Asia/Aden')`);}
+ if(filters.employeeId!==undefined){
+  params.push(filters.employeeId);
+  const key="$"+params.length;
+  if(filters.employeeRole==="current")where.push(`m.current_employee_id=${key}`);
+  else if(filters.employeeRole==="sender")where.push(`EXISTS(SELECT 1 FROM employees e WHERE e.company_id=m.company_id AND e.user_id=m.sender_user_id AND e.id=${key})`);
+  else where.push(`(m.recipient_employee_id=${key} OR EXISTS(
+    SELECT 1 FROM memo_events ev WHERE ev.company_id=m.company_id AND ev.memo_id=m.id
+    AND ev.kind IN ('forwarded','returned','reopened') AND ev.target_employee_id=${key}))`);
+ }
+ if(filters.pageKey){params.push(filters.pageKey);
+  where.push(`EXISTS(SELECT 1 FROM memo_links l WHERE l.company_id=m.company_id AND l.memo_id=m.id
+   AND (l.follow_page_key=$${params.length} OR l.reference_page_key=$${params.length}))`);}
+ if(filters.itemId!==undefined){params.push(filters.itemId);
+  where.push(`EXISTS(SELECT 1 FROM memo_links l WHERE l.company_id=m.company_id AND l.memo_id=m.id AND l.item_id=$${params.length})`);}
+ if(filters.accountId!==undefined){params.push(filters.accountId);
+  where.push(`EXISTS(SELECT 1 FROM memo_links l WHERE l.company_id=m.company_id AND l.memo_id=m.id AND l.account_id=$${params.length})`);}
+ const scoped=`WITH visible AS MATERIALIZED(
+  SELECT m.*,s.active AS deferred,s.due_at
+  FROM memos m LEFT JOIN memo_schedules s ON s.company_id=m.company_id AND s.memo_id=m.id
+  WHERE ${where.join(" AND ")}
+ )`;
+ const result=(await client.query(scoped+`
+ SELECT count(*)::integer AS total,
+ count(*) FILTER(WHERE status='pending')::integer AS pending,
+ count(*) FILTER(WHERE status='awaiting_approval')::integer AS approval,
+ count(*) FILTER(WHERE status='completed')::integer AS completed,
+ count(*) FILTER(WHERE deferred)::integer AS deferred_count,
+ ROUND((AVG(EXTRACT(EPOCH FROM (completed_at-created_at))/3600)
+ FILTER(WHERE completed_at IS NOT NULL))::numeric,2) AS average_hours FROM visible`,params)).rows[0];
+ const offset=(filters.page-1)*filters.pageSize;
+ const rows=(await client.query(scoped+`
+ SELECT v.*,EXTRACT(EPOCH FROM (COALESCE(v.completed_at,clock_timestamp())-v.created_at))/3600 AS age_hours,
+ EXTRACT(EPOCH FROM (COALESCE(v.completed_at,clock_timestamp())-v.current_assigned_at))/3600 AS assignment_hours,
+ CASE WHEN v.completion_requested_at IS NOT NULL THEN
+ EXTRACT(EPOCH FROM (COALESCE(v.completed_at,clock_timestamp())-v.completion_requested_at))/3600 ELSE 0 END AS approval_hours,
+ (SELECT count(*) FROM memo_events e WHERE e.company_id=v.company_id AND e.memo_id=v.id AND e.kind='reopened')::integer AS returns
+ FROM visible v ORDER BY v.created_at DESC,v.id DESC
+ LIMIT $${params.length+1} OFFSET $${params.length+2}`,
+ [...params,filters.pageSize,offset])).rows;
