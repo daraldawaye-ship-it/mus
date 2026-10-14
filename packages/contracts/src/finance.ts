@@ -47,10 +47,15 @@ const documentFields = z
     currencyId: id,
     branchId: id.nullable().default(null),
     cashAccountId: id.nullable().default(null),
+    supplierReceiptNumber: z.string().trim().max(100).default(""),
     description: z.string().trim().max(1000).default(""),
     lines: z.array(financialLineSchema).min(2).max(100),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.kind !== "payment" && value.supplierReceiptNumber)
+      context.addIssue({ code: "custom", path: ["supplierReceiptNumber"], message: "رقم وصل المورد مخصص لسندات الصرف فقط" });
+  });
 export const financialDocumentSchema = documentFields
   .extend({ idempotencyKey: z.uuid() })
   .strict();
@@ -104,6 +109,7 @@ export interface FinancialDocument {
   branchId: number | null;
   branchName: string | null;
   cashAccountId: number | null;
+  supplierReceiptNumber: string;
   description: string;
   lines: FinancialLine[];
   totalDebit: string;
