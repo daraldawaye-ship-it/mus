@@ -1,9 +1,10 @@
 // Scoped memo-view predicate. Employee roles include both current named-role
 // assignments and the active legacy employee classification.
-export function memoFollowerSql(memoAlias: string, employeeParameter: string) {
+export function memoFollowerSql(memoAlias: string, employeeParameter: string, requiredLevel?: "comment") {
   return `EXISTS(
     SELECT 1 FROM memo_followers mf
     WHERE mf.company_id=${memoAlias}.company_id AND mf.memo_id=${memoAlias}.id
+      ${requiredLevel ? "AND mf.access_level='comment'" : ""}
       AND (
         mf.employee_id=${employeeParameter}::integer
         OR (mf.role_id IS NOT NULL AND EXISTS (
