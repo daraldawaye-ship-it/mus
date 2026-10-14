@@ -2720,3 +2720,11 @@ ul {
 .memo-event {
   display: contents;
 }
+.memo-event-body {
+  margin-block: 6px 12px;
+}
+.memo-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

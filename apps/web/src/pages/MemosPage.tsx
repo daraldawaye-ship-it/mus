@@ -8,9 +8,11 @@ import {
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { FileText, RefreshCw } from "lucide-react";
 import {
+  memoActionSchema,
   memoCreateSchema,
   memoTypeLabels,
   type CompanyContext,
+  type MemoActionInput,
   type MemoCreateInput,
   type MemoDetail,
   type MemoList,
@@ -41,6 +43,18 @@ const time = (value: string | null) =>
       }).format(new Date(value))
     : "—";
 type SubmittedMemo = { payload: MemoCreateInput; recipient: MemoRecipient };
+type SubmittedMemoAction = {
+  payload: MemoActionInput;
+  recipient: MemoRecipient | null;
+};
+
+const memoEventLabels = {
+  created: "إنشاء",
+  read: "اطلاع",
+  reply: "رد",
+  returned: "إعادة إلى المرسل",
+  forwarded: "تحويل",
+};
 
 function refreshMemos(
   client: QueryClient,
@@ -87,9 +101,11 @@ function MemosContent({ context }: { context: CompanyContext }) {
   const box =
     params.get("box") === "sent"
       ? "sent"
-      : params.get("box") === "all" && context.general
-        ? "all"
-        : "required";
+      : params.get("box") === "following"
+        ? "following"
+        : params.get("box") === "all" && context.general
+          ? "all"
+          : "required";
   const query = params.get("q") ?? "";
   const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
@@ -254,8 +270,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
       enableSorting: false,
     },
     {
-      accessorKey: "recipientName",
-      header: "المستلم",
+      accessorKey: "currentName",
+      header: "المسؤول الحالي",
       size: 140,
       enableSorting: false,
     },
@@ -267,12 +283,11 @@ function MemosContent({ context }: { context: CompanyContext }) {
       cell: () => "معلقة",
     },
     {
-      id: "recipientRead",
-      header: "اطلاع المستلم",
+      id: "currentRead",
+      header: "اطلاع المسؤول",
       size: 120,
       enableSorting: false,
-      cell: ({ row }) =>
-        row.original.recipientReadAt ? "مقروءة" : "غير مقروءة",
+      cell: ({ row }) => (row.original.currentReadAt ? "مقروءة" : "غير مقروءة"),
     },
     {
       accessorKey: "createdAt",
@@ -284,6 +299,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
   const boxes = [
     { value: "required", label: "مطلوب مني" },
     { value: "sent", label: "أرسلتها" },
+    { value: "following", label: "شاركت فيها" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
   return (
@@ -362,7 +378,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
           type="search"
           value={query}
           onChange={(event) => filter({ q: event.target.value, page: null })}
-          placeholder="العنوان أو المرسل أو المستلم"
+          placeholder="العنوان أو المرسل أو المسؤول الحالي"
         />
         <DataTable
           columns={columns}
@@ -520,6 +536,7 @@ function MemoDetailContent({
     !!pageEntry.actionAccess.view &&
     !!parentEntry?.enabled &&
     !!parentEntry.actionAccess.view;
+  const canEdit = canView && !!parentEntry?.actionAccess.edit;
   const key = ["memo-detail", user?.id, companyId, memoId];
   const detail = useQuery({
     queryKey: key,
@@ -528,13 +545,53 @@ function MemoDetailContent({
     enabled: !!user && canView && Number.isSafeInteger(memoId) && memoId > 0,
   });
   const memo = detail.data?.memo;
-  const readAttempted = useRef(false),
+  const readAttempted = useRef<string | null>(null),
     readPending = useRef(false);
-  const [readError, setReadError] = useState("");
+  const [readError, setReadError] = useState(""),
+    [reading, setReading] = useState(false);
+  const draftKey = ["memo-action", user?.id, companyId, memoId];
+  const restored = client.getQueryData<SubmittedMemoAction>(draftKey);
+  const [submitted, setSubmitted] = useState<SubmittedMemoAction | null>(
+    () => restored ?? null,
+  );
+  const [action, setAction] = useState<MemoActionInput["action"]>(
+    restored?.payload.action ?? "reply",
+  );
+  const [body, setBody] = useState(restored?.payload.body ?? "");
+  const [recipient, setRecipient] = useState<MemoRecipient | null>(
+    restored?.recipient ?? null,
+  );
+  const [saving, setSaving] = useState(false),
+    [actionError, setActionError] = useState(""),
+    [actionSuccess, setActionSuccess] = useState(""),
+    [conflict, setConflict] = useState(false);
+  const savingLock = useRef(false),
+    bodyId = useId();
+  const locked = saving || !!submitted;
+  const canReply = canEdit && !!memo?.canReply;
+  const canTransfer = canEdit && !!memo?.canTransfer;
+  const canReturn = canTransfer && memo?.currentUserId !== memo?.senderUserId;
+  const readToken = memo
+    ? `${memo.currentAssignmentRevision}:${memo.events.reduce(
+        (latest, event) =>
+          ["reply", "returned", "forwarded"].includes(event.kind)
+            ? Math.max(latest, event.id)
+            : latest,
+        0,
+      )}`
+    : null;
+  function applyDetail(result: { memo: MemoDetail }) {
+    client.setQueryData<{ memo: MemoDetail }>(key, (previous) =>
+      previous && previous.memo.revision > result.memo.revision
+        ? previous
+        : result,
+    );
+  }
   async function recordRead() {
-    if (!memo || memo.readAt || !canView || readPending.current) return;
-    readAttempted.current = true;
+    if (!memo || !canView || readPending.current) return;
+    readAttempted.current = readToken;
     readPending.current = true;
+    setReading(true);
     setReadError("");
     try {
       const result = await api<{ memo: MemoDetail }>(
@@ -542,18 +599,108 @@ function MemoDetailContent({
         { method: "POST", body: {}, signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
-      client.setQueryData(key, result);
+      applyDetail(result);
       void refreshMemos(client, user?.id, companyId);
     } catch (cause) {
       if (guard.isCurrent()) setReadError(errorMessage(cause));
     } finally {
       readPending.current = false;
+      if (guard.isCurrent()) setReading(false);
     }
   }
   useEffect(() => {
-    if (memo && canView && !memo.readAt && !readAttempted.current)
+    if (memo && canView && readToken && readAttempted.current !== readToken)
       void recordRead();
-  }, [memo, canView]);
+  }, [memo, canView, readToken, reading]);
+  useEffect(() => {
+    if (!locked) return;
+    const preventLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventLeave);
+    return () => window.removeEventListener("beforeunload", preventLeave);
+  }, [locked]);
+  async function sendAction(event: FormEvent) {
+    event.preventDefault();
+    if (savingLock.current || !memo || (!canReply && !submitted)) return;
+    if (!submitted && action !== "reply" && !canTransfer) return;
+    if (!submitted && action === "forward" && !recipient) {
+      setActionError("اختر الموظف الذي تريد تحويل المذكرة إليه.");
+      return;
+    }
+    const retry = !!submitted;
+    const parsed = memoActionSchema.safeParse(
+      submitted?.payload ?? {
+        action,
+        body,
+        revision: memo.revision,
+        idempotencyKey: crypto.randomUUID(),
+        ...(action === "forward" ? { recipientEmployeeId: recipient!.id } : {}),
+      },
+    );
+    if (!parsed.success) {
+      setActionError(
+        parsed.error.issues.map((issue) => issue.message).join(" · "),
+      );
+      return;
+    }
+    const frozen: SubmittedMemoAction = {
+      payload: parsed.data,
+      recipient:
+        submitted?.recipient ?? (action === "forward" ? recipient : null),
+    };
+    client.setQueryDefaults(["memo-action"], { gcTime: Infinity });
+    client.setQueryData(draftKey, frozen);
+    setSubmitted(frozen);
+    savingLock.current = true;
+    setSaving(true);
+    setActionError("");
+    setActionSuccess("");
+    setConflict(false);
+    try {
+      const result = await api<{ memo: MemoDetail }>(
+        `${base}/memos/${memoId}/actions`,
+        { method: "POST", body: frozen.payload, signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      client.removeQueries({ queryKey: draftKey, exact: true });
+      setSubmitted(null);
+      setBody("");
+      setRecipient(null);
+      setAction("reply");
+      applyDetail(result);
+      setActionSuccess(
+        frozen.payload.action === "reply"
+          ? "تم تسجيل الرد داخل المذكرة."
+          : frozen.payload.action === "return"
+            ? `تمت إعادة المذكرة إلى المرسل: ${memo.senderName}.`
+            : `تم تحويل المذكرة إلى ${frozen.recipient?.name ?? "الموظف المحدد"}.`,
+      );
+      void refreshMemos(client, user?.id, companyId);
+    } catch (cause) {
+      if (!guard.isCurrent()) return;
+      setActionError(errorMessage(cause));
+      // A known initial rejection permits editing the same draft. An uncertain
+      // earlier request retains its UUID and payload until its result is known.
+      if (
+        !retry &&
+        cause instanceof ApiFailure &&
+        cause.status >= 400 &&
+        cause.status < 500
+      ) {
+        client.removeQueries({ queryKey: draftKey, exact: true });
+        setSubmitted(null);
+        if (cause.status === 409) {
+          setConflict(true);
+          void detail.refetch();
+        }
+      }
+    } finally {
+      savingLock.current = false;
+      if (guard.isCurrent()) setSaving(false);
+    }
+  }
   return (
     <div className="wallet-page">
       <PageHeader
@@ -608,18 +755,22 @@ function MemoDetailContent({
             <dl className="details-list">
               <dt>المرسل</dt>
               <dd>{memo.senderName}</dd>
-              <dt>المستلم</dt>
+              <dt>المستلم الأول</dt>
               <dd>{memo.recipientName}</dd>
+              <dt>المسؤول الحالي</dt>
+              <dd>{memo.currentName}</dd>
+              <dt>استلم المتابعة</dt>
+              <dd>{time(memo.currentAssignedAt)}</dd>
               <dt>النوع</dt>
               <dd>{memoTypeLabels[memo.type]}</dd>
               <dt>الحالة</dt>
               <dd>معلقة</dd>
               <dt>وقت الإرسال</dt>
               <dd>{time(memo.createdAt)}</dd>
-              <dt>اطلاع المستلم</dt>
+              <dt>اطلاع المسؤول الحالي</dt>
               <dd>
-                {memo.recipientReadAt
-                  ? `مقروءة · ${time(memo.recipientReadAt)}`
+                {memo.currentReadAt
+                  ? `مقروءة · ${time(memo.currentReadAt)}`
                   : "غير مقروءة"}
               </dd>
               <dt>اطلاعك</dt>
@@ -629,13 +780,152 @@ function MemoDetailContent({
           <Card title="شرح المذكرة">
             <p className="memo-body">{memo.body}</p>
           </Card>
+          {(canReply ||
+            canTransfer ||
+            submitted ||
+            actionError ||
+            actionSuccess) && (
+            <Card title="الرد والمتابعة">
+              <form
+                className="form-stack"
+                onSubmit={(event) => void sendAction(event)}
+              >
+                {actionSuccess && (
+                  <Notice tone="success">{actionSuccess}</Notice>
+                )}
+                {actionError && <Notice tone="error">{actionError}</Notice>}
+                {conflict && (
+                  <Notice tone="warning">
+                    تغيرت المذكرة أثناء عملك. راجع المسؤول الحالي والسجل قبل
+                    إعادة الإرسال؛ نص ردك محفوظ هنا.
+                    <Button
+                      variant="ghost"
+                      disabled={detail.isFetching}
+                      onClick={() => void detail.refetch()}
+                    >
+                      تحديث المذكرة
+                    </Button>
+                  </Notice>
+                )}
+                {submitted && !saving && (
+                  <Notice tone="warning">
+                    لم تتأكد نتيجة الإرسال بعد. أعد المحاولة بنفس الرد للتحقق
+                    دون تكراره أو تكرار التحويل.
+                  </Notice>
+                )}
+                {(canReply || canTransfer || submitted) && (
+                  <>
+                    <Select
+                      label="الإجراء"
+                      value={action}
+                      disabled={locked}
+                      onChange={(event) => {
+                        setAction(
+                          event.target.value as MemoActionInput["action"],
+                        );
+                        setActionError("");
+                        setConflict(false);
+                      }}
+                    >
+                      <option value="reply">
+                        إضافة رد مع بقاء المسؤول الحالي
+                      </option>
+                      {(canReturn || action === "return") && (
+                        <option
+                          value="return"
+                          disabled={!canReturn && !submitted}
+                        >
+                          رد وإعادة إلى المرسل
+                        </option>
+                      )}
+                      {(canTransfer || action === "forward") && (
+                        <option
+                          value="forward"
+                          disabled={!canTransfer && !submitted}
+                        >
+                          رد وتحويل إلى موظف آخر
+                        </option>
+                      )}
+                    </Select>
+                    {action === "forward" &&
+                      (locked ? (
+                        <Field
+                          label="تحويل إلى"
+                          value={
+                            submitted?.recipient?.name ?? recipient?.name ?? ""
+                          }
+                          readOnly
+                        />
+                      ) : (
+                        <ServerLookup<MemoRecipient>
+                          companyId={companyId}
+                          resource={`${base}/memos/recipients`}
+                          label="تحويل إلى"
+                          value={recipient}
+                          onChange={setRecipient}
+                          display={(item) => item.name}
+                          required
+                          emptyLabel="اختر موظفًا فعالًا"
+                        />
+                      ))}
+                    {action === "return" && (
+                      <p className="muted">
+                        ستنتقل مسؤولية المتابعة إلى المرسل: {memo.senderName}.
+                      </p>
+                    )}
+                    <div className="field">
+                      <label htmlFor={bodyId}>نص الرد</label>
+                      <textarea
+                        className="memo-textarea"
+                        id={bodyId}
+                        value={body}
+                        onChange={(event) => setBody(event.target.value)}
+                        disabled={locked}
+                        required
+                        maxLength={20000}
+                        rows={4}
+                      />
+                    </div>
+                    <div className="memo-action-buttons">
+                      <Button
+                        type="submit"
+                        disabled={
+                          saving ||
+                          (!submitted &&
+                            (action === "reply"
+                              ? !canReply
+                              : action === "return"
+                                ? !canReturn
+                                : !canTransfer))
+                        }
+                      >
+                        {saving
+                          ? "جارٍ الإرسال…"
+                          : submitted
+                            ? "إعادة محاولة الإرسال"
+                            : action === "forward"
+                              ? "إرسال وتحويل"
+                              : action === "return"
+                                ? "إرسال وإعادة للمرسل"
+                                : "إرسال الرد"}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </form>
+            </Card>
+          )}
           <Card title="سجل المذكرة">
             <dl className="details-list">
               {memo.events.map((event) => (
                 <div key={event.id} className="memo-event">
-                  <dt>{event.kind === "created" ? "إنشاء" : "اطلاع"}</dt>
+                  <dt>{memoEventLabels[event.kind]}</dt>
                   <dd>
                     {event.actorName} · {time(event.createdAt)}
+                    {event.targetName && <span> · إلى {event.targetName}</span>}
+                    {event.body && (
+                      <p className="memo-body memo-event-body">{event.body}</p>
+                    )}
                   </dd>
                 </div>
               ))}

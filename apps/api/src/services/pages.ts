@@ -194,15 +194,20 @@ export async function resolvePage(
       memo: "memos",
     }[definition.record];
     const record = await db.query(
-      `SELECT id${definition.record === "memo" ? ",sender_user_id,recipient_employee_id,recipient_user_id" : definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
+      `SELECT id${definition.record === "memo" ? ",sender_user_id,current_user_id,current_employee_id" : definition.record === "item" ? "" : ",kind"} FROM ${table} WHERE company_id=$1 AND id=$2`,
       [reference.companyId, reference.recordId],
     );
     if (!record.rows[0]) missing();
     if (definition.record === "memo") {
       const context = await companyAccess(db, user, reference.companyId!);
       const memo = record.rows[0];
-      if (!context.general && memo.sender_user_id !== user.id &&
-          !(memo.recipient_user_id === user.id && memo.recipient_employee_id === context.employee?.id))
+      const participant = await db.query(
+        "SELECT 1 FROM memo_participants WHERE company_id=$1 AND memo_id=$2 AND user_id=$3 AND (employee_id IS NULL OR employee_id=$4)",
+        [reference.companyId, reference.recordId, user.id, context.employee?.id ?? null],
+      );
+      const currentAssignee = memo.current_user_id === user.id &&
+        (memo.current_employee_id === null || memo.current_employee_id === context.employee?.id);
+      if (!context.general && memo.sender_user_id !== user.id && !currentAssignee && !participant.rowCount)
         missing();
     }
     if (definition.record === "invoice")
@@ -298,7 +303,7 @@ export async function requestPageKeys(
     "financial-options": "financial-documents",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
-  if (resource === "memos" && /^memos\/[1-9]\d*(?:\/read)?$/.test(rest))
+  if (resource === "memos" && /^memos\/[1-9]\d*(?:\/(?:read|actions))?$/.test(rest))
     keys.push("company.memo-detail");
   if (resource === "configuration" && rest.split("/")[1] === "record-options") {
     if (req.query.recordKind === "item")
@@ -427,6 +432,15 @@ export async function assertRequestPagesEnabled(
     const existing = await db.query(
       "SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND id=$2 AND decision_key=$3",
       [companyId, decision[1], requestKey],
+    );
+    if (existing.rowCount) return;
+  }
+  const memoAction = path.match(/^\/companies\/[1-9]\d*\/memos\/([1-9]\d*)\/actions$/);
+  if (companyId && req.method === "POST" && memoAction && typeof requestKey === "string" &&
+      /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)) {
+    const existing = await db.query(
+      "SELECT 1 FROM memo_actions WHERE company_id=$1 AND memo_id=$2 AND idempotency_key=$3",
+      [companyId, memoAction[1], requestKey],
     );
     if (existing.rowCount) return;
   }
