@@ -30,3 +30,7 @@ export async function notifyDueMemoSender(client:PoolClient,companyId:number,
     {reminderCount:alert.reminder_count},{reminderCount:alert.reminder_count+1,reason:"memo-sender-due"},companyId);
  }else {
   const eventKey=`memo:${memoId}:sender-due:${revision}`;
+  await emitNotification(client,{code:"MEMO_DELAYED",companyId,
+   recipientUserId:senderUserId,subjectEmployeeId:sender.employee_id??null,
+   explicitSubjectOnly:true,subjectKey:`memo:${memoId}`,eventKey,
+   message:title,href:`/companies/${companyId}/memos/${memoId}`});
