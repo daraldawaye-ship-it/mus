@@ -1095,6 +1095,11 @@ function MemoDetailContent({
               </p>)}
             </div>}
           </Card>
+          <MemoFollowupEditor companyId={companyId} memo={memo}
+            onSaved={updated=>{
+              applyDetail({memo:updated});
+              void refreshMemos(client,user?.id,companyId);
+            }}/>
           <Card title="الخصائص الإضافية">
             <p className="muted">الخصائص وصفية، ولا تغير مسؤول التنفيذ أو التنبيهات أو اعتماد الإنجاز.</p>
             {optionsNotice && <Notice tone="success">{optionsNotice}</Notice>}
