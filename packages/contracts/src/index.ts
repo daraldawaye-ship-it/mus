@@ -162,6 +162,8 @@ export const auditActionLabels = {
   "memo.complete": "إنجاز مذكرة لدى مرسلها",
   "memo.links": "تعديل روابط ومراجع المذكرة",
   "memo.options": "تعديل خصائص المذكرة",
+  "memo.schedule": "تأجيل متابعة المذكرة",
+  "memo.reminder-settings": "إعدادات تذكير المذكرات",
   "memo.followers": "تعديل المتابعين وصلاحياتهم",
   "memo.follower-comment": "إضافة تعليق متابعة",
   "wallet.award": "إضافة نقاط إدارية",

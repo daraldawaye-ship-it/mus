@@ -3009,3 +3009,42 @@ test("memo options use shared typed definitions, capture defaults, filter lists,
    idempotencyKey:randomUUID(),options:[{definitionId:urgent.id,value:true}],
  })).status,400);
 });
+
+test("memo followup defers independently, wakes once and cancels on transfer",async(t)=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Memo return to work");
+ const receiver=await register(f,"memo-followup-recipient@example.test");
+ const outsider=await register(f,"memo-followup-outsider@example.test");
+ const another=await register(f,"memo-followup-another@example.test");
+ const staff=await employee(platform.client,co.id,receiver.user.id);
+ await employee(platform.client,co.id,outsider.user.id);
+ const anotherStaff=await employee(platform.client,co.id,another.user.id);
+ const base=`/companies/${co.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "POST",base,{title:"Followup test",body:"Wait for supplier",type:"task",
+ recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201)).memo;
+ const localDate=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
+ const deferred=(await receiver.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"set",revision:0,
+ localDate,localTime:"10:00",reason:"انتظار رد المورد",repeatInterval:"none"})).memo;
+ assert.equal(deferred.schedule?.active,true);
+ assert.equal(deferred.currentUserId,receiver.user.id);
+ assert.equal(deferred.revision,created.revision);
+ assert.equal((await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "GET",`${base}/${created.id}`)).memo.schedule?.reason,"انتظار رد المورد");
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items[0]?.id,created.id);
+ assert.equal((await outsider.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+ assert.equal((await outsider.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"cancel",revision:1,reason:"not permitted"})).status,404);
+ assert.equal((await receiver.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"set",revision:0,localDate,localTime:"10:00",
+ reason:"stale",repeatInterval:"none"})).status,409);
+ const cancelled=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"cancel",revision:1,reason:"متابعة الآن"})).memo;
+ assert.equal(cancelled.schedule?.active,false);
+ assert.equal(cancelled.revision,created.revision);
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+});

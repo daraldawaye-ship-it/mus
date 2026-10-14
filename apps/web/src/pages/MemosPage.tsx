@@ -30,6 +30,7 @@ import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
 import { MemoFollowersEditor } from "../MemoFollowersEditor";
 import { MemoLinksEditor, emptyMemoLinks } from "../MemoLinksEditor";
+import {MemoFollowupEditor} from "../MemoFollowupEditor";
 import { MemoOptionFields, memoOptionLabel } from "../MemoOptionFields";
 import {
   Button,
@@ -138,6 +139,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
       ? "sent"
       : params.get("box") === "following"
         ? "following"
+        : params.get("box") === "deferred"
+          ? "deferred"
         : params.get("box") === "watching"
           ? "watching"
         : params.get("box") === "approval"
@@ -341,7 +344,15 @@ function MemosContent({ context }: { context: CompanyContext }) {
       header: "الحالة",
       size: 130,
       enableSorting: false,
-      cell: ({ row }) => memoStatusLabels[row.original.status],
+      cell: ({ row }) => row.original.schedule?.active
+       ? `${memoStatusLabels[row.original.status]} — مؤجلة`
+       : memoStatusLabels[row.original.status],
+    },
+    {
+      id:"returnDue",header:"موعد العودة",size:155,enableSorting:false,
+      cell:({row})=>row.original.schedule?.active?
+        new Intl.DateTimeFormat("ar-YE",{timeZone:"Asia/Aden",dateStyle:"short",timeStyle:"short"})
+          .format(new Date(row.original.schedule.dueAt)):"—",
     },
     {
       id: "currentRead",
@@ -363,6 +374,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
     { value: "watching", label: "أتابعها" },
+    { value: "deferred", label: "المؤجلة" },
     { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
@@ -1083,6 +1095,11 @@ function MemoDetailContent({
               </p>)}
             </div>}
           </Card>
+          <MemoFollowupEditor companyId={companyId} memo={memo}
+            onSaved={updated=>{
+              applyDetail({memo:updated});
+              void refreshMemos(client,user?.id,companyId);
+            }}/>
           <Card title="الخصائص الإضافية">
             <p className="muted">الخصائص وصفية، ولا تغير مسؤول التنفيذ أو التنبيهات أو اعتماد الإنجاز.</p>
             {optionsNotice && <Notice tone="success">{optionsNotice}</Notice>}

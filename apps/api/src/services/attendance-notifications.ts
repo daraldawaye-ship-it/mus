@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { transaction } from "../db.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
+import {scanDueMemoSchedules} from "./memo-reminders.ts";
 import {
   emitNotification,
   refreshNotificationReminders,
@@ -107,6 +108,7 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
           });
         if (!(await pageEnabled(client, companyId, "company.notifications")))
           return;
+        await scanDueMemoSchedules(client,companyId);
         await refreshNotificationReminders(client, companyId);
         if (await pageEnabled(client, companyId, "company.attendance"))
           await attendanceEvents(client, companyId);

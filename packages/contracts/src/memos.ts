@@ -103,6 +103,41 @@ export interface MemoOptionChange {
  actorName:string;
  createdAt:string;
 }
+export const memoScheduleInputSchema = z.discriminatedUnion("action", [
+ z.object({
+  action:z.literal("set"),
+  revision:z.number().int().nonnegative(),
+  localDate:z.iso.date(),
+  localTime:z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable(),
+  reason:z.string().trim().min(1).max(2000),
+  repeatInterval:z.enum(["none","day","week","month"]),
+ }).strict(),
+ z.object({
+  action:z.literal("cancel"),
+  revision:z.number().int().nonnegative(),
+  reason:z.string().trim().min(1).max(2000),
+ }).strict(),
+]);
+export type MemoScheduleInput = z.input<typeof memoScheduleInputSchema>;
+export type MemoScheduleRepeat = "none"|"day"|"week"|"month";
+export interface MemoSchedule {
+ revision:number;
+ active:boolean;
+ dueAt:string;
+ localDate:string;
+ localTime:string;
+ repeatInterval:MemoScheduleRepeat;
+ reason:string;
+ actorName:string;
+ lastTriggeredAt:string|null;
+}
+export interface MemoScheduleHistory {
+ id:number;revision:number;kind:"scheduled"|"changed"|"cancelled"|"due"|"transition"|"repeated";
+ actorName:string|null;reason:string;dueAt:string|null;createdAt:string;
+}
+export interface MemoReminderSettings {
+ defaultTime:string;notifySender:boolean;revision:number;
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
@@ -166,6 +201,7 @@ export interface MemoRecord {
   body: string;
   type: MemoType;
   status: MemoStatus;
+  schedule: MemoSchedule | null;
   revision: number;
   senderUserId: number;
   senderName: string;
@@ -211,6 +247,10 @@ export interface MemoEvent {
   assignmentRevision: number | null;
 }
 export interface MemoDetail extends MemoRecord {
+  scheduleRevision:number;
+  scheduleHistory:MemoScheduleHistory[];
+  canSchedule:boolean;
+  canManageSchedule:boolean;
   events: MemoEvent[];
   followers: MemoFollower[];
   followerRevision: number;
