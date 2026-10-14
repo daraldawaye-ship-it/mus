@@ -160,6 +160,8 @@ export const auditActionLabels = {
   "memo.approve-completion": "اعتماد إنجاز مذكرة",
   "memo.reopen-completion": "إعادة مذكرة للاستكمال",
   "memo.complete": "إنجاز مذكرة لدى مرسلها",
+  "memo.followers": "تعديل المتابعين وصلاحياتهم",
+  "memo.follower-comment": "إضافة تعليق متابعة",
   "wallet.award": "إضافة نقاط إدارية",
   "wallet.auto-award": "احتساب مكافأة آلية",
   "wallet.reverse": "تصحيح حركة نقاط",
