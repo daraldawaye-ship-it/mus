@@ -3115,3 +3115,70 @@ test("memo feature rules target current executor and preview scoped warnings",as
  assert.equal((await platform.client.request("PUT",base+`/memo-feature-rules/${rule.id}`,
   {...input,revision:rule.revision})).status,409);
 });
+
+test("memo feature block rejects new invoice but allows exact saved retry and disappears on rule change",async t=>{
+ const f=await fixture(t),ownerUser=await owner(f);
+ const co=await company(ownerUser.client,"Memo block invoice");
+ const base=`/companies/${co.id}`;
+ const worker=await register(f,"memo-block-worker@example.test");
+ const staff=await employee(ownerUser.client,co.id,worker.user.id,
+  ["commerce.view","commerce.manage","finance.post"]);
+ await ownerUser.client.ok("POST",base+"/memos",{
+  title:"Pending payment review",body:"Review supplier balance",type:"task",
+  recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201);
+ const config={name:"Block pending sales",enabled:true,employeeIds:[staff.id],roleIds:[],
+  actionCode:"invoice.sale.create",effect:"block",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"يرجى معالجة المذكرة قبل حفظ الفاتورة"};
+ const rule=(await ownerUser.client.ok<{rule:{id:number;revision:number}}>(
+  "POST",base+"/memo-feature-rules",config,201)).rule;
+ const currencies=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/currencies")).items;
+ const currency=currencies.find(r=>r.code==="YER")!;
+ const branches=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/branches")).items;
+ const branch=branches.find(r=>r.code==="HQ")!;
+ const locations=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+`/locations?branchId=${branch.id}`)).items;
+ const location=locations.find(r=>r.code==="SHOWROOM")!;
+ const accounts=(await ownerUser.client.ok<Page<{id:number;category:string;kind:string}>>(
+  "GET",base+"/accounts?pageSize=100")).items;
+ const excluded=new Set((await f.pool.query<{id:number}>(
+  "SELECT inventory_account_id AS id FROM inventory_settings WHERE company_id=$1 UNION SELECT sales_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT cogs_account_id FROM inventory_settings WHERE company_id=$1",
+  [co.id])).rows.map(r=>r.id));
+ const account=accounts.find(r=>r.category==="asset"&&r.kind==="posting"&&!excluded.has(r.id))!;
+ assert.ok(account);
+ const item=(await ownerUser.client.ok<{item:{id:number}}>("POST",base+"/items",{
+  idempotencyKey:randomUUID(),name:"Task restricted item",currencyId:currency.id,
+  unit1Name:"وحدة",salePrice1:"30",purchasePrice:"15",hasExpiry:false,
+ },201)).item;
+ const payload={
+  idempotencyKey:randomUUID(),kind:"sale",documentDate:"2026-10-12",
+  currencyId:currency.id,branchId:branch.id,locationId:location.id,
+  counterpartyAccountId:account.id,supplierAccountId:null,
+  description:"Memo block test invoice",discount:"0",
+  lines:[{itemId:item.id,unit:1,quantity:"1",unitPrice:"30",expiryDate:null,originalLineId:null}],
+ };
+ const denied=await worker.client.request("POST",base+"/invoices",payload);
+ assert.equal(denied.status,409);
+ assert.equal((denied.body as {error:{code:string}}).error.code,"memo_feature_block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,0);
+ const rejectionAudit=(await f.pool.query(
+  "SELECT count(*)::int AS count FROM audit_events WHERE company_id=$1 AND action='memo.feature-trigger' AND after_value->>'outcome'='rejected'",
+  [co.id])).rows[0].count;
+ assert.equal(rejectionAudit,1);
+ const disabled=(await ownerUser.client.ok<{rule:{revision:number}}>(
+   "PUT",base+`/memo-feature-rules/${rule.id}`,{...config,revision:rule.revision,enabled:false})).rule;
+ const saved=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.ok(saved.id);
+ const reactivated=await ownerUser.client.ok(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...config,revision:disabled.revision,enabled:true});
+ const repeated=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.equal(repeated.id,saved.id,"An already posted invoice may be confirmed under a new block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,1);
+});

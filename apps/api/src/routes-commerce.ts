@@ -19,6 +19,7 @@ import {
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
+import {audit} from "./services/audit.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -222,7 +223,23 @@ export function commerceRoutes(pool: Pool): Router {
           await companyAccess(client, user, companyId, "finance.post", true);
           return createInvoice(client, companyId, user, input);
         },
-      );
+      ).catch(async (error:unknown)=>{
+        if(error instanceof HttpError && error.code==="memo_feature_block"){
+          try{
+            await transaction(pool,async client=>{
+              const companyId=id(req.params.companyId),user=await currentActor(client,actor(req));
+              await companyAccess(client,user,companyId,"commerce.manage");
+              const matches=await matchingMemoFeatureRules(client,companyId,user.id,
+                input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+              for(const rule of matches.filter(rule=>rule.effect==="block"))
+                await audit(client,user,"memo.feature-trigger","memo-feature-rule",rule.ruleId,
+                  null,{effect:"block",outcome:"rejected",rule:rule.ruleName,
+                    pendingCount:rule.count,action:input.kind},companyId);
+            });
+          }catch(logFailure){console.error("Memo feature rejection audit failed",logFailure);}
+        }
+        throw error;
+      });
       res.status(201).json({ invoice });
     }),
   );

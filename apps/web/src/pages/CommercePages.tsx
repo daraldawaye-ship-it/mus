@@ -840,6 +840,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
   const [itemNotice, setItemNotice] = useState("");
+  const [memoBlocked,setMemoBlocked]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -1425,6 +1426,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
     setError("");
+    setMemoBlocked(false);
     let payload = pending.current;
     if (!unknown) {
       const unfinished = lines.find(
@@ -1503,6 +1505,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
+      setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
       setUnknown(uncertain);
       if (!uncertain) pending.current = null;
       setError(
@@ -1765,8 +1768,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-        {memoImpact.data?.matches.filter(rule=>rule.effect==="warn").map(rule=>
-          <Notice key={rule.ruleId} tone="warning">
+        {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
+          <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
             {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
           </Notice>)}
@@ -2211,7 +2214,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           className="card commerce-save-footer"
           aria-label="إجمالي الفاتورة والحفظ"
         >
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error">{error}
+            {memoBlocked&&<>{" "}<Link to={`/companies/${companyId}/memos?box=required`}>فتح «مطلوب مني» لمعالجة التكليفات</Link></>}
+          </Notice>}
           {selectedLines.length > 0 && totals?.total === "0" && (
             <Notice>
               الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
