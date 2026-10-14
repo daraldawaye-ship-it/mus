@@ -8,6 +8,7 @@ import {
   memoFollowerCommentSchema,
   memoLinksUpdateSchema,
   memoLinksSchema,
+  memoOptionsUpdateSchema,
   type MemoFollower,
   type MemoFollowerChange,
   type MemoFollowerInput,
@@ -26,6 +27,7 @@ import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
 import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
+import {definitionsForMemo,validateMemoOptionEntries,saveMemoOptionValues,memoOptionDetails} from "./services/memo-options.ts";
 import { userDTO } from "./repositories/models.ts";
 import {
   assertDirectoryAccess,
@@ -207,6 +209,7 @@ async function detail(
     row.sender_user_id === current.user.id &&
     row.current_user_id === current.user.id;
   const links = await memoLinkView(client,current.user,current.companyId,memoId);
+  const optionDetails = await memoOptionDetails(client,current.companyId,memoId);
   const canManageLinks = row.status !== "completed" &&
     (row.sender_user_id === current.user.id || current.context.general) &&
     entry.enabled && entry.actionAccess.edit &&
@@ -225,6 +228,10 @@ async function detail(
     followerRevision: followRevision,
     followerChanges,
     links,
+    ...optionDetails,
+    canManageOptions:row.status!=="completed" &&
+      (row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
     canManageLinks,
     canManageFollowers: row.status !== "completed" &&
       (row.sender_user_id === current.user.id || current.context.general) &&
@@ -560,6 +567,7 @@ export function memoRoutes(pool: Pool) {
         type: input.type,
         followers: input.followers ?? [],
         ...(input.links ? {links:input.links} : {}),
+        ...(input.options ? {options:input.options} : {}),
       };
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
@@ -586,6 +594,7 @@ export function memoRoutes(pool: Pool) {
         }
         await access(client, req, current, "create", false, true);
         if(input.links) await validateMemoLinks(client,current.user,current.companyId,input.links);
+        const preparedOptions=await validateMemoOptionEntries(client,current.companyId,input.options??[],true);
         const recipient = (
           await client.query(
             `SELECT e.id,e.user_id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
@@ -650,6 +659,11 @@ export function memoRoutes(pool: Pool) {
            input.links?.accountId??null,current.user.id],
         );
         await client.query(
+          "INSERT INTO memo_option_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
+          [current.companyId,memo.id,current.user.id],
+        );
+        await saveMemoOptionValues(client,current.user,current.companyId,memo.id,preparedOptions);
+        await client.query(
           "INSERT INTO memo_follow_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
           [current.companyId,memo.id,current.user.id],
         );
@@ -671,6 +685,11 @@ export function memoRoutes(pool: Pool) {
           followerChanges: _followerChanges,
           links: _links,
           canManageLinks: _manageLinks,
+          optionDefinitions: _optionDefinitions,
+          optionValues: _optionValues,
+          optionRevision: _optionRevision,
+          optionChanges: _optionChanges,
+          canManageOptions: _manageOptions,
           ...snapshot
         } = saved;
         await audit(
@@ -698,6 +717,54 @@ export function memoRoutes(pool: Pool) {
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
+    }),
+  );
+  router.get(
+    base + "/options",
+    handler(async (req,res) => {
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        return {definitions:(await definitionsForMemo(client,current.companyId)).filter(d=>d.active)};
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/:memoId/options",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoOptionsUpdateSchema,req.body);
+      const memo=await transaction(pool,async client=>{
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageOptions) deny("تعديل خصائص المذكرة للمرسل والإدارة المصرح لها فقط");
+        const version=(await client.query(
+          "SELECT revision FROM memo_option_versions WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId]
+        )).rows[0];
+        if(!version || version.revision!==input.revision)
+          throw new HttpError(409,"revision_conflict","تغيرت خصائص المذكرة؛ أعد التحميل");
+        const values=await validateMemoOptionEntries(client,current.companyId,input.values,false);
+        await saveMemoOptionValues(client,current.user,current.companyId,memoId,values);
+        const after=await memoOptionDetails(client,current.companyId,memoId);
+        await client.query(
+          "UPDATE memo_option_versions SET revision=revision+1,changed_by=$3,changed_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId,current.user.id],
+        );
+        await client.query(
+          `INSERT INTO memo_option_changes(company_id,memo_id,revision,actor_user_id,actor_name,previous_value,next_value)
+            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
+          [current.companyId,memoId,version.revision+1,current.user.id,current.user.displayName,
+           JSON.stringify(before.optionValues),JSON.stringify(after.optionValues)],
+        );
+        await audit(client,current.user,"memo.options","memo",memoId,
+          {revision:version.revision,values:before.optionValues},
+          {revision:version.revision+1,values:after.optionValues},current.companyId);
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
     }),
   );
   router.get(
