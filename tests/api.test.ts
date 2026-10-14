@@ -3100,3 +3100,18 @@ test("memo feature rules target current executor and preview scoped warnings",as
   "GET",base+"/memo-feature-impact?kind=sale");
  assert.equal(impacted.matches[0]?.ruleId,rule.id);
  assert.equal(impacted.matches[0]?.effect,"warn");
+ const quiet=await outsider.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(quiet.matches.length,0);
+ assert.equal((await worker.client.request("GET",base+"/memo-feature-rules")).status,403);
+ assert.equal((await worker.client.request("POST",base+"/memo-feature-rules",input)).status,403);
+ assert.equal((await worker.client.request("GET",
+  `/companies/${other.id}/memo-feature-impact?kind=sale`)).status,403);
+ const revised=await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,{...input,revision:rule.revision,enabled:false});
+ assert.equal(revised.rule.enabled,false);
+ assert.equal((await worker.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale")).matches.length,0);
+ assert.equal((await platform.client.request("PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...input,revision:rule.revision})).status,409);
+});
