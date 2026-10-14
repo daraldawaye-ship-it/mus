@@ -17,6 +17,7 @@ import {
   type MemoCreateInput,
   type MemoDetail,
   type MemoFollowerInput,
+  type MemoLinksInput,
   type MemoList,
   type MemoRecipient,
   type MemoSummary,
@@ -26,6 +27,7 @@ import { ApiFailure, api, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
 import { MemoFollowersEditor } from "../MemoFollowersEditor";
+import { MemoLinksEditor, emptyMemoLinks } from "../MemoLinksEditor";
 import {
   Button,
   Card,
@@ -186,6 +188,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     restored?.recipient ?? null,
   );
   const [followers, setFollowers] = useState<MemoFollowerInput[]>(restored?.payload.followers ?? []);
+  const [links, setLinks] = useState<MemoLinksInput>(restored?.payload.links ?? emptyMemoLinks());
   const [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [created, setCreated] = useState<MemoDetail | null>(null);
@@ -222,6 +225,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
         type,
         recipientEmployeeId: recipient!.id,
         followers,
+        links,
         idempotencyKey: crypto.randomUUID(),
       },
     );
@@ -523,6 +527,11 @@ function MemosContent({ context }: { context: CompanyContext }) {
             />
           )}
           <fieldset className="form-stack" disabled={locked || !canCreate}>
+            <legend>صفحة المتابعة والمرجع المرتبط</legend>
+            <MemoLinksEditor companyId={companyId} value={links} onChange={setLinks}
+              disabled={locked || !canCreate} />
+          </fieldset>
+          <fieldset className="form-stack" disabled={locked || !canCreate}>
             <legend>المتابعون وصلاحياتهم</legend>
             <MemoFollowersEditor companyId={companyId}
               value={submitted?.payload.followers ?? followers}
@@ -593,6 +602,10 @@ function MemoDetailContent({
     enabled: !!user && canView && Number.isSafeInteger(memoId) && memoId > 0,
   });
   const memo = detail.data?.memo;
+  const [linksDraft,setLinksDraft] = useState<MemoLinksInput|null>(null);
+  const [linksSaving,setLinksSaving] = useState(false);
+  const [linksError,setLinksError] = useState("");
+  const [linksNotice,setLinksNotice] = useState("");
   const [followersDraft, setFollowersDraft] = useState<MemoFollowerInput[] | null>(null);
   const [followersSaving, setFollowersSaving] = useState(false);
   const [followersMessage, setFollowersMessage] = useState("");
@@ -699,6 +712,23 @@ function MemoDetailContent({
       commentLock.current=false;
       if(guard.isCurrent()) setCommentSaving(false);
     }
+  }
+  async function saveLinks() {
+    if(!memo || !memo.canManageLinks || !linksDraft || linksSaving) return;
+    setLinksSaving(true);setLinksError("");setLinksNotice("");
+    try{
+      const result = await api<{memo:MemoDetail}>(`${base}/memos/${memoId}/links`,{
+        method:"PUT",body:{...linksDraft,revision:memo.links.revision},signal:guard.signal,
+      });
+      if(!guard.isCurrent())return;
+      applyDetail(result);
+      setLinksDraft(null);
+      setLinksNotice("تم حفظ المراجع والصنف والحساب دون تغيير المسؤول أو حالة المذكرة.");
+    }catch(cause){
+      if(!guard.isCurrent())return;
+      setLinksError(errorMessage(cause));
+      if(cause instanceof ApiFailure && cause.status===409)void detail.refetch();
+    }finally{if(guard.isCurrent())setLinksSaving(false);}
   }
   async function saveFollowers() {
     if (!memo || followersDraft === null || followersSaving || !memo.canManageFollowers) return;
@@ -932,6 +962,54 @@ function MemoDetailContent({
               <dt>اطلاعك</dt>
               <dd>{memo.readAt ? time(memo.readAt) : "جارٍ تسجيل الاطلاع…"}</dd>
             </dl>
+          </Card>
+          <Card title="صفحة المتابعة والمراجع المرتبطة">
+            {linksNotice && <Notice tone="success">{linksNotice}</Notice>}
+            {linksError && <Notice tone="error">{linksError}</Notice>}
+            {linksDraft === null ? (
+              <div className="form-stack">
+                {([
+                  ["صفحة المتابعة",memo.links.followPage,memo.links.hiddenFollowPage],
+                  ["التقرير أو الصفحة المرجعية",memo.links.referencePage,memo.links.hiddenReferencePage],
+                ] as const).map(([label,ref,hidden]) => (
+                  <p key={label}>{label}: {" "}
+                    {ref ? <Link className="button button-secondary button-compact" to={ref.href}>
+                      فتح {ref.label}{ref.recordId? ` #${ref.recordId}`:""}
+                    </Link> : hidden ? "بيانات محجوبة لعدم وجود صلاحية" : "—"}
+                  </p>
+                ))}
+                <p>الصنف: {memo.links.item ?
+                  <Link to={memo.links.item.href}>{memo.links.item.label}</Link> :
+                  memo.links.hiddenItem?"محجوب لعدم وجود صلاحية":"—"}</p>
+                <p>الحساب: {memo.links.account ?
+                  <Link to={memo.links.account.href}>{memo.links.account.label}</Link> :
+                  memo.links.hiddenAccount?"محجوب لعدم وجود صلاحية":"—"}</p>
+                {memo.canManageLinks && <Button variant="secondary" onClick={() => {
+                  setLinksError("");setLinksNotice("");
+                  setLinksDraft({
+                    followPage:memo.links.followPage?{
+                      pageKey:memo.links.followPage.pageKey,recordId:memo.links.followPage.recordId}:null,
+                    referencePage:memo.links.referencePage?{
+                      pageKey:memo.links.referencePage.pageKey,recordId:memo.links.referencePage.recordId}:null,
+                    itemId:memo.links.item?.id??null,accountId:memo.links.account?.id??null,
+                  });
+                }}>تعديل الروابط والخصائص الأساسية</Button>}
+              </div>
+            ) : <div className="form-stack">
+              <MemoLinksEditor companyId={companyId} value={linksDraft}
+                onChange={setLinksDraft} existing={memo.links} disabled={linksSaving}/>
+              <div className="memo-action-buttons">
+                <Button disabled={linksSaving} onClick={() => void saveLinks()}>
+                  {linksSaving?"جارٍ الحفظ…":"حفظ الروابط"}</Button>
+                <Button disabled={linksSaving} variant="secondary" onClick={() => setLinksDraft(null)}>إلغاء</Button>
+              </div>
+            </div>}
+            {!!memo.links.changes.length && <div className="form-stack">
+              <h3>سجل تعديل المراجع</h3>
+              {memo.links.changes.map(change=><p key={change.revision} className="muted">
+                {change.actorName} · {time(change.createdAt)} · الإصدار {change.revision}
+              </p>)}
+            </div>}
           </Card>
           <Card title="المتابعون وصلاحياتهم">
             <p className="muted">لا تنقل هذه المتابعة التكليف، ولا تمنح سلطة التحويل أو اعتماد الإنجاز.</p>

@@ -6,6 +6,8 @@ import {
   memoActionSchema,
   memoFollowersUpdateSchema,
   memoFollowerCommentSchema,
+  memoLinksUpdateSchema,
+  memoLinksSchema,
   type MemoFollower,
   type MemoFollowerChange,
   type MemoFollowerInput,
@@ -23,6 +25,7 @@ import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
+import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
 import { userDTO } from "./repositories/models.ts";
 import {
   assertDirectoryAccess,
@@ -203,6 +206,11 @@ async function detail(
   const senderAssignee =
     row.sender_user_id === current.user.id &&
     row.current_user_id === current.user.id;
+  const links = await memoLinkView(client,current.user,current.companyId,memoId);
+  const canManageLinks = row.status !== "completed" &&
+    (row.sender_user_id === current.user.id || current.context.general) &&
+    entry.enabled && entry.actionAccess.edit &&
+    !links.hiddenFollowPage && !links.hiddenReferencePage && !links.hiddenItem && !links.hiddenAccount;
   const canReply =
     row.status !== "completed" &&
     (participant ||
@@ -216,6 +224,8 @@ async function detail(
     followers,
     followerRevision: followRevision,
     followerChanges,
+    links,
+    canManageLinks,
     canManageFollowers: row.status !== "completed" &&
       (row.sender_user_id === current.user.id || current.context.general) &&
       entry.enabled && entry.actionAccess.edit,
@@ -549,6 +559,7 @@ export function memoRoutes(pool: Pool) {
         recipientEmployeeId: input.recipientEmployeeId,
         type: input.type,
         followers: input.followers ?? [],
+        ...(input.links ? {links:input.links} : {}),
       };
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
@@ -574,6 +585,7 @@ export function memoRoutes(pool: Pool) {
           };
         }
         await access(client, req, current, "create", false, true);
+        if(input.links) await validateMemoLinks(client,current.user,current.companyId,input.links);
         const recipient = (
           await client.query(
             `SELECT e.id,e.user_id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
@@ -630,6 +642,14 @@ export function memoRoutes(pool: Pool) {
           ],
         );
         await client.query(
+          `INSERT INTO memo_links(company_id,memo_id,follow_page_key,follow_record_id,reference_page_key,reference_record_id,item_id,account_id,updated_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [current.companyId,memo.id,input.links?.followPage?.pageKey??null,
+           input.links?.followPage?.recordId??null,input.links?.referencePage?.pageKey??null,
+           input.links?.referencePage?.recordId??null,input.links?.itemId??null,
+           input.links?.accountId??null,current.user.id],
+        );
+        await client.query(
           "INSERT INTO memo_follow_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
           [current.companyId,memo.id,current.user.id],
         );
@@ -649,6 +669,8 @@ export function memoRoutes(pool: Pool) {
           followers: _followers,
           followerRevision: _followerRevision,
           followerChanges: _followerChanges,
+          links: _links,
+          canManageLinks: _manageLinks,
           ...snapshot
         } = saved;
         await audit(
@@ -676,6 +698,130 @@ export function memoRoutes(pool: Pool) {
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
+    }),
+  );
+  router.get(
+    base + "/link-records",
+    handler(async (req,res) => {
+      const pageKey=String(req.query.pageKey??"");
+      const resource:Record<string,{table:string;parent:string;title:string}>={
+        "company.invoice":{table:"invoices",parent:"",title:"فاتورة"},
+        "company.financial-document":{table:"financial_documents",parent:"company.financial-documents",title:"مستند"},
+        "company.item-card":{table:"items",parent:"company.items",title:"صنف"},
+      };
+      const target=resource[pageKey];
+      if(!target) throw new HttpError(400,"invalid_page","اختر صفحة سجل مدعومة");
+      const query=listQuery(req.query,{id:"r.id",code:"r.id",name:"r.id"},"id:desc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key===pageKey)!);
+        if(target.parent) assertDirectoryAccess(entries.find(e=>e.key===target.parent)!);
+        const kindFilter=target.table==="invoices"
+          ? (!entries.find(e=>e.key==="company.sales")?.actionAccess.view
+              ? (entries.find(e=>e.key==="company.purchases")?.actionAccess.view ? "AND r.kind='purchase'" : "AND FALSE") : !entries.find(e=>e.key==="company.purchases")?.actionAccess.view
+                ? "AND r.kind='sale'" : "")
+          : target.table==="financial_documents"
+          ? "AND r.kind IN ("+["journal","receipt","payment"].filter(kind=>
+              entries.find(e=>e.key==="company."+
+                ({journal:"journals",receipt:"receipts",payment:"payments"} as const)[kind as "journal"|"receipt"|"payment"])?.actionAccess.view)
+              .map(kind=>"'"+kind+"'").join(",") + ")"
+          : "";
+        const condition=`FROM ${target.table} r WHERE r.company_id=$1 AND r.id::text ILIKE $2 ${kindFilter}`;
+        const values=[current.companyId,searchPattern(query.q)];
+        const total=Number((await client.query(`SELECT count(*) ${condition}`,values)).rows[0].count);
+        const rows=(await client.query(
+          `SELECT r.id ${condition} ORDER BY r.id DESC LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset],
+        )).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${target.title} #${r.id}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
+    base + "/link-items",
+    handler(async (req,res) => {
+      const query=listQuery(req.query,{id:"i.id",code:"i.code",name:"i.name"},"name:asc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.items")!);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.item-card")!);
+        const values=[current.companyId,searchPattern(query.q)];
+        const from="FROM items i WHERE i.company_id=$1 AND (i.name ILIKE $2 OR i.code ILIKE $2)";
+        const total=Number((await client.query(`SELECT count(*) ${from}`,values)).rows[0].count);
+        const rows=(await client.query(`SELECT i.id,i.code,i.name ${from} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset])).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${r.code} — ${r.name}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
+    base + "/link-accounts",
+    handler(async (req,res) => {
+      const query=listQuery(req.query,{id:"a.id",code:"a.code",name:"a.name"},"name:asc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.accounts")!);
+        const values=[current.companyId,searchPattern(query.q)];
+        const from="FROM accounts a WHERE a.company_id=$1 AND (a.name ILIKE $2 OR a.code ILIKE $2)";
+        const total=Number((await client.query(`SELECT count(*) ${from}`,values)).rows[0].count);
+        const rows=(await client.query(`SELECT a.id,a.code,a.name ${from} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset])).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${r.code} — ${r.name}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/:memoId/links",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoLinksUpdateSchema,req.body);
+      const memo=await transaction(pool,async client=>{
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageLinks) deny("تعديل مراجع المذكرة للمرسل والإدارة المصرح لها فقط");
+        const found=(await client.query(
+          "SELECT * FROM memo_links WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId]
+        )).rows[0];
+        if(!found || found.revision!==input.revision)
+          throw new HttpError(409,"revision_conflict","تغيرت المراجع، أعد تحميل المذكرة");
+        const {revision:_linkRevision,...values}=input;
+        await validateMemoLinks(client,current.user,current.companyId,values);
+        const previous=memoLinksSnapshot(found);
+        await client.query(
+          `UPDATE memo_links SET revision=revision+1,follow_page_key=$3,follow_record_id=$4,
+            reference_page_key=$5,reference_record_id=$6,item_id=$7,account_id=$8,
+            updated_by=$9,updated_at=clock_timestamp()
+            WHERE company_id=$1 AND memo_id=$2`,
+          [current.companyId,memoId,values.followPage?.pageKey??null,
+           values.followPage?.recordId??null,values.referencePage?.pageKey??null,
+           values.referencePage?.recordId??null,values.itemId,values.accountId,current.user.id]
+        );
+        await client.query(
+          "INSERT INTO memo_link_changes(company_id,memo_id,revision,actor_user_id,actor_name,previous_value,next_value) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)",
+          [current.companyId,memoId,found.revision+1,current.user.id,current.user.displayName,
+           JSON.stringify(previous),JSON.stringify(values)]
+        );
+        await audit(client,current.user,"memo.links","memo",memoId,
+          {revision:found.revision,...previous},{revision:found.revision+1,...values},current.companyId);
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
     }),
   );
   router.get(
