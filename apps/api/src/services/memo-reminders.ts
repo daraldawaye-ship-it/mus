@@ -86,7 +86,7 @@ export function nextRecurringMemoDue(anchor:string,time:string,interval:"day"|"w
 export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
  const rows=(await client.query(`
   SELECT s.*,m.status,m.current_user_id,m.current_employee_id,
-   m.current_assignment_revision,m.title
+   m.current_assignment_revision,m.sender_user_id,m.title
   FROM memo_schedules s JOIN memos m ON m.company_id=s.company_id AND m.id=s.memo_id
   WHERE s.company_id=$1 AND s.active AND s.due_at<=clock_timestamp()
   ORDER BY s.due_at,s.memo_id LIMIT 50 FOR UPDATE OF s SKIP LOCKED`,
