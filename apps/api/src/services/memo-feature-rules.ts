@@ -52,3 +52,28 @@ export async function previewMemoFeatureEmployee(client:PoolClient,
   eligibleCount:ageMatches.length,oldestHours:rows.length?Number(rows[0].hours):0,
   matched,memoIds:ageMatches.slice(0,20).map(row=>row.id)};
 }
+
+export interface MemoFeatureMatch {
+ ruleId:number;ruleName:string;effect:"monitor"|"warn"|"block";message:string;
+ count:number;oldestHours:number;memoIds:number[];
+}
+export async function matchingMemoFeatureRules(client:PoolClient,companyId:number,
+ userId:number,actionCode:"invoice.sale.create"|"invoice.purchase.create"):Promise<MemoFeatureMatch[]>{
+ const staff=(await client.query(
+  "SELECT id,name,role FROM employees WHERE company_id=$1 AND user_id=$2 AND active",
+  [companyId,userId])).rows[0];
+ if(!staff)return [];
+ const rules=(await client.query(
+  "SELECT * FROM memo_feature_rules WHERE company_id=$1 AND action_code=$2 AND enabled ORDER BY id",
+  [companyId,actionCode])).rows;
+ const matches:MemoFeatureMatch[]=[];
+ for(const row of rules){
+  const rule=featureRuleDTO(row);
+  const impact=await previewMemoFeatureEmployee(client,rule,staff);
+  if(!impact.matched)continue;
+  matches.push({ruleId:rule.id,ruleName:rule.name,effect:rule.effect,
+   message:rule.message||"راجع المذكرات المعلقة ضمن «مطلوب مني».",
+   count:impact.pendingCount,oldestHours:impact.oldestHours,memoIds:impact.memoIds});
+ }
+ return matches;
+}
