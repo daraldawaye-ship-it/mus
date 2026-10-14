@@ -81,6 +81,7 @@ export async function createApp(options: AppOptions = {}) {
     employeeAttendanceRoutes(pool),
     notificationRoutes(pool),
     memoRoutes(pool),
+    memoFeatureRuleRoutes(pool),
     walletRoutes(pool),
     configurationRoutes(pool),
     configurationAdministrationRoutes(pool),
