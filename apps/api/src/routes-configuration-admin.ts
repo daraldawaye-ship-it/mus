@@ -22,6 +22,7 @@ const recordKind = z.enum([
   "employee",
   "invoice",
   "financial-document",
+  "memo",
 ]);
 const scalar = z.union([z.boolean(), z.string().max(2000), z.null()]);
 const choice = z
@@ -261,11 +262,11 @@ export function configurationAdministrationRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const input = parse(optionInput, req.body);
       checkOption(input);
-      if (input.recordKind !== "item" && input.recordKind !== "account")
+      if (input.recordKind !== "item" && input.recordKind !== "account" && input.recordKind !== "memo")
         throw new HttpError(
           400,
           "validation",
-          "الخيارات الإضافية متاحة حاليًا لكروت الأصناف والحسابات.",
+          "الخيارات الإضافية متاحة للأصناف والحسابات والمذكرات.",
         );
       const result = await transaction(pool, async (client) => {
         const { companyId, user } = await authorize(client, req, true);
