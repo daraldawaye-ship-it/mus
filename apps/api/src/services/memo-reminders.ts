@@ -56,6 +56,33 @@ export async function cancelScheduleForTransition(client:PoolClient,companyId:nu
  }
  await closeScheduleNotice(client,companyId,memoId,actor,reason);
 }
+/** Preserve the original local day of month (e.g. 31) across short months. */
+export function nextRecurringMemoDue(anchor:string,time:string,interval:"day"|"week"|"month",
+ now:Date,minimumCycle:number):{date:Date;cycle:number}{
+ const [y,m,d]=anchor.split("-").map(Number);
+ const [hour,minute]=time.split(":").map(Number);
+ const utcAnchor=Date.UTC(y!,m!-1,d!);
+ const adenNow=new Date(now.getTime()+3*3600000);
+ const nowLocalDate=Date.UTC(adenNow.getUTCFullYear(),adenNow.getUTCMonth(),adenNow.getUTCDate());
+ let cycle=minimumCycle;
+ if(interval==="day")cycle=Math.max(cycle,Math.floor((nowLocalDate-utcAnchor)/86400000));
+ else if(interval==="week")cycle=Math.max(cycle,Math.floor((nowLocalDate-utcAnchor)/(7*86400000)));
+ else cycle=Math.max(cycle,12*(adenNow.getUTCFullYear()-y!)
+     +adenNow.getUTCMonth()-(m!-1));
+ function at(index:number):Date {
+   if(interval==="month"){
+     const monthStart=new Date(Date.UTC(y!,m!-1+index,1));
+     const yy=monthStart.getUTCFullYear(),mm=monthStart.getUTCMonth();
+     const last=new Date(Date.UTC(yy,mm+1,0)).getUTCDate();
+     return new Date(Date.UTC(yy,mm,Math.min(d!,last),hour!,minute!)-3*3600000);
+   }
+   const extraDays=index*(interval==="week"?7:1);
+   return new Date(utcAnchor+extraDays*86400000+(hour!*60+minute!)*60000-3*3600000);
+ }
+ let next=at(cycle);
+ if(next.getTime()<=now.getTime()){cycle++;next=at(cycle);}
+ return {date:next,cycle};
+}
 export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
  const rows=(await client.query(`
   SELECT s.*,m.status,m.current_user_id,m.current_employee_id,
