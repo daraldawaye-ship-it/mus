@@ -29,3 +29,4 @@ export async function notifyDueMemoSender(client:PoolClient,companyId:number,
   await audit(client,null,"notification.remind","notification",alert.id,
     {reminderCount:alert.reminder_count},{reminderCount:alert.reminder_count+1,reason:"memo-sender-due"},companyId);
  }else {
+  const eventKey=`memo:${memoId}:sender-due:${revision}`;
