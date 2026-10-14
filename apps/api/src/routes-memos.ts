@@ -882,7 +882,7 @@ export function memoRoutes(pool: Pool) {
             assignment_revision,assignee_user_id,reason,actor_user_id,actor_name)
             VALUES($1,$2,$3,$4::date,$5::time,$6,$7,$8,$9,$10,$11)
             ON CONFLICT(company_id,memo_id) DO UPDATE SET
-            revision=memo_schedules.revision+1,active=true,due_at=excluded.due_at,
+            revision=memo_schedules.revision+1,active=true,returned=excluded.returned,cycle_index=excluded.cycle_index,due_at=excluded.due_at,
             local_day=excluded.local_day,local_time=excluded.local_time,
             repeat_interval=excluded.repeat_interval,assignment_revision=excluded.assignment_revision,
             assignee_user_id=excluded.assignee_user_id,reason=excluded.reason,
