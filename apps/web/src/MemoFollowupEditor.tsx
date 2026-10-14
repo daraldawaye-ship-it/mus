@@ -62,3 +62,11 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
       <Button variant="secondary" disabled={pending} onClick={()=>setEditing(false)}>إلغاء</Button>
     </div>
   </form>}
+  {!!memo.scheduleHistory.length&&<div className="form-stack"><h3>سجل التأجيل</h3>
+    {memo.scheduleHistory.map(h=><p className="muted" key={h.id}>
+     {h.actorName??"النظام"} · {local(h.createdAt)} · {h.kind==="due"?"حل الموعد":
+       h.kind==="cancelled"?"إلغاء":h.kind==="transition"?"انتقال المسؤول":h.kind==="changed"?"تغيير الموعد":"تحديد الموعد"}
+       {h.reason?" — "+h.reason:""}</p>)}
+  </div>}
+ </Card>;
+}
