@@ -54,6 +54,32 @@ const memoEventLabels = {
   reply: "رد",
   returned: "إعادة إلى المرسل",
   forwarded: "تحويل",
+  completion_requested: "طلب اعتماد الإنجاز",
+  completed: "اعتماد الإنجاز",
+  reopened: "إعادة للاستكمال",
+};
+const memoStatusLabels = {
+  pending: "معلقة",
+  awaiting_approval: "بانتظار الاعتماد",
+  completed: "منجزة",
+};
+const memoActionLabels: Record<MemoActionInput["action"], string> = {
+  reply: "إضافة رد مع بقاء المسؤول الحالي",
+  return: "رد وإعادة إلى المرسل",
+  forward: "رد وتحويل إلى موظف آخر",
+  "request-completion": "طلب اعتماد الإنجاز من المرسل",
+  "approve-completion": "اعتماد الإنجاز وإغلاق المذكرة",
+  "reopen-completion": "إعادة للاستكمال",
+  complete: "اعتماد الإنجاز وإغلاق المذكرة",
+};
+const memoActionButtons: Record<MemoActionInput["action"], string> = {
+  reply: "إرسال الرد",
+  return: "إرسال وإعادة للمرسل",
+  forward: "إرسال وتحويل",
+  "request-completion": "طلب اعتماد الإنجاز",
+  "approve-completion": "اعتماد الإنجاز",
+  "reopen-completion": "إعادة للاستكمال",
+  complete: "اعتماد الإنجاز وإغلاق المذكرة",
 };
 
 function refreshMemos(
@@ -103,9 +129,13 @@ function MemosContent({ context }: { context: CompanyContext }) {
       ? "sent"
       : params.get("box") === "following"
         ? "following"
-        : params.get("box") === "all" && context.general
-          ? "all"
-          : "required";
+        : params.get("box") === "approval"
+          ? "approval"
+          : params.get("box") === "completed"
+            ? "completed"
+            : params.get("box") === "all" && context.general
+              ? "all"
+              : "required";
   const query = params.get("q") ?? "";
   const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
@@ -278,9 +308,9 @@ function MemosContent({ context }: { context: CompanyContext }) {
     {
       id: "status",
       header: "الحالة",
-      size: 85,
+      size: 130,
       enableSorting: false,
-      cell: () => "معلقة",
+      cell: ({ row }) => memoStatusLabels[row.original.status],
     },
     {
       id: "currentRead",
@@ -298,8 +328,10 @@ function MemosContent({ context }: { context: CompanyContext }) {
   ];
   const boxes = [
     { value: "required", label: "مطلوب مني" },
+    { value: "approval", label: "بانتظار اعتمادي" },
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
+    { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
   return (
@@ -537,6 +569,7 @@ function MemoDetailContent({
     !!parentEntry?.enabled &&
     !!parentEntry.actionAccess.view;
   const canEdit = canView && !!parentEntry?.actionAccess.edit;
+  const canPost = canView && !!parentEntry?.actionAccess.post;
   const key = ["memo-detail", user?.id, companyId, memoId];
   const detail = useQuery({
     queryKey: key,
@@ -571,10 +604,28 @@ function MemoDetailContent({
   const canReply = canEdit && !!memo?.canReply;
   const canTransfer = canEdit && !!memo?.canTransfer;
   const canReturn = canTransfer && memo?.currentUserId !== memo?.senderUserId;
+  const allowedActions: Record<MemoActionInput["action"], boolean> = {
+    reply: canReply,
+    return: canReturn,
+    forward: canTransfer,
+    "request-completion": canPost && !!memo?.canRequestCompletion,
+    "approve-completion": canPost && !!memo?.canApproveCompletion,
+    "reopen-completion": canPost && !!memo?.canReopenCompletion,
+    complete: canPost && !!memo?.canComplete,
+  };
+  const actionAllowed = allowedActions[action];
+  const availableAction = (
+    Object.keys(memoActionLabels) as MemoActionInput["action"][]
+  ).find((value) => allowedActions[value]);
+  const canAct = !!availableAction;
+  useEffect(() => {
+    if (!locked && !body.trim() && !actionAllowed && availableAction)
+      setAction(availableAction);
+  }, [locked, body, actionAllowed, availableAction]);
   const readToken = memo
     ? `${memo.currentAssignmentRevision}:${memo.events.reduce(
         (latest, event) =>
-          ["reply", "returned", "forwarded"].includes(event.kind)
+          event.kind !== "created" && event.kind !== "read"
             ? Math.max(latest, event.id)
             : latest,
         0,
@@ -623,8 +674,7 @@ function MemoDetailContent({
   }, [locked]);
   async function sendAction(event: FormEvent) {
     event.preventDefault();
-    if (savingLock.current || !memo || (!canReply && !submitted)) return;
-    if (!submitted && action !== "reply" && !canTransfer) return;
+    if (savingLock.current || !memo || (!actionAllowed && !submitted)) return;
     if (!submitted && action === "forward" && !recipient) {
       setActionError("اختر الموظف الذي تريد تحويل المذكرة إليه.");
       return;
@@ -670,13 +720,16 @@ function MemoDetailContent({
       setRecipient(null);
       setAction("reply");
       applyDetail(result);
-      setActionSuccess(
-        frozen.payload.action === "reply"
-          ? "تم تسجيل الرد داخل المذكرة."
-          : frozen.payload.action === "return"
-            ? `تمت إعادة المذكرة إلى المرسل: ${memo.senderName}.`
-            : `تم تحويل المذكرة إلى ${frozen.recipient?.name ?? "الموظف المحدد"}.`,
-      );
+      const successMessages: Record<MemoActionInput["action"], string> = {
+        reply: "تم تسجيل الرد داخل المذكرة.",
+        return: `تمت إعادة المذكرة إلى المرسل: ${memo.senderName}.`,
+        forward: `تم تحويل المذكرة إلى ${frozen.recipient?.name ?? "الموظف المحدد"}.`,
+        "request-completion": "تم إرسال طلب اعتماد الإنجاز إلى المرسل.",
+        "approve-completion": "تم اعتماد الإنجاز وإغلاق المذكرة.",
+        "reopen-completion": "تمت إعادة المذكرة للاستكمال.",
+        complete: "تم اعتماد الإنجاز وإغلاق المذكرة.",
+      };
+      setActionSuccess(successMessages[frozen.payload.action]);
       void refreshMemos(client, user?.id, companyId);
     } catch (cause) {
       if (!guard.isCurrent()) return;
@@ -764,9 +817,25 @@ function MemoDetailContent({
               <dt>النوع</dt>
               <dd>{memoTypeLabels[memo.type]}</dd>
               <dt>الحالة</dt>
-              <dd>معلقة</dd>
+              <dd>{memoStatusLabels[memo.status]}</dd>
               <dt>وقت الإرسال</dt>
               <dd>{time(memo.createdAt)}</dd>
+              {memo.completionRequestedAt && (
+                <>
+                  <dt>طلب الإنجاز بواسطة</dt>
+                  <dd>{memo.completionRequestedByName ?? "—"}</dd>
+                  <dt>وقت طلب الاعتماد</dt>
+                  <dd>{time(memo.completionRequestedAt)}</dd>
+                </>
+              )}
+              {memo.completedAt && (
+                <>
+                  <dt>اعتمد الإنجاز</dt>
+                  <dd>{memo.completedByName ?? "—"}</dd>
+                  <dt>وقت الإنجاز</dt>
+                  <dd>{time(memo.completedAt)}</dd>
+                </>
+              )}
               <dt>اطلاع المسؤول الحالي</dt>
               <dd>
                 {memo.currentReadAt
@@ -780,11 +849,7 @@ function MemoDetailContent({
           <Card title="شرح المذكرة">
             <p className="memo-body">{memo.body}</p>
           </Card>
-          {(canReply ||
-            canTransfer ||
-            submitted ||
-            actionError ||
-            actionSuccess) && (
+          {(canAct || submitted || actionError || actionSuccess) && (
             <Card title="الرد والمتابعة">
               <form
                 className="form-stack"
@@ -797,7 +862,7 @@ function MemoDetailContent({
                 {conflict && (
                   <Notice tone="warning">
                     تغيرت المذكرة أثناء عملك. راجع المسؤول الحالي والسجل قبل
-                    إعادة الإرسال؛ نص ردك محفوظ هنا.
+                    إعادة الإرسال؛ ملاحظاتك محفوظة هنا.
                     <Button
                       variant="ghost"
                       disabled={detail.isFetching}
@@ -809,11 +874,11 @@ function MemoDetailContent({
                 )}
                 {submitted && !saving && (
                   <Notice tone="warning">
-                    لم تتأكد نتيجة الإرسال بعد. أعد المحاولة بنفس الرد للتحقق
-                    دون تكراره أو تكرار التحويل.
+                    لم تتأكد نتيجة الإرسال بعد. أعد المحاولة بنفس الإجراء للتحقق
+                    دون تكراره.
                   </Notice>
                 )}
-                {(canReply || canTransfer || submitted) && (
+                {(canAct || submitted) && (
                   <>
                     <Select
                       label="الإجراء"
@@ -827,25 +892,25 @@ function MemoDetailContent({
                         setConflict(false);
                       }}
                     >
-                      <option value="reply">
-                        إضافة رد مع بقاء المسؤول الحالي
-                      </option>
-                      {(canReturn || action === "return") && (
-                        <option
-                          value="return"
-                          disabled={!canReturn && !submitted}
-                        >
-                          رد وإعادة إلى المرسل
-                        </option>
-                      )}
-                      {(canTransfer || action === "forward") && (
-                        <option
-                          value="forward"
-                          disabled={!canTransfer && !submitted}
-                        >
-                          رد وتحويل إلى موظف آخر
-                        </option>
-                      )}
+                      {(
+                        Object.entries(memoActionLabels) as [
+                          MemoActionInput["action"],
+                          string,
+                        ][]
+                      )
+                        .filter(
+                          ([value]) =>
+                            allowedActions[value] || action === value,
+                        )
+                        .map(([value, label]) => (
+                          <option
+                            key={value}
+                            value={value}
+                            disabled={!allowedActions[value] && !submitted}
+                          >
+                            {label}
+                          </option>
+                        ))}
                     </Select>
                     {action === "forward" &&
                       (locked ? (
@@ -873,8 +938,35 @@ function MemoDetailContent({
                         ستنتقل مسؤولية المتابعة إلى المرسل: {memo.senderName}.
                       </p>
                     )}
+                    {action === "request-completion" && (
+                      <p className="muted">
+                        سيعود طلب الإنجاز إلى المرسل {memo.senderName} للمراجعة
+                        والاعتماد.
+                      </p>
+                    )}
+                    {action === "reopen-completion" && (
+                      <p className="muted">
+                        ستعود المذكرة إلى{" "}
+                        {memo.completionRequestedByName ??
+                          "من طلب اعتماد الإنجاز"}{" "}
+                        لاستكمال المطلوب.
+                      </p>
+                    )}
+                    {(action === "approve-completion" ||
+                      action === "complete") && (
+                      <p className="muted">سيُعتمد الإنجاز وتُغلق المذكرة.</p>
+                    )}
                     <div className="field">
-                      <label htmlFor={bodyId}>نص الرد</label>
+                      <label htmlFor={bodyId}>
+                        {action === "request-completion" ||
+                        action === "complete"
+                          ? "ما تم إنجازه"
+                          : action === "approve-completion"
+                            ? "ملاحظات الاعتماد"
+                            : action === "reopen-completion"
+                              ? "سبب الإعادة للاستكمال"
+                              : "نص الرد"}
+                      </label>
                       <textarea
                         className="memo-textarea"
                         id={bodyId}
@@ -889,25 +981,13 @@ function MemoDetailContent({
                     <div className="memo-action-buttons">
                       <Button
                         type="submit"
-                        disabled={
-                          saving ||
-                          (!submitted &&
-                            (action === "reply"
-                              ? !canReply
-                              : action === "return"
-                                ? !canReturn
-                                : !canTransfer))
-                        }
+                        disabled={saving || (!submitted && !actionAllowed)}
                       >
                         {saving
                           ? "جارٍ الإرسال…"
                           : submitted
                             ? "إعادة محاولة الإرسال"
-                            : action === "forward"
-                              ? "إرسال وتحويل"
-                              : action === "return"
-                                ? "إرسال وإعادة للمرسل"
-                                : "إرسال الرد"}
+                            : memoActionButtons[action]}
                       </Button>
                     </div>
                   </>
