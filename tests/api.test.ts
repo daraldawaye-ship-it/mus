@@ -3017,7 +3017,7 @@ test("memo followup defers independently, wakes once and cancels on transfer",as
  const outsider=await register(f,"memo-followup-outsider@example.test");
  const another=await register(f,"memo-followup-another@example.test");
  const staff=await employee(platform.client,co.id,receiver.user.id);
- await employee(platform.client,co.id,outsider.user.id);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
  const anotherStaff=await employee(platform.client,co.id,another.user.id);
  const base=`/companies/${co.id}/memos`;
  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
@@ -3077,7 +3077,7 @@ test("memo feature rules target current executor and preview scoped warnings",as
  const other=await company(platform.client,"Rules B");
  const worker=await register(f,"memo-rule-employee@example.test");
  const outsider=await register(f,"memo-rule-outsider@example.test");
- const employeeCard=await employee(platform.client,co.id,worker.user.id);
+ const employeeCard=await employee(platform.client,co.id,worker.user.id,["commerce.view"]);
  await employee(platform.client,co.id,outsider.user.id);
  const base=`/companies/${co.id}`;
  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
