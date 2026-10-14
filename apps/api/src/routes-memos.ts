@@ -502,10 +502,10 @@ export function memoRoutes(pool: Pool) {
             values.push(definition.id,JSON.stringify(candidate));
             filter=`(${filter}) AND EXISTS(
               SELECT 1 FROM option_values opt WHERE opt.company_id=m.company_id AND opt.memo_id=m.id
-              AND opt.definition_id=${values.length-1} AND opt.value=${values.length}::jsonb)`;
+              AND opt.definition_id=${"$"+(values.length-1)} AND opt.value=${"$"+values.length}::jsonb)`;
           }
           values.push(searchPattern(query.q));
-          const search = `${values.length}`;
+          const search = "$"+values.length;
           // Detail text belongs to the detail page, whose view can be denied separately.
           const where = `m.company_id=$1 AND (${filter}) AND (
             m.title ILIKE ${search} OR m.sender_name ILIKE ${search}
