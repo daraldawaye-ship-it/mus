@@ -85,6 +85,7 @@ export function commerceRoutes(pool: Pool): Router {
               total: "i.total",
               currencyCode: "i.currency_code",
               counterpartyAccountName: "i.counterparty_account_name",
+              supplierAccountName: "i.supplier_account_name",
               createdAt: "i.created_at",
             },
             "documentDate:desc,id:desc",
@@ -147,6 +148,11 @@ export function commerceRoutes(pool: Pool): Router {
                     ? req.query.locationId
                     : undefined,
                 );
+          const supplierQ = req.query.supplierQ;
+          const payerQ = req.query.payerQ;
+          if ([supplierQ, payerQ].some((term) =>
+            term !== undefined && (typeof term !== "string" || term.length > 120)))
+            throw new HttpError(400, "invalid_query", "بحث المورد أو حساب السداد غير صالح");
           const params = [
             companyId,
             searchPattern(query.q),
@@ -156,15 +162,17 @@ export function commerceRoutes(pool: Pool): Router {
             returning,
             branchId,
             locationId,
+            searchPattern((supplierQ as string | undefined) ?? ""),
+            searchPattern((payerQ as string | undefined) ?? ""),
           ];
           const filter =
-            "i.company_id=$1 AND (i.number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR i.document_date >= $4::date) AND ($5::date IS NULL OR i.document_date <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8)";
+            "i.company_id=$1 AND (i.number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR i.document_date >= $4::date) AND ($5::date IS NULL OR i.document_date <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (i.supplier_account_name ILIKE $9 OR i.supplier_account_code ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)";
           const count = await client.query(
             `SELECT count(*)::integer AS total ${invoiceFrom} WHERE ${filter}`,
             params,
           );
           const rows = await client.query(
-            `${invoiceSelect} WHERE ${filter} ORDER BY ${query.order} LIMIT $9 OFFSET $10`,
+            `${invoiceSelect} WHERE ${filter} ORDER BY ${query.order} LIMIT $11 OFFSET $12`,
             [...params, query.pageSize, query.offset],
           );
           return {
