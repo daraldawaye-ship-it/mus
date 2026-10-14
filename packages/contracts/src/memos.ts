@@ -85,6 +85,24 @@ export interface MemoLinkChoices {
   followPage: MemoPageReference | null;
   referencePage: MemoPageReference | null;
 }
+export const memoOptionValueSchema = z.object({
+ definitionId:z.number().int().positive().max(2147483647),
+ value:z.union([z.boolean(),z.string().max(2000),z.null()]),
+}).strict();
+export type MemoOptionValueInput = z.infer<typeof memoOptionValueSchema>;
+export const memoOptionsUpdateSchema = z.object({
+ revision:z.number().int().positive(),
+ values:z.array(memoOptionValueSchema).max(150),
+}).strict();
+export interface MemoOptionValue {
+ definitionId:number;
+ value:boolean|string|null;
+}
+export interface MemoOptionChange {
+ revision:number;
+ actorName:string;
+ createdAt:string;
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
@@ -93,6 +111,7 @@ export const memoCreateSchema = z
     type: memoTypeSchema,
     followers: z.array(memoFollowerSchema).max(100).optional(),
     links: memoLinksSchema.optional(),
+    options: z.array(memoOptionValueSchema).max(150).optional(),
     idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
   })
   .strict();
@@ -198,6 +217,11 @@ export interface MemoDetail extends MemoRecord {
   followerChanges: MemoFollowerChange[];
   links: MemoLinkedView;
   canManageLinks: boolean;
+  optionDefinitions: import("./configuration.ts").OptionDefinition[];
+  optionValues: MemoOptionValue[];
+  optionRevision: number;
+  optionChanges: MemoOptionChange[];
+  canManageOptions: boolean;
   canManageFollowers: boolean;
   canComment: boolean;
   canReply: boolean;
@@ -207,7 +231,9 @@ export interface MemoDetail extends MemoRecord {
   canReopenCompletion: boolean;
   canComplete: boolean;
 }
-export type MemoSummary = Omit<MemoRecord, "body">;
+export type MemoSummary = Omit<MemoRecord, "body"> & {optionValues?:Record<string,boolean|string|null>};
 export interface MemoList extends Page<MemoSummary> {
+  optionDefinitions: import("./configuration.ts").OptionDefinition[];
+  searchOptions: import("./configuration.ts").OptionDefinition[];
   canViewAll: boolean;
 }

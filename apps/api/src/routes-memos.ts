@@ -8,6 +8,7 @@ import {
   memoFollowerCommentSchema,
   memoLinksUpdateSchema,
   memoLinksSchema,
+  memoOptionsUpdateSchema,
   type MemoFollower,
   type MemoFollowerChange,
   type MemoFollowerInput,
@@ -26,6 +27,7 @@ import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
 import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
+import {definitionsForMemo,validateMemoOptionEntries,saveMemoOptionValues,memoOptionDetails} from "./services/memo-options.ts";
 import { userDTO } from "./repositories/models.ts";
 import {
   assertDirectoryAccess,
@@ -207,6 +209,7 @@ async function detail(
     row.sender_user_id === current.user.id &&
     row.current_user_id === current.user.id;
   const links = await memoLinkView(client,current.user,current.companyId,memoId);
+  const optionDetails = await memoOptionDetails(client,current.companyId,memoId);
   const canManageLinks = row.status !== "completed" &&
     (row.sender_user_id === current.user.id || current.context.general) &&
     entry.enabled && entry.actionAccess.edit &&
@@ -225,6 +228,10 @@ async function detail(
     followerRevision: followRevision,
     followerChanges,
     links,
+    ...optionDetails,
+    canManageOptions:row.status!=="completed" &&
+      (row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
     canManageLinks,
     canManageFollowers: row.status !== "completed" &&
       (row.sender_user_id === current.user.id || current.context.general) &&
@@ -454,6 +461,7 @@ export function memoRoutes(pool: Pool) {
           const current = await scope(client, req);
           await access(client, req, current, "view");
           if (box === "all" && !current.context.general) deny();
+          const optionDefs=await definitionsForMemo(client,current.companyId);
           const values: unknown[] = [current.companyId, current.user.id];
           let filter = "TRUE";
           if (box === "required") {
@@ -477,10 +485,42 @@ export function memoRoutes(pool: Pool) {
             values.push(status);
             filter = `(${filter}) AND m.status=$${values.length}`;
           }
+          const optionKey=req.query.optionKey, optionValue=req.query.optionValue;
+          if(optionKey !== undefined || optionValue !== undefined) {
+            if(typeof optionKey!=="string" || typeof optionValue!=="string")
+              throw new HttpError(400,"invalid_query","حدد الخاصية والقيمة معًا");
+            const definition=optionDefs.find(d=>d.key===optionKey && d.active && d.searchable);
+            if(!definition) throw new HttpError(400,"invalid_option","الخيار غير متاح للبحث");
+            const candidate: boolean|string|null = definition.valueType==="boolean"
+              ? optionValue==="true"?true:optionValue==="false"?false:null
+              : optionValue==="null"?null:optionValue;
+            const valid=(await client.query(
+              "SELECT option_value_valid($1::text,$2::jsonb,$3::jsonb) AS valid",
+              [definition.valueType,JSON.stringify(candidate),JSON.stringify(definition.choices)],
+            )).rows[0].valid;
+            if(!valid) throw new HttpError(400,"invalid_option_value","قيمة البحث لا تطابق نوع الخاصية");
+            values.push(definition.id,JSON.stringify(candidate));
+            filter=`(${filter}) AND EXISTS(
+              SELECT 1 FROM option_values opt WHERE opt.company_id=m.company_id AND opt.memo_id=m.id
+              AND opt.definition_id=${"$"+(values.length-1)} AND opt.value=${"$"+values.length}::jsonb)`;
+          }
           values.push(searchPattern(query.q));
-          const search = `$${values.length}`;
+          const search = "$"+values.length;
           // Detail text belongs to the detail page, whose view can be denied separately.
-          const where = `m.company_id=$1 AND (${filter}) AND (m.title ILIKE ${search} OR m.sender_name ILIKE ${search} OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search})`;
+          const where = `m.company_id=$1 AND (${filter}) AND (
+            m.title ILIKE ${search} OR m.sender_name ILIKE ${search}
+            OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search}
+            OR EXISTS(
+              SELECT 1 FROM option_values ov
+              JOIN option_definitions od ON od.company_id=ov.company_id AND od.id=ov.definition_id
+              WHERE ov.company_id=m.company_id AND ov.memo_id=m.id AND od.record_kind='memo'
+                AND od.searchable AND od.active AND (
+                  (ov.value #>> '{}') ILIKE ${search} OR EXISTS(
+                    SELECT 1 FROM jsonb_array_elements(od.choices) choice
+                    WHERE choice->>'key'=ov.value #>> '{}' AND choice->>'label' ILIKE ${search}
+                  )
+                )
+            ))`;
           const total = Number(
             (
               await client.query(
@@ -497,8 +537,24 @@ export function memoRoutes(pool: Pool) {
               [...values, query.pageSize, query.offset],
             )
           ).rows;
+          const listDefinitions=optionDefs.filter(d=>d.active && d.showInList);
+          const ids=rows.map(r=>r.id);
+          const optionRows=ids.length && listDefinitions.length
+            ? (await client.query(
+              `SELECT v.memo_id,d.key,v.value FROM option_values v
+               JOIN option_definitions d ON d.company_id=v.company_id AND d.id=v.definition_id
+               WHERE v.company_id=$1 AND v.memo_id=ANY($2::integer[])
+                 AND v.definition_id=ANY($3::integer[])`,
+              [current.companyId,ids,listDefinitions.map(d=>d.id)],
+            )).rows : [];
           return {
-            items: rows.map(summary),
+            items: rows.map(r=>({
+              ...summary(r),
+              optionValues:Object.fromEntries(optionRows.filter(o=>o.memo_id===r.id)
+                .map(o=>[o.key,o.value])),
+            })),
+            optionDefinitions:listDefinitions,
+            searchOptions:optionDefs.filter(d=>d.active && d.searchable),
             total,
             page: query.page,
             pageSize: query.pageSize,
@@ -560,6 +616,7 @@ export function memoRoutes(pool: Pool) {
         type: input.type,
         followers: input.followers ?? [],
         ...(input.links ? {links:input.links} : {}),
+        ...(input.options ? {options:input.options} : {}),
       };
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
@@ -586,6 +643,7 @@ export function memoRoutes(pool: Pool) {
         }
         await access(client, req, current, "create", false, true);
         if(input.links) await validateMemoLinks(client,current.user,current.companyId,input.links);
+        const preparedOptions=await validateMemoOptionEntries(client,current.companyId,input.options??[],true);
         const recipient = (
           await client.query(
             `SELECT e.id,e.user_id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
@@ -650,6 +708,11 @@ export function memoRoutes(pool: Pool) {
            input.links?.accountId??null,current.user.id],
         );
         await client.query(
+          "INSERT INTO memo_option_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
+          [current.companyId,memo.id,current.user.id],
+        );
+        await saveMemoOptionValues(client,current.user,current.companyId,memo.id,preparedOptions);
+        await client.query(
           "INSERT INTO memo_follow_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
           [current.companyId,memo.id,current.user.id],
         );
@@ -671,6 +734,11 @@ export function memoRoutes(pool: Pool) {
           followerChanges: _followerChanges,
           links: _links,
           canManageLinks: _manageLinks,
+          optionDefinitions: _optionDefinitions,
+          optionValues: _optionValues,
+          optionRevision: _optionRevision,
+          optionChanges: _optionChanges,
+          canManageOptions: _manageOptions,
           ...snapshot
         } = saved;
         await audit(
@@ -698,6 +766,54 @@ export function memoRoutes(pool: Pool) {
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
+    }),
+  );
+  router.get(
+    base + "/options",
+    handler(async (req,res) => {
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        return {definitions:(await definitionsForMemo(client,current.companyId)).filter(d=>d.active)};
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/:memoId/options",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoOptionsUpdateSchema,req.body);
+      const memo=await transaction(pool,async client=>{
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageOptions) deny("تعديل خصائص المذكرة للمرسل والإدارة المصرح لها فقط");
+        const version=(await client.query(
+          "SELECT revision FROM memo_option_versions WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId]
+        )).rows[0];
+        if(!version || version.revision!==input.revision)
+          throw new HttpError(409,"revision_conflict","تغيرت خصائص المذكرة؛ أعد التحميل");
+        const values=await validateMemoOptionEntries(client,current.companyId,input.values,false);
+        await saveMemoOptionValues(client,current.user,current.companyId,memoId,values);
+        const after=await memoOptionDetails(client,current.companyId,memoId);
+        await client.query(
+          "UPDATE memo_option_versions SET revision=revision+1,changed_by=$3,changed_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId,current.user.id],
+        );
+        await client.query(
+          `INSERT INTO memo_option_changes(company_id,memo_id,revision,actor_user_id,actor_name,previous_value,next_value)
+            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
+          [current.companyId,memoId,version.revision+1,current.user.id,current.user.displayName,
+           JSON.stringify(before.optionValues),JSON.stringify(after.optionValues)],
+        );
+        await audit(client,current.user,"memo.options","memo",memoId,
+          {revision:version.revision,values:before.optionValues},
+          {revision:version.revision+1,values:after.optionValues},current.companyId);
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
     }),
   );
   router.get(

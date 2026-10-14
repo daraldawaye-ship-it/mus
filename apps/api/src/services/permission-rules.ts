@@ -134,6 +134,9 @@ export async function requestPermissionTargets(
       ...(verb === "POST" && !detail
         ? [pagePermissionAliases("company.memos", "create")]
         : []),
+      ...(verb === "PUT" && segments[2] === "options"
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
       ...(verb === "PUT" && segments[2] === "links"
         ? [pagePermissionAliases("company.memos", "edit")]
         : []),
