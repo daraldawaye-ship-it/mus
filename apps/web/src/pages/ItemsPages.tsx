@@ -828,6 +828,7 @@ function ItemEditor({
   const defaultSaleUnitGroup = useId();
   const { user } = useSession();
   const navigate = useNavigate();
+  const itemQueryClient = useQueryClient();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
   const [fields, setFields] = useState(() => initialItemFields(item));
@@ -1058,6 +1059,9 @@ function ItemEditor({
           onClose={() => setAdjustmentOpen(false)}
           onSaved={(date) => {
             setNearestExpirySaved(date);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "statistics", item.id],
+            });
           }}
         />
       )}
