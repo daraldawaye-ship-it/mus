@@ -30,6 +30,7 @@ import {
   useMasterChanges,
 } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import { formatMoney } from "../format-money";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -202,11 +203,10 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           const direction = row.original.balanceDirection;
           if (!amount || !direction) return "—";
           if (direction === "zero") return "صفر";
-          const [whole, fractions] = amount.split(".");
-          const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+          const grouped = formatMoney(amount);
           return (
-            <ValueCell value={amount}>
-              <bdi>{grouped}{fractions ? `.${fractions}` : ""}</bdi>{" "}
+            <ValueCell value={formatMoney(amount)}>
+              <bdi>{grouped}</bdi>{" "}
               {direction === "credit" ? "له" : "عليه"}
               {list.data?.baseCurrencyCode ? ` (${list.data.baseCurrencyCode})` : ""}
             </ValueCell>
