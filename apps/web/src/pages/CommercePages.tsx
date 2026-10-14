@@ -2214,7 +2214,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           className="card commerce-save-footer"
           aria-label="إجمالي الفاتورة والحفظ"
         >
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error">{error}
+            {memoBlocked&&<>{" "}<Link to={`/companies/${companyId}/memos?box=required`}>فتح «مطلوب مني» لمعالجة التكليفات</Link></>}
+          </Notice>}
           {selectedLines.length > 0 && totals?.total === "0" && (
             <Notice>
               الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
