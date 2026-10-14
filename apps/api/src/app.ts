@@ -13,6 +13,7 @@ import { companyRoutes } from "./routes-companies.ts";
 import { walletRoutes } from "./routes-wallet.ts";
 import { notificationRoutes } from "./routes-notifications.ts";
 import { memoRoutes } from "./routes-memos.ts";
+import {memoFeatureRuleRoutes} from "./memoFeatureRuleRoutes.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
 import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
 import { employeeAttendanceRoutes } from "./routes-employee-attendance.ts";
