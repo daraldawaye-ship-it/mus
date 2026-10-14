@@ -1,5 +1,7 @@
 import type {PoolClient} from "pg";
 import type {MemoFeatureRule,MemoFeatureImpact} from "../../../../packages/contracts/src/index.ts";
+import {directoryEntries} from "./pages.ts";
+import {userDTO} from "../repositories/models.ts";
 export function featureRuleDTO(row:any):MemoFeatureRule{
  return {id:row.id,companyId:row.company_id,name:row.name,enabled:row.enabled,
   employeeIds:row.employee_ids,roleIds:row.role_ids,actionCode:row.action_code,effect:row.effect,
@@ -63,6 +65,11 @@ export async function matchingMemoFeatureRules(client:PoolClient,companyId:numbe
   "SELECT id,name,role FROM employees WHERE company_id=$1 AND user_id=$2 AND active",
   [companyId,userId])).rows[0];
  if(!staff)return [];
+ const userRow=(await client.query("SELECT * FROM users WHERE id=$1 AND NOT archived AND NOT suspended",[userId])).rows[0];
+ if(!userRow)return [];
+ const pages=await directoryEntries(client,userDTO(userRow),companyId);
+ if(!["company.memos","company.memo-detail"].every(key=>
+     pages.find(page=>page.key===key)?.actionAccess.view))return [];
  const rules=(await client.query(
   "SELECT * FROM memo_feature_rules WHERE company_id=$1 AND action_code=$2 AND enabled ORDER BY id",
   [companyId,actionCode])).rows;
