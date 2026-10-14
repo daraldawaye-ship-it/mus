@@ -599,6 +599,21 @@ export function memoRoutes(pool: Pool) {
       res.json(result);
     }),
   );
+  router.get(base + "/report",handler(async(req,res)=>{
+    const filters=parse(memoReportQuerySchema,req.query);
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current=await scope(client,req);
+      await access(client,req,current,"view",true);
+      const entries=await directoryEntries(client,current.user,current.companyId);
+      assertDirectoryAccess(entries.find(entry=>entry.key==="company.memo-report")!);
+      return memoReport(client,{
+        companyId:current.companyId,userId:current.user.id,
+        employeeId:current.ownId,general:current.context.general,
+      },filters);
+    });
+    res.json(result);
+  }));
   router.get(
     base + "/recipients",
     handler(async (req, res) => {
