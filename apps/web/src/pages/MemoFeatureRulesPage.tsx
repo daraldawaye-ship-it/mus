@@ -78,3 +78,6 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
     </tr>)}
    </tbody></table></div>
   </Card>}
+  {editing!==null && <Card title="بيانات القاعدة">
+   <Field label="اسم القاعدة" value={draft.name}
+    onChange={e=>setDraft({...draft,name:e.target.value})}/>
