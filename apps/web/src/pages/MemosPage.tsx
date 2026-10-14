@@ -344,7 +344,15 @@ function MemosContent({ context }: { context: CompanyContext }) {
       header: "الحالة",
       size: 130,
       enableSorting: false,
-      cell: ({ row }) => memoStatusLabels[row.original.status],
+      cell: ({ row }) => row.original.schedule?.active
+       ? `${memoStatusLabels[row.original.status]} — مؤجلة`
+       : memoStatusLabels[row.original.status],
+    },
+    {
+      id:"returnDue",header:"موعد العودة",size:155,enableSorting:false,
+      cell:({row})=>row.original.schedule?.active?
+        new Intl.DateTimeFormat("ar-YE",{timeZone:"Asia/Aden",dateStyle:"short",timeStyle:"short"})
+          .format(new Date(row.original.schedule.dueAt)):"—",
     },
     {
       id: "currentRead",
