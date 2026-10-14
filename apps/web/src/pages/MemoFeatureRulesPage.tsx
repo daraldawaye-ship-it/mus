@@ -40,3 +40,41 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
    message:rule.message,
   }:initial());
  }
+ async function save(){
+  if(editing===null||saving)return;
+  setSaving(true);setError("");setNotice("");
+  const previous=rules.data?.rules.find(rule=>rule.id===editing);
+  try{
+   await api(`${base}/memo-feature-rules${previous?"/"+previous.id:""}`,{
+     method:previous?"PUT":"POST",
+     body:{...draft,...(previous?{revision:previous.revision}:{})},
+   });
+   setEditing(null);setNotice("تم حفظ القاعدة. يظهر تأثيرها في المعاينة.");
+   await client.invalidateQueries({queryKey:["memo-feature-rules",user?.id,companyId]});
+  }catch(cause){setError(errorMessage(cause));}
+  finally{setSaving(false);}
+ }
+ function toggle(kind:"employeeIds"|"roleIds",value:number){
+  setDraft(previous=>({...previous,[kind]:previous[kind].includes(value)
+    ?previous[kind].filter(id=>id!==value):[...previous[kind],value]}));
+ }
+ return <div className="wallet-page">
+  <PageHeader title="قواعد ميزات المذكرات" description="المراقبة والتنبيه على إجراءات الموقع حسب المذكرات المعلقة"
+   actions={<Link className="button button-secondary" to={`${base}/memo-report`}>تقرير المذكرات</Link>}/>
+  {!context.general&&<Notice tone="warning">إدارة هذه القواعد للمدير العام أو المالك فقط.</Notice>}
+  {error&&<Notice tone="error">{error}</Notice>}
+  {notice&&<Notice tone="success">{notice}</Notice>}
+  {context.general&&<Card title="القواعد الحالية">
+   <Button variant="secondary" onClick={()=>editRule()}>قاعدة جديدة</Button>
+   <div className="table-scroll"><table><thead><tr>
+    <th>الاسم</th><th>الإجراء</th><th>الأثر</th><th>التفعيل</th><th>تعديل</th><th>معاينة</th>
+   </tr></thead><tbody>
+    {rules.data?.rules.map(rule=><tr key={rule.id}>
+     <td>{rule.name}</td><td>{rule.actionCode==="invoice.sale.create"?"إنشاء فاتورة مبيعات":"إنشاء فاتورة مشتريات"}</td>
+     <td>{rule.effect==="monitor"?"مراقبة":rule.effect==="warn"?"تنبيه":"منع"}</td>
+     <td>{rule.enabled?"مفعلة":"متوقفة"}</td>
+     <td><Button variant="secondary" onClick={()=>editRule(rule)}>تعديل</Button></td>
+     <td><Button variant="secondary" onClick={()=>setPreviewId(rule.id)}>معاينة المشمولين</Button></td>
+    </tr>)}
+   </tbody></table></div>
+  </Card>}
