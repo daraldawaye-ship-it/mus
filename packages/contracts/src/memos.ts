@@ -41,6 +41,50 @@ export interface MemoFollowerChange {
   beforeFollowers: MemoFollowerInput[];
   afterFollowers: MemoFollowerInput[];
 }
+export const memoPageReferenceSchema = z.object({
+  pageKey: z.string().regex(/^company\.[a-z-]+$/).max(100),
+  recordId: z.number().int().positive().max(2147483647).nullable(),
+}).strict();
+export type MemoPageReference = z.infer<typeof memoPageReferenceSchema>;
+export const memoLinksSchema = z.object({
+  followPage: memoPageReferenceSchema.nullable(),
+  referencePage: memoPageReferenceSchema.nullable(),
+  itemId: z.number().int().positive().max(2147483647).nullable(),
+  accountId: z.number().int().positive().max(2147483647).nullable(),
+}).strict();
+export type MemoLinksInput = z.infer<typeof memoLinksSchema>;
+export const memoLinksUpdateSchema = memoLinksSchema.extend({
+  revision: z.number().int().positive(),
+}).strict();
+export interface MemoVisibleReference {
+  pageKey: string;
+  recordId: number | null;
+  label: string;
+  href: string;
+}
+export interface MemoVisibleEntity {
+  id: number;
+  label: string;
+  href: string;
+}
+export interface MemoLinkedView {
+  revision: number;
+  followPage: MemoVisibleReference | null;
+  referencePage: MemoVisibleReference | null;
+  item: MemoVisibleEntity | null;
+  account: MemoVisibleEntity | null;
+  hiddenFollowPage: boolean;
+  hiddenReferencePage: boolean;
+  hiddenItem: boolean;
+  hiddenAccount: boolean;
+  changes: {revision:number;actorName:string;createdAt:string}[];
+}
+export interface MemoLinkChoices {
+  itemId: number | null;
+  accountId: number | null;
+  followPage: MemoPageReference | null;
+  referencePage: MemoPageReference | null;
+}
 export const memoCreateSchema = z
   .object({
     title: z.string().trim().min(1, "عنوان المذكرة مطلوب").max(200),
@@ -48,6 +92,7 @@ export const memoCreateSchema = z
     recipientEmployeeId: z.number().int().positive().max(2147483647),
     type: memoTypeSchema,
     followers: z.array(memoFollowerSchema).max(100).optional(),
+    links: memoLinksSchema.optional(),
     idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
   })
   .strict();
@@ -151,6 +196,8 @@ export interface MemoDetail extends MemoRecord {
   followers: MemoFollower[];
   followerRevision: number;
   followerChanges: MemoFollowerChange[];
+  links: MemoLinkedView;
+  canManageLinks: boolean;
   canManageFollowers: boolean;
   canComment: boolean;
   canReply: boolean;
