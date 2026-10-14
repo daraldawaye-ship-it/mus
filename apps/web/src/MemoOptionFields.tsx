@@ -37,7 +37,7 @@ export function MemoOptionFields({
           </Select>
         ) : definition.valueType==="list" ? (
           <Select label={definition.name} disabled={disabled}
-            required={definition.required} value={value??""}
+            required={definition.required} value={value===null?"":String(value)}
             onChange={e=>change(definition.id,e.target.value||null)}>
             <option value="">غير محدد</option>
             {definition.choices.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
