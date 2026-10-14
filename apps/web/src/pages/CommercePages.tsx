@@ -840,6 +840,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
   const [itemNotice, setItemNotice] = useState("");
+  const [memoBlocked,setMemoBlocked]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -1425,6 +1426,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
     setError("");
+    setMemoBlocked(false);
     let payload = pending.current;
     if (!unknown) {
       const unfinished = lines.find(
