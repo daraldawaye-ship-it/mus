@@ -3062,3 +3062,8 @@ test("memo report scopes employee totals and approval intervals",async t=>{
  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
   "POST",base,{title:"Reconcile stock",body:"Review batches",type:"task",
    recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID()},201)).memo;
+ const report=await platform.client.ok<import("../packages/contracts/src/index.ts").MemoReportResult>("GET",base+"/report");
+ assert.equal(report.total,1);
+ assert.equal(report.metrics.pending,1);
+ assert.equal(report.items[0]?.id,created.id);
+ assert.equal(report.employees.find(p=>p.userId===employeeUser.user.id)?.required,1);
