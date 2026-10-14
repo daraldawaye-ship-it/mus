@@ -136,7 +136,7 @@ export interface MemoScheduleHistory {
  actorName:string|null;reason:string;dueAt:string|null;createdAt:string;
 }
 export interface MemoReminderSettings {
- defaultTime:string;notifySender:boolean;revision:number;
+ defaultTime:string;notifySender:boolean;allowRepeat:boolean;revision:number;
 }
 export const memoCreateSchema = z
   .object({
