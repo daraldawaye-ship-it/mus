@@ -47,6 +47,7 @@ import {
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { saleStockQuantity } from "../sale-stock-quantity";
+import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
   Button,
@@ -88,7 +89,7 @@ const invoicePath = (companyId: number, id: number | "new") =>
 const itemLabel = (item: { code: string; name: string }) =>
   `${item.code} — ${item.name}`;
 const amount = (value: string) => (
-  <bdi className="financial-number">{value}</bdi>
+  <bdi className="financial-number">{formatMoney(value)}</bdi>
 );
 const today = () =>
   new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
@@ -746,7 +747,7 @@ function OriginalInvoicePicker({
         <option value="">اختر فاتورة</option>
         {options.map((invoice) => (
           <option key={invoice.id} value={invoice.id}>
-            {invoice.number} — {invoice.documentDate} — {invoice.total}{" "}
+            {invoice.number} — {invoice.documentDate} — {formatMoney(invoice.total)}{" "}
             {invoice.currencyCode}
           </option>
         ))}
@@ -1544,12 +1545,6 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   disabled={locked || hasLinkedLines}
                   required
                 />
-                <Link
-                  className="button button-secondary commerce-list-link"
-                  to={listPath(companyId, kind)}
-                >
-                  قائمة الفواتير
-                </Link>
                 {kind === "purchase" && (
                   <ServerLookup<Account>
                     companyId={companyId}
@@ -1562,6 +1557,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
                 )}
+                <Link
+                  className="button button-secondary commerce-list-link"
+                  to={listPath(companyId, kind)}
+                >
+                  قائمة الفواتير
+                </Link>
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
@@ -2032,6 +2033,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                 : "سعر الوحدة"
                             }
                             inputMode="decimal"
+                            money
                             readOnly={kind === "sale" || !!line.originalLineId}
                             disabled={!line.itemId}
                             value={line.unitPrice}
@@ -2216,6 +2218,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             <Field
               id="invoice-discount"
               label="الخصم"
+              money
               value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
               disabled={locked || !hasPositiveLines}

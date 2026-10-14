@@ -18,6 +18,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { actionColumnsFirst } from "./table-column-order";
+import { formatMoney } from "./format-money";
 
 export function Button({
   variant = "primary",
@@ -85,20 +86,40 @@ export function Field({
   error,
   id,
   className = "",
+  money = false,
+  value,
+  onFocus,
+  onBlur,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
   error?: string;
+  /** Group displayed amounts; keep the controlled value unmodified for saving. */
+  money?: boolean;
 }) {
   const generated = useId();
   const fieldId = id ?? generated;
+  const [focused, setFocused] = useState(false);
+  const displayed = money && value !== null && value !== undefined &&
+    (!focused || props.readOnly)
+    ? formatMoney(String(value))
+    : value;
   return (
     <div className={`field ${className}`}>
       <label htmlFor={fieldId}>{label}</label>
       <input
         {...props}
         id={fieldId}
+        value={displayed}
+        onFocus={(event) => {
+          if (money) setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          if (money) setFocused(false);
+          onBlur?.(event);
+        }}
         aria-invalid={!!error || undefined}
         aria-describedby={hint || error ? `${fieldId}-hint` : undefined}
       />

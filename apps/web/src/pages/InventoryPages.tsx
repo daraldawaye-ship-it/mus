@@ -32,6 +32,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
+import { formatMoney } from "../format-money";
 import {
   Button,
   Card,
@@ -456,9 +457,9 @@ function BalancesList({ context }: { context: CompanyContext }) {
         size: 175,
         cell: ({ row }) => (
           <ValueCell
-            value={`${row.original.pooledValueBase} ${row.original.baseCurrencyCode}`}
+            value={`${formatMoney(row.original.pooledValueBase)} ${row.original.baseCurrencyCode}`}
           >
-            {exact(row.original.pooledValueBase)}{" "}
+            {formatMoney(row.original.pooledValueBase)}{" "}
             {row.original.baseCurrencyCode}
           </ValueCell>
         ),
@@ -579,7 +580,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
         accessorKey: "costBase",
         header: "تغير القيمة بالأساسية",
         size: 175,
-        cell: ({ row }) => exact(row.original.costBase),
+        cell: ({ row }) => <bdi>{formatMoney(row.original.costBase)}</bdi>,
       },
       {
         id: "source",
@@ -1209,7 +1210,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
             <p key={movement.id}>
               {stockMovementKindLabels[movement.kind]} · {movement.itemName} ·{" "}
               {movement.locationName} · {exact(movement.quantitySmallest)} من
-              أصغر جزء · القيمة الأساسية {exact(movement.costBase)}
+              أصغر جزء · القيمة الأساسية {formatMoney(movement.costBase)}
             </p>
           ))}
           {result.financialDocumentId && (
@@ -1350,6 +1351,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
                 dir="ltr"
                 required
                 value={fields.unitCostBase}
+                money
                 disabled={disabled}
                 hint="تستخدم لتقييم زيادة الجرد؛ العجز بتكلفة المتوسط المرجح"
                 onChange={(event) => edit("unitCostBase", event.target.value)}

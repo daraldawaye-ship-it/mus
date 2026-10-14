@@ -214,6 +214,7 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
             {error && <Notice tone="error">{error}</Notice>}
             <Field
               label="قيمة النقطة الواحدة"
+              money
               hint="مبلغ موجب بالعملة الأساسية؛ اتركه فارغًا حتى تحدده الإدارة."
               inputMode="decimal"
               maxLength={100}
