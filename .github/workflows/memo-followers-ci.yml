@@ -1,0 +1,51 @@
+name: Memo followers stage four
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-memos.ts'
+      - 'apps/api/src/services/memo-followers.ts'
+      - 'apps/api/src/services/notifications.ts'
+      - 'apps/api/src/services/pages.ts'
+      - 'apps/api/src/services/permission-rules.ts'
+      - 'apps/api/migrations/05*_memo_*.sql'
+      - 'packages/contracts/src/memos.ts'
+      - 'apps/web/src/MemoFollowersEditor.tsx'
+      - 'apps/web/src/pages/MemosPage.tsx'
+      - 'tests/api.test.ts'
+      - '.github/workflows/memo-followers-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Company-scoped memo follower authorization and comments
+        run: node --import tsx --test --test-name-pattern="memo followers isolate" tests/api.test.ts
