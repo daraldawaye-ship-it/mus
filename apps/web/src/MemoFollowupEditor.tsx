@@ -54,6 +54,14 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
     <Field label="وقت التذكير (اختياري)" type="time" value={clock}
       onChange={e=>setClock(e.target.value)} disabled={pending}/>
     <p className="muted">الوقت الافتراضي للشركة: {settings.data?.settings.defaultTime??"09:00"} (بتوقيت اليمن).</p>
+    <Select label="التكرار بعد موعد العودة" value={repeat}
+      disabled={pending||!settings.data?.settings.allowRepeat}
+      onChange={e=>setRepeat(e.target.value as MemoScheduleRepeat)}>
+      <option value="none">دون تكرار</option>
+      <option value="day">يومي</option>
+      <option value="week">أسبوعي</option>
+      <option value="month">شهري</option>
+    </Select>
     <div className="field"><label htmlFor="memo-followup-reason">سبب التأجيل</label>
      <textarea id="memo-followup-reason" rows={3} maxLength={2000}
       required value={reason} disabled={pending} onChange={e=>setReason(e.target.value)}/></div>
