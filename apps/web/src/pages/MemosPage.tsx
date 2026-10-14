@@ -9,6 +9,7 @@ import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { FileText, RefreshCw } from "lucide-react";
 import {
   memoActionSchema,
+  memoFollowerCommentSchema,
   memoCreateSchema,
   memoTypeLabels,
   type CompanyContext,
@@ -59,6 +60,7 @@ const memoEventLabels = {
   completion_requested: "طلب اعتماد الإنجاز",
   completed: "اعتماد الإنجاز",
   reopened: "إعادة للاستكمال",
+  follower_comment: "تعليق متابع",
 };
 const memoStatusLabels = {
   pending: "معلقة",
@@ -595,6 +597,12 @@ function MemoDetailContent({
   const [followersSaving, setFollowersSaving] = useState(false);
   const [followersMessage, setFollowersMessage] = useState("");
   const [followersError, setFollowersError] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [commentPending, setCommentPending] = useState<{body:string;idempotencyKey:string}|null>(null);
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [commentMessage, setCommentMessage] = useState("");
+  const [commentError, setCommentError] = useState("");
+  const commentLock = useRef(false);
   const readAttempted = useRef<string | null>(null),
     readPending = useRef(false);
   const [readError, setReadError] = useState(""),
@@ -654,6 +662,43 @@ function MemoDetailContent({
         ? previous
         : result,
     );
+  }
+  async function postFollowerComment(event: FormEvent) {
+    event.preventDefault();
+    if(!memo || !memo.canComment || commentLock.current) return;
+    const frozen=commentPending ?? {
+      body:commentBody,idempotencyKey:crypto.randomUUID(),
+    };
+    const parsed=memoFollowerCommentSchema.safeParse(frozen);
+    if(!parsed.success) {
+      setCommentError("أدخل تعليقًا صالحًا.");
+      return;
+    }
+    commentLock.current=true;
+    setCommentPending(frozen);
+    setCommentSaving(true);
+    setCommentError("");
+    setCommentMessage("");
+    const retry=!!commentPending;
+    try {
+      const result=await api<{memo:MemoDetail}>(`${base}/memos/${memoId}/comments`,{
+        method:"POST",body:frozen,signal:guard.signal,
+      });
+      if(!guard.isCurrent()) return;
+      applyDetail(result);
+      setCommentPending(null);
+      setCommentBody("");
+      setCommentMessage("تم إضافة التعليق دون نقل مسؤولية المذكرة.");
+      void refreshMemos(client,user?.id,companyId);
+    } catch(cause) {
+      if(!guard.isCurrent()) return;
+      setCommentError(errorMessage(cause));
+      if(!retry && cause instanceof ApiFailure && cause.status >=400 && cause.status<500)
+        setCommentPending(null);
+    } finally {
+      commentLock.current=false;
+      if(guard.isCurrent()) setCommentSaving(false);
+    }
   }
   async function saveFollowers() {
     if (!memo || followersDraft === null || followersSaving || !memo.canManageFollowers) return;
@@ -1071,6 +1116,29 @@ function MemoDetailContent({
                     </div>
                   </>
                 )}
+              </form>
+            </Card>
+          )}
+          {memo.canComment && (
+            <Card title="تعليق متابعة">
+              <form className="form-stack" onSubmit={(event) => void postFollowerComment(event)}>
+                <p className="muted">تعليق المتابع يضاف إلى السجل ولا يغير المسؤول الحالي أو الاعتماد.</p>
+                {commentMessage && <Notice tone="success">{commentMessage}</Notice>}
+                {commentError && <Notice tone="error">{commentError}</Notice>}
+                {commentPending && !commentSaving && <Notice tone="warning">
+                  لم يتأكد إرسال التعليق؛ إعادة المحاولة تستخدم نفس الطلب لمنع التكرار.
+                </Notice>}
+                <div className="field">
+                  <label htmlFor="memo-follower-comment">نص التعليق</label>
+                  <textarea id="memo-follower-comment" className="memo-textarea"
+                    value={commentPending?.body ?? commentBody}
+                    onChange={(event) => setCommentBody(event.target.value)}
+                    disabled={commentSaving || !!commentPending}
+                    maxLength={20000} rows={3} required />
+                </div>
+                <div><Button type="submit" disabled={commentSaving}>
+                  {commentSaving ? "جارٍ الإرسال…" : commentPending ? "إعادة محاولة التعليق" : "إضافة تعليق"}
+                </Button></div>
               </form>
             </Card>
           )}
