@@ -72,3 +72,35 @@ export function memoFeatureRuleRoutes(pool:Pool){
   });
   res.status(201).json(result);
  }));
+ router.put(base+"/:ruleId",handler(async(req,res)=>{
+  const input=parse(memoFeatureRuleUpdateSchema,req.body);
+  if(input.effect==="block")throw new HttpError(400,"block_not_ready","المنع غير متاح قبل اكتمال اختبار الربط");
+  const result=await transaction(pool,async client=>{
+   const current=await guard(client,req,true),ruleId=id(req.params.ruleId);
+   const previous=(await client.query(
+    "SELECT * FROM memo_feature_rules WHERE company_id=$1 AND id=$2 FOR UPDATE",
+    [current.companyId,ruleId])).rows[0];
+   if(!previous)missing();
+   if(previous.revision!==input.revision)throw new HttpError(409,"revision_conflict","تغيرت القاعدة؛ حدث البيانات");
+   if(!await validateFeatureRuleTargets(client,current.companyId,input.employeeIds,input.roleIds))
+    throw new HttpError(400,"invalid_targets","اختر موظفين وأدوارًا تابعة للشركة");
+   const row=(await client.query(
+    `UPDATE memo_feature_rules SET name=$3,enabled=$4,employee_ids=$5::integer[],
+     role_ids=$6::integer[],action_code=$7,effect=$8,minimum_count=$9,minimum_hours=$10,
+     match_mode=$11,exclude_deferred_until_due=$12,message=$13,revision=revision+1,
+     changed_by=$14,changed_at=clock_timestamp() WHERE company_id=$1 AND id=$2 RETURNING *`,
+    [current.companyId,ruleId,input.name,input.enabled,input.employeeIds,input.roleIds,
+     input.actionCode,input.effect,input.minimumCount,input.minimumHours,input.matchMode,
+     input.excludeDeferredUntilDue,input.message,current.user.id])).rows[0];
+   const after=featureRuleDTO(row);
+   await client.query(
+    "INSERT INTO memo_feature_rule_changes(company_id,rule_id,revision,actor_user_id,previous_value,next_value) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)",
+    [current.companyId,ruleId,after.revision,current.user.id,JSON.stringify(featureRuleDTO(previous)),JSON.stringify(after)]);
+   await audit(client,current.user,"memo.feature-rule","memo-feature-rule",ruleId,
+    featureRuleDTO(previous),after,current.companyId);
+   return {rule:after};
+  });
+  res.json(result);
+ }));
+ return router;
+}
