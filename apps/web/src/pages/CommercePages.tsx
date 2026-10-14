@@ -1765,8 +1765,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-        {memoImpact.data?.matches.filter(rule=>rule.effect==="warn").map(rule=>
-          <Notice key={rule.ruleId} tone="warning">
+        {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
+          <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
             {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
           </Notice>)}
