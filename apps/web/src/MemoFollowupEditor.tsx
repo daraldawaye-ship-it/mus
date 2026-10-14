@@ -39,3 +39,11 @@ export function MemoFollowupEditor({companyId,memo,onSaved}:{
   {notice&&<Notice tone="success">{notice}</Notice>}
   {memo.schedule?.active?<p>مؤجلة حتى {local(memo.schedule.dueAt)} — {memo.schedule.reason}</p>:
   <p className="muted">لا يوجد تأجيل فعال.</p>}
+  {memo.canSchedule&&!editing&&<div className="memo-action-buttons">
+   <Button variant="secondary" onClick={()=>{
+    setDate(memo.schedule?.localDate??"");setClock(memo.schedule?.localTime??"");
+    setReason(memo.schedule?.reason??"");setEditing(true);
+   }}>{memo.schedule?.active?"تغيير موعد التأجيل":"تأجيل المتابعة"}</Button>
+   {memo.schedule?.active&&<Button variant="secondary" disabled={pending}
+    onClick={e=>void submit(e,"cancel")}>إلغاء التأجيل</Button>}
+  </div>}
