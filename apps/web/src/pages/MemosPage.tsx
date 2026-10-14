@@ -969,6 +969,19 @@ function MemoDetailContent({
                 </div>
               </div>
             )}
+            {memo.followerChanges.length > 0 && (
+              <div className="form-stack">
+                <h3>سجل تغييرات المتابعة</h3>
+                {memo.followerChanges.map(change => (
+                  <p key={change.id} className="muted">
+                    {change.actorName} · {time(change.createdAt)} · الإصدار {change.revision}
+                    {" · "}المتابعون قبل: {change.beforeFollowers.length}
+                    {"، بعد: "}{change.afterFollowers.length}
+                    {change.beforeFollowers.length === change.afterFollowers.length && " (قد تتضمن تعديلاً لمستوى الوصول)"}
+                  </p>
+                ))}
+              </div>
+            )}
           </Card>
           <Card title="شرح المذكرة">
             <p className="memo-body">{memo.body}</p>
