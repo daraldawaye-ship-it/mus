@@ -2854,3 +2854,73 @@ test("dated item clearance commissions snapshot net sales and reverse linked ret
   );
   await assertBalanced(f, s.company.id);
 });
+
+test("purchase supplier is independent from cash settlement but matches credit liability and immutable snapshots", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Supplier separation test");
+  const product = await s.item();
+  const cashPayload = invoiceBody(s, product.id, {
+    counterpartyAccountId: s.cash.id,
+    supplierAccountId: s.supplier.id,
+  });
+  const cashInvoice = await invoice(f, s, cashPayload);
+  assert.equal(cashInvoice.counterpartyAccountId, s.cash.id);
+  assert.equal(cashInvoice.supplierAccountId, s.supplier.id);
+  assert.equal(cashInvoice.supplierAccountCode, s.supplier.code);
+  assert.equal(cashInvoice.supplierAccountName, s.supplier.name);
+  const rows = await f.pool.query(
+    "SELECT account_id, debit::text AS debit, credit::text AS credit FROM financial_document_lines WHERE company_id=$1 AND document_id=$2",
+    [s.company.id, cashInvoice.financialDocumentId],
+  );
+  assert(rows.rows.some((row) => row.account_id === s.cash.id && Number(row.credit) === 1600));
+  assert(!rows.rows.some((row) => row.account_id === s.supplier.id));
+  const cashDetail = await f.owner.ok<{ invoice: Invoice }>("GET", s.path + "/invoices/" + cashInvoice.id);
+  assert.equal(cashDetail.invoice.supplierAccountName, s.supplier.name);
+
+  const creditInvoice = await invoice(f, s, invoiceBody(s, product.id, {
+    counterpartyAccountId: s.supplier.id,
+    supplierAccountId: null,
+  }));
+  assert.equal(creditInvoice.counterpartyAccountId, s.supplier.id);
+  assert.equal(creditInvoice.supplierAccountId, s.supplier.id);
+  const creditRows = await f.pool.query(
+    "SELECT account_id, credit::text AS credit FROM financial_document_lines WHERE company_id=$1 AND document_id=$2",
+    [s.company.id, creditInvoice.financialDocumentId],
+  );
+  assert(creditRows.rows.some((row) => row.account_id === s.supplier.id && Number(row.credit) === 1600));
+
+  const supplierSearch = await f.owner.ok<{ items: Invoice[]; total: number }>(
+    "GET", s.path + "/invoices?kind=purchase&supplierQ=Supplier&payerQ=Cash",
+  );
+  assert.equal(supplierSearch.total, 1);
+  assert.equal(supplierSearch.items[0]?.id, cashInvoice.id);
+  const creditSearch = await f.owner.ok<{ items: Invoice[]; total: number }>(
+    "GET", s.path + "/invoices?kind=purchase&supplierQ=Supplier&payerQ=Supplier",
+  );
+  assert.equal(creditSearch.total, 1);
+  assert.equal(creditSearch.items[0]?.id, creditInvoice.id);
+
+  assert.equal((await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
+    counterpartyAccountId: s.supplier.id,
+    supplierAccountId: s.customer.id,
+  }))).status, 409);
+  assert.equal((await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
+    counterpartyAccountId: s.cash.id,
+    supplierAccountId: s.cash.id,
+  }))).status, 409);
+  assert.equal((await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
+    kind: "sale",
+    counterpartyAccountId: s.customer.id,
+    supplierAccountId: s.supplier.id,
+  }))).status, 400);
+
+  const blankCash = await invoice(f, s, invoiceBody(s, product.id, {
+    counterpartyAccountId: s.cash.id,
+    supplierAccountId: null,
+  }));
+  assert.equal(blankCash.supplierAccountId, null);
+  assert.equal(blankCash.supplierAccountName, null);
+  const cashRetry = await invoice(f, s, cashPayload);
+  assert.equal(cashRetry.id, cashInvoice.id);
+  await assertBalanced(f, s.company.id);
+});

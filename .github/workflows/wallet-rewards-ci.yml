@@ -43,6 +43,10 @@ jobs:
         run: npm ci
       - name: Check TypeScript
         run: npm run check
+      - name: Test exact money display with thousands separators
+        run: node --import tsx --test tests/format-money.test.ts
+      - name: Check lookup option widths and purchase account defaults
+        run: node --import tsx --test tests/lookup-option-label.test.ts tests/invoice-account-default.test.ts
       - name: Build web application
         run: npm run build
       - name: Test first-unit stock quantity display and rounding
@@ -67,6 +71,8 @@ jobs:
         run: node --import tsx --test tests/wallet-policy.test.ts
       - name: Test direct conversions and approval reservations
         run: node --import tsx --test tests/wallet-conversions.test.ts
+      - name: Test independent purchase supplier, cash and credit posting
+        run: node --import tsx --test --test-name-pattern="purchase supplier is independent" tests/commerce.test.ts
       - name: Test automatic invoice and invoice-line rewards
         run: node --import tsx --test --test-name-pattern="invoice reward tasks are opt-in" tests/commerce.test.ts
       - name: Test Google and Apple OAuth authentication

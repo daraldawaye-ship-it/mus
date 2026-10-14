@@ -48,6 +48,7 @@ import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
+import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
   OptionListTools,
@@ -285,7 +286,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         size: 120,
         cell: ({ row }) => (
           <ValueCell>
-            <bdi>{row.original.salePrice1}</bdi>
+            <bdi>{formatMoney(row.original.salePrice1)}</bdi>
           </ValueCell>
         ),
       },
@@ -674,7 +675,7 @@ function ItemStatisticsCard({
                 بتاريخ <bdi>{statistics.lastPurchase.documentDate}</bdi> ·{" "}
                 {statistics.lastPurchase.accountName} ·{" "}
                 <bdi>
-                  {statistics.lastPurchase.price}{" "}
+                  {formatMoney(statistics.lastPurchase.price)}{" "}
                   {statistics.lastPurchase.currencyCode}
                 </bdi>{" "}
                 لكل {statistics.lastPurchase.unitName} ·{" "}
@@ -1241,6 +1242,7 @@ function ItemEditor({
                       inputMode="decimal"
                       dir="ltr"
                       value={fields.salePrice1}
+                      money
                       disabled={disabled}
                       onChange={(event) =>
                         edit("salePrice1", event.target.value)
@@ -1294,6 +1296,7 @@ function ItemEditor({
                       inputMode="decimal"
                       dir="ltr"
                       value={fields.salePrice2}
+                      money
                       disabled={disabled}
                       onChange={(event) =>
                         edit("salePrice2", event.target.value)
@@ -1349,6 +1352,7 @@ function ItemEditor({
                       inputMode="decimal"
                       dir="ltr"
                       value={fields.salePrice3}
+                      money
                       disabled={disabled}
                       onChange={(event) =>
                         edit("salePrice3", event.target.value)
@@ -1412,6 +1416,7 @@ function ItemEditor({
               inputMode="decimal"
               dir="ltr"
               value={fields.purchasePrice}
+                      money
               disabled={disabled}
               onChange={(event) => edit("purchasePrice", event.target.value)}
             />

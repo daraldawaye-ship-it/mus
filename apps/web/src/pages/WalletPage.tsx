@@ -25,6 +25,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage } from "../phase2";
+import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { refreshWalletConversions } from "./WalletConversionsPage";
 import {
@@ -393,7 +394,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           >
             <strong className="wallet-balance">
               <bdi>
-                {wallet.money} {wallet.currencyCode}
+                {formatMoney(wallet.money)} {wallet.currencyCode}
               </bdi>
             </strong>
           </Card>
@@ -708,7 +709,7 @@ function ConversionPreviewDialog({
             <Field label="النقاط" value={pointValue(result.points)} readOnly />
             <Field
               label="المبلغ"
-              value={`${result.amount} ${result.currencyCode}`}
+              value={`${formatMoney(result.amount)} ${result.currencyCode}`}
               readOnly
             />
             <Field
@@ -741,7 +742,7 @@ function ConversionPreviewDialog({
                 label="قيمة النقطة الواحدة"
                 value={
                   preview.pointValue !== null
-                    ? `${preview.pointValue} ${preview.currency?.code ?? ""}`.trim()
+                    ? `${formatMoney(preview.pointValue)} ${preview.currency?.code ?? ""}`.trim()
                     : "لم تحدد بعد"
                 }
                 readOnly
@@ -750,7 +751,7 @@ function ConversionPreviewDialog({
                 label="مبلغ التحويل المتوقع"
                 value={
                   preview.amount !== null
-                    ? `${preview.amount} ${preview.currency?.code ?? ""}`.trim()
+                    ? `${formatMoney(preview.amount)} ${preview.currency?.code ?? ""}`.trim()
                     : "الإعدادات غير مكتملة"
                 }
                 readOnly

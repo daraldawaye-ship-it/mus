@@ -13,6 +13,7 @@ import {
   type Page,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import { formatMoney } from "../format-money";
 import {
   errorMessage,
   moduleAccess,
@@ -40,7 +41,7 @@ const dateTime = (value: string) =>
     timeZone: "UTC",
   }).format(new Date(value)) + " UTC";
 const rateDirection = (rate: ExchangeRate) =>
-  `1 ${rate.currencyCode} = ${rate.rate} ${rate.baseCurrencyCode}`;
+  `1 ${rate.currencyCode} = ${formatMoney(rate.rate)} ${rate.baseCurrencyCode}`;
 
 function useFinanceSettings(companyId: number) {
   const { user } = useSession();
