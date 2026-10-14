@@ -19,6 +19,23 @@ export const memoCreateSchema = z
   })
   .strict();
 export type MemoCreateInput = z.input<typeof memoCreateSchema>;
+const memoActionFields = {
+  body: z.string().trim().min(1, "اكتب الرد أو سبب التحويل").max(20000),
+  revision: z.number().int().positive().max(2147483647),
+  idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
+};
+export const memoActionSchema = z.discriminatedUnion("action", [
+  z.object({ ...memoActionFields, action: z.literal("reply") }).strict(),
+  z.object({ ...memoActionFields, action: z.literal("return") }).strict(),
+  z
+    .object({
+      ...memoActionFields,
+      action: z.literal("forward"),
+      recipientEmployeeId: z.number().int().positive().max(2147483647),
+    })
+    .strict(),
+]);
+export type MemoActionInput = z.input<typeof memoActionSchema>;
 export interface MemoRecipient {
   id: number;
   userId: number;
@@ -31,7 +48,7 @@ export interface MemoRecord {
   body: string;
   type: MemoType;
   status: "pending";
-  revision: 1;
+  revision: number;
   senderUserId: number;
   senderName: string;
   recipientEmployeeId: number;
@@ -40,16 +57,29 @@ export interface MemoRecord {
   createdAt: string;
   readAt: string | null;
   recipientReadAt: string | null;
+  currentUserId: number;
+  currentEmployeeId: number | null;
+  currentName: string;
+  currentAssignedAt: string;
+  currentAssignmentRevision: number;
+  currentReadAt: string | null;
 }
 export interface MemoEvent {
   id: number;
-  kind: "created" | "read";
+  kind: "created" | "read" | "reply" | "returned" | "forwarded";
   actorUserId: number;
   actorName: string;
   createdAt: string;
+  body: string | null;
+  targetUserId: number | null;
+  targetEmployeeId: number | null;
+  targetName: string | null;
+  assignmentRevision: number | null;
 }
 export interface MemoDetail extends MemoRecord {
   events: MemoEvent[];
+  canReply: boolean;
+  canTransfer: boolean;
 }
 export type MemoSummary = Omit<MemoRecord, "body">;
 export interface MemoList extends Page<MemoSummary> {

@@ -266,7 +266,7 @@ page(
   "المذكرات",
   "الشركة",
   "/companies/:companyId/memos",
-  { view: member, create: member },
+  { view: member, create: member, edit: member },
   "المذكرات المرسلة إليك والصادرة منك؛ تعرض الإدارة جميع مذكرات الشركة.",
   { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
 );
@@ -276,7 +276,7 @@ page(
   "الشركة",
   "/companies/:companyId/memos/:recordId",
   { view: member },
-  "عرض المذكرة وسجل قراءتها؛ فتح المذكرة لا ينجزها.",
+  "عرض المذكرة وردودها والمسؤول الحالي وسجل انتقالها؛ فتح المذكرة لا ينجزها.",
   { parentKey: "company.memos", record: "memo", navigation: false },
 );
 page(

@@ -106,12 +106,14 @@ export async function requestPermissionTargets(
   };
   if (resource === "notifications" && verb === "POST") action = "edit";
   if (resource === "memos") {
-    const picker = detail === "recipients";
     const memoDetail = !!detail && /^[1-9]\d*$/.test(detail);
     return [
       pagePermissionAliases(memoDetail ? "company.memo-detail" : "company.memos", "view"),
-      ...((picker || (verb === "POST" && !detail))
+      ...((verb === "POST" && !detail)
         ? [pagePermissionAliases("company.memos", "create")]
+        : []),
+      ...((verb === "POST" && segments[2] === "actions")
+        ? [pagePermissionAliases("company.memos", "edit")]
         : []),
     ];
   }

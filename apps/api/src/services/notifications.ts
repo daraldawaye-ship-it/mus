@@ -57,7 +57,7 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
  OR $3::integer=ANY(COALESCE(s.employee_ids,'{}'::integer[]))
  OR EXISTS(SELECT 1 FROM employee_role_assignments a JOIN company_roles r ON r.company_id=a.company_id AND r.id=a.role_id AND r.active
  WHERE a.company_id=n.company_id AND a.employee_id=$3 AND a.active AND a.role_id=ANY(COALESCE(s.role_ids,'{}'::integer[]))))
- AND (n.code<>'MEMO_RECEIVED' OR n.subject_employee_id=$3::integer OR $4::boolean)`;
+ AND (n.code NOT IN ('MEMO_RECEIVED','MEMO_REPLY') OR n.subject_employee_id=$3::integer OR $4::boolean)`;
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
@@ -79,7 +79,7 @@ export const notificationDTO = (
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
-  canAssign: !r.completed_at && general && r.company_id !== null && r.code !== "MEMO_RECEIVED",
+  canAssign: !r.completed_at && general && r.company_id !== null && !["MEMO_RECEIVED", "MEMO_REPLY"].includes(r.code),
   href: r.href ?? null,
 });
 export async function nextReminder(
@@ -112,6 +112,9 @@ export async function emitNotification(
     companyId: number | null;
     subjectEmployeeId?: number | null;
     subjectUserId?: number | null;
+    // Exact company recipient, including an owner without an employee record.
+    // Only used with explicitSubjectOnly; active membership is still checked.
+    recipientUserId?: number;
     subjectKey: string;
     eventKey: string;
     message: string;
@@ -139,9 +142,11 @@ export async function emitNotification(
     recipients = input.explicitSubjectOnly
       ? (
           await client.query(
-            `SELECT u.id FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
-             WHERE e.company_id=$1 AND e.id=$2 AND e.active`,
-            [input.companyId, input.subjectEmployeeId ?? null],
+            `SELECT u.id FROM users u LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
+             WHERE NOT u.archived AND
+              (($3::integer IS NULL AND e.id=$2) OR
+               (u.id=$3 AND ((e.id=$2) OR ($2::integer IS NULL AND u.owner))))`,
+            [input.companyId, input.subjectEmployeeId ?? null, input.recipientUserId ?? null],
           )
         ).rows.map((r) => r.id)
       : (
