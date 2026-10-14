@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   employeeRoleLabels,
+  employeeAttendanceSettingsSchema,
   auditActionLabels,
   companyAuditActions,
   auditTargetLabels,
@@ -17,11 +18,13 @@ import {
   type CompanyPage,
   type Employee,
   type EmployeeRole,
+  type EmployeeAttendanceSettings,
   type Permission,
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { moduleAccess } from "../phase2";
+import { usePageDirectory } from "../page-directory";
 import {
   Button,
   Card,
@@ -376,6 +379,10 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
 
 export function EmployeesPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
+  return <EmployeesContent key={`${user?.id}:${context.company.id}`} context={context} />;
+}
+function EmployeesContent({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
   const companyId = context.company.id;
   const scope = `company:${companyId}:employees`;
   const guard = useScopeGuard(scope);
@@ -597,6 +604,7 @@ export function EmployeesPage({ context }: { context: CompanyContext }) {
           key={editor === "new" ? "new" : editor.id}
           companyId={companyId}
           employee={editor === "new" ? null : editor}
+          mayManageAttendance={context.general}
           onClose={() => setEditor(null)}
           onSaved={() =>
             changed(
@@ -769,11 +777,13 @@ function EmployeeAccountsDialog({
 function EmployeeEditor({
   companyId,
   employee,
+  mayManageAttendance,
   onClose,
   onSaved,
 }: {
   companyId: number;
   employee: Employee | null;
+  mayManageAttendance: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -781,11 +791,67 @@ function EmployeeEditor({
     `company:${companyId}:employee:${employee?.id ?? "new"}`,
   );
   const { user: actorUser } = useSession();
+  const client = useQueryClient();
+  const directory = usePageDirectory(companyId);
+  const employeeEntry = directory.data?.find(
+    (entry) => entry.key === "company.employees",
+  );
+  const attendanceEntry = directory.data?.find(
+    (entry) => entry.key === "company.attendance",
+  );
+  const canManageAttendance =
+    mayManageAttendance &&
+    !!employeeEntry?.enabled &&
+    !!employeeEntry.actionAccess.edit &&
+    !!attendanceEntry?.enabled &&
+    !!attendanceEntry.actionAccess.edit;
+  const settingsKey = [
+    "employee-attendance-settings",
+    actorUser?.id,
+    companyId,
+    employee?.id,
+  ];
+  const settingsQuery = useQuery({
+    queryKey: settingsKey,
+    queryFn: ({ signal }) =>
+      api<{ settings: EmployeeAttendanceSettings }>(
+        `/companies/${companyId}/employees/${employee!.id}/attendance-settings`,
+        { signal },
+      ),
+    enabled: canManageAttendance && !!employee,
+  });
+  const [hourlyPoints, setHourlyPoints] = useState("");
+  const [dailyHours, setDailyHours] = useState("");
+  const [expectedStartTime, setExpectedStartTime] = useState("");
+  const [allowOvertime, setAllowOvertime] = useState(false);
+  const [settingsRevision, setSettingsRevision] = useState<number | null>(null);
+  const settingsHydrated = useRef(false);
+  function loadSettings(settings: EmployeeAttendanceSettings) {
+    setHourlyPoints(settings.hourlyPoints ?? "");
+    setDailyHours(settings.defaultDailyHours ?? "");
+    setExpectedStartTime(settings.expectedStartTime ?? "");
+    setAllowOvertime(settings.allowOvertime);
+    setSettingsRevision(settings.revision);
+    settingsHydrated.current = true;
+  }
+  useEffect(() => {
+    if (settingsQuery.data && !settingsHydrated.current)
+      loadSettings(settingsQuery.data.settings);
+  }, [settingsQuery.data]);
+  const [savedBase, setSavedBase] = useState<Employee | null>(null);
+  const [pendingCredentials, setPendingCredentials] = useState<{
+    phone: string;
+    password: string;
+  } | null>(null);
+  const [profileError, setProfileError] = useState(false);
   const [createMode, setCreateMode] = useState<"phone" | "existing">("phone");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [issuedCredentials, setIssuedCredentials] = useState<{phone:string;password:string}|null>(null);
+  const [issuedCredentials, setIssuedCredentials] = useState<{
+    phone: string;
+    password: string;
+  } | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetStatus, setResetStatus] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -804,6 +870,44 @@ function EmployeeEditor({
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
+  const baseLocked = saving || !!savedBase;
+  const settingsReady = !employee || !!settingsQuery.data;
+  useEffect(() => {
+    if (!savedBase || !pendingCredentials) return;
+    const preventLeave = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", preventLeave);
+    return () => window.removeEventListener("beforeunload", preventLeave);
+  }, [savedBase, pendingCredentials]);
+  async function reloadSettings() {
+    const target = savedBase ?? employee;
+    if (!target || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await api<{ settings: EmployeeAttendanceSettings }>(
+        `/companies/${companyId}/employees/${target.id}/attendance-settings`,
+        { signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      loadSettings(result.settings);
+      client.setQueryData(
+        ["employee-attendance-settings", actorUser?.id, companyId, target.id],
+        result,
+      );
+    } catch (cause) {
+      if (guard.isCurrent()) setError(errorMessage(cause));
+    } finally {
+      if (guard.isCurrent()) setSaving(false);
+    }
+  }
+  function closeEditor() {
+    if (saving) return;
+    if (savedBase) {
+      if (pendingCredentials) setIssuedCredentials(pendingCredentials);
+      else onSaved();
+    } else onClose();
+  }
   const lookupVersion = useRef(0);
   function changeLookup(value: string) {
     ++lookupVersion.current;
@@ -840,79 +944,217 @@ function EmployeeEditor({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (saving ||
-      (!employee && createMode === "existing" && !selectedUser) ||
-      (!employee && createMode === "phone" && (!actorUser?.owner || !phone || newUserPassword.length < 12))
-    ) return;
+    if (
+      saveLock.current ||
+      (!savedBase && !employee && createMode === "existing" && !selectedUser) ||
+      (!savedBase &&
+        !employee &&
+        createMode === "phone" &&
+        (!actorUser?.owner || !phone || newUserPassword.length < 12))
+    )
+      return;
+    const includeSettings = canManageAttendance || !!savedBase;
+    if (includeSettings && !settingsReady) {
+      setError("انتظر تحميل إعدادات الحضور والنقاط قبل الحفظ.");
+      return;
+    }
+    const parsedSettings = includeSettings
+      ? employeeAttendanceSettingsSchema.safeParse({
+          hourlyPoints: hourlyPoints.trim() || null,
+          defaultDailyHours: dailyHours.trim() || null,
+          expectedStartTime: expectedStartTime || null,
+          allowOvertime,
+          revision: settingsRevision,
+        })
+      : null;
+    if (parsedSettings && !parsedSettings.success) {
+      setError(
+        parsedSettings.error.issues.map((issue) => issue.message).join(" · "),
+      );
+      return;
+    }
+    saveLock.current = true;
     setSaving(true);
     setError("");
+    let target = savedBase;
+    let credentials = pendingCredentials;
     try {
-      const body = {
-        name,
-        phone,
-        role,
-        active,
-        permissions,
-        ...(employee ? {} : {
-          createSalesCashbox,
-          ...(createMode === "phone"
-            ? { newUser: { name, displayName: name, phone, email: newUserEmail, password: newUserPassword } }
-            : { userId: selectedUser?.id }),
-        }),
-      };
-      await api<{ employee: Employee }>(
-        `/companies/${companyId}/employees${employee ? `/${employee.id}` : ""}`,
-        { method: employee ? "PATCH" : "POST", body, signal: guard.signal },
-      );
-      if (guard.isCurrent()) {
+      if (!target) {
+        const body = {
+          name,
+          phone,
+          role,
+          active,
+          permissions,
+          ...(employee
+            ? {}
+            : {
+                createSalesCashbox,
+                ...(createMode === "phone"
+                  ? {
+                      newUser: {
+                        name,
+                        displayName: name,
+                        phone,
+                        email: newUserEmail,
+                        password: newUserPassword,
+                      },
+                    }
+                  : { userId: selectedUser?.id }),
+              }),
+        };
+        const result = await api<{ employee: Employee }>(
+          `/companies/${companyId}/employees${employee ? `/${employee.id}` : ""}`,
+          { method: employee ? "PATCH" : "POST", body, signal: guard.signal },
+        );
+        if (!guard.isCurrent()) return;
+        target = result.employee;
         if (!employee && createMode === "phone") {
-          setIssuedCredentials({phone, password:newUserPassword});
+          credentials = { phone, password: newUserPassword };
+          setPendingCredentials(credentials);
           setNewUserPassword("");
-        } else onSaved();
+        }
+        if (includeSettings) setSavedBase(target);
+      }
+      if (parsedSettings?.success) {
+        const result = await api<{ settings: EmployeeAttendanceSettings }>(
+          `/companies/${companyId}/employees/${target.id}/attendance-settings`,
+          {
+            method: "PUT",
+            body: parsedSettings.data,
+            signal: guard.signal,
+          },
+        );
+        if (!guard.isCurrent()) return;
+        client.setQueryData(
+          ["employee-attendance-settings", actorUser?.id, companyId, target.id],
+          result,
+        );
+        setSettingsRevision(result.settings.revision);
+        setProfileError(false);
+        void client.invalidateQueries({
+          queryKey: ["list", actorUser?.id, `company:${companyId}:attendance`],
+        });
+      }
+      if (guard.isCurrent()) {
+        if (credentials) setIssuedCredentials(credentials);
+        else onSaved();
       }
     } catch (reason) {
-      if (guard.isCurrent()) setError(errorMessage(reason));
+      if (guard.isCurrent()) {
+        if (target && includeSettings) {
+          setProfileError(true);
+          setError(
+            `تم حفظ الموظف، لكن تعذر حفظ إعدادات الحضور والنقاط: ${errorMessage(reason)}. إعادة الحفظ ستعدل الإعدادات فقط.`,
+          );
+        } else setError(errorMessage(reason));
+      }
     } finally {
+      saveLock.current = false;
       if (guard.isCurrent()) setSaving(false);
     }
   }
   async function changeEmployeePassword() {
-    if (!employee || !actorUser?.owner || resetting || resetPassword.length < 12) return;
+    if (
+      !employee ||
+      !actorUser?.owner ||
+      resetting ||
+      resetPassword.length < 12
+    )
+      return;
     setResetting(true);
     setResetStatus("");
     try {
       await api(`/users/${employee.userId}/password`, {
-        method:"POST", body:{newPassword:resetPassword}, signal:guard.signal,
+        method: "POST",
+        body: { newPassword: resetPassword },
+        signal: guard.signal,
       });
-      if (guard.isCurrent()) setResetStatus("تم تعيين كلمة المرور الجديدة وإلغاء جلسات الدخول السابقة. سلّمها للموظف.");
+      if (guard.isCurrent())
+        setResetStatus(
+          "تم تعيين كلمة المرور الجديدة وإلغاء جلسات الدخول السابقة. سلّمها للموظف.",
+        );
     } catch (cause) {
       if (guard.isCurrent()) setResetStatus(errorMessage(cause));
-    } finally { if (guard.isCurrent()) setResetting(false); }
+    } finally {
+      if (guard.isCurrent()) setResetting(false);
+    }
   }
-  if (issuedCredentials) return (
-    <Dialog open title="تم إنشاء المستخدم والموظف" onClose={() => {setIssuedCredentials(null);onSaved();}}>
-      <p>بيانات الدخول التالية تظهر الآن فقط. سلّمها لصاحب الحساب عبر وسيلة آمنة.</p>
-      <Field label="رقم الهاتف" readOnly value={issuedCredentials.phone} dir="ltr" />
-      <Field label="كلمة المرور الأولية" readOnly value={issuedCredentials.password} dir="ltr" />
-      <p className="muted">يمكن للمالك تعيين كلمة مرور جديدة لاحقًا، ولا يمكن استرجاع كلمة المرور الحالية من قاعدة البيانات.</p>
-      <div className="form-actions">
-        <Button onClick={() => {setIssuedCredentials(null);onSaved();}}>تم تسليم بيانات الدخول</Button>
-      </div>
-    </Dialog>
-  );
+  if (issuedCredentials)
+    return (
+      <Dialog
+        open
+        title="تم إنشاء المستخدم والموظف"
+        onClose={() => {
+          setIssuedCredentials(null);
+          onSaved();
+        }}
+      >
+        <p>
+          بيانات الدخول التالية تظهر الآن فقط. سلّمها لصاحب الحساب عبر وسيلة
+          آمنة.
+        </p>
+        {profileError && (
+          <Notice tone="warning">
+            حُفظ المستخدم والموظف، ولم تُحفظ إعدادات الحضور والنقاط. يمكنك
+            استكمالها من تعديل الموظف.
+          </Notice>
+        )}
+        <Field
+          label="رقم الهاتف"
+          readOnly
+          value={issuedCredentials.phone}
+          dir="ltr"
+        />
+        <Field
+          label="كلمة المرور الأولية"
+          readOnly
+          value={issuedCredentials.password}
+          dir="ltr"
+        />
+        <p className="muted">
+          يمكن للمالك تعيين كلمة مرور جديدة لاحقًا، ولا يمكن استرجاع كلمة المرور
+          الحالية من قاعدة البيانات.
+        </p>
+        <div className="form-actions">
+          <Button
+            onClick={() => {
+              setIssuedCredentials(null);
+              onSaved();
+            }}
+          >
+            تم تسليم بيانات الدخول
+          </Button>
+        </div>
+      </Dialog>
+    );
   return (
     <Dialog
       open
       title={employee ? "تعديل الموظف" : "إضافة موظف"}
       onClose={() => {
-        if (!saving) onClose();
+        closeEditor();
       }}
     >
       {error && <Notice tone="error">{error}</Notice>}
       {!employee && actorUser?.owner && (
         <div className="form-actions">
-          <Button type="button" variant="secondary" disabled={saving} onClick={() => setCreateMode("phone")}>مستخدم جديد برقم الهاتف {createMode === "phone" ? "✓" : ""}</Button>
-          <Button type="button" variant="secondary" disabled={saving} onClick={() => setCreateMode("existing")}>ربط حساب موجود {createMode === "existing" ? "✓" : ""}</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={baseLocked}
+            onClick={() => setCreateMode("phone")}
+          >
+            مستخدم جديد برقم الهاتف {createMode === "phone" ? "✓" : ""}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={baseLocked}
+            onClick={() => setCreateMode("existing")}
+          >
+            ربط حساب موجود {createMode === "existing" ? "✓" : ""}
+          </Button>
         </div>
       )}
       {!employee && (!actorUser?.owner || createMode === "existing") && (
@@ -922,7 +1164,7 @@ function EmployeeEditor({
             value={lookup}
             onChange={(event) => changeLookup(event.target.value)}
             required
-            disabled={searching || saving}
+            disabled={searching || baseLocked}
             autoFocus
             hint="أدخل البريد أو الهاتف كاملًا للبحث عن حساب موجود، ثم اختره."
           />
@@ -939,7 +1181,7 @@ function EmployeeEditor({
             </Notice>
           )}
           {matches.length > 0 && (
-            <fieldset disabled={saving} className="lookup-results">
+            <fieldset disabled={baseLocked} className="lookup-results">
               <legend>اختر الحساب المرتبط</legend>
               {matches.map((candidate) => (
                 <label key={candidate.id} className="check-label">
@@ -980,35 +1222,59 @@ function EmployeeEditor({
           onChange={(event) => setName(event.target.value)}
           required
           maxLength={120}
-          disabled={saving}
+          disabled={baseLocked}
           autoFocus={Boolean(employee)}
         />
         <Field
-          label={employee || createMode === "existing" ? "هاتف الموظف" : "رقم الهاتف الأساسي للمستخدم"}
+          label={
+            employee || createMode === "existing"
+              ? "هاتف الموظف"
+              : "رقم الهاتف الأساسي للمستخدم"
+          }
           type="tel"
           dir="ltr"
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           maxLength={40}
-          disabled={saving}
-          hint={employee || createMode === "existing"
-            ? "رقم مستقل للتواصل والبحث؛ لا يمنح العضوية لحساب آخر."
-            : "يستخدم هذا الرقم لتسجيل الدخول. سيضاف التحقق برسالة SMS لاحقًا."}
+          disabled={baseLocked}
+          hint={
+            employee || createMode === "existing"
+              ? "رقم مستقل للتواصل والبحث؛ لا يمنح العضوية لحساب آخر."
+              : "يستخدم هذا الرقم لتسجيل الدخول. سيضاف التحقق برسالة SMS لاحقًا."
+          }
           required={!employee && createMode === "phone"}
         />
         {!employee && createMode === "phone" && actorUser?.owner && (
           <>
-            <Field label="البريد الإلكتروني (اختياري)" type="email" dir="ltr"
-              value={newUserEmail} onChange={event=>setNewUserEmail(event.target.value)}
-              disabled={saving} maxLength={254} />
-            <Field label="كلمة المرور الأولية" type={passwordVisible ? "text" : "password"} dir="ltr"
-              autoComplete="new-password" value={newUserPassword}
-              onChange={event=>setNewUserPassword(event.target.value)}
-              disabled={saving} required minLength={12} maxLength={128}
-              hint="12 حرفًا على الأقل. ستُعرض لك مرة واحدة بعد الحفظ لتسليمها للمستخدم." />
+            <Field
+              label="البريد الإلكتروني (اختياري)"
+              type="email"
+              dir="ltr"
+              value={newUserEmail}
+              onChange={(event) => setNewUserEmail(event.target.value)}
+              disabled={baseLocked}
+              maxLength={254}
+            />
+            <Field
+              label="كلمة المرور الأولية"
+              type={passwordVisible ? "text" : "password"}
+              dir="ltr"
+              autoComplete="new-password"
+              value={newUserPassword}
+              onChange={(event) => setNewUserPassword(event.target.value)}
+              disabled={baseLocked}
+              required
+              minLength={12}
+              maxLength={128}
+              hint="12 حرفًا على الأقل. ستُعرض لك مرة واحدة بعد الحفظ لتسليمها للمستخدم."
+            />
             <label className="check-label">
-              <input type="checkbox" checked={passwordVisible}
-                onChange={event=>setPasswordVisible(event.target.checked)} disabled={saving}/>
+              <input
+                type="checkbox"
+                checked={passwordVisible}
+                onChange={(event) => setPasswordVisible(event.target.checked)}
+                disabled={baseLocked}
+              />
               إظهار كلمة المرور أثناء الإدخال
             </label>
           </>
@@ -1016,7 +1282,7 @@ function EmployeeEditor({
         <Select
           label="الدور"
           value={role}
-          disabled={saving}
+          disabled={baseLocked}
           onChange={(event) => {
             const next = event.target.value as EmployeeRole;
             setRole(next);
@@ -1032,14 +1298,14 @@ function EmployeeEditor({
         <PermissionFields
           value={permissions}
           onChange={setPermissions}
-          disabled={saving}
+          disabled={baseLocked}
         />
         <label className="check-label">
           <input
             type="checkbox"
             checked={active}
             onChange={(event) => setActive(event.target.checked)}
-            disabled={saving}
+            disabled={baseLocked}
           />
           موظف فعال
         </label>
@@ -1049,31 +1315,48 @@ function EmployeeEditor({
               type="checkbox"
               checked={createSalesCashbox}
               onChange={(event) => setCreateSalesCashbox(event.target.checked)}
-              disabled={saving}
+              disabled={baseLocked}
             />
             إضافة صندوق مبيعات (ينشئ صندوق مبيعات وحافظة مبيعات باسم الموظف)
           </label>
         )}
         {!employee && (
           <small className="muted">
-            ينشأ حساب «سلفة اسم الموظف» تلقائيًا لكل موظف جديد، سواء فُعّل خيار الصندوق أم لا.
+            ينشأ حساب «سلفة اسم الموظف» تلقائيًا لكل موظف جديد، سواء فُعّل خيار
+            الصندوق أم لا.
           </small>
         )}
         {employee && actorUser?.owner && (
           <div className="form-stack">
-            <Field label="تعيين كلمة مرور جديدة للمستخدم"
+            <Field
+              label="تعيين كلمة مرور جديدة للمستخدم"
               type={passwordVisible ? "text" : "password"}
               value={resetPassword}
-              onChange={event => {setResetPassword(event.target.value);setResetStatus("");}}
-              disabled={saving || resetting}
-              minLength={12} maxLength={128} autoComplete="new-password"
-              hint="لا يمكن عرض كلمة المرور السابقة. سيُخرج النظام المستخدم من جلساته الحالية عند تغييرها." />
+              onChange={(event) => {
+                setResetPassword(event.target.value);
+                setResetStatus("");
+              }}
+              disabled={baseLocked || resetting}
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
+              hint="لا يمكن عرض كلمة المرور السابقة. سيُخرج النظام المستخدم من جلساته الحالية عند تغييرها."
+            />
             <label className="check-label">
-              <input type="checkbox" checked={passwordVisible}
-                onChange={event=>setPasswordVisible(event.target.checked)} disabled={saving || resetting}/>
+              <input
+                type="checkbox"
+                checked={passwordVisible}
+                onChange={(event) => setPasswordVisible(event.target.checked)}
+                disabled={baseLocked || resetting}
+              />
               إظهار كلمة المرور الجديدة
             </label>
-            <Button type="button" variant="secondary" disabled={resetting || saving || resetPassword.length < 12} onClick={() => void changeEmployeePassword()}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={resetting || baseLocked || resetPassword.length < 12}
+              onClick={() => void changeEmployeePassword()}
+            >
               {resetting ? "جارٍ التعيين…" : "حفظ كلمة المرور الجديدة"}
             </Button>
             {resetStatus && <Notice>{resetStatus}</Notice>}
@@ -1085,22 +1368,112 @@ function EmployeeEditor({
             الإدارة أو سحبها متاح للمالك فقط.
           </Notice>
         )}
+        {(canManageAttendance || savedBase) && (
+          <Card title="الحضور والنقاط">
+            {employee && settingsQuery.isPending && (
+              <Notice>جارٍ تحميل إعدادات الحضور والنقاط…</Notice>
+            )}
+            {settingsQuery.error && (
+              <Notice tone="error">
+                {errorMessage(settingsQuery.error)}{" "}
+                <Button
+                  variant="ghost"
+                  onClick={() => void settingsQuery.refetch()}
+                >
+                  إعادة المحاولة
+                </Button>
+              </Notice>
+            )}
+            {profileError && (
+              <Notice tone="warning">
+                بيانات الموظف محفوظة. يمكنك إعادة حفظ إعدادات الحضور والنقاط دون
+                إنشاء موظف آخر.{" "}
+                <Button
+                  variant="ghost"
+                  disabled={saving}
+                  onClick={() => void reloadSettings()}
+                >
+                  تحميل الإعدادات الحالية
+                </Button>
+              </Notice>
+            )}
+            <div className="form-grid">
+              <Field
+                label="قيمة الساعة (نقاط)"
+                inputMode="numeric"
+                value={hourlyPoints}
+                onChange={(event) => setHourlyPoints(event.target.value)}
+                disabled={saving || !settingsReady || !canManageAttendance}
+                maxLength={12}
+                placeholder="غير محددة"
+                hint="اتركها فارغة حتى تحددها، أو أدخل صفرًا لإيقاف نقاط الساعات."
+              />
+              <Field
+                label="ساعات الدوام اليومية الافتراضية"
+                type="number"
+                min="0.01"
+                max="24"
+                step="0.01"
+                value={dailyHours}
+                onChange={(event) => setDailyHours(event.target.value)}
+                disabled={saving || !settingsReady || !canManageAttendance}
+                placeholder="غير محددة"
+                hint="مجموع جلسات اليوم، وليس مدة كل جلسة. يلزم تحديدها عند تعيين قيمة ساعة موجبة."
+              />
+              <Field
+                label="ساعة الحضور الافتراضية (اختياري)"
+                type="time"
+                value={expectedStartTime}
+                onChange={(event) => setExpectedStartTime(event.target.value)}
+                disabled={saving || !settingsReady || !canManageAttendance}
+                hint="للمتابعة فقط؛ يمكن تسجيل الحضور في أي وقت."
+              />
+            </div>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={allowOvertime}
+                onChange={(event) => setAllowOvertime(event.target.checked)}
+                disabled={saving || !settingsReady || !canManageAttendance}
+              />
+              قابل للدوام فوق الافتراضي
+            </label>
+            <p className="muted">
+              تثبت الساعات اليومية والسماح بالإضافي عند أول جلسة مهيأة في اليوم.
+              تغيير قيمة الساعة يطبق على الجلسات الجديدة.
+            </p>
+          </Card>
+        )}
         <div className="form-actions">
           <Button
             type="submit"
-            disabled={saving || (!employee && (
-              createMode === "existing" ? !selectedUser : !actorUser?.owner || !phone || newUserPassword.length < 12
-            ))}
+            disabled={
+              saving ||
+              (mayManageAttendance && directory.isLoading) ||
+              (canManageAttendance && !settingsReady) ||
+              (!!savedBase && !canManageAttendance) ||
+              (!savedBase &&
+                !employee &&
+                (createMode === "existing"
+                  ? !selectedUser
+                  : !actorUser?.owner || !phone || newUserPassword.length < 12))
+            }
           >
-            {saving ? "جارٍ الحفظ…" : employee ? "حفظ الموظف" : "إضافة الموظف"}
+            {saving
+              ? "جارٍ الحفظ…"
+              : savedBase
+                ? "إعادة حفظ إعدادات الحضور والنقاط"
+                : employee
+                  ? "حفظ الموظف"
+                  : "إضافة الموظف"}
           </Button>
           <Button
             type="button"
             variant="secondary"
-            onClick={onClose}
+            onClick={closeEditor}
             disabled={saving}
           >
-            إلغاء
+            {savedBase ? "إغلاق" : "إلغاء"}
           </Button>
         </div>
       </form>

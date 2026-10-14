@@ -9,10 +9,11 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
-import { HttpError, missing } from "./errors.ts";
+import { deny, HttpError, missing } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
+import { getAttendanceSettings } from "./services/attendance-settings.ts";
 
 const key = z.string().regex(/^[a-z][a-z0-9_.-]{0,99}$/);
 const recordKind = z.enum([
@@ -742,8 +743,42 @@ export function configurationAdministrationRoutes(pool: Pool): Router {
             : kind === "account"
               ? "accounts.view"
               : "employees.view";
-        // Never expose another company or archived employee record; this phase
-        // supports item and account cards, not finalized financial documents.
+        if (kind === "employee") {
+          const context = await companyAccess(
+            client,
+            user,
+            companyId,
+            perm,
+            false,
+          );
+          if (!context.general && context.employee?.id !== recordId)
+            deny("يمكنك عرض خصائص دوامك فقط");
+          const employee = await client.query(
+            `SELECT e.id FROM employees e JOIN users u ON u.id=e.user_id
+             WHERE e.company_id=$1 AND e.id=$2 AND e.active AND NOT u.archived`,
+            [companyId, recordId],
+          );
+          if (!employee.rowCount) missing();
+          const settings = await getAttendanceSettings(
+            client,
+            companyId,
+            recordId,
+          );
+          const definitions = (
+            await client.query(
+              optionSelect +
+                " WHERE company_id=$1 AND record_kind='employee' AND native_binding='employee.attendanceAllowOvertime' AND show_on_card=true ORDER BY sort_order,id",
+              [companyId],
+            )
+          ).rows;
+          return {
+            definitions,
+            values: [],
+            native: { attendanceAllowOvertime: settings.allowOvertime },
+          };
+        }
+        // Custom values remain supported only for item/account cards. Employee
+        // overtime is a native settings value, never a second option_values row.
         if (kind !== "item" && kind !== "account")
           throw new HttpError(
             400,

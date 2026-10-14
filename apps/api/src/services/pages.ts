@@ -203,11 +203,23 @@ export async function resolvePage(
       const memo = record.rows[0];
       const participant = await db.query(
         "SELECT 1 FROM memo_participants WHERE company_id=$1 AND memo_id=$2 AND user_id=$3 AND (employee_id IS NULL OR employee_id=$4)",
-        [reference.companyId, reference.recordId, user.id, context.employee?.id ?? null],
+        [
+          reference.companyId,
+          reference.recordId,
+          user.id,
+          context.employee?.id ?? null,
+        ],
       );
-      const currentAssignee = memo.current_user_id === user.id &&
-        (memo.current_employee_id === null || memo.current_employee_id === context.employee?.id);
-      if (!context.general && memo.sender_user_id !== user.id && !currentAssignee && !participant.rowCount)
+      const currentAssignee =
+        memo.current_user_id === user.id &&
+        (memo.current_employee_id === null ||
+          memo.current_employee_id === context.employee?.id);
+      if (
+        !context.general &&
+        memo.sender_user_id !== user.id &&
+        !currentAssignee &&
+        !participant.rowCount
+      )
         missing();
     }
     if (definition.record === "invoice")
@@ -303,12 +315,25 @@ export async function requestPageKeys(
     "financial-options": "financial-documents",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
-  if (resource === "memos" && /^memos\/[1-9]\d*(?:\/(?:read|actions))?$/.test(rest))
+  // Reading one's own attendance profile does not open the employee directory.
+  if (
+    resource === "employees" &&
+    /^employees\/[1-9]\d*\/attendance-settings$/.test(rest)
+  ) {
+    if (req.method === "GET" || req.method === "HEAD")
+      keys.splice(0, keys.length, "company.attendance");
+    else keys.push("company.attendance");
+  }
+  if (
+    resource === "memos" &&
+    /^memos\/[1-9]\d*(?:\/(?:read|actions))?$/.test(rest)
+  )
     keys.push("company.memo-detail");
   if (resource === "configuration" && rest.split("/")[1] === "record-options") {
     if (req.query.recordKind === "item")
       keys.push("company.items", "company.item-card");
     if (req.query.recordKind === "account") keys.push("company.accounts");
+    if (req.query.recordKind === "employee") keys.push("company.employees");
   }
   if (!rest && ["PATCH", "PUT"].includes(req.method))
     keys.push("company.settings");
@@ -337,8 +362,12 @@ export async function requestPageKeys(
       keys.push("company.item-new");
     if (/^items\/\d+/.test(rest)) keys.push("company.item-card");
   }
-  if (resource === "wallet-conversions" && req.method === "POST" &&
-      (rest === "wallet-conversions" || /^wallet-conversions\/[1-9]\d*\/approve$/.test(rest)))
+  if (
+    resource === "wallet-conversions" &&
+    req.method === "POST" &&
+    (rest === "wallet-conversions" ||
+      /^wallet-conversions\/[1-9]\d*\/approve$/.test(rest))
+  )
     keys.push("company.wallet");
   if (resource === "financial-documents" || resource === "invoices") {
     const financial = resource === "financial-documents";
@@ -398,7 +427,7 @@ export async function assertRequestPagesEnabled(
   // a changed payload can only fail with conflict, never create a new record.
   const path = req.originalUrl.split("?")[0]!.replace(/^\/api/, "");
   const creation = path.match(
-    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals|wallet-conversions|memos)$/,
+    /^\/companies\/[1-9]\d*\/(items|item-agents|invoices|financial-documents|stock-transfers|stock-adjustments|wallet\/awards|wallet\/reversals|wallet-conversions|memos|attendance\/adjustments)$/,
   );
   const requestKey: unknown = req.body?.idempotencyKey;
   if (
@@ -419,6 +448,7 @@ export async function assertRequestPagesEnabled(
       "wallet/reversals": "employee_wallet_entries",
       "wallet-conversions": "wallet_conversions",
       memos: "memos",
+      "attendance/adjustments": "attendance_point_entries",
     };
     const existing = await db.query(
       `SELECT 1 FROM ${tables[creation[1]!]} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -426,18 +456,32 @@ export async function assertRequestPagesEnabled(
     );
     if (existing.rowCount) return;
   }
-  const decision = path.match(/^\/companies\/[1-9]\d*\/wallet-conversions\/([1-9]\d*)\/(approve|reject|cancel)$/);
-  if (companyId && req.method === "POST" && decision && typeof requestKey === "string" &&
-      /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)) {
+  const decision = path.match(
+    /^\/companies\/[1-9]\d*\/wallet-conversions\/([1-9]\d*)\/(approve|reject|cancel)$/,
+  );
+  if (
+    companyId &&
+    req.method === "POST" &&
+    decision &&
+    typeof requestKey === "string" &&
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)
+  ) {
     const existing = await db.query(
       "SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND id=$2 AND decision_key=$3",
       [companyId, decision[1], requestKey],
     );
     if (existing.rowCount) return;
   }
-  const memoAction = path.match(/^\/companies\/[1-9]\d*\/memos\/([1-9]\d*)\/actions$/);
-  if (companyId && req.method === "POST" && memoAction && typeof requestKey === "string" &&
-      /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)) {
+  const memoAction = path.match(
+    /^\/companies\/[1-9]\d*\/memos\/([1-9]\d*)\/actions$/,
+  );
+  if (
+    companyId &&
+    req.method === "POST" &&
+    memoAction &&
+    typeof requestKey === "string" &&
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)
+  ) {
     const existing = await db.query(
       "SELECT 1 FROM memo_actions WHERE company_id=$1 AND memo_id=$2 AND idempotency_key=$3",
       [companyId, memoAction[1], requestKey],

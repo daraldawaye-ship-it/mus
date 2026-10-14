@@ -216,11 +216,13 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       cell: ({ row }) =>
         row.original.kind === "manual"
           ? "إضافة إدارية"
-          : row.original.kind === "automatic"
-            ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
-            : row.original.kind === "conversion"
-              ? "تحويل النقاط إلى الحساب"
-              : "عكس مكافأة",
+          : row.original.kind === "attendance"
+            ? "نقاط الدوام"
+            : row.original.kind === "automatic"
+              ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
+              : row.original.kind === "conversion"
+                ? "تحويل النقاط إلى الحساب"
+                : "عكس مكافأة",
     },
     {
       accessorKey: "points",
