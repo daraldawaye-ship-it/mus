@@ -6,7 +6,7 @@ import {directoryEntries} from "./pages.ts";
 import {emitNotification,effectiveTemplate} from "./notifications.ts";
 export const scheduleSelect=`SELECT s.*,s.local_day::text AS local_date, to_char(s.local_time,'HH24:MI') AS local_clock FROM memo_schedules s`;
 export function scheduleDTO(row:any):MemoSchedule {
- return {revision:row.revision,active:row.active,dueAt:row.due_at.toISOString(),
+ return {revision:row.revision,active:row.active,returned:Boolean(row.returned),reminderCount:row.cycle_index??0,dueAt:row.due_at.toISOString(),
   localDate:row.local_date,localTime:row.local_clock,repeatInterval:row.repeat_interval,
   reason:row.reason,actorName:row.actor_name,lastTriggeredAt:row.last_triggered_at?.toISOString()??null};
 }
