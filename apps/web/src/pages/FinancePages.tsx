@@ -172,6 +172,10 @@ function DocumentList({
         ),
       },
       { accessorKey: "documentDate", header: "التاريخ", size: 120 },
+      ...(kind === "payment" ? [{
+        accessorKey: "supplierReceiptNumber", header: "رقم الوصل", enableSorting: false, size: 145,
+        cell: ({ row }) => <ValueCell>{row.original.supplierReceiptNumber || "—"}</ValueCell>,
+      } satisfies ColumnDef<FinancialDocument, unknown>] : []),
       {
         accessorKey: "kind",
         header: "النوع",
@@ -463,6 +467,7 @@ function DocumentEditor({
     (!document || document.status === "draft");
   const [documentDate, setDate] = useState(document?.documentDate ?? today());
   const [description, setDescription] = useState(document?.description ?? "");
+  const [supplierReceiptNumber, setSupplierReceiptNumber] = useState(document?.supplierReceiptNumber ?? "");
   const [currency, setCurrency] = useState<PickCurrency | null>(
     document
       ? {
@@ -626,6 +631,7 @@ function DocumentEditor({
       currencyId: currency?.id ?? 0,
       branchId: branch?.id ?? null,
       cashAccountId: kind === "journal" ? null : (cash?.id ?? null),
+      supplierReceiptNumber: kind === "payment" ? supplierReceiptNumber : "",
       description,
       lines:
         kind === "journal"
@@ -841,6 +847,9 @@ function DocumentEditor({
           <h2>
             {documentKindLabels[kind]} {document?.number ?? "مسودة جديدة"}
           </h2>
+          {kind === "payment" && (
+            <span>رقم الوصل: <bdi>{(document?.supplierReceiptNumber ?? supplierReceiptNumber) || "—"}</bdi></span>
+          )}
         </div>
         {error && (
           <div className="financial-no-print">
@@ -895,6 +904,19 @@ function DocumentEditor({
                 setDate(event.target.value);
               }}
             />
+            {kind === "payment" && (
+              <Field
+                label="رقم الوصل"
+                placeholder="رقم سند قبض المورد"
+                maxLength={100}
+                value={supplierReceiptNumber}
+                disabled={!canEdit || saving}
+                onChange={(event) => {
+                  touch();
+                  setSupplierReceiptNumber(event.target.value);
+                }}
+              />
+            )}
             {pickerButton(
               "عملة المستند",
               currency ? `${currency.code} — ${currency.name}` : "اختر العملة",
