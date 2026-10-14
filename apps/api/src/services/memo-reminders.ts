@@ -105,11 +105,21 @@ export async function scanDueMemoSchedules(client:PoolClient,companyId:number) {
     await closeScheduleNotice(client,companyId,row.memo_id,null,"assignment-changed");
     continue;
   }
+  const template=await effectiveTemplate(client,companyId,"MEMO_DUE");
+  const repeat=row.repeat_interval!=="none" && !!template?.allowRepeat && !!template?.enabled;
+  const next=repeat?nextRecurringMemoDue(
+   new Date(row.local_day).toISOString().slice(0,10),
+   String(row.local_time).slice(0,5),row.repeat_interval,
+   new Date(),row.cycle_index+1):null;
   await client.query(
-   "UPDATE memo_schedules SET active=false,revision=revision+1,last_triggered_at=clock_timestamp(),updated_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
-   [companyId,row.memo_id]);
+   `UPDATE memo_schedules SET active=$3,returned=true,
+     due_at=COALESCE($4::timestamptz,due_at),cycle_index=$5,
+     revision=revision+1,last_triggered_at=clock_timestamp(),updated_at=clock_timestamp()
+     WHERE company_id=$1 AND memo_id=$2`,
+   [companyId,row.memo_id,!!next,next?.date??null,next?.cycle??row.cycle_index]);
   await addScheduleHistory(client,companyId,row.memo_id,row.revision+1,
-   "due","حلّ موعد العودة للمتابعة",null,row.due_at);
+   row.returned?"repeated":"due","حلّ موعد التذكير",null,row.due_at,
+   {nextAt:next?.date?.toISOString()??null,skippedToCycle:next?.cycle??null});
   const userRow=(await client.query(
    "SELECT * FROM users WHERE id=$1 AND NOT archived AND NOT suspended",[row.assignee_user_id],
   )).rows[0];
