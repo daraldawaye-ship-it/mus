@@ -94,3 +94,13 @@ export function MemoFeatureRulesPage({context}:{context:CompanyContext}){
     onChange={e=>setDraft({...draft,minimumCount:e.target.value?Number(e.target.value):null})}/>
    <Field label="المدة الدنيا بالساعات" type="number" value={draft.minimumHours??""}
     onChange={e=>setDraft({...draft,minimumHours:e.target.value?Number(e.target.value):null})}/>
+   <Select label="الربط بين الشروط" value={draft.matchMode}
+    onChange={e=>setDraft({...draft,matchMode:e.target.value as Draft["matchMode"]})}>
+    <option value="all">العدد والمدة معًا</option><option value="any">أي شرط</option>
+   </Select>
+   <label><input type="checkbox" checked={draft.enabled}
+    onChange={e=>setDraft({...draft,enabled:e.target.checked})}/> تفعيل القاعدة</label>
+   <label><input type="checkbox" checked={draft.excludeDeferredUntilDue}
+    onChange={e=>setDraft({...draft,excludeDeferredUntilDue:e.target.checked})}/> استثناء المؤجلة حتى موعد العودة</label>
+   <Field label="الرسالة التي تظهر للموظف" value={draft.message}
+    onChange={e=>setDraft({...draft,message:e.target.value})}/>
