@@ -1756,3 +1756,48 @@ test("posted receipt/payment print requests reward eligible employees once per v
   }
   assert.equal((await wallet(first.employee.id)).wallet.points, "12");
 });
+
+test("supplier receipt reference stays on payment voucher drafts and posted printouts", async (t) => {
+  const f = await fixture(t), s = await setup(f);
+  const lines = [
+    { accountId: s.counter.id, debit: "125.5", credit: "0" },
+    { accountId: s.cash.id, debit: "0", credit: "125.5" },
+  ];
+  const original = await s.draft({
+    kind: "payment",
+    cashAccountId: s.cash.id,
+    supplierReceiptNumber: "  000-RCPT/26  ",
+    lines,
+  });
+  assert.equal(original.supplierReceiptNumber, "000-RCPT/26");
+  assert.equal(original.kind, "payment");
+  const fetched = await f.owner.ok<DocumentResponse>("GET", `${s.path}/financial-documents/${original.id}`);
+  assert.equal(fetched.document.supplierReceiptNumber, "000-RCPT/26");
+
+  const patched = await f.owner.ok<DocumentResponse>(
+    "PATCH", `${s.path}/financial-documents/${original.id}`,
+    { ...s.input({ kind: "payment", cashAccountId: s.cash.id, lines, supplierReceiptNumber: "000-RCPT-26" }),
+      idempotencyKey: undefined, revision: original.revision },
+  );
+  assert.equal(patched.document.supplierReceiptNumber, "000-RCPT-26");
+  const posted = await s.post(patched.document);
+  assert.equal(posted.supplierReceiptNumber, "000-RCPT-26");
+  const listing = await f.owner.ok<{ items: FinancialDocument[]; total: number }>(
+    "GET", `${s.path}/financial-documents?kind=payment&q=000-RCPT-26`,
+  );
+  assert.equal(listing.total, 1);
+  assert.equal(listing.items[0]?.id, original.id);
+  assert.equal(listing.items[0]?.supplierReceiptNumber, "000-RCPT-26");
+  for (const kind of ["journal", "receipt"] as const) {
+    const bad = await f.owner.request(
+      "POST", `${s.path}/financial-documents`,
+      s.input({ kind, cashAccountId: kind === "receipt" ? s.cash.id : null,
+        supplierReceiptNumber: "SUP-0001",
+        lines: kind === "journal" ? lines : [
+          { accountId: s.cash.id, debit: "125.5", credit: "0" },
+          { accountId: s.counter.id, debit: "0", credit: "125.5" },
+        ] }),
+    );
+    assert.equal(bad.status, 400);
+  }
+});
