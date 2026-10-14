@@ -218,6 +218,7 @@ export interface MemoDetail extends MemoRecord {
   links: MemoLinkedView;
   canManageLinks: boolean;
   optionDefinitions: import("./configuration.ts").OptionDefinition[];
+  searchOptions: import("./configuration.ts").OptionDefinition[];
   optionValues: MemoOptionValue[];
   optionRevision: number;
   optionChanges: MemoOptionChange[];
