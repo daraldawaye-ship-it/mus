@@ -19,6 +19,7 @@ import {
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
+import {audit} from "./services/audit.ts";
 
 async function readCommerce<T>(
   pool: Pool,
