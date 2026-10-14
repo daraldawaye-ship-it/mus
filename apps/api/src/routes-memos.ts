@@ -87,7 +87,8 @@ function summary(row: QueryResultRow): MemoSummary {
     schedule:row.schedule_revision!=null?scheduleDTO({
       revision:row.schedule_revision,active:row.schedule_active,due_at:row.schedule_due_at,
       local_date:row.schedule_local_date,local_clock:row.schedule_local_time,
-      repeat_interval:row.schedule_repeat_interval,reason:row.schedule_reason,
+      repeat_interval:row.schedule_repeat_interval,reason:row.schedule_reason,returned:row.schedule_returned,
+      cycle_index:row.schedule_cycle_index,
       actor_name:row.schedule_actor,last_triggered_at:row.schedule_last_triggered_at,
     }):null,
     revision: row.revision,
@@ -563,7 +564,8 @@ export function memoRoutes(pool: Pool) {
          sch.revision AS schedule_revision,sch.active AS schedule_active,sch.due_at AS schedule_due_at,
          sch.local_day::text AS schedule_local_date,to_char(sch.local_time,'HH24:MI') AS schedule_local_time,
          sch.repeat_interval AS schedule_repeat_interval,sch.reason AS schedule_reason,
-         sch.actor_name AS schedule_actor,sch.last_triggered_at AS schedule_last_triggered_at
+         sch.actor_name AS schedule_actor,sch.returned AS schedule_returned,
+         sch.cycle_index AS schedule_cycle_index,sch.last_triggered_at AS schedule_last_triggered_at
          FROM memos m ${readJoins} LEFT JOIN memo_schedules sch ON sch.company_id=m.company_id AND sch.memo_id=m.id
          WHERE ${where}
          ORDER BY ${query.order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
