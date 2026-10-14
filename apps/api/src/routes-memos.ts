@@ -461,6 +461,7 @@ export function memoRoutes(pool: Pool) {
           const current = await scope(client, req);
           await access(client, req, current, "view");
           if (box === "all" && !current.context.general) deny();
+          const optionDefs=await definitionsForMemo(client,current.companyId);
           const values: unknown[] = [current.companyId, current.user.id];
           let filter = "TRUE";
           if (box === "required") {
@@ -484,10 +485,42 @@ export function memoRoutes(pool: Pool) {
             values.push(status);
             filter = `(${filter}) AND m.status=$${values.length}`;
           }
+          const optionKey=req.query.optionKey, optionValue=req.query.optionValue;
+          if(optionKey !== undefined || optionValue !== undefined) {
+            if(typeof optionKey!=="string" || typeof optionValue!=="string")
+              throw new HttpError(400,"invalid_query","حدد الخاصية والقيمة معًا");
+            const definition=optionDefs.find(d=>d.key===optionKey && d.active && d.searchable);
+            if(!definition) throw new HttpError(400,"invalid_option","الخيار غير متاح للبحث");
+            const candidate: boolean|string|null = definition.valueType==="boolean"
+              ? optionValue==="true"?true:optionValue==="false"?false:null
+              : optionValue==="null"?null:optionValue;
+            const valid=(await client.query(
+              "SELECT option_value_valid($1::text,$2::jsonb,$3::jsonb) AS valid",
+              [definition.valueType,JSON.stringify(candidate),JSON.stringify(definition.choices)],
+            )).rows[0].valid;
+            if(!valid) throw new HttpError(400,"invalid_option_value","قيمة البحث لا تطابق نوع الخاصية");
+            values.push(definition.id,JSON.stringify(candidate));
+            filter=`(${filter}) AND EXISTS(
+              SELECT 1 FROM option_values opt WHERE opt.company_id=m.company_id AND opt.memo_id=m.id
+              AND opt.definition_id=${values.length-1} AND opt.value=${values.length}::jsonb)`;
+          }
           values.push(searchPattern(query.q));
-          const search = `$${values.length}`;
+          const search = `${values.length}`;
           // Detail text belongs to the detail page, whose view can be denied separately.
-          const where = `m.company_id=$1 AND (${filter}) AND (m.title ILIKE ${search} OR m.sender_name ILIKE ${search} OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search})`;
+          const where = `m.company_id=$1 AND (${filter}) AND (
+            m.title ILIKE ${search} OR m.sender_name ILIKE ${search}
+            OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search}
+            OR EXISTS(
+              SELECT 1 FROM option_values ov
+              JOIN option_definitions od ON od.company_id=ov.company_id AND od.id=ov.definition_id
+              WHERE ov.company_id=m.company_id AND ov.memo_id=m.id AND od.record_kind='memo'
+                AND od.searchable AND od.active AND (
+                  (ov.value #>> '{}') ILIKE ${search} OR EXISTS(
+                    SELECT 1 FROM jsonb_array_elements(od.choices) choice
+                    WHERE choice->>'key'=ov.value #>> '{}' AND choice->>'label' ILIKE ${search}
+                  )
+                )
+            ))`;
           const total = Number(
             (
               await client.query(
@@ -504,8 +537,23 @@ export function memoRoutes(pool: Pool) {
               [...values, query.pageSize, query.offset],
             )
           ).rows;
+          const listDefinitions=optionDefs.filter(d=>d.active && d.showInList);
+          const ids=rows.map(r=>r.id);
+          const optionRows=ids.length && listDefinitions.length
+            ? (await client.query(
+              `SELECT v.memo_id,d.key,v.value FROM option_values v
+               JOIN option_definitions d ON d.company_id=v.company_id AND d.id=v.definition_id
+               WHERE v.company_id=$1 AND v.memo_id=ANY($2::integer[])
+                 AND v.definition_id=ANY($3::integer[])`,
+              [current.companyId,ids,listDefinitions.map(d=>d.id)],
+            )).rows : [];
           return {
-            items: rows.map(summary),
+            items: rows.map(r=>({
+              ...summary(r),
+              optionValues:Object.fromEntries(optionRows.filter(o=>o.memo_id===r.id)
+                .map(o=>[o.key,o.value])),
+            })),
+            optionDefinitions:listDefinitions,
             total,
             page: query.page,
             pageSize: query.pageSize,
