@@ -271,7 +271,12 @@ function InventoryLinks({
           className="button button-primary"
           to={`/companies/${companyId}/stock-operations`}
         >
-          مناقلة أو جرد
+          المناقلات
+        </Link>
+      )}
+      {operations && (
+        <Link className="button button-primary" to={`/companies/${companyId}/stock-adjustments`}>
+          تسوية الأصناف
         </Link>
       )}
     </>
