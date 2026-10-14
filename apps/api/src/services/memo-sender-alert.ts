@@ -34,3 +34,8 @@ export async function notifyDueMemoSender(client:PoolClient,companyId:number,
    recipientUserId:senderUserId,subjectEmployeeId:sender.employee_id??null,
    explicitSubjectOnly:true,subjectKey:`memo:${memoId}`,eventKey,
    message:title,href:`/companies/${companyId}/memos/${memoId}`});
+  await client.query(
+    "UPDATE notifications SET repeat_interval='none',next_reminder_at=NULL,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND event_key=$2 AND code='MEMO_DELAYED' AND completed_at IS NULL AND (repeat_interval<>'none' OR next_reminder_at IS NOT NULL)",
+    [companyId,eventKey]);
+ }
+}
