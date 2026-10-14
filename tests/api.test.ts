@@ -3152,3 +3152,19 @@ test("memo feature block rejects new invoice but allows exact saved retry and di
   idempotencyKey:randomUUID(),name:"Task restricted item",currencyId:currency.id,
   unit1Name:"وحدة",salePrice1:"30",purchasePrice:"15",hasExpiry:false,
  },201)).item;
+ const payload={
+  idempotencyKey:randomUUID(),kind:"sale",documentDate:"2026-10-12",
+  currencyId:currency.id,branchId:branch.id,locationId:location.id,
+  counterpartyAccountId:account.id,supplierAccountId:null,
+  description:"Memo block test invoice",discount:"0",
+  lines:[{itemId:item.id,unit:1,quantity:"1",unitPrice:"30",expiryDate:null,originalLineId:null}],
+ };
+ const denied=await worker.client.request("POST",base+"/invoices",payload);
+ assert.equal(denied.status,409);
+ assert.equal((denied.body as {error:{code:string}}).error.code,"memo_feature_block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,0);
+ const rejectionAudit=(await f.pool.query(
+  "SELECT count(*)::int AS count FROM audit_events WHERE company_id=$1 AND action='memo.feature-trigger' AND after_value->>'outcome'='rejected'",
+  [co.id])).rows[0].count;
+ assert.equal(rejectionAudit,1);
