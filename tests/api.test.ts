@@ -3069,3 +3069,4 @@ test("memo report scopes employee totals and approval intervals",async t=>{
  assert.equal(report.employees.find(p=>p.userId===employeeUser.user.id)?.required,1);
  const hidden=await stranger.client.ok<{total:number}>("GET",base+"/report");
  assert.equal(hidden.total,0);
+});
