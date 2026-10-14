@@ -80,3 +80,39 @@ export async function memoReport(client:PoolClient,actor:MemoReportActor,filters
  FROM visible v ORDER BY v.created_at DESC,v.id DESC
  LIMIT $${params.length+1} OFFSET $${params.length+2}`,
  [...params,filters.pageSize,offset])).rows;
+ const ids=rows.map(row=>row.id);
+ const segments=ids.length?(await client.query(`
+ WITH epochs AS(
+  SELECT m.id memo_id,
+    CASE WHEN e.kind='created' THEN m.recipient_user_id ELSE e.target_user_id END AS user_id,
+    CASE WHEN e.kind='created' THEN m.recipient_name ELSE e.target_name END AS name,
+    CASE WHEN e.kind='completion_requested' THEN 'approval' ELSE 'execution' END AS role,
+    e.created_at AS started,
+    LEAD(e.created_at) OVER(PARTITION BY m.id ORDER BY e.created_at,e.id) AS next_start,
+    m.completed_at
+  FROM memos m JOIN memo_events e ON e.company_id=m.company_id AND e.memo_id=m.id
+  WHERE m.company_id=$1 AND m.id=ANY($2::integer[])
+  AND e.kind IN ('created','forwarded','returned','completion_requested','reopened')
+ ) SELECT memo_id,user_id,name,role,
+ ROUND((SUM(GREATEST(0,EXTRACT(EPOCH FROM
+   (LEAST(COALESCE(next_start,clock_timestamp()),COALESCE(completed_at,clock_timestamp()))-started)))/3600))::numeric,2) hours
+ FROM epochs WHERE user_id IS NOT NULL
+ GROUP BY memo_id,user_id,name,role ORDER BY memo_id,user_id,role`,
+ [actor.companyId,ids])).rows:[];
+ const items=rows.map(row=>{
+  const periods=segments.filter(s=>s.memo_id===row.id).map(s=>({
+    userId:s.user_id as number,name:String(s.name??""),role:s.role as "execution"|"approval",hours:number(s.hours)
+  }));
+  return {id:row.id,title:row.title,type:row.type,status:row.status,
+   senderName:row.sender_name,senderUserId:row.sender_user_id,
+   currentName:row.current_name,currentUserId:row.current_user_id,
+   currentEmployeeId:row.current_employee_id,
+   createdAt:iso(row.created_at)!,assignedAt:iso(row.current_assigned_at)!,
+   completedAt:iso(row.completed_at),dueAt:iso(row.due_at),deferred:!!row.deferred,
+   ageHours:number(row.age_hours),assignmentHours:number(row.assignment_hours),
+   approvalHours:number(row.approval_hours),
+   executionHours:periods.filter(p=>p.role==="execution").reduce((sum,p)=>sum+p.hours,0),
+   assignmentPeriods:periods,returnCount:number(row.returns),
+   approvedExecution:row.status==="completed" && row.completion_requested_by_user_id!=null,
+  };
+ });
