@@ -313,7 +313,7 @@ export async function requestPageKeys(
     "stock-movements": "stock-movements",
     "stock-operations": "stock-operations",
     "stock-transfers": "stock-operations",
-    "stock-adjustments": "stock-operations",
+    "stock-adjustments": "stock-adjustments",
     "inventory-settings": "inventory-settings",
     "account-balances": "account-balances",
     "account-ledger": "account-ledger",
