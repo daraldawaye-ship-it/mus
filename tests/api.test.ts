@@ -2934,3 +2934,78 @@ test("memo links resolve safely, redact unauthorized account details and reject 
  })).status,404);
  assert.equal((await recipient.client.request("GET",`${base}/link-accounts`)).status,403);
 });
+
+test("memo options use shared typed definitions, capture defaults, filter lists, audit changes and preserve old values",async(t)=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const co=await company(platform.client,"Memo options");
+ const reader=await register(f,"memo-option-reader@example.test");
+ const employeeCard=await employee(platform.client,co.id,reader.user.id);
+ const config=`/companies/${co.id}/configuration`;
+ const createOption=(key:string,name:string,type:"boolean"|"list",
+   defaultValue:boolean|string|null,choices:{key:string;label:string}[]=[])=>
+    platform.client.ok<{option:{id:number;revision:number}}>("POST",`${config}/options`,{
+      key,pageKey:"company.memos",recordKind:"memo",name,valueType:type,
+      defaultValue,choices,description:"",required:false,
+      searchable:true,showOnCard:true,showInList:true,sortOrder:10,active:true,
+    },201);
+ const urgent= (await createOption("memo.urgent","عاجلة","boolean",false)).option;
+ const method= (await createOption("memo.method","طريقة المتابعة","list",null,[
+   {key:"call",label:"هاتف"},{key:"visit",label:"زيارة"},
+ ])).option;
+ const base=`/companies/${co.id}/memos`;
+ const inputs={title:"Review memo vendor",body:"Review documents",
+   type:"task",recipientEmployeeId:employeeCard.id};
+ const first=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "POST",base,{...inputs,idempotencyKey:randomUUID(),
+     options:[{definitionId:urgent.id,value:true},{definitionId:method.id,value:"call"}],
+   },201)).memo;
+ assert.equal(first.optionValues.find(v=>v.definitionId===urgent.id)?.value,true);
+ assert.equal(first.optionValues.find(v=>v.definitionId===method.id)?.value,"call");
+ assert.equal(first.optionRevision,1);
+ const second=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{...inputs,title:"Review other memo",idempotencyKey:randomUUID()},201)).memo;
+ assert.equal(second.optionValues.find(v=>v.definitionId===urgent.id)?.value,false);
+ assert.equal(second.optionValues.find(v=>v.definitionId===method.id)?.value,null);
+ const result=await platform.client.ok<{total:number;items:{id:number;optionValues:Record<string,unknown>}[];optionDefinitions:{key:string}[]}>(
+   "GET",`${base}?box=all&optionKey=memo.urgent&optionValue=true`,
+ );
+ assert.equal(result.total,1);
+ assert.equal(result.items[0]?.id,first.id);
+ assert.equal(result.items[0]?.optionValues["memo.urgent"],true);
+ assert.ok(result.optionDefinitions.some(v=>v.key==="memo.urgent"));
+ assert.equal((await reader.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[{definitionId:urgent.id,value:false}],
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[{definitionId:urgent.id,value:"not boolean"}],
+ })).status,400);
+ const edited=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "PUT",`${base}/${first.id}/options`,{revision:1,values:[{definitionId:urgent.id,value:false}]},
+ )).memo;
+ assert.equal(edited.optionRevision,2);
+ assert.equal(edited.revision,first.revision);
+ assert.equal(edited.currentUserId,reader.user.id);
+ assert.equal(edited.optionChanges.length,1);
+ assert.equal((await platform.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[],
+ })).status,409);
+ const editedDef=(await platform.client.ok<{option:{revision:number}}>(
+   "PATCH",`${config}/options/${urgent.id}`,{defaultValue:true,revision:urgent.revision},
+ )).option;
+ assert.ok(editedDef.revision>urgent.revision);
+ const old=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "GET",`${base}/${second.id}`
+ )).memo;
+ assert.equal(old.optionValues.find(v=>v.definitionId===urgent.id)?.value,false);
+ const third=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "POST",base,{...inputs,title:"New default memo",idempotencyKey:randomUUID()},201
+ )).memo;
+ assert.equal(third.optionValues.find(v=>v.definitionId===urgent.id)?.value,true);
+ const other=await company(platform.client,"Isolated memo options");
+ const otherRecipient=await employee(platform.client,other.id,reader.user.id);
+ assert.equal((await platform.client.request("POST",`/companies/${other.id}/memos`,{
+   ...inputs,recipientEmployeeId:otherRecipient.id,title:"Cross-company option",
+   idempotencyKey:randomUUID(),options:[{definitionId:urgent.id,value:true}],
+ })).status,400);
+});
