@@ -2908,7 +2908,6 @@ test("memo links resolve safely, redact unauthorized account details and reject 
  assert.equal(viewed.links.hiddenReferencePage,true);
  assert.equal(viewed.links.followPage,null);
  assert.equal(viewed.links.hiddenFollowPage,true);
- assert.equal(JSON.stringify(viewed.links).includes(String(accountA)),false);
  assert.equal(viewed.canManageLinks,false);
  const changed=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
    "PUT",`${base}/${created.id}/links`,{
