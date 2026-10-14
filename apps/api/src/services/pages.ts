@@ -21,6 +21,7 @@ import {
   requirementForAction,
 } from "./permission-rules.ts";
 
+import { memoFollowerSql } from "./memo-followers.ts";
 export async function directoryEntries(
   db: Database,
   user: User,
@@ -214,11 +215,16 @@ export async function resolvePage(
         memo.current_user_id === user.id &&
         (memo.current_employee_id === null ||
           memo.current_employee_id === context.employee?.id);
+      const follower = await db.query(
+        `SELECT 1 FROM memos m WHERE m.company_id=$1 AND m.id=$2 AND ${memoFollowerSql("m", "$3")}`,
+        [reference.companyId, reference.recordId, context.employee?.id ?? null],
+      );
       if (
         !context.general &&
         memo.sender_user_id !== user.id &&
         !currentAssignee &&
-        !participant.rowCount
+        !participant.rowCount &&
+        !follower.rowCount
       )
         missing();
     }

@@ -46,7 +46,9 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useEmployeeCashbox } from "../employee-cashbox";
+import { initialInvoiceAccount } from "../invoice-account-default";
 import { saleStockQuantity } from "../sale-stock-quantity";
+import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
   Button,
@@ -88,7 +90,7 @@ const invoicePath = (companyId: number, id: number | "new") =>
 const itemLabel = (item: { code: string; name: string }) =>
   `${item.code} — ${item.name}`;
 const amount = (value: string) => (
-  <bdi className="financial-number">{value}</bdi>
+  <bdi className="financial-number">{formatMoney(value)}</bdi>
 );
 const today = () =>
   new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
@@ -155,7 +157,7 @@ function InvoiceList({
     return () => window.clearTimeout(timer);
   }, [saved, navigation]);
   const filters = new URLSearchParams({ kind });
-  for (const key of ["dateFrom", "dateTo", "branchId", "locationId"])
+  for (const key of ["dateFrom", "dateTo", "branchId", "locationId", "supplierQ", "payerQ"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<Invoice>(
     `/companies/${companyId}/invoices?${filters}`,
@@ -189,13 +191,22 @@ function InvoiceList({
       },
       {
         accessorKey: "counterpartyAccountName",
-        header: kind === "sale" ? "العميل / الحساب" : "المورد / الحساب",
+        header: kind === "sale" ? "العميل / الحساب" : "حساب السداد / الذمة",
         size: 190,
         enableSorting: false,
         cell: ({ row }) => (
           <ValueCell>{row.original.counterpartyAccountName}</ValueCell>
         ),
       },
+      ...(kind === "purchase" ? [{
+        accessorKey: "supplierAccountName",
+        header: "المورد الفعلي",
+        size: 190,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>
+        ),
+      } satisfies ColumnDef<Invoice, unknown>] : []),
       {
         accessorKey: "locationName",
         header: "الموقع",
@@ -267,6 +278,24 @@ function InvoiceList({
             onChange={(event) => list.setQuery(event.target.value)}
             placeholder="الرقم أو البيان"
           />
+          {kind === "purchase" && (
+            <>
+              <Field
+                label="بحث المورد الفعلي"
+                type="search"
+                value={params.get("supplierQ") ?? ""}
+                onChange={(event) => filter(setParams, "supplierQ", event.target.value)}
+                placeholder="اسم المورد أو رمزه"
+              />
+              <Field
+                label="بحث حساب السداد / الذمة"
+                type="search"
+                value={params.get("payerQ") ?? ""}
+                onChange={(event) => filter(setParams, "payerQ", event.target.value)}
+                placeholder="اسم الصندوق أو رمز الحساب"
+              />
+            </>
+          )}
           <Field
             label="من تاريخ"
             type="date"
@@ -719,7 +748,7 @@ function OriginalInvoicePicker({
         <option value="">اختر فاتورة</option>
         {options.map((invoice) => (
           <option key={invoice.id} value={invoice.id}>
-            {invoice.number} — {invoice.documentDate} — {invoice.total}{" "}
+            {invoice.number} — {invoice.documentDate} — {formatMoney(invoice.total)}{" "}
             {invoice.currencyCode}
           </option>
         ))}
@@ -857,6 +886,10 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const [supplier, setSupplier] = useState<Account | null>(null);
+  const creditPurchase = kind === "purchase" && account?.category === "liability" &&
+    !account.cashOrBank;
+  const selectedSupplier = creditPurchase ? account : supplier;
   const defaultCashbox = useEmployeeCashbox(context);
   const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
@@ -908,13 +941,15 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
+  // Sales start from the employee's cashbox. Purchases intentionally require
+  // choosing the settlement/liability account on every new invoice.
   useEffect(() => {
     if (
-      !defaultCashbox || accountManuallyChosen.current ||
+      kind !== "sale" || !defaultCashbox || accountManuallyChosen.current ||
       account || original || hasLinkedLines
     ) return;
     setAccount(defaultCashbox);
-  }, [defaultCashbox, account, original, hasLinkedLines]);
+  }, [kind, defaultCashbox, account, original, hasLinkedLines]);
   const hasPositiveLines = selectedLines.some(
     (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
   );
@@ -965,6 +1000,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
+    (kind === "purchase" && !!supplier) ||
     accountManuallyChosen.current ||
     (!!account && account.id !== defaultCashbox?.id) ||
     (!!branch &&
@@ -1354,7 +1390,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     const first = emptyLine();
     pending.current = null;
     setLines([first]);
-    setAccount(defaultCashbox);
+    setAccount(initialInvoiceAccount(kind, defaultCashbox));
+    setSupplier(null);
     accountManuallyChosen.current = false;
     setOriginal(null);
     setShowOriginalPicker(false);
@@ -1398,6 +1435,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         branchId: branch?.id,
         locationId: location?.id,
         counterpartyAccountId: account?.id,
+        supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
         description,
         discount: hasPositiveLines ? discount : "0",
         lines: selectedLines.map((line) => ({
@@ -1432,7 +1470,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       const next = emptyLine();
       pending.current = null;
       setLines([next]);
-      setAccount(defaultCashbox);
+      setAccount(initialInvoiceAccount(kind, defaultCashbox));
+      setSupplier(null);
       accountManuallyChosen.current = false;
       setOriginal(null);
       setShowOriginalPicker(false);
@@ -1496,17 +1535,31 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                   label={
                     kind === "sale"
                       ? "حساب العميل / النقد"
-                      : "حساب المورد / النقد"
+                      : "حساب السداد / الذمة"
                   }
                   value={account}
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
+                    if (kind === "purchase" && value?.category === "liability" && !value.cashOrBank)
+                      setSupplier(value);
                   }}
                   display={itemLabel}
                   disabled={locked || hasLinkedLines}
                   required
                 />
+                {kind === "purchase" && (
+                  <ServerLookup<Account>
+                    companyId={companyId}
+                    resource={`/companies/${companyId}/commerce-options?type=accounts`}
+                    label="المورد الفعلي"
+                    value={selectedSupplier}
+                    onChange={setSupplier}
+                    display={itemLabel}
+                    accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
+                    disabled={locked || hasLinkedLines || creditPurchase}
+                  />
+                )}
                 <Link
                   className="button button-secondary commerce-list-link"
                   to={listPath(companyId, kind)}
@@ -1633,6 +1686,29 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                         createdAt: "",
                       });
                       accountManuallyChosen.current = true;
+                      setSupplier(
+                        kind === "purchase" && value.supplierAccountId !== null
+                          ? {
+                              id: value.supplierAccountId,
+                              companyId,
+                              code: value.supplierAccountCode ?? "",
+                              name: value.supplierAccountName ?? "",
+                              parentId: null,
+                              parentCode: null,
+                              parentName: null,
+                              kind: "posting",
+                              category: "liability",
+                              accountChoice: null,
+                              normalSide: "credit",
+                              active: true,
+                              cashOrBank: false,
+                              rangeStart: null,
+                              rangeEnd: null,
+                              createdBy: 0,
+                              createdAt: "",
+                            }
+                          : null,
+                      );
                       setAccount({
                         id: value.counterpartyAccountId,
                         companyId,
@@ -1960,6 +2036,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                                 : "سعر الوحدة"
                             }
                             inputMode="decimal"
+                            money
                             readOnly={kind === "sale" || !!line.originalLineId}
                             disabled={!line.itemId}
                             value={line.unitPrice}
@@ -2144,6 +2221,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
             <Field
               id="invoice-discount"
               label="الخصم"
+              money
               value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
               disabled={locked || !hasPositiveLines}
@@ -2325,9 +2403,20 @@ function InvoiceViewer({
           <span>الفرع: {invoice.branchName}</span>
           <span>الموقع: {invoice.locationName}</span>
           <span>
-            الحساب: <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
+            {invoice.kind === "purchase" ? "حساب السداد / الذمة" : "الحساب"}:{" "}
+            <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
             {invoice.counterpartyAccountName}
           </span>
+          {invoice.kind === "purchase" && (
+            <span>
+              المورد:{" "}
+              {invoice.supplierAccountId !== null ? (
+                <>
+                  <bdi>{invoice.supplierAccountCode}</bdi> — {invoice.supplierAccountName}
+                </>
+              ) : "غير محدد"}
+            </span>
+          )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
           </span>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CompanyContext,
@@ -7,6 +7,7 @@ import type {
 } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
 import { Button, Field, Notice, Select } from "./ui";
+import { lookupOptionLabel } from "./lookup-option-label";
 
 /** Pick active Yemeni rial for new documents without altering saved records.
  * Fetch through the same finance/commerce permissions as each document editor. */
@@ -89,6 +90,14 @@ export function ServerLookup<T extends { id: number }>({
   const { user } = useSession();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1024 : window.innerWidth,
+  );
+  useEffect(() => {
+    const resize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const result = useQuery({
     queryKey: ["master", user?.id, companyId, "lookup", resource, query, page],
     queryFn: ({ signal }) => {
@@ -126,6 +135,7 @@ export function ServerLookup<T extends { id: number }>({
         label={label}
         value={value?.id ?? ""}
         required={required}
+        title={value ? display(value) : label}
         disabled={disabled || result.isFetching}
         onChange={(event) =>
           onChange(
@@ -136,8 +146,8 @@ export function ServerLookup<T extends { id: number }>({
       >
         <option value="">{emptyLabel}</option>
         {options.map((item) => (
-          <option key={item.id} value={item.id}>
-            {display(item)}
+          <option key={item.id} value={item.id} title={display(item)}>
+            {lookupOptionLabel(display(item), viewportWidth)}
           </option>
         ))}
       </Select>

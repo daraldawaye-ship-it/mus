@@ -9,12 +9,14 @@ import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { FileText, RefreshCw } from "lucide-react";
 import {
   memoActionSchema,
+  memoFollowerCommentSchema,
   memoCreateSchema,
   memoTypeLabels,
   type CompanyContext,
   type MemoActionInput,
   type MemoCreateInput,
   type MemoDetail,
+  type MemoFollowerInput,
   type MemoList,
   type MemoRecipient,
   type MemoSummary,
@@ -23,6 +25,7 @@ import {
 import { ApiFailure, api, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
+import { MemoFollowersEditor } from "../MemoFollowersEditor";
 import {
   Button,
   Card,
@@ -57,6 +60,7 @@ const memoEventLabels = {
   completion_requested: "طلب اعتماد الإنجاز",
   completed: "اعتماد الإنجاز",
   reopened: "إعادة للاستكمال",
+  follower_comment: "تعليق متابع",
 };
 const memoStatusLabels = {
   pending: "معلقة",
@@ -129,6 +133,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
       ? "sent"
       : params.get("box") === "following"
         ? "following"
+        : params.get("box") === "watching"
+          ? "watching"
         : params.get("box") === "approval"
           ? "approval"
           : params.get("box") === "completed"
@@ -179,6 +185,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
   const [recipient, setRecipient] = useState<MemoRecipient | null>(
     restored?.recipient ?? null,
   );
+  const [followers, setFollowers] = useState<MemoFollowerInput[]>(restored?.payload.followers ?? []);
   const [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [created, setCreated] = useState<MemoDetail | null>(null);
@@ -214,6 +221,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
         body,
         type,
         recipientEmployeeId: recipient!.id,
+        followers,
         idempotencyKey: crypto.randomUUID(),
       },
     );
@@ -331,6 +339,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     { value: "approval", label: "بانتظار اعتمادي" },
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
+    { value: "watching", label: "أتابعها" },
     { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
@@ -513,6 +522,12 @@ function MemosContent({ context }: { context: CompanyContext }) {
               emptyLabel="اختر موظفًا فعالًا"
             />
           )}
+          <fieldset className="form-stack" disabled={locked || !canCreate}>
+            <legend>المتابعون وصلاحياتهم</legend>
+            <MemoFollowersEditor companyId={companyId}
+              value={submitted?.payload.followers ?? followers}
+              onChange={setFollowers} disabled={locked || !canCreate} />
+          </fieldset>
           <div className="field">
             <label htmlFor={bodyId}>شرح المذكرة</label>
             <textarea
@@ -578,6 +593,16 @@ function MemoDetailContent({
     enabled: !!user && canView && Number.isSafeInteger(memoId) && memoId > 0,
   });
   const memo = detail.data?.memo;
+  const [followersDraft, setFollowersDraft] = useState<MemoFollowerInput[] | null>(null);
+  const [followersSaving, setFollowersSaving] = useState(false);
+  const [followersMessage, setFollowersMessage] = useState("");
+  const [followersError, setFollowersError] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [commentPending, setCommentPending] = useState<{body:string;idempotencyKey:string}|null>(null);
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [commentMessage, setCommentMessage] = useState("");
+  const [commentError, setCommentError] = useState("");
+  const commentLock = useRef(false);
   const readAttempted = useRef<string | null>(null),
     readPending = useRef(false);
   const [readError, setReadError] = useState(""),
@@ -637,6 +662,68 @@ function MemoDetailContent({
         ? previous
         : result,
     );
+  }
+  async function postFollowerComment(event: FormEvent) {
+    event.preventDefault();
+    if(!memo || !memo.canComment || commentLock.current) return;
+    const frozen=commentPending ?? {
+      body:commentBody,idempotencyKey:crypto.randomUUID(),
+    };
+    const parsed=memoFollowerCommentSchema.safeParse(frozen);
+    if(!parsed.success) {
+      setCommentError("أدخل تعليقًا صالحًا.");
+      return;
+    }
+    commentLock.current=true;
+    setCommentPending(frozen);
+    setCommentSaving(true);
+    setCommentError("");
+    setCommentMessage("");
+    const retry=!!commentPending;
+    try {
+      const result=await api<{memo:MemoDetail}>(`${base}/memos/${memoId}/comments`,{
+        method:"POST",body:frozen,signal:guard.signal,
+      });
+      if(!guard.isCurrent()) return;
+      applyDetail(result);
+      setCommentPending(null);
+      setCommentBody("");
+      setCommentMessage("تم إضافة التعليق دون نقل مسؤولية المذكرة.");
+      void refreshMemos(client,user?.id,companyId);
+    } catch(cause) {
+      if(!guard.isCurrent()) return;
+      setCommentError(errorMessage(cause));
+      if(!retry && cause instanceof ApiFailure && cause.status >=400 && cause.status<500)
+        setCommentPending(null);
+    } finally {
+      commentLock.current=false;
+      if(guard.isCurrent()) setCommentSaving(false);
+    }
+  }
+  async function saveFollowers() {
+    if (!memo || followersDraft === null || followersSaving || !memo.canManageFollowers) return;
+    setFollowersSaving(true);
+    setFollowersError("");
+    setFollowersMessage("");
+    try {
+      const result = await api<{ memo: MemoDetail }>(
+        `${base}/memos/${memoId}/followers`,
+        { method: "PUT",
+          body: { revision: memo.followerRevision, followers: followersDraft },
+          signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      applyDetail(result);
+      setFollowersDraft(null);
+      setFollowersMessage("تم تحديث المتابعين والصلاحيات.");
+      void refreshMemos(client, user?.id, companyId);
+    } catch(cause) {
+      if (!guard.isCurrent()) return;
+      setFollowersError(errorMessage(cause));
+      if (cause instanceof ApiFailure && cause.status === 409) void detail.refetch();
+    } finally {
+      if (guard.isCurrent()) setFollowersSaving(false);
+    }
   }
   async function recordRead() {
     if (!memo || !canView || readPending.current) return;
@@ -846,6 +933,56 @@ function MemoDetailContent({
               <dd>{memo.readAt ? time(memo.readAt) : "جارٍ تسجيل الاطلاع…"}</dd>
             </dl>
           </Card>
+          <Card title="المتابعون وصلاحياتهم">
+            <p className="muted">لا تنقل هذه المتابعة التكليف، ولا تمنح سلطة التحويل أو اعتماد الإنجاز.</p>
+            {followersMessage && <Notice tone="success">{followersMessage}</Notice>}
+            {followersError && <Notice tone="error">{followersError}</Notice>}
+            {followersDraft === null ? (
+              <>
+                {memo.followers.length ? (
+                  <div className="form-stack">
+                    {memo.followers.map((f) => <p key={f.id}>
+                      {f.kind === "role" ? "الدور" : "الموظف"}: {f.name} — {f.accessLevel === "comment" ? "اطلاع وتعليق" : "اطلاع"}
+                      <span className="muted"> · أُضيف {time(f.addedAt)}</span>
+                    </p>)}
+                  </div>
+                ) : <p className="muted">لا يوجد متابعون إضافيون.</p>}
+                {memo.canManageFollowers && <Button variant="secondary"
+                  onClick={() => {
+                    setFollowersError("");setFollowersMessage("");
+                    setFollowersDraft(memo.followers.map((f) => f.kind === "employee"
+                      ? {kind:"employee",employeeId:f.employeeId!,accessLevel:f.accessLevel}
+                      : {kind:"role",roleId:f.roleId!,accessLevel:f.accessLevel}));
+                  }}>تعديل المتابعين</Button>}
+              </>
+            ) : (
+              <div className="form-stack">
+                <MemoFollowersEditor companyId={companyId} value={followersDraft}
+                  onChange={setFollowersDraft} known={memo.followers}
+                  disabled={followersSaving} />
+                <div className="memo-action-buttons">
+                  <Button disabled={followersSaving} onClick={() => void saveFollowers()}>
+                    {followersSaving ? "جارٍ الحفظ…" : "حفظ المتابعين"}
+                  </Button>
+                  <Button variant="secondary" disabled={followersSaving}
+                    onClick={() => {setFollowersDraft(null);setFollowersError("");}}>إلغاء</Button>
+                </div>
+              </div>
+            )}
+            {memo.followerChanges.length > 0 && (
+              <div className="form-stack">
+                <h3>سجل تغييرات المتابعة</h3>
+                {memo.followerChanges.map(change => (
+                  <p key={change.id} className="muted">
+                    {change.actorName} · {time(change.createdAt)} · الإصدار {change.revision}
+                    {" · "}المتابعون قبل: {change.beforeFollowers.length}
+                    {"، بعد: "}{change.afterFollowers.length}
+                    {change.beforeFollowers.length === change.afterFollowers.length && " (قد تتضمن تعديلاً لمستوى الوصول)"}
+                  </p>
+                ))}
+              </div>
+            )}
+          </Card>
           <Card title="شرح المذكرة">
             <p className="memo-body">{memo.body}</p>
           </Card>
@@ -992,6 +1129,29 @@ function MemoDetailContent({
                     </div>
                   </>
                 )}
+              </form>
+            </Card>
+          )}
+          {memo.canComment && (
+            <Card title="تعليق متابعة">
+              <form className="form-stack" onSubmit={(event) => void postFollowerComment(event)}>
+                <p className="muted">تعليق المتابع يضاف إلى السجل ولا يغير المسؤول الحالي أو الاعتماد.</p>
+                {commentMessage && <Notice tone="success">{commentMessage}</Notice>}
+                {commentError && <Notice tone="error">{commentError}</Notice>}
+                {commentPending && !commentSaving && <Notice tone="warning">
+                  لم يتأكد إرسال التعليق؛ إعادة المحاولة تستخدم نفس الطلب لمنع التكرار.
+                </Notice>}
+                <div className="field">
+                  <label htmlFor="memo-follower-comment">نص التعليق</label>
+                  <textarea id="memo-follower-comment" className="memo-textarea"
+                    value={commentPending?.body ?? commentBody}
+                    onChange={(event) => setCommentBody(event.target.value)}
+                    disabled={commentSaving || !!commentPending}
+                    maxLength={20000} rows={3} required />
+                </div>
+                <div><Button type="submit" disabled={commentSaving}>
+                  {commentSaving ? "جارٍ الإرسال…" : commentPending ? "إعادة محاولة التعليق" : "إضافة تعليق"}
+                </Button></div>
               </form>
             </Card>
           )}

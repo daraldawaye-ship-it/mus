@@ -2770,3 +2770,109 @@ test("media images upload thumbnails, protect tenants, and persist profile URLs"
   const stored=await f.pool.query("SELECT count(*)::int AS count FROM media_assets WHERE uploaded_by=$1",[user.id]);
   assert.equal(stored.rows[0].count,2);
 });
+
+
+test("memo followers isolate companies, respect roles and explicit denies, and comment without transferring responsibility", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const companyA = await company(platform.client, "Memo follow A");
+  const companyB = await company(platform.client, "Memo follow B");
+  const sender = await register(f, "memo-follow-sender@example.test");
+  const receiver = await register(f, "memo-follow-recipient@example.test");
+  const watcher = await register(f, "memo-follow-watcher@example.test");
+  const roleWatcher = await register(f, "memo-follow-role@example.test");
+  const stranger = await register(f, "memo-follow-stranger@example.test");
+  await employee(platform.client, companyA.id, sender.user.id);
+  const recipientEmployee = await employee(platform.client, companyA.id, receiver.user.id);
+  const watcherEmployee = await employee(platform.client, companyA.id, watcher.user.id);
+  const roleEmployee = await employee(platform.client, companyA.id, roleWatcher.user.id);
+  await employee(platform.client, companyB.id, stranger.user.id);
+  const base = `/companies/${companyA.id}/memos`;
+  const roles = (await platform.client.ok<{roles:{id:number;name:string}[]}>(
+    "GET", `${base}/roles`,
+  )).roles;
+  const accountantRole = roles.find(r => r.name === "محاسب");
+  assert.ok(accountantRole);
+  const key = randomUUID();
+  const created = await sender.client.ok<{memo: import("../packages/contracts/src/index.ts").MemoDetail}>(
+    "POST",base,{
+      title:"Follow audit", body:"Check invoices", type:"task",
+      recipientEmployeeId:recipientEmployee.id,
+      followers:[{kind:"employee",employeeId:watcherEmployee.id,accessLevel:"view"},
+        {kind:"role",roleId:accountantRole.id,accessLevel:"comment"}],
+      idempotencyKey:key,
+    },201,
+  );
+  const memoId = created.memo.id;
+  assert.equal(created.memo.currentUserId, receiver.user.id);
+  assert.equal(created.memo.followerRevision, 1);
+  assert.equal((await sender.client.ok<{memo:{id:number}}>("POST",base,{
+    title:"Follow audit", body:"Check invoices", type:"task",
+    recipientEmployeeId:recipientEmployee.id,
+    followers:[{kind:"employee",employeeId:watcherEmployee.id,accessLevel:"view"},
+      {kind:"role",roleId:accountantRole.id,accessLevel:"comment"}],
+    idempotencyKey:key,
+  })).memo.id,memoId);
+  assert.equal((await watcher.client.ok<{memo:{canComment:boolean;canTransfer:boolean}}>(
+    "GET",`${base}/${memoId}`
+  )).memo.canComment,false);
+  assert.equal((await watcher.client.ok<{items:{id:number}[]}>(
+    "GET",`${base}?box=watching`
+  )).items[0]?.id,memoId);
+  assert.equal((await watcher.client.request("POST",`${base}/${memoId}/comments`,{
+    body:"Not authorized",idempotencyKey:randomUUID(),
+  })).status,403);
+  assert.equal((await watcher.client.request("POST",`${base}/${memoId}/actions`,{
+    action:"approve-completion",body:"Override",revision:1,idempotencyKey:randomUUID(),
+  })).status,403);
+  assert.equal((await roleWatcher.client.request("GET",`${base}/${memoId}`)).status,404);
+  assert.equal((await stranger.client.request("GET",`${base}/${memoId}`)).status,403);
+  await platform.client.ok("PUT",`/companies/${companyA.id}/configuration/assignments`,{
+    employeeId:roleEmployee.id,roleId:accountantRole.id,active:true,revision:null,
+  });
+  const allowed=(await roleWatcher.client.ok<{memo:{canComment:boolean;canTransfer:boolean;currentUserId:number}}>(
+    "GET",`${base}/${memoId}`
+  )).memo;
+  assert.equal(allowed.canComment,true);
+  assert.equal(allowed.canTransfer,false);
+  const commentKey=randomUUID();
+  const payload={body:"Reviewed the invoice",idempotencyKey:commentKey};
+  const commented=(await roleWatcher.client.ok<{memo:{events:{kind:string}[];currentUserId:number;revision:number}}>(
+    "POST",`${base}/${memoId}/comments`,payload,201
+  )).memo;
+  assert.equal(commented.events.filter(e=>e.kind==="follower_comment").length,1);
+  assert.equal(commented.currentUserId,receiver.user.id);
+  assert.equal(commented.revision,created.memo.revision);
+  await roleWatcher.client.ok("POST",`${base}/${memoId}/comments`,payload,201);
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::integer AS count FROM memo_follow_comments WHERE company_id=$1 AND memo_id=$2",
+    [companyA.id,memoId],
+  )).rows[0].count,1);
+  const revised=(await sender.client.ok<{memo:{followerRevision:number;followers:{id:number}[]}}>(
+    "PUT",`${base}/${memoId}/followers`,{
+      revision:1,followers:[{kind:"employee",employeeId:watcherEmployee.id,accessLevel:"comment"}],
+    },
+  )).memo;
+  assert.equal(revised.followerRevision,2);
+  assert.equal(revised.followers.length,1);
+  assert.equal((await sender.client.request("PUT",`${base}/${memoId}/followers`,{
+    revision:1,followers:[],
+  })).status,409);
+  assert.equal((await roleWatcher.client.request("GET",`${base}/${memoId}`)).status,404);
+  assert.equal((await watcher.client.ok<{memo:{canComment:boolean}}>(
+    "GET",`${base}/${memoId}`
+  )).memo.canComment,true);
+  await platform.client.ok("PUT",`/companies/${companyA.id}/configuration/employee-rules`,{
+    employeeId:watcherEmployee.id,permissionKey:"company.memos:view",effect:"deny",revision:null,
+  });
+  assert.equal((await watcher.client.request("GET",`${base}/${memoId}`)).status,403);
+  assert.equal((await watcher.client.request("GET",`${base}?box=watching`)).status,403);
+  assert.equal((await watcher.client.request("POST",`${base}/${memoId}/comments`,{
+    body:"Cannot bypass deny",idempotencyKey:randomUUID(),
+  })).status,403);
+  const changes=(await f.pool.query(
+    "SELECT revision FROM memo_follow_changes WHERE company_id=$1 AND memo_id=$2 ORDER BY revision",
+    [companyA.id,memoId],
+  )).rows.map(row=>row.revision);
+  assert.deepEqual(changes,[1,2]);
+});

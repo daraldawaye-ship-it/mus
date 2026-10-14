@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
+import { formatMoney } from "../format-money";
 import {
   Button,
   Card,
@@ -253,7 +254,7 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
       size: 135,
       cell: ({ row }) => (
         <bdi>
-          {row.original.amount} {row.original.currencyCode}
+          {formatMoney(row.original.amount)} {row.original.currencyCode}
         </bdi>
       ),
     },
@@ -423,7 +424,7 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
               />
               <Field
                 label="المبلغ"
-                value={`${selected.amount} ${selected.currencyCode}`}
+                value={`${formatMoney(selected.amount)} ${selected.currencyCode}`}
                 readOnly
               />
               <Field

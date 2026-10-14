@@ -134,6 +134,9 @@ export async function invoiceDTOs(
     counterpartyAccountId: row.counterparty_account_id,
     counterpartyAccountCode: row.counterparty_account_code,
     counterpartyAccountName: row.counterparty_account_name,
+    supplierAccountId: row.supplier_account_id ?? null,
+    supplierAccountCode: row.supplier_account_code ?? null,
+    supplierAccountName: row.supplier_account_name ?? null,
     description: row.description,
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
@@ -184,7 +187,7 @@ export async function createInvoice(
   input: InvoiceFields,
 ): Promise<Invoice> {
   const replay = await client.query(
-    "SELECT id,creation_payload=$3::jsonb AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    "SELECT id,(creation_payload=$3::jsonb OR (NOT (creation_payload ? 'supplierAccountId') AND creation_payload=($3::jsonb - 'supplierAccountId') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
     [companyId, input.idempotencyKey, JSON.stringify(input)],
   );
   if (replay.rows[0]) {
@@ -201,7 +204,7 @@ export async function createInvoice(
   if (location.branchId !== input.branchId)
     conflict("الموقع لا يتبع فرع الفاتورة");
   const refs = await client.query(
-    "SELECT c.*,b.name AS branch_name,l.name AS location_name,l.kind AS location_kind,a.code AS account_code,a.name AS account_name,a.category AS account_category FROM company_currencies c JOIN branches b ON b.company_id=c.company_id AND b.id=$3 JOIN locations l ON l.company_id=c.company_id AND l.id=$4 JOIN accounts a ON a.company_id=c.company_id AND a.id=$5 WHERE c.company_id=$1 AND c.id=$2 AND c.active AND a.active AND a.kind='posting' FOR SHARE OF c,b,l,a",
+    "SELECT c.*,b.name AS branch_name,l.name AS location_name,l.kind AS location_kind,a.code AS account_code,a.name AS account_name,a.category AS account_category,a.cash_or_bank AS account_cash_or_bank FROM company_currencies c JOIN branches b ON b.company_id=c.company_id AND b.id=$3 JOIN locations l ON l.company_id=c.company_id AND l.id=$4 JOIN accounts a ON a.company_id=c.company_id AND a.id=$5 WHERE c.company_id=$1 AND c.id=$2 AND c.active AND a.active AND a.kind='posting' FOR SHARE OF c,b,l,a",
     [
       companyId,
       input.currencyId,
@@ -227,6 +230,28 @@ export async function createInvoice(
     ].includes(input.counterpartyAccountId)
   )
     conflict("حساب الطرف لا يساوي حسابًا تشغيليًا للمخزون");
+
+  // A liability counterparty is the creditor on a purchase invoice.
+  // Cash or bank counterparties do not imply a supplier relationship.
+  const creditPurchase = input.kind === "purchase" &&
+    currency.account_category === "liability" &&
+    !currency.account_cash_or_bank;
+  if (creditPurchase && input.supplierAccountId !== null &&
+      input.supplierAccountId !== input.counterpartyAccountId)
+    conflict("في الشراء الآجل يجب أن يطابق المورد حساب المديونية");
+  const supplierId = input.kind !== "purchase"
+    ? null
+    : creditPurchase ? input.counterpartyAccountId : input.supplierAccountId;
+  let supplier: { id: number; code: string; name: string } | null = null;
+  if (supplierId !== null) {
+    const selected = await client.query(
+      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank FOR SHARE",
+      [companyId, supplierId],
+    );
+    if (!selected.rows[0])
+      conflict("اختر موردًا حركيًا فعالًا من حسابات الشركة، وليس صندوقًا أو بنكًا");
+    supplier = selected.rows[0];
+  }
   const base = await client.query(
     "SELECT * FROM company_currencies WHERE company_id=$1 AND id=$2 AND active FOR SHARE",
     [companyId, settings.baseCurrencyId],
@@ -547,7 +572,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING id",
     [
       companyId,
       number,
@@ -577,6 +602,9 @@ export async function createInvoice(
       input.idempotencyKey,
       JSON.stringify(input),
       returning,
+      supplier?.id ?? null,
+      supplier?.code ?? null,
+      supplier?.name ?? null,
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
