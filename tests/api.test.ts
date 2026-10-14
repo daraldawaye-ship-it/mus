@@ -10,6 +10,7 @@ import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { createDatabase, migrate } from "../apps/api/src/db.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import {scanDueMemoSchedules} from "../apps/api/src/services/memo-reminders.ts";
 import { DEFAULT_APPEARANCE } from "../packages/contracts/src/index.ts";
 import type {
   AppearancePreference,
