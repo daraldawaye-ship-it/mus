@@ -812,7 +812,7 @@ export function memoRoutes(pool: Pool) {
         "SELECT to_char(default_time,'HH24:MI') AS \"defaultTime\",notify_sender AS \"notifySender\",revision FROM memo_reminder_settings WHERE company_id=$1",
         [current.companyId],
       )).rows[0];
-      return {settings,canManage:current.context.general};
+      return {settings:{...settings,allowRepeat:(await effectiveTemplate(client,current.companyId,"MEMO_DUE"))?.allowRepeat??false},canManage:current.context.general};
     });
     res.json(result);
   }));
