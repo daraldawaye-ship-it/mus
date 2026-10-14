@@ -266,8 +266,8 @@ page(
   "المذكرات",
   "الشركة",
   "/companies/:companyId/memos",
-  { view: member, create: member, edit: member },
-  "المذكرات المرسلة إليك والصادرة منك؛ تعرض الإدارة جميع مذكرات الشركة.",
+  { view: member, create: member, edit: member, post: member },
+  "التكليفات والمراسلات وطلبات اعتماد الإنجاز؛ تعرض الإدارة جميع مذكرات الشركة، ويعتمد الإنجاز مرسل المذكرة.",
   { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
 );
 page(
@@ -276,7 +276,7 @@ page(
   "الشركة",
   "/companies/:companyId/memos/:recordId",
   { view: member },
-  "عرض المذكرة وردودها والمسؤول الحالي وسجل انتقالها؛ فتح المذكرة لا ينجزها.",
+  "عرض المذكرة وردودها والمسؤول الحالي وسجل انتقالها وطلب الإنجاز واعتماده؛ فتح المذكرة لا ينجزها.",
   { parentKey: "company.memos", record: "memo", navigation: false },
 );
 page(

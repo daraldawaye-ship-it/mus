@@ -6,6 +6,8 @@ import type {
 import { audit } from "./audit.ts";
 import { HttpError } from "../errors.ts";
 
+export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPROVAL", "MEMO_COMPLETED"];
+
 export const templateQuery = `SELECT t.*,s.id AS setting_id,s.revision,
  COALESCE(s.importance,t.default_importance) AS importance,COALESCE(s.enabled,t.implemented) AS enabled,
  COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
@@ -57,7 +59,7 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
  OR $3::integer=ANY(COALESCE(s.employee_ids,'{}'::integer[]))
  OR EXISTS(SELECT 1 FROM employee_role_assignments a JOIN company_roles r ON r.company_id=a.company_id AND r.id=a.role_id AND r.active
  WHERE a.company_id=n.company_id AND a.employee_id=$3 AND a.active AND a.role_id=ANY(COALESCE(s.role_ids,'{}'::integer[]))))
- AND (n.code NOT IN ('MEMO_RECEIVED','MEMO_REPLY') OR n.subject_employee_id=$3::integer OR $4::boolean)`;
+ AND (n.code NOT IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED') OR n.subject_employee_id=$3::integer OR $4::boolean)`;
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
@@ -79,7 +81,7 @@ export const notificationDTO = (
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
-  canAssign: !r.completed_at && general && r.company_id !== null && !["MEMO_RECEIVED", "MEMO_REPLY"].includes(r.code),
+  canAssign: !r.completed_at && general && r.company_id !== null && !memoNotificationCodes.includes(r.code),
   href: r.href ?? null,
 });
 export async function nextReminder(

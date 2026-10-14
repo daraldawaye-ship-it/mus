@@ -8,6 +8,7 @@ import {
   type MemoRecord,
   type MemoList,
   type MemoSummary,
+  type MemoEvent,
 } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
@@ -39,7 +40,7 @@ async function access(
   client: PoolClient,
   req: Request,
   current: Scope,
-  action: "view" | "create" | "edit",
+  action: "view" | "create" | "edit" | "post",
   detail = false,
   write = false,
 ) {
@@ -67,7 +68,7 @@ function summary(row: QueryResultRow): MemoSummary {
     companyId: row.company_id,
     title: row.title,
     type: row.type,
-    status: "pending",
+    status: row.status,
     revision: row.revision,
     senderUserId: row.sender_user_id,
     senderName: row.sender_name,
@@ -83,6 +84,13 @@ function summary(row: QueryResultRow): MemoSummary {
     currentAssignedAt: row.current_assigned_at.toISOString(),
     currentAssignmentRevision: row.current_assignment_revision,
     currentReadAt: time(row.current_read_at),
+    completionRequestedByUserId: row.completion_requested_by_user_id,
+    completionRequestedByEmployeeId: row.completion_requested_by_employee_id,
+    completionRequestedByName: row.completion_requested_by_name,
+    completionRequestedAt: time(row.completion_requested_at),
+    completedAt: time(row.completed_at),
+    completedByUserId: row.completed_by_user_id,
+    completedByName: row.completed_by_name,
   };
 }
 function record(row: QueryResultRow): MemoRecord {
@@ -137,7 +145,11 @@ async function detail(
     row.current_user_id === current.user.id &&
     (row.current_employee_id === null ||
       row.current_employee_id === current.ownId);
+  const senderAssignee =
+    row.sender_user_id === current.user.id &&
+    row.current_user_id === current.user.id;
   const canReply =
+    row.status !== "completed" &&
     (participant ||
       currentAssignee ||
       row.sender_user_id === current.user.id) &&
@@ -147,7 +159,28 @@ async function detail(
     ...record(row),
     events,
     canReply,
-    canTransfer: canReply && currentAssignee,
+    canTransfer: row.status === "pending" && canReply && currentAssignee,
+    canRequestCompletion:
+      row.status === "pending" &&
+      currentAssignee &&
+      row.sender_user_id !== current.user.id &&
+      entry.enabled &&
+      entry.actionAccess.post,
+    canApproveCompletion:
+      row.status === "awaiting_approval" &&
+      senderAssignee &&
+      entry.enabled &&
+      entry.actionAccess.post,
+    canReopenCompletion:
+      row.status === "awaiting_approval" &&
+      senderAssignee &&
+      entry.enabled &&
+      entry.actionAccess.post,
+    canComplete:
+      row.status === "pending" &&
+      senderAssignee &&
+      entry.enabled &&
+      entry.actionAccess.post,
   };
 }
 async function supersedeMemoAlerts(
@@ -182,6 +215,40 @@ async function supersedeMemoAlerts(
       current.companyId,
     );
 }
+interface MemoTarget {
+  userId: number;
+  employeeId: number | null;
+  name: string;
+}
+async function activeMemoTarget(
+  client: PoolClient,
+  companyId: number,
+  userId: number,
+  employeeId: number | null | undefined,
+  name: string,
+): Promise<MemoTarget> {
+  const row = (
+    await client.query(
+      employeeId === undefined
+        ? `SELECT u.id,e.id AS employee_id FROM users u LEFT JOIN employees e ON e.company_id=$1 AND e.user_id=u.id AND e.active
+         WHERE u.id=$2 AND NOT u.archived AND (u.owner OR e.id IS NOT NULL)`
+        : employeeId === null
+          ? "SELECT id,NULL::integer AS employee_id FROM users WHERE id=$2 AND NOT archived AND owner AND $1::integer IS NOT NULL"
+          : `SELECT u.id,e.id AS employee_id FROM users u JOIN employees e ON e.company_id=$1 AND e.id=$3 AND e.user_id=u.id AND e.active
+           WHERE u.id=$2 AND NOT u.archived FOR SHARE OF e`,
+      employeeId === undefined || employeeId === null
+        ? [companyId, userId]
+        : [companyId, userId, employeeId],
+    )
+  ).rows[0];
+  if (!row)
+    throw new HttpError(
+      400,
+      "invalid_employee",
+      "المستلم لم يعد فعالًا أو لم يعد مرتبطًا بالحساب نفسه في الشركة",
+    );
+  return { userId: row.id, employeeId: row.employee_id ?? null, name };
+}
 export function memoRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId/memos";
@@ -201,9 +268,23 @@ export function memoRoutes(pool: Pool) {
       const box = req.query.box ?? "required";
       if (
         typeof box !== "string" ||
-        !["required", "sent", "following", "all"].includes(box)
+        ![
+          "required",
+          "sent",
+          "following",
+          "approval",
+          "completed",
+          "all",
+        ].includes(box)
       )
         throw new HttpError(400, "invalid_query", "قائمة المذكرات غير صالحة");
+      const status = req.query.status;
+      if (
+        status !== undefined &&
+        (typeof status !== "string" ||
+          !["pending", "awaiting_approval", "completed"].includes(status))
+      )
+        throw new HttpError(400, "invalid_query", "حالة المذكرة غير صالحة");
       const result = await transaction(
         pool,
         async (client): Promise<MemoList> => {
@@ -218,12 +299,22 @@ export function memoRoutes(pool: Pool) {
           if (box === "required") {
             values.push(current.ownId);
             filter =
-              "m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)";
-          } else if (box === "sent") filter = "m.sender_user_id=$2";
-          else if (box === "following") {
+              "m.status='pending' AND m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)";
+          } else if (box === "approval")
+            filter = "m.status='awaiting_approval' AND m.sender_user_id=$2";
+          else if (box === "sent") filter = "m.sender_user_id=$2";
+          else if (box === "completed" && current.context.general)
+            filter = "m.status='completed'";
+          else if (box === "following" || box === "completed") {
             values.push(current.ownId);
             filter =
               "m.sender_user_id=$2 OR (m.current_user_id=$2 AND (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer)) OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))";
+          }
+          if (box === "completed")
+            filter = `m.status='completed' AND (${current.context.general ? "TRUE" : filter})`;
+          if (status !== undefined) {
+            values.push(status);
+            filter = `(${filter}) AND m.status=$${values.length}`;
           }
           values.push(searchPattern(query.q));
           const search = `$${values.length}`;
@@ -239,7 +330,7 @@ export function memoRoutes(pool: Pool) {
           );
           const rows = (
             await client.query(
-              `SELECT m.id,m.company_id,m.title,m.type,m.sender_user_id,m.sender_name,m.recipient_employee_id,m.recipient_user_id,m.recipient_name,m.created_at,m.revision,m.current_user_id,m.current_employee_id,m.current_name,m.current_assigned_at,m.current_assignment_revision,
+              `SELECT m.id,m.company_id,m.title,m.type,m.sender_user_id,m.sender_name,m.recipient_employee_id,m.recipient_user_id,m.recipient_name,m.created_at,m.revision,m.current_user_id,m.current_employee_id,m.current_name,m.current_assigned_at,m.current_assignment_revision,m.status,m.completion_requested_by_user_id,m.completion_requested_by_employee_id,m.completion_requested_by_name,m.completion_requested_at,m.completed_at,m.completed_by_user_id,m.completed_by_name,
          own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at FROM memos m ${readJoins} WHERE ${where}
          ORDER BY ${query.order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
               [...values, query.pageSize, query.offset],
@@ -391,6 +482,10 @@ export function memoRoutes(pool: Pool) {
           events: _events,
           canReply: _reply,
           canTransfer: _transfer,
+          canRequestCompletion: _request,
+          canApproveCompletion: _approve,
+          canReopenCompletion: _reopen,
+          canComplete: _complete,
           ...snapshot
         } = saved;
         await audit(
@@ -452,7 +547,8 @@ export function memoRoutes(pool: Pool) {
         ).rows[0];
         const isAssignee =
           before.currentUserId === current.user.id &&
-          (before.currentEmployeeId === null ||
+          (before.senderUserId === current.user.id ||
+            before.currentEmployeeId === null ||
             before.currentEmployeeId === current.ownId);
         const assignmentRead = isAssignee
           ? (
@@ -500,7 +596,7 @@ export function memoRoutes(pool: Pool) {
         const alerts = (
           await client.query(
             `UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()
-           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY') AND subject_key=$2 AND recipient_user_id=$3
+           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED') AND subject_key=$2 AND recipient_user_id=$3
            AND subject_employee_id IS NOT DISTINCT FROM $4::integer AND read_at IS NULL AND completed_at IS NULL RETURNING id,read_at,revision`,
             [
               current.companyId,
@@ -560,24 +656,49 @@ export function memoRoutes(pool: Pool) {
             created: false,
           };
         }
-        await access(client, req, current, "edit", true, true);
+        const completionAction = [
+          "request-completion",
+          "approve-completion",
+          "reopen-completion",
+          "complete",
+        ].includes(input.action);
+        await access(
+          client,
+          req,
+          current,
+          completionAction ? "post" : "edit",
+          true,
+          true,
+        );
         const before = await detail(client, current, memoId);
-        if (!before.canReply)
-          deny("المشاركة في هذه المذكرة للمشاركين فيها فقط");
+        if (before.status === "completed")
+          throw new HttpError(
+            409,
+            "invalid_state",
+            "المذكرة منجزة؛ سجلها متاح للاطلاع فقط",
+          );
         if (input.revision !== before.revision)
           throw new HttpError(
             409,
             "revision_conflict",
             "تغيرت المذكرة؛ حدثها قبل إرسال الإجراء",
           );
-        let target: {
-          userId: number;
-          employeeId: number | null;
-          name: string;
-        } | null = null;
-        if (input.action !== "reply") {
+        let target: MemoTarget | null = null;
+        const eventKind: MemoEvent["kind"] = {
+          reply: "reply",
+          return: "returned",
+          forward: "forwarded",
+          "request-completion": "completion_requested",
+          "approve-completion": "completed",
+          "reopen-completion": "reopened",
+          complete: "completed",
+        }[input.action] as MemoEvent["kind"];
+        if (input.action === "reply") {
+          if (!before.canReply)
+            deny("المشاركة في هذه المذكرة للمشاركين فيها فقط");
+        } else if (input.action === "return" || input.action === "forward") {
           if (!before.canTransfer)
-            deny("التحويل والإعادة للمسؤول الحالي عن المذكرة فقط");
+            deny("التحويل والإعادة للمسؤول الحالي عن المذكرة المعلقة فقط");
           if (input.action === "forward") {
             const employee = (
               await client.query(
@@ -597,36 +718,58 @@ export function memoRoutes(pool: Pool) {
               employeeId: employee.id,
               name: employee.name,
             };
-          } else {
-            const sender = (
-              await client.query(
-                `SELECT u.id,e.id AS employee_id FROM users u LEFT JOIN employees e ON e.company_id=$1 AND e.user_id=u.id AND e.active
-               WHERE u.id=$2 AND NOT u.archived AND (u.owner OR e.id IS NOT NULL)`,
-                [current.companyId, before.senderUserId],
-              )
-            ).rows[0];
-            if (!sender)
-              throw new HttpError(
-                400,
-                "invalid_employee",
-                "المرسل الأصلي لم يعد فعالًا في الشركة",
-              );
-            target = {
-              userId: sender.id,
-              employeeId: sender.employee_id ?? null,
-              name: before.senderName,
-            };
-          }
-          if (target.userId === current.user.id)
-            throw new HttpError(
-              400,
-              "invalid_recipient",
-              "المذكرة لديك بالفعل؛ اختر موظفًا آخر",
+          } else
+            target = await activeMemoTarget(
+              client,
+              current.companyId,
+              before.senderUserId,
+              undefined,
+              before.senderName,
             );
-        }
+        } else if (input.action === "request-completion") {
+          if (!before.canRequestCompletion)
+            deny(
+              "طلب اعتماد الإنجاز للمسؤول الحالي فقط؛ المرسل يعتمد مباشرة عندما تكون المذكرة لديه",
+            );
+          target = await activeMemoTarget(
+            client,
+            current.companyId,
+            before.senderUserId,
+            undefined,
+            before.senderName,
+          );
+        } else if (input.action === "reopen-completion") {
+          if (!before.canReopenCompletion)
+            deny("إعادة طلب الإنجاز للاستكمال للمرسل الأصلي فقط");
+          if (
+            before.completionRequestedByUserId === null ||
+            before.completionRequestedByName === null
+          )
+            throw new HttpError(
+              409,
+              "invalid_state",
+              "لا يوجد طلب إنجاز ينتظر الإعادة",
+            );
+          target = await activeMemoTarget(
+            client,
+            current.companyId,
+            before.completionRequestedByUserId,
+            before.completionRequestedByEmployeeId,
+            before.completionRequestedByName,
+          );
+        } else if (input.action === "approve-completion") {
+          if (!before.canApproveCompletion)
+            deny("اعتماد طلب الإنجاز للمرسل الأصلي فقط");
+        } else if (!before.canComplete)
+          deny("الإنجاز المباشر للمرسل الأصلي عندما تكون المذكرة لديه فقط");
+        if (target?.userId === current.user.id)
+          throw new HttpError(
+            400,
+            "invalid_recipient",
+            "المذكرة لديك بالفعل؛ اختر إجراءً مناسبًا",
+          );
         const now = (await client.query("SELECT clock_timestamp() AS now"))
           .rows[0].now as Date;
-        const nextRevision = before.revision + 1;
         const action = (
           await client.query(
             `INSERT INTO memo_actions(company_id,memo_id,actor_user_id,idempotency_key,request_payload,result_revision,created_at)
@@ -637,12 +780,12 @@ export function memoRoutes(pool: Pool) {
               current.user.id,
               idempotencyKey,
               JSON.stringify(payload),
-              nextRevision,
+              before.revision + 1,
               now,
             ],
           )
         ).rows[0];
-        if (target) {
+        if (target)
           await client.query(
             "INSERT INTO memo_participants(company_id,memo_id,user_id,employee_id,name,created_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
             [
@@ -654,33 +797,60 @@ export function memoRoutes(pool: Pool) {
               now,
             ],
           );
-          await client.query(
-            "UPDATE memos SET revision=revision+1,current_user_id=$3,current_employee_id=$4,current_name=$5,current_assigned_at=$6,current_assignment_revision=current_assignment_revision+1 WHERE company_id=$1 AND id=$2",
-            [
-              current.companyId,
-              memoId,
-              target.userId,
-              target.employeeId,
-              target.name,
-              now,
-            ],
-          );
-        } else
-          await client.query(
-            "UPDATE memos SET revision=revision+1 WHERE company_id=$1 AND id=$2",
-            [current.companyId, memoId],
-          );
+        const request = input.action === "request-completion",
+          reopen = input.action === "reopen-completion",
+          close =
+            input.action === "approve-completion" ||
+            input.action === "complete";
+        const nextStatus = request
+          ? "awaiting_approval"
+          : reopen
+            ? "pending"
+            : close
+              ? "completed"
+              : before.status;
+        await client.query(
+          `UPDATE memos SET revision=revision+1,status=$3,current_user_id=$4,current_employee_id=$5,current_name=$6,current_assigned_at=CASE WHEN $16::boolean THEN $7::timestamptz ELSE current_assigned_at END,current_assignment_revision=$8,
+           completion_requested_by_user_id=$9,completion_requested_by_employee_id=$10,completion_requested_by_name=$11,completion_requested_at=$12,
+           completed_at=$13,completed_by_user_id=$14,completed_by_name=$15 WHERE company_id=$1 AND id=$2`,
+          [
+            current.companyId,
+            memoId,
+            nextStatus,
+            target?.userId ?? before.currentUserId,
+            target ? target.employeeId : before.currentEmployeeId,
+            target?.name ?? before.currentName,
+            target ? now : before.currentAssignedAt,
+            before.currentAssignmentRevision + (target ? 1 : 0),
+            request
+              ? current.user.id
+              : reopen
+                ? null
+                : before.completionRequestedByUserId,
+            request
+              ? before.currentEmployeeId
+              : reopen
+                ? null
+                : before.completionRequestedByEmployeeId,
+            request
+              ? current.user.displayName
+              : reopen
+                ? null
+                : before.completionRequestedByName,
+            request ? now : reopen ? null : before.completionRequestedAt,
+            close ? now : null,
+            close ? current.user.id : null,
+            close ? current.user.displayName : null,
+            target !== null,
+          ],
+        );
         await client.query(
           `INSERT INTO memo_events(company_id,memo_id,kind,actor_user_id,actor_name,created_at,body,target_user_id,target_employee_id,target_name,assignment_revision,action_id)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
           [
             current.companyId,
             memoId,
-            input.action === "return"
-              ? "returned"
-              : input.action === "forward"
-                ? "forwarded"
-                : "reply",
+            eventKind,
             current.user.id,
             current.user.displayName,
             now,
@@ -701,41 +871,88 @@ export function memoRoutes(pool: Pool) {
           memoId,
           {
             revision: before.revision,
+            status: before.status,
             currentUserId: before.currentUserId,
             currentEmployeeId: before.currentEmployeeId,
             currentAssignmentRevision: before.currentAssignmentRevision,
           },
           {
             revision: saved.revision,
+            status: saved.status,
             currentUserId: saved.currentUserId,
             currentEmployeeId: saved.currentEmployeeId,
             currentName: saved.currentName,
             currentAssignmentRevision: saved.currentAssignmentRevision,
+            completionRequestedByUserId: saved.completionRequestedByUserId,
+            completionRequestedByEmployeeId:
+              saved.completionRequestedByEmployeeId,
+            completionRequestedByName: saved.completionRequestedByName,
+            completionRequestedAt: saved.completionRequestedAt,
+            completedAt: saved.completedAt,
+            completedByUserId: saved.completedByUserId,
+            completedByName: saved.completedByName,
             actionId: action.id,
             body: input.body,
           },
           current.companyId,
         );
-        const notifyTarget =
-          target ??
-          (current.user.id === before.senderUserId
-            ? {
-                userId: before.currentUserId,
-                employeeId: before.currentEmployeeId,
-                name: before.currentName,
-              }
-            : {
-                userId: before.senderUserId,
-                employeeId:
-                  (
-                    await client.query(
-                      "SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 AND active",
-                      [current.companyId, before.senderUserId],
-                    )
-                  ).rows[0]?.id ?? null,
-                name: before.senderName,
-              });
-        if (target)
+        let notifyTarget: MemoTarget | null = target;
+        let code = target
+          ? request
+            ? "MEMO_APPROVAL"
+            : "MEMO_RECEIVED"
+          : "MEMO_REPLY";
+        if (close) {
+          code = "MEMO_COMPLETED";
+          notifyTarget =
+            input.action === "approve-completion" &&
+            before.completionRequestedByUserId !== null
+              ? {
+                  userId: before.completionRequestedByUserId,
+                  employeeId: before.completionRequestedByEmployeeId,
+                  name: before.completionRequestedByName!,
+                }
+              : {
+                  userId: before.recipientUserId,
+                  employeeId: before.recipientEmployeeId,
+                  name: before.recipientName,
+                };
+        } else if (!target) {
+          notifyTarget =
+            current.user.id === before.senderUserId
+              ? {
+                  userId: before.currentUserId,
+                  employeeId: before.currentEmployeeId,
+                  name: before.currentName,
+                }
+              : {
+                  userId: before.senderUserId,
+                  employeeId:
+                    (
+                      await client.query(
+                        "SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 AND active",
+                        [current.companyId, before.senderUserId],
+                      )
+                    ).rows[0]?.id ?? null,
+                  name: before.senderName,
+                };
+        }
+        if (completionAction)
+          for (const memoCode of [
+            "MEMO_RECEIVED",
+            "MEMO_REPLY",
+            "MEMO_APPROVAL",
+            "MEMO_COMPLETED",
+          ])
+            await supersedeMemoAlerts(
+              client,
+              current,
+              memoId,
+              memoCode,
+              null,
+              "memo-workflow-transition",
+            );
+        else if (target)
           await supersedeMemoAlerts(
             client,
             current,
@@ -744,8 +961,8 @@ export function memoRoutes(pool: Pool) {
             null,
             "memo-transferred",
           );
-        if (notifyTarget.userId !== current.user.id) {
-          if (!target)
+        if (notifyTarget && notifyTarget.userId !== current.user.id) {
+          if (!target && !close)
             await supersedeMemoAlerts(
               client,
               current,
@@ -754,8 +971,17 @@ export function memoRoutes(pool: Pool) {
               notifyTarget.userId,
               "new-memo-reply",
             );
+          const descriptions = {
+            reply: "رد جديد على المذكرة",
+            return: "مذكرة أعيدت إليك",
+            forward: "مذكرة محولة إليك",
+            "request-completion": "طلب اعتماد إنجاز مذكرة",
+            "approve-completion": "اعتماد إنجاز المذكرة",
+            "reopen-completion": "مذكرة أعيدت إليك للاستكمال",
+            complete: "إنجاز المذكرة",
+          };
           await emitNotification(client, {
-            code: target ? "MEMO_RECEIVED" : "MEMO_REPLY",
+            code,
             companyId: current.companyId,
             recipientUserId: notifyTarget.userId,
             subjectEmployeeId: notifyTarget.employeeId,
@@ -763,7 +989,7 @@ export function memoRoutes(pool: Pool) {
             subjectKey: `memo:${memoId}`,
             eventKey: `memo:${memoId}:action:${idempotencyKey}`,
             title: `${current.user.displayName}: ${before.title}`,
-            message: `${target ? (input.action === "return" ? "مذكرة أعيدت إليك" : "مذكرة محولة إليك") : "رد جديد على المذكرة"} من ${current.user.displayName}: ${before.title}`,
+            message: `${descriptions[input.action]} من ${current.user.displayName}: ${before.title}`,
             href: `/companies/${current.companyId}/memos/${memoId}`,
           });
         }

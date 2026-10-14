@@ -25,6 +25,7 @@ import {
   inboxFilter,
   notificationDTO,
   nextReminder,
+  memoNotificationCodes,
 } from "./services/notifications.ts";
 
 async function scope(client: PoolClient, req: Request, write = false) {
@@ -355,7 +356,7 @@ export function notificationRoutes(pool: Pool) {
               [input.importance, row.id],
             );
           } else if (input.action === "assign") {
-            if (["MEMO_RECEIVED", "MEMO_REPLY"].includes(row.code))
+            if (memoNotificationCodes.includes(row.code))
               deny("لا يمكن إسناد تنبيه مذكرة إلى موظف آخر");
             if (!before.canAssign || !row.company_id || !context?.general)
               deny("إسناد المتابعة للمدير داخل الشركة");

@@ -19,14 +19,35 @@ export const memoCreateSchema = z
   })
   .strict();
 export type MemoCreateInput = z.input<typeof memoCreateSchema>;
+export const memoStatusSchema = z.enum([
+  "pending",
+  "awaiting_approval",
+  "completed",
+]);
+export type MemoStatus = z.infer<typeof memoStatusSchema>;
+export const memoStatusLabels: Record<MemoStatus, string> = {
+  pending: "معلقة",
+  awaiting_approval: "بانتظار اعتماد المرسل",
+  completed: "منجزة",
+};
 const memoActionFields = {
-  body: z.string().trim().min(1, "اكتب الرد أو سبب التحويل").max(20000),
+  body: z.string().trim().min(1, "اكتب الرد أو شرح الإجراء").max(20000),
   revision: z.number().int().positive().max(2147483647),
   idempotencyKey: z.uuid().transform((value) => value.toLowerCase()),
 };
 export const memoActionSchema = z.discriminatedUnion("action", [
   z.object({ ...memoActionFields, action: z.literal("reply") }).strict(),
   z.object({ ...memoActionFields, action: z.literal("return") }).strict(),
+  z
+    .object({ ...memoActionFields, action: z.literal("request-completion") })
+    .strict(),
+  z
+    .object({ ...memoActionFields, action: z.literal("approve-completion") })
+    .strict(),
+  z
+    .object({ ...memoActionFields, action: z.literal("reopen-completion") })
+    .strict(),
+  z.object({ ...memoActionFields, action: z.literal("complete") }).strict(),
   z
     .object({
       ...memoActionFields,
@@ -47,7 +68,7 @@ export interface MemoRecord {
   title: string;
   body: string;
   type: MemoType;
-  status: "pending";
+  status: MemoStatus;
   revision: number;
   senderUserId: number;
   senderName: string;
@@ -63,10 +84,25 @@ export interface MemoRecord {
   currentAssignedAt: string;
   currentAssignmentRevision: number;
   currentReadAt: string | null;
+  completionRequestedByUserId: number | null;
+  completionRequestedByEmployeeId: number | null;
+  completionRequestedByName: string | null;
+  completionRequestedAt: string | null;
+  completedAt: string | null;
+  completedByUserId: number | null;
+  completedByName: string | null;
 }
 export interface MemoEvent {
   id: number;
-  kind: "created" | "read" | "reply" | "returned" | "forwarded";
+  kind:
+    | "created"
+    | "read"
+    | "reply"
+    | "returned"
+    | "forwarded"
+    | "completion_requested"
+    | "completed"
+    | "reopened";
   actorUserId: number;
   actorName: string;
   createdAt: string;
@@ -80,6 +116,10 @@ export interface MemoDetail extends MemoRecord {
   events: MemoEvent[];
   canReply: boolean;
   canTransfer: boolean;
+  canRequestCompletion: boolean;
+  canApproveCompletion: boolean;
+  canReopenCompletion: boolean;
+  canComplete: boolean;
 }
 export type MemoSummary = Omit<MemoRecord, "body">;
 export interface MemoList extends Page<MemoSummary> {
