@@ -607,6 +607,17 @@ export function memoRoutes(pool: Pool) {
       await access(client,req,current,"view",true);
       const entries=await directoryEntries(client,current.user,current.companyId);
       assertDirectoryAccess(entries.find(entry=>entry.key==="company.memo-report")!);
+      if(filters.pageKey && !entries.some(entry=>entry.key===filters.pageKey && entry.actionAccess.view))
+        deny("لا تملك صلاحية صفحة المتابعة");
+      if(filters.itemId && !entries.some(entry=>entry.key==="company.items" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الأصناف");
+      if(filters.accountId && !entries.some(entry=>entry.key==="company.accounts" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الحسابات");
+      if(filters.employeeId && !(await client.query(
+        "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+        [current.companyId,filters.employeeId],
+      )).rowCount) throw new HttpError(404,"invalid_employee","الموظف غير موجود في الشركة");
+
       return memoReport(client,{
         companyId:current.companyId,userId:current.user.id,
         employeeId:current.ownId,general:current.context.general,
