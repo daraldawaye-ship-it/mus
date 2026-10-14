@@ -10,7 +10,7 @@ export function featureRuleDTO(row:any):MemoFeatureRule{
 export async function validateFeatureRuleTargets(client:PoolClient,companyId:number,
  employeeIds:number[],roleIds:number[]){
  if(new Set(employeeIds).size!==employeeIds.length||new Set(roleIds).size!==roleIds.length)
-  throw new Error("duplicated feature rule targets");
+  return false;
  const employees=employeeIds.length?(await client.query(
   "SELECT id FROM employees WHERE company_id=$1 AND id=ANY($2::integer[]) AND active",
   [companyId,employeeIds])).rowCount:0;
