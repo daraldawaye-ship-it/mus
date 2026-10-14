@@ -428,8 +428,22 @@ export function inventoryRoutes(pool: Pool): Router {
             conflict("اختر تاريخ الدفعة التي جردتها لهذا الصنف");
           if (!item.hasExpiry && input.expiryDate !== null)
             conflict("الصنف لا يتتبع تاريخ انتهاء");
+          if (input.nearestExpiryDate !== undefined && !item.hasExpiry && input.nearestExpiryDate !== null)
+            conflict("لا يمكن تعيين تاريخ انتهاء لصنف لا يتتبع الانتهاء");
           const multiplier = stockUnitMultiplier(item, input.unit);
-          const counted = BigInt(input.countedQuantity) * multiplier;
+          let counted: bigint;
+          if (input.countedUnits) {
+            if (item.factor2 <= 1 && input.countedUnits.unit2 !== undefined)
+              conflict("الوحدة الثانية غير مفعلة في كرت هذا الصنف");
+            if (item.factor3 <= 1 && input.countedUnits.unit3 !== undefined)
+              conflict("الوحدة الثالثة غير مفعلة في كرت هذا الصنف");
+            counted =
+              BigInt(input.countedUnits.unit1) * stockUnitMultiplier(item, 1) +
+              BigInt(input.countedUnits.unit2 ?? "0") * stockUnitMultiplier(item, 2) +
+              BigInt(input.countedUnits.unit3 ?? "0") * stockUnitMultiplier(item, 3);
+          } else {
+            counted = BigInt(input.countedQuantity!) * multiplier;
+          }
           const existing = await client.query(
             "SELECT quantity_smallest FROM stock_balances WHERE company_id=$1 AND item_id=$2 AND location_id=$3 AND batch_key=$4 FOR UPDATE",
             [companyId, input.itemId, input.locationId, input.expiryDate ?? ""],
@@ -518,6 +532,13 @@ export function inventoryRoutes(pool: Pool): Router {
               );
             }
           }
+          // Persist card-level nearest expiry atomically with the stock adjustment.
+          if (input.nearestExpiryDate !== undefined) {
+            await client.query(
+              "UPDATE items SET nearest_expiry_date=$1,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$2 AND id=$3",
+              [input.nearestExpiryDate, companyId, input.itemId],
+            );
+          }
           return {
             created: true,
             operation: await auditStockOperation(
@@ -529,6 +550,7 @@ export function inventoryRoutes(pool: Pool): Router {
                 itemId: item.id,
                 locationId: input.locationId,
                 expiryDate: input.expiryDate,
+                nearestExpiryDate: input.nearestExpiryDate,
                 quantitySmallest: current.toString(),
               },
             ),
