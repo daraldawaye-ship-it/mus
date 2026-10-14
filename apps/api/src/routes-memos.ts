@@ -758,7 +758,7 @@ export function memoRoutes(pool: Pool) {
         )).rows[0];
         if(!found || found.revision!==input.revision)
           throw new HttpError(409,"revision_conflict","تغيرت المراجع، أعد تحميل المذكرة");
-        const values=memoLinksSchema.parse(input);
+        const {revision:_linkRevision,...values}=input;
         await validateMemoLinks(client,current.user,current.companyId,values);
         const previous=memoLinksSnapshot(found);
         await client.query(
