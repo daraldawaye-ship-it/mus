@@ -888,7 +888,7 @@ export function memoRoutes(pool: Pool) {
             assignee_user_id=excluded.assignee_user_id,reason=excluded.reason,
             actor_user_id=excluded.actor_user_id,actor_name=excluded.actor_name,
             last_triggered_at=NULL,updated_at=clock_timestamp()`,
-          [current.companyId,memoId,due,input.localDate,localTime,"none",
+          [current.companyId,memoId,due,input.localDate,localTime,input.repeatInterval,
            before.currentAssignmentRevision,before.currentUserId,input.reason,
            current.user.id,current.user.displayName]);
         await addScheduleHistory(client,current.companyId,memoId,version+1,
