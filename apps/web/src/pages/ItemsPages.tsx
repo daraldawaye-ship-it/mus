@@ -807,6 +807,28 @@ function ItemStatisticsCard({
               "يتطلب صلاحية عرض المخزون."
             )}
           </dd>
+          {statistics.adjustmentCounts && (
+            <>
+              <dt>عدد التسويات منذ البداية</dt>
+              <dd><bdi>{BigInt(statistics.adjustmentCounts.allTime).toLocaleString("en-US")}</bdi></dd>
+              <dt>التسويات منذ الاعتماد</dt>
+              <dd>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceApproval).toLocaleString("en-US")}</bdi>
+                {" · "}من تاريخ {statistics.adjustmentCounts.approvalDate ?? "غير محدد"}
+              </dd>
+              <dt>التسويات منذ العرض</dt>
+              <dd>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceDisplay).toLocaleString("en-US")}</bdi>
+                {" · "}من تاريخ {statistics.adjustmentCounts.displayDate ?? "غير محدد"}
+              </dd>
+              <dt>آخر جرد في المعرض</dt>
+              <dd>
+                {statistics.adjustmentCounts.lastShowroomAt
+                  ? <bdi>{dateTime(statistics.adjustmentCounts.lastShowroomAt)}</bdi>
+                  : "لا يوجد جرد مسجل للمعرض."}
+              </dd>
+            </>
+          )}
           <dt>آخر حركة</dt>
           <dd>
             {statistics.lastMovement ? (
@@ -866,6 +888,8 @@ type ItemFields = {
   commissionRate: string;
   clearanceFrom: string;
   clearanceTo: string;
+  settlementApprovalDate: string;
+  settlementDisplayDate: string;
   purchaseFactor: string;
   reorderLimit: string;
   orderQuantity: string;
@@ -898,6 +922,8 @@ function initialItemFields(item: Item | null): ItemFields {
     commissionRate: item?.commissionRate ?? "0",
     clearanceFrom: item?.clearanceFrom ?? "",
     clearanceTo: item?.clearanceTo ?? "",
+    settlementApprovalDate: item?.settlementApprovalDate ?? "",
+    settlementDisplayDate: item?.settlementDisplayDate ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
@@ -1033,6 +1059,8 @@ function ItemEditor({
       orderStoppedUntil: fields.orderStoppedUntil || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
+      settlementApprovalDate: fields.settlementApprovalDate || null,
+      settlementDisplayDate: fields.settlementDisplayDate || null,
     };
     const parsed = item
       ? itemPatchSchema.safeParse({ ...body, revision: item.revision })
@@ -1516,6 +1544,27 @@ function ItemEditor({
           </div>
           <small className="muted">
             يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
+          </small>
+        </Card>
+        <Card title="إعدادات إحصائيات التسويات">
+          <div className="item-fields-grid">
+            <Field
+              label="تاريخ اعتماد التسويات"
+              type="date"
+              value={fields.settlementApprovalDate}
+              disabled={disabled}
+              onChange={(event) => edit("settlementApprovalDate", event.target.value)}
+            />
+            <Field
+              label="تاريخ عرض التسويات"
+              type="date"
+              value={fields.settlementDisplayDate}
+              disabled={disabled}
+              onChange={(event) => edit("settlementDisplayDate", event.target.value)}
+            />
+          </div>
+          <small className="muted">
+            تُحتسب التسويات بحسب تاريخ مستند الجرد، ويشمل العد الجرد المطابق دون فرق. إذا لم يُحدد التاريخ يبقى العداد المرتبط به صفرًا.
           </small>
         </Card>
         <Card title="إعدادات الشراء والطلب">

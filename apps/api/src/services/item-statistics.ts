@@ -135,6 +135,22 @@ export async function readItemStatistics(
     lastMovement,
     lastSale,
     lastPurchase,
+    adjustmentCounts: canViewStock
+      ? {
+          allTime: row.adjustments_all_time.toString(),
+          sinceApproval: row.adjustments_since_approval.toString(),
+          sinceDisplay: row.adjustments_since_display.toString(),
+          approvalDate: item.settlement_approval_date
+            ? new Date(item.settlement_approval_date).toISOString().slice(0, 10)
+            : null,
+          displayDate: item.settlement_display_date
+            ? new Date(item.settlement_display_date).toISOString().slice(0, 10)
+            : null,
+          lastShowroomAt: row.last_showroom_adjustment_at
+            ? new Date(row.last_showroom_adjustment_at).toISOString()
+            : null,
+        }
+      : null,
     lastAdjustment,
   };
 }
