@@ -162,3 +162,63 @@ export interface StockOperation {
   movements: StockMovement[];
 }
 export const inventoryCatalog = { stockMovementKinds, stockMovementKindLabels };
+
+
+/** First reservation increment: explicit manual hold with an external reference. */
+export const stockReservationSchema = z.object({
+ itemId:id,
+ locationId:id,
+ expiryDate:documentDateSchema.nullable().default(null),
+ unit,
+ quantity:positiveQuantity,
+ sourceType:z.literal("manual").default("manual"),
+ sourceReference:z.string().trim().min(1).max(120),
+ description:z.string().trim().max(1000).default(""),
+ idempotencyKey:z.uuid(),
+}).strict();
+export const stockReservationReleaseSchema = z.object({
+ reason:z.string().trim().min(1).max(1000),
+ idempotencyKey:z.uuid(),
+}).strict();
+export type StockReservationInput=z.input<typeof stockReservationSchema>;
+export type StockReservationReleaseInput=z.input<typeof stockReservationReleaseSchema>;
+export interface StockReservation {
+ id:number;
+ companyId:number;
+ itemId:number;
+ locationId:number;
+ expiryDate:string|null;
+ unit:1|2|3;
+ quantity:string;
+ quantitySmallest:string;
+ sourceType:"manual";
+ sourceReference:string;
+ description:string;
+ status:"active"|"released";
+ reservedBy:number;
+ reservedAt:string;
+ releasedBy:number|null;
+ releasedAt:string|null;
+ releaseReason:string|null;
+}
+export interface StockReservationLotAvailability {
+ locationId:number;
+ locationName:string;
+ expiryDate:string|null;
+ physicalSmallest:string;
+ reservedSmallest:string;
+ availableSmallest:string;
+}
+export interface StockReservationAvailability {
+ companyId:number;
+ itemId:number;
+ unit1Name:string;
+ unit2Name:string;
+ unit3Name:string;
+ factor2:number;
+ factor3:number;
+ lots:StockReservationLotAvailability[];
+ truncated:boolean;
+ reservations:StockReservation[];
+ reservationsTruncated:boolean;
+}
