@@ -8,31 +8,11 @@ import { HttpError } from "./errors.ts";
 import { loadSession, mutationSecurity } from "./http.ts";
 import { authRoutes } from "./routes-auth.ts";
 import { setupRoutes } from "./routes-setup.ts";
-import { publicRoutes } from "./routes-public.ts";
-import { companyRoutes } from "./routes-companies.ts";
-import { walletRoutes } from "./routes-wallet.ts";
-import { notificationRoutes } from "./routes-notifications.ts";
-import { memoRoutes } from "./routes-memos.ts";
-import { attendanceRoutes } from "./routes-attendance.ts";
-import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
-import { employeeAttendanceRoutes } from "./routes-employee-attendance.ts";
-import { accountRoutes } from "./routes-accounts.ts";
-import { currencyRoutes } from "./routes-currencies.ts";
-import { locationRoutes } from "./routes-locations.ts";
-import { generalTableRoutes } from "./routes-general-table.ts";
-import { financeRoutes } from "./routes-finance.ts";
-import { itemRoutes } from "./routes-items.ts";
-import { itemImportRoutes } from "./routes-item-import.ts";
-import { inventoryRoutes } from "./routes-inventory.ts";
-import { commerceOptionRoutes } from "./routes-commerce-options.ts";
-import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
-import { commerceRoutes } from "./routes-commerce.ts";
-import { configurationRoutes } from "./routes-configuration.ts";
-import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
 import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
 import { socialAuthRoutes } from "./routes-social-auth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
+import { businessRoutes } from "./business-routes.ts";
 import { mediaRoutes } from "./routes-media.ts";
 
 export async function createApp(options: AppOptions = {}) {
@@ -58,7 +38,8 @@ export async function createApp(options: AppOptions = {}) {
   // External IdPs redirect here (Apple uses form_post); dedicated one-use
   // state/cookie and signed ID-token validation secure these callbacks.
   app.use("/api", socialAuthRoutes(pool, config.appOrigin, config.production));
-  app.use(chatgptMcpRoutes(pool, config.appOrigin));
+  const business = businessRoutes(pool);
+  app.use(chatgptMcpRoutes(pool, config.appOrigin, business));
   app.use(
     "/api",
     express.json({ limit: "5mb" }),
@@ -69,30 +50,9 @@ export async function createApp(options: AppOptions = {}) {
   app.use("/api", (req, _res, next) => permissionRequest.run(req, next));
   app.use(
     "/api",
-    pageRoutes(pool),
-    pageAvailabilityGate(pool),
     authRoutes(pool, config.production),
     mediaRoutes(pool),
-    publicRoutes(pool),
-    companyRoutes(pool),
-    attendanceRoutes(pool),
-    attendanceAdjustmentRoutes(pool),
-    employeeAttendanceRoutes(pool),
-    notificationRoutes(pool),
-    memoRoutes(pool),
-    walletRoutes(pool),
-    configurationRoutes(pool),
-    configurationAdministrationRoutes(pool),
-    accountRoutes(pool),
-    currencyRoutes(pool),
-    locationRoutes(pool),
-    generalTableRoutes(pool),
-    financeRoutes(pool),
-    itemRoutes(pool),
-    itemImportRoutes(pool),
-    inventoryRoutes(pool),
-    commerceOptionRoutes(pool),
-    commerceRoutes(pool),
+    business,
   );
   app.use("/api", (_req, res) =>
     res

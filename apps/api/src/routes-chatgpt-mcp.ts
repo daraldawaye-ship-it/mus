@@ -5,6 +5,7 @@ import { tokenHash } from "./services/auth.ts";
 import { transaction } from "./db.ts";
 import { generalTableSchema, type GeneralTableInput } from "../../../packages/contracts/src/general-table.ts";
 import { audit } from "./services/audit.ts";
+import { apiTools, apiCatalog, dispatchApi, oauthScopes, API_READ_SCOPE, API_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { userDTO } from "./repositories/models.ts";
 
 const tools=[{
@@ -95,7 +96,7 @@ const selectFields=`general_table_id AS "id",
  general_table_text7 AS "text7",general_table_text8 AS "text8",
  general_table_text9 AS "text9",created_at AS "createdAt",updated_at AS "updatedAt"`;
 
-export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
+export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router{
  const router=Router();
  const unauthorized=(res:import("express").Response,id:string|number)=>{
    const challenge=`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Authorize Tijara's general table read access"`;
@@ -107,7 +108,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
      _meta:{"mcp/www_authenticate":[challenge]},
    }});
  };
- router.post("/mcp",express.json({limit:"64kb"}),async(req,res,next)=>{
+ router.post("/mcp",express.json({limit:"5mb"}),async(req,res,next)=>{
   try{
    res.setHeader("Cache-Control","no-store");
    const body=req.body as {jsonrpc?:unknown;id?:string|number;method?:unknown;params?:unknown};
@@ -121,10 +122,10 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
    const fail=(code:number,message:string)=>res.json({jsonrpc:"2.0",id:body.id,error:{code,message}});
    if(body.method==="initialize"){
      ok({protocolVersion:"2025-06-18",capabilities:{tools:{listChanged:false}},
-       serverInfo:{name:"tijara-general-table",version:"1.1.0"}});return;
+       serverInfo:{name:"tijara-general-table",version:"1.2.0"}});return;
    }
    if(body.method==="ping"){ok({});return;}
-   if(body.method==="tools/list"){ok({tools});return;}
+   if(body.method==="tools/list"){ok({tools:[...tools,...apiTools]});return;}
    if(body.method==="resources/list"){ok({resources:[]});return;}
    if(body.method==="prompts/list"){ok({prompts:[]});return;}
    if(body.method!=="tools/call"){fail(-32601,"Method not found");return;}
@@ -137,14 +138,27 @@ export function chatgptMcpRoutes(pool:Pool,origin:string):Router{
    const user=(await pool.query(
      `SELECT u.*,t.scope AS granted_scope FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
        WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
-       AND t.revoked_at IS NULL AND t.scope IN ('general_table.read','general_table.read general_table.write')
+       AND t.revoked_at IS NULL AND t.scope=ANY($3::text[])
        AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
        AND NOT u.archived AND NOT u.suspended LIMIT 1`,
-     [tokenHash(auth.slice(7)),[origin,origin+"/mcp"]],
+     [tokenHash(auth.slice(7)),[origin,origin+"/mcp"],oauthScopes],
    )).rows[0];
    if(!user){unauthorized(res,body.id);return;}
    const params=body.params as {name?:unknown;arguments?:unknown}|undefined;
    if(!params||typeof params.name!=="string"){fail(-32602,"Invalid tool");return;}
+   if(apiTools.some(tool=>tool.name===params.name)){
+     const granted=String(user.granted_scope).split(" ");
+     if(!granted.includes(API_READ_SCOPE)||(params.name==="tijara_api_write"&&!granted.includes(API_WRITE_SCOPE))){
+       fail(-32001,"Additional scope required. Reconnect Tijara and approve the requested site read/write access.");return;
+     }
+     try {
+     if(params.name==="tijara_api_catalog"){
+       const catalog=apiCatalog(business,params.arguments??{});
+       ok({content:[{type:"text",text:JSON.stringify(catalog)}],structuredContent:catalog});return;
+     }
+     dispatchApi(business,req,res,next,userDTO(user),params.name,params.arguments??{},body.id);return;
+     } catch { fail(-32602,"Invalid API operation or arguments; inspect tijara_api_catalog"); return; }
+   }
    const isWrite=["create_general_table_record","update_general_table_record"].includes(params.name);
    if(isWrite&&!String(user.granted_scope).split(" ").includes("general_table.write")){
      fail(-32001,"Write scope required. Reconnect Tijara and approve read and write permissions.");return;

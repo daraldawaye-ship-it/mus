@@ -5,6 +5,7 @@ import { transaction } from "./db.ts";
 import { handler, loadSession } from "./http.ts";
 import { currentActor, publicAdmin } from "./policies/access.ts";
 import { tokenHash, authLimiter } from "./services/auth.ts";
+import { oauthScopes, FULL_READ_SCOPE, FULL_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { HttpError } from "./errors.ts";
 
 const SCOPE="general_table.read";
@@ -31,14 +32,14 @@ const redirectAllowed=(raw:string,production:boolean)=>{
 export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):Router {
   const router=Router(),limit=authLimiter(),sessions=loadSession(pool);
   const resource=origin+"/mcp";
-  const scopeInfo={resource,authorization_servers:[origin],scopes_supported:[SCOPE,"general_table.write"],bearer_methods_supported:["header"]};
+  const scopeInfo={resource,authorization_servers:[origin],scopes_supported:[SCOPE,"general_table.write","tijara.read","tijara.write"],bearer_methods_supported:["header"]};
   router.get("/.well-known/oauth-protected-resource",(_req,res)=>res.json(scopeInfo));
   router.get("/.well-known/oauth-protected-resource/mcp",(_req,res)=>res.json(scopeInfo));
   router.get("/.well-known/oauth-authorization-server",(_req,res)=>res.json({
     issuer:origin,authorization_endpoint:origin+"/oauth/authorize",token_endpoint:origin+"/oauth/token",
     registration_endpoint:origin+"/oauth/register",response_types_supported:["code"],
     grant_types_supported:["authorization_code","refresh_token"],token_endpoint_auth_methods_supported:["none"],
-    scopes_supported:[SCOPE,"general_table.write"],code_challenge_methods_supported:["S256"],
+    scopes_supported:[SCOPE,"general_table.write","tijara.read","tijara.write"],code_challenge_methods_supported:["S256"],
     authorization_response_iss_parameter_supported:true,client_id_metadata_document_supported:false,
   }));
   router.post("/oauth/register",express.json({limit:"8kb"}),handler(async(req,res)=>{
@@ -59,20 +60,22 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       token_endpoint_auth_method:"none"});
   }));
   async function validate(input:Record<string,unknown>){
+    const requestedScope=[...new Set(str(input.scope).split(" ").filter(Boolean))].sort().join(" ");
+    const canonicalScope=oauthScopes.find(scope=>scope.split(" ").sort().join(" ")===requestedScope);
     const clientId=str(input.client_id),redirectUri=str(input.redirect_uri),
       challenge=str(input.code_challenge),state=str(input.state),requested=str(input.resource);
     if(input.response_type!=="code"||input.code_challenge_method!=="S256"||
       !/^[A-Za-z0-9_-]{43,128}$/.test(challenge)||state.length<8||state.length>512||
-      ![SCOPE,WRITE_SCOPE].includes(str(input.scope))||![origin,resource].includes(requested))
+      !canonicalScope||![origin,resource].includes(requested))
       throw new HttpError(400,"invalid_request","معلمات تفويض ChatGPT غير صحيحة");
     const row=(await pool.query<{redirect_uris:string[]}>(
       "SELECT redirect_uris FROM chatgpt_oauth_clients WHERE client_id=$1",[clientId])).rows[0];
     if(!row||!row.redirect_uris.includes(redirectUri))
       throw new HttpError(400,"invalid_client","تطبيق ChatGPT غير مسجل");
-    return {clientId,redirectUri,challenge,state,requested,scope:str(input.scope)};
+    return {clientId,redirectUri,challenge,state,requested,scope:canonicalScope!};
   }
   router.get("/oauth/authorize",sessions,handler(async(req,res)=>{
-    await validate(req.query);
+    const validated=await validate(req.query);
     res.setHeader("Cache-Control","no-store");
     if(!req.auth){
       const redirect="/login?returnTo="+encodeURIComponent(req.originalUrl);
@@ -84,14 +87,19 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     const params=["client_id","redirect_uri","code_challenge","code_challenge_method",
       "response_type","state","scope","resource"].map(key=>
       `<input type="hidden" name="${key}" value="${safe(req.query[key])}">`).join("");
-    res.type("html").send(webPage("السماح لـ ChatGPT بقراءة بيانات تجارة",
+    const fullAccess=[FULL_READ_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
+    const writing=[WRITE_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
+    const scopeDescription=fullAccess
+      ? (writing?"قراءة وتنفيذ عمليات تجارة المتاحة، بما فيها إنشاء وتعديل الموظفين والحسابات والفواتير والمخزون والإعدادات والترحيل والعكس بحسب صلاحيات حسابك":"قراءة بيانات تجارة المتاحة بحسب صلاحيات حسابك")
+      : (writing?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط");
+    res.type("html").send(webPage("السماح لـ ChatGPT بالوصول إلى بيانات تجارة",
       `<p>الحساب: <strong>${safe(req.auth.user.displayName)}</strong></p>
-      <p>الصلاحيات المطلوبة: <strong>${req.query.scope===WRITE_SCOPE?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط"}</strong>.</p>
-      <p>لا توجد صلاحية للحذف أو الوصول إلى حسابات الشركات وفواتيرها. يمكن مراجعة أي تعديل قبل تنفيذه.</p>
+      <p>الصلاحيات المطلوبة: <strong>${scopeDescription}</strong>.</p>
+      <p>${fullAccess?"تظل صلاحيات الشركة وعزل بياناتها وقواعد التدقيق سارية. لا يتيح الاتصال إدارة كلمات المرور أو تجاوز صلاحيات حسابك.":"لا توجد صلاحية للحذف أو الوصول إلى حسابات الشركات وفواتيرها. يمكن مراجعة أي تعديل قبل تنفيذه."}</p>
       <p>يمكن إلغاء الاتصال في أي وقت من <a href="/oauth/connections">إدارة الاتصالات</a>.</p>
       <form action="/oauth/authorize" method="post">${params}
       <input type="hidden" name="csrf" value="${safe(req.auth.csrf)}">
-      <button type="submit">${req.query.scope===WRITE_SCOPE?"أوافق على القراءة والإنشاء والتعديل":"أوافق على القراءة فقط"}</button></form>`));
+      <button type="submit">${writing?"أوافق على القراءة والإنشاء والتعديل"+(fullAccess?" وتنفيذ العمليات":""):"أوافق على القراءة فقط"}</button></form>`));
   }));
   router.post("/oauth/authorize",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)

@@ -1,0 +1,53 @@
+import { Router } from "express";
+import type { Pool } from "pg";
+import { publicRoutes } from "./routes-public.ts";
+import { companyRoutes } from "./routes-companies.ts";
+import { walletRoutes } from "./routes-wallet.ts";
+import { notificationRoutes } from "./routes-notifications.ts";
+import { memoRoutes } from "./routes-memos.ts";
+import { attendanceRoutes } from "./routes-attendance.ts";
+import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
+import { employeeAttendanceRoutes } from "./routes-employee-attendance.ts";
+import { accountRoutes } from "./routes-accounts.ts";
+import { currencyRoutes } from "./routes-currencies.ts";
+import { locationRoutes } from "./routes-locations.ts";
+import { generalTableRoutes } from "./routes-general-table.ts";
+import { financeRoutes } from "./routes-finance.ts";
+import { itemRoutes } from "./routes-items.ts";
+import { itemImportRoutes } from "./routes-item-import.ts";
+import { inventoryRoutes } from "./routes-inventory.ts";
+import { commerceOptionRoutes } from "./routes-commerce-options.ts";
+import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
+import { commerceRoutes } from "./routes-commerce.ts";
+import { configurationRoutes } from "./routes-configuration.ts";
+import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
+
+/** Shared by browser and OAuth MCP: one set of domain policies and transactions. */
+export function businessRoutes(pool: Pool): Router {
+  const router = Router();
+  router.use(
+    pageRoutes(pool),
+    pageAvailabilityGate(pool),
+    publicRoutes(pool),
+    companyRoutes(pool),
+    attendanceRoutes(pool),
+    attendanceAdjustmentRoutes(pool),
+    employeeAttendanceRoutes(pool),
+    notificationRoutes(pool),
+    memoRoutes(pool),
+    walletRoutes(pool),
+    configurationRoutes(pool),
+    configurationAdministrationRoutes(pool),
+    accountRoutes(pool),
+    currencyRoutes(pool),
+    locationRoutes(pool),
+    generalTableRoutes(pool),
+    financeRoutes(pool),
+    itemRoutes(pool),
+    itemImportRoutes(pool),
+    inventoryRoutes(pool),
+    commerceOptionRoutes(pool),
+    commerceRoutes(pool),
+  );
+  return router;
+}

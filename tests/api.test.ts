@@ -1517,6 +1517,7 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   assert.deepEqual(found.body.result?.tools?.map(t=>t.name),[
     "query_general_table","get_general_table_record",
     "create_general_table_record","update_general_table_record",
+    "tijara_api_catalog","tijara_api_read","tijara_api_write",
   ]);
   const sorted=await rpc("tools/call",{name:"query_general_table",arguments:{
     tableName:"طلب تعديلات في الموقع",number2EmptyOrZero:true,pageSize:10,
@@ -2875,4 +2876,86 @@ test("memo followers isolate companies, respect roles and explicit denies, and c
     [companyA.id,memoId],
   )).rows.map(row=>row.revision);
   assert.deepEqual(changes,[1,2]);
+});
+
+test("ChatGPT site access uses fresh consent, domain permissions, employee accounts and revocation", async(t)=>{
+  const f=await fixture(t),platform=await owner(f);
+  const pharmacy=await company(platform.client,"MCP Pharmacy");
+  const target=await register(f,"mcp-employee@example.test",{name:"Rawan",phone:"777888010"});
+  const {createSession}=await import("../apps/api/src/services/auth.ts");
+  const session=await createSession(f.pool,platform.user.id);
+  const issue=async(scope:string)=>{
+    const registration=await fetch(f.baseUrl+"/oauth/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({redirect_uris:["http://localhost:4322/callback"]})});
+    const client=await registration.json() as {client_id:string};
+    const verifier="m".repeat(64);
+    const fields={client_id:client.client_id,redirect_uri:"http://localhost:4322/callback",response_type:"code",scope,state:"state_mcp_12345678",resource:"http://localhost/mcp",code_challenge:createHash("sha256").update(verifier).digest("base64url"),code_challenge_method:"S256"};
+    const consent=await fetch(f.baseUrl+"/oauth/authorize?"+new URLSearchParams(fields),{headers:{cookie:"tijara_session="+session.token}});
+    assert.equal(consent.status,200);
+    if(scope.includes("tijara.write"))assert.match(await consent.text(),/الموظفين.*الفواتير.*الترحيل/);
+    const approval=await fetch(f.baseUrl+"/oauth/authorize",{method:"POST",redirect:"manual",headers:{"content-type":"application/x-www-form-urlencoded",cookie:"tijara_session="+session.token},body:new URLSearchParams({...fields,csrf:session.csrf})});
+    assert.equal(approval.status,302);
+    const code=new URL(approval.headers.get("location")!).searchParams.get("code")!;
+    const exchange=await fetch(f.baseUrl+"/oauth/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,redirect_uri:fields.redirect_uri,code,code_verifier:verifier,resource:fields.resource})});
+    assert.equal(exchange.status,200);
+    return (await exchange.json() as {access_token:string}).access_token;
+  };
+  const rpc=async(access:string,name:string,args:unknown)=>{
+    const response=await fetch(f.baseUrl+"/mcp",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+access},body:JSON.stringify({jsonrpc:"2.0",id:45,method:"tools/call",params:{name,arguments:args}})});
+    assert.equal(response.status,200);
+    const data=await response.json() as any;assert.equal(data.id,45);return data;
+  };
+  const old=await issue("general_table.read general_table.write");
+  assert.equal((await rpc(old,"tijara_api_read",{operation:"GET /companies"})).error.code,-32001);
+  const read=await issue("general_table.read tijara.read");
+  assert((await rpc(read,"tijara_api_read",{operation:"GET /companies"})).result.structuredContent.data.items.some((c:any)=>c.id===pharmacy.id));
+  assert.equal((await rpc(read,"tijara_api_write",{operation:"POST /companies"})).error.code,-32001);
+  const access=await issue("general_table.read general_table.write tijara.read tijara.write");
+  const catalog=await rpc(access,"tijara_api_catalog",{operation:"POST /companies/:companyId/employees"});
+  assert(catalog.result.structuredContent.operations[0].bodySchema.properties.userId);
+  const all=await rpc(access,"tijara_api_catalog",{});
+  assert(all.result.structuredContent.operations.length>130);
+  assert(!all.result.structuredContent.operations.some((o:any)=>/password|\/auth\//.test(o.operation)));
+  const pathParams={companyId:pharmacy.id};
+  const created=await rpc(access,"tijara_api_write",{operation:"POST /companies/:companyId/employees",pathParams,body:{userId:target.user.id,name:"Rawan",phone:"777888010",role:"employee",active:true,permissions:[],createSalesCashbox:true}});
+  assert.equal(created.result.structuredContent.status,201,JSON.stringify(created));
+  const emp=created.result.structuredContent.data.employee;
+  const accounts=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees/:employeeId/accounts",pathParams:{...pathParams,employeeId:emp.id}});
+  assert.deepEqual(accounts.result.structuredContent.data.accounts.links.map((a:any)=>a.kind).sort(),["advance","sales_cash","sales_pouch"]);
+  assert.equal((await f.pool.query("SELECT count(*)::int AS n FROM audit_events WHERE action='employee.create' AND target_id=$1",[emp.id])).rows[0].n,1);
+  const invalid=await rpc(access,"tijara_api_write",{operation:"POST /companies/:companyId/employees",pathParams,body:{name:"Missing identity"}});
+  assert.equal(invalid.result.isError,true);assert.equal(invalid.result.structuredContent.status,400);
+  const duplicate=await rpc(access,"tijara_api_write",{operation:"POST /companies/:companyId/employees",pathParams,body:{userId:target.user.id,name:"Rawan",phone:"777888010",role:"employee",permissions:[],createSalesCashbox:true}});
+  assert.equal(duplicate.result.structuredContent.status,409);
+  const attendance=await rpc(access,"tijara_api_catalog",{operation:"PUT /companies/:companyId/employees/:employeeId/attendance-settings"});
+  assert(attendance.result.structuredContent.operations[0].bodySchema);
+  const attendancePath={...pathParams,employeeId:emp.id};
+  const saved=await rpc(access,"tijara_api_write",{operation:"PUT /companies/:companyId/employees/:employeeId/attendance-settings",pathParams:attendancePath,body:{hourlyPoints:"250",defaultDailyHours:"8",expectedStartTime:"08:00",allowOvertime:true,revision:null}});
+  assert.equal(saved.result.structuredContent.status,200,JSON.stringify(saved));
+  const setting=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees/:employeeId/attendance-settings",pathParams:attendancePath});
+  assert.equal(setting.result.structuredContent.data.settings.hourlyPoints,"250");
+  const stale=await rpc(access,"tijara_api_write",{operation:"PUT /companies/:companyId/employees/:employeeId/attendance-settings",pathParams:attendancePath,body:{hourlyPoints:"999",defaultDailyHours:"8",expectedStartTime:"08:00",allowOvertime:true,revision:null}});
+  assert.equal(stale.result.structuredContent.status,409);
+  const wrongCompany=await company(platform.client,"Another MCP company");
+  const crossTenant=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees/:employeeId/accounts",pathParams:{companyId:wrongCompany.id,employeeId:emp.id}});
+  assert.equal(crossTenant.result.structuredContent.status,404);
+  const traversal=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId",pathParams:{companyId:"../auth/session"}});
+  assert.equal(traversal.error.code,-32602);
+  // Page switches and API checks are shared with the browser, even for the owner.
+  await f.pool.query("INSERT INTO page_settings(page_key,company_id,visible,enabled,sort_order,updated_by) VALUES('company.employees',$1,true,false,1,$2)",[pharmacy.id,platform.user.id]);
+  const disabled=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees",pathParams});
+  assert.equal(disabled.result.structuredContent.status,403);
+  await f.pool.query("DELETE FROM page_settings WHERE page_key='company.employees' AND company_id=$1",[pharmacy.id]);
+  const fakePath=await rpc(access,"tijara_api_write",{operation:"POST /auth/password",body:{}});
+  assert(fakePath.error||fakePath.result?.isError||fakePath.result?.structuredContent?.status>=400);
+  // Public administration still grants no company membership or employee management.
+  const admin=await register(f,"mcp-admin@example.test");
+  await platform.client.ok("PATCH","/users/"+admin.user.id,{kind:"admin"});
+  const {tokenHash}=await import("../apps/api/src/services/auth.ts");
+  const {randomBytes}=await import("node:crypto");
+  const adminToken=randomBytes(32).toString("base64url");
+  await f.pool.query("UPDATE chatgpt_oauth_tokens SET user_id=$1,access_hash=$2 WHERE access_hash=$3",[admin.user.id,tokenHash(adminToken),tokenHash(access)]);
+  const denied=await rpc(adminToken,"tijara_api_read",{operation:"GET /companies/:companyId/employees",pathParams});
+  assert.equal(denied.result.structuredContent.status,403);
+  await f.pool.query("UPDATE chatgpt_oauth_tokens SET revoked_at=now() WHERE access_hash=$1",[tokenHash(adminToken)]);
+  assert.equal((await rpc(adminToken,"tijara_api_read",{operation:"GET /companies"})).result.isError,true);
 });

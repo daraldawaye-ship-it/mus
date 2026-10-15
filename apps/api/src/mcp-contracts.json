@@ -1,0 +1,4948 @@
+{
+  "GET /companies/:companyId/accounts": {
+    "queryFields": [],
+    "source": "routes-accounts.ts"
+  },
+  "POST /companies/:companyId/accounts": {
+    "queryFields": [],
+    "bodyContract": "accountSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "parentId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "group",
+            "posting"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "asset",
+            "liability",
+            "equity",
+            "income",
+            "expense"
+          ]
+        },
+        "accountChoice": {
+          "default": "administrative",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "company",
+                "customer",
+                "expense",
+                "wholesale",
+                "distributor",
+                "doctor",
+                "employee",
+                "pledges",
+                "cashbox",
+                "custody",
+                "pouch",
+                "administrative",
+                "purchaseCashbox",
+                "cashboxSecond",
+                "pharmacy",
+                "archived",
+                "stopped",
+                "followUp"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "normalSide": {
+          "type": "string",
+          "enum": [
+            "debit",
+            "credit"
+          ]
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "cashOrBank": {
+          "default": false,
+          "type": "boolean"
+        },
+        "rangeStart": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rangeEnd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "category"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-accounts.ts"
+  },
+  "POST /companies/:companyId/accounts/initialize": {
+    "queryFields": [],
+    "bodyContract": "emptyInitializeSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "source": "routes-accounts.ts"
+  },
+  "GET /companies/:companyId/accounts/:id": {
+    "queryFields": [],
+    "source": "routes-accounts.ts"
+  },
+  "PATCH /companies/:companyId/accounts/:id": {
+    "queryFields": [],
+    "bodyContract": "accountPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "cashOrBank": {
+          "type": "boolean"
+        },
+        "accountChoice": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "company",
+                "customer",
+                "expense",
+                "wholesale",
+                "distributor",
+                "doctor",
+                "employee",
+                "pledges",
+                "cashbox",
+                "custody",
+                "pouch",
+                "administrative",
+                "purchaseCashbox",
+                "cashboxSecond",
+                "pharmacy",
+                "archived",
+                "stopped",
+                "followUp"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-accounts.ts"
+  },
+  "GET /companies/:companyId/account-links": {
+    "queryFields": [],
+    "source": "routes-accounts.ts"
+  },
+  "PUT /companies/:companyId/account-links/:purpose": {
+    "queryFields": [],
+    "bodyContract": "accountLinkSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "accountId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "accountId"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-accounts.ts"
+  },
+  "POST /companies/:companyId/attendance/adjustments": {
+    "queryFields": [],
+    "bodyContract": "attendanceAdjustmentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "recordId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "points": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "recordId",
+        "points",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-attendance-adjustments.ts"
+  },
+  "GET /companies/:companyId/attendance": {
+    "queryFields": [
+      "employeeId",
+      "day"
+    ],
+    "source": "routes-attendance.ts"
+  },
+  "GET /companies/:companyId/attendance/report": {
+    "queryFields": [
+      "day",
+      "employeeId",
+      "status"
+    ],
+    "source": "routes-attendance.ts"
+  },
+  "PUT /companies/:companyId/attendance/schedules/:employeeId": {
+    "queryFields": [],
+    "source": "routes-attendance.ts"
+  },
+  "POST /companies/:companyId/attendance/check-in": {
+    "queryFields": [],
+    "bodyContract": "attendanceCheckInSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-attendance.ts"
+  },
+  "POST /companies/:companyId/attendance/check-out": {
+    "queryFields": [],
+    "bodyContract": "attendanceCheckOutSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "recordId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "recordId"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-attendance.ts"
+  },
+  "GET /companies/:companyId/commerce-options": {
+    "queryFields": [
+      "id",
+      "type"
+    ],
+    "source": "routes-commerce-options.ts"
+  },
+  "GET /companies/:companyId/invoice-stock-preview": {
+    "queryFields": [
+      "locationId",
+      "itemIds"
+    ],
+    "source": "routes-commerce.ts"
+  },
+  "GET /companies/:companyId/invoices": {
+    "queryFields": [
+      "dateFrom",
+      "dateTo",
+      "kind",
+      "returning",
+      "branchId",
+      "locationId",
+      "supplierQ",
+      "payerQ"
+    ],
+    "source": "routes-commerce.ts"
+  },
+  "GET /companies/:companyId/invoices/:id": {
+    "queryFields": [],
+    "source": "routes-commerce.ts"
+  },
+  "POST /companies/:companyId/invoices": {
+    "queryFields": [],
+    "bodyContract": "invoiceSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "sale",
+            "purchase"
+          ]
+        },
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "branchId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "locationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "counterpartyAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "supplierAccountId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "discount": {
+          "type": "string"
+        },
+        "lines": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "unit": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
+              },
+              "quantity": {
+                "type": "string"
+              },
+              "unitPrice": {
+                "type": "string"
+              },
+              "expiryDate": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "originalLineId": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId",
+              "unit",
+              "quantity"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "kind",
+        "documentDate",
+        "currencyId",
+        "branchId",
+        "locationId",
+        "counterpartyAccountId",
+        "lines"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-commerce.ts"
+  },
+  "GET /companies": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "POST /companies": {
+    "queryFields": [],
+    "bodyContract": "companySchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "name",
+        "phone",
+        "address"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "PATCH /companies/:companyId": {
+    "queryFields": [],
+    "bodyContract": "companyPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "POST /companies/:companyId/activate": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/users/search": {
+    "queryFields": [
+      "q"
+    ],
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/my-sales-cashbox": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/employees": {
+    "queryFields": [
+      "role",
+      "active"
+    ],
+    "source": "routes-companies.ts"
+  },
+  "POST /companies/:companyId/employees": {
+    "queryFields": [],
+    "bodyContract": "employeeSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "newUser": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "displayName": {
+              "default": "",
+              "type": "string",
+              "maxLength": 120
+            },
+            "phone": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "email": {
+              "default": "",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": ""
+                },
+                {
+                  "type": "string",
+                  "maxLength": 254,
+                  "format": "email",
+                  "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+              ]
+            },
+            "password": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "name",
+            "phone",
+            "password"
+          ],
+          "additionalProperties": false
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "employee",
+            "administrative",
+            "accountant",
+            "sales",
+            "purchases"
+          ]
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "createSalesCashbox": {
+          "default": false,
+          "type": "boolean"
+        },
+        "permissions": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "pages.manage",
+              "company.edit",
+              "employees.view",
+              "audit.view",
+              "accounts.view",
+              "accounts.manage",
+              "currencies.view",
+              "currencies.manage",
+              "locations.view",
+              "locations.manage",
+              "finance.view",
+              "finance.manage",
+              "finance.post",
+              "items.view",
+              "items.manage",
+              "commerce.view",
+              "commerce.manage",
+              "inventory.view",
+              "inventory.manage",
+              "inventory.post"
+            ]
+          }
+        }
+      },
+      "required": [
+        "name",
+        "phone",
+        "role",
+        "permissions"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/employees/:employeeId/accounts": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "POST /companies/:companyId/employees/:employeeId/accounts": {
+    "queryFields": [],
+    "bodySchemaSource": "z.object({ createSalesCashbox: z.boolean().default(false) }).strict()",
+    "source": "routes-companies.ts"
+  },
+  "PATCH /companies/:companyId/employees/:employeeId": {
+    "queryFields": [],
+    "bodyContract": "employeePatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "employee",
+            "administrative",
+            "accountant",
+            "sales",
+            "purchases"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "permissions": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "pages.manage",
+              "company.edit",
+              "employees.view",
+              "audit.view",
+              "accounts.view",
+              "accounts.manage",
+              "currencies.view",
+              "currencies.manage",
+              "locations.view",
+              "locations.manage",
+              "finance.view",
+              "finance.manage",
+              "finance.post",
+              "items.view",
+              "items.manage",
+              "commerce.view",
+              "commerce.manage",
+              "inventory.view",
+              "inventory.manage",
+              "inventory.post"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "PATCH /companies/:companyId/employees/:employeeId/manager": {
+    "queryFields": [],
+    "bodyContract": "managerSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "isGeneralManager": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "isGeneralManager"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/audit": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/configuration/directory": {
+    "queryFields": [],
+    "source": "routes-configuration-admin.ts"
+  },
+  "POST /companies/:companyId/configuration/options": {
+    "queryFields": [],
+    "bodyContract": "optionInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+        },
+        "pageKey": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "recordKind": {
+          "type": "string",
+          "enum": [
+            "item",
+            "account",
+            "employee",
+            "invoice",
+            "financial-document"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "valueType": {
+          "type": "string",
+          "enum": [
+            "boolean",
+            "text",
+            "integer",
+            "decimal",
+            "date",
+            "list"
+          ]
+        },
+        "defaultValue": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "choices": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,59}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        },
+        "searchable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "showOnCard": {
+          "default": true,
+          "type": "boolean"
+        },
+        "showInList": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "pageKey",
+        "recordKind",
+        "name",
+        "valueType"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "PATCH /companies/:companyId/configuration/options/:optionId": {
+    "queryFields": [],
+    "bodyContract": "optionPatch",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "valueType": {
+          "type": "string",
+          "enum": [
+            "boolean",
+            "text",
+            "integer",
+            "decimal",
+            "date",
+            "list"
+          ]
+        },
+        "defaultValue": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "choices": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,59}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "searchable": {
+          "type": "boolean"
+        },
+        "showOnCard": {
+          "type": "boolean"
+        },
+        "showInList": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "POST /companies/:companyId/configuration/roles": {
+    "queryFields": [],
+    "bodyContract": "roleInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,99}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "key",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "PATCH /companies/:companyId/configuration/roles/:roleId": {
+    "queryFields": [],
+    "bodyContract": "rolePatch",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "PUT /companies/:companyId/configuration/roles/:roleId/rules": {
+    "queryFields": [],
+    "bodyContract": "ruleInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "permissionKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "allow",
+                "deny"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "permissionKey",
+        "effect",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "PUT /companies/:companyId/configuration/assignments": {
+    "queryFields": [],
+    "bodyContract": "assignmentInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "roleId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "employeeId",
+        "roleId",
+        "active",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "PUT /companies/:companyId/configuration/employee-rules": {
+    "queryFields": [],
+    "bodyContract": "employeeRuleInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "permissionKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "allow",
+                "deny"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "employeeId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "permissionKey",
+        "effect",
+        "revision",
+        "employeeId"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "GET /companies/:companyId/configuration/record-options": {
+    "queryFields": [
+      "recordKind",
+      "recordId"
+    ],
+    "source": "routes-configuration-admin.ts"
+  },
+  "PUT /companies/:companyId/configuration/record-options": {
+    "queryFields": [
+      "recordKind",
+      "recordId"
+    ],
+    "bodyContract": "valueInput",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "definitionId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "definitionId",
+        "value",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-configuration-admin.ts"
+  },
+  "GET /companies/:companyId/configuration-foundation": {
+    "queryFields": [],
+    "source": "routes-configuration.ts"
+  },
+  "GET /companies/:companyId/currencies": {
+    "queryFields": [],
+    "source": "routes-currencies.ts"
+  },
+  "POST /companies/:companyId/currencies": {
+    "queryFields": [],
+    "bodyContract": "currencySchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "decimalPlaces": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "decimalPlaces"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "POST /companies/:companyId/currencies/initialize": {
+    "queryFields": [],
+    "bodyContract": "currenciesInitializeSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "baseCurrency": {
+          "default": "YER",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/currencies/:id": {
+    "queryFields": [],
+    "source": "routes-currencies.ts"
+  },
+  "PATCH /companies/:companyId/currencies/:id": {
+    "queryFields": [],
+    "bodyContract": "currencyPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/finance-settings": {
+    "queryFields": [],
+    "source": "routes-currencies.ts"
+  },
+  "PATCH /companies/:companyId/finance-settings": {
+    "queryFields": [],
+    "bodyContract": "financeSettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "baseCurrencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "baseCurrencyId"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/exchange-rates": {
+    "queryFields": [],
+    "source": "routes-currencies.ts"
+  },
+  "POST /companies/:companyId/exchange-rates": {
+    "queryFields": [],
+    "bodyContract": "exchangeRateSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "rate": {
+          "type": "string"
+        },
+        "effectiveAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "currencyId",
+        "rate",
+        "effectiveAt",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/exchange-rates/effective": {
+    "queryFields": [
+      "currencyId",
+      "at"
+    ],
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/exchange-rates/:id": {
+    "queryFields": [],
+    "source": "routes-currencies.ts"
+  },
+  "PATCH /companies/:companyId/exchange-rates/:id": {
+    "queryFields": [],
+    "bodyContract": "exchangeRatePatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "active"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-currencies.ts"
+  },
+  "GET /companies/:companyId/employees/:employeeId/attendance-settings": {
+    "queryFields": [],
+    "source": "routes-employee-attendance.ts"
+  },
+  "PUT /companies/:companyId/employees/:employeeId/attendance-settings": {
+    "queryFields": [],
+    "bodyContract": "employeeAttendanceSettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "hourlyPoints": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "defaultDailyHours": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedStartTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowOvertime": {
+          "type": "boolean"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "hourlyPoints",
+        "defaultDailyHours",
+        "expectedStartTime",
+        "allowOvertime",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-employee-attendance.ts"
+  },
+  "GET /companies/:companyId/financial-options": {
+    "queryFields": [
+      "type"
+    ],
+    "source": "routes-finance.ts"
+  },
+  "GET /companies/:companyId/financial-documents": {
+    "queryFields": [],
+    "source": "routes-finance.ts"
+  },
+  "POST /companies/:companyId/financial-documents": {
+    "queryFields": [],
+    "bodyContract": "financialDocumentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "journal",
+            "receipt",
+            "payment"
+          ]
+        },
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "branchId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cashAccountId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "lines": {
+          "minItems": 2,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "debit": {
+                "type": "string"
+              },
+              "credit": {
+                "type": "string"
+              },
+              "description": {
+                "default": "",
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "accountId",
+              "debit",
+              "credit"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "kind",
+        "documentDate",
+        "currencyId",
+        "lines",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-finance.ts"
+  },
+  "GET /companies/:companyId/financial-documents/:id": {
+    "queryFields": [],
+    "source": "routes-finance.ts"
+  },
+  "POST /companies/:companyId/financial-documents/:id/print-request": {
+    "queryFields": [],
+    "source": "routes-finance.ts"
+  },
+  "PATCH /companies/:companyId/financial-documents/:id": {
+    "queryFields": [],
+    "bodyContract": "financialDocumentPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "journal",
+            "receipt",
+            "payment"
+          ]
+        },
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "branchId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cashAccountId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "lines": {
+          "minItems": 2,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "debit": {
+                "type": "string"
+              },
+              "credit": {
+                "type": "string"
+              },
+              "description": {
+                "default": "",
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "accountId",
+              "debit",
+              "credit"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "kind",
+        "documentDate",
+        "currencyId",
+        "lines",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-finance.ts"
+  },
+  "POST /companies/:companyId/financial-documents/:id/post": {
+    "queryFields": [],
+    "bodyContract": "financialPostSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-finance.ts"
+  },
+  "POST /companies/:companyId/financial-documents/:id/reverse": {
+    "queryFields": [],
+    "bodyContract": "financialReverseSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "reason",
+        "documentDate",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-finance.ts"
+  },
+  "GET /companies/:companyId/account-balances": {
+    "queryFields": [
+      "accountId"
+    ],
+    "source": "routes-finance.ts"
+  },
+  "GET /companies/:companyId/account-ledger": {
+    "queryFields": [
+      "accountId"
+    ],
+    "source": "routes-finance.ts"
+  },
+  "GET /general-table": {
+    "queryFields": [],
+    "source": "routes-general-table.ts"
+  },
+  "POST /general-table/duplicate": {
+    "queryFields": [],
+    "bodySchemaSource": "z.object({\n          ids: z.array(z.number().int().positive().max(2_147_483_647))\n            .min(1, \"حدد سجلًا واحدًا على الأقل\")\n            .max(100, \"يمكن تكرار 100 سجل في العملية الواحدة\")\n            .refine((ids) => new Set(ids).size === ids.length, \"لا تكرر رقم السجل في الطلب\"),\n        }).strict()",
+    "source": "routes-general-table.ts"
+  },
+  "GET /general-table/:id": {
+    "queryFields": [],
+    "source": "routes-general-table.ts"
+  },
+  "POST /general-table": {
+    "queryFields": [],
+    "bodyContract": "generalTableSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "tableName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "number1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?\\d{1,24}(?:\\.\\d{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "number2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?\\d{1,24}(?:\\.\\d{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text1": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text2": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text3": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text4": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text5": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text6": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text7": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text8": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text9": {
+          "type": "string",
+          "maxLength": 12000
+        }
+      },
+      "required": [
+        "tableName",
+        "category",
+        "title",
+        "description",
+        "number1",
+        "number2",
+        "date1",
+        "date2",
+        "text1",
+        "text2",
+        "text3",
+        "text4",
+        "text5",
+        "text6",
+        "text7",
+        "text8",
+        "text9"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-general-table.ts"
+  },
+  "PATCH /general-table/:id": {
+    "queryFields": [],
+    "bodyContract": "generalTableSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "tableName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "number1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?\\d{1,24}(?:\\.\\d{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "number2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?\\d{1,24}(?:\\.\\d{1,8})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date1": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text1": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text2": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text3": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text4": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text5": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text6": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text7": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text8": {
+          "type": "string",
+          "maxLength": 12000
+        },
+        "text9": {
+          "type": "string",
+          "maxLength": 12000
+        }
+      },
+      "required": [
+        "tableName",
+        "category",
+        "title",
+        "description",
+        "number1",
+        "number2",
+        "date1",
+        "date2",
+        "text1",
+        "text2",
+        "text3",
+        "text4",
+        "text5",
+        "text6",
+        "text7",
+        "text8",
+        "text9"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-general-table.ts"
+  },
+  "GET /companies/:companyId/stock-operations/:id": {
+    "queryFields": [],
+    "source": "routes-inventory.ts"
+  },
+  "GET /companies/:companyId/inventory-settings": {
+    "queryFields": [],
+    "source": "routes-inventory.ts"
+  },
+  "PUT /companies/:companyId/inventory-settings": {
+    "queryFields": [],
+    "bodyContract": "inventorySettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "inventoryAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "salesAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "cogsAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "surplusAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "shortageAccountId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "costingMethod": {
+          "default": "weighted_average",
+          "type": "string",
+          "const": "weighted_average"
+        },
+        "allowNegative": {
+          "default": true,
+          "type": "boolean"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "inventoryAccountId",
+        "salesAccountId",
+        "cogsAccountId",
+        "surplusAccountId",
+        "shortageAccountId",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-inventory.ts"
+  },
+  "GET /companies/:companyId/stock-balances": {
+    "queryFields": [
+      "expiryDate"
+    ],
+    "source": "routes-inventory.ts"
+  },
+  "GET /companies/:companyId/stock-movements": {
+    "queryFields": [
+      "kind"
+    ],
+    "source": "routes-inventory.ts"
+  },
+  "POST /companies/:companyId/stock-transfers": {
+    "queryFields": [],
+    "bodyContract": "stockTransferSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "itemId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "fromLocationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "toLocationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "quantity": {
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            }
+          ]
+        },
+        "expiryDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "documentDate",
+        "itemId",
+        "fromLocationId",
+        "toLocationId",
+        "quantity",
+        "unit",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-inventory.ts"
+  },
+  "POST /companies/:companyId/stock-adjustments": {
+    "queryFields": [],
+    "bodyContract": "stockAdjustmentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "itemId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "locationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "countedQuantity": {
+          "type": "string"
+        },
+        "expectedQuantitySmallest": {
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            }
+          ]
+        },
+        "expiryDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unitCostBase": {
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "documentDate",
+        "itemId",
+        "locationId",
+        "countedQuantity",
+        "expectedQuantitySmallest",
+        "unit",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-inventory.ts"
+  },
+  "POST /companies/:companyId/items/import-batch": {
+    "queryFields": [],
+    "bodyContract": "bodySchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "const": "tijara-items-v1"
+        },
+        "companyHint": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "currency": {
+          "type": "string",
+          "const": "YER"
+        },
+        "items": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "format",
+        "companyHint",
+        "currency",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-item-import.ts"
+  },
+  "GET /companies/:companyId/item-shelves": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-shelves/:id": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "PATCH /companies/:companyId/item-shelves/:id": {
+    "queryFields": [],
+    "bodyContract": "itemShelfPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "vitrine": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "revision",
+        "archived",
+        "vitrine"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-compositions": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "POST /companies/:companyId/item-compositions/import-batch": {
+    "queryFields": [],
+    "bodyContract": "compositionImportBatch",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "const": "tijara-compositions-v1"
+        },
+        "items": {
+          "minItems": 1,
+          "maxItems": 80,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "arabicName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "englishName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              }
+            },
+            "required": [
+              "arabicName",
+              "englishName"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "format",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "POST /companies/:companyId/item-compositions": {
+    "queryFields": [],
+    "bodyContract": "itemCompositionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "arabicName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "englishName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "identicalAlternative": {
+          "default": false,
+          "type": "boolean"
+        },
+        "nonInterchangeable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "arabicName",
+        "englishName",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-compositions/:id": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "PATCH /companies/:companyId/item-compositions/:id": {
+    "queryFields": [],
+    "bodyContract": "itemCompositionPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "arabicName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "englishName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "description": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "identicalAlternative": {
+          "default": false,
+          "type": "boolean"
+        },
+        "nonInterchangeable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "arabicName",
+        "englishName",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-agents": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "POST /companies/:companyId/item-agents": {
+    "queryFields": [],
+    "bodyContract": "itemAgentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "notes": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "name",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-agents/:id": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "PATCH /companies/:companyId/item-agents/:id": {
+    "queryFields": [],
+    "bodyContract": "itemAgentPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "notes": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "name",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "POST /companies/:companyId/items": {
+    "queryFields": [],
+    "bodyContract": "itemSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "imageId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "englishName": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "shelf": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100
+        },
+        "shelfId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "barcode": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "legacyId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100
+        },
+        "agentId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "compositionId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit1Name": {
+          "default": "باكت",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "unit2Name": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "unit3Name": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "factor2": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "factor3": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "defaultSaleUnit": {
+          "default": 1,
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            }
+          ]
+        },
+        "salePrice1": {
+          "type": "string"
+        },
+        "salePrice2": {
+          "type": "string"
+        },
+        "salePrice3": {
+          "type": "string"
+        },
+        "purchasePrice": {
+          "type": "string"
+        },
+        "commissionRate": {
+          "type": "string"
+        },
+        "clearanceFrom": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clearanceTo": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purchaseFactor": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reorderLimit": {
+          "type": "string"
+        },
+        "orderQuantity": {
+          "type": "string"
+        },
+        "searchKeys": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "purchaseNotes": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "orderStoppedUntil": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasExpiry": {
+          "default": true,
+          "type": "boolean"
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "name",
+        "currencyId",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/statistics": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "PATCH /companies/:companyId/items/:id": {
+    "queryFields": [],
+    "bodyContract": "itemPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "imageId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "englishName": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "shelf": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100
+        },
+        "shelfId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "barcode": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "legacyId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "agentId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "compositionId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit1Name": {
+          "default": "باكت",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "unit2Name": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "unit3Name": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "factor2": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "factor3": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "defaultSaleUnit": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            }
+          ]
+        },
+        "salePrice1": {
+          "type": "string"
+        },
+        "salePrice2": {
+          "type": "string"
+        },
+        "salePrice3": {
+          "type": "string"
+        },
+        "purchasePrice": {
+          "type": "string"
+        },
+        "commissionRate": {
+          "type": "string"
+        },
+        "clearanceFrom": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clearanceTo": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purchaseFactor": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "currencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reorderLimit": {
+          "type": "string"
+        },
+        "orderQuantity": {
+          "type": "string"
+        },
+        "searchKeys": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "purchaseNotes": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "orderStoppedUntil": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasExpiry": {
+          "default": true,
+          "type": "boolean"
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "name",
+        "currencyId",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/conversion": {
+    "queryFields": [
+      "unit",
+      "quantity"
+    ],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/item-options": {
+    "queryFields": [
+      "type"
+    ],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/branches": {
+    "queryFields": [],
+    "source": "routes-locations.ts"
+  },
+  "POST /companies/:companyId/branches": {
+    "queryFields": [],
+    "bodyContract": "branchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "active": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-locations.ts"
+  },
+  "GET /companies/:companyId/branches/:id": {
+    "queryFields": [],
+    "source": "routes-locations.ts"
+  },
+  "PATCH /companies/:companyId/branches/:id": {
+    "queryFields": [],
+    "bodyContract": "branchPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-locations.ts"
+  },
+  "GET /companies/:companyId/locations": {
+    "queryFields": [],
+    "source": "routes-locations.ts"
+  },
+  "POST /companies/:companyId/locations": {
+    "queryFields": [],
+    "bodyContract": "locationSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "branchId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "showroom",
+            "warehouse"
+          ]
+        }
+      },
+      "required": [
+        "branchId",
+        "code",
+        "name",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-locations.ts"
+  },
+  "GET /companies/:companyId/locations/:id": {
+    "queryFields": [],
+    "source": "routes-locations.ts"
+  },
+  "PATCH /companies/:companyId/locations/:id": {
+    "queryFields": [],
+    "bodyContract": "locationPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-locations.ts"
+  },
+  "GET /companies/:companyId/memos": {
+    "queryFields": [
+      "box",
+      "status"
+    ],
+    "source": "routes-memos.ts"
+  },
+  "GET /companies/:companyId/memos/recipients": {
+    "queryFields": [],
+    "source": "routes-memos.ts"
+  },
+  "POST /companies/:companyId/memos": {
+    "queryFields": [],
+    "bodyContract": "memoCreateSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "recipientEmployeeId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "task",
+            "inquiry",
+            "review",
+            "approval"
+          ]
+        },
+        "followers": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "employee"
+                  },
+                  "employeeId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accessLevel": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "employeeId",
+                  "accessLevel"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "role"
+                  },
+                  "roleId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accessLevel": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "roleId",
+                  "accessLevel"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "recipientEmployeeId",
+        "type",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-memos.ts"
+  },
+  "GET /companies/:companyId/memos/roles": {
+    "queryFields": [],
+    "source": "routes-memos.ts"
+  },
+  "PUT /companies/:companyId/memos/:memoId/followers": {
+    "queryFields": [],
+    "bodyContract": "memoFollowersUpdateSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "followers": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "employee"
+                  },
+                  "employeeId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accessLevel": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "employeeId",
+                  "accessLevel"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "role"
+                  },
+                  "roleId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accessLevel": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "roleId",
+                  "accessLevel"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "followers"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-memos.ts"
+  },
+  "GET /companies/:companyId/memos/:memoId": {
+    "queryFields": [],
+    "source": "routes-memos.ts"
+  },
+  "POST /companies/:companyId/memos/:memoId/read": {
+    "queryFields": [],
+    "bodySchemaSource": "z.object({}).strict()",
+    "source": "routes-memos.ts"
+  },
+  "POST /companies/:companyId/memos/:memoId/comments": {
+    "queryFields": [],
+    "bodyContract": "memoFollowerCommentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "body",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-memos.ts"
+  },
+  "POST /companies/:companyId/memos/:memoId/actions": {
+    "queryFields": [],
+    "bodyContract": "memoActionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "reply"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "return"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "request-completion"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "approve-completion"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "reopen-completion"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "complete"
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "action": {
+              "type": "string",
+              "const": "forward"
+            },
+            "recipientEmployeeId": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "body",
+            "revision",
+            "idempotencyKey",
+            "action",
+            "recipientEmployeeId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "source": "routes-memos.ts"
+  },
+  "GET /notification-templates": {
+    "queryFields": [],
+    "source": "routes-notifications.ts"
+  },
+  "PUT /notification-templates/:code": {
+    "queryFields": [],
+    "bodyContract": "notificationSettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "importance": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "canSnooze": {
+          "type": "boolean"
+        },
+        "allowRepeat": {
+          "type": "boolean"
+        },
+        "repeatInterval": {
+          "type": "string",
+          "enum": [
+            "none",
+            "day",
+            "week",
+            "month"
+          ]
+        },
+        "notifyManagers": {
+          "type": "boolean"
+        },
+        "notifySubject": {
+          "type": "boolean"
+        },
+        "roleIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "employeeIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "importance",
+        "enabled",
+        "canSnooze",
+        "allowRepeat",
+        "repeatInterval",
+        "notifyManagers",
+        "notifySubject",
+        "roleIds",
+        "employeeIds",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-notifications.ts"
+  },
+  "GET /notifications": {
+    "queryFields": [
+      "state"
+    ],
+    "source": "routes-notifications.ts"
+  },
+  "POST /notifications/:notificationId/action": {
+    "queryFields": [],
+    "bodyContract": "notificationActionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "priority"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "importance": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "importance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "read"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "action",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "complete"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "action",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "snooze"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "until": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "until"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "repeat"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "repeatInterval": {
+              "type": "string",
+              "enum": [
+                "none",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "repeatInterval"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "assign"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "employeeId": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "repeatInterval": {
+              "type": "string",
+              "enum": [
+                "none",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "employeeId",
+            "repeatInterval"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "source": "routes-notifications.ts"
+  },
+  "GET /companies/:companyId/notification-templates": {
+    "queryFields": [],
+    "source": "routes-notifications.ts"
+  },
+  "PUT /companies/:companyId/notification-templates/:code": {
+    "queryFields": [],
+    "bodyContract": "notificationSettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "importance": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "canSnooze": {
+          "type": "boolean"
+        },
+        "allowRepeat": {
+          "type": "boolean"
+        },
+        "repeatInterval": {
+          "type": "string",
+          "enum": [
+            "none",
+            "day",
+            "week",
+            "month"
+          ]
+        },
+        "notifyManagers": {
+          "type": "boolean"
+        },
+        "notifySubject": {
+          "type": "boolean"
+        },
+        "roleIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "employeeIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "importance",
+        "enabled",
+        "canSnooze",
+        "allowRepeat",
+        "repeatInterval",
+        "notifyManagers",
+        "notifySubject",
+        "roleIds",
+        "employeeIds",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-notifications.ts"
+  },
+  "GET /companies/:companyId/notifications": {
+    "queryFields": [
+      "state"
+    ],
+    "source": "routes-notifications.ts"
+  },
+  "POST /companies/:companyId/notifications/:notificationId/action": {
+    "queryFields": [],
+    "bodyContract": "notificationActionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "priority"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "importance": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "importance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "read"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "action",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "complete"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "action",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "snooze"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "until": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "until"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "repeat"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "repeatInterval": {
+              "type": "string",
+              "enum": [
+                "none",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "repeatInterval"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "assign"
+            },
+            "revision": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "employeeId": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "repeatInterval": {
+              "type": "string",
+              "enum": [
+                "none",
+                "day",
+                "week",
+                "month"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "revision",
+            "employeeId",
+            "repeatInterval"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "source": "routes-notifications.ts"
+  },
+  "GET /page-catalog": {
+    "queryFields": [
+      "companyId",
+      "sort"
+    ],
+    "source": "routes-pages.ts"
+  },
+  "GET /page-catalog/:pageKey/resolve": {
+    "queryFields": [
+      "companyId",
+      "recordId"
+    ],
+    "source": "routes-pages.ts"
+  },
+  "PUT /page-catalog/:pageKey/settings": {
+    "queryFields": [],
+    "bodyContract": "pageSettingSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "companyId": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "visible",
+        "enabled",
+        "order",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-pages.ts"
+  },
+  "GET /users": {
+    "queryFields": [
+      "kind",
+      "archived"
+    ],
+    "source": "routes-public.ts"
+  },
+  "POST /users/:id/password": {
+    "queryFields": [],
+    "bodyContract": "ownerPasswordResetSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "newPassword": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "newPassword"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-public.ts"
+  },
+  "PATCH /users/:id": {
+    "queryFields": [],
+    "bodyContract": "userPatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "email": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "maxLength": 254,
+              "format": "email",
+              "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            }
+          ]
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "supervisor",
+            "member"
+          ]
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "suspended": {
+          "type": "boolean"
+        },
+        "editor": {
+          "type": "boolean"
+        },
+        "monitor": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-public.ts"
+  },
+  "GET /audit": {
+    "queryFields": [],
+    "source": "routes-public.ts"
+  },
+  "GET /appearance": {
+    "queryFields": [
+      "scope"
+    ],
+    "source": "routes-public.ts"
+  },
+  "PATCH /appearance": {
+    "queryFields": [],
+    "bodyContract": "appearanceSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "pattern": "^(public|company:[1-9][0-9]*)$"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark"
+          ]
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "scope",
+        "mode",
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-public.ts"
+  },
+  "GET /companies/:companyId/wallet-settings": {
+    "queryFields": [],
+    "source": "routes-wallet.ts"
+  },
+  "PUT /companies/:companyId/wallet-settings": {
+    "queryFields": [],
+    "bodyContract": "walletPolicySchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "pointValue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currencyId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expenseAccountId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "direct",
+                "approval"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "pointValue",
+        "currencyId",
+        "expenseAccountId",
+        "approvalMode",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/wallet-settings/employee-accounts/:employeeId": {
+    "queryFields": [],
+    "source": "routes-wallet.ts"
+  },
+  "PUT /companies/:companyId/wallet-settings/employee-accounts/:employeeId": {
+    "queryFields": [],
+    "bodyContract": "employeeWalletAccountSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "accountId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "accountId",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/wallet/conversion-preview": {
+    "queryFields": [
+      "employeeId"
+    ],
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/wallet-conversions": {
+    "queryFields": [
+      "employeeId",
+      "status"
+    ],
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet-conversions": {
+    "queryFields": [],
+    "bodyContract": "walletConversionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPoints": {
+          "type": "string"
+        },
+        "expectedAmount": {
+          "type": "string"
+        },
+        "policyRevision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "accountRevision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "employeeId",
+        "expectedPoints",
+        "expectedAmount",
+        "policyRevision",
+        "accountRevision",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet-conversions/:id/approve": {
+    "queryFields": [],
+    "bodyContract": "walletConversionDecisionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "revision",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet-conversions/:id/reject": {
+    "queryFields": [],
+    "bodyContract": "walletConversionDecisionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "revision",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet-conversions/:id/cancel": {
+    "queryFields": [],
+    "bodyContract": "walletConversionDecisionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "revision",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/reward-events/page-visit": {
+    "queryFields": [],
+    "bodyContract": "pageVisitEventSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "pageKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "pageKey",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/wallet/summary": {
+    "queryFields": [],
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/wallet": {
+    "queryFields": [
+      "employeeId"
+    ],
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet/awards": {
+    "queryFields": [],
+    "bodyContract": "walletAwardSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "points": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "employeeId",
+        "points",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "POST /companies/:companyId/wallet/reversals": {
+    "queryFields": [],
+    "bodyContract": "walletReversalSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "entryId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "entryId",
+        "reason",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  },
+  "GET /companies/:companyId/reward-tasks": {
+    "queryFields": [],
+    "source": "routes-wallet.ts"
+  },
+  "PUT /companies/:companyId/reward-tasks/:code": {
+    "queryFields": [],
+    "bodyContract": "rewardTaskSettingsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "points": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "repeatRule": {
+          "type": "string",
+          "enum": [
+            "per-document",
+            "daily",
+            "rolling-seven-days",
+            "unlimited"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "dailyLimit": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roleIds": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "pageKey": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "points",
+        "repeatRule",
+        "enabled",
+        "roleIds",
+        "pageKey",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-wallet.ts"
+  }
+}

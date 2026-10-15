@@ -921,3 +921,6 @@ export function configurationAdministrationRoutes(pool: Pool): Router {
   );
   return router;
 }
+
+/** Schemas reused by the generated MCP operation catalog. */
+export const mcpBodySchemas = { optionInput, optionPatch, roleInput, rolePatch, ruleInput, assignmentInput, employeeRuleInput, valueInput };
