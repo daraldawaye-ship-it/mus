@@ -47,8 +47,9 @@ test("new companies get mapped salary, reward and commission accounts without fi
       headers: { "content-type": "application/json", origin, cookie, "x-csrf-token": csrf },
       body: JSON.stringify({ name, phone: "", address: "" }),
     });
-    assert.equal(response.status, 201, await response.text());
-    const data = await response.json() as { company: { id: number } };
+    const data = await response.json() as { company?: { id: number }; error?: unknown };
+    assert.equal(response.status, 201, JSON.stringify(data));
+    assert(data.company);
     return data.company.id;
   };
   const first = await createCompany("A");
