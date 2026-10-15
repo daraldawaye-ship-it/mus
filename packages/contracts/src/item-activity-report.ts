@@ -3,7 +3,9 @@ export type ItemActivityReportPeriod="oneMonth"|"fourMonths"|"twelveMonths"|"all
 export type ItemActivityReportMetric="sale"|"purchase"|"saleReturn"|"purchaseReturn";
 export type ItemActivityReportSort="code"|"name"|
  "saleOneMonth"|"saleFourMonths"|"saleTwelveMonths"|"saleAllTime"|
- "purchaseOneMonth"|"purchaseFourMonths"|"purchaseTwelveMonths"|"purchaseAllTime";
+ "purchaseOneMonth"|"purchaseFourMonths"|"purchaseTwelveMonths"|"purchaseAllTime"|
+ "saleReturnOneMonth"|"saleReturnFourMonths"|"saleReturnTwelveMonths"|"saleReturnAllTime"|
+ "purchaseReturnOneMonth"|"purchaseReturnFourMonths"|"purchaseReturnTwelveMonths"|"purchaseReturnAllTime";
 export interface ItemActivityReportRow {
  itemId:number;
  code:string;
