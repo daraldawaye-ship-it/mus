@@ -465,7 +465,12 @@ export function accountRoutes(pool: Pool): Router {
         req,
         "accounts.manage",
         async (client, user, companyId) => {
-          return initializeCompanyAccounts(client, user, companyId);
+          const created = await initializeCompanyAccounts(client, user, companyId);
+          await client.query(
+            "SELECT ensure_company_operational_accounts($1,$2)",
+            [companyId, user.id],
+          );
+          return created;
         },
       );
       res.status(201).json({ created });

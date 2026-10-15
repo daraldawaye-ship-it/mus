@@ -189,6 +189,9 @@ async function fixture(t: TestContext) {
       base + "/currencies",
     );
     const currency = currencies.items.find((row) => row.code === "YER")!;
+    const { policy: initialPolicy } = await owner.ok<{ policy: WalletPolicy }>(
+      "GET", base + "/wallet-settings",
+    );
     const { policy } = await owner.ok<{ policy: WalletPolicy }>(
       "PUT",
       base + "/wallet-settings",
@@ -197,7 +200,7 @@ async function fixture(t: TestContext) {
         currencyId: currency.id,
         expenseAccountId: expense.id,
         approvalMode,
-        revision: null,
+        revision: initialPolicy.revision,
       },
     );
     const binding = useAutoAdvance
