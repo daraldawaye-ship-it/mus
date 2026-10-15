@@ -634,7 +634,6 @@ function ItemReservationCard({
  const selectable=availability?.lots.filter(l=>BigInt(l.availableSmallest)>0n)??[];
  const lot=selectable.find(l=>`${l.locationId}|${l.expiryDate??""}`===lotKey);
  const display=(value:string)=>BigInt(value).toLocaleString("en-US");
- const defaultUnit=availability?(availability.factor3>1?3:availability.factor2>1?2:1):1;
  async function reserve() {
    if(!canPost||working)return;
    setError("");setNotice("");
@@ -725,7 +724,7 @@ function ItemReservationCard({
                </Select>
                <Field label="الكمية المحجوزة" inputMode="numeric" dir="ltr"
                  value={quantity} disabled={working}
-                 placeholder={String(defaultUnit===unit?1:1)}
+                 placeholder="0"
                  onChange={event=>setQuantity(event.target.value)} />
                <Field label="رقم الطلب أو مرجع الحجز" maxLength={120}
                  value={reference} disabled={working}
