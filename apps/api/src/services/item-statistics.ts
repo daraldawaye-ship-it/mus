@@ -97,11 +97,11 @@ export async function readItemStatistics(
           createdAt: m.created_at.toISOString(),
         };
     }
-    if (row.last_adjustment_movement_id) {
+    if (row.last_adjustment_operation_id) {
       const a = (
         await client.query(
-          "SELECT o.id,o.document_date::text AS day,o.created_at,u.display_name AS user_name FROM stock_movements m JOIN stock_operations o ON o.company_id=m.company_id AND o.id=m.operation_id JOIN users u ON u.id=o.created_by WHERE m.company_id=$1 AND m.id=$2",
-          [companyId, row.last_adjustment_movement_id],
+          "SELECT o.id,o.document_date::text AS day,o.created_at,u.display_name AS user_name FROM stock_operations o JOIN users u ON u.id=o.created_by WHERE o.company_id=$1 AND o.id=$2 AND o.kind='adjustment'",
+          [companyId, row.last_adjustment_operation_id],
         )
       ).rows[0];
       if (a)
@@ -135,6 +135,22 @@ export async function readItemStatistics(
     lastMovement,
     lastSale,
     lastPurchase,
+    adjustmentCounts: canViewStock
+      ? {
+          allTime: row.adjustments_all_time.toString(),
+          sinceApproval: row.adjustments_since_approval.toString(),
+          sinceDisplay: row.adjustments_since_display.toString(),
+          approvalDate: item.settlement_approval_date
+            ? new Date(item.settlement_approval_date).toISOString().slice(0, 10)
+            : null,
+          displayDate: item.settlement_display_date
+            ? new Date(item.settlement_display_date).toISOString().slice(0, 10)
+            : null,
+          lastShowroomAt: row.last_showroom_adjustment_at
+            ? new Date(row.last_showroom_adjustment_at).toISOString()
+            : null,
+        }
+      : null,
     lastAdjustment,
   };
 }
