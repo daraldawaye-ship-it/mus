@@ -24,6 +24,7 @@ import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { itemImportRoutes } from "./routes-item-import.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
+import { stockReservationRoutes } from "./routes-stock-reservations.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
@@ -91,6 +92,7 @@ export async function createApp(options: AppOptions = {}) {
     itemRoutes(pool),
     itemImportRoutes(pool),
     inventoryRoutes(pool),
+    stockReservationRoutes(pool),
     commerceOptionRoutes(pool),
     commerceRoutes(pool),
   );
