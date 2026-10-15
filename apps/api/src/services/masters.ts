@@ -67,6 +67,7 @@ export async function masterPage<T>(
   filters: Record<string, "boolean" | "id" | readonly string[]>,
   fallback = "id:asc",
   optionKind?: "item" | "account",
+  exactMatchColumns: string[] = [],
 ) {
   const options = optionKind
     ? await optionListPlan(pool, req, companyId, optionKind, alias)
@@ -105,9 +106,20 @@ export async function masterPage<T>(
     `SELECT count(*)::integer AS total ${from} WHERE ${filter}`,
     parameters,
   );
+  // Exact code/barcode matches take precedence over popularity. Bind the raw
+  // search value separately so it can never become part of SQL syntax.
+  const rowParameters: unknown[] = [...parameters];
+  let order = query.order;
+  if (query.q && exactMatchColumns.length) {
+    rowParameters.push(query.q);
+    const exactParameter = `$${rowParameters.length}::text`;
+    order = `CASE WHEN (${exactMatchColumns.map(
+      (column) => `lower(${column})=lower(${exactParameter})`,
+    ).join(" OR ")}) THEN 0 ELSE 1 END ASC, ${order}`;
+  }
   const rows = await pool.query(
-    `${select} WHERE ${filter} ORDER BY ${query.order} LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
-    [...parameters, query.pageSize, query.offset],
+    `${select} WHERE ${filter} ORDER BY ${order} LIMIT $${rowParameters.length + 1} OFFSET $${rowParameters.length + 2}`,
+    [...rowParameters, query.pageSize, query.offset],
   );
   return {
     items: options ? await options.rows(rows.rows, dto) : rows.rows.map(dto),
