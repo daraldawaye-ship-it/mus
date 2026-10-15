@@ -61,7 +61,7 @@ export async function readItemActivityReport(
         OR i.code ILIKE '%'||$3||'%' OR i.barcode ILIKE '%'||$3||'%')
    AND ($4::text='all' OR ($4='active' AND i.active) OR ($4='archived' AND NOT i.active))`;
  const count=(await client.query(
-   `SELECT count(*)::text AS total FROM items i WHERE ${predicate}`,terms,
+   `SELECT count(*)::text AS total FROM items i WHERE ${predicate} AND $2::date IS NOT NULL`,terms,
  )).rows[0].total as string;
  const sort=sorts[filters.sortBy],direction=filters.sortDir==="asc"?"ASC":"DESC";
  const order=filters.sortBy==="code"||filters.sortBy==="name"
