@@ -203,10 +203,10 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
     policyPath,
   );
   assert.equal(empty.pointValue, null, "No value per point is invented");
-  assert.equal(empty.currencyId, null);
-  assert.equal(empty.expenseAccountId, null);
-  assert.equal(empty.approvalMode, null);
-  assert.equal(empty.revision, null);
+  assert.equal(empty.currencyId, yer.id, "The base currency is prepared by default");
+  assert.equal(empty.expenseAccount?.code, "5500000002");
+  assert.equal(empty.approvalMode, null, "Conversion still requires a decision");
+  assert.equal(empty.revision, 1);
   const ownEmpty = (
     await recipient.client.ok<{ preview: WalletConversionPreview }>(
       "GET",
