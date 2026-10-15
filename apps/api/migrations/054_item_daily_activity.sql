@@ -81,18 +81,18 @@ SELECT company_id,item_id,document_date,
  sum(purchase_return_quantity)
 FROM (
  SELECT i.company_id,l.item_id,i.document_date,i.id AS invoice_id,
-    CASE WHEN i.kind='sale' AND bool_or(l.smallest_quantity>0) THEN 1 ELSE 0 END,
-    CASE WHEN i.kind='sale' AND bool_or(l.smallest_quantity<0) THEN 1 ELSE 0 END,
-    CASE WHEN i.kind='sale' THEN count(*) FILTER (WHERE l.smallest_quantity>0) ELSE 0 END,
-    CASE WHEN i.kind='sale' THEN count(*) FILTER (WHERE l.smallest_quantity<0) ELSE 0 END,
-    CASE WHEN i.kind='sale' THEN coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity>0),0) ELSE 0 END,
-    CASE WHEN i.kind='sale' THEN -coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity<0),0) ELSE 0 END,
-    CASE WHEN i.kind='purchase' AND bool_or(l.smallest_quantity>0) THEN 1 ELSE 0 END,
-    CASE WHEN i.kind='purchase' AND bool_or(l.smallest_quantity<0) THEN 1 ELSE 0 END,
-    CASE WHEN i.kind='purchase' THEN count(*) FILTER (WHERE l.smallest_quantity>0) ELSE 0 END,
-    CASE WHEN i.kind='purchase' THEN count(*) FILTER (WHERE l.smallest_quantity<0) ELSE 0 END,
-    CASE WHEN i.kind='purchase' THEN coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity>0),0) ELSE 0 END,
-    CASE WHEN i.kind='purchase' THEN -coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity<0),0) ELSE 0 END
+    CASE WHEN i.kind='sale' AND bool_or(l.smallest_quantity>0) THEN 1 ELSE 0 END AS sale_invoices,
+    CASE WHEN i.kind='sale' AND bool_or(l.smallest_quantity<0) THEN 1 ELSE 0 END AS sale_return_invoices,
+    CASE WHEN i.kind='sale' THEN count(*) FILTER (WHERE l.smallest_quantity>0) ELSE 0 END AS sale_lines,
+    CASE WHEN i.kind='sale' THEN count(*) FILTER (WHERE l.smallest_quantity<0) ELSE 0 END AS sale_return_lines,
+    CASE WHEN i.kind='sale' THEN coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity>0),0) ELSE 0 END AS sale_quantity,
+    CASE WHEN i.kind='sale' THEN -coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity<0),0) ELSE 0 END AS sale_return_quantity,
+    CASE WHEN i.kind='purchase' AND bool_or(l.smallest_quantity>0) THEN 1 ELSE 0 END AS purchase_invoices,
+    CASE WHEN i.kind='purchase' AND bool_or(l.smallest_quantity<0) THEN 1 ELSE 0 END AS purchase_return_invoices,
+    CASE WHEN i.kind='purchase' THEN count(*) FILTER (WHERE l.smallest_quantity>0) ELSE 0 END AS purchase_lines,
+    CASE WHEN i.kind='purchase' THEN count(*) FILTER (WHERE l.smallest_quantity<0) ELSE 0 END AS purchase_return_lines,
+    CASE WHEN i.kind='purchase' THEN coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity>0),0) ELSE 0 END AS purchase_quantity,
+    CASE WHEN i.kind='purchase' THEN -coalesce(sum(l.smallest_quantity) FILTER (WHERE l.smallest_quantity<0),0) ELSE 0 END AS purchase_return_quantity
  FROM invoices i
  JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
  WHERE i.posted
