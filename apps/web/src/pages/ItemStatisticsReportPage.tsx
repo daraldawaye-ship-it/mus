@@ -17,6 +17,7 @@ const periods:readonly {key:ItemActivityReportPeriod;label:string}[]=[
  {key:"allTime",label:"منذ البداية"},
 ];
 const metrics:Record<ItemActivityReportMetric,string>={
+ saleTimes:"مرات البيع الصافية",
  sale:"الكمية المباعة",purchase:"الكمية المشتراة",
  saleReturn:"مرتجع المبيعات",purchaseReturn:"مرتجع المشتريات",
 };
@@ -34,9 +35,9 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
  const [typedSearch,setTypedSearch]=useState(params.get("q")??"");
  const q=params.get("q")??"";
  const active=params.get("active")??"active";
- const metric=(["sale","purchase","saleReturn","purchaseReturn"] as string[])
+ const metric=(["saleTimes","sale","purchase","saleReturn","purchaseReturn"] as string[])
     .includes(params.get("metric")??"") ?
-    params.get("metric") as ItemActivityReportMetric:"sale";
+    params.get("metric") as ItemActivityReportMetric:"saleTimes";
  const sortPeriod=(["oneMonth","fourMonths","twelveMonths","allTime"] as string[])
     .includes(params.get("sortPeriod")??"") ?
     params.get("sortPeriod") as ItemActivityReportPeriod:"oneMonth";
@@ -72,7 +73,7 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
  const totalPages=Math.max(1,Math.ceil((result?.total??0)/pageSize));
  return <div className="wallet-page">
    <PageHeader title="تقرير إحصائيات الأصناف"
-     description="مقارنة كميات الأصناف حسب الفترة — بالوحدة الصغرى لكل صنف، وبتوقيت عدن"
+     description="مرات البيع الصافية والكميات لكل صنف خلال شهر و4 أشهر وسنة ومنذ البداية — بتوقيت عدن"
      actions={<>
        <Link className="button button-secondary" to={`/companies/${companyId}/items`}>الأصناف</Link>
        <Button variant="secondary" disabled={report.isFetching} onClick={()=>void report.refetch()}>تحديث التقرير</Button>
@@ -104,7 +105,7 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
        <Select label="ترتيب النتائج" value={sort} onChange={e=>change("sort",e.target.value)}>
          <option value="code">رمز الصنف</option>
          <option value="name">اسم الصنف</option>
-         <option value="quantity">حسب الكمية المحددة</option>
+         <option value="quantity">حسب القيمة المحددة (مرات أو كمية)</option>
        </Select>
        {sort==="quantity"&&<>
          <Select label="فترة الفرز" value={sortPeriod} onChange={e=>change("sortPeriod",e.target.value)}>
@@ -125,14 +126,16 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
      <p className="muted">
        {result?<>حتى تاريخ <bdi>{result.asOf}</bdi> · عدد الأصناف المطابقة:{" "}
         <bdi>{result.total.toLocaleString("en-US")}</bdi></>:""}
-       {" "}· المرتجعات معروضة بصورة منفصلة عن المبيعات والمشتريات الإجمالية.
+       {" "}· {metric==="saleTimes"
+         ? "مرة بيع واحدة لكل فاتورة بيع للصنف، ناقص مرة عن كل فاتورة مرتجع له. يمكن أن تكون النتيجة سالبة."
+         : "المرتجعات معروضة بصورة منفصلة عن كميات المبيعات والمشتريات."}
      </p>
      {report.isPending&&canView&&<Notice>جارٍ تحميل الإحصائيات…</Notice>}
      {result&&<>
        <div className="table-scroll" role="region" aria-label="جدول إحصائيات جميع الأصناف">
          <table>
            <thead><tr>
-             <th>رمز الصنف</th><th>الصنف</th><th>الوحدة الصغرى</th>
+             <th>رمز الصنف</th><th>الصنف</th><th>{metric==="saleTimes"?"نوع العدد":"الوحدة الصغرى"}</th>
              {periods.map(p=><th key={p.key}>{p.label}</th>)}
            </tr></thead>
            <tbody>
@@ -140,7 +143,7 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
                <td><bdi>{row.code}</bdi></td>
                <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
                  {!row.active&&" (مؤرشف)"}</td>
-               <td>{row.unitName}</td>
+               <td>{metric==="saleTimes"?"مرة":row.unitName}</td>
                {periods.map(p=><td key={p.key} dir="ltr" style={{textAlign:"end"}}>
                  <bdi>{asQuantity(row[metric][p.key])}</bdi>
                </td>)}
@@ -160,8 +163,9 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
        </div>
      </>}
      <small className="muted">
-       لا تُجمع كميات أصناف مختلفة لأن وحداتها قد تختلف. الفترات متحركة حتى تاريخ اليوم،
-       وتُحتسب من الفواتير المُرحّلة فقط. انقر اسم الصنف لعرض التفاصيل.
+       مرات البيع = عدد فواتير بيع الصنف − عدد فواتير مرتجعه (ولو ظهر الناتج سالبًا).
+       أما الكميات فتُعرض بالوحدة الصغرى، ولا تُجمع كميات أصناف مختلفة.
+       تُحتسب الفترات من الفواتير المُرحّلة حتى اليوم. انقر اسم الصنف لعرض التفاصيل.
      </small>
    </Card>
  </div>;
