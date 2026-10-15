@@ -23,6 +23,8 @@ const sorts:Record<ItemActivityReportSort,string>={
  saleReturnTwelveMonths:'a."saleReturnTwelveMonths"',saleReturnAllTime:'a."saleReturnAllTime"',
  purchaseReturnOneMonth:'a."purchaseReturnOneMonth"',purchaseReturnFourMonths:'a."purchaseReturnFourMonths"',
  purchaseReturnTwelveMonths:'a."purchaseReturnTwelveMonths"',purchaseReturnAllTime:'a."purchaseReturnAllTime"',
+ saleTimesOneMonth:'a."saleTimesOneMonth"',saleTimesFourMonths:'a."saleTimesFourMonths"',
+ saleTimesTwelveMonths:'a."saleTimesTwelveMonths"',saleTimesAllTime:'a."saleTimesAllTime"',
 };
 const periods=[
  ["OneMonth","d.document_date>=($2::date-interval '1 month'+interval '1 day')::date"],
@@ -36,10 +38,11 @@ const quantities=[
  ["saleReturn","sale_return_quantity"],
  ["purchaseReturn","purchase_return_quantity"],
 ] as const;
-const aggregates=quantities.flatMap(([name,column])=>periods.map(([period,predicate])=>
- `COALESCE(SUM(d.${column}) FILTER(WHERE ${predicate}),0) AS "${name}${period}"`
+const quantitiesWithCounts=[...quantities,["saleTimes","sale_invoices - sale_return_invoices"] as const];
+const aggregates=quantitiesWithCounts.flatMap(([name,column])=>periods.map(([period,predicate])=>
+ `COALESCE(SUM(${name==="saleTimes"?"d.sale_invoices - d.sale_return_invoices":`d.${column}`}) FILTER(WHERE ${predicate}),0) AS "${name}${period}"`
 )).join(",\n");
-const columns=quantities.flatMap(([name])=>periods.map(([period])=>
+const columns=quantitiesWithCounts.flatMap(([name])=>periods.map(([period])=>
  `COALESCE(a."${name}${period}",0)::text AS "${name}${period}"`
 )).join(",\n");
 
@@ -93,6 +96,7 @@ export async function readItemActivityReport(
   rows:data.rows.map(r=>({
     itemId:r.id,code:r.code,name:r.name,active:r.active,
     unitName:r.factor3>1?r.unit3_name:r.factor2>1?r.unit2_name:r.unit1_name,
+    saleTimes:periodMap(r,"saleTimes"),
     sale:periodMap(r,"sale"),purchase:periodMap(r,"purchase"),
     saleReturn:periodMap(r,"saleReturn"),purchaseReturn:periodMap(r,"purchaseReturn"),
   })),
