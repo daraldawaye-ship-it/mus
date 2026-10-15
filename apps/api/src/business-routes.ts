@@ -22,12 +22,14 @@ import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
+import { transactionResetRoutes } from "./routes-transaction-reset.ts";
 
 /** Shared by browser and OAuth MCP: one set of domain policies and transactions. */
 export function businessRoutes(pool: Pool): Router {
   const router = Router();
   router.use(
     pageRoutes(pool),
+    transactionResetRoutes(pool),
     pageAvailabilityGate(pool),
     publicRoutes(pool),
     companyRoutes(pool),

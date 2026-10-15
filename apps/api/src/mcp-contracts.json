@@ -5177,6 +5177,46 @@
     },
     "source": "routes-public.ts"
   },
+  "GET /companies/:companyId/transaction-reset": {
+    "queryFields": [],
+    "source": "routes-transaction-reset.ts"
+  },
+  "POST /companies/:companyId/transaction-reset": {
+    "queryFields": [],
+    "bodyContract": "resetSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "snapshotHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "confirmationCompanyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "deleteAllTransactions": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "snapshotHash",
+        "confirmationCompanyName",
+        "deleteAllTransactions"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-transaction-reset.ts"
+  },
   "GET /companies/:companyId/wallet-settings": {
     "queryFields": [],
     "source": "routes-wallet.ts"

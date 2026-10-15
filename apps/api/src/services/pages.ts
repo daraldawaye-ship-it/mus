@@ -321,6 +321,19 @@ export async function requestPageKeys(
     "financial-options": "financial-documents",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (resource === "transaction-reset")
+    keys.push(
+      "company.settings",
+      "company.sales",
+      "company.purchases",
+      "company.financial-documents",
+      "company.journals",
+      "company.receipts",
+      "company.payments",
+      "company.stock-movements",
+      "company.stock-operations",
+      "company.stock-adjustments",
+    );
   // Reading one's own attendance profile does not open the employee directory.
   if (
     resource === "employees" &&
