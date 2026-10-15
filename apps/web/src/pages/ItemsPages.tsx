@@ -1228,14 +1228,6 @@ function ItemEditor({
               ? `أُنشئ ${new Date(item.createdAt).toLocaleString("ar-YE")} · الإصدار ${item.revision}`
               : "يُنشأ رمز الصنف تلقائيًا بعد تأكيد الحفظ."
           }
-          actions={
-            <Button
-              variant="secondary"
-              onClick={() => navigate(`/companies/${companyId}/items`)}
-            >
-              العودة للأصناف
-            </Button>
-          }
         />
       )}
       {error && <Notice tone="error">{error}</Notice>}
@@ -1257,29 +1249,38 @@ function ItemEditor({
           </Button>
         </Notice>
       )}
-      {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
-      {canAdjust && !embedded && (
-        <div className="form-actions">
-          <Button variant="secondary" onClick={() => setAdjustmentOpen(true)}>جرد الصنف</Button>
-        </div>
-      )}
-      {adjustmentOpen && item && (
-        <InventoryAdjustmentSheet
-          context={context}
-          item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
-          onClose={() => setAdjustmentOpen(false)}
-          onSaved={(date) => {
-            setNearestExpirySaved(date);
-            void itemQueryClient.invalidateQueries({
-              queryKey: ["items", user?.id, companyId, "statistics", item.id],
-            });
-          }}
-        />
-      )}
-      {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
-      {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
-      {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
+        <div className="form-actions item-save-actions">
+          {manage && (
+            <Button type="submit" disabled={saving}>
+              {saving
+                ? "جارٍ الحفظ…"
+                : unknownCreation
+                  ? "إعادة تأكيد الحفظ"
+                  : embedded
+                    ? "حفظ"
+                    : "حفظ الصنف"}
+            </Button>
+          )}
+          {item && manage && !embedded && (
+            <Button
+              variant="secondary"
+              disabled={saving || unknownCreation}
+              onClick={() => setReloadConfirmation(true)}
+            >
+              تحميل النسخة الحالية
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            disabled={saving}
+            onClick={() =>
+              embedded ? onClose?.() : navigate(`/companies/${companyId}/items`)
+            }
+          >
+            {embedded ? "إغلاق" : "العودة للقائمة"}
+          </Button>
+        </div>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
             <ImageUpload purpose="item" companyId={companyId}
@@ -1745,37 +1746,6 @@ function ItemEditor({
             canEdit={manage && !saving}
           />
         )}
-        <div className="form-actions item-save-actions">
-          {manage && (
-            <Button type="submit" disabled={saving}>
-              {saving
-                ? "جارٍ الحفظ…"
-                : unknownCreation
-                  ? "إعادة تأكيد الحفظ"
-                  : embedded
-                    ? "حفظ"
-                    : "حفظ الصنف"}
-            </Button>
-          )}
-          {item && manage && !embedded && (
-            <Button
-              variant="secondary"
-              disabled={saving || unknownCreation}
-              onClick={() => setReloadConfirmation(true)}
-            >
-              تحميل النسخة الحالية
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            disabled={saving}
-            onClick={() =>
-              embedded ? onClose?.() : navigate(`/companies/${companyId}/items`)
-            }
-          >
-            {embedded ? "إغلاق" : "العودة للقائمة"}
-          </Button>
-        </div>
       </form>
       {item && !embedded && (
         <RecordOptionCard
@@ -1785,6 +1755,28 @@ function ItemEditor({
           canEdit={manage}
         />
       )}
+      {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
+      {canAdjust && !embedded && (
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setAdjustmentOpen(true)}>جرد الصنف</Button>
+        </div>
+      )}
+      {adjustmentOpen && item && (
+        <InventoryAdjustmentSheet
+          context={context}
+          item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
+          onClose={() => setAdjustmentOpen(false)}
+          onSaved={(date) => {
+            setNearestExpirySaved(date);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "statistics", item.id],
+            });
+          }}
+        />
+      )}
+      {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
       <Dialog
         open={picker !== null}
         title={
