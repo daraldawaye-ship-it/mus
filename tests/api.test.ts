@@ -20,6 +20,7 @@ import type {
   Location,
   ItemStatistics,
   ItemActivity,
+  ItemPurchasePriceStatistics,
   Invoice,
   CompanyPage,
   Employee,
@@ -2671,6 +2672,100 @@ test("item statistics track finalized stock and last normal documents without le
     "GET",prefix+`/items/${item.id}/activity`)).activity;
   assert.equal(limitedActivity.canViewCommerce,false);
   assert.equal(limitedActivity.periods,null);
+});
+
+test("six month purchase extremes compare units and original exchange rate safely",async(t)=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Purchase price stats"),root=`/companies/${co.id}`;
+ const currencies=(await platform.client.ok<Page<{id:number;code:string}>>("GET",root+"/currencies")).items;
+ const yer=currencies.find(x=>x.code==="YER")!,usd=currencies.find(x=>x.code==="USD")!;
+ const branch=(await platform.client.ok<Page<{id:number;code:string}>>("GET",root+"/branches")).items.find(x=>x.code==="HQ")!;
+ const showroom=(await platform.client.ok<Page<{id:number;code:string}>>(
+   "GET",root+`/locations?branchId=${branch.id}`)).items.find(x=>x.code==="SHOWROOM")!;
+ const account=(await platform.client.ok<{account:{id:number}}>("POST",root+"/accounts",{
+   code:"1111999996",name:"حساب مقابل أسعار الشراء",kind:"posting",
+   category:"asset",normalSide:"debit",parentId:null,active:true,
+ },201)).account;
+ const supplier=(await platform.client.ok<{account:{id:number}}>("POST",root+"/accounts",{
+   code:"2111999996",name:"مورد الأسعار الفعلي",kind:"posting",
+   category:"liability",normalSide:"credit",parentId:null,active:true,
+ },201)).account;
+ const item=(await platform.client.ok<{item:{id:number}}>("POST",root+"/items",{
+   idempotencyKey:randomUUID(),name:"صنف بأسعار مختلفة",currencyId:yer.id,
+   hasExpiry:false,unit1Name:"كرتون",unit2Name:"باكت",unit3Name:"حبة",
+   factor2:7,factor3:3,salePrice1:"210",salePrice2:"30",
+   salePrice3:"10",purchasePrice:"100",
+ },201)).item;
+ await platform.client.ok("POST",root+"/exchange-rates",{
+   currencyId:usd.id,rate:"2",effectiveAt:"2000-01-01T00:00:00.000Z",
+   source:"سعر صرف مقارنة الأسعار",
+ },201);
+ const day=new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Aden"});
+ const purchase=async(currencyId:number,unit:1|2|3,price:string,supplierId:number|null=supplier.id)=>{
+   const payload={
+     idempotencyKey:randomUUID(),kind:"purchase" as const,documentDate:day,currencyId,
+     branchId:branch.id,locationId:showroom.id,counterpartyAccountId:account.id,
+     supplierAccountId:supplierId,discount:"0",
+     lines:[{itemId:item.id,unit,quantity:"1",unitPrice:price,expiryDate:null}],
+   };
+   const invoice=(await platform.client.ok<{invoice:Invoice}>("POST",root+"/invoices",payload,201)).invoice;
+   return {invoice,payload};
+ };
+ const first=await purchase(yer.id,1,"210"); // 210 YER / 21 = 10 YER per smallest
+ const second=await purchase(usd.id,3,"4"); // 4 USD * 2 = 8 YER
+ const third=await purchase(yer.id,2,"45"); // 45 YER / 3 = 15 YER
+ const read=async()=>(
+   await platform.client.ok<{statistics:ItemPurchasePriceStatistics}>(
+     "GET",root+`/items/${item.id}/purchase-price-statistics`)).statistics;
+ const stats=await read();
+ assert.equal(stats.canViewPrices,true);
+ assert.equal(stats.baseCurrencyCode,"YER");
+ assert.equal(stats.smallestUnitName,"حبة");
+ assert.equal(stats.minimum?.priceBaseSmallest,"8");
+ assert.equal(stats.minimum?.originalUnitPrice,"4");
+ assert.equal(stats.minimum?.originalCurrencyCode,"USD");
+ assert.equal(stats.minimum?.invoiceId,second.invoice.id);
+ assert.equal(stats.maximum?.priceBaseSmallest,"15");
+ assert.equal(stats.maximum?.invoiceId,third.invoice.id);
+ assert.equal(stats.latest?.invoiceId,third.invoice.id);
+ assert.equal(stats.latestAboveMinimumPercent,"87.5");
+ assert.equal(stats.minimum?.supplierAccountId,supplier.id);
+ assert.equal(stats.maximum?.supplierAccountName,"مورد الأسعار الفعلي");
+ await platform.client.ok("POST",root+"/invoices",second.payload,200);
+ assert.deepEqual((await read()).minimum,stats.minimum,"Replay cannot duplicate facts");
+ await platform.client.ok("POST",root+"/invoices",{
+   idempotencyKey:randomUUID(),kind:"purchase",documentDate:day,currencyId:usd.id,
+   branchId:branch.id,locationId:showroom.id,counterpartyAccountId:account.id,
+   supplierAccountId:supplier.id,discount:"0",
+   lines:[{itemId:item.id,unit:3,quantity:"-1",unitPrice:"4",
+     originalLineId:second.invoice.lines[0]!.id,expiryDate:null}],
+ },201);
+ assert.equal((await read()).minimum?.invoiceId,second.invoice.id,
+   "Purchase returns must not set purchase price extremes");
+ const noSupplier=await purchase(yer.id,3,"12",null);
+ const current=await read();
+ assert.equal(current.latest?.invoiceId,noSupplier.invoice.id);
+ assert.equal(current.latest?.supplierAccountName,null);
+ assert.equal(current.maximum?.priceBaseSmallest,"15");
+ const another=await company(platform.client,"Unrelated price tenant");
+ assert.equal((await platform.client.request("GET",
+   `/companies/${another.id}/items/${item.id}/purchase-price-statistics`)).status,404);
+ const clerk=await register(f,"item-price-only@example.test");
+ await employee(platform.client,co.id,clerk.user.id,["items.view"]);
+ const hidden=(await clerk.client.ok<{statistics:ItemPurchasePriceStatistics}>(
+   "GET",root+`/items/${item.id}/purchase-price-statistics`)).statistics;
+ assert.equal(hidden.canViewPrices,false);
+ assert.equal(hidden.minimum,null);
+ assert.equal(hidden.maximum,null);
+ assert.equal(hidden.latest,null);
+ assert.equal(hidden.latestAboveMinimumPercent,null);
+ assert.equal(hidden.hasOtherBaseCurrencyHistory,false);
+ const facts=await f.pool.query<{count:string}>(
+   "SELECT count(*)::text AS count FROM item_purchase_price_facts WHERE company_id=$1 AND item_id=$2",
+   [co.id,item.id],
+ );
+ assert.equal(facts.rows[0]?.count,"4");
+ assert.ok(first.invoice.id>0);
 });
 
 test("inventory accounts are ready automatically for new and existing companies",async(t)=>{
