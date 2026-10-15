@@ -307,6 +307,7 @@ export async function requestPageKeys(
     branches: "branches",
     locations: "locations",
     items: "items",
+    "item-statistics-report": "item-statistics-report",
     "item-options": "items",
     "item-agents": "item-agents",
     "stock-balances": "stock-balances",
