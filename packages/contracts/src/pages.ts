@@ -388,6 +388,15 @@ page(
   { keywords: ["منتج", "صنف", "باركود"] },
 );
 page(
+  "company.item-statistics-report",
+  "تقرير إحصائيات الأصناف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/item-statistics-report",
+  { view: permission("items.view","commerce.view") },
+  "الكميات المباعة والمشتراة والمرتجعات لآخر شهر وأربعة أشهر واثني عشر شهرًا ومنذ البداية.",
+  { type: "report", keywords: ["إحصائيات", "كميات", "مبيعات", "مشتريات", "أصناف", "تقارير"] },
+);
+page(
   "company.item-card",
   "كرت الصنف",
   "الأصناف والمخزون",

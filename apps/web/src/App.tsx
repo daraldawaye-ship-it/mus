@@ -178,6 +178,9 @@ const AccountLedgerPage = lazy(() =>
     default: module.AccountLedgerPage,
   })),
 );
+const ItemStatisticsReportPage = lazy(() =>
+  import("./pages/ItemStatisticsReportPage").then(m=>({default:m.ItemStatisticsReportPage})),
+);
 const ItemsPage = lazy(() =>
   import("./pages/ItemsPages").then((module) => ({
     default: module.ItemsPage,
@@ -267,6 +270,7 @@ const companySections = [
   "account-balances",
   "account-ledger",
   "items",
+  "item-statistics-report",
   "item",
   "item-agents",
   "item-compositions",
@@ -324,6 +328,7 @@ function Navigation({
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.items": <Package size={17} />,
+    "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
     "company.item-shelves": <Package size={17} />,
@@ -541,6 +546,10 @@ function CompanyContent({
           <AccountsPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "item-statistics-report":
+      return <Suspense fallback={<Notice>جارٍ تحميل تقرير إحصائيات الأصناف…</Notice>}>
+        <ItemStatisticsReportPage key={context.company.id} context={context}/>
+      </Suspense>;
     case "items":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الأصناف…</Notice>}>

@@ -20,6 +20,7 @@ import type {
   Location,
   ItemStatistics,
   ItemActivity,
+  ItemActivityReport,
   ItemPurchasePriceStatistics,
   Invoice,
   CompanyPage,
@@ -2706,11 +2707,44 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(activity.periods?.allTime.purchaseReturnInvoices,"1");
   assert.equal(activity.periods?.allTime.purchaseQuantity,"42");
   assert.equal(activity.periods?.allTime.purchaseReturnQuantity,"21");
+
+  const reportPath=prefix+"/item-statistics-report";
+  const report=(await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?active=all&sortBy=saleOneMonth&sortDir=desc&pageSize=50")).report;
+  const itemRow=report.rows.find(r=>r.itemId===item.id);
+  assert.ok(itemRow,"The item must appear in the all-items report");
+  assert.equal(itemRow.unitName,"حبة","Quantities are always in each item's smallest unit");
+  assert.equal(itemRow.sale.oneMonth,"9");
+  assert.equal(itemRow.sale.fourMonths,"9");
+  assert.equal(itemRow.sale.twelveMonths,"9");
+  assert.equal(itemRow.sale.allTime,"9");
+  assert.equal(itemRow.saleReturn.oneMonth,"3");
+  assert.equal(itemRow.purchase.oneMonth,"42");
+  assert.equal(itemRow.purchaseReturn.allTime,"21");
+  assert.equal(itemRow.sale.oneMonth,activity.periods?.oneMonth.saleQuantity,
+    "Report rows must agree with the item's own activity card");
+  assert.equal((await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?q=اسم%20لا%20يوجد")).report.total,0);
+  assert.equal((await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?q=%D8%B5%D9%86%D9%81")).report.rows.some(r=>r.itemId===item.id),true);
+  const page2=(await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?page=2&pageSize=1&active=all")).report;
+  assert.equal(page2.page,2);
+  assert.equal(page2.pageSize,1);
+  assert.equal(page2.rows.length<=1,true);
+  assert.equal((await platform.client.request("GET",reportPath+"?page=0")).status,400);
+  assert.equal((await platform.client.request("GET",reportPath+"?sortBy=drop%20table")).status,400);
+  assert.equal((await platform.client.request("GET",reportPath+"?pageSize=101")).status,400);
+  const otherReport=(await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",`/companies/${other.id}/item-statistics-report`)).report;
+  assert.equal(otherReport.total,0,"No information crosses company boundaries");
   assert.equal((await platform.client.request("GET",`/companies/${other.id}/items/${item.id}/activity`)).status,404);
 
   assert.equal((await platform.client.request("GET", `/companies/${other.id}/items/${item.id}/statistics`)).status, 404);
   const clerk = await register(f, "statistics-items-only@example.test");
   await employee(platform.client, co.id, clerk.user.id, ["items.view"]);
+  assert.equal((await clerk.client.request("GET",reportPath)).status,403,
+    "Item-only permission cannot read confidential invoicing activity");
   const limited = await statistics(clerk.client);
   assert.equal(limited.canViewStock, false);
   assert.equal(limited.canViewCommerce, false);
