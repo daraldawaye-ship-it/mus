@@ -84,6 +84,8 @@ export type ItemFields = Pick<
   | "commissionRate"
   | "clearanceFrom"
   | "clearanceTo"
+  | "settlementApprovalDate"
+  | "settlementDisplayDate"
   | "purchaseFactor"
   | "currencyId"
   | "reorderLimit"
@@ -201,6 +203,8 @@ export const itemFieldColumns = [
   ["commissionRate", "commission_rate"],
   ["clearanceFrom", "clearance_from"],
   ["clearanceTo", "clearance_to"],
+  ["settlementApprovalDate", "settlement_approval_date"],
+  ["settlementDisplayDate", "settlement_display_date"],
   ["purchaseFactor", "purchase_factor"],
   ["currencyId", "currency_id"],
   ["reorderLimit", "reorder_limit"],

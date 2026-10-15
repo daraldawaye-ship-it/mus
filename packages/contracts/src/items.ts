@@ -139,6 +139,8 @@ const itemFields = z
     commissionRate: commissionPercent.default("0"),
     clearanceFrom: documentDateSchema.nullable().default(null),
     clearanceTo: documentDateSchema.nullable().default(null),
+    settlementApprovalDate: documentDateSchema.nullable().default(null),
+    settlementDisplayDate: documentDateSchema.nullable().default(null),
     purchaseFactor: itemFactorSchema.default(1),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
@@ -252,6 +254,8 @@ export interface Item extends ItemIdentity {
   commissionRate: string;
   clearanceFrom: string | null;
   clearanceTo: string | null;
+  settlementApprovalDate: string | null;
+  settlementDisplayDate: string | null;
   purchaseFactor: number;
   currencyId: number;
   currencyCode: string;
@@ -369,6 +373,8 @@ export const itemCatalog = {
     commissionRate: "0",
     clearanceFrom: null,
     clearanceTo: null,
+    settlementApprovalDate: null,
+    settlementDisplayDate: null,
     purchaseFactor: 1,
     reorderLimit: "0",
     orderQuantity: "0",
@@ -413,6 +419,14 @@ export interface ItemStatistics {
         accountName: string;
       })
     | null;
+  adjustmentCounts: {
+    allTime: string;
+    sinceApproval: string;
+    sinceDisplay: string;
+    approvalDate: string | null;
+    displayDate: string | null;
+    lastShowroomAt: string | null;
+  } | null;
   lastAdjustment: {
     id: number;
     documentDate: string;
