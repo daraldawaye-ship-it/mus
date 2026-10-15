@@ -449,3 +449,31 @@ export interface ItemActivity {
     allTime: ItemActivityPeriod;
   } | null;
 }
+
+/** Comparable historical price, in company base currency per smallest item unit. */
+export interface ItemPurchasePricePoint {
+ invoiceId: number;
+ invoiceLineId: number;
+ invoiceNumber: string;
+ documentDate: string;
+ originalUnitPrice: string;
+ originalUnitName: string;
+ originalCurrencyCode: string;
+ priceBaseSmallest: string;
+ supplierAccountId: number | null;
+ supplierAccountName: string | null;
+}
+export interface ItemPurchasePriceStatistics {
+ companyId: number;
+ itemId: number;
+ asOf: string;
+ from: string;
+ baseCurrencyCode: string | null;
+ smallestUnitName: string;
+ canViewPrices: boolean;
+ hasOtherBaseCurrencyHistory: boolean;
+ minimum: ItemPurchasePricePoint | null;
+ maximum: ItemPurchasePricePoint | null;
+ latest: ItemPurchasePricePoint | null;
+ latestAboveMinimumPercent: string | null;
+}
