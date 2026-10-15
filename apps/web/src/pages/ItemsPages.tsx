@@ -33,6 +33,10 @@ import {
   type ItemInput,
   type ItemAgentInput,
   type ItemStatistics,
+  type ItemActivity,
+  type ItemPurchasePricePoint,
+  type ItemPurchasePriceStatistics,
+  type ItemCompositionPeers,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -46,6 +50,7 @@ import {
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
+import { InventoryAdjustmentSheet } from "./InventoryPages";
 import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
@@ -603,6 +608,175 @@ function ItemDetail({
   );
 }
 
+function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const navigate=useNavigate();
+  const [page,setPage]=useState(1);
+  useEffect(()=>setPage(1),[companyId,itemId]);
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"composition-peers",itemId,page],
+    queryFn:({signal})=>api<{peers:ItemCompositionPeers}>(
+      `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const peers=result.data?.peers;
+  return (
+    <Card title="التركيب والأصناف المرتبطة">
+      {result.isPending&&<Notice>جارٍ تحميل الأصناف المرتبطة…</Notice>}
+      {result.error&&<Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {peers&&!peers.composition&&<Notice>لم يُحدد تركيب لهذا الصنف.</Notice>}
+      {peers?.composition&&(
+        <>
+          <dl className="details-list">
+            <dt>التركيب</dt>
+            <dd>{peers.composition.arabicName} ({peers.composition.englishName})
+              {!peers.composition.active&&" · مؤرشف"}
+            </dd>
+            <dt>العلاقة بين الأصناف</dt>
+            <dd>
+              {peers.relation==="nonInterchangeable"?"غير قابلة للتبديل":
+                peers.relation==="identicalAlternative"?"مُعلّمة كبدائل مطابقة":
+                "لها التركيب نفسه دون اعتماد أنها بدائل"}
+            </dd>
+            <dt>الأصناف الأخرى ذات التركيب نفسه</dt>
+            <dd><bdi>{peers.total.toLocaleString("en-US")}</bdi> صنف</dd>
+          </dl>
+          {peers.peers.map(peer=>(
+            <div key={peer.id} className="form-actions">
+              <Button variant="ghost" size="compact" onClick={()=>
+                navigate(`/companies/${companyId}/items/${peer.id}`)}>
+                {peer.code} — {peer.name}{peer.active?"":" (مؤرشف)"}
+              </Button>
+              {peer.stockSmallest!==null&&(
+                <small className="muted">
+                  رصيد الصنف: <bdi>{BigInt(peer.stockSmallest).toLocaleString("en-US")}</bdi> {peer.smallestUnitName}
+                </small>
+              )}
+            </div>
+          ))}
+          {peers.total>peers.pageSize&&(
+            <div className="form-actions">
+              <Button variant="ghost" size="compact" disabled={page===1||result.isFetching}
+                onClick={()=>setPage(p=>Math.max(1,p-1))}>السابق</Button>
+              <span>صفحة {page}</span>
+              <Button variant="ghost" size="compact"
+                disabled={page*peers.pageSize>=peers.total||result.isFetching}
+                onClick={()=>setPage(p=>p+1)}>التالي</Button>
+            </div>
+          )}
+          <small className="muted">
+            اشتراك الأصناف في التركيب أو وصفها بالبديل المطابق لا ينقل المخزون بينها، ولا يعني حجز الكمية أو ضمان توفرها.
+          </small>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function ItemPurchasePricesCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"purchase-price-statistics",itemId],
+    queryFn:({signal})=>api<{statistics:ItemPurchasePriceStatistics}>(
+      `/companies/${companyId}/items/${itemId}/purchase-price-statistics`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const stats=result.data?.statistics;
+  const detail=(p:ItemPurchasePricePoint)=>(
+    <>
+      <bdi>{formatMoney(p.priceBaseSmallest)}</bdi> {stats?.baseCurrencyCode} / {stats?.smallestUnitName}
+      {" · "}فاتورة <bdi>{p.invoiceNumber}</bdi> (<bdi>{p.documentDate}</bdi>)
+      {" · "}المورد: {p.supplierAccountName??"غير محدد"}
+      {" · "}السعر في الفاتورة <bdi>{formatMoney(p.originalUnitPrice)}</bdi>{" "}
+      {p.originalCurrencyCode} / {p.originalUnitName}
+    </>
+  );
+  return (
+    <Card title="تحليل أسعار الشراء — آخر 6 أشهر">
+      {result.isPending && <Notice>جارٍ تحميل تحليل أسعار الشراء…</Notice>}
+      {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {stats&&!stats.canViewPrices&&(
+        <Notice>عرض الأسعار يتطلب صلاحية المشتريات والفواتير.</Notice>
+      )}
+      {stats?.canViewPrices&&(
+        <>
+          <dl className="details-list">
+            <dt>أقل سعر شراء</dt>
+            <dd>{stats.minimum?detail(stats.minimum):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>أعلى سعر شراء</dt>
+            <dd>{stats.maximum?detail(stats.maximum):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>أحدث سعر شراء</dt>
+            <dd>{stats.latest?detail(stats.latest):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>نسبة ارتفاع أحدث سعر عن الأقل</dt>
+            <dd>{stats.latestAboveMinimumPercent===null
+                ?"غير متاحة (لا يوجد سعر مرجعي موجب)."
+                :<bdi>{stats.latestAboveMinimumPercent}%</bdi>}</dd>
+          </dl>
+          {stats.hasOtherBaseCurrencyHistory&&(
+            <Notice tone="warning">
+              توجد فواتير بعملة أساسية تاريخية مختلفة لم تُضم إلى مقارنة الأسعار.
+            </Notice>
+          )}
+        </>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" size="compact" disabled={result.isFetching}
+          onClick={()=>void result.refetch()}>تحديث الأسعار</Button>
+      </div>
+    </Card>
+  );
+}
+
+function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"activity",itemId],
+    queryFn:({signal})=>api<{activity:ItemActivity}>(`/companies/${companyId}/items/${itemId}/activity`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const activity=result.data?.activity;
+  const fmt=(quantity:string)=>BigInt(quantity).toLocaleString("en-US");
+  const periods=activity?.periods;
+  return (
+    <Card title="إحصائيات المبيعات والمشتريات">
+      {result.isPending && <Notice>جارٍ تحميل إحصائيات الفترات…</Notice>}
+      {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {activity && !activity.canViewCommerce && <Notice>عرض الإحصائيات يتطلب صلاحيات الفواتير والمبيعات والمشتريات.</Notice>}
+      {periods && (
+        <dl className="details-list">
+          {([
+            ["آخر شهر",periods.oneMonth],
+            ["آخر 4 أشهر",periods.fourMonths],
+            ["آخر 12 شهرًا",periods.twelveMonths],
+            ["منذ البداية",periods.allTime],
+          ] as const).map(([label,row])=>(
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>
+                مبيعات: <bdi>{fmt(row.saleQuantity)}</bdi> {activity.unitName} ·
+                مرتجع بيع: <bdi>{fmt(row.saleReturnQuantity)}</bdi> ·
+                فواتير بيع: <bdi>{fmt(row.saleInvoices)}</bdi> ·
+                سطور بيع: <bdi>{fmt(row.saleLines)}</bdi>
+              </dd>
+              <dd>
+                مشتريات: <bdi>{fmt(row.purchaseQuantity)}</bdi> {activity.unitName} ·
+                مرتجع شراء: <bdi>{fmt(row.purchaseReturnQuantity)}</bdi> ·
+                فواتير شراء: <bdi>{fmt(row.purchaseInvoices)}</bdi> ·
+                سطور شراء: <bdi>{fmt(row.purchaseLines)}</bdi>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" size="compact" disabled={result.isFetching} onClick={()=>void result.refetch()}>
+          تحديث الإحصائيات
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function ItemStatisticsCard({
   companyId,
   itemId,
@@ -687,19 +861,46 @@ function ItemStatisticsCard({
               "يتطلب صلاحية عرض الفواتير."
             )}
           </dd>
-          <dt>آخر تسوية ذات حركة</dt>
+          <dt>آخر تسوية في</dt>
           <dd>
             {statistics.lastAdjustment ? (
-              <>
-                بتاريخ <bdi>{statistics.lastAdjustment.documentDate}</bdi> ·{" "}
-                {statistics.lastAdjustment.userName}
-              </>
+              <bdi>{dateTime(statistics.lastAdjustment.createdAt)}</bdi>
             ) : statistics.canViewStock ? (
-              "لا توجد تسوية ذات حركة مخزون."
+              "لا توجد تسوية مسجلة."
             ) : (
               "يتطلب صلاحية عرض المخزون."
             )}
           </dd>
+          <dt>آخر تسوية بواسطة</dt>
+          <dd>
+            {statistics.lastAdjustment
+              ? statistics.lastAdjustment.userName
+              : statistics.canViewStock
+                ? "—"
+                : "يتطلب صلاحية عرض المخزون."}
+          </dd>
+          {statistics.adjustmentCounts && (
+            <>
+              <dt>عدد التسويات منذ البداية</dt>
+              <dd><bdi>{BigInt(statistics.adjustmentCounts.allTime).toLocaleString("en-US")}</bdi></dd>
+              <dt>التسويات منذ الاعتماد</dt>
+              <dd>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceApproval).toLocaleString("en-US")}</bdi>
+                {" · "}من تاريخ {statistics.adjustmentCounts.approvalDate ?? "غير محدد"}
+              </dd>
+              <dt>التسويات منذ العرض</dt>
+              <dd>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceDisplay).toLocaleString("en-US")}</bdi>
+                {" · "}من تاريخ {statistics.adjustmentCounts.displayDate ?? "غير محدد"}
+              </dd>
+              <dt>آخر جرد في المعرض</dt>
+              <dd>
+                {statistics.adjustmentCounts.lastShowroomAt
+                  ? <bdi>{dateTime(statistics.adjustmentCounts.lastShowroomAt)}</bdi>
+                  : "لا يوجد جرد مسجل للمعرض."}
+              </dd>
+            </>
+          )}
           <dt>آخر حركة</dt>
           <dd>
             {statistics.lastMovement ? (
@@ -759,6 +960,8 @@ type ItemFields = {
   commissionRate: string;
   clearanceFrom: string;
   clearanceTo: string;
+  settlementApprovalDate: string;
+  settlementDisplayDate: string;
   purchaseFactor: string;
   reorderLimit: string;
   orderQuantity: string;
@@ -791,6 +994,8 @@ function initialItemFields(item: Item | null): ItemFields {
     commissionRate: item?.commissionRate ?? "0",
     clearanceFrom: item?.clearanceFrom ?? "",
     clearanceTo: item?.clearanceTo ?? "",
+    settlementApprovalDate: item?.settlementApprovalDate ?? "",
+    settlementDisplayDate: item?.settlementDisplayDate ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
@@ -826,6 +1031,7 @@ function ItemEditor({
   const companyId = context.company.id;
   const defaultSaleUnitGroup = useId();
   const { user } = useSession();
+  const itemQueryClient = useQueryClient();
   const navigate = useNavigate();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
@@ -882,6 +1088,12 @@ function ItemEditor({
   const [unknownCreation, setUnknownCreation] = useState(false);
   const [error, setError] = useState("");
   const [reloadConfirmation, setReloadConfirmation] = useState(false);
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
+  const adjustmentDirectory = usePageDirectory(companyId);
+  const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
+  const canAdjust = !!item && !!adjustmentPage?.enabled &&
+    !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
   const [conflict, setConflict] = useState(false);
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
@@ -926,6 +1138,8 @@ function ItemEditor({
       orderStoppedUntil: fields.orderStoppedUntil || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
+      settlementApprovalDate: fields.settlementApprovalDate || null,
+      settlementDisplayDate: fields.settlementDisplayDate || null,
     };
     const parsed = item
       ? itemPatchSchema.safeParse({ ...body, revision: item.revision })
@@ -1039,6 +1253,27 @@ function ItemEditor({
         </Notice>
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
+      {canAdjust && !embedded && (
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setAdjustmentOpen(true)}>جرد الصنف</Button>
+        </div>
+      )}
+      {adjustmentOpen && item && (
+        <InventoryAdjustmentSheet
+          context={context}
+          item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
+          onClose={() => setAdjustmentOpen(false)}
+          onSaved={(date) => {
+            setNearestExpirySaved(date);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "statistics", item.id],
+            });
+          }}
+        />
+      )}
+      {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
@@ -1189,6 +1424,12 @@ function ItemEditor({
               />
               له تاريخ انتهاء
             </label>
+            {item && fields.hasExpiry && (
+              <Field label="أقرب تاريخ انتهاء"
+                type="date" readOnly
+                value={nearestExpirySaved !== undefined ? nearestExpirySaved ?? "" : item.nearestExpiryDate ?? ""}
+                hint="يُحدّث من شاشة تسوية الصنف." />
+            )}
             <label className="check-label">
               <input
                 type="checkbox"
@@ -1407,6 +1648,27 @@ function ItemEditor({
           </div>
           <small className="muted">
             يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
+          </small>
+        </Card>
+        <Card title="إعدادات إحصائيات التسويات">
+          <div className="item-fields-grid">
+            <Field
+              label="تاريخ اعتماد التسويات"
+              type="date"
+              value={fields.settlementApprovalDate}
+              disabled={disabled}
+              onChange={(event) => edit("settlementApprovalDate", event.target.value)}
+            />
+            <Field
+              label="تاريخ عرض التسويات"
+              type="date"
+              value={fields.settlementDisplayDate}
+              disabled={disabled}
+              onChange={(event) => edit("settlementDisplayDate", event.target.value)}
+            />
+          </div>
+          <small className="muted">
+            تُحتسب التسويات بحسب تاريخ مستند الجرد، ويشمل العد الجرد المطابق دون فرق. إذا لم يُحدد التاريخ يبقى العداد المرتبط به صفرًا.
           </small>
         </Card>
         <Card title="إعدادات الشراء والطلب">
