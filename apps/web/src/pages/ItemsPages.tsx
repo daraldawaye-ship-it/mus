@@ -1429,7 +1429,7 @@ function ItemEditor({
                 type="date" readOnly
                 value={nearestExpirySaved !== undefined ? nearestExpirySaved ?? "" : item.nearestExpiryDate ?? ""}
                 hint="يُحدّث من شاشة تسوية الصنف." />
-            )
+            )}
             <label className="check-label">
               <input
                 type="checkbox"
