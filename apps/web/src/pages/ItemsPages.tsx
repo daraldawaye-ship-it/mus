@@ -37,6 +37,7 @@ import {
   type ItemPurchasePricePoint,
   type ItemPurchasePriceStatistics,
   type ItemCompositionPeers,
+  type StockReservationAvailability,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -605,6 +606,169 @@ function ItemDetail({
       />
     </>
   );
+}
+
+function ItemReservationCard({
+ companyId,itemId,canPost,
+}:{companyId:number;itemId:number;canPost:boolean}) {
+ const {user}=useSession();
+ const changed=useItemChanges(companyId);
+ const [lotKey,setLotKey]=useState("");
+ const [unit,setUnit]=useState<1|2|3>(1);
+ const [quantity,setQuantity]=useState("");
+ const [reference,setReference]=useState("");
+ const [description,setDescription]=useState("");
+ const [releaseReason,setReleaseReason]=useState("");
+ const [working,setWorking]=useState(false);
+ const [notice,setNotice]=useState("");
+ const [error,setError]=useState("");
+ const attempt=useRef<{fingerprint:string;key:string}|null>(null);
+ const releaseKeys=useRef(new Map<number,{reason:string;key:string}>());
+ const query=useQuery({
+   queryKey:["items",user?.id,companyId,"reservation-availability",itemId],
+   queryFn:({signal})=>api<{availability:StockReservationAvailability}>(
+     `/companies/${companyId}/items/${itemId}/reservation-availability`,{signal}),
+   enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+ });
+ const availability=query.data?.availability;
+ const selectable=availability?.lots.filter(l=>BigInt(l.availableSmallest)>0n)??[];
+ const lot=selectable.find(l=>`${l.locationId}|${l.expiryDate??""}`===lotKey);
+ const display=(value:string)=>BigInt(value).toLocaleString("en-US");
+ const defaultUnit=availability?(availability.factor3>1?3:availability.factor2>1?2:1):1;
+ async function reserve() {
+   if(!canPost||working)return;
+   setError("");setNotice("");
+   if(!lot||!quantity.trim()||!reference.trim()){
+     setError("اختر الدفعة وأدخل الكمية ومرجع طلب العميل.");return;
+   }
+   const input={itemId,locationId:lot.locationId,expiryDate:lot.expiryDate,
+     unit,quantity,sourceType:"manual" as const,sourceReference:reference.trim(),
+     description:description.trim()};
+   const fingerprint=JSON.stringify(input);
+   if(attempt.current?.fingerprint!==fingerprint)
+     attempt.current={fingerprint,key:crypto.randomUUID()};
+   setWorking(true);
+   try {
+     await api(`/companies/${companyId}/stock-reservations`,{
+       method:"POST",body:{...input,idempotencyKey:attempt.current.key},
+     });
+     attempt.current=null;
+     setQuantity("");setReference("");setDescription("");setLotKey("");
+     setNotice("تم حجز الكمية وتوثيق المرجع دون إنقاص الرصيد الفعلي.");
+     await changed();await query.refetch();
+   }catch(reason){setError(errorMessage(reason));}
+   finally{setWorking(false);}
+ }
+ async function release(reservationId:number) {
+   if(!canPost||working)return;
+   if(!releaseReason.trim()){setError("أدخل سبب تحرير الحجز قبل المتابعة.");return;}
+   setError("");setNotice("");
+   const reason=releaseReason.trim();
+   const current=releaseKeys.current.get(reservationId);
+   if(!current||current.reason!==reason)
+     releaseKeys.current.set(reservationId,{reason,key:crypto.randomUUID()});
+   setWorking(true);
+   try{
+     await api(`/companies/${companyId}/stock-reservations/${reservationId}/release`,{
+       method:"POST",
+       body:{reason,idempotencyKey:releaseKeys.current.get(reservationId)!.key},
+     });
+     releaseKeys.current.delete(reservationId);
+     setNotice("تم تحرير الحجز مع حفظ سجل الحجز الأصلي.");
+     await changed();await query.refetch();
+   }catch(reason){setError(errorMessage(reason));}
+   finally{setWorking(false);}
+ }
+ return (
+   <Card title="حجوزات الصنف والمتاح للبيع">
+     {query.isPending&&<Notice>جارٍ تحميل الكميات المحجوزة والمتاحة…</Notice>}
+     {query.error&&<Notice tone="error">{errorMessage(query.error)}</Notice>}
+     {notice&&<Notice tone="success">{notice}</Notice>}
+     {error&&<Notice tone="error">{error}</Notice>}
+     {availability&&(
+       <>
+         <small className="muted">
+           الرصيد الفعلي لا يتغير عند الحجز. الكمية المتاحة = الرصيد الفعلي − الحجوزات النشطة.
+           يعرض هنا مخزون المعارض غير المنتهي فقط.
+         </small>
+         {availability.lots.map(l=>(
+           <div className="form-actions" key={`${l.locationId}:${l.expiryDate??""}`}>
+             <strong>{l.locationName}{l.expiryDate?` · انتهاء ${l.expiryDate}`:""}</strong>
+             <span>فعلي <bdi>{display(l.physicalSmallest)}</bdi></span>
+             <span>محجوز <bdi>{display(l.reservedSmallest)}</bdi></span>
+             <span>متاح <bdi>{display(l.availableSmallest)}</bdi></span>
+           </div>
+         ))}
+         {!availability.lots.length&&<Notice>لا توجد كميات صالحة للبيع في المعارض.</Notice>}
+         {availability.truncated&&<Notice tone="warning">توجد دفعات أخرى؛ تظهر أول 50 دفعة فقط.</Notice>}
+         {canPost&&(
+           <>
+             <div className="item-fields-grid">
+               <Select label="المعرض والدفعة" value={lotKey}
+                 disabled={working}
+                 onChange={event=>setLotKey(event.target.value)}>
+                 <option value="">اختر دفعة متاحة</option>
+                 {selectable.map(l=>(
+                   <option key={`${l.locationId}:${l.expiryDate??""}`}
+                     value={`${l.locationId}|${l.expiryDate??""}`}>
+                     {l.locationName}{l.expiryDate?` — ${l.expiryDate}`:""}
+                     {" — متاح "}{display(l.availableSmallest)}
+                   </option>
+                 ))}
+               </Select>
+               <Select label="وحدة الحجز" value={unit}
+                 disabled={working}
+                 onChange={event=>setUnit(Number(event.target.value) as 1|2|3)}>
+                 <option value={1}>{availability.unit1Name}</option>
+                 {availability.factor2>1&&<option value={2}>{availability.unit2Name}</option>}
+                 {availability.factor3>1&&<option value={3}>{availability.unit3Name}</option>}
+               </Select>
+               <Field label="الكمية المحجوزة" inputMode="numeric" dir="ltr"
+                 value={quantity} disabled={working}
+                 placeholder={String(defaultUnit===unit?1:1)}
+                 onChange={event=>setQuantity(event.target.value)} />
+               <Field label="رقم الطلب أو مرجع الحجز" maxLength={120}
+                 value={reference} disabled={working}
+                 onChange={event=>setReference(event.target.value)} />
+               <Field label="ملاحظات الحجز" maxLength={1000}
+                 value={description} disabled={working}
+                 onChange={event=>setDescription(event.target.value)} />
+             </div>
+             <div className="form-actions">
+               <Button disabled={working||!lot} onClick={()=>void reserve()}>
+                 تأكيد حجز الكمية
+               </Button>
+             </div>
+           </>
+         )}
+         <h3>الحجوزات النشطة</h3>
+         {availability.reservations.length===0&&<p>لا توجد حجوزات نشطة لهذا الصنف.</p>}
+         {canPost&&availability.reservations.length>0&&(
+           <Field label="سبب تحرير الحجز" value={releaseReason} maxLength={1000}
+             disabled={working} onChange={event=>setReleaseReason(event.target.value)} />
+         )}
+         {availability.reservations.map(row=>(
+           <div className="form-actions" key={row.id}>
+             <span>#{row.id} · {row.sourceReference}</span>
+             <span><bdi>{display(row.quantitySmallest)}</bdi> وحدة صغرى</span>
+             <span>المعرض {row.locationId}
+               {row.expiryDate?` · انتهاء ${row.expiryDate}`:""}
+             </span>
+             {canPost&&<Button variant="secondary" size="compact"
+               disabled={working} onClick={()=>void release(row.id)}>تحرير الحجز</Button>}
+           </div>
+         ))}
+         {availability.reservationsTruncated&&<Notice tone="warning">
+           تظهر أحدث 50 عملية حجز نشطة فقط.
+         </Notice>}
+         <div className="form-actions">
+           <Button variant="ghost" size="compact" disabled={query.isFetching}
+             onClick={()=>void query.refetch()}>تحديث المتاح والحجوزات</Button>
+         </div>
+       </>
+     )}
+   </Card>
+ );
 }
 
 function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:number}) {
@@ -1243,6 +1407,10 @@ function ItemEditor({
       {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
       {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
       {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
+      {item && (context.general || context.permissions.some(
+        permission => permission === "inventory.view" || permission === "inventory.post",
+      )) && <ItemReservationCard companyId={companyId} itemId={item.id}
+        canPost={context.general || context.permissions.includes("inventory.post")} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
