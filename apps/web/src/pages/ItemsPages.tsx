@@ -687,18 +687,23 @@ function ItemStatisticsCard({
               "يتطلب صلاحية عرض الفواتير."
             )}
           </dd>
-          <dt>آخر تسوية ذات حركة</dt>
+          <dt>آخر تسوية في</dt>
           <dd>
             {statistics.lastAdjustment ? (
-              <>
-                بتاريخ <bdi>{statistics.lastAdjustment.documentDate}</bdi> ·{" "}
-                {statistics.lastAdjustment.userName}
-              </>
+              <bdi>{dateTime(statistics.lastAdjustment.createdAt)}</bdi>
             ) : statistics.canViewStock ? (
-              "لا توجد تسوية ذات حركة مخزون."
+              "لا توجد تسوية مسجلة."
             ) : (
               "يتطلب صلاحية عرض المخزون."
             )}
+          </dd>
+          <dt>آخر تسوية بواسطة</dt>
+          <dd>
+            {statistics.lastAdjustment
+              ? statistics.lastAdjustment.userName
+              : statistics.canViewStock
+                ? "—"
+                : "يتطلب صلاحية عرض المخزون."}
           </dd>
           <dt>آخر حركة</dt>
           <dd>

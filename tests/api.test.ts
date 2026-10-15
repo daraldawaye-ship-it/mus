@@ -2638,6 +2638,22 @@ test("item statistics track finalized stock and last normal documents without le
   const adjusted = await statistics();
   assert.equal(adjusted.stock?.total, "14");
   assert.equal(adjusted.lastAdjustment?.id, adjustment.id);
+  assert.ok(adjusted.lastAdjustment?.createdAt, "The physical count keeps its execution timestamp");
+  const zeroCountInput = {
+    documentDate: "2026-10-12", itemId: item.id, locationId: showroom.id,
+    countedQuantity: "10", expectedQuantitySmallest: "10", unit: 3, expiryDate: null,
+    unitCostBase: "4", description: "جرد مطابق دون فرق", idempotencyKey: randomUUID(),
+  };
+  const zeroCount = (await platform.client.ok<{ operation: { id: number } }>(
+    "POST", prefix + "/stock-adjustments", zeroCountInput, 201,
+  )).operation;
+  const counted = await statistics();
+  assert.equal(counted.stock?.total, "14", "A matching physical count must not change stock");
+  assert.equal(counted.lastAdjustment?.id, zeroCount.id, "Zero-difference count is still the latest count");
+  assert.ok(counted.lastAdjustment?.userName, "Show the counting employee");
+  assert.ok(Number.isFinite(Date.parse(counted.lastAdjustment?.createdAt ?? "")));
+  await platform.client.ok("POST", prefix + "/stock-adjustments", zeroCountInput, 200);
+  assert.equal((await statistics()).lastAdjustment?.id, zeroCount.id, "Idempotent retry must not create a new count");
   const other = await company(platform.client, "Other statistics company");
   assert.equal((await platform.client.request("GET", `/companies/${other.id}/items/${item.id}/statistics`)).status, 404);
   const clerk = await register(f, "statistics-items-only@example.test");
