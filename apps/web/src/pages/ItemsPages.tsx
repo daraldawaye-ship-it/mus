@@ -33,6 +33,7 @@ import {
   type ItemInput,
   type ItemAgentInput,
   type ItemStatistics,
+  type ItemActivity,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -603,6 +604,56 @@ function ItemDetail({
   );
 }
 
+function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"activity",itemId],
+    queryFn:({signal})=>api<{activity:ItemActivity}>(`/companies/${companyId}/items/${itemId}/activity`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const activity=result.data?.activity;
+  const fmt=(quantity:string)=>BigInt(quantity).toLocaleString("en-US");
+  const periods=activity?.periods;
+  return (
+    <Card title="إحصائيات المبيعات والمشتريات">
+      {result.isPending && <Notice>جارٍ تحميل إحصائيات الفترات…</Notice>}
+      {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {activity && !activity.canViewCommerce && <Notice>عرض الإحصائيات يتطلب صلاحيات الفواتير والمبيعات والمشتريات.</Notice>}
+      {periods && (
+        <dl className="details-list">
+          {([
+            ["آخر شهر",periods.oneMonth],
+            ["آخر 4 أشهر",periods.fourMonths],
+            ["آخر 12 شهرًا",periods.twelveMonths],
+            ["منذ البداية",periods.allTime],
+          ] as const).map(([label,row])=>(
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>
+                مبيعات: <bdi>{fmt(row.saleQuantity)}</bdi> {activity.unitName} ·
+                مرتجع بيع: <bdi>{fmt(row.saleReturnQuantity)}</bdi> ·
+                فواتير بيع: <bdi>{fmt(row.saleInvoices)}</bdi> ·
+                سطور بيع: <bdi>{fmt(row.saleLines)}</bdi>
+              </dd>
+              <dd>
+                مشتريات: <bdi>{fmt(row.purchaseQuantity)}</bdi> {activity.unitName} ·
+                مرتجع شراء: <bdi>{fmt(row.purchaseReturnQuantity)}</bdi> ·
+                فواتير شراء: <bdi>{fmt(row.purchaseInvoices)}</bdi> ·
+                سطور شراء: <bdi>{fmt(row.purchaseLines)}</bdi>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" size="compact" disabled={result.isFetching} onClick={()=>void result.refetch()}>
+          تحديث الإحصائيات
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function ItemStatisticsCard({
   companyId,
   itemId,
@@ -1039,6 +1090,7 @@ function ItemEditor({
         </Notice>
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">

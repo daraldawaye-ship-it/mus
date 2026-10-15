@@ -15,6 +15,7 @@ import {
   arabicShelfLetters,
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
+import { readItemActivity } from "./services/item-activity.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
@@ -598,6 +599,15 @@ export function itemRoutes(pool: Pool): Router {
         },
       );
       res.status(result.created ? 201 : 200).json({ item: result.item });
+    }),
+  );
+  router.get(
+    `${base}/items/:id/activity`,
+    handler(async (req,res)=>{
+      const rowId=id(req.params.id);
+      res.json(await readItems(pool,req,async (client,companyId)=>({
+        activity:await readItemActivity(client,actor(req),companyId,rowId),
+      })));
     }),
   );
   router.get(
