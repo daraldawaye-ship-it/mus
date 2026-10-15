@@ -810,15 +810,15 @@ function ItemStatisticsCard({
           {statistics.adjustmentCounts && (
             <>
               <dt>عدد التسويات منذ البداية</dt>
-              <dd><bdi>{Number(statistics.adjustmentCounts.allTime).toLocaleString("en-US")}</bdi></dd>
+              <dd><bdi>{BigInt(statistics.adjustmentCounts.allTime).toLocaleString("en-US")}</bdi></dd>
               <dt>التسويات منذ الاعتماد</dt>
               <dd>
-                <bdi>{Number(statistics.adjustmentCounts.sinceApproval).toLocaleString("en-US")}</bdi>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceApproval).toLocaleString("en-US")}</bdi>
                 {" · "}من تاريخ {statistics.adjustmentCounts.approvalDate ?? "غير محدد"}
               </dd>
               <dt>التسويات منذ العرض</dt>
               <dd>
-                <bdi>{Number(statistics.adjustmentCounts.sinceDisplay).toLocaleString("en-US")}</bdi>
+                <bdi>{BigInt(statistics.adjustmentCounts.sinceDisplay).toLocaleString("en-US")}</bdi>
                 {" · "}من تاريخ {statistics.adjustmentCounts.displayDate ?? "غير محدد"}
               </dd>
               <dt>آخر جرد في المعرض</dt>

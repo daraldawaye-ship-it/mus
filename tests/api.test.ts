@@ -2640,6 +2640,49 @@ test("item statistics track finalized stock and last normal documents without le
   const adjusted = await statistics();
   assert.equal(adjusted.stock?.total, "14");
   assert.equal(adjusted.lastAdjustment?.id, adjustment.id);
+  assert.equal(adjusted.adjustmentCounts?.allTime,"1");
+  assert.equal(adjusted.adjustmentCounts?.sinceApproval,"0");
+  assert.equal(adjusted.adjustmentCounts?.sinceDisplay,"0");
+  assert.ok(adjusted.adjustmentCounts?.lastShowroomAt);
+  const identicalPayload = {
+    documentDate: "2026-10-12",itemId:item.id,locationId:showroom.id,
+    countedQuantity:"10",expectedQuantitySmallest:"10",unit:3,expiryDate:null,
+    unitCostBase:"4",description:"جرد مطابق دون فرق",idempotencyKey:randomUUID(),
+  };
+  await platform.client.ok("POST",prefix+"/stock-adjustments",identicalPayload,201);
+  const afterSame=await statistics();
+  assert.equal(afterSame.stock?.total,"14","Matching count must not change stock");
+  assert.equal(afterSame.adjustmentCounts?.allTime,"2","Matching count must be counted");
+  assert.equal(afterSame.adjustmentCounts?.sinceApproval,"0");
+  await platform.client.ok("POST",prefix+"/stock-adjustments",identicalPayload,200);
+  assert.equal((await statistics()).adjustmentCounts?.allTime,"2","Idempotent count retry");
+  const existingItem=(await platform.client.ok<{item:{revision:number}}>(
+    "GET",prefix+`/items/${item.id}`)).item;
+  await platform.client.ok("PATCH",prefix+`/items/${item.id}`,{
+    revision:existingItem.revision,name:"صنف بثلاث وحدات",currencyId:currency.id,
+    hasExpiry:false,shelf:"رف A3",unit1Name:"كرتون",unit2Name:"باكت",unit3Name:"حبة",
+    factor2:7,factor3:3,salePrice1:"210",salePrice2:"30",salePrice3:"10",
+    purchasePrice:"84",settlementApprovalDate:"2026-10-12",
+    settlementDisplayDate:"2026-10-13",
+  },200);
+  const afterDates=await statistics();
+  assert.equal(afterDates.adjustmentCounts?.allTime,"2");
+  assert.equal(afterDates.adjustmentCounts?.sinceApproval,"2","Counts follow approval date");
+  assert.equal(afterDates.adjustmentCounts?.sinceDisplay,"0","Display date is later than document");
+  assert.equal(afterDates.adjustmentCounts?.approvalDate,"2026-10-12");
+  assert.equal(afterDates.adjustmentCounts?.displayDate,"2026-10-13");
+  const earlier=(await platform.client.ok<{item:{revision:number}}>(
+    "GET",prefix+`/items/${item.id}`)).item;
+  await platform.client.ok("PATCH",prefix+`/items/${item.id}`,{
+    revision:earlier.revision,name:"صنف بثلاث وحدات",currencyId:currency.id,
+    hasExpiry:false,shelf:"رف A3",unit1Name:"كرتون",unit2Name:"باكت",unit3Name:"حبة",
+    factor2:7,factor3:3,salePrice1:"210",salePrice2:"30",salePrice3:"10",
+    purchasePrice:"84",settlementApprovalDate:"2026-10-12",
+    settlementDisplayDate:"2026-10-12",
+  },200);
+  assert.equal((await statistics()).adjustmentCounts?.sinceDisplay,"2",
+    "Changing item display date updates the projection immediately");
+
   const other = await company(platform.client, "Other statistics company");
   const activity = (await platform.client.ok<{activity:ItemActivity}>(
     "GET",prefix+`/items/${item.id}/activity`)).activity;
@@ -2666,6 +2709,7 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(limited.stock, null);
   assert.equal(limited.lastMovement, null);
   assert.equal(limited.lastAdjustment, null);
+  assert.equal(limited.adjustmentCounts,null,"Item-only permission must not reveal count history");
   assert.equal(limited.lastPurchase, null);
   assert.equal(limited.lastSale, null);
   const limitedActivity=(await clerk.client.ok<{activity:ItemActivity}>(
