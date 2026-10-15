@@ -139,6 +139,7 @@ export function transactionResetRoutes(pool: Pool): Router {
           "stockBalances",
           "documentOptionValues",
           "linkedWalletEntries",
+          "sourceImports",
         ];
         const result = {
           companyId,

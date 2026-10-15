@@ -94,6 +94,11 @@ async function linkedWalletState(
 // Keep this list explicit: a transaction reset never includes master data,
 // settings, company numbering, users, attendance, memo history, or audit events.
 const snapshotSources = [
+  {
+    key: "sourceImports",
+    table: "transaction_source_imports",
+    order: "source_system,source_kind,source_id",
+  },
   { key: "invoices", table: "invoices", order: "id" },
   { key: "invoiceLines", table: "invoice_lines", order: "id" },
   { key: "financialDocuments", table: "financial_documents", order: "id" },
@@ -244,6 +249,7 @@ export async function deleteCompanyTransactions(
   // A whole company is deleted in one statement per table, preserving immediate
   // self-reference FKs for return sources and their originals.
   for (const table of [
+    "transaction_source_imports",
     "stock_movements",
     "invoice_lines",
     "invoices",

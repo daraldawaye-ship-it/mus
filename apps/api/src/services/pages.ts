@@ -334,6 +334,49 @@ export async function requestPageKeys(
       "company.stock-operations",
       "company.stock-adjustments",
     );
+  if (resource === "transaction-import") {
+    keys.push("company.settings");
+    if (req.method === "GET")
+      keys.push(
+        "company.sales",
+        "company.purchases",
+        "company.financial-documents",
+        "company.journals",
+        "company.receipts",
+        "company.payments",
+      );
+    const documents = Array.isArray(req.body?.documents)
+      ? req.body.documents
+      : [];
+    for (const document of documents) {
+      if (document?.type === "invoice") {
+        keys.push(
+          document.payload?.kind === "sale"
+            ? "company.sales"
+            : "company.purchases",
+        );
+        keys.push(
+          document.payload?.kind === "sale"
+            ? "company.sale-new"
+            : "company.purchase-new",
+        );
+      }
+      if (document?.type === "voucher") {
+        keys.push(
+          "company.financial-documents",
+          "company.financial-new",
+          "company.financial-document",
+        );
+        const kinds: Record<string, string> = {
+          receipt: "receipts",
+          payment: "payments",
+          journal: "journals",
+        };
+        if (kinds[document.payload?.kind])
+          keys.push(`company.${kinds[document.payload.kind]}`);
+      }
+    }
+  }
   // Reading one's own attendance profile does not open the employee directory.
   if (
     resource === "employees" &&

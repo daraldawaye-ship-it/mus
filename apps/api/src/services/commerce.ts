@@ -182,11 +182,20 @@ interface PreparedLine {
   original: QueryResultRow | null;
   expiryDate: string | null;
 }
+/** Trusted owner-import context; never accepted from the ordinary invoice API. */
+export interface InvoiceImportContext {
+  allowHistoricalPrice: true;
+  allowUnknownExpiry: true;
+  suppressRewards: true;
+  /** Preserve explicitly mapped legacy expense counterparties without reclassifying them. */
+  allowExpenseCounterparty?: true;
+}
 export async function createInvoice(
   client: PoolClient,
   companyId: number,
   user: User,
   input: InvoiceFields,
+  importContext?: InvoiceImportContext,
 ): Promise<Invoice> {
   const replay = await client.query(
     "SELECT id, (((creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierReceiptNumber') OR (NOT (creation_payload ? 'supplierAccountId') AND (creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierAccountId' - 'supplierReceiptNumber') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AND COALESCE(creation_payload->>'supplierReceiptNumber','')=COALESCE($3::jsonb->>'supplierReceiptNumber','')) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
@@ -231,7 +240,13 @@ export async function createInvoice(
     conflict("العملة والحساب المقابل يجب أن يكونا فعالين من الشركة");
   if (input.kind === "sale" && currency.location_kind !== "showroom")
     conflict("المبيعات ومردوداتها ترحل من معرض الفرع فقط");
-  if (!["asset", "liability"].includes(currency.account_category))
+  if (
+    !["asset", "liability"].includes(currency.account_category) &&
+    !(
+      importContext?.allowExpenseCounterparty &&
+      currency.account_category === "expense"
+    )
+  )
     conflict("اختر حساب عميل أو مورد أو صندوق من الأصول أو الالتزامات");
   if (
     [
@@ -258,8 +273,8 @@ export async function createInvoice(
   let supplier: { id: number; code: string; name: string } | null = null;
   if (supplierId !== null) {
     const selected = await client.query(
-      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank FOR SHARE",
-      [companyId, supplierId],
+      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND (category IN ('asset','liability') OR ($3::boolean AND category='expense')) AND NOT cash_or_bank FOR SHARE",
+      [companyId, supplierId, importContext?.allowExpenseCounterparty === true],
     );
     if (!selected.rows[0])
       conflict("اختر موردًا حركيًا فعالًا من حسابات الشركة، وليس صندوقًا أو بنكًا");
@@ -319,6 +334,8 @@ export async function createInvoice(
   }
   const prepared: PreparedLine[] = [];
   for (const line of input.lines) {
+    if (importContext?.allowHistoricalPrice && line.unitPrice === undefined)
+      conflict("الترحيل التاريخي يتطلب سعرًا صريحًا لكل سطر من المستند الأصلي");
     const item = items.rows.find((row) => row.id === line.itemId)!;
     const quantity = BigInt(line.quantity);
     let price: string,
@@ -383,10 +400,19 @@ export async function createInvoice(
     } else {
       if (input.kind === "sale") {
         if (quantity < 0n) {
-          if (item.currency_id !== input.currencyId)
+          if (
+            !importContext?.allowHistoricalPrice &&
+            item.currency_id !== input.currencyId
+          )
             conflict("عملة مردود المبيعات يجب أن تطابق عملة أسعار كرت الصنف.");
-          price = normalizeRate(item[`sale_price${line.unit}`]);
-          if (line.unitPrice !== undefined && line.unitPrice !== price)
+          price = importContext?.allowHistoricalPrice
+            ? line.unitPrice!
+            : normalizeRate(item[`sale_price${line.unit}`]);
+          if (
+            !importContext?.allowHistoricalPrice &&
+            line.unitPrice !== undefined &&
+            line.unitPrice !== price
+          )
             conflict("سعر مردود المبيعات المباشر من كرت الصنف.");
           checkQuantum(price, currency.decimal_places);
           if (!item.has_expiry && expiryDate !== null)
@@ -400,12 +426,21 @@ export async function createInvoice(
             conflict(
               "دفعات المبيعات تختار تلقائيًا بحسب أقرب انتهاء؛ لا تدخل تاريخ انتهاء",
             );
-          if (item.currency_id !== input.currencyId)
+          if (
+            !importContext?.allowHistoricalPrice &&
+            item.currency_id !== input.currencyId
+          )
             conflict(
               "عملة البيع يجب أن تطابق عملة أسعار الصنف؛ لا تحويل أسعار ضمني",
             );
-          price = normalizeRate(item[`sale_price${line.unit}`]);
-          if (line.unitPrice !== undefined && line.unitPrice !== price)
+          price = importContext?.allowHistoricalPrice
+            ? line.unitPrice!
+            : normalizeRate(item[`sale_price${line.unit}`]);
+          if (
+            !importContext?.allowHistoricalPrice &&
+            line.unitPrice !== undefined &&
+            line.unitPrice !== price
+          )
             conflict("سعر البيع يؤخذ من كرت الصنف ولا يعدل داخل الفاتورة");
         }
       } else {
@@ -419,7 +454,12 @@ export async function createInvoice(
         price = line.unitPrice ?? normalizeRate(item.purchase_price);
       }
       checkQuantum(price, currency.decimal_places);
-      if (item.has_expiry && input.kind === "purchase" && expiryDate === null)
+      if (
+        item.has_expiry &&
+        input.kind === "purchase" &&
+        expiryDate === null &&
+        !importContext?.allowUnknownExpiry
+      )
         conflict("تاريخ انتهاء الدفعة مطلوب للصنف");
       if (!item.has_expiry && expiryDate !== null)
         conflict("الصنف لا يستخدم دفعات انتهاء");
@@ -479,7 +519,7 @@ export async function createInvoice(
   // The dated item rule uses the invoice document date, inclusive at both ends.
   // Nothing is paid or credited to an employee until a separate beneficiary
   // and financial settlement policy is explicitly configured.
-  if (input.kind === "sale") {
+  if (input.kind === "sale" && !importContext?.suppressRewards) {
     for (const line of prepared) {
       if (line.quantity < 0n && line.original) {
         const original = line.original;
@@ -760,6 +800,7 @@ export async function createInvoice(
         invoiceLineId: lineId,
         allowExpired: line.quantity < 0n,
         allowInactive: line.quantity < 0n,
+        allowUnknownExpiry: importContext?.allowUnknownExpiry,
       });
       cost = input.kind === "sale" ? -movement.costBase : movement.costBase;
     }
@@ -901,14 +942,15 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  await awardPostedInvoice(
-    client,
-    companyId,
-    invoiceId,
-    input.kind,
-    user,
-    number,
-  );
+  if (!importContext?.suppressRewards)
+    await awardPostedInvoice(
+      client,
+      companyId,
+      invoiceId,
+      input.kind,
+      user,
+      number,
+    );
   await audit(
     client,
     user,

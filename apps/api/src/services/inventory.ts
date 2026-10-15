@@ -353,6 +353,8 @@ export interface ApplyStockInput {
   originalMovementId?: number | null;
   allowExpired?: boolean;
   allowInactive?: boolean;
+  /** Trusted historical purchase import only; retain the unknown batch as empty. */
+  allowUnknownExpiry?: boolean;
 }
 export interface StockAllocation {
   movementId: number;
@@ -395,7 +397,13 @@ export async function applyStock(
   const batchKey = input.expiryDate ?? "";
   if (!item.hasExpiry && batchKey !== "")
     conflict("الصنف لا يتتبع تاريخ انتهاء؛ اترك تاريخ الدفعة فارغًا");
-  if (incoming && item.hasExpiry && !batchKey && input.kind !== "sales_return")
+  if (
+    incoming &&
+    item.hasExpiry &&
+    !batchKey &&
+    input.kind !== "sales_return" &&
+    !(input.kind === "purchase" && input.allowUnknownExpiry)
+  )
     conflict("تاريخ انتهاء الدفعة مطلوب لهذا الصنف");
   if (batchKey && batchKey < input.documentDate && !input.allowExpired)
     conflict("الدفعة منتهية بتاريخ المستند");

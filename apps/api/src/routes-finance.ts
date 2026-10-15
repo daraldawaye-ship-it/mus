@@ -98,7 +98,7 @@ function fieldsOf(
     })),
   };
 }
-async function insertDraft(
+export async function insertDraft(
   client: PoolClient,
   companyId: number,
   user: User,

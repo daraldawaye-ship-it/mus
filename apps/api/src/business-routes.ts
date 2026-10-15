@@ -23,6 +23,7 @@ import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { transactionResetRoutes } from "./routes-transaction-reset.ts";
+import { transactionImportRoutes } from "./routes-transaction-import.ts";
 
 /** Shared by browser and OAuth MCP: one set of domain policies and transactions. */
 export function businessRoutes(pool: Pool): Router {
@@ -30,6 +31,7 @@ export function businessRoutes(pool: Pool): Router {
   router.use(
     pageRoutes(pool),
     transactionResetRoutes(pool),
+    transactionImportRoutes(pool),
     pageAvailabilityGate(pool),
     publicRoutes(pool),
     companyRoutes(pool),

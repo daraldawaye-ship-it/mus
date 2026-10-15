@@ -109,6 +109,7 @@ export const auditActionLabels = {
   "company.create": "إنشاء شركة",
   "company.update": "تعديل بيانات الشركة",
   "company.transactions.reset": "حذف الحركة المالية والمخزنية للشركة",
+  "company.transactions.import": "ترحيل الحركة من النظام السابق",
   "company.view": "دخول صفحة الشركة",
   "company.activate": "اختيار الشركة",
   "company.lastFallback": "إعادة التحقق من آخر شركة",
@@ -225,6 +226,7 @@ export const publicAuditActions: AuditAction[] = [
 ];
 export const companyAuditActions: AuditAction[] = [
   "company.transactions.reset",
+  "company.transactions.import",
   "wallet.award",
   "wallet.auto-award",
   "wallet.reverse",
