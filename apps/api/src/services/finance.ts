@@ -124,6 +124,7 @@ export async function documentDTOs(
     branchId: row.branch_id,
     branchName: row.actual_branch_name,
     cashAccountId: row.cash_account_id,
+    supplierReceiptNumber: row.supplier_receipt_number ?? "",
     description: row.description,
     lines: byDocument.get(row.id) ?? [],
     totalDebit: normalizeRate(row.total_debit),
@@ -308,7 +309,7 @@ export async function findIdempotent(
   payload: unknown,
 ): Promise<QueryResultRow | null> {
   const result = await db.query(
-    "SELECT *,creation_payload=$3::jsonb AS same_payload FROM financial_documents WHERE company_id=$1 AND idempotency_key=$2",
+    "SELECT *, ((creation_payload - 'supplierReceiptNumber') = ($3::jsonb - 'supplierReceiptNumber') AND COALESCE(creation_payload->>'supplierReceiptNumber','') = COALESCE($3::jsonb->>'supplierReceiptNumber','')) AS same_payload FROM financial_documents WHERE company_id=$1 AND idempotency_key=$2",
     [companyId, key, JSON.stringify(payload)],
   );
   if (!result.rows[0]) return null;

@@ -6,6 +6,10 @@ import {
   memoActionSchema,
   memoFollowersUpdateSchema,
   memoFollowerCommentSchema,
+  memoLinksUpdateSchema,
+  memoLinksSchema,
+  memoOptionsUpdateSchema,
+  memoScheduleInputSchema,
   type MemoFollower,
   type MemoFollowerChange,
   type MemoFollowerInput,
@@ -23,6 +27,11 @@ import { audit } from "./services/audit.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { memoFollowerSql } from "./services/memo-followers.ts";
+import {memoReport,memoReportQuerySchema} from "./services/memo-report.ts";
+import {scheduleDTO,scheduleDetails,addScheduleHistory,
+  closeScheduleNotice,cancelScheduleForTransition} from "./services/memo-reminders.ts";
+import {validateMemoLinks,memoLinkView,memoLinksSnapshot} from "./services/memo-links.ts";
+import {definitionsForMemo,validateMemoOptionEntries,saveMemoOptionValues,memoOptionDetails} from "./services/memo-options.ts";
 import { userDTO } from "./repositories/models.ts";
 import {
   assertDirectoryAccess,
@@ -76,6 +85,12 @@ function summary(row: QueryResultRow): MemoSummary {
     title: row.title,
     type: row.type,
     status: row.status,
+    schedule:row.schedule_revision!=null?scheduleDTO({
+      revision:row.schedule_revision,active:row.schedule_active,due_at:row.schedule_due_at,
+      local_date:row.schedule_local_date,local_clock:row.schedule_local_time,
+      repeat_interval:row.schedule_repeat_interval,reason:row.schedule_reason,
+      actor_name:row.schedule_actor,last_triggered_at:row.schedule_last_triggered_at,
+    }):null,
     revision: row.revision,
     senderUserId: row.sender_user_id,
     senderName: row.sender_name,
@@ -203,6 +218,13 @@ async function detail(
   const senderAssignee =
     row.sender_user_id === current.user.id &&
     row.current_user_id === current.user.id;
+  const scheduleState=await scheduleDetails(client,current.companyId,memoId);
+  const links = await memoLinkView(client,current.user,current.companyId,memoId);
+  const optionDetails = await memoOptionDetails(client,current.companyId,memoId);
+  const canManageLinks = row.status !== "completed" &&
+    (row.sender_user_id === current.user.id || current.context.general) &&
+    entry.enabled && entry.actionAccess.edit &&
+    !links.hiddenFollowPage && !links.hiddenReferencePage && !links.hiddenItem && !links.hiddenAccount;
   const canReply =
     row.status !== "completed" &&
     (participant ||
@@ -212,10 +234,23 @@ async function detail(
     entry.actionAccess.edit;
   return {
     ...record(row),
+    ...scheduleState,
+    canSchedule:row.status!=="completed" &&
+      (currentAssignee || row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
+    canManageSchedule:row.status!=="completed" &&
+      (row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
     events,
     followers,
     followerRevision: followRevision,
     followerChanges,
+    links,
+    ...optionDetails,
+    canManageOptions:row.status!=="completed" &&
+      (row.sender_user_id===current.user.id || current.context.general) &&
+      entry.enabled && entry.actionAccess.edit,
+    canManageLinks,
     canManageFollowers: row.status !== "completed" &&
       (row.sender_user_id === current.user.id || current.context.general) &&
       entry.enabled && entry.actionAccess.edit,
@@ -425,6 +460,7 @@ export function memoRoutes(pool: Pool) {
           "completed",
           "all",
           "watching",
+          "deferred",
         ].includes(box)
       )
         throw new HttpError(400, "invalid_query", "قائمة المذكرات غير صالحة");
@@ -444,6 +480,7 @@ export function memoRoutes(pool: Pool) {
           const current = await scope(client, req);
           await access(client, req, current, "view");
           if (box === "all" && !current.context.general) deny();
+          const optionDefs=await definitionsForMemo(client,current.companyId);
           const values: unknown[] = [current.companyId, current.user.id];
           let filter = "TRUE";
           if (box === "required") {
@@ -454,6 +491,15 @@ export function memoRoutes(pool: Pool) {
             filter = "m.status='awaiting_approval' AND m.sender_user_id=$2";
           else if (box === "sent") filter = "m.sender_user_id=$2";
           else if (box === "watching") { values.push(current.ownId); filter = memoFollowerSql("m","$3"); }
+          else if(box==="deferred"){
+            values.push(current.ownId);
+            filter=`EXISTS(SELECT 1 FROM memo_schedules sch WHERE sch.company_id=m.company_id AND sch.memo_id=m.id AND sch.active)
+              AND (${current.context.general?"TRUE":`m.sender_user_id=$2 OR (m.current_user_id=$2 AND
+                (m.current_employee_id IS NULL OR m.current_employee_id=$3::integer))
+                OR EXISTS(SELECT 1 FROM memo_participants p WHERE p.company_id=m.company_id AND p.memo_id=m.id
+                   AND p.user_id=$2 AND (p.employee_id IS NULL OR p.employee_id=$3::integer))
+                OR ${memoFollowerSql("m","$3")}`})`;
+          }
           else if (box === "completed" && current.context.general)
             filter = "m.status='completed'";
           else if (box === "following" || box === "completed") {
@@ -467,10 +513,42 @@ export function memoRoutes(pool: Pool) {
             values.push(status);
             filter = `(${filter}) AND m.status=$${values.length}`;
           }
+          const optionKey=req.query.optionKey, optionValue=req.query.optionValue;
+          if(optionKey !== undefined || optionValue !== undefined) {
+            if(typeof optionKey!=="string" || typeof optionValue!=="string")
+              throw new HttpError(400,"invalid_query","حدد الخاصية والقيمة معًا");
+            const definition=optionDefs.find(d=>d.key===optionKey && d.active && d.searchable);
+            if(!definition) throw new HttpError(400,"invalid_option","الخيار غير متاح للبحث");
+            const candidate: boolean|string|null = definition.valueType==="boolean"
+              ? optionValue==="true"?true:optionValue==="false"?false:null
+              : optionValue==="null"?null:optionValue;
+            const valid=(await client.query(
+              "SELECT option_value_valid($1::text,$2::jsonb,$3::jsonb) AS valid",
+              [definition.valueType,JSON.stringify(candidate),JSON.stringify(definition.choices)],
+            )).rows[0].valid;
+            if(!valid) throw new HttpError(400,"invalid_option_value","قيمة البحث لا تطابق نوع الخاصية");
+            values.push(definition.id,JSON.stringify(candidate));
+            filter=`(${filter}) AND EXISTS(
+              SELECT 1 FROM option_values opt WHERE opt.company_id=m.company_id AND opt.memo_id=m.id
+              AND opt.definition_id=${"$"+(values.length-1)} AND opt.value=${"$"+values.length}::jsonb)`;
+          }
           values.push(searchPattern(query.q));
-          const search = `$${values.length}`;
+          const search = "$"+values.length;
           // Detail text belongs to the detail page, whose view can be denied separately.
-          const where = `m.company_id=$1 AND (${filter}) AND (m.title ILIKE ${search} OR m.sender_name ILIKE ${search} OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search})`;
+          const where = `m.company_id=$1 AND (${filter}) AND (
+            m.title ILIKE ${search} OR m.sender_name ILIKE ${search}
+            OR m.recipient_name ILIKE ${search} OR m.current_name ILIKE ${search}
+            OR EXISTS(
+              SELECT 1 FROM option_values ov
+              JOIN option_definitions od ON od.company_id=ov.company_id AND od.id=ov.definition_id
+              WHERE ov.company_id=m.company_id AND ov.memo_id=m.id AND od.record_kind='memo'
+                AND od.searchable AND od.active AND (
+                  (ov.value #>> '{}') ILIKE ${search} OR EXISTS(
+                    SELECT 1 FROM jsonb_array_elements(od.choices) choice
+                    WHERE choice->>'key'=ov.value #>> '{}' AND choice->>'label' ILIKE ${search}
+                  )
+                )
+            ))`;
           const total = Number(
             (
               await client.query(
@@ -482,13 +560,35 @@ export function memoRoutes(pool: Pool) {
           const rows = (
             await client.query(
               `SELECT m.id,m.company_id,m.title,m.type,m.sender_user_id,m.sender_name,m.recipient_employee_id,m.recipient_user_id,m.recipient_name,m.created_at,m.revision,m.current_user_id,m.current_employee_id,m.current_name,m.current_assigned_at,m.current_assignment_revision,m.status,m.completion_requested_by_user_id,m.completion_requested_by_employee_id,m.completion_requested_by_name,m.completion_requested_at,m.completed_at,m.completed_by_user_id,m.completed_by_name,
-         own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at FROM memos m ${readJoins} WHERE ${where}
+         own_read.read_at,recipient_read.read_at AS recipient_read_at,current_read.read_at AS current_read_at,
+         sch.revision AS schedule_revision,sch.active AS schedule_active,sch.due_at AS schedule_due_at,
+         sch.local_day::text AS schedule_local_date,to_char(sch.local_time,'HH24:MI') AS schedule_local_time,
+         sch.repeat_interval AS schedule_repeat_interval,sch.reason AS schedule_reason,
+         sch.actor_name AS schedule_actor,sch.last_triggered_at AS schedule_last_triggered_at
+         FROM memos m ${readJoins} LEFT JOIN memo_schedules sch ON sch.company_id=m.company_id AND sch.memo_id=m.id
+         WHERE ${where}
          ORDER BY ${query.order} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
               [...values, query.pageSize, query.offset],
             )
           ).rows;
+          const listDefinitions=optionDefs.filter(d=>d.active && d.showInList);
+          const ids=rows.map(r=>r.id);
+          const optionRows=ids.length && listDefinitions.length
+            ? (await client.query(
+              `SELECT v.memo_id,d.key,v.value FROM option_values v
+               JOIN option_definitions d ON d.company_id=v.company_id AND d.id=v.definition_id
+               WHERE v.company_id=$1 AND v.memo_id=ANY($2::integer[])
+                 AND v.definition_id=ANY($3::integer[])`,
+              [current.companyId,ids,listDefinitions.map(d=>d.id)],
+            )).rows : [];
           return {
-            items: rows.map(summary),
+            items: rows.map(r=>({
+              ...summary(r),
+              optionValues:Object.fromEntries(optionRows.filter(o=>o.memo_id===r.id)
+                .map(o=>[o.key,o.value])),
+            })),
+            optionDefinitions:listDefinitions,
+            searchOptions:optionDefs.filter(d=>d.active && d.searchable),
             total,
             page: query.page,
             pageSize: query.pageSize,
@@ -499,6 +599,32 @@ export function memoRoutes(pool: Pool) {
       res.json(result);
     }),
   );
+  router.get(base + "/report",handler(async(req,res)=>{
+    const filters=parse(memoReportQuerySchema,req.query);
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current=await scope(client,req);
+      await access(client,req,current,"view",true);
+      const entries=await directoryEntries(client,current.user,current.companyId);
+      assertDirectoryAccess(entries.find(entry=>entry.key==="company.memo-report")!);
+      if(filters.pageKey && !entries.some(entry=>entry.key===filters.pageKey && entry.actionAccess.view))
+        deny("لا تملك صلاحية صفحة المتابعة");
+      if(filters.itemId && !entries.some(entry=>entry.key==="company.items" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الأصناف");
+      if(filters.accountId && !entries.some(entry=>entry.key==="company.accounts" && entry.actionAccess.view))
+        deny("لا تملك صلاحية الحسابات");
+      if(filters.employeeId && !(await client.query(
+        "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+        [current.companyId,filters.employeeId],
+      )).rowCount) throw new HttpError(404,"invalid_employee","الموظف غير موجود في الشركة");
+
+      return memoReport(client,{
+        companyId:current.companyId,userId:current.user.id,
+        employeeId:current.ownId,general:current.context.general,
+      },filters);
+    });
+    res.json(result);
+  }));
   router.get(
     base + "/recipients",
     handler(async (req, res) => {
@@ -549,6 +675,8 @@ export function memoRoutes(pool: Pool) {
         recipientEmployeeId: input.recipientEmployeeId,
         type: input.type,
         followers: input.followers ?? [],
+        ...(input.links ? {links:input.links} : {}),
+        ...(input.options ? {options:input.options} : {}),
       };
       const result = await transaction(pool, async (client) => {
         const current = await scope(client, req, true);
@@ -574,6 +702,8 @@ export function memoRoutes(pool: Pool) {
           };
         }
         await access(client, req, current, "create", false, true);
+        if(input.links) await validateMemoLinks(client,current.user,current.companyId,input.links);
+        const preparedOptions=await validateMemoOptionEntries(client,current.companyId,input.options??[],true);
         const recipient = (
           await client.query(
             `SELECT e.id,e.user_id,e.name FROM employees e JOIN users u ON u.id=e.user_id AND NOT u.archived
@@ -630,6 +760,19 @@ export function memoRoutes(pool: Pool) {
           ],
         );
         await client.query(
+          `INSERT INTO memo_links(company_id,memo_id,follow_page_key,follow_record_id,reference_page_key,reference_record_id,item_id,account_id,updated_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [current.companyId,memo.id,input.links?.followPage?.pageKey??null,
+           input.links?.followPage?.recordId??null,input.links?.referencePage?.pageKey??null,
+           input.links?.referencePage?.recordId??null,input.links?.itemId??null,
+           input.links?.accountId??null,current.user.id],
+        );
+        await client.query(
+          "INSERT INTO memo_option_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
+          [current.companyId,memo.id,current.user.id],
+        );
+        await saveMemoOptionValues(client,current.user,current.companyId,memo.id,preparedOptions);
+        await client.query(
           "INSERT INTO memo_follow_versions(company_id,memo_id,changed_by) VALUES($1,$2,$3)",
           [current.companyId,memo.id,current.user.id],
         );
@@ -649,6 +792,13 @@ export function memoRoutes(pool: Pool) {
           followers: _followers,
           followerRevision: _followerRevision,
           followerChanges: _followerChanges,
+          links: _links,
+          canManageLinks: _manageLinks,
+          optionDefinitions: _optionDefinitions,
+          optionValues: _optionValues,
+          optionRevision: _optionRevision,
+          optionChanges: _optionChanges,
+          canManageOptions: _manageOptions,
           ...snapshot
         } = saved;
         await audit(
@@ -676,6 +826,281 @@ export function memoRoutes(pool: Pool) {
         return { memo: saved, created: true };
       });
       res.status(result.created ? 201 : 200).json({ memo: result.memo });
+    }),
+  );
+  router.get(base + "/reminder-settings",handler(async(req,res)=>{
+    const result=await transaction(pool,async(client)=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const current=await scope(client,req);
+      await access(client,req,current,"view");
+      const settings=(await client.query(
+        "SELECT to_char(default_time,'HH24:MI') AS \"defaultTime\",notify_sender AS \"notifySender\",revision FROM memo_reminder_settings WHERE company_id=$1",
+        [current.companyId],
+      )).rows[0];
+      return {settings,canManage:current.context.general};
+    });
+    res.json(result);
+  }));
+  router.put(base + "/reminder-settings",handler(async(req,res)=>{
+    const input=parse(z.object({
+      defaultTime:z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/),
+      notifySender:z.boolean(),revision:z.number().int().positive(),
+    }).strict(),req.body);
+    const result=await transaction(pool,async(client)=>{
+      const current=await scope(client,req,true);
+      await access(client,req,current,"edit",false,true);
+      if(!current.context.general)deny("إعدادات تذكير المذكرات للإدارة فقط");
+      const before=(await client.query(
+        "SELECT revision,to_char(default_time,'HH24:MI') AS time,notify_sender FROM memo_reminder_settings WHERE company_id=$1 FOR UPDATE",
+        [current.companyId],
+      )).rows[0];
+      if(!before || before.revision!==input.revision)
+        throw new HttpError(409,"revision_conflict","تغيرت إعدادات الشركة");
+      await client.query(
+        "UPDATE memo_reminder_settings SET default_time=$2::time,notify_sender=$3,revision=revision+1,changed_by=$4,changed_at=clock_timestamp() WHERE company_id=$1",
+        [current.companyId,input.defaultTime,input.notifySender,current.user.id],
+      );
+      await audit(client,current.user,"memo.reminder-settings","memo-settings",current.companyId,
+       before,{...input,revision:before.revision+1},current.companyId);
+      return {settings:{defaultTime:input.defaultTime,notifySender:input.notifySender,revision:before.revision+1}};
+    });
+    res.json(result);
+  }));
+  router.put(base + "/:memoId/schedule",handler(async(req,res)=>{
+    const memoId=id(req.params.memoId),input=parse(memoScheduleInputSchema,req.body);
+    const memo=await transaction(pool,async(client)=>{
+      const current=await scope(client,req,true);
+      await access(client,req,current,"edit",true,true);
+      await client.query("SELECT id FROM memos WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [current.companyId,memoId]);
+      const before=await detail(client,current,memoId);
+      if(!before.canSchedule)deny("تأجيل المتابعة للمسؤول الحالي أو المرسل أو الإدارة المصرح لها فقط");
+      const previous=(await client.query(
+       "SELECT * FROM memo_schedules WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+       [current.companyId,memoId],
+      )).rows[0];
+      const version=previous?.revision??0;
+      if(version!==input.revision)
+        throw new HttpError(409,"revision_conflict","تغير موعد المتابعة؛ أعد تحميل المذكرة");
+      if(input.action==="cancel"){
+        if(!previous?.active)
+          throw new HttpError(409,"not_deferred","المذكرة ليست مؤجلة حاليًا");
+        await client.query(
+          "UPDATE memo_schedules SET active=false,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId]);
+        await addScheduleHistory(client,current.companyId,memoId,version+1,"cancelled",
+          input.reason,current.user,previous.due_at,{before:before.schedule});
+      }else{
+        if(input.repeatInterval!=="none")
+          throw new HttpError(400,"repeat_not_enabled","التذكير المتكرر سيتاح في الدفعة الثانية");
+        const setting=(await client.query(
+          "SELECT to_char(default_time,'HH24:MI') AS time FROM memo_reminder_settings WHERE company_id=$1",
+          [current.companyId])).rows[0];
+        const localTime=input.localTime??setting?.time??"09:00";
+        const due=(await client.query(
+          "SELECT (($1::date+$2::time) AT TIME ZONE 'Asia/Aden') AS due",
+          [input.localDate,localTime])).rows[0].due as Date;
+        const now=(await client.query("SELECT clock_timestamp() AS now")).rows[0].now as Date;
+        if(due.getTime()<=now.getTime())
+          throw new HttpError(400,"past_reminder","اختر موعدًا مستقبليًا بتوقيت اليمن");
+        await client.query(
+          `INSERT INTO memo_schedules(company_id,memo_id,due_at,local_day,local_time,repeat_interval,
+            assignment_revision,assignee_user_id,reason,actor_user_id,actor_name)
+            VALUES($1,$2,$3,$4::date,$5::time,$6,$7,$8,$9,$10,$11)
+            ON CONFLICT(company_id,memo_id) DO UPDATE SET
+            revision=memo_schedules.revision+1,active=true,due_at=excluded.due_at,
+            local_day=excluded.local_day,local_time=excluded.local_time,
+            repeat_interval=excluded.repeat_interval,assignment_revision=excluded.assignment_revision,
+            assignee_user_id=excluded.assignee_user_id,reason=excluded.reason,
+            actor_user_id=excluded.actor_user_id,actor_name=excluded.actor_name,
+            last_triggered_at=NULL,updated_at=clock_timestamp()`,
+          [current.companyId,memoId,due,input.localDate,localTime,"none",
+           before.currentAssignmentRevision,before.currentUserId,input.reason,
+           current.user.id,current.user.displayName]);
+        await addScheduleHistory(client,current.companyId,memoId,version+1,
+          previous?"changed":"scheduled",input.reason,current.user,due,
+          {before:before.schedule,after:{localDate:input.localDate,localTime}});
+      }
+      await closeScheduleNotice(client,current.companyId,memoId,current.user,
+        input.action==="cancel"?"schedule-cancelled":"schedule-updated");
+      const saved=await detail(client,current,memoId);
+      await audit(client,current.user,"memo.schedule","memo",memoId,
+        {revision:version,schedule:before.schedule},
+        {revision:saved.scheduleRevision,schedule:saved.schedule,reason:input.reason},current.companyId);
+      return saved;
+    });
+    res.json({memo});
+  }));
+  router.get(
+    base + "/options",
+    handler(async (req,res) => {
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        return {definitions:(await definitionsForMemo(client,current.companyId)).filter(d=>d.active)};
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/:memoId/options",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoOptionsUpdateSchema,req.body);
+      const memo=await transaction(pool,async client=>{
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageOptions) deny("تعديل خصائص المذكرة للمرسل والإدارة المصرح لها فقط");
+        const version=(await client.query(
+          "SELECT revision FROM memo_option_versions WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId]
+        )).rows[0];
+        if(!version || version.revision!==input.revision)
+          throw new HttpError(409,"revision_conflict","تغيرت خصائص المذكرة؛ أعد التحميل");
+        const values=await validateMemoOptionEntries(client,current.companyId,input.values,false);
+        await saveMemoOptionValues(client,current.user,current.companyId,memoId,values);
+        const after=await memoOptionDetails(client,current.companyId,memoId);
+        await client.query(
+          "UPDATE memo_option_versions SET revision=revision+1,changed_by=$3,changed_at=clock_timestamp() WHERE company_id=$1 AND memo_id=$2",
+          [current.companyId,memoId,current.user.id],
+        );
+        await client.query(
+          `INSERT INTO memo_option_changes(company_id,memo_id,revision,actor_user_id,actor_name,previous_value,next_value)
+            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
+          [current.companyId,memoId,version.revision+1,current.user.id,current.user.displayName,
+           JSON.stringify(before.optionValues),JSON.stringify(after.optionValues)],
+        );
+        await audit(client,current.user,"memo.options","memo",memoId,
+          {revision:version.revision,values:before.optionValues},
+          {revision:version.revision+1,values:after.optionValues},current.companyId);
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
+    }),
+  );
+  router.get(
+    base + "/link-records",
+    handler(async (req,res) => {
+      const pageKey=String(req.query.pageKey??"");
+      const resource:Record<string,{table:string;parent:string;title:string}>={
+        "company.invoice":{table:"invoices",parent:"",title:"فاتورة"},
+        "company.financial-document":{table:"financial_documents",parent:"company.financial-documents",title:"مستند"},
+        "company.item-card":{table:"items",parent:"company.items",title:"صنف"},
+      };
+      const target=resource[pageKey];
+      if(!target) throw new HttpError(400,"invalid_page","اختر صفحة سجل مدعومة");
+      const query=listQuery(req.query,{id:"r.id",code:"r.id",name:"r.id"},"id:desc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key===pageKey)!);
+        if(target.parent) assertDirectoryAccess(entries.find(e=>e.key===target.parent)!);
+        const kindFilter=target.table==="invoices"
+          ? (!entries.find(e=>e.key==="company.sales")?.actionAccess.view
+              ? (entries.find(e=>e.key==="company.purchases")?.actionAccess.view ? "AND r.kind='purchase'" : "AND FALSE") : !entries.find(e=>e.key==="company.purchases")?.actionAccess.view
+                ? "AND r.kind='sale'" : "")
+          : target.table==="financial_documents"
+          ? "AND r.kind IN ("+["journal","receipt","payment"].filter(kind=>
+              entries.find(e=>e.key==="company."+
+                ({journal:"journals",receipt:"receipts",payment:"payments"} as const)[kind as "journal"|"receipt"|"payment"])?.actionAccess.view)
+              .map(kind=>"'"+kind+"'").join(",") + ")"
+          : "";
+        const condition=`FROM ${target.table} r WHERE r.company_id=$1 AND r.id::text ILIKE $2 ${kindFilter}`;
+        const values=[current.companyId,searchPattern(query.q)];
+        const total=Number((await client.query(`SELECT count(*) ${condition}`,values)).rows[0].count);
+        const rows=(await client.query(
+          `SELECT r.id ${condition} ORDER BY r.id DESC LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset],
+        )).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${target.title} #${r.id}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
+    base + "/link-items",
+    handler(async (req,res) => {
+      const query=listQuery(req.query,{id:"i.id",code:"i.code",name:"i.name"},"name:asc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.items")!);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.item-card")!);
+        const values=[current.companyId,searchPattern(query.q)];
+        const from="FROM items i WHERE i.company_id=$1 AND (i.name ILIKE $2 OR i.code ILIKE $2)";
+        const total=Number((await client.query(`SELECT count(*) ${from}`,values)).rows[0].count);
+        const rows=(await client.query(`SELECT i.id,i.code,i.name ${from} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset])).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${r.code} — ${r.name}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
+    base + "/link-accounts",
+    handler(async (req,res) => {
+      const query=listQuery(req.query,{id:"a.id",code:"a.code",name:"a.name"},"name:asc");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const current=await scope(client,req);
+        await access(client,req,current,"view");
+        const entries=await directoryEntries(client,current.user,current.companyId);
+        assertDirectoryAccess(entries.find(e=>e.key==="company.accounts")!);
+        const values=[current.companyId,searchPattern(query.q)];
+        const from="FROM accounts a WHERE a.company_id=$1 AND (a.name ILIKE $2 OR a.code ILIKE $2)";
+        const total=Number((await client.query(`SELECT count(*) ${from}`,values)).rows[0].count);
+        const rows=(await client.query(`SELECT a.id,a.code,a.name ${from} ORDER BY ${query.order} LIMIT $3 OFFSET $4`,
+          [...values,query.pageSize,query.offset])).rows;
+        return {items:rows.map(r=>({id:r.id,name:`${r.code} — ${r.name}`})),
+          total,page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
+  router.put(
+    base + "/:memoId/links",
+    handler(async (req,res) => {
+      const memoId=id(req.params.memoId),input=parse(memoLinksUpdateSchema,req.body);
+      const memo=await transaction(pool,async client=>{
+        const current=await scope(client,req,true);
+        await access(client,req,current,"edit",true,true);
+        const before=await detail(client,current,memoId);
+        if(!before.canManageLinks) deny("تعديل مراجع المذكرة للمرسل والإدارة المصرح لها فقط");
+        const found=(await client.query(
+          "SELECT * FROM memo_links WHERE company_id=$1 AND memo_id=$2 FOR UPDATE",
+          [current.companyId,memoId]
+        )).rows[0];
+        if(!found || found.revision!==input.revision)
+          throw new HttpError(409,"revision_conflict","تغيرت المراجع، أعد تحميل المذكرة");
+        const {revision:_linkRevision,...values}=input;
+        await validateMemoLinks(client,current.user,current.companyId,values);
+        const previous=memoLinksSnapshot(found);
+        await client.query(
+          `UPDATE memo_links SET revision=revision+1,follow_page_key=$3,follow_record_id=$4,
+            reference_page_key=$5,reference_record_id=$6,item_id=$7,account_id=$8,
+            updated_by=$9,updated_at=clock_timestamp()
+            WHERE company_id=$1 AND memo_id=$2`,
+          [current.companyId,memoId,values.followPage?.pageKey??null,
+           values.followPage?.recordId??null,values.referencePage?.pageKey??null,
+           values.referencePage?.recordId??null,values.itemId,values.accountId,current.user.id]
+        );
+        await client.query(
+          "INSERT INTO memo_link_changes(company_id,memo_id,revision,actor_user_id,actor_name,previous_value,next_value) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)",
+          [current.companyId,memoId,found.revision+1,current.user.id,current.user.displayName,
+           JSON.stringify(previous),JSON.stringify(values)]
+        );
+        await audit(client,current.user,"memo.links","memo",memoId,
+          {revision:found.revision,...previous},{revision:found.revision+1,...values},current.companyId);
+        return detail(client,current,memoId);
+      });
+      res.json({memo});
     }),
   );
   router.get(
@@ -805,7 +1230,7 @@ export function memoRoutes(pool: Pool) {
         const alerts = (
           await client.query(
             `UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()
-           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW') AND subject_key=$2 AND recipient_user_id=$3
+           WHERE company_id=$1 AND code IN ('MEMO_RECEIVED','MEMO_REPLY','MEMO_APPROVAL','MEMO_COMPLETED','MEMO_FOLLOW','MEMO_DUE') AND subject_key=$2 AND recipient_user_id=$3
            AND subject_employee_id IS NOT DISTINCT FROM $4::integer AND read_at IS NULL AND completed_at IS NULL RETURNING id,read_at,revision`,
             [
               current.companyId,
@@ -910,6 +1335,8 @@ export function memoRoutes(pool: Pool) {
           true,
           true,
         );
+        await client.query("SELECT id FROM memos WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [current.companyId,memoId]);
         const before = await detail(client, current, memoId);
         if (before.status === "completed")
           throw new HttpError(
@@ -1102,6 +1529,9 @@ export function memoRoutes(pool: Pool) {
             action.id,
           ],
         );
+        if(target || close || request || reopen)
+          await cancelScheduleForTransition(client,current.companyId,memoId,
+            current.user,"memo-workflow-transition");
         const saved = await detail(client, current, memoId);
         await audit(
           client,

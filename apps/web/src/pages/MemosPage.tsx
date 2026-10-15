@@ -11,12 +11,15 @@ import {
   memoActionSchema,
   memoFollowerCommentSchema,
   memoCreateSchema,
+  type OptionDefinition,
+  type MemoOptionValueInput,
   memoTypeLabels,
   type CompanyContext,
   type MemoActionInput,
   type MemoCreateInput,
   type MemoDetail,
   type MemoFollowerInput,
+  type MemoLinksInput,
   type MemoList,
   type MemoRecipient,
   type MemoSummary,
@@ -26,6 +29,9 @@ import { ApiFailure, api, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage, ServerLookup } from "../phase2";
 import { MemoFollowersEditor } from "../MemoFollowersEditor";
+import { MemoLinksEditor, emptyMemoLinks } from "../MemoLinksEditor";
+import {MemoFollowupEditor} from "../MemoFollowupEditor";
+import { MemoOptionFields, memoOptionLabel } from "../MemoOptionFields";
 import {
   Button,
   Card,
@@ -133,6 +139,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
       ? "sent"
       : params.get("box") === "following"
         ? "following"
+        : params.get("box") === "deferred"
+          ? "deferred"
         : params.get("box") === "watching"
           ? "watching"
         : params.get("box") === "approval"
@@ -143,6 +151,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
               ? "all"
               : "required";
   const query = params.get("q") ?? "";
+  const optionKey=params.get("optionKey")??"";
+  const optionValue=params.get("optionValue")??"";
   const page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize"))
@@ -165,10 +175,13 @@ function MemosContent({ context }: { context: CompanyContext }) {
     });
   }
   const list = useQuery({
-    queryKey: ["list", user?.id, scope, box, query, page, pageSize, sort],
+    queryKey: ["list", user?.id, scope, box, query, optionKey, optionValue, page, pageSize, sort],
     queryFn: ({ signal }) =>
       api<MemoList>(
-        `${base}/memos?${new URLSearchParams({ box, q: query, page: String(page), pageSize: String(pageSize), sort })}`,
+        `${base}/memos?${new URLSearchParams({
+          box,q:query,page:String(page),pageSize:String(pageSize),sort,
+          ...(optionKey && optionValue!==""?{optionKey,optionValue}:{}),
+        })}`,
         { signal },
       ),
     enabled: !!user && canView,
@@ -186,6 +199,13 @@ function MemosContent({ context }: { context: CompanyContext }) {
     restored?.recipient ?? null,
   );
   const [followers, setFollowers] = useState<MemoFollowerInput[]>(restored?.payload.followers ?? []);
+  const [links, setLinks] = useState<MemoLinksInput>(restored?.payload.links ?? emptyMemoLinks());
+  const optionDefinitions = useQuery({
+    queryKey:["memo-definitions",user?.id,companyId],
+    queryFn:({signal})=>api<{definitions:OptionDefinition[]}>(`${base}/memos/options`,{signal}),
+    enabled:!!user && canView,
+  });
+  const [optionInputs,setOptionInputs] = useState<MemoOptionValueInput[]>(restored?.payload.options??[]);
   const [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [created, setCreated] = useState<MemoDetail | null>(null);
@@ -222,6 +242,8 @@ function MemosContent({ context }: { context: CompanyContext }) {
         type,
         recipientEmployeeId: recipient!.id,
         followers,
+        links,
+        options:optionInputs,
         idempotencyKey: crypto.randomUUID(),
       },
     );
@@ -301,6 +323,10 @@ function MemosContent({ context }: { context: CompanyContext }) {
       size: 95,
       cell: ({ row }) => memoTypeLabels[row.original.type],
     },
+    ...(list.data?.optionDefinitions??[]).map((definition):ColumnDef<MemoSummary,unknown>=>({
+      id:`option-${definition.id}`,header:definition.name,size:140,enableSorting:false,
+      cell:({row})=>memoOptionLabel(definition,row.original.optionValues?.[definition.key]??null),
+    })),
     {
       accessorKey: "senderName",
       header: "المرسل",
@@ -318,7 +344,15 @@ function MemosContent({ context }: { context: CompanyContext }) {
       header: "الحالة",
       size: 130,
       enableSorting: false,
-      cell: ({ row }) => memoStatusLabels[row.original.status],
+      cell: ({ row }) => row.original.schedule?.active
+       ? `${memoStatusLabels[row.original.status]} — مؤجلة`
+       : memoStatusLabels[row.original.status],
+    },
+    {
+      id:"returnDue",header:"موعد العودة",size:155,enableSorting:false,
+      cell:({row})=>row.original.schedule?.active?
+        new Intl.DateTimeFormat("ar-YE",{timeZone:"Asia/Aden",dateStyle:"short",timeStyle:"short"})
+          .format(new Date(row.original.schedule.dueAt)):"—",
     },
     {
       id: "currentRead",
@@ -340,6 +374,7 @@ function MemosContent({ context }: { context: CompanyContext }) {
     { value: "sent", label: "أرسلتها" },
     { value: "following", label: "شاركت فيها" },
     { value: "watching", label: "أتابعها" },
+    { value: "deferred", label: "المؤجلة" },
     { value: "completed", label: "المنجزة" },
     ...(context.general ? [{ value: "all", label: "كل المذكرات" }] : []),
   ];
@@ -421,6 +456,28 @@ function MemosContent({ context }: { context: CompanyContext }) {
           onChange={(event) => filter({ q: event.target.value, page: null })}
           placeholder="العنوان أو المرسل أو المسؤول الحالي"
         />
+        <div className="form-grid">
+          <Select label="تصفية حسب خاصية" value={optionKey}
+            onChange={event=>filter({optionKey:event.target.value,optionValue:null,page:null})}>
+            <option value="">بدون تصفية إضافية</option>
+            {(list.data?.searchOptions??[]).map(def=>
+              <option value={def.key} key={def.id}>{def.name}</option>)}
+          </Select>
+          {optionKey && (()=>{
+            const def=list.data?.searchOptions?.find(d=>d.key===optionKey);
+            if(def?.valueType==="boolean")return <Select label="قيمة الخاصية" value={optionValue}
+              onChange={event=>filter({optionValue:event.target.value,page:null})}>
+              <option value="">اختر</option><option value="true">نعم</option><option value="false">لا</option>
+            </Select>;
+            if(def?.valueType==="list")return <Select label="قيمة الخاصية" value={optionValue}
+              onChange={event=>filter({optionValue:event.target.value,page:null})}>
+              <option value="">اختر</option>
+              {def.choices.map(choice=><option key={choice.key} value={choice.key}>{choice.label}</option>)}
+            </Select>;
+            return <Field label="قيمة الخاصية" value={optionValue}
+              onChange={event=>filter({optionValue:event.target.value,page:null})}/>;
+          })()}
+        </div>
         <DataTable
           columns={columns}
           data={canView ? (list.data?.items ?? []) : []}
@@ -523,6 +580,20 @@ function MemosContent({ context }: { context: CompanyContext }) {
             />
           )}
           <fieldset className="form-stack" disabled={locked || !canCreate}>
+            <legend>صفحة المتابعة والمرجع المرتبط</legend>
+            <MemoLinksEditor companyId={companyId} value={links} onChange={setLinks}
+              disabled={locked || !canCreate} />
+          </fieldset>
+          <fieldset className="form-stack" disabled={locked || !canCreate}>
+            <legend>خصائص المذكرة الإضافية</legend>
+            {optionDefinitions.error && <Notice tone="warning">
+              تعذر تحميل الخصائص: {errorMessage(optionDefinitions.error)}
+            </Notice>}
+            <MemoOptionFields definitions={optionDefinitions.data?.definitions??[]}
+              values={submitted?.payload.options??optionInputs}
+              onChange={setOptionInputs} defaults disabled={locked || !canCreate}/>
+          </fieldset>
+          <fieldset className="form-stack" disabled={locked || !canCreate}>
             <legend>المتابعون وصلاحياتهم</legend>
             <MemoFollowersEditor companyId={companyId}
               value={submitted?.payload.followers ?? followers}
@@ -593,6 +664,14 @@ function MemoDetailContent({
     enabled: !!user && canView && Number.isSafeInteger(memoId) && memoId > 0,
   });
   const memo = detail.data?.memo;
+  const [optionsDraft,setOptionsDraft] = useState<MemoOptionValueInput[]|null>(null);
+  const [optionsSaving,setOptionsSaving] = useState(false);
+  const [optionsError,setOptionsError] = useState("");
+  const [optionsNotice,setOptionsNotice] = useState("");
+  const [linksDraft,setLinksDraft] = useState<MemoLinksInput|null>(null);
+  const [linksSaving,setLinksSaving] = useState(false);
+  const [linksError,setLinksError] = useState("");
+  const [linksNotice,setLinksNotice] = useState("");
   const [followersDraft, setFollowersDraft] = useState<MemoFollowerInput[] | null>(null);
   const [followersSaving, setFollowersSaving] = useState(false);
   const [followersMessage, setFollowersMessage] = useState("");
@@ -699,6 +778,41 @@ function MemoDetailContent({
       commentLock.current=false;
       if(guard.isCurrent()) setCommentSaving(false);
     }
+  }
+  async function saveOptions() {
+    if(!memo || !memo.canManageOptions || optionsDraft===null || optionsSaving || !optionsDraft.length)return;
+    setOptionsSaving(true);setOptionsError("");setOptionsNotice("");
+    try{
+      const result=await api<{memo:MemoDetail}>(`${base}/memos/${memoId}/options`,{
+        method:"PUT",body:{revision:memo.optionRevision,values:optionsDraft},signal:guard.signal,
+      });
+      if(!guard.isCurrent())return;
+      applyDetail(result);
+      setOptionsDraft(null);
+      setOptionsNotice("تم حفظ الخصائص دون تعديل حالة المذكرة.");
+      void refreshMemos(client,user?.id,companyId);
+    }catch(cause){
+      if(!guard.isCurrent())return;
+      setOptionsError(errorMessage(cause));
+      if(cause instanceof ApiFailure && cause.status===409) void detail.refetch();
+    }finally{if(guard.isCurrent())setOptionsSaving(false);}
+  }
+  async function saveLinks() {
+    if(!memo || !memo.canManageLinks || !linksDraft || linksSaving) return;
+    setLinksSaving(true);setLinksError("");setLinksNotice("");
+    try{
+      const result = await api<{memo:MemoDetail}>(`${base}/memos/${memoId}/links`,{
+        method:"PUT",body:{...linksDraft,revision:memo.links.revision},signal:guard.signal,
+      });
+      if(!guard.isCurrent())return;
+      applyDetail(result);
+      setLinksDraft(null);
+      setLinksNotice("تم حفظ المراجع والصنف والحساب دون تغيير المسؤول أو حالة المذكرة.");
+    }catch(cause){
+      if(!guard.isCurrent())return;
+      setLinksError(errorMessage(cause));
+      if(cause instanceof ApiFailure && cause.status===409)void detail.refetch();
+    }finally{if(guard.isCurrent())setLinksSaving(false);}
   }
   async function saveFollowers() {
     if (!memo || followersDraft === null || followersSaving || !memo.canManageFollowers) return;
@@ -932,6 +1046,97 @@ function MemoDetailContent({
               <dt>اطلاعك</dt>
               <dd>{memo.readAt ? time(memo.readAt) : "جارٍ تسجيل الاطلاع…"}</dd>
             </dl>
+          </Card>
+          <Card title="صفحة المتابعة والمراجع المرتبطة">
+            {linksNotice && <Notice tone="success">{linksNotice}</Notice>}
+            {linksError && <Notice tone="error">{linksError}</Notice>}
+            {linksDraft === null ? (
+              <div className="form-stack">
+                {([
+                  ["صفحة المتابعة",memo.links.followPage,memo.links.hiddenFollowPage],
+                  ["التقرير أو الصفحة المرجعية",memo.links.referencePage,memo.links.hiddenReferencePage],
+                ] as const).map(([label,ref,hidden]) => (
+                  <p key={label}>{label}: {" "}
+                    {ref ? <Link className="button button-secondary button-compact" to={ref.href}>
+                      فتح {ref.label}{ref.recordId? ` #${ref.recordId}`:""}
+                    </Link> : hidden ? "بيانات محجوبة لعدم وجود صلاحية" : "—"}
+                  </p>
+                ))}
+                <p>الصنف: {memo.links.item ?
+                  <Link to={memo.links.item.href}>{memo.links.item.label}</Link> :
+                  memo.links.hiddenItem?"محجوب لعدم وجود صلاحية":"—"}</p>
+                <p>الحساب: {memo.links.account ?
+                  <Link to={memo.links.account.href}>{memo.links.account.label}</Link> :
+                  memo.links.hiddenAccount?"محجوب لعدم وجود صلاحية":"—"}</p>
+                {memo.canManageLinks && <Button variant="secondary" onClick={() => {
+                  setLinksError("");setLinksNotice("");
+                  setLinksDraft({
+                    followPage:memo.links.followPage?{
+                      pageKey:memo.links.followPage.pageKey,recordId:memo.links.followPage.recordId}:null,
+                    referencePage:memo.links.referencePage?{
+                      pageKey:memo.links.referencePage.pageKey,recordId:memo.links.referencePage.recordId}:null,
+                    itemId:memo.links.item?.id??null,accountId:memo.links.account?.id??null,
+                  });
+                }}>تعديل الروابط والخصائص الأساسية</Button>}
+              </div>
+            ) : <div className="form-stack">
+              <MemoLinksEditor companyId={companyId} value={linksDraft}
+                onChange={setLinksDraft} existing={memo.links} disabled={linksSaving}/>
+              <div className="memo-action-buttons">
+                <Button disabled={linksSaving} onClick={() => void saveLinks()}>
+                  {linksSaving?"جارٍ الحفظ…":"حفظ الروابط"}</Button>
+                <Button disabled={linksSaving} variant="secondary" onClick={() => setLinksDraft(null)}>إلغاء</Button>
+              </div>
+            </div>}
+            {!!memo.links.changes.length && <div className="form-stack">
+              <h3>سجل تعديل المراجع</h3>
+              {memo.links.changes.map(change=><p key={change.revision} className="muted">
+                {change.actorName} · {time(change.createdAt)} · الإصدار {change.revision}
+              </p>)}
+            </div>}
+          </Card>
+          <MemoFollowupEditor companyId={companyId} memo={memo}
+            onSaved={updated=>{
+              applyDetail({memo:updated});
+              void refreshMemos(client,user?.id,companyId);
+            }}/>
+          <Card title="الخصائص الإضافية">
+            <p className="muted">الخصائص وصفية، ولا تغير مسؤول التنفيذ أو التنبيهات أو اعتماد الإنجاز.</p>
+            {optionsNotice && <Notice tone="success">{optionsNotice}</Notice>}
+            {optionsError && <Notice tone="error">{optionsError}</Notice>}
+            {optionsDraft===null ? (
+              <div className="form-stack">
+                {memo.optionDefinitions.filter(def=>def.showOnCard).map(def=>{
+                  const value=memo.optionValues.find(v=>v.definitionId===def.id)?.value??null;
+                  return <p key={def.id}>{def.name}: {memoOptionLabel(def,value)}</p>;
+                })}
+                {!memo.optionDefinitions.some(def=>def.showOnCard) &&
+                  <p className="muted">لا توجد خصائص ظاهرة في كرت المذكرة.</p>}
+                {memo.canManageOptions && <Button variant="secondary" onClick={()=>{
+                  setOptionsError("");setOptionsNotice("");setOptionsDraft([]);
+                }}>تعديل الخصائص</Button>}
+              </div>
+            ) : <div className="form-stack">
+              <MemoOptionFields definitions={memo.optionDefinitions}
+                values={[...memo.optionValues.filter(v=>!optionsDraft.some(ch=>ch.definitionId===v.definitionId)),
+                  ...optionsDraft]}
+                onChange={all=>setOptionsDraft(all.filter(v=>{
+                  const previous=memo.optionValues.find(saved=>saved.definitionId===v.definitionId)?.value??null;
+                  return previous!==v.value;
+                }))}
+                disabled={optionsSaving}/>
+              <div className="memo-action-buttons">
+                <Button disabled={optionsSaving || !optionsDraft.length} onClick={()=>void saveOptions()}>
+                  {optionsSaving?"جارٍ الحفظ…":"حفظ الخصائص"}</Button>
+                <Button variant="secondary" disabled={optionsSaving} onClick={()=>setOptionsDraft(null)}>إلغاء</Button>
+              </div>
+            </div>}
+            {!!memo.optionChanges.length && <div className="form-stack">
+              <h3>سجل تغييرات الخصائص</h3>
+              {memo.optionChanges.map(change=><p key={change.revision} className="muted">
+                {change.actorName} · {time(change.createdAt)} · الإصدار {change.revision}
+              </p>)}
+            </div>}
           </Card>
           <Card title="المتابعون وصلاحياتهم">
             <p className="muted">لا تنقل هذه المتابعة التكليف، ولا تمنح سلطة التحويل أو اعتماد الإنجاز.</p>

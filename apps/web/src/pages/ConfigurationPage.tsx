@@ -117,6 +117,7 @@ const optionPages = [
   { key: "company.item-card", kind: "item" },
   { key: "company.items", kind: "item" },
   { key: "company.accounts", kind: "account" },
+  { key: "company.memos", kind: "memo" },
 ] as const;
 const pageName = (key: string) =>
   pageDefinitions.find((page) => page.key === key)?.name ?? key;

@@ -264,6 +264,7 @@ export interface Item extends ItemIdentity {
   purchaseNotes: string;
   orderStoppedUntil: string | null;
   hasExpiry: boolean;
+  nearestExpiryDate: string | null;
   active: boolean;
 }
 

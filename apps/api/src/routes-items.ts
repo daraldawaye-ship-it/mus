@@ -86,6 +86,7 @@ const itemColumns = {
   searchKeys: "i.search_keys",
   orderStoppedUntil: "i.order_stopped_until",
   hasExpiry: "i.has_expiry",
+  nearestExpiryDate: "i.nearest_expiry_date",
   active: "i.active",
   createdAt: "i.created_at",
   updatedAt: "i.updated_at",

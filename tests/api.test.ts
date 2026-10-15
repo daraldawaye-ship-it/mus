@@ -2959,3 +2959,309 @@ test("ChatGPT site access uses fresh consent, domain permissions, employee accou
   await f.pool.query("UPDATE chatgpt_oauth_tokens SET revoked_at=now() WHERE access_hash=$1",[tokenHash(adminToken)]);
   assert.equal((await rpc(adminToken,"tijara_api_read",{operation:"GET /companies"})).result.isError,true);
 });
+
+test("memo links resolve safely, redact unauthorized account details and reject cross-company records", async(t)=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const coA=await company(platform.client,"Memo links A");
+ const coB=await company(platform.client,"Memo links B");
+ const recipient=await register(f,"memo-link-reader@example.test");
+ const staff=await employee(platform.client,coA.id,recipient.user.id);
+ const accountA=(await f.pool.query("SELECT id FROM accounts WHERE company_id=$1 ORDER BY id LIMIT 1",[coA.id])).rows[0].id;
+ const accountB=(await f.pool.query("SELECT id FROM accounts WHERE company_id=$1 ORDER BY id LIMIT 1",[coB.id])).rows[0].id;
+ const base=`/companies/${coA.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{title:"Review supplier account",body:"Review purchases",
+    recipientEmployeeId:staff.id,type:"task",idempotencyKey:randomUUID(),
+    links:{
+      followPage:{pageKey:"company.purchases",recordId:null},
+      referencePage:{pageKey:"company.account-ledger",recordId:null},
+      itemId:null,accountId:accountA,
+    },
+  },201)).memo;
+ assert.equal(created.links.followPage?.pageKey,"company.purchases");
+ assert.equal(created.links.account?.id,accountA);
+ assert.equal(created.links.revision,1);
+ const viewed=(await recipient.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "GET",`${base}/${created.id}`
+ )).memo;
+ assert.equal(viewed.links.account,null);
+ assert.equal(viewed.links.hiddenAccount,true);
+ assert.equal(viewed.links.referencePage,null);
+ assert.equal(viewed.links.hiddenReferencePage,true);
+ assert.equal(viewed.links.followPage,null);
+ assert.equal(viewed.links.hiddenFollowPage,true);
+ assert.equal(viewed.canManageLinks,false);
+ const changed=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "PUT",`${base}/${created.id}/links`,{
+     revision:1,followPage:{pageKey:"company.accounts",recordId:null},
+     referencePage:null,itemId:null,accountId:accountA,
+   }
+ )).memo;
+ assert.equal(changed.links.revision,2);
+ assert.equal(changed.revision,created.revision);
+ assert.equal(changed.currentUserId,recipient.user.id);
+ assert.equal(changed.links.changes.length,1);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:1,followPage:null,referencePage:null,itemId:null,accountId:null,
+ })).status,409);
+ assert.equal((await recipient.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:null,referencePage:null,itemId:null,accountId:null,
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:null,referencePage:null,itemId:null,accountId:accountB,
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${created.id}/links`,{
+   revision:2,followPage:{pageKey:"company.invoice",recordId:999999999},
+   referencePage:null,itemId:null,accountId:null,
+ })).status,404);
+ assert.equal((await recipient.client.request("GET",`${base}/link-accounts`)).status,403);
+});
+
+test("memo options use shared typed definitions, capture defaults, filter lists, audit changes and preserve old values",async(t)=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const co=await company(platform.client,"Memo options");
+ const reader=await register(f,"memo-option-reader@example.test");
+ const employeeCard=await employee(platform.client,co.id,reader.user.id);
+ const config=`/companies/${co.id}/configuration`;
+ const createOption=(key:string,name:string,type:"boolean"|"list",
+   defaultValue:boolean|string|null,choices:{key:string;label:string}[]=[])=>
+    platform.client.ok<{option:{id:number;revision:number}}>("POST",`${config}/options`,{
+      key,pageKey:"company.memos",recordKind:"memo",name,valueType:type,
+      defaultValue,choices,description:"",required:false,
+      searchable:true,showOnCard:true,showInList:true,sortOrder:10,active:true,
+    },201);
+ const urgent= (await createOption("memo.urgent","عاجلة","boolean",false)).option;
+ const method= (await createOption("memo.method","طريقة المتابعة","list",null,[
+   {key:"call",label:"هاتف"},{key:"visit",label:"زيارة"},
+ ])).option;
+ const base=`/companies/${co.id}/memos`;
+ const inputs={title:"Review memo vendor",body:"Review documents",
+   type:"task",recipientEmployeeId:employeeCard.id};
+ const first=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "POST",base,{...inputs,idempotencyKey:randomUUID(),
+     options:[{definitionId:urgent.id,value:true},{definitionId:method.id,value:"call"}],
+   },201)).memo;
+ assert.equal(first.optionValues.find(v=>v.definitionId===urgent.id)?.value,true);
+ assert.equal(first.optionValues.find(v=>v.definitionId===method.id)?.value,"call");
+ assert.equal(first.optionRevision,1);
+ const second=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{...inputs,title:"Review other memo",idempotencyKey:randomUUID()},201)).memo;
+ assert.equal(second.optionValues.find(v=>v.definitionId===urgent.id)?.value,false);
+ assert.equal(second.optionValues.find(v=>v.definitionId===method.id)?.value,null);
+ const result=await platform.client.ok<{total:number;items:{id:number;optionValues:Record<string,unknown>}[];optionDefinitions:{key:string}[]}>(
+   "GET",`${base}?box=all&optionKey=memo.urgent&optionValue=true`,
+ );
+ assert.equal(result.total,1);
+ assert.equal(result.items[0]?.id,first.id);
+ assert.equal(result.items[0]?.optionValues["memo.urgent"],true);
+ assert.ok(result.optionDefinitions.some(v=>v.key==="memo.urgent"));
+ assert.equal((await reader.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[{definitionId:urgent.id,value:false}],
+ })).status,403);
+ assert.equal((await platform.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[{definitionId:urgent.id,value:"not boolean"}],
+ })).status,400);
+ const edited=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "PUT",`${base}/${first.id}/options`,{revision:1,values:[{definitionId:urgent.id,value:false}]},
+ )).memo;
+ assert.equal(edited.optionRevision,2);
+ assert.equal(edited.revision,first.revision);
+ assert.equal(edited.currentUserId,reader.user.id);
+ assert.equal(edited.optionChanges.length,1);
+ assert.equal((await platform.client.request("PUT",`${base}/${first.id}/options`,{
+   revision:1,values:[],
+ })).status,409);
+ const editedDef=(await platform.client.ok<{option:{revision:number}}>(
+   "PATCH",`${config}/options/${urgent.id}`,{defaultValue:true,revision:urgent.revision},
+ )).option;
+ assert.ok(editedDef.revision>urgent.revision);
+ const old=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "GET",`${base}/${second.id}`
+ )).memo;
+ assert.equal(old.optionValues.find(v=>v.definitionId===urgent.id)?.value,false);
+ const third=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+   "POST",base,{...inputs,title:"New default memo",idempotencyKey:randomUUID()},201
+ )).memo;
+ assert.equal(third.optionValues.find(v=>v.definitionId===urgent.id)?.value,true);
+ const other=await company(platform.client,"Isolated memo options");
+ const otherRecipient=await employee(platform.client,other.id,reader.user.id);
+ assert.equal((await platform.client.request("POST",`/companies/${other.id}/memos`,{
+   ...inputs,recipientEmployeeId:otherRecipient.id,title:"Cross-company option",
+   idempotencyKey:randomUUID(),options:[{definitionId:urgent.id,value:true}],
+ })).status,400);
+});
+
+test("memo followup defers independently, wakes once and cancels on transfer",async(t)=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Memo return to work");
+ const receiver=await register(f,"memo-followup-recipient@example.test");
+ const outsider=await register(f,"memo-followup-outsider@example.test");
+ const another=await register(f,"memo-followup-another@example.test");
+ const staff=await employee(platform.client,co.id,receiver.user.id);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
+ const anotherStaff=await employee(platform.client,co.id,another.user.id);
+ const base=`/companies/${co.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "POST",base,{title:"Followup test",body:"Wait for supplier",type:"task",
+ recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201)).memo;
+ const localDate=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
+ const deferred=(await receiver.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"set",revision:0,
+ localDate,localTime:"10:00",reason:"انتظار رد المورد",repeatInterval:"none"})).memo;
+ assert.equal(deferred.schedule?.active,true);
+ assert.equal(deferred.currentUserId,receiver.user.id);
+ assert.equal(deferred.revision,created.revision);
+ assert.equal((await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "GET",`${base}/${created.id}`)).memo.schedule?.reason,"انتظار رد المورد");
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items[0]?.id,created.id);
+ assert.equal((await outsider.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+ assert.equal((await outsider.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"cancel",revision:1,reason:"not permitted"})).status,404);
+ assert.equal((await receiver.client.request("PUT",`${base}/${created.id}/schedule`,{
+ action:"set",revision:0,localDate,localTime:"10:00",
+ reason:"stale",repeatInterval:"none"})).status,409);
+ const cancelled=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+ "PUT",`${base}/${created.id}/schedule`,{action:"cancel",revision:1,reason:"متابعة الآن"})).memo;
+ assert.equal(cancelled.schedule?.active,false);
+ assert.equal(cancelled.revision,created.revision);
+ assert.equal((await receiver.client.ok<{items:{id:number}[]}>(
+ "GET",`${base}?box=deferred`)).items.length,0);
+});
+
+test("memo report scopes employee totals and approval intervals",async t=>{
+ const f=await fixture(t);
+ const platform=await owner(f);
+ const first=await company(platform.client,"Memo report first");
+ const second=await company(platform.client,"Memo report second");
+ const employeeUser=await register(f,"memo-report-worker@example.test");
+ const stranger=await register(f,"memo-report-other@example.test");
+ const employeeCard=await employee(platform.client,first.id,employeeUser.user.id);
+ await employee(platform.client,first.id,stranger.user.id);
+ const base=`/companies/${first.id}/memos`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base,{title:"Reconcile stock",body:"Review batches",type:"task",
+   recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID()},201)).memo;
+ const report=await platform.client.ok<import("../packages/contracts/src/index.ts").MemoReportResult>("GET",base+"/report");
+ assert.equal(report.total,1);
+ assert.equal(report.metrics.pending,1);
+ assert.equal(report.items[0]?.id,created.id);
+ assert.equal(report.employees.find(p=>p.userId===employeeUser.user.id)?.required,1);
+ const hidden=await stranger.client.ok<{total:number}>("GET",base+"/report");
+ assert.equal(hidden.total,0);
+});
+
+test("memo feature rules target current executor and preview scoped warnings",async t=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Rules A");
+ const other=await company(platform.client,"Rules B");
+ const worker=await register(f,"memo-rule-employee@example.test");
+ const outsider=await register(f,"memo-rule-outsider@example.test");
+ const employeeCard=await employee(platform.client,co.id,worker.user.id,["commerce.view"]);
+ await employee(platform.client,co.id,outsider.user.id,["commerce.view"]);
+ const base=`/companies/${co.id}`;
+ const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+  "POST",base+"/memos",{
+   title:"Task to follow",body:"Complete inspection",type:"task",
+   recipientEmployeeId:employeeCard.id,idempotencyKey:randomUUID(),
+  },201)).memo;
+ const input={name:"Sales pending work",enabled:true,employeeIds:[employeeCard.id],
+  roleIds:[],actionCode:"invoice.sale.create",effect:"warn",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"راجع مذكرة التكليف قبل البيع"};
+ const rule=(await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "POST",base+"/memo-feature-rules",input,201)).rule;
+ assert.equal(rule.enabled,true);
+ const preview=await platform.client.ok<import("../packages/contracts/src/index.ts").MemoFeaturePreview>(
+  "GET",base+`/memo-feature-rules/${rule.id}/preview`);
+ assert.equal(preview.totalImpacted,1);
+ assert.equal(preview.impacted[0]?.employeeId,employeeCard.id);
+ const impacted=await worker.client.ok<{matches:{ruleId:number;effect:string}[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(impacted.matches[0]?.ruleId,rule.id);
+ assert.equal(impacted.matches[0]?.effect,"warn");
+ const quiet=await outsider.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale");
+ assert.equal(quiet.matches.length,0);
+ assert.equal((await worker.client.request("GET",base+"/memo-feature-rules")).status,403);
+ assert.equal((await worker.client.request("POST",base+"/memo-feature-rules",input)).status,403);
+ assert.equal((await worker.client.request("GET",
+  `/companies/${other.id}/memo-feature-impact?kind=sale`)).status,403);
+ const revised=await platform.client.ok<{rule:import("../packages/contracts/src/index.ts").MemoFeatureRule}>(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,{...input,revision:rule.revision,enabled:false});
+ assert.equal(revised.rule.enabled,false);
+ assert.equal((await worker.client.ok<{matches:unknown[]}>(
+  "GET",base+"/memo-feature-impact?kind=sale")).matches.length,0);
+ assert.equal((await platform.client.request("PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...input,revision:rule.revision})).status,409);
+});
+
+test("memo feature block rejects new invoice but allows exact saved retry and disappears on rule change",async t=>{
+ const f=await fixture(t),ownerUser=await owner(f);
+ const co=await company(ownerUser.client,"Memo block invoice");
+ const base=`/companies/${co.id}`;
+ const worker=await register(f,"memo-block-worker@example.test");
+ const staff=await employee(ownerUser.client,co.id,worker.user.id,
+  ["commerce.view","commerce.manage","finance.post"]);
+ await ownerUser.client.ok("POST",base+"/memos",{
+  title:"Pending payment review",body:"Review supplier balance",type:"task",
+  recipientEmployeeId:staff.id,idempotencyKey:randomUUID()},201);
+ const config={name:"Block pending sales",enabled:true,employeeIds:[staff.id],roleIds:[],
+  actionCode:"invoice.sale.create",effect:"block",minimumCount:1,
+  minimumHours:null,matchMode:"all",excludeDeferredUntilDue:true,
+  message:"يرجى معالجة المذكرة قبل حفظ الفاتورة"};
+ const rule=(await ownerUser.client.ok<{rule:{id:number;revision:number}}>(
+  "POST",base+"/memo-feature-rules",config,201)).rule;
+ const currencies=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/currencies")).items;
+ const currency=currencies.find(r=>r.code==="YER")!;
+ const branches=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+"/branches")).items;
+ const branch=branches.find(r=>r.code==="HQ")!;
+ const locations=(await ownerUser.client.ok<Page<{id:number;code:string}>>(
+  "GET",base+`/locations?branchId=${branch.id}`)).items;
+ const location=locations.find(r=>r.code==="SHOWROOM")!;
+ const accounts=(await ownerUser.client.ok<Page<{id:number;category:string;kind:string}>>(
+  "GET",base+"/accounts?pageSize=100")).items;
+ const excluded=new Set((await f.pool.query<{id:number}>(
+  "SELECT inventory_account_id AS id FROM inventory_settings WHERE company_id=$1 UNION SELECT sales_account_id FROM inventory_settings WHERE company_id=$1 UNION SELECT cogs_account_id FROM inventory_settings WHERE company_id=$1",
+  [co.id])).rows.map(r=>r.id));
+ const account=accounts.find(r=>r.category==="asset"&&r.kind==="posting"&&!excluded.has(r.id))!;
+ assert.ok(account);
+ const item=(await ownerUser.client.ok<{item:{id:number}}>("POST",base+"/items",{
+  idempotencyKey:randomUUID(),name:"Task restricted item",currencyId:currency.id,
+  unit1Name:"وحدة",salePrice1:"30",purchasePrice:"15",hasExpiry:false,
+ },201)).item;
+ const payload={
+  idempotencyKey:randomUUID(),kind:"sale",documentDate:"2026-10-12",
+  currencyId:currency.id,branchId:branch.id,locationId:location.id,
+  counterpartyAccountId:account.id,supplierAccountId:null,
+  description:"Memo block test invoice",discount:"0",
+  lines:[{itemId:item.id,unit:1,quantity:"1",unitPrice:"30",expiryDate:null,originalLineId:null}],
+ };
+ const denied=await worker.client.request("POST",base+"/invoices",payload);
+ assert.equal(denied.status,409);
+ assert.equal((denied.body as {error:{code:string}}).error.code,"memo_feature_block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,0);
+ const rejectionAudit=(await f.pool.query(
+  "SELECT count(*)::int AS count FROM audit_events WHERE company_id=$1 AND action='memo.feature-trigger' AND after_value->>'outcome'='rejected'",
+  [co.id])).rows[0].count;
+ assert.equal(rejectionAudit,1);
+ const disabled=(await ownerUser.client.ok<{rule:{revision:number}}>(
+   "PUT",base+`/memo-feature-rules/${rule.id}`,{...config,revision:rule.revision,enabled:false})).rule;
+ const saved=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.ok(saved.id);
+ const reactivated=await ownerUser.client.ok(
+  "PUT",base+`/memo-feature-rules/${rule.id}`,
+  {...config,revision:disabled.revision,enabled:true});
+ const repeated=(await worker.client.ok<{invoice:{id:number}}>(
+  "POST",base+"/invoices",payload,201)).invoice;
+ assert.equal(repeated.id,saved.id,"An already posted invoice may be confirmed under a new block");
+ assert.equal((await f.pool.query(
+  "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,1);
+});

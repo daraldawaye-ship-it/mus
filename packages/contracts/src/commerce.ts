@@ -43,12 +43,15 @@ export const invoiceSchema = z
     locationId: id,
     counterpartyAccountId: id,
     supplierAccountId: id.nullable().default(null),
+    supplierReceiptNumber: z.string().trim().max(100).default(""),
     description: z.string().trim().max(1000).default(""),
     discount: amountSchema.default("0"),
     lines: z.array(invoiceLineSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.kind === "sale" && value.supplierReceiptNumber)
+      context.addIssue({ code: "custom", path: ["supplierReceiptNumber"], message: "رقم وصل المورد مخصص للمشتريات فقط" });
     if (value.kind === "sale" && value.supplierAccountId !== null)
       context.addIssue({
         code: "custom",
@@ -131,6 +134,7 @@ export interface Invoice {
   supplierAccountId: number | null;
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
+  supplierReceiptNumber: string;
   description: string;
   gross: string;
   discount: string;

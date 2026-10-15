@@ -271,6 +271,24 @@ page(
   { keywords: ["مذكرة", "مهمة", "استفسار", "مراجعة", "اعتماد"] },
 );
 page(
+  "company.memo-report",
+  "تقرير المذكرات",
+  "الشركة",
+  "/companies/:companyId/memo-report",
+  {view:member},
+  "تقارير التكليفات وحركة مسؤوليتها ومدد التنفيذ وانتظار الاعتماد.",
+  {parentKey:"company.memos",type:"report",keywords:["مذكرات","تقارير","تأجيل","مدة","مهام"]},
+);
+page(
+  "company.memo-feature-rules",
+  "قواعد ميزات المذكرات",
+  "الشركة",
+  "/companies/:companyId/memo-feature-rules",
+  {view:general,edit:general},
+  "قواعد مراقبة التكليفات المعلقة وتنبيه الموظفين حسب العدد والمدة والأدوار.",
+  {parentKey:"company.memos",keywords:["قواعد","تكليفات","مراقبة","تنبيه"]},
+);
+page(
   "company.memo-detail",
   "عرض المذكرة",
   "الشركة",
@@ -433,14 +451,26 @@ page(
 );
 page(
   "company.stock-operations",
-  "المناقلات والجرد",
+  "المناقلات",
   "الأصناف والمخزون",
   "/companies/:companyId/stock-operations",
   {
     view: permission("inventory.view", "inventory.post"),
     create: permission("inventory.post", "finance.post"),
   },
-  "نقل المخزون والجرد الفعلي؛ الترحيل يتحقق من الرصيد وصلاحية المحاسبة.",
+  "مناقلات المخزون بين المواقع داخل الشركة.",
+);
+page(
+  "company.stock-adjustments",
+  "تسوية الأصناف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/stock-adjustments",
+  {
+    view: permission("inventory.view", "inventory.post"),
+    create: permission("inventory.post", "finance.post"),
+  },
+  "الجرد الفعلي بكميات كل وحدة وتحديث أقرب انتهاء الصنف.",
+  { keywords: ["تسوية", "جرد", "مخزون", "انتهاء"] },
 );
 page(
   "company.inventory-settings",

@@ -176,6 +176,13 @@ function InvoiceList({
         ),
       },
       { accessorKey: "documentDate", header: "التاريخ", size: 110 },
+      ...(kind === "purchase" ? [{
+        accessorKey: "supplierReceiptNumber",
+        header: "رقم الوصل",
+        size: 140,
+        enableSorting: false,
+        cell: ({ row }) => <ValueCell>{row.original.supplierReceiptNumber || "—"}</ValueCell>,
+      } satisfies ColumnDef<Invoice, unknown>] : []),
       {
         id: "return",
         header: "العملية",
@@ -840,11 +847,21 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
   const [itemNotice, setItemNotice] = useState("");
+  const [memoBlocked,setMemoBlocked]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
     params.get("kind") === "purchase" ? "purchase" : "sale";
   const guard = useScopeGuard(`company:${companyId}:invoice-editor:${kind}`);
+  const memoImpact=useQuery({
+    queryKey:["memo-feature-impact",user?.id,companyId,kind],
+    queryFn:({signal})=>api<{matches:{
+      ruleId:number;ruleName:string;effect:"monitor"|"warn"|"block";
+      message:string;count:number;memoIds:number[];
+    }[]}>(`/companies/${companyId}/memo-feature-impact?kind=${kind}`,{signal}),
+    enabled:!!user,refetchInterval:60000,
+  });
+
   const invalidate = useCommerceChanges(companyId);
   const [documentDate, setDocumentDate] = useState(today);
   const [currency, setCurrency] = useState<CompanyCurrency | null>(null);
@@ -887,6 +904,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   });
   const [account, setAccount] = useState<Account | null>(null);
   const [supplier, setSupplier] = useState<Account | null>(null);
+  const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
     !account.cashOrBank;
   const selectedSupplier = creditPurchase ? account : supplier;
@@ -1000,7 +1018,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
-    (kind === "purchase" && !!supplier) ||
+    (kind === "purchase" && (!!supplier || !!supplierReceiptNumber)) ||
     accountManuallyChosen.current ||
     (!!account && account.id !== defaultCashbox?.id) ||
     (!!branch &&
@@ -1392,6 +1410,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     setLines([first]);
     setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
+    setSupplierReceiptNumber("");
     accountManuallyChosen.current = false;
     setOriginal(null);
     setShowOriginalPicker(false);
@@ -1416,6 +1435,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
     setError("");
+    setMemoBlocked(false);
     let payload = pending.current;
     if (!unknown) {
       const unfinished = lines.find(
@@ -1436,6 +1456,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         locationId: location?.id,
         counterpartyAccountId: account?.id,
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
+        supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
         lines: selectedLines.map((line) => ({
@@ -1472,6 +1493,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       setLines([next]);
       setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
+      setSupplierReceiptNumber("");
       accountManuallyChosen.current = false;
       setOriginal(null);
       setShowOriginalPicker(false);
@@ -1494,6 +1516,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
+      setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
       setUnknown(uncertain);
       if (!uncertain) pending.current = null;
       setError(
@@ -1558,6 +1581,16 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     display={itemLabel}
                     accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
                     disabled={locked || hasLinkedLines || creditPurchase}
+                  />
+                )}
+                {kind === "purchase" && (
+                  <Field
+                    label="رقم الوصل"
+                    placeholder="رقم فاتورة المورد"
+                    maxLength={100}
+                    value={supplierReceiptNumber}
+                    disabled={locked}
+                    onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
                 )}
                 <Link
@@ -1756,6 +1789,11 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           </fieldset>
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
+          <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
+            {rule.message} ({rule.count} تكليفات).
+            {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
+          </Notice>)}
         {savedInvoice && (
           <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
@@ -2197,7 +2235,9 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           className="card commerce-save-footer"
           aria-label="إجمالي الفاتورة والحفظ"
         >
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error">{error}
+            {memoBlocked&&<>{" "}<Link to={`/companies/${companyId}/memos?box=required`}>فتح «مطلوب مني» لمعالجة التكليفات</Link></>}
+          </Notice>}
           {selectedLines.length > 0 && totals?.total === "0" && (
             <Notice>
               الصافي صفر؛ سيُحفظ أثر الأصناف والتكلفة، دون مبلغ على الحساب
@@ -2407,6 +2447,9 @@ function InvoiceViewer({
             <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
             {invoice.counterpartyAccountName}
           </span>
+          {invoice.kind === "purchase" && (
+            <span>رقم الوصل: <bdi>{invoice.supplierReceiptNumber || "—"}</bdi></span>
+          )}
           {invoice.kind === "purchase" && (
             <span>
               المورد:{" "}

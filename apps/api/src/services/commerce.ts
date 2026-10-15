@@ -28,6 +28,7 @@ import {
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { awardPostedInvoice } from "./invoice-rewards.ts";
+import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -137,6 +138,7 @@ export async function invoiceDTOs(
     supplierAccountId: row.supplier_account_id ?? null,
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
+    supplierReceiptNumber: row.supplier_receipt_number ?? "",
     description: row.description,
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
@@ -187,7 +189,7 @@ export async function createInvoice(
   input: InvoiceFields,
 ): Promise<Invoice> {
   const replay = await client.query(
-    "SELECT id,(creation_payload=$3::jsonb OR (NOT (creation_payload ? 'supplierAccountId') AND creation_payload=($3::jsonb - 'supplierAccountId') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    "SELECT id, (((creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierReceiptNumber') OR (NOT (creation_payload ? 'supplierAccountId') AND (creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierAccountId' - 'supplierReceiptNumber') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AND COALESCE(creation_payload->>'supplierReceiptNumber','')=COALESCE($3::jsonb->>'supplierReceiptNumber','')) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
     [companyId, input.idempotencyKey, JSON.stringify(input)],
   );
   if (replay.rows[0]) {
@@ -195,6 +197,17 @@ export async function createInvoice(
       conflict("مفتاح الفاتورة مستخدم لبيانات مختلفة؛ أعد إرسال الطلب الأصلي");
     return loadInvoice(client, companyId, replay.rows[0].id);
   }
+  const activeMemoRules=await matchingMemoFeatureRules(client,companyId,user.id,
+    input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+  const blocking=activeMemoRules.find(rule=>rule.effect==="block");
+  if(blocking)
+    throw new HttpError(409,"memo_feature_block",
+      blocking.message+" ("+blocking.count+" تكليفات). افتح «مطلوب مني» لمراجعتها.");
+  for(const matched of activeMemoRules)
+    await audit(client,user,"memo.feature-trigger","memo-feature-rule",matched.ruleId,
+      null,{actionCode:input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create",
+      effect:matched.effect,matchedCount:matched.count,
+      relatedMemos:matched.memoIds,invoiceIdempotencyKey:input.idempotencyKey},companyId);
   const settings = await requireInventorySettings(client, companyId);
   const location = await checkStockLocation(
     client,
@@ -572,7 +585,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) RETURNING id",
     [
       companyId,
       number,
@@ -605,6 +618,7 @@ export async function createInvoice(
       supplier?.id ?? null,
       supplier?.code ?? null,
       supplier?.name ?? null,
+      input.supplierReceiptNumber,
     ],
   );
   const invoiceId = inserted.rows[0].id as number;

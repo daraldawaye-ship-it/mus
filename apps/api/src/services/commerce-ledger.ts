@@ -31,6 +31,7 @@ export async function postCommerceJournal(
   const fields: DocumentFields = {
     kind: "journal",
     cashAccountId: null,
+    supplierReceiptNumber: "",
     documentDate: input.documentDate,
     branchId: input.branchId,
     currencyId: input.currencyId,

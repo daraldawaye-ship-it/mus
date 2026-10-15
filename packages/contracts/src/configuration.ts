@@ -10,7 +10,7 @@ export const optionValueTypes = [
 export type OptionValueType = (typeof optionValueTypes)[number];
 export type OptionScalar = boolean | string | null;
 export type OptionRecordKind =
-  "item" | "account" | "employee" | "invoice" | "financial-document";
+  "item" | "account" | "employee" | "invoice" | "financial-document" | "memo";
 export type PermissionEffect = "allow" | "deny";
 
 export interface OptionDefinition {

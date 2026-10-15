@@ -2052,13 +2052,14 @@ ul {
 .commerce-col-expiry {
   width: 110px;
 }
-/* Purchase invoice: cap the expiry date to a practical, readable width.
-   The flexible item-name column takes up the space previously used by date. */
+/* Use a fixed column width (not clamp() on <col>): Chrome can ignore
+   calculated widths on table columns and give the expiry column excess space.
+   The item-name column remains auto-sized and receives the freed width. */
 .commerce-matrix-purchase .commerce-col-item { width: auto; }
 .commerce-matrix-purchase .commerce-col-unit { width: 11%; }
 .commerce-matrix-purchase .commerce-col-quantity { width: 9%; }
 .commerce-matrix-purchase .commerce-col-price { width: 12%; }
-.commerce-matrix-purchase .commerce-col-expiry { width: clamp(132px, 16%, 156px); }
+.commerce-matrix-purchase .commerce-col-expiry { width: 150px; }
 .commerce-matrix-purchase .commerce-col-total { width: 11%; }
 .commerce-matrix-purchase .commerce-col-delete { width: 6%; }
 .commerce-matrix-purchase input[type="date"] {
@@ -2753,4 +2754,45 @@ ul {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Item inventory adjustment bottom sheet, reusable from an item card. */
+.inventory-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 22, 29, 0.55);
+  z-index: 1198;
+}
+.inventory-sheet-panel {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  max-height: min(86dvh, 820px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 32px var(--shadow);
+  padding: 12px max(14px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom));
+  z-index: 1199;
+}
+.inventory-sheet-header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.inventory-sheet-panel > form,
+.inventory-sheet-panel > .card {
+  max-width: 1000px;
+  margin-inline: auto;
+}
+@media (max-width: 600px) {
+  .inventory-sheet-panel { max-height: 92dvh; }
+  .inventory-sheet-header { position: sticky; top: -12px; background: var(--bg); z-index: 1; padding-top: 10px; }
 }

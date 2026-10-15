@@ -124,6 +124,10 @@ export async function requestPermissionTargets(
         : [pagePermissionAliases("company.attendance", action)]),
     ];
   }
+  if(resource==="memo-feature-rules")
+    return [pagePermissionAliases("company.memo-feature-rules","view"),
+      ...(["POST","PUT","PATCH"].includes(verb)
+        ? [pagePermissionAliases("company.memo-feature-rules","edit")]:[])];
   if (resource === "memos") {
     const memoDetail = !!detail && /^[1-9]\d*$/.test(detail);
     return [
@@ -133,6 +137,18 @@ export async function requestPermissionTargets(
       ),
       ...(verb === "POST" && !detail
         ? [pagePermissionAliases("company.memos", "create")]
+        : []),
+      ...(verb === "PUT" && segments[2] === "schedule"
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
+      ...(verb === "PUT" && segments[2] === "reminder-settings"
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
+      ...(verb === "PUT" && segments[2] === "options"
+        ? [pagePermissionAliases("company.memos", "edit")]
+        : []),
+      ...(verb === "PUT" && segments[2] === "links"
+        ? [pagePermissionAliases("company.memos", "edit")]
         : []),
       ...(verb === "PUT" && segments[2] === "followers"
         ? [pagePermissionAliases("company.memos", "edit")]

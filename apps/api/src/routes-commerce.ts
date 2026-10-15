@@ -18,6 +18,8 @@ import {
 } from "./services/commerce.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
+import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
+import {audit} from "./services/audit.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -166,7 +168,7 @@ export function commerceRoutes(pool: Pool): Router {
             searchPattern((payerQ as string | undefined) ?? ""),
           ];
           const filter =
-            "i.company_id=$1 AND (i.number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR i.document_date >= $4::date) AND ($5::date IS NULL OR i.document_date <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)";
+            "i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR i.document_date >= $4::date) AND ($5::date IS NULL OR i.document_date <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)";
           const count = await client.query(
             `SELECT count(*)::integer AS total ${invoiceFrom} WHERE ${filter}`,
             params,
@@ -195,6 +197,20 @@ export function commerceRoutes(pool: Pool): Router {
       }),
     ),
   );
+  router.get(`${base}/memo-feature-impact`,handler(async(req,res)=>{
+    const kind=req.query.kind;
+    if(kind!=="sale"&&kind!=="purchase")
+      throw new HttpError(400,"invalid_kind","اختر نوع فاتورة صالحًا");
+    const matches=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      const companyId=id(req.params.companyId);
+      await companyAccess(client,user,companyId,"commerce.view");
+      return matchingMemoFeatureRules(client,companyId,user.id,
+        kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+    });
+    res.json({matches});
+  }));
   router.post(
     `${base}/invoices`,
     handler(async (req, res) => {
@@ -207,7 +223,23 @@ export function commerceRoutes(pool: Pool): Router {
           await companyAccess(client, user, companyId, "finance.post", true);
           return createInvoice(client, companyId, user, input);
         },
-      );
+      ).catch(async (error:unknown)=>{
+        if(error instanceof HttpError && error.code==="memo_feature_block"){
+          try{
+            await transaction(pool,async client=>{
+              const companyId=id(req.params.companyId),user=await currentActor(client,actor(req));
+              await companyAccess(client,user,companyId,"commerce.manage");
+              const matches=await matchingMemoFeatureRules(client,companyId,user.id,
+                input.kind==="sale"?"invoice.sale.create":"invoice.purchase.create");
+              for(const rule of matches.filter(rule=>rule.effect==="block"))
+                await audit(client,user,"memo.feature-trigger","memo-feature-rule",rule.ruleId,
+                  null,{effect:"block",outcome:"rejected",rule:rule.ruleName,
+                    pendingCount:rule.count,action:input.kind},companyId);
+            });
+          }catch(logFailure){console.error("Memo feature rejection audit failed",logFailure);}
+        }
+        throw error;
+      });
       res.status(201).json({ invoice });
     }),
   );

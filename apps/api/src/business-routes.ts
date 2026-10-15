@@ -4,6 +4,7 @@ import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
 import { walletRoutes } from "./routes-wallet.ts";
 import { notificationRoutes } from "./routes-notifications.ts";
+import { memoFeatureRuleRoutes } from "./memoFeatureRuleRoutes.ts";
 import { memoRoutes } from "./routes-memos.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
 import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
@@ -35,6 +36,7 @@ export function businessRoutes(pool: Pool): Router {
     employeeAttendanceRoutes(pool),
     notificationRoutes(pool),
     memoRoutes(pool),
+    memoFeatureRuleRoutes(pool),
     walletRoutes(pool),
     configurationRoutes(pool),
     configurationAdministrationRoutes(pool),

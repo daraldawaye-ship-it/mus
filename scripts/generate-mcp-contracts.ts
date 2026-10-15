@@ -6,7 +6,7 @@ import { z } from "zod";
 const root = resolve("apps/api/src");
 const contracts: Record<string, unknown> = {};
 for (const file of await readdir(root)) {
-  if (!/^routes-/.test(file) || /auth|setup|media|chatgpt/.test(file)) continue;
+  if ((!/^routes-/.test(file) && file!=="memoFeatureRuleRoutes.ts") || /auth|setup|media|chatgpt/.test(file)) continue;
   const source = ts.createSourceFile(
     file,
     await readFile(resolve(root, file), "utf8"),
