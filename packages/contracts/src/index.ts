@@ -146,6 +146,8 @@ export const auditActionLabels = {
   "item.update": "تعديل صنف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "inventory.settings": "حفظ إعدادات المخزون",
+  "stockReservation.create": "حجز كمية صنف في المعرض",
+  "stockReservation.release": "تحرير حجز كمية صنف",
   "notification.create": "إنشاء تنبيه آلي",
   "notification.follow": "متابعة تنبيه",
   "notification.assign": "إسناد متابعة تنبيه",
