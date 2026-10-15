@@ -120,6 +120,12 @@ export function companyRoutes(pool: Pool): Router {
         const next = companyDTO(result.rows[0]);
         await initializeCompanyAccounts(client, user, next.id);
         await initializeCompanyCurrencies(client, user, next.id);
+        // Add default staff/payroll/operating accounts and prepare a nullable
+        // reward conversion policy. No wages or monetary reward is posted.
+        await client.query(
+          "SELECT ensure_company_operational_accounts($1,$2)",
+          [next.id, user.id],
+        );
         await client.query(
           "SELECT initialize_company_inventory_settings($1,$2)",
           [next.id, user.id],
