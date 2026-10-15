@@ -203,6 +203,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   const list = usePagedQuery<OptionListRecord<Item>, OptionListMetadata>(
     `/companies/${companyId}/items?${filters}`,
     `company:${companyId}:items`,
+    "saleTimes:desc,code:asc",
   );
   const canManage = itemsAccess(context, true);
   const [importOpen, setImportOpen] = useState(false);
