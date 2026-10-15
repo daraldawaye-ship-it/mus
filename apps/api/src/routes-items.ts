@@ -17,6 +17,7 @@ import {
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
+import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
@@ -600,6 +601,19 @@ export function itemRoutes(pool: Pool): Router {
         },
       );
       res.status(result.created ? 201 : 200).json({ item: result.item });
+    }),
+  );
+  router.get(
+    `${base}/items/:id/composition-peers`,
+    handler(async (req,res)=>{
+      const itemId=id(req.params.id);
+      const raw=req.query.page;
+      const page=raw===undefined?1:typeof raw==="string"&&/^[1-9][0-9]{0,5}$/.test(raw)?Number(raw):0;
+      if(page<1||page>100000)
+        throw new HttpError(400,"invalid_page","رقم صفحة الأصناف المرتبطة غير صالح");
+      res.json(await readItems(pool,req,async(client,companyId)=>({
+        peers:await readItemCompositionPeers(client,actor(req),companyId,itemId,page),
+      })));
     }),
   );
   router.get(

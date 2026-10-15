@@ -36,6 +36,7 @@ import {
   type ItemActivity,
   type ItemPurchasePricePoint,
   type ItemPurchasePriceStatistics,
+  type ItemCompositionPeers,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -603,6 +604,71 @@ function ItemDetail({
         }}
       />
     </>
+  );
+}
+
+function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const navigate=useNavigate();
+  const [page,setPage]=useState(1);
+  useEffect(()=>setPage(1),[companyId,itemId]);
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"composition-peers",itemId,page],
+    queryFn:({signal})=>api<{peers:ItemCompositionPeers}>(
+      `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const peers=result.data?.peers;
+  return (
+    <Card title="التركيب والأصناف المرتبطة">
+      {result.isPending&&<Notice>جارٍ تحميل الأصناف المرتبطة…</Notice>}
+      {result.error&&<Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {peers&&!peers.composition&&<Notice>لم يُحدد تركيب لهذا الصنف.</Notice>}
+      {peers?.composition&&(
+        <>
+          <dl className="details-list">
+            <dt>التركيب</dt>
+            <dd>{peers.composition.arabicName} ({peers.composition.englishName})
+              {!peers.composition.active&&" · مؤرشف"}
+            </dd>
+            <dt>العلاقة بين الأصناف</dt>
+            <dd>
+              {peers.relation==="nonInterchangeable"?"غير قابلة للتبديل":
+                peers.relation==="identicalAlternative"?"مُعلّمة كبدائل مطابقة":
+                "لها التركيب نفسه دون اعتماد أنها بدائل"}
+            </dd>
+            <dt>الأصناف الأخرى ذات التركيب نفسه</dt>
+            <dd><bdi>{peers.total.toLocaleString("en-US")}</bdi> صنف</dd>
+          </dl>
+          {peers.peers.map(peer=>(
+            <div key={peer.id} className="form-actions">
+              <Button variant="ghost" size="compact" onClick={()=>
+                navigate(`/companies/${companyId}/items/${peer.id}`)}>
+                {peer.code} — {peer.name}{peer.active?"":" (مؤرشف)"}
+              </Button>
+              {peer.stockSmallest!==null&&(
+                <small className="muted">
+                  رصيد الصنف: <bdi>{BigInt(peer.stockSmallest).toLocaleString("en-US")}</bdi> {peer.smallestUnitName}
+                </small>
+              )}
+            </div>
+          ))}
+          {peers.total>peers.pageSize&&(
+            <div className="form-actions">
+              <Button variant="ghost" size="compact" disabled={page===1||result.isFetching}
+                onClick={()=>setPage(p=>Math.max(1,p-1))}>السابق</Button>
+              <span>صفحة {page}</span>
+              <Button variant="ghost" size="compact"
+                disabled={page*peers.pageSize>=peers.total||result.isFetching}
+                onClick={()=>setPage(p=>p+1)}>التالي</Button>
+            </div>
+          )}
+          <small className="muted">
+            اشتراك الأصناف في التركيب أو وصفها بالبديل المطابق لا ينقل المخزون بينها، ولا يعني حجز الكمية أو ضمان توفرها.
+          </small>
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -1176,6 +1242,7 @@ function ItemEditor({
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
       {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
       {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">

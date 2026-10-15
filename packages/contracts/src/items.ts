@@ -491,3 +491,31 @@ export interface ItemPurchasePriceStatistics {
  latest: ItemPurchasePricePoint | null;
  latestAboveMinimumPercent: string | null;
 }
+
+
+/** Read-only, scoped composition peers; a shared composition does not authorize substitution. */
+export interface ItemCompositionPeers {
+ companyId: number;
+ itemId: number;
+ canViewStock: boolean;
+ composition: {
+   id: number;
+   arabicName: string;
+   englishName: string;
+   active: boolean;
+   identicalAlternative: boolean;
+   nonInterchangeable: boolean;
+ } | null;
+ relation: "none" | "sameComposition" | "identicalAlternative" | "nonInterchangeable";
+ total: number;
+ page: number;
+ pageSize: number;
+ peers: Array<{
+   id: number;
+   code: string;
+   name: string;
+   active: boolean;
+   smallestUnitName: string;
+   stockSmallest: string | null;
+ }>;
+}
