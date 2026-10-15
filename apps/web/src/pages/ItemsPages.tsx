@@ -34,6 +34,8 @@ import {
   type ItemAgentInput,
   type ItemStatistics,
   type ItemActivity,
+  type ItemPurchasePricePoint,
+  type ItemPurchasePriceStatistics,
   type OptionListMetadata,
   type OptionListRecord,
 } from "../../../../packages/contracts/src/index";
@@ -604,6 +606,60 @@ function ItemDetail({
   );
 }
 
+function ItemPurchasePricesCard({companyId,itemId}:{companyId:number;itemId:number}) {
+  const {user}=useSession();
+  const result=useQuery({
+    queryKey:["items",user?.id,companyId,"purchase-price-statistics",itemId],
+    queryFn:({signal})=>api<{statistics:ItemPurchasePriceStatistics}>(
+      `/companies/${companyId}/items/${itemId}/purchase-price-statistics`,{signal}),
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+  });
+  const stats=result.data?.statistics;
+  const detail=(p:ItemPurchasePricePoint)=>(
+    <>
+      <bdi>{formatMoney(p.priceBaseSmallest)}</bdi> {stats?.baseCurrencyCode} / {stats?.smallestUnitName}
+      {" · "}فاتورة <bdi>{p.invoiceNumber}</bdi> (<bdi>{p.documentDate}</bdi>)
+      {" · "}المورد: {p.supplierAccountName??"غير محدد"}
+      {" · "}السعر في الفاتورة <bdi>{formatMoney(p.originalUnitPrice)}</bdi>{" "}
+      {p.originalCurrencyCode} / {p.originalUnitName}
+    </>
+  );
+  return (
+    <Card title="تحليل أسعار الشراء — آخر 6 أشهر">
+      {result.isPending && <Notice>جارٍ تحميل تحليل أسعار الشراء…</Notice>}
+      {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {stats&&!stats.canViewPrices&&(
+        <Notice>عرض الأسعار يتطلب صلاحية المشتريات والفواتير.</Notice>
+      )}
+      {stats?.canViewPrices&&(
+        <>
+          <dl className="details-list">
+            <dt>أقل سعر شراء</dt>
+            <dd>{stats.minimum?detail(stats.minimum):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>أعلى سعر شراء</dt>
+            <dd>{stats.maximum?detail(stats.maximum):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>أحدث سعر شراء</dt>
+            <dd>{stats.latest?detail(stats.latest):"لا توجد مشتريات ضمن الفترة."}</dd>
+            <dt>نسبة ارتفاع أحدث سعر عن الأقل</dt>
+            <dd>{stats.latestAboveMinimumPercent===null
+                ?"غير متاحة (لا يوجد سعر مرجعي موجب)."
+                :<bdi>{stats.latestAboveMinimumPercent}%</bdi>}</dd>
+          </dl>
+          {stats.hasOtherBaseCurrencyHistory&&(
+            <Notice tone="warning">
+              توجد فواتير بعملة أساسية تاريخية مختلفة لم تُضم إلى مقارنة الأسعار.
+            </Notice>
+          )}
+        </>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" size="compact" disabled={result.isFetching}
+          onClick={()=>void result.refetch()}>تحديث الأسعار</Button>
+      </div>
+    </Card>
+  );
+}
+
 function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
   const {user}=useSession();
   const result=useQuery({
@@ -1091,6 +1147,7 @@ function ItemEditor({
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
       {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
