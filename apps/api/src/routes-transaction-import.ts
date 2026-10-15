@@ -57,7 +57,7 @@ const batchSchema = z
     idempotencyKey: z.uuid(),
     sourceSystem: z.string().trim().min(1).max(100),
     postingDate: documentDateSchema,
-    documents: z.array(importedDocumentSchema).min(1).max(20),
+    documents: z.array(importedDocumentSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {

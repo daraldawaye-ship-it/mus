@@ -5207,7 +5207,7 @@
         },
         "documents": {
           "minItems": 1,
-          "maxItems": 20,
+          "maxItems": 100,
           "type": "array",
           "items": {
             "oneOf": [

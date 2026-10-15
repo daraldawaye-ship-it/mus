@@ -1003,3 +1003,95 @@ test("historical imports preserve explicit expense counterparties and purchase-r
   assert.equal(master.category, "expense");
   assert.equal(master.cashOrBank, false);
 });
+
+test("a 100-voucher historical batch posts balanced documents atomically and retries without duplication", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f);
+  const input = batch(
+    Array.from({ length: 100 }, (_, index) =>
+      source(
+        "voucher",
+        voucher(s, "10", index % 2 === 0 ? "receipt" : "payment"),
+      ),
+    ),
+  );
+  await f.pool.query(
+    "CREATE FUNCTION reject_import_batch_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='company.transactions.import' THEN RAISE EXCEPTION 'Disposable batch audit rollback check' USING ERRCODE='23514'; END IF; RETURN NEW; END $$",
+  );
+  await f.pool.query(
+    "CREATE TRIGGER reject_import_batch_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_import_batch_audit()",
+  );
+  assert.equal(
+    (await f.owner.request("POST", importPath(s), input)).status,
+    500,
+  );
+  for (const table of [
+    "financial_documents",
+    "financial_document_lines",
+    "transaction_source_imports",
+    "transaction_import_batches",
+  ]) {
+    assert.equal(
+      (
+        await f.pool.query(
+          `SELECT count(*)::integer AS count FROM ${table} WHERE company_id=$1`,
+          [s.company.id],
+        )
+      ).rows[0].count,
+      0,
+      "Failed batch audit must roll back " + table,
+    );
+  }
+  await f.pool.query("DROP TRIGGER reject_import_batch_audit ON audit_events");
+  await f.pool.query("DROP FUNCTION reject_import_batch_audit()");
+  const accepted = await importBatch(f, s, input);
+  assert.equal(accepted.imported.length, 100);
+  assert.equal(accepted.existing.length, 0);
+  assert.equal(accepted.failed.length, 0);
+  const totals = (
+    await f.pool.query(
+      "SELECT count(*)::integer AS documents,count(*) FILTER(WHERE status='posted')::integer AS posted,sum(total_base_debit)::text AS debit,sum(total_base_credit)::text AS credit,count(*) FILTER(WHERE total_debit<>total_credit OR total_base_debit<>total_base_credit)::integer AS unbalanced FROM financial_documents WHERE company_id=$1",
+      [s.company.id],
+    )
+  ).rows[0];
+  assert.equal(totals.documents, 100);
+  assert.equal(totals.posted, 100);
+  assert.match(totals.debit, /^1000(?:\.0+)?$/);
+  assert.equal(totals.debit, totals.credit);
+  assert.equal(totals.unbalanced, 0);
+  const repeated = await importBatch(f, s, input);
+  assert.equal(repeated.replayed, true);
+  assert.deepEqual(repeated.imported, accepted.imported);
+  for (const table of ["financial_documents", "transaction_source_imports"]) {
+    assert.equal(
+      (
+        await f.pool.query(
+          `SELECT count(*)::integer AS count FROM ${table} WHERE company_id=$1`,
+          [s.company.id],
+        )
+      ).rows[0].count,
+      100,
+      table,
+    );
+  }
+  assert.equal(
+    (
+      await f.pool.query(
+        "SELECT count(*)::integer AS count FROM transaction_import_batches WHERE company_id=$1",
+        [s.company.id],
+      )
+    ).rows[0].count,
+    1,
+  );
+  assert.equal(
+    (
+      await f.owner.request(
+        "POST",
+        importPath(s),
+        batch([...input.documents, source("voucher", voucher(s))]),
+      )
+    ).status,
+    400,
+    "The batch remains bounded at 100 documents",
+  );
+});
