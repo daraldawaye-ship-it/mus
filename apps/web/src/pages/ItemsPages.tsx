@@ -50,6 +50,7 @@ import {
 import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
+import { InventoryAdjustmentSheet } from "./InventoryPages";
 import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
@@ -860,18 +861,23 @@ function ItemStatisticsCard({
               "يتطلب صلاحية عرض الفواتير."
             )}
           </dd>
-          <dt>آخر تسوية ذات حركة</dt>
+          <dt>آخر تسوية في</dt>
           <dd>
             {statistics.lastAdjustment ? (
-              <>
-                بتاريخ <bdi>{statistics.lastAdjustment.documentDate}</bdi> ·{" "}
-                {statistics.lastAdjustment.userName}
-              </>
+              <bdi>{dateTime(statistics.lastAdjustment.createdAt)}</bdi>
             ) : statistics.canViewStock ? (
-              "لا توجد تسوية ذات حركة مخزون."
+              "لا توجد تسوية مسجلة."
             ) : (
               "يتطلب صلاحية عرض المخزون."
             )}
+          </dd>
+          <dt>آخر تسوية بواسطة</dt>
+          <dd>
+            {statistics.lastAdjustment
+              ? statistics.lastAdjustment.userName
+              : statistics.canViewStock
+                ? "—"
+                : "يتطلب صلاحية عرض المخزون."}
           </dd>
           {statistics.adjustmentCounts && (
             <>
@@ -1025,6 +1031,7 @@ function ItemEditor({
   const companyId = context.company.id;
   const defaultSaleUnitGroup = useId();
   const { user } = useSession();
+  const itemQueryClient = useQueryClient();
   const navigate = useNavigate();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
@@ -1081,6 +1088,12 @@ function ItemEditor({
   const [unknownCreation, setUnknownCreation] = useState(false);
   const [error, setError] = useState("");
   const [reloadConfirmation, setReloadConfirmation] = useState(false);
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
+  const adjustmentDirectory = usePageDirectory(companyId);
+  const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
+  const canAdjust = !!item && !!adjustmentPage?.enabled &&
+    !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
   const [conflict, setConflict] = useState(false);
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
@@ -1240,6 +1253,24 @@ function ItemEditor({
         </Notice>
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
+      {canAdjust && !embedded && (
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setAdjustmentOpen(true)}>جرد الصنف</Button>
+        </div>
+      )}
+      {adjustmentOpen && item && (
+        <InventoryAdjustmentSheet
+          context={context}
+          item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
+          onClose={() => setAdjustmentOpen(false)}
+          onSaved={(date) => {
+            setNearestExpirySaved(date);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "statistics", item.id],
+            });
+          }}
+        />
+      )}
       {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
       {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
       {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
@@ -1393,6 +1424,12 @@ function ItemEditor({
               />
               له تاريخ انتهاء
             </label>
+            {item && fields.hasExpiry && (
+              <Field label="أقرب تاريخ انتهاء"
+                type="date" readOnly
+                value={nearestExpirySaved !== undefined ? nearestExpirySaved ?? "" : item.nearestExpiryDate ?? ""}
+                hint="يُحدّث من شاشة تسوية الصنف." />
+            )
             <label className="check-label">
               <input
                 type="checkbox"
