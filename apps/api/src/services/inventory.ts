@@ -452,18 +452,35 @@ export async function applyStock(
       condition += ` AND (batch_key='' OR batch_key>=$${parameters.length})`;
     }
     const available = await client.query(
-      `SELECT * FROM stock_balances WHERE company_id=$1 AND item_id=$2 AND location_id=$3 AND quantity_smallest>0${condition} ORDER BY batch_key ASC,id ASC FOR UPDATE`,
+      `SELECT s.*,GREATEST(s.quantity_smallest-COALESCE((
+          SELECT sum(r.quantity_smallest) FROM stock_reservations r
+          WHERE r.company_id=s.company_id AND r.item_id=s.item_id
+            AND r.location_id=s.location_id AND r.batch_key=s.batch_key
+            AND r.status='active'
+        ),0),0)::text AS free_quantity
+        FROM stock_balances s
+        WHERE s.company_id=$1 AND s.item_id=$2 AND s.location_id=$3
+          AND s.quantity_smallest>0${condition}
+        ORDER BY s.batch_key ASC,s.id ASC FOR UPDATE OF s`,
       parameters,
     );
     let remaining = magnitude;
     for (const batch of available.rows) {
-      const availableQuantity = BigInt(batch.quantity_smallest),
+      const availableQuantity = BigInt(batch.free_quantity),
         taken = availableQuantity < remaining ? availableQuantity : remaining;
       if (taken > 0n) batches.push({ key: batch.batch_key, quantity: taken });
       remaining -= taken;
       if (remaining === 0n) break;
     }
     if (remaining > 0n) {
+      // Negative-stock settings never allow consumption of quantities held for a customer.
+      const holds=await client.query(
+        `SELECT EXISTS(SELECT 1 FROM stock_reservations
+          WHERE company_id=$1 AND item_id=$2 AND location_id=$3 AND status='active') AS found`,
+        [companyId,item.id,input.locationId],
+      );
+      if(holds.rows[0]?.found)
+        conflict("لا يمكن إخراج كمية محجوزة؛ حرّر الحجز أولًا أو استخدم كمية متاحة");
       if (!settings.allowNegative)
         conflict("الرصيد المتاح في الموقع أو الدفعة لا يكفي؛ فعّل السماح بالمخزون السالب.");
       batches.push({key:input.expiryDate ?? "",quantity:remaining});
