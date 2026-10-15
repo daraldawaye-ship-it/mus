@@ -21,6 +21,8 @@ import type {
   ItemStatistics,
   ItemActivity,
   ItemPurchasePriceStatistics,
+  StockReservation,
+  StockReservationAvailability,
   Invoice,
   CompanyPage,
   Employee,
@@ -2810,6 +2812,104 @@ test("six month purchase extremes compare units and original exchange rate safel
  );
  assert.equal(facts.rows[0]?.count,"4");
  assert.ok(first.invoice.id>0);
+});
+
+test("manual stock reservations preserve physical stock and protect held stock from sales",async(t)=>{
+ const f=await fixture(t),admin=await owner(f);
+ const co=await company(admin.client,"Reservable showroom");
+ const root=`/companies/${co.id}`;
+ const currency=(await admin.client.ok<Page<{id:number;code:string}>>("GET",
+   root+"/currencies")).items.find(x=>x.code==="YER")!;
+ const branch=(await admin.client.ok<Page<{id:number;code:string}>>("GET",
+   root+"/branches")).items.find(x=>x.code==="HQ")!;
+ const showroom=(await admin.client.ok<Page<{id:number;code:string}>>("GET",
+   root+`/locations?branchId=${branch.id}`)).items.find(x=>x.code==="SHOWROOM")!;
+ const cash=(await admin.client.ok<{account:{id:number}}>("POST",root+"/accounts",{
+   code:"1111999988",name:"صندوق اختبار الحجز",kind:"posting",category:"asset",
+   normalSide:"debit",parentId:null,active:true,
+ },201)).account;
+ const item=(await admin.client.ok<{item:{id:number}}>("POST",root+"/items",{
+   idempotencyKey:randomUUID(),name:"صنف محجوز",currencyId:currency.id,
+   hasExpiry:false,unit1Name:"حبة",factor2:1,factor3:1,
+   salePrice1:"15",purchasePrice:"10",
+ },201)).item;
+ const today=new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Aden"});
+ const invoice=async(kind:"sale"|"purchase",quantity:string)=>admin.client.request<{invoice:Invoice}>(
+   "POST",root+"/invoices",{
+     idempotencyKey:randomUUID(),kind,documentDate:today,currencyId:currency.id,
+     branchId:branch.id,locationId:showroom.id,counterpartyAccountId:cash.id,
+     discount:"0",lines:[{itemId:item.id,unit:1,quantity,unitPrice:kind==="purchase"?"10":undefined,expiryDate:null}],
+   });
+ assert.equal((await invoice("purchase","10")).status,201);
+ const availability=async()=>(
+   await admin.client.ok<{availability:StockReservationAvailability}>(
+     "GET",root+`/items/${item.id}/reservation-availability`)).availability;
+ const first=await availability();
+ assert.equal(first.lots[0]?.physicalSmallest,"10");
+ assert.equal(first.lots[0]?.availableSmallest,"10");
+ const hold={
+   itemId:item.id,locationId:showroom.id,expiryDate:null,unit:1,quantity:"4",
+   sourceType:"manual",sourceReference:"طلب عميل 1001",description:"حجز حتى حضور العميل",
+   idempotencyKey:randomUUID(),
+ };
+ const saved=(await admin.client.ok<{reservation:StockReservation}>(
+   "POST",root+"/stock-reservations",hold,201)).reservation;
+ assert.equal(saved.quantitySmallest,"4");
+ assert.equal(saved.sourceReference,"طلب عميل 1001");
+ assert.equal(saved.status,"active");
+ assert.equal((await admin.client.ok<{reservation:StockReservation}>(
+   "POST",root+"/stock-reservations",hold,200)).reservation.id,saved.id);
+ const withHold=await availability();
+ assert.equal(withHold.lots[0]?.physicalSmallest,"10");
+ assert.equal(withHold.lots[0]?.reservedSmallest,"4");
+ assert.equal(withHold.lots[0]?.availableSmallest,"6");
+ assert.equal(withHold.reservations[0]?.id,saved.id);
+ assert.equal((await admin.client.request("POST",root+"/stock-reservations",{
+   ...hold,idempotencyKey:randomUUID(),quantity:"7",
+ })).status,409);
+ assert.equal((await invoice("sale","7")).status,409,
+   "Sale must not consume reserved stock even with negative inventory enabled");
+ assert.equal((await invoice("sale","6")).status,201);
+ const afterSale=await availability();
+ assert.equal(afterSale.lots[0]?.physicalSmallest,"4");
+ assert.equal(afterSale.lots[0]?.reservedSmallest,"4");
+ assert.equal(afterSale.lots[0]?.availableSmallest,"0");
+ assert.equal((await invoice("sale","1")).status,409);
+ const releaseBody={idempotencyKey:randomUUID(),reason:"وصل العميل وتم إلغاء الحجز"};
+ const released=(await admin.client.ok<{reservation:StockReservation}>(
+   "POST",root+`/stock-reservations/${saved.id}/release`,releaseBody,201)).reservation;
+ assert.equal(released.status,"released");
+ assert.equal((await admin.client.ok<{reservation:StockReservation}>(
+   "POST",root+`/stock-reservations/${saved.id}/release`,releaseBody,200)).reservation.id,saved.id);
+ assert.equal((await admin.client.request("POST",root+`/stock-reservations/${saved.id}/release`,{
+   idempotencyKey:randomUUID(),reason:"تحرير مكرر",
+ })).status,409);
+ const freed=await availability();
+ assert.equal(freed.reservations.length,0);
+ assert.equal(freed.lots[0]?.availableSmallest,"4");
+ assert.equal((await invoice("sale","4")).status,201);
+ assert.equal((await admin.client.ok<{reservation:StockReservation}>(
+   "GET",root+`/stock-reservations/${saved.id}`)).reservation.status,"released");
+ const another=await company(admin.client,"Other reservation company");
+ assert.equal((await admin.client.request("GET",
+   `/companies/${another.id}/stock-reservations/${saved.id}`)).status,404);
+ assert.equal((await admin.client.request("GET",
+   `/companies/${another.id}/items/${item.id}/reservation-availability`)).status,404);
+ const clerk=await register(f,"reservations-items-only@example.test");
+ await employee(admin.client,co.id,clerk.user.id,["items.view"]);
+ assert.equal((await clerk.client.request("GET",
+   root+`/items/${item.id}/reservation-availability`)).status,403);
+ assert.equal((await clerk.client.request("POST",root+"/stock-reservations",{
+   ...hold,idempotencyKey:randomUUID(),quantity:"1",
+ })).status,403);
+ const count=await f.pool.query<{quantity:string;records:string}>(
+   `SELECT (SELECT COALESCE(sum(quantity_smallest),0)::text FROM stock_balances
+       WHERE company_id=$1 AND item_id=$2) AS quantity,
+      (SELECT count(*)::text FROM stock_reservations
+       WHERE company_id=$1 AND item_id=$2) AS records`,[co.id,item.id],
+ );
+ assert.equal(count.rows[0]?.quantity,"0");
+ assert.equal(count.rows[0]?.records,"1","Idempotent replay cannot duplicate reservation");
 });
 
 test("inventory accounts are ready automatically for new and existing companies",async(t)=>{
