@@ -53,6 +53,8 @@ jobs:
         run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - name: Test per-item daily sales and purchase activity
         run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
+      - name: Test six-month purchase-price extremes across currencies and units
+        run: node --import tsx --test --test-name-pattern="six month purchase extremes" tests/api.test.ts
       - name: Test default active item list and archived/all filters
         run: node --import tsx --test tests/item-active-filter.test.ts
       - name: Test account choice creation, editing and strict ordered labels
