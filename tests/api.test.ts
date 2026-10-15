@@ -2649,13 +2649,20 @@ test("item statistics track finalized stock and last normal documents without le
     countedQuantity:"10",expectedQuantitySmallest:"10",unit:3,expiryDate:null,
     unitCostBase:"4",description:"جرد مطابق دون فرق",idempotencyKey:randomUUID(),
   };
-  await platform.client.ok("POST",prefix+"/stock-adjustments",identicalPayload,201);
+  const zeroCount=(await platform.client.ok<{operation:{id:number}}>(
+    "POST",prefix+"/stock-adjustments",identicalPayload,201)).operation;
   const afterSame=await statistics();
+  assert.equal(afterSame.lastAdjustment?.id,zeroCount.id,
+    "Matching physical count, not latest movement, is latest adjustment");
+  assert.ok(Number.isFinite(Date.parse(afterSame.lastAdjustment?.createdAt ?? "")));
+  assert.ok(afterSame.lastAdjustment?.userName);
   assert.equal(afterSame.stock?.total,"14","Matching count must not change stock");
   assert.equal(afterSame.adjustmentCounts?.allTime,"2","Matching count must be counted");
   assert.equal(afterSame.adjustmentCounts?.sinceApproval,"0");
   await platform.client.ok("POST",prefix+"/stock-adjustments",identicalPayload,200);
   assert.equal((await statistics()).adjustmentCounts?.allTime,"2","Idempotent count retry");
+  assert.equal((await statistics()).lastAdjustment?.id,zeroCount.id,
+    "Replay must preserve latest count reference");
   const existingItem=(await platform.client.ok<{item:{revision:number}}>(
     "GET",prefix+`/items/${item.id}`)).item;
   await platform.client.ok("PATCH",prefix+`/items/${item.id}`,{
