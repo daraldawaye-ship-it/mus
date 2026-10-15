@@ -65,6 +65,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="legacy account import permits" tests/masters.test.ts
       - name: Test item composition cards and company scoping
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
+      - name: Test manual inventory holds, protected sales and release
+        run: node --import tsx --test --test-name-pattern="manual stock reservations preserve physical" tests/api.test.ts
       - name: Test composition peer links and stock access
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
       - name: Test Arabic shelf cards, grouping and vitrine flags
