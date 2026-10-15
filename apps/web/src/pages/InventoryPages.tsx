@@ -14,6 +14,7 @@ import {
   inventorySettingsSchema,
   stockAdjustmentSchema,
   stockMovementKinds,
+  countedStockSmallest,
   stockMovementKindLabels,
   stockTransferSchema,
   type InventorySettings,
@@ -271,7 +272,12 @@ function InventoryLinks({
           className="button button-primary"
           to={`/companies/${companyId}/stock-operations`}
         >
-          مناقلة أو جرد
+          المناقلات
+        </Link>
+      )}
+      {operations && (
+        <Link className="button button-primary" to={`/companies/${companyId}/stock-adjustments`}>
+          تسوية الأصناف
         </Link>
       )}
     </>
@@ -950,6 +956,10 @@ interface OperationFields {
   documentDate: string;
   quantity: string;
   countedQuantity: string;
+  countUnit1: string;
+  countUnit2: string;
+  countUnit3: string;
+  nearestExpiryDate: string;
   unit: 1 | 2 | 3;
   expiryDate: string;
   unitCostBase: string;
@@ -959,37 +969,66 @@ const initialOperationFields = (): OperationFields => ({
   documentDate: today(),
   quantity: "1",
   countedQuantity: "0",
+  countUnit1: "0",
+  countUnit2: "0",
+  countUnit3: "0",
+  nearestExpiryDate: "",
   unit: 1,
   expiryDate: "",
   unitCostBase: "0",
   description: "",
 });
 
-export function InventoryOperationsPage({
-  context,
-}: {
-  context: CompanyContext;
-}) {
+export function InventoryOperationsPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   if (!inventoryAccess(context, "post"))
-    return (
-      <Notice tone="warning">ليس لديك صلاحية ترحيل عمليات المخزون.</Notice>
-    );
-  return (
-    <OperationEditor
-      key={`${user?.id}:${context.company.id}`}
-      context={context}
-    />
-  );
+    return <Notice tone="warning">ليس لديك صلاحية ترحيل المناقلات.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:transfer`}
+    context={context} initialMode="transfer" lockedMode />;
 }
-function OperationEditor({ context }: { context: CompanyContext }) {
+export function InventoryAdjustmentsPage({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
+  if (!adjustmentAccess(context))
+    return <Notice tone="warning">تسوية الأصناف تحتاج صلاحية ترحيل المخزون والترحيل المالي.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:adjustment`}
+    context={context} initialMode="adjustment" lockedMode />;
+}
+export function InventoryAdjustmentSheet({
+  context, item, onClose, onSaved,
+}: {
+  context: CompanyContext;
+  item: Item;
+  onClose: () => void;
+  onSaved?: (nearestExpiryDate: string | null) => void;
+}) {
+  const { user } = useSession();
+  if (!adjustmentAccess(context))
+    return <Notice tone="warning">ليس لديك صلاحية تسوية الصنف.</Notice>;
+  return <OperationEditor key={`${user?.id}:${context.company.id}:adjust:${item.id}`}
+    context={context} initialMode="adjustment" lockedMode preselectedItem={item}
+    onClose={onClose} onSaved={onSaved} />;
+}
+function OperationEditor({
+  context, initialMode = "transfer", lockedMode = false,
+  preselectedItem = null, onClose, onSaved,
+}: {
+  context: CompanyContext;
+  initialMode?: OperationMode;
+  lockedMode?: boolean;
+  preselectedItem?: Item | null;
+  onClose?: () => void;
+  onSaved?: (nearestExpiryDate: string | null) => void;
+}) {
   const companyId = context.company.id;
   const { user } = useSession();
   const guard = useScopeGuard(`company:${companyId}:stock-operation`);
   const changed = useInventoryChanges(companyId);
-  const [mode, setMode] = useState<OperationMode>("transfer");
-  const [fields, setFields] = useState(initialOperationFields);
-  const [item, setItem] = useState<Item | null>(null);
+  const [mode, setMode] = useState<OperationMode>(initialMode);
+  const [fields, setFields] = useState(() => ({
+    ...initialOperationFields(),
+    nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "",
+  }));
+  const [item, setItem] = useState<Item | null>(preselectedItem);
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [createKey, setCreateKey] = useState(() => crypto.randomUUID());
@@ -1059,21 +1098,32 @@ function OperationEditor({ context }: { context: CompanyContext }) {
   }
   function selectItem(value: Item | null) {
     setItem(value);
-    setFields((current) => ({ ...current, unit: 1, expiryDate: "" }));
+    setFields((current) => ({
+      ...current, unit: 1, expiryDate: "",
+      countUnit1: "0", countUnit2: "0", countUnit3: "0",
+      nearestExpiryDate: value?.nearestExpiryDate ?? "",
+    }));
     setDirty(true);
+  }
+  function closeSheet() {
+    if (!onClose || saving || unknown) return;
+    if (dirty && !window.confirm("توجد بيانات جرد غير محفوظة. هل تريد الإغلاق دون حفظ؟")) return;
+    onClose();
   }
   let preview = "";
   if (item) {
     try {
-      const conversion = convertItemQuantity(
-        {
-          quantity:
-            mode === "transfer" ? fields.quantity : fields.countedQuantity,
-          unit: fields.unit,
-        },
-        item,
-      );
-      preview = `${quantityText(conversion.unit1)} ${item.unit1Name} · ${conversion.smallestUnits} من أصغر جزء`;
+      if (mode === "adjustment") {
+        const total = countedStockSmallest({
+          unit1: fields.countUnit1 || "0",
+          unit2: item.factor2 > 1 ? fields.countUnit2 || "0" : undefined,
+          unit3: item.factor3 > 1 ? fields.countUnit3 || "0" : undefined,
+        }, item);
+        preview = `الإجمالي ${total.toString()} من أصغر جزء`;
+      } else {
+        const conversion = convertItemQuantity({ quantity: fields.quantity, unit: fields.unit }, item);
+        preview = `${quantityText(conversion.unit1)} ${item.unit1Name} · ${conversion.smallestUnits} من أصغر جزء`;
+      }
     } catch {
       /* Keep the user's incomplete input intact. */
     }
@@ -1122,7 +1172,13 @@ function OperationEditor({ context }: { context: CompanyContext }) {
           : stockAdjustmentSchema.safeParse({
               ...common,
               locationId: fromLocation.id,
-              countedQuantity: fields.countedQuantity,
+              unit: 1,
+              countedUnits: {
+                unit1: fields.countUnit1 || "0",
+                ...(item.factor2 > 1 ? { unit2: fields.countUnit2 || "0" } : {}),
+                ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
+              },
+              nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
               expectedQuantitySmallest: batchQuantity,
               unitCostBase: fields.unitCostBase,
             });
@@ -1144,6 +1200,8 @@ function OperationEditor({ context }: { context: CompanyContext }) {
       setUnknown(false);
       setDirty(false);
       setResult(response.operation);
+      if (action === "adjustment")
+        onSaved?.(item?.hasExpiry ? (fields.nearestExpiryDate || null) : null);
       void changed();
     } catch (reason) {
       if (guard.isCurrent()) {
@@ -1159,8 +1217,8 @@ function OperationEditor({ context }: { context: CompanyContext }) {
     if (saving || unknown) return;
     setResult(null);
     setError("");
-    setFields(initialOperationFields());
-    setItem(null);
+    setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
+    setItem(preselectedItem);
     setFromLocation(null);
     setToLocation(null);
     setCreateKey(crypto.randomUUID());
@@ -1169,11 +1227,22 @@ function OperationEditor({ context }: { context: CompanyContext }) {
   }
   return (
     <>
-      <PageHeader
-        title="المناقلات والجرد"
-        description="تُرحّل المناقلة أو تسوية الجرد كاملة بعد تأكيد الخادم."
+      {onClose && <div className="inventory-sheet-backdrop" onClick={closeSheet} aria-hidden="true" />}
+      <section className={onClose ? "inventory-sheet-panel" : undefined}
+        role={onClose ? "dialog" : undefined} aria-modal={onClose ? true : undefined}
+        aria-label={onClose ? `جرد الصنف ${preselectedItem?.name ?? ""}` : undefined}>
+      {onClose ? (
+        <div className="inventory-sheet-header">
+          <strong>جرد وتسوية الصنف: {preselectedItem?.name}</strong>
+          <Button variant="secondary" disabled={saving || unknown} onClick={closeSheet}>إغلاق</Button>
+        </div>
+      ) : <PageHeader
+        title={mode === "adjustment" ? "تسوية الأصناف" : "المناقلات"}
+        description={mode === "adjustment"
+          ? "جرد الصنف بجميع وحداته مع حفظ أقرب تاريخ انتهاء في كرت الصنف."
+          : "ترحيل مناقلة المخزون بين موقعين."}
         actions={<InventoryLinks companyId={companyId} />}
-      />
+      />}
       {error && <Notice tone="error">{error}</Notice>}
       {unknown && (
         <Notice tone="warning">
@@ -1236,7 +1305,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
       <form onSubmit={(event) => void save(event)}>
         <Card title="بيانات العملية">
           <div className="form-grid">
-            <Select
+            {!lockedMode && <Select
               label="نوع العملية"
               value={mode}
               disabled={saving || unknown || !!result}
@@ -1247,7 +1316,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
             >
               <option value="transfer">مناقلة بين موقعين</option>
               <option value="adjustment">جرد وتسوية رصيد دفعة</option>
-            </Select>
+            </Select>}
             <Field
               label="تاريخ المستند"
               type="date"
@@ -1261,7 +1330,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
               type="items"
               label="الصنف"
               value={item}
-              disabled={disabled}
+              disabled={disabled || !!preselectedItem}
               nullable={false}
               onChange={selectItem}
             />
@@ -1291,7 +1360,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
                 }}
               />
             )}
-            <Select
+            {mode === "transfer" && <Select
               label="الوحدة"
               value={fields.unit}
               disabled={disabled || !item}
@@ -1306,7 +1375,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
               {item && item.factor3 > 1 && (
                 <option value={3}>{item.unit3Name}</option>
               )}
-            </Select>
+            </Select>}
             {mode === "transfer" ? (
               <Field
                 label="كمية المناقلة"
@@ -1320,19 +1389,27 @@ function OperationEditor({ context }: { context: CompanyContext }) {
                 onChange={(event) => edit("quantity", event.target.value)}
               />
             ) : (
-              <Field
-                label="الكمية الفعلية بعد الجرد"
-                inputMode="numeric"
-                dir="ltr"
-                required
-                value={fields.countedQuantity}
-                maxLength={22}
-                disabled={disabled}
-                hint="رصيد الدفعة الكامل بالوحدة المختارة؛ الصفر مسموح"
-                onChange={(event) =>
-                  edit("countedQuantity", event.target.value)
-                }
-              />
+              <>
+                <Field label={`الكمية المعدودة — ${item?.unit1Name || "الوحدة الأولى"}`}
+                  inputMode="numeric" dir="ltr" required maxLength={22}
+                  value={fields.countUnit1} disabled={disabled}
+                  onChange={(event) => edit("countUnit1", event.target.value)}
+                  hint="عدد الوحدات الأولى الكاملة" />
+                {item && item.factor2 > 1 && (
+                  <Field label={`الكمية المعدودة — ${item.unit2Name}`}
+                    inputMode="numeric" dir="ltr" required maxLength={22}
+                    value={fields.countUnit2} disabled={disabled}
+                    onChange={(event) => edit("countUnit2", event.target.value)}
+                    hint="عدد الوحدات الثانية الإضافية" />
+                )}
+                {item && item.factor3 > 1 && (
+                  <Field label={`الكمية المعدودة — ${item.unit3Name}`}
+                    inputMode="numeric" dir="ltr" required maxLength={22}
+                    value={fields.countUnit3} disabled={disabled}
+                    onChange={(event) => edit("countUnit3", event.target.value)}
+                    hint="عدد الوحدات الثالثة الإضافية" />
+                )}
+              </>
             )}
             {item?.hasExpiry && (
               <Field
@@ -1344,9 +1421,19 @@ function OperationEditor({ context }: { context: CompanyContext }) {
                 onChange={(event) => edit("expiryDate", event.target.value)}
               />
             )}
+            {mode === "adjustment" && item?.hasExpiry && (
+              <Field
+                label="أقرب تاريخ انتهاء في كرت الصنف"
+                type="date"
+                value={fields.nearestExpiryDate}
+                disabled={disabled}
+                onChange={(event) => edit("nearestExpiryDate", event.target.value)}
+                hint="معلومة كرت الصنف؛ لا تغيّر تاريخ انتهاء دفعة المخزون."
+              />
+            )}
             {mode === "adjustment" && (
               <Field
-                label="تكلفة الوحدة بالعملة الأساسية"
+                label="تكلفة الوحدة الأولى بالعملة الأساسية"
                 inputMode="decimal"
                 dir="ltr"
                 required
@@ -1440,6 +1527,7 @@ function OperationEditor({ context }: { context: CompanyContext }) {
         </Card>
       </form>
       {navigation}
+      </section>
     </>
   );
 }
