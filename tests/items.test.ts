@@ -15,6 +15,7 @@ import {
   type Item,
   type ItemAgent,
   type ItemComposition,
+  type ItemCompositionPeers,
   type ItemShelf,
   arabicShelfLetters,
   type ItemConversion,
@@ -1303,6 +1304,25 @@ test("item compositions support multilingual cards, strict flags, archived links
   assert.equal(itemB.compositionId,foreign.id);
   assert.equal((await f.owner.ok<Page<Item>>("GET",
     `/companies/${companyA.id}/items?compositionId=${created.id}`)).total,1);
+  const related=await item(f,companyA.id,currencyA.id,{
+    name:"تركيب مماثل",compositionId:created.id,
+  });
+  const peersPath=`/companies/${companyA.id}/items/${itemA.id}/composition-peers`;
+  const linked=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(linked.total,1);
+  assert.equal(linked.relation,"identicalAlternative");
+  assert.equal(linked.peers[0]?.id,related.id);
+  assert.equal(linked.peers[0]?.stockSmallest,"0");
+  assert.equal(linked.peers[0]?.smallestUnitName,
+    related.factor3>1?related.unit3Name:related.factor2>1?related.unit2Name:related.unit1Name);
+  const viewRelated=await f.member(companyA.id,["items.view"],46);
+  const redacted=(await viewRelated.client.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(redacted.canViewStock,false);
+  assert.equal(redacted.peers[0]?.stockSmallest,null);
+  assert.equal(redacted.total,1);
+  assert.equal((await f.owner.request("GET",peersPath+"?page=0")).status,400);
+  assert.equal((await f.owner.request("GET",peersPath+"?page=1x")).status,400);
+  assert.equal((await f.owner.request("GET",`/companies/${companyB.id}/items/${itemA.id}/composition-peers`)).status,404);
   const stale = await f.owner.request("PATCH",url+"/"+created.id,{
     arabicName:"جديد",englishName:"New",description:"",active:false,
     identicalAlternative:false,nonInterchangeable:true,revision:99,
@@ -1316,6 +1336,14 @@ test("item compositions support multilingual cards, strict flags, archived links
     })).composition;
   assert.equal(archived.revision,created.revision+1);
   assert.equal(archived.nonInterchangeable,true);
+  const forbidden=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(forbidden.relation,"nonInterchangeable");
+  const ungrouped=await item(f,companyA.id,currencyA.id,{name:"صنف مستقل"});
+  const empty=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",
+    `/companies/${companyA.id}/items/${ungrouped.id}/composition-peers`)).peers;
+  assert.equal(empty.relation,"none");
+  assert.equal(empty.composition,null);
+  assert.equal(empty.total,0);
   assert.equal((await f.owner.ok<Page<ItemComposition>>("GET",
     `/companies/${companyA.id}/item-options?type=compositions`)).items.length,0);
   assert.equal((await f.owner.ok<{item:Item}>("GET",

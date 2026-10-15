@@ -139,6 +139,8 @@ const itemFields = z
     commissionRate: commissionPercent.default("0"),
     clearanceFrom: documentDateSchema.nullable().default(null),
     clearanceTo: documentDateSchema.nullable().default(null),
+    settlementApprovalDate: documentDateSchema.nullable().default(null),
+    settlementDisplayDate: documentDateSchema.nullable().default(null),
     purchaseFactor: itemFactorSchema.default(1),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
@@ -252,6 +254,8 @@ export interface Item extends ItemIdentity {
   commissionRate: string;
   clearanceFrom: string | null;
   clearanceTo: string | null;
+  settlementApprovalDate: string | null;
+  settlementDisplayDate: string | null;
   purchaseFactor: number;
   currencyId: number;
   currencyCode: string;
@@ -370,6 +374,8 @@ export const itemCatalog = {
     commissionRate: "0",
     clearanceFrom: null,
     clearanceTo: null,
+    settlementApprovalDate: null,
+    settlementDisplayDate: null,
     purchaseFactor: 1,
     reorderLimit: "0",
     orderQuantity: "0",
@@ -414,10 +420,103 @@ export interface ItemStatistics {
         accountName: string;
       })
     | null;
+  adjustmentCounts: {
+    allTime: string;
+    sinceApproval: string;
+    sinceDisplay: string;
+    approvalDate: string | null;
+    displayDate: string | null;
+    lastShowroomAt: string | null;
+  } | null;
   lastAdjustment: {
     id: number;
     documentDate: string;
     createdAt: string;
     userName: string;
   } | null;
+}
+
+/** Derived invoice activity; values stay exact strings in the smallest item unit. */
+export interface ItemActivityPeriod {
+  saleInvoices: string;
+  saleReturnInvoices: string;
+  saleLines: string;
+  saleReturnLines: string;
+  saleQuantity: string;
+  saleReturnQuantity: string;
+  purchaseInvoices: string;
+  purchaseReturnInvoices: string;
+  purchaseLines: string;
+  purchaseReturnLines: string;
+  purchaseQuantity: string;
+  purchaseReturnQuantity: string;
+}
+export interface ItemActivity {
+  companyId: number;
+  itemId: number;
+  asOf: string;
+  unitName: string;
+  canViewCommerce: boolean;
+  periods: {
+    oneMonth: ItemActivityPeriod;
+    fourMonths: ItemActivityPeriod;
+    twelveMonths: ItemActivityPeriod;
+    allTime: ItemActivityPeriod;
+  } | null;
+}
+
+/** Comparable historical price, in company base currency per smallest item unit. */
+export interface ItemPurchasePricePoint {
+ invoiceId: number;
+ invoiceLineId: number;
+ invoiceNumber: string;
+ documentDate: string;
+ originalUnitPrice: string;
+ originalUnitName: string;
+ originalCurrencyCode: string;
+ priceBaseSmallest: string;
+ supplierAccountId: number | null;
+ supplierAccountName: string | null;
+}
+export interface ItemPurchasePriceStatistics {
+ companyId: number;
+ itemId: number;
+ asOf: string;
+ from: string;
+ baseCurrencyCode: string | null;
+ smallestUnitName: string;
+ canViewPrices: boolean;
+ hasOtherBaseCurrencyHistory: boolean;
+ minimum: ItemPurchasePricePoint | null;
+ maximum: ItemPurchasePricePoint | null;
+ latest: ItemPurchasePricePoint | null;
+ latestAboveMinimumPercent: string | null;
+}
+
+
+/** Read-only, scoped composition peers; a shared composition does not authorize substitution. */
+export interface ItemCompositionPeers {
+ companyId: number;
+ itemId: number;
+ canViewStock: boolean;
+ composition: {
+   id: number;
+   arabicName: string;
+   englishName: string;
+   active: boolean;
+   identicalAlternative: boolean;
+   nonInterchangeable: boolean;
+ } | null;
+ relation: "none" | "sameComposition" | "identicalAlternative" | "nonInterchangeable";
+ total: number;
+ page: number;
+ pageSize: number;
+ peers: Array<{
+   id: number;
+   code: string;
+   name: string;
+   active: boolean;
+   smallestUnitName: string;
+   stockSmallest: string | null;
+ }>;
 }

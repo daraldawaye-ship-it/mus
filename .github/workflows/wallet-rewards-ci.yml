@@ -51,8 +51,18 @@ jobs:
         run: node --import tsx --test tests/lookup-option-label.test.ts tests/invoice-account-default.test.ts
       - name: Build web application
         run: npm run build
+      - name: Test multi-unit physical counts and nearest expiry validation
+        run: node --import tsx --test tests/stock-adjustment-count.test.ts
+      - name: Test latest physical count including matching counts
+        run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - name: Test first-unit stock quantity display and rounding
         run: node --import tsx --test tests/sale-stock-quantity.test.ts
+      - name: Test per-item daily sales and purchase activity
+        run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
+      - name: Test adjustment counts and changed cutoff dates
+        run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
+      - name: Test six-month purchase-price extremes across currencies and units
+        run: node --import tsx --test --test-name-pattern="six month purchase extremes" tests/api.test.ts
       - name: Test default active item list and archived/all filters
         run: node --import tsx --test tests/item-active-filter.test.ts
       - name: Test account choice creation, editing and strict ordered labels
@@ -60,6 +70,8 @@ jobs:
       - name: Test full-length account names and legacy identifiers
         run: node --import tsx --test --test-name-pattern="legacy account import permits" tests/masters.test.ts
       - name: Test item composition cards and company scoping
+        run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
+      - name: Test composition peer links and stock access
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
       - name: Test Arabic shelf cards, grouping and vitrine flags
         run: node --import tsx --test --test-name-pattern="Arabic shelf cards are seeded" tests/items.test.ts
