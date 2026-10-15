@@ -19,6 +19,7 @@ import type {
   CompanyContext,
   Location,
   ItemStatistics,
+  ItemActivity,
   Invoice,
   CompanyPage,
   Employee,
@@ -2639,6 +2640,22 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(adjusted.stock?.total, "14");
   assert.equal(adjusted.lastAdjustment?.id, adjustment.id);
   const other = await company(platform.client, "Other statistics company");
+  const activity = (await platform.client.ok<{activity:ItemActivity}>(
+    "GET",prefix+`/items/${item.id}/activity`)).activity;
+  assert.equal(activity.canViewCommerce,true);
+  assert.equal(activity.unitName,"حبة");
+  assert.equal(activity.periods?.allTime.saleInvoices,"1");
+  assert.equal(activity.periods?.allTime.saleReturnInvoices,"1");
+  assert.equal(activity.periods?.allTime.saleLines,"1");
+  assert.equal(activity.periods?.allTime.saleReturnLines,"1");
+  assert.equal(activity.periods?.allTime.saleQuantity,"9");
+  assert.equal(activity.periods?.allTime.saleReturnQuantity,"3");
+  assert.equal(activity.periods?.allTime.purchaseInvoices,"1");
+  assert.equal(activity.periods?.allTime.purchaseReturnInvoices,"1");
+  assert.equal(activity.periods?.allTime.purchaseQuantity,"42");
+  assert.equal(activity.periods?.allTime.purchaseReturnQuantity,"21");
+  assert.equal((await platform.client.request("GET",`/companies/${other.id}/items/${item.id}/activity`)).status,404);
+
   assert.equal((await platform.client.request("GET", `/companies/${other.id}/items/${item.id}/statistics`)).status, 404);
   const clerk = await register(f, "statistics-items-only@example.test");
   await employee(platform.client, co.id, clerk.user.id, ["items.view"]);
@@ -2650,6 +2667,10 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(limited.lastAdjustment, null);
   assert.equal(limited.lastPurchase, null);
   assert.equal(limited.lastSale, null);
+  const limitedActivity=(await clerk.client.ok<{activity:ItemActivity}>(
+    "GET",prefix+`/items/${item.id}/activity`)).activity;
+  assert.equal(limitedActivity.canViewCommerce,false);
+  assert.equal(limitedActivity.periods,null);
 });
 
 test("inventory accounts are ready automatically for new and existing companies",async(t)=>{

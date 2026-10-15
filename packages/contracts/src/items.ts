@@ -420,3 +420,32 @@ export interface ItemStatistics {
     userName: string;
   } | null;
 }
+
+/** Derived invoice activity; values stay exact strings in the smallest item unit. */
+export interface ItemActivityPeriod {
+  saleInvoices: string;
+  saleReturnInvoices: string;
+  saleLines: string;
+  saleReturnLines: string;
+  saleQuantity: string;
+  saleReturnQuantity: string;
+  purchaseInvoices: string;
+  purchaseReturnInvoices: string;
+  purchaseLines: string;
+  purchaseReturnLines: string;
+  purchaseQuantity: string;
+  purchaseReturnQuantity: string;
+}
+export interface ItemActivity {
+  companyId: number;
+  itemId: number;
+  asOf: string;
+  unitName: string;
+  canViewCommerce: boolean;
+  periods: {
+    oneMonth: ItemActivityPeriod;
+    fourMonths: ItemActivityPeriod;
+    twelveMonths: ItemActivityPeriod;
+    allTime: ItemActivityPeriod;
+  } | null;
+}
