@@ -49,6 +49,10 @@ jobs:
         run: node --import tsx --test tests/lookup-option-label.test.ts tests/invoice-account-default.test.ts
       - name: Build web application
         run: npm run build
+      - name: Test multi-unit physical counts and nearest expiry validation
+        run: node --import tsx --test tests/stock-adjustment-count.test.ts
+      - name: Test latest physical count including matching counts
+        run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - name: Test first-unit stock quantity display and rounding
         run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - name: Test per-item daily sales and purchase activity
