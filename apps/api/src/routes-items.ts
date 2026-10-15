@@ -16,6 +16,7 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
+import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
@@ -599,6 +600,15 @@ export function itemRoutes(pool: Pool): Router {
         },
       );
       res.status(result.created ? 201 : 200).json({ item: result.item });
+    }),
+  );
+  router.get(
+    `${base}/items/:id/purchase-price-statistics`,
+    handler(async (req,res)=>{
+      const itemId=id(req.params.id);
+      res.json(await readItems(pool,req,async(client,companyId)=>({
+        statistics:await readItemPurchasePrices(client,actor(req),companyId,itemId),
+      })));
     }),
   );
   router.get(
