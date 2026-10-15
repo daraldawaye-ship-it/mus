@@ -756,6 +756,10 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
                 مبيعات: <bdi>{fmt(row.saleQuantity)}</bdi> {activity.unitName} ·
                 مرتجع بيع: <bdi>{fmt(row.saleReturnQuantity)}</bdi> ·
                 فواتير بيع: <bdi>{fmt(row.saleInvoices)}</bdi> ·
+                فواتير مرتجع: <bdi>{fmt(row.saleReturnInvoices)}</bdi> ·
+                <strong>مرات البيع الصافية: <bdi>{fmt(
+                  (BigInt(row.saleInvoices)-BigInt(row.saleReturnInvoices)).toString()
+                )}</bdi></strong> ·
                 سطور بيع: <bdi>{fmt(row.saleLines)}</bdi>
               </dd>
               <dd>

@@ -2714,6 +2714,16 @@ test("item statistics track finalized stock and last normal documents without le
   const itemRow=report.rows.find(r=>r.itemId===item.id);
   assert.ok(itemRow,"The item must appear in the all-items report");
   assert.equal(itemRow.unitName,"حبة","Quantities are always in each item's smallest unit");
+  assert.equal(itemRow.saleTimes.oneMonth,"0","Sale once minus return once gives zero times");
+  assert.equal(itemRow.saleTimes.fourMonths,"0");
+  assert.equal(itemRow.saleTimes.twelveMonths,"0");
+  assert.equal(itemRow.saleTimes.allTime,"0");
+  assert.equal((BigInt(activity.periods!.oneMonth.saleInvoices)-
+    BigInt(activity.periods!.oneMonth.saleReturnInvoices)).toString(),itemRow.saleTimes.oneMonth,
+    "Item card and unified report use the same net invoice-count definition");
+  const zeroSorted=(await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?active=all&sortBy=saleTimesOneMonth&sortDir=desc")).report;
+  assert.equal(zeroSorted.rows.find(r=>r.itemId===item.id)?.saleTimes.oneMonth,"0");
   assert.equal(itemRow.sale.oneMonth,"9");
   assert.equal(itemRow.sale.fourMonths,"9");
   assert.equal(itemRow.sale.twelveMonths,"9");
@@ -2758,6 +2768,20 @@ test("item statistics track finalized stock and last normal documents without le
     "GET",prefix+`/items/${item.id}/activity`)).activity;
   assert.equal(limitedActivity.canViewCommerce,false);
   assert.equal(limitedActivity.periods,null);
+
+  // The original sale contained three packs. Returning one pack in each of
+  // three separate posted invoices subtracts three occurrences from one sale.
+  await save("sale","-1",2,sale.lines[0]!.id);
+  await save("sale","-1",2,sale.lines[0]!.id);
+  const netReport=(await platform.client.ok<{report:ItemActivityReport}>(
+    "GET",reportPath+"?active=all&sortBy=saleTimesOneMonth&sortDir=asc")).report;
+  const net=netReport.rows.find(r=>r.itemId===item.id);
+  assert.ok(net);
+  for(const period of ["oneMonth","fourMonths","twelveMonths","allTime"] as const)
+    assert.equal(net.saleTimes[period],"-2",
+      "One sale invoice minus three distinct return invoices must stay negative");
+  assert.equal((await platform.client.request("GET",
+    reportPath+"?sortBy=saleTimesOneMonth%3BDELETE")).status,400);
 });
 
 test("six month purchase extremes compare units and original exchange rate safely",async(t)=>{
