@@ -2731,7 +2731,7 @@ test("six month purchase extremes compare units and original exchange rate safel
  assert.equal(stats.latestAboveMinimumPercent,"87.5");
  assert.equal(stats.minimum?.supplierAccountId,supplier.id);
  assert.equal(stats.maximum?.supplierAccountName,"مورد الأسعار الفعلي");
- await platform.client.ok("POST",root+"/invoices",second.payload,200);
+ await platform.client.ok("POST",root+"/invoices",second.payload,201);
  assert.deepEqual((await read()).minimum,stats.minimum,"Replay cannot duplicate facts");
  await platform.client.ok("POST",root+"/invoices",{
    idempotencyKey:randomUUID(),kind:"purchase",documentDate:day,currencyId:usd.id,
