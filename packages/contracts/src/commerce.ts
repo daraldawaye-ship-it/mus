@@ -43,12 +43,16 @@ export const invoiceSchema = z
     locationId: id,
     counterpartyAccountId: id,
     supplierAccountId: id.nullable().default(null),
+    customerOrderId: id.nullable().default(null),
     description: z.string().trim().max(1000).default(""),
     discount: amountSchema.default("0"),
     lines: z.array(invoiceLineSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.kind === "purchase" && value.customerOrderId !== null)
+      context.addIssue({code:"custom",path:["customerOrderId"],
+        message:"طلب العميل مرتبط بفواتير المبيعات فقط"});
     if (value.kind === "sale" && value.supplierAccountId !== null)
       context.addIssue({
         code: "custom",
@@ -129,6 +133,7 @@ export interface Invoice {
   counterpartyAccountCode: string;
   counterpartyAccountName: string;
   supplierAccountId: number | null;
+  customerOrderId: number | null;
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
   description: string;
