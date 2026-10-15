@@ -19,6 +19,10 @@ const sorts:Record<ItemActivityReportSort,string>={
  saleTwelveMonths:'a."saleTwelveMonths"',saleAllTime:'a."saleAllTime"',
  purchaseOneMonth:'a."purchaseOneMonth"',purchaseFourMonths:'a."purchaseFourMonths"',
  purchaseTwelveMonths:'a."purchaseTwelveMonths"',purchaseAllTime:'a."purchaseAllTime"',
+ saleReturnOneMonth:'a."saleReturnOneMonth"',saleReturnFourMonths:'a."saleReturnFourMonths"',
+ saleReturnTwelveMonths:'a."saleReturnTwelveMonths"',saleReturnAllTime:'a."saleReturnAllTime"',
+ purchaseReturnOneMonth:'a."purchaseReturnOneMonth"',purchaseReturnFourMonths:'a."purchaseReturnFourMonths"',
+ purchaseReturnTwelveMonths:'a."purchaseReturnTwelveMonths"',purchaseReturnAllTime:'a."purchaseReturnAllTime"',
 };
 const periods=[
  ["OneMonth","d.document_date>=($2::date-interval '1 month'+interval '1 day')::date"],
