@@ -1262,15 +1262,6 @@ function ItemEditor({
                     : "حفظ الصنف"}
             </Button>
           )}
-          {item && manage && !embedded && (
-            <Button
-              variant="secondary"
-              disabled={saving || unknownCreation}
-              onClick={() => setReloadConfirmation(true)}
-            >
-              تحميل النسخة الحالية
-            </Button>
-          )}
           <Button
             variant="secondary"
             disabled={saving}
@@ -1280,6 +1271,15 @@ function ItemEditor({
           >
             {embedded ? "إغلاق" : "العودة للقائمة"}
           </Button>
+          {item && manage && !embedded && (
+            <Button
+              variant="secondary"
+              disabled={saving || unknownCreation}
+              onClick={() => setReloadConfirmation(true)}
+            >
+              تحميل النسخة الحالية
+            </Button>
+          )}
         </div>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
