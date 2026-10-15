@@ -12,7 +12,9 @@ const query=z.object({
  pageSize:z.coerce.number().int().min(1).max(100).default(50),
  sortBy:z.enum(["code","name",
     "saleOneMonth","saleFourMonths","saleTwelveMonths","saleAllTime",
-    "purchaseOneMonth","purchaseFourMonths","purchaseTwelveMonths","purchaseAllTime"]).default("code"),
+    "purchaseOneMonth","purchaseFourMonths","purchaseTwelveMonths","purchaseAllTime",
+    "saleReturnOneMonth","saleReturnFourMonths","saleReturnTwelveMonths","saleReturnAllTime",
+    "purchaseReturnOneMonth","purchaseReturnFourMonths","purchaseReturnTwelveMonths","purchaseReturnAllTime"]).default("code"),
  sortDir:z.enum(["asc","desc"]).default("asc"),
 }).strict();
 export function itemActivityReportRoutes(pool:Pool):Router {
