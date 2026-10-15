@@ -469,7 +469,7 @@ function ItemSearch({
     queryKey: ["commerce", user?.id, companyId, "item-search", search, page],
     queryFn: ({ signal }) =>
       api<Page<Item>>(
-        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "code:asc" })}`,
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc" })}`,
         { signal },
       ),
     enabled: !!user && !!search && !disabled,
@@ -522,7 +522,7 @@ function ItemSearch({
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder="اكتب جزءًا من اسم الصنف…"
+        placeholder="الاسم عربي/إنجليزي، التركيب، الرمز، الباركود أو المفاتيح…"
         role="combobox"
         aria-expanded={expanded}
         aria-controls={expanded ? `${id}-results` : undefined}
