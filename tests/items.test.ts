@@ -997,9 +997,9 @@ test("archiving never reuses automatic codes and database guards protect identit
 test("item lists search each name, barcode and search key with stable multi-sort and scoped pagination", async (t) => {
   const f = await fixture(t),
     c = await f.company(),
-    curr = await currency(f, c.id),
+    curr = await currency(f, c.id, 2, "ITM"),
     other = await f.company("Other"),
-    otherCurr = await currency(f, other.id);
+    otherCurr = await currency(f, other.id, 2, "ITM");
   const first = await item(f, c.id, curr.id, {
     name: "Same",
     englishName: "UniqueEnglish",
