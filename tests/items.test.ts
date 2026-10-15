@@ -997,9 +997,9 @@ test("archiving never reuses automatic codes and database guards protect identit
 test("item lists search each name, barcode and search key with stable multi-sort and scoped pagination", async (t) => {
   const f = await fixture(t),
     c = await f.company(),
-    curr = await currency(f, c.id),
+    curr = await currency(f, c.id, 2, "ITM"),
     other = await f.company("Other"),
-    otherCurr = await currency(f, other.id);
+    otherCurr = await currency(f, other.id, 2, "ITM");
   const first = await item(f, c.id, curr.id, {
     name: "Same",
     englishName: "UniqueEnglish",
@@ -1038,6 +1038,40 @@ test("item lists search each name, barcode and search key with stable multi-sort
   assert.equal(page1.total, 2);
   assert.equal(page1.items[0]!.id, second.id);
   assert.equal(page2.items[0]!.id, first.id);
+  // Search the Arabic and English composition names in the same result set
+  // that feeds invoice item lookup, not just the standalone composition card.
+  const composition=(await f.owner.ok<{composition:ItemComposition}>(
+    "POST",`/companies/${c.id}/item-compositions`,{
+      arabicName:"تركيبة الإيبوبروفين",englishName:"Ibuprofen Blend",
+      description:"",active:true,identicalAlternative:false,
+      nonInterchangeable:false,idempotencyKey:randomUUID(),
+    },201)).composition;
+  const keyMatch=await item(f,c.id,curr.id,{
+    name:"مطابقة مفاتيح",searchKeys:"ZX887",active:true,
+  });
+  const compositionMatch=await item(f,c.id,curr.id,{
+    name:"دواء جديد",englishName:"Different English Label",
+    barcode:"ZX887",compositionId:composition.id,active:true,
+  });
+  for(const query of ["تركيبة الإيبوبروفين","Ibuprofen Blend","ZX887","Different English Label"]){
+    for(const endpoint of [
+      `/companies/${c.id}/items`,
+      `/companies/${c.id}/commerce-options?type=items`,
+    ]){
+      const sep=endpoint.includes("?")?"&":"?";
+      const page=await f.owner.ok<Page<Item>>("GET",endpoint+sep+"q="+encodeURIComponent(query));
+      assert.equal(page.items[0]?.id,compositionMatch.id,
+        "Composition, multilingual labels and barcode must be searchable in invoice and item lists");
+    }
+  }
+  const exactList=await f.owner.ok<Page<Item>>("GET",
+    `/companies/${c.id}/items?q=ZX887&sort=saleTimes:desc,code:asc`);
+  assert.deepEqual(exactList.items.slice(0,2).map(x=>x.id),
+    [compositionMatch.id,keyMatch.id],"Exact barcode beats an earlier search-key match");
+  const exactInvoice=await f.owner.ok<Page<Item>>("GET",
+    `/companies/${c.id}/commerce-options?type=items&q=ZX887&sort=saleTimes:desc,code:asc`);
+  assert.deepEqual(exactInvoice.items.slice(0,2).map(x=>x.id),
+    [compositionMatch.id,keyMatch.id]);
   for (const query of [
     "sort=name:sideways",
     "sort=prototype:asc",

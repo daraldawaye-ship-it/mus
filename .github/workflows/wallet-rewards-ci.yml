@@ -69,6 +69,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="account card choice labels retain" tests/masters.test.ts
       - name: Test full-length account names and legacy identifiers
         run: node --import tsx --test --test-name-pattern="legacy account import permits" tests/masters.test.ts
+      - name: Test multilingual catalog and invoice item search ranking
+        run: node --import tsx --test --test-name-pattern="item lists search each name" tests/items.test.ts
       - name: Test item composition cards and company scoping
         run: node --import tsx --test --test-name-pattern="item compositions support" tests/items.test.ts
       - name: Test composition peer links and stock access

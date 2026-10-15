@@ -2755,6 +2755,10 @@ test("item statistics track finalized stock and last normal documents without le
   await employee(platform.client, co.id, clerk.user.id, ["items.view"]);
   assert.equal((await clerk.client.request("GET",reportPath)).status,403,
     "Item-only permission cannot read confidential invoicing activity");
+  const limitedList=await clerk.client.ok<Page<{id:number}>>(
+    "GET",prefix+"/items?q=صنف&sort=saleTimes:desc,code:asc");
+  assert.equal(limitedList.items.some(x=>x.id===item.id),true,
+    "Items-only users may search but sale ranks do not reveal invoice data");
   const limited = await statistics(clerk.client);
   assert.equal(limited.canViewStock, false);
   assert.equal(limited.canViewCommerce, false);
@@ -2782,6 +2786,23 @@ test("item statistics track finalized stock and last normal documents without le
       "One sale invoice minus three distinct return invoices must stay negative");
   assert.equal((await platform.client.request("GET",
     reportPath+"?sortBy=saleTimesOneMonth%3BDELETE")).status,400);
+
+  const noSales=(await platform.client.ok<{item:{id:number}}>(
+    "POST",prefix+"/items",{
+      idempotencyKey:randomUUID(),name:"صنف جديد بلا مبيعات",
+      currencyId:currency.id,hasExpiry:false,
+      unit1Name:"حبة",unit2Name:"حبة",unit3Name:"حبة",
+      factor2:1,factor3:1,salePrice1:"10",
+      salePrice2:"10",salePrice3:"10",purchasePrice:"5",
+    },201)).item;
+  const rankedItems=await platform.client.ok<Page<{id:number}>>(
+    "GET",prefix+"/items?q=صنف&active=true");
+  assert.equal(rankedItems.items[0]?.id,noSales.id,
+    "An item with zero net sales must rank above one with negative net sales");
+  const rankedInvoice=await platform.client.ok<Page<{id:number}>>(
+    "GET",prefix+"/commerce-options?type=items&q=صنف");
+  assert.equal(rankedInvoice.items[0]?.id,noSales.id,
+    "Invoice search and item list share the same net sale occurrence ranking");
 });
 
 test("six month purchase extremes compare units and original exchange rate safely",async(t)=>{

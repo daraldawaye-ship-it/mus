@@ -18,6 +18,7 @@ import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
+import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
@@ -482,15 +483,16 @@ export function itemRoutes(pool: Pool): Router {
     `${base}/items`,
     handler(async (req, res) => {
       res.json(
-        await readItems(pool, req, (client, companyId) =>
-          masterPage(
+        await readItems(pool, req, async (client, companyId) => {
+          const canRank = await canOrderItemsBySales(client,actor(req),companyId);
+          return masterPage(
             client,
             req,
             companyId,
             itemSelect,
             itemFrom,
             "i",
-            itemColumns,
+            { ...itemColumns, saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint" },
             [
               "i.code",
               "i.name",
@@ -511,10 +513,11 @@ export function itemRoutes(pool: Pool): Router {
               shelfId: "id",
               currencyId: "id",
             },
-            "code:asc",
+            "saleTimes:desc,code:asc",
             "item",
-          ),
-        ),
+            ["i.code","i.barcode"],
+          );
+        }),
       );
     }),
   );
