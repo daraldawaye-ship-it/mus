@@ -14,7 +14,8 @@ const query=z.object({
     "saleOneMonth","saleFourMonths","saleTwelveMonths","saleAllTime",
     "purchaseOneMonth","purchaseFourMonths","purchaseTwelveMonths","purchaseAllTime",
     "saleReturnOneMonth","saleReturnFourMonths","saleReturnTwelveMonths","saleReturnAllTime",
-    "purchaseReturnOneMonth","purchaseReturnFourMonths","purchaseReturnTwelveMonths","purchaseReturnAllTime"]).default("code"),
+    "purchaseReturnOneMonth","purchaseReturnFourMonths","purchaseReturnTwelveMonths","purchaseReturnAllTime",
+    "saleTimesOneMonth","saleTimesFourMonths","saleTimesTwelveMonths","saleTimesAllTime"]).default("code"),
  sortDir:z.enum(["asc","desc"]).default("asc"),
 }).strict();
 export function itemActivityReportRoutes(pool:Pool):Router {
