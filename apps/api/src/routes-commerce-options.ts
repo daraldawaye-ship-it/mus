@@ -17,6 +17,7 @@ import {
 } from "./repositories/masters.ts";
 import { itemDTO, itemFrom, itemSelect } from "./repositories/items.ts";
 import { masterPage } from "./services/masters.ts";
+import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
@@ -42,7 +43,8 @@ export function commerceOptionRoutes(pool: Pool): Router {
         };
         const request: Request = Object.create(req) as Request;
         Object.defineProperty(request, "query", { value: query });
-        if (req.query.type === "items")
+        if (req.query.type === "items") {
+          const canRank = await canOrderItemsBySales(client,user,companyId);
           return masterPage(
             client,
             request,
@@ -50,18 +52,23 @@ export function commerceOptionRoutes(pool: Pool): Router {
             itemSelect,
             itemFrom,
             "i",
-            { id: "i.id", code: "i.code", name: "i.name", active: "i.active" },
+            { id: "i.id", code: "i.code", name: "i.name", active: "i.active", saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint" },
             [
               "i.name",
               "i.english_name",
               "i.code",
               "i.barcode",
               "i.search_keys",
+              "f.arabic_name",
+              "f.english_name",
             ],
             itemDTO,
             { id: "id", active: "boolean" },
-            "code:asc",
+            "saleTimes:desc,code:asc",
+            undefined,
+            ["i.code","i.barcode"],
           );
+        }
         if (req.query.type === "accounts") {
           const accountRequest: Request = Object.create(req) as Request;
           Object.defineProperty(accountRequest, "query", {
