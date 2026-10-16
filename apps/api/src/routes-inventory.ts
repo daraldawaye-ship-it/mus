@@ -72,6 +72,7 @@ const balanceColumns = {
 };
 const movementColumns = {
   id: "m.id",
+  supplierAccountId: "m.supplier_account_id",
   itemId: "m.item_id",
   itemCode: "i.code",
   itemName: "i.name",
