@@ -873,8 +873,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const { user } = useSession();
   const client = useQueryClient();
   const controls = useControls(companyId, context.employee?.id ?? null);
-  const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
-  const showCurrency = controls.value("show_currency") !== false;
   const directory = usePageDirectory(companyId);
   const canEditItem =
     (context.general || context.permissions.includes("items.manage")) &&
@@ -893,6 +891,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [params] = useSearchParams();
   const kind: InvoiceKind =
     params.get("kind") === "purchase" ? "purchase" : "sale";
+  const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
+  const showCurrency = controls.value("show_currency") !== false;
   const guard = useScopeGuard(`company:${companyId}:invoice-editor:${kind}`);
   const memoImpact=useQuery({
     queryKey:["memo-feature-impact",user?.id,companyId,kind],
@@ -960,6 +960,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setCurrency(defaultYer);
     }
   }, [defaultYer, currency]);
+  useEffect(() => {
+    if (!showCurrency && defaultYer && currency?.code !== "YER") {
+      currencyManuallyChosen.current = false;
+      setCurrency(defaultYer);
+    }
+  }, [showCurrency, defaultYer, currency]);
   useEffect(() => {
     const main = mainBranchQuery.data;
     if (!main || branchManuallyChosen.current || branch) return;
@@ -1162,6 +1168,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
+    if (kind === "purchase") onChooseItem(selected.id);
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
@@ -1645,6 +1652,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   type="date"
                   required
                   value={documentDate}
+                  disabled={locked || !allowDateEdit}
                   onChange={(event) => setDocumentDate(event.target.value)}
                 />
                 <Button
@@ -1654,7 +1662,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 >
                   {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
                 </Button>
-                <ServerLookup<CompanyCurrency>
+                {showCurrency && <ServerLookup<CompanyCurrency>
                   companyId={companyId}
                   resource={`/companies/${companyId}/commerce-options?type=currencies`}
                   label="عملة الفاتورة"
@@ -1666,7 +1674,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   display={(value) => `${value.code} — ${value.name}`}
                   disabled={locked || hasLinkedLines}
                   required
-                />
+                />}
                 <ServerLookup<Branch>
                   companyId={companyId}
                   resource={`/companies/${companyId}/commerce-options?type=branches`}
