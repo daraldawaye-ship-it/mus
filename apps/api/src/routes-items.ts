@@ -744,7 +744,7 @@ export function itemRoutes(pool: Pool): Router {
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
-            supplierAccountId: input.supplierAccountId,
+            supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
