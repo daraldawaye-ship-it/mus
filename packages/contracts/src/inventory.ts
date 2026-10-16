@@ -151,6 +151,10 @@ export interface StockMovement {
   itemId: number;
   itemCode: string;
   itemName: string;
+  /** Immutable supplier snapshot recorded when the movement was posted. */
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
   locationId: number;
   locationName: string;
   branchId: number;
