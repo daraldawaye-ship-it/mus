@@ -28,6 +28,7 @@ import {
   readItemCoverage,
 } from "./services/item-coverage.ts";
 import { actor, handler, id, parse } from "./http.ts";
+import { companyAccess } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
   itemAgentDTO,
@@ -73,6 +74,7 @@ const itemColumns = {
   barcode: "i.barcode",
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
+  supplierAccountId: "i.supplier_account_id",
   compositionId: "i.composition_id",
   shelfId: "i.shelf_id",
   compositionArabicName: "f.arabic_name",
@@ -743,6 +745,7 @@ export function itemRoutes(pool: Pool): Router {
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
+            supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
@@ -839,6 +842,19 @@ export function itemRoutes(pool: Pool): Router {
               { active: "boolean" },
               "name:asc",
             );
+          if (req.query.type === "suppliers") {
+            await companyAccess(client, actor(req), companyId, "items.manage");
+            return masterPage(
+              client,req,companyId,
+              "SELECT a.* FROM (SELECT id,company_id,code,name,category,cash_or_bank AS \"cashOrBank\",active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
+              "FROM (SELECT id,company_id,code,name,category,cash_or_bank AS \"cashOrBank\",active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
+              "a",
+              { id:"a.id",code:"a.code",name:"a.name",active:"a.active" },
+              ["a.code","a.name"],
+              row=>({id:row.id,code:row.code,name:row.name,active:row.active,category:row.category,cashOrBank:row.cashOrBank}),
+              { active:"boolean" },"name:asc",
+            );
+          }
           if (req.query.type === "currencies")
             return masterPage(
               client,

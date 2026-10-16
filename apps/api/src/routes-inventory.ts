@@ -72,6 +72,7 @@ const balanceColumns = {
 };
 const movementColumns = {
   id: "m.id",
+  supplierAccountId: "m.supplier_account_id",
   itemId: "m.item_id",
   itemCode: "i.code",
   itemName: "i.name",
@@ -256,10 +257,11 @@ export function inventoryRoutes(pool: Pool): Router {
           );
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
           let where =
-            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2)";
+            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR m.supplier_account_code ILIKE $2 OR m.supplier_account_name ILIKE $2)";
           for (const key of [
             "itemId",
             "locationId",
+            "supplierAccountId",
             "branchId",
             "createdBy",
             "invoiceId",

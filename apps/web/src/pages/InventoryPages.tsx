@@ -341,6 +341,15 @@ function StockFilters({
       />
       {movements && (
         <>
+          <ReferenceField<Account>
+            companyId={companyId}
+            type="accounts"
+            label="مورد الصنف وقت الحركة"
+            id={filterId(params, "supplierAccountId")}
+            onChange={(value) =>
+              updateFilter(setParams, "supplierAccountId", value ? String(value.id) : "")
+            }
+          />
           <Select
             label="نوع الحركة"
             value={params.get("kind") ?? ""}
@@ -536,7 +545,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["itemId", "locationId", "kind", "dateFrom", "dateTo"])
+  for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "dateFrom", "dateTo"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<StockMovement>(
     `/companies/${companyId}/stock-movements?${filters}`,
@@ -563,6 +572,13 @@ function MovementsList({ context }: { context: CompanyContext }) {
         header: "الصنف",
         size: 200,
         cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
+      },
+      {
+        accessorKey: "supplierAccountName",
+        header: "مورد الصنف وقت الحركة",
+        size: 185,
+        enableSorting: false,
+        cell: ({ row }) => <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>,
       },
       {
         accessorKey: "locationName",

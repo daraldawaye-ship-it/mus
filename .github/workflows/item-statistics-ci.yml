@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'apps/api/migrations/070_incremental_item_statistics.sql'
+      - 'apps/api/migrations/071_item_source_supplier.sql'
       - 'apps/api/src/services/item-statistics.ts'
       - 'apps/web/src/pages/ItemsPages.tsx'
       - 'tests/api.test.ts'
@@ -42,5 +43,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - name: Verify item statistics and count parity with full rebuild in Aden timezone
-        run: node --import tsx --test --test-name-pattern="item statistics track" tests/api.test.ts
+      - name: Verify stock statistics and source supplier attribution in Aden timezone
+        run: node --import tsx --test --test-name-pattern="item statistics track|item source supplier can" tests/api.test.ts

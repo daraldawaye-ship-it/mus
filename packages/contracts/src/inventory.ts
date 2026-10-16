@@ -151,6 +151,9 @@ export interface StockMovement {
   itemId: number;
   itemCode: string;
   itemName: string;
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
   locationId: number;
   locationName: string;
   branchId: number;
