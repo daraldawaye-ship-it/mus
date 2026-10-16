@@ -102,6 +102,7 @@ export async function requestPermissionTargets(
     control: "company.control",
     "configuration-foundation": "company.configuration",
     "financial-options": "company.financial-documents",
+    "purchase-history": "company.purchases",
     "commerce-options": "company.sales",
     "inventory-options": "company.stock-operations",
   };
