@@ -1896,7 +1896,7 @@ function ItemEditor({
             </>
           )}
         </>
-      )
+      )}
       <Dialog
         open={picker !== null}
         title={
