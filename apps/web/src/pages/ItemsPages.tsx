@@ -52,6 +52,7 @@ import { errorMessage, ServerLookup } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
+import { ExpiryMonthField } from "../ExpiryMonthField";
 import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
@@ -1054,6 +1055,7 @@ type ItemFields = {
   purchaseNotes: string;
   orderStoppedUntil: string;
   hasExpiry: boolean;
+  nearestExpiryDate: string;
   active: boolean;
 };
 function initialItemFields(item: Item | null): ItemFields {
@@ -1089,6 +1091,7 @@ function initialItemFields(item: Item | null): ItemFields {
     purchaseNotes: item?.purchaseNotes ?? "",
     orderStoppedUntil: item?.orderStoppedUntil ?? "",
     hasExpiry: item?.hasExpiry ?? true,
+    nearestExpiryDate: item?.nearestExpiryDate ?? "",
     active: item?.active ?? true,
   };
 }
@@ -1229,6 +1232,7 @@ function ItemEditor({
       agentId: agent?.id ?? null,
       ...(item && !supplierManuallyTouched ? {} : { supplierAccountId: supplier?.id ?? null }),
       orderStoppedUntil: fields.orderStoppedUntil || null,
+      nearestExpiryDate: fields.nearestExpiryDate || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
       settlementApprovalDate: fields.settlementApprovalDate || null,
@@ -1539,11 +1543,17 @@ function ItemEditor({
               />
               له تاريخ انتهاء
             </label>
-            {item && fields.hasExpiry && (
-              <Field label="أقرب تاريخ انتهاء"
-                type="date" readOnly
-                value={nearestExpirySaved !== undefined ? nearestExpirySaved ?? "" : item.nearestExpiryDate ?? ""}
-                hint="يُحدّث من شاشة تسوية الصنف." />
+            {fields.hasExpiry && (
+              <ExpiryMonthField
+                label="شهر وسنة أقرب انتهاء"
+                value={nearestExpirySaved !== undefined ? nearestExpirySaved : fields.nearestExpiryDate}
+                disabled={disabled}
+                onChange={(date) => {
+                  setNearestExpirySaved(undefined);
+                  edit("nearestExpiryDate", date ?? "");
+                }}
+                hint="يُحفظ يوم 01 من الشهر. يمكنك تعديله من الكرت أو من تسوية الصنف."
+              />
             )}
             <label className="check-label">
               <input
@@ -1889,6 +1899,7 @@ function ItemEditor({
           onClose={() => setAdjustmentOpen(false)}
           onSaved={(date) => {
             setNearestExpirySaved(date);
+            setFields((previous) => ({ ...previous, nearestExpiryDate: date ?? "" }));
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "statistics", item.id],
             });
