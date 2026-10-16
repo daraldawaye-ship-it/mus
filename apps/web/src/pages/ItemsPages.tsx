@@ -635,7 +635,7 @@ function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:nu
     queryKey:["items",user?.id,companyId,"composition-peers",itemId,page],
     queryFn:({signal})=>api<{peers:ItemCompositionPeers}>(
       `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}`,{signal}),
-    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const peers=result.data?.peers;
   return (
@@ -697,7 +697,7 @@ function ItemPurchasePricesCard({companyId,itemId}:{companyId:number;itemId:numb
     queryKey:["items",user?.id,companyId,"purchase-price-statistics",itemId],
     queryFn:({signal})=>api<{statistics:ItemPurchasePriceStatistics}>(
       `/companies/${companyId}/items/${itemId}/purchase-price-statistics`,{signal}),
-    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const stats=result.data?.statistics;
   const detail=(p:ItemPurchasePricePoint)=>(
@@ -750,10 +750,11 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
   const result=useQuery({
     queryKey:["items",user?.id,companyId,"activity",itemId],
     queryFn:({signal})=>api<{activity:ItemActivity}>(`/companies/${companyId}/items/${itemId}/activity`,{signal}),
-    enabled:!!user,staleTime:0,refetchOnWindowFocus:true,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const activity=result.data?.activity;
   const fmt=(quantity:string)=>BigInt(quantity).toLocaleString("en-US");
+  const net=(positive:string,returned:string)=>fmt((BigInt(positive)-BigInt(returned)).toString());
   const periods=activity?.periods;
   return (
     <Card title="إحصائيات المبيعات والمشتريات">
@@ -773,18 +774,24 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
               <dd>
                 مبيعات: <bdi>{fmt(row.saleQuantity)}</bdi> {activity.unitName} ·
                 مرتجع بيع: <bdi>{fmt(row.saleReturnQuantity)}</bdi> ·
+                صافي المباع: <bdi>{net(row.saleQuantity,row.saleReturnQuantity)}</bdi> {activity.unitName} ·
                 فواتير بيع: <bdi>{fmt(row.saleInvoices)}</bdi> ·
                 فواتير مرتجع: <bdi>{fmt(row.saleReturnInvoices)}</bdi> ·
                 <strong>مرات البيع الصافية: <bdi>{fmt(
                   (BigInt(row.saleInvoices)-BigInt(row.saleReturnInvoices)).toString()
                 )}</bdi></strong> ·
-                سطور بيع: <bdi>{fmt(row.saleLines)}</bdi>
+                سطور بيع: <bdi>{fmt(row.saleLines)}</bdi> ·
+                سطور مرتجع بيع: <bdi>{fmt(row.saleReturnLines)}</bdi>
               </dd>
               <dd>
                 مشتريات: <bdi>{fmt(row.purchaseQuantity)}</bdi> {activity.unitName} ·
                 مرتجع شراء: <bdi>{fmt(row.purchaseReturnQuantity)}</bdi> ·
+                صافي المشتريات: <bdi>{net(row.purchaseQuantity,row.purchaseReturnQuantity)}</bdi> {activity.unitName} ·
                 فواتير شراء: <bdi>{fmt(row.purchaseInvoices)}</bdi> ·
-                سطور شراء: <bdi>{fmt(row.purchaseLines)}</bdi>
+                فواتير مرتجع شراء: <bdi>{fmt(row.purchaseReturnInvoices)}</bdi> ·
+                صافي مرات الشراء: <bdi>{net(row.purchaseInvoices,row.purchaseReturnInvoices)}</bdi> ·
+                سطور شراء: <bdi>{fmt(row.purchaseLines)}</bdi> ·
+                سطور مرتجع شراء: <bdi>{fmt(row.purchaseReturnLines)}</bdi>
               </dd>
             </div>
           ))}
@@ -871,9 +878,8 @@ function ItemStatisticsCard({
         { signal },
       ),
     enabled: !!user,
-    gcTime: 0,
     staleTime: 0,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   });
   const statistics = result.data?.statistics;
@@ -1116,6 +1122,7 @@ function ItemEditor({
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
   const [fields, setFields] = useState(() => initialItemFields(item));
+  const [detailsItemKey,setDetailsItemKey]=useState<string|null>(null);
   const [currency, setCurrency] = useState<SelectedCurrency | null>(
     item
       ? {
@@ -1870,9 +1877,26 @@ function ItemEditor({
           }}
         />
       )}
-      {item && <ItemActivityCard companyId={companyId} itemId={item.id} />}
-      {item && <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />}
-      {item && <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />}
+      {item && (
+        <>
+          <div className="form-actions">
+            <Button variant="secondary" onClick={() => setDetailsItemKey(current =>
+              current===`${companyId}:${item.id}` ? null : `${companyId}:${item.id}`
+            )}>
+              {detailsItemKey===`${companyId}:${item.id}`
+                ? "إخفاء التحليلات التفصيلية"
+                : "عرض إحصائيات الفترات والأسعار والأصناف المرتبطة"}
+            </Button>
+          </div>
+          {detailsItemKey===`${companyId}:${item.id}` && (
+            <>
+              <ItemActivityCard companyId={companyId} itemId={item.id} />
+              <ItemPurchasePricesCard companyId={companyId} itemId={item.id} />
+              <ItemCompositionPeersCard companyId={companyId} itemId={item.id} />
+            </>
+          )}
+        </>
+      )}
       <Dialog
         open={picker !== null}
         title={
