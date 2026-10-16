@@ -321,6 +321,7 @@ export async function requestPageKeys(
     "account-ledger": "account-ledger",
     audit: "audit",
     "financial-options": "financial-documents",
+    "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
   if (resource === "transaction-reset")
