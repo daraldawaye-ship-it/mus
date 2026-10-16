@@ -125,6 +125,7 @@ const itemFields = z
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
+    supplierAccountId: id.nullable().default(null),
     compositionId: id.nullable().default(null),
     unit1Name: name.default("باكت"),
     unit2Name: z.string().trim().max(120).default(""),
@@ -237,6 +238,9 @@ export interface Item extends ItemIdentity {
   barcode: string;
   legacyId: string;
   agentId: number | null;
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
   compositionId: number | null;
   compositionArabicName: string | null;
   compositionEnglishName: string | null;
