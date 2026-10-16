@@ -45,6 +45,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { useControls, isMobileDevice } from "../control";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { saleStockQuantity } from "../sale-stock-quantity";
@@ -788,7 +789,22 @@ function OriginalInvoicePicker({
   );
 }
 
-function InvoiceWorkspace({ children }: { children: ReactNode }) {
+function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
+  children: ReactNode;
+  context: CompanyContext;
+  kind: InvoiceKind;
+  selectedItemId: number | null;
+}) {
+  const companyId = context.company.id;
+  const controls = useControls(companyId, context.employee?.id ?? null);
+  const showPurchases = kind === "purchase" && controls.value("show_recent_item_purchases") !== false;
+  const recent = useQuery<{
+    items: { invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
+  }>({
+    queryKey: ["recent-item-purchases", companyId, selectedItemId],
+    queryFn: ({ signal }) => api(`/companies/${companyId}/items/${selectedItemId}/recent-purchases`, { signal }),
+    enabled: showPurchases && !!selectedItemId,
+  });
   return (
     <div className="invoice-workspace">
       <div className="invoice-workspace-main">{children}</div>
@@ -797,7 +813,25 @@ function InvoiceWorkspace({ children }: { children: ReactNode }) {
         aria-label="المساحة الجانبية للفاتورة"
         tabIndex={0}
       >
-        <section className="invoice-empty-panel" aria-label="المساحة الأولى" />
+        {showPurchases && selectedItemId ? (
+          <section className="invoice-empty-panel recent-item-purchases" aria-label="آخر خمس مشتريات للصنف">
+            <strong>آخر خمس مشتريات للصنف</strong>
+            {recent.isLoading && <small>جارٍ تحميل المشتريات…</small>}
+            {recent.isError && <small>تعذر تحميل المشتريات.</small>}
+            {recent.data?.items.length === 0 && <small>لا توجد مشتريات سابقة.</small>}
+            {recent.data && recent.data.items.length > 0 && (
+              <table className="recent-purchases-table">
+                <thead><tr><th>التاريخ</th><th>المورد</th><th>الكمية (وحدة 1)</th></tr></thead>
+                <tbody>{recent.data.items.map(row => (
+                  <tr key={row.invoiceId + "-" + row.documentDate + "-" + row.supplierName}>
+                    <td>{row.documentDate}</td><td>{row.supplierName}</td>
+                    <td dir="ltr">{row.quantityFirstUnit}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+        ) : <section className="invoice-empty-panel" aria-label="المساحة الأولى" />}
         <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
       </aside>
     </div>
@@ -809,31 +843,38 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
   const [params] = useSearchParams();
   const { user } = useSession();
   const kind = params.get("kind") === "purchase" ? "purchase" : "sale";
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const control = useControls(context.company.id, context.employee?.id ?? null);
   if (!commerceAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
   if (invoiceId === "new")
-    return canPost(context) ? (
-      <InvoiceWorkspace>
+    return canPost(context) ? ((isMobileDevice() && control.value(kind === "sale" ? "mobile_sales" : "mobile_purchases") === false) ? (
+      <Notice tone="warning">إنشاء هذا النوع من الفواتير من الهاتف غير مسموح في الكنترول.</Notice>
+    ) : (
+      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItemId}>
         <InvoiceEditor
           key={`${user?.id}:${context.company.id}:${kind}`}
-          context={context}
+          context={context} onChooseItem={setSelectedItemId}
         />
       </InvoiceWorkspace>
-    ) : (
+    )) : (
       <Notice tone="warning">
         إنشاء الفاتورة يحتاج صلاحية إدارة الفواتير والترحيل المالي.
       </Notice>
     );
   return (
-    <InvoiceWorkspace>
+    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null}>
       <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
     </InvoiceWorkspace>
   );
 }
-function InvoiceEditor({ context }: { context: CompanyContext }) {
+function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (itemId: number) => void }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
+  const controls = useControls(companyId, context.employee?.id ?? null);
+  const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
+  const showCurrency = controls.value("show_currency") !== false;
   const directory = usePageDirectory(companyId);
   const canEditItem =
     (context.general || context.permissions.includes("items.manage")) &&
