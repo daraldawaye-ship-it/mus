@@ -99,6 +99,7 @@ export async function requestPermissionTargets(
     "account-ledger": "company.account-ledger",
     audit: "company.audit",
     configuration: "company.configuration",
+    control: "company.control",
     "configuration-foundation": "company.configuration",
     "financial-options": "company.financial-documents",
     "commerce-options": "company.sales",
@@ -189,6 +190,7 @@ export async function requestPermissionTargets(
   let page = direct[resource];
   if (resource === "commerce-options" && permission === "inventory.view")
     page = "company.stock-balances";
+  if (resource === "control") action = "view";
   if (resource === "configuration") {
     action = action === "view" ? "view" : "edit";
     if (detail === "record-options")
