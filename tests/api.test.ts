@@ -2689,6 +2689,25 @@ test("item statistics track finalized stock and last normal documents without le
   },200);
   assert.equal((await statistics()).adjustmentCounts?.sinceDisplay,"2",
     "Changing item display date updates the projection immediately");
+  await platform.client.ok("POST",prefix+"/stock-adjustments",{
+    ...identicalPayload,idempotencyKey:randomUUID(),
+  },201);
+  const incremented=await statistics();
+  assert.equal(incremented.adjustmentCounts?.allTime,"3","New count increments without scanning history");
+  assert.equal(incremented.adjustmentCounts?.sinceApproval,"3");
+  assert.equal(incremented.adjustmentCounts?.sinceDisplay,"3");
+  assert.equal(incremented.adjustmentCounts?.approvalDate,"2026-10-12",
+    "DATE must not shift to yesterday in Asia/Aden");
+  assert.equal(incremented.adjustmentCounts?.displayDate,"2026-10-12");
+
+  // The optimized incremental projection must match a full authoritative rebuild.
+  const projection=async()=>(
+    await f.pool.query("SELECT (to_jsonb(s)-'updated_at') AS snapshot FROM item_statistics s WHERE company_id=$1 AND item_id=$2",
+      [co.id,item.id])
+  ).rows[0]?.snapshot;
+  const incremental=await projection();
+  await f.pool.query("SELECT refresh_item_statistics($1,$2)",[co.id,item.id]);
+  assert.deepEqual(await projection(),incremental,"Incremental stock and latest document refs match full rebuild");
 
   const other = await company(platform.client, "Other statistics company");
   const activity = (await platform.client.ok<{activity:ItemActivity}>(
