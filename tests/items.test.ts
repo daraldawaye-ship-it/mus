@@ -1553,3 +1553,36 @@ test("Item shelf cards are real company-scoped references while legacy labels re
   assert.equal((await f.owner.request("PATCH",`/companies/${a.id}/items/${after.id}`,
     patchItem(after,{shelf:"ا-1",shelfId:shelfa.id}))).status,409);
 });
+
+test("item nearest expiry is editable from card and preserves original dates on unrelated edits", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company();
+  const existingCurrency = await f.pool.query(
+    "SELECT id FROM company_currencies WHERE company_id=$1 AND code='YER'",
+    [company.id],
+  );
+  const currencyId = Number(existingCurrency.rows[0].id);
+  const created = await item(f, company.id, currencyId, { nearestExpiryDate: "2027-10-01" });
+  assert.equal(created.nearestExpiryDate, "2027-10-01");
+  const url = `/companies/${company.id}/items/${created.id}`;
+  const changed = (await f.owner.ok<{item:Item}>("PATCH", url,
+    patchItem(created, {nearestExpiryDate:"2028-04-01"}))).item;
+  assert.equal(changed.nearestExpiryDate, "2028-04-01");
+  const unchanged = (await f.owner.ok<{item:Item}>("PATCH", url,
+    patchItem(changed, { name: "Expiry remains unchanged" }))).item;
+  assert.equal(unchanged.nearestExpiryDate, "2028-04-01");
+  const cleared = (await f.owner.ok<{item:Item}>("PATCH", url,
+    patchItem(unchanged, { nearestExpiryDate:null }))).item;
+  assert.equal(cleared.nearestExpiryDate, null);
+  assert.equal((await f.owner.request("PATCH", url,
+    patchItem(cleared, { nearestExpiryDate:"2027-13-01" }))).status, 400);
+  const noExpiry = await item(f, company.id, currencyId, { hasExpiry: false });
+  assert.equal((await f.owner.request("PATCH",
+    `/companies/${company.id}/items/${noExpiry.id}`,
+    patchItem(noExpiry, { nearestExpiryDate:"2027-10-01" }))).status, 400);
+  const audit = await f.pool.query(
+    "SELECT after_value->>'nearestExpiryDate' AS expiry FROM audit_events WHERE company_id=$1 AND target_type='item' AND target_id=$2 AND action='item.update' ORDER BY id DESC LIMIT 1",
+    [company.id, created.id],
+  );
+  assert.equal(audit.rows[0]?.expiry, null);
+});

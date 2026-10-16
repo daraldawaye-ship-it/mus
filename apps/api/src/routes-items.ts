@@ -746,6 +746,7 @@ export function itemRoutes(pool: Pool): Router {
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
             supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
+            nearestExpiryDate: input.nearestExpiryDate === undefined ? before.nearestExpiryDate : input.nearestExpiryDate,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(

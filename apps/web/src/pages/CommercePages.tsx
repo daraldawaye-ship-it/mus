@@ -46,6 +46,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useControls, isMobileDevice } from "../control";
+import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { saleStockQuantity } from "../sale-stock-quantity";
@@ -2160,16 +2161,15 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                 normalizeDigits(
                                   line.quantity.trim(),
                                 ).startsWith("-")) ? (
-                              <Field
+                              <ExpiryMonthField
                                 id={lineInputId(line, "expiry")}
                                 className="item-cell-field"
-                                label={`تاريخ انتهاء ${line.itemName}`}
-                                type="date"
+                                label={`شهر وسنة انتهاء ${line.itemName}`}
                                 required={kind === "purchase"}
-                                value={line.expiryDate ?? ""}
-                                onChange={(event) =>
+                                value={line.expiryDate}
+                                onChange={(date) =>
                                   updateLine(line.key, {
-                                    expiryDate: event.target.value || null,
+                                    expiryDate: date,
                                   })
                                 }
                                 onKeyDown={(event) => {

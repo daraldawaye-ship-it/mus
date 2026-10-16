@@ -151,6 +151,7 @@ const itemFields = z
     purchaseNotes: z.string().trim().max(1000).default(""),
     orderStoppedUntil: documentDateSchema.nullable().default(null),
     hasExpiry: z.boolean().default(true),
+    nearestExpiryDate: documentDateSchema.nullable().optional(),
     active: z.boolean().default(true),
   })
   .strict();
@@ -164,9 +165,13 @@ function validateNames(
     commissionRate: string;
     clearanceFrom: string | null;
     clearanceTo: string | null;
+    hasExpiry: boolean;
+    nearestExpiryDate?: string | null;
   },
   context: z.RefinementCtx,
 ) {
+  if (!value.hasExpiry && value.nearestExpiryDate)
+    context.addIssue({ code: "custom", path: ["nearestExpiryDate"], message: "لا يمكن تعيين انتهاء لصنف لا يتتبع الانتهاء" });
   if (value.commissionRate !== "0" && (!value.clearanceFrom || !value.clearanceTo))
     context.addIssue({ code: "custom", path: ["clearanceFrom"], message: "حدد بداية ونهاية فترة التصريف لتفعيل العمولة" });
   if (value.clearanceFrom && value.clearanceTo && value.clearanceFrom > value.clearanceTo)
