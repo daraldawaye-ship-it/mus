@@ -93,6 +93,13 @@ export function itemDTO(row: QueryResultRow): Item {
     currencyActive: row.currency_active,
     reorderLimit: normalizeRate(row.reorder_limit),
     orderQuantity: normalizeRate(row.order_quantity),
+    reserveQuantity: normalizeRate(row.reserve_quantity),
+    ...(Object.hasOwn(row, "approximate_coverage_days") ? {
+      approximateCoverageDays: row.approximate_coverage_days === null
+        ? null : normalizeRate(row.approximate_coverage_days),
+      coverageAfterReserveDays: row.coverage_after_reserve_days === null
+        ? null : normalizeRate(row.coverage_after_reserve_days),
+    } : {}),
     searchKeys: row.search_keys,
     purchaseNotes: row.purchase_notes,
     orderStoppedUntil: row.order_stopped_until,

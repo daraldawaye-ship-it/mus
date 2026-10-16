@@ -19,6 +19,14 @@ import { readItemActivity } from "./services/item-activity.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
+import {
+  canReadItemCoverage,
+  addItemCoverageToPage,
+  itemCoverageJoin,
+  itemCoverageSelect,
+  itemCoverageRedactedSelect,
+  readItemCoverage,
+} from "./services/item-coverage.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
@@ -87,6 +95,7 @@ const itemColumns = {
   currencyCode: "c.code",
   reorderLimit: "i.reorder_limit",
   orderQuantity: "i.order_quantity",
+  reserveQuantity: "i.reserve_quantity",
   searchKeys: "i.search_keys",
   orderStoppedUntil: "i.order_stopped_until",
   hasExpiry: "i.has_expiry",
@@ -485,14 +494,27 @@ export function itemRoutes(pool: Pool): Router {
       res.json(
         await readItems(pool, req, async (client, companyId) => {
           const canRank = await canOrderItemsBySales(client,actor(req),companyId);
-          return masterPage(
+          const canViewCoverage = await canReadItemCoverage(client, actor(req), companyId);
+          // masterPage validates the complete sort expression. This check only
+          // chooses whether coverage must be available before pagination.
+          const coverageSort = canViewCoverage && typeof req.query.sort === "string"
+            && req.query.sort.split(",").some(sort =>
+              ["approximateCoverageDays", "coverageAfterReserveDays"].includes(sort.split(":")[0]),
+            );
+          const coverageJoin = coverageSort ? itemCoverageJoin : "";
+          const result = await masterPage(
             client,
             req,
             companyId,
-            itemSelect,
-            itemFrom,
+            itemSelect.replace(itemFrom, `${coverageSort ? itemCoverageSelect : itemCoverageRedactedSelect} ${itemFrom}${coverageJoin}`),
+            itemFrom + coverageJoin,
             "i",
-            { ...itemColumns, saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint" },
+            {
+              ...itemColumns,
+              saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint",
+              approximateCoverageDays: coverageSort ? "coverage.approximate_coverage_days" : "NULL::numeric",
+              coverageAfterReserveDays: coverageSort ? "coverage.coverage_after_reserve_days" : "NULL::numeric",
+            },
             [
               "i.code",
               "i.name",
@@ -517,6 +539,9 @@ export function itemRoutes(pool: Pool): Router {
             "item",
             ["i.code","i.barcode"],
           );
+          if (canViewCoverage && !coverageSort)
+            result.items = await addItemCoverageToPage(client, companyId, result.items);
+          return result;
         }),
       );
     }),
@@ -605,6 +630,15 @@ export function itemRoutes(pool: Pool): Router {
         },
       );
       res.status(result.created ? 201 : 200).json({ item: result.item });
+    }),
+  );
+  router.get(
+    `${base}/items/:id/coverage`,
+    handler(async (req, res) => {
+      const itemId = id(req.params.id);
+      res.json(await readItems(pool, req, async (client, companyId) => ({
+        coverage: await readItemCoverage(client, actor(req), companyId, itemId),
+      })));
     }),
   );
   router.get(
@@ -708,6 +742,7 @@ export function itemRoutes(pool: Pool): Router {
             defaultSaleUnit: input.defaultSaleUnit ?? before.defaultSaleUnit,
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
+            reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(

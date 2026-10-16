@@ -31,7 +31,7 @@ export async function itemIdempotent(
 ): Promise<QueryResultRow | null> {
   // Old accepted creates may predate these defaults; keep their payload immutable.
   const samePayload = table === "items"
-    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null}'::jsonb || $3::jsonb)`
+    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0"}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0"}'::jsonb || $3::jsonb)`
     : "creation_payload=$3::jsonb";
   const result = await db.query(
     `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -90,6 +90,7 @@ export type ItemFields = Pick<
   | "currencyId"
   | "reorderLimit"
   | "orderQuantity"
+  | "reserveQuantity"
   | "searchKeys"
   | "purchaseNotes"
   | "orderStoppedUntil"
@@ -209,6 +210,7 @@ export const itemFieldColumns = [
   ["currencyId", "currency_id"],
   ["reorderLimit", "reorder_limit"],
   ["orderQuantity", "order_quantity"],
+  ["reserveQuantity", "reserve_quantity"],
   ["searchKeys", "search_keys"],
   ["purchaseNotes", "purchase_notes"],
   ["orderStoppedUntil", "order_stopped_until"],

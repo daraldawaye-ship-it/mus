@@ -34,6 +34,7 @@ import {
   type ItemAgentInput,
   type ItemStatistics,
   type ItemActivity,
+  type ItemCoverage,
   type ItemPurchasePricePoint,
   type ItemPurchasePriceStatistics,
   type ItemCompositionPeers,
@@ -302,6 +303,22 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         enableSorting: false,
         size: 100,
         cell: ({ row }) => <bdi>{row.original.currencyCode}</bdi>,
+      },
+      {
+        accessorKey: "approximateCoverageDays",
+        header: "الكفاية التقريبية (يوم)",
+        size: 180,
+        cell: ({ row }) => (
+          <ValueCell><bdi>{row.original.approximateCoverageDays ?? "—"}</bdi></ValueCell>
+        ),
+      },
+      {
+        accessorKey: "coverageAfterReserveDays",
+        header: "الكفاية بعد الاحتياط (يوم)",
+        size: 195,
+        cell: ({ row }) => (
+          <ValueCell><bdi>{row.original.coverageAfterReserveDays ?? "—"}</bdi></ValueCell>
+        ),
       },
       {
         accessorKey: "hasExpiry",
@@ -782,6 +799,62 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
   );
 }
 
+function ItemCoverageCard({
+  companyId,
+  itemId,
+  reserveQuantity,
+}: {
+  companyId: number;
+  itemId: number;
+  reserveQuantity: string;
+}) {
+  const { user } = useSession();
+  const result = useQuery({
+    queryKey: ["items", user?.id, companyId, "coverage", itemId],
+    queryFn: ({ signal }) =>
+      api<{ coverage: ItemCoverage }>(
+        `/companies/${companyId}/items/${itemId}/coverage`,
+        { signal },
+      ),
+    enabled: !!user,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+  const coverage = result.data?.coverage;
+  return (
+    <Card title="كفاية الصنف">
+      {result.isPending && <Notice>جارٍ تحميل الكفاية…</Notice>}
+      {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {coverage && (
+        <>
+          <dl className="details-list">
+            <dt>كمية احتياط</dt>
+            <dd><bdi>{reserveQuantity}</bdi> {coverage.unitName}</dd>
+            <dt>الكفاية التقريبية (يوم)</dt>
+            <dd><bdi>{coverage.approximateCoverageDays ?? "—"}</bdi></dd>
+            <dt>الكفاية بعد الاحتياط (يوم)</dt>
+            <dd><bdi>{coverage.coverageAfterReserveDays ?? "—"}</bdi></dd>
+          </dl>
+          {coverage.canViewCoverage ? (
+            <small className="muted">
+              بحسب صافي المبيعات حتى {coverage.asOf}. إذا كانت مبيعات الشهر أقل من 2 تُستخدم مبيعات أربعة أشهر. القيمة 9999 تعني أن معدل البيع صفر أو سالب.
+            </small>
+          ) : (
+            <Notice>عرض الكفاية يتطلب صلاحيات المخزون والمبيعات والمشتريات.</Notice>
+          )}
+        </>
+      )}
+      <div className="form-actions">
+        <Button variant="ghost" size="compact" disabled={result.isFetching} onClick={() => void result.refetch()}>
+          تحديث الكفاية
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function ItemStatisticsCard({
   companyId,
   itemId,
@@ -970,6 +1043,7 @@ type ItemFields = {
   purchaseFactor: string;
   reorderLimit: string;
   orderQuantity: string;
+  reserveQuantity: string;
   searchKeys: string;
   purchaseNotes: string;
   orderStoppedUntil: string;
@@ -1004,6 +1078,7 @@ function initialItemFields(item: Item | null): ItemFields {
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
+    reserveQuantity: item?.reserveQuantity ?? "0",
     searchKeys: item?.searchKeys ?? "",
     purchaseNotes: item?.purchaseNotes ?? "",
     orderStoppedUntil: item?.orderStoppedUntil ?? "",
@@ -1216,6 +1291,12 @@ function ItemEditor({
   const parsedFactor3 = itemFactorSchema.safeParse(fields.factor3);
   const factor2 = parsedFactor2.success ? parsedFactor2.data : NaN;
   const factor3 = parsedFactor3.success ? parsedFactor3.data : NaN;
+  const smallestUnitName =
+    factor3 > 1 && fields.unit3Name.trim()
+      ? fields.unit3Name.trim()
+      : factor2 > 1 && fields.unit2Name.trim()
+        ? fields.unit2Name.trim()
+        : fields.unit1Name.trim();
   return (
     <div className="item-editor">
       {!embedded && (
@@ -1704,6 +1785,7 @@ function ItemEditor({
               value={fields.reorderLimit}
               disabled={disabled}
               onChange={(event) => edit("reorderLimit", event.target.value)}
+              hint={`بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
             />
             <Field
               label="كمية الطلب"
@@ -1712,6 +1794,16 @@ function ItemEditor({
               value={fields.orderQuantity}
               disabled={disabled}
               onChange={(event) => edit("orderQuantity", event.target.value)}
+              hint={`بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
+            />
+            <Field
+              label="كمية احتياط"
+              inputMode="numeric"
+              dir="ltr"
+              value={fields.reserveQuantity}
+              disabled={disabled}
+              onChange={(event) => edit("reserveQuantity", event.target.value)}
+              hint={`عدد صحيح أو صفر بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
             />
             <Field
               label="يتوقف الطلب حتى تاريخ"
@@ -1756,6 +1848,7 @@ function ItemEditor({
         />
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
+      {item && <ItemCoverageCard companyId={companyId} itemId={item.id} reserveQuantity={item.reserveQuantity} />}
       {canAdjust && !embedded && (
         <div className="form-actions">
           <Button variant="secondary" onClick={() => setAdjustmentOpen(true)}>جرد الصنف</Button>
@@ -1770,6 +1863,9 @@ function ItemEditor({
             setNearestExpirySaved(date);
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "statistics", item.id],
+            });
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "coverage", item.id],
             });
           }}
         />

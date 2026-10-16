@@ -2606,6 +2606,10 @@
     },
     "source": "routes-inventory.ts"
   },
+  "GET /companies/:companyId/item-statistics-report": {
+    "queryFields": [],
+    "source": "routes-item-activity-report.ts"
+  },
   "POST /companies/:companyId/items/import-batch": {
     "queryFields": [],
     "bodyContract": "bodySchema",
@@ -2927,7 +2931,9 @@
     "source": "routes-items.ts"
   },
   "GET /companies/:companyId/items": {
-    "queryFields": [],
+    "queryFields": [
+      "sort"
+    ],
     "source": "routes-items.ts"
   },
   "POST /companies/:companyId/items": {
@@ -3099,6 +3105,32 @@
             }
           ]
         },
+        "settlementApprovalDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settlementDisplayDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "purchaseFactor": {
           "type": [
             "number",
@@ -3114,6 +3146,9 @@
           "type": "string"
         },
         "orderQuantity": {
+          "type": "string"
+        },
+        "reserveQuantity": {
           "type": "string"
         },
         "searchKeys": {
@@ -3160,6 +3195,24 @@
       ],
       "additionalProperties": false
     },
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/coverage": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/composition-peers": {
+    "queryFields": [
+      "page"
+    ],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/purchase-price-statistics": {
+    "queryFields": [],
+    "source": "routes-items.ts"
+  },
+  "GET /companies/:companyId/items/:id/activity": {
+    "queryFields": [],
     "source": "routes-items.ts"
   },
   "GET /companies/:companyId/items/:id/statistics": {
@@ -3335,6 +3388,32 @@
             }
           ]
         },
+        "settlementApprovalDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settlementDisplayDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "purchaseFactor": {
           "type": [
             "number",
@@ -3350,6 +3429,9 @@
           "type": "string"
         },
         "orderQuantity": {
+          "type": "string"
+        },
+        "reserveQuantity": {
           "type": "string"
         },
         "searchKeys": {

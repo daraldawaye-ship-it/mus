@@ -145,6 +145,7 @@ const itemFields = z
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
     orderQuantity: itemWholeQuantitySchema.default("0"),
+    reserveQuantity: itemWholeQuantitySchema.default("0"),
     searchKeys: z.string().trim().max(1000).default(""),
     purchaseNotes: z.string().trim().max(1000).default(""),
     orderStoppedUntil: documentDateSchema.nullable().default(null),
@@ -202,6 +203,7 @@ export const itemPatchSchema = itemFields
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
     compositionId: id.nullable().optional(),
     shelfId: id.nullable().optional(),
+    reserveQuantity: itemWholeQuantitySchema.optional(),
   })
   .strict()
   .superRefine(validateNames);
@@ -264,6 +266,11 @@ export interface Item extends ItemIdentity {
   currencyActive: boolean;
   reorderLimit: string;
   orderQuantity: string;
+  /** Exact quantity in the smallest enabled item unit. */
+  reserveQuantity: string;
+  /** Permission-scoped derived days; populated on the primary items list. */
+  approximateCoverageDays?: string | null;
+  coverageAfterReserveDays?: string | null;
   searchKeys: string;
   purchaseNotes: string;
   orderStoppedUntil: string | null;
@@ -379,6 +386,7 @@ export const itemCatalog = {
     purchaseFactor: 1,
     reorderLimit: "0",
     orderQuantity: "0",
+    reserveQuantity: "0",
     hasExpiry: true,
     active: true,
   },
@@ -463,6 +471,17 @@ export interface ItemActivity {
     twelveMonths: ItemActivityPeriod;
     allTime: ItemActivityPeriod;
   } | null;
+}
+
+/** Coverage uses current stock and net sales from the daily activity aggregates. */
+export interface ItemCoverage {
+  companyId: number;
+  itemId: number;
+  asOf: string;
+  unitName: string;
+  canViewCoverage: boolean;
+  approximateCoverageDays: string | null;
+  coverageAfterReserveDays: string | null;
 }
 
 /** Comparable historical price, in company base currency per smallest item unit. */
