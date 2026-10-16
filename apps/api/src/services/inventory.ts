@@ -164,7 +164,7 @@ export function weightedStockCost(
     ? valueBase
     : roundedRatio(valueBase * withdrawn, quantity, quantum(basePlaces));
 }
-function fractionQuantity(
+export function fractionQuantity(
   numerator: bigint,
   denominator: bigint,
 ): StockBalance["quantityUnit1"] {
