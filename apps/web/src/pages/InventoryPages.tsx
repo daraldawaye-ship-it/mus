@@ -578,7 +578,11 @@ function MovementsList({ context }: { context: CompanyContext }) {
         header: "مورد الصنف وقت الحركة",
         size: 185,
         enableSorting: false,
-        cell: ({ row }) => <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>,
+        cell: ({ row }) => <ValueCell>
+          {row.original.supplierAccountName ?? "—"}
+          {["prior_purchase","item_estimate"].includes(row.original.supplierInferenceSource ?? "") &&
+            <small className="muted"> (تقديري)</small>}
+        </ValueCell>,
       },
       {
         accessorKey: "locationName",
