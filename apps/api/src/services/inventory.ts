@@ -234,6 +234,12 @@ export function stockBalanceDTO(row: QueryResultRow): StockBalance {
     factor2: row.factor2,
     factor3: row.factor3,
     pooledQuantitySmallest: row.pooled_quantity_smallest,
+    ...(Object.hasOwn(row, "approximate_coverage_days") ? {
+      approximateCoverageDays: row.approximate_coverage_days === null
+        ? null : normalizeRate(row.approximate_coverage_days),
+      coverageAfterReserveDays: row.coverage_after_reserve_days === null
+        ? null : normalizeRate(row.coverage_after_reserve_days),
+    } : {}),
     pooledValueBase: normalizeRate(row.pooled_value_base),
     baseCurrencyCode: row.base_currency_code,
   };
