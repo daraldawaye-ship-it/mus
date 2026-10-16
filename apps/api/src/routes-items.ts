@@ -28,6 +28,7 @@ import {
   readItemCoverage,
 } from "./services/item-coverage.ts";
 import { actor, handler, id, parse } from "./http.ts";
+import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
   itemAgentDTO,
@@ -828,7 +829,8 @@ export function itemRoutes(pool: Pool): Router {
               ["f.arabic_name","f.english_name","f.description"],
               itemCompositionDTO,{active:"boolean"},"arabicName:asc",
             );
-          if (req.query.type === "suppliers")
+          if (req.query.type === "suppliers") {
+            await companyAccess(client,await currentActor(client,actor(req),false),companyId,"items.manage");
             return masterPage(client,req,companyId,
               "SELECT a.* FROM (SELECT company_id,id,code,name,active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
               "FROM (SELECT company_id,id,code,name,active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a","a",
@@ -836,6 +838,7 @@ export function itemRoutes(pool: Pool): Router {
               ["a.code","a.name"],
               (row)=>({id:row.id,code:row.code,name:row.name,active:row.active}),
               {active:"boolean"}, "code:asc");
+          }
           if (req.query.type === "agents")
             return masterPage(
               client,
