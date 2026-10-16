@@ -302,6 +302,7 @@ export async function requestPageKeys(
     currencies: "currencies",
     "finance-settings": "currencies",
     configuration: "configuration",
+    control: "control",
     "configuration-foundation": "configuration",
     "exchange-rates": "exchange-rates",
     branches: "branches",
