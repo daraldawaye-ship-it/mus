@@ -56,10 +56,11 @@ async function fixture(t: TestContext) {
   // current tables to impersonate an older schema.
   const legacyMigrations = (await readdir(migrationDirectory))
     .filter(
-      (name) => /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 72,
+      (name) => /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 74,
     )
     .sort();
   assert(legacyMigrations.includes("072_legacy_supplier_inference.sql"));
+  assert(legacyMigrations.includes("074_attendance_control_snapshot.sql"));
   await transaction(pool, async (client) => {
     await client.query(
       "CREATE TABLE schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())",
