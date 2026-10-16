@@ -785,7 +785,7 @@ function DocumentEditor({
     optional = false,
   ) {
     return (
-      <div className="field">
+      <div className="field financial-floating-picker">
         <span className="financial-field-label">{label}</span>
         <Button
           variant="secondary"

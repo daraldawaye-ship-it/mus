@@ -686,6 +686,14 @@ try {
         }));
       assert.equal(desktop.height, 32);
       assert.equal(desktop.font, "14px");
+      const itemLabelInside = await page.getByLabel("اسم الصنف", { exact: true })
+        .evaluate((input) => {
+          const label = input.closest(".field")?.querySelector("label");
+          const box = input.getBoundingClientRect();
+          const title = label?.getBoundingClientRect();
+          return !!title && title.top >= box.top && title.bottom <= box.bottom;
+        });
+      assert(itemLabelInside, "Item name label must be inside its compact input");
       assert.equal(
         await page.locator("html").getAttribute("data-theme"),
         "dark",

@@ -100,13 +100,17 @@ export function Field({
 }) {
   const generated = useId();
   const fieldId = id ?? generated;
+  // A compact label stays above a value, native date control or placeholder.
+  const hasValue = String(value ?? props.defaultValue ?? "").length > 0;
+  const labelRaised = hasValue || !!props.placeholder || !!props.readOnly ||
+    ["date", "datetime-local", "time", "month", "week", "color"].includes(props.type ?? "");
   const [focused, setFocused] = useState(false);
   const displayed = money && value !== null && value !== undefined &&
     (!focused || props.readOnly)
     ? formatMoney(String(value))
     : value;
   return (
-    <div className={`field ${className}`}>
+    <div className={`field floating-ready ${className}`} data-label-raised={labelRaised ? "true" : "false"}>
       <label htmlFor={fieldId}>{label}</label>
       <input
         {...props}
@@ -146,7 +150,7 @@ export function Select({
     </select>
   );
   return label ? (
-    <div className={`field ${className}`}>
+    <div className={`field floating-ready ${className}`} data-label-raised="true">
       <label htmlFor={fieldId}>{label}</label>
       {control}
     </div>

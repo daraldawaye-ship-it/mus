@@ -478,6 +478,14 @@ try {
           assert.equal(await occupied.getByLabel(
             kind === "sale" ? "حساب العميل / النقد" : "حساب السداد / الذمة").count(), 1);
           assert.equal(await occupied.getByLabel("تاريخ الفاتورة").count(), 1);
+          const dateLabelInside = await occupied.getByLabel("تاريخ الفاتورة")
+            .evaluate((input) => {
+              const label = input.closest(".field")?.querySelector("label");
+              const box = input.getBoundingClientRect();
+              const title = label?.getBoundingClientRect();
+              return !!title && title.top >= box.top && title.bottom <= box.bottom;
+            });
+          assert(dateLabelInside, "Invoice header date label must be inside the control");
           assert.equal(await occupied.getByLabel("عملة الفاتورة").count(), 1);
           assert.equal(await occupied.getByLabel("الفرع").count(), 1);
           assert.equal(await occupied.getByLabel("المعرض / المخزن").count(), 1);
