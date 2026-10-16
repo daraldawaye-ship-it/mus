@@ -1557,8 +1557,12 @@ test("Item shelf cards are real company-scoped references while legacy labels re
 test("item nearest expiry is editable from card and preserves original dates on unrelated edits", async (t) => {
   const f = await fixture(t);
   const company = await f.company();
-  const cur = await currency(f, company.id);
-  const created = await item(f, company.id, cur.id, { nearestExpiryDate: "2027-10-01" });
+  const existingCurrency = await f.pool.query(
+    "SELECT id FROM company_currencies WHERE company_id=$1 AND code='YER'",
+    [company.id],
+  );
+  const currencyId = Number(existingCurrency.rows[0].id);
+  const created = await item(f, company.id, currencyId, { nearestExpiryDate: "2027-10-01" });
   assert.equal(created.nearestExpiryDate, "2027-10-01");
   const url = `/companies/${company.id}/items/${created.id}`;
   const changed = (await f.owner.ok<{item:Item}>("PATCH", url,
@@ -1572,7 +1576,7 @@ test("item nearest expiry is editable from card and preserves original dates on 
   assert.equal(cleared.nearestExpiryDate, null);
   assert.equal((await f.owner.request("PATCH", url,
     patchItem(cleared, { nearestExpiryDate:"2027-13-01" }))).status, 400);
-  const noExpiry = await item(f, company.id, cur.id, { hasExpiry: false });
+  const noExpiry = await item(f, company.id, currencyId, { hasExpiry: false });
   assert.equal((await f.owner.request("PATCH",
     `/companies/${company.id}/items/${noExpiry.id}`,
     patchItem(noExpiry, { nearestExpiryDate:"2027-10-01" }))).status, 400);
