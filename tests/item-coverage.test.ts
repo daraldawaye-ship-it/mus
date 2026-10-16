@@ -12,6 +12,7 @@ import type {
   Item,
   Page,
   PageEntry,
+  ItemActivityReport,
   Permission,
   SessionResponse,
 } from "../packages/contracts/src/index.ts";
@@ -282,6 +283,31 @@ test("coverage uses monthly net sales from two upward, four months below two, an
   const afterSorted = await f.owner.ok<Page<CoverageItem>>("GET", `/companies/${company.id}/items?sort=coverageAfterReserveDays:desc&pageSize=100`);
   const afterNumbers = afterSorted.items.map((row) => Number(row.coverageAfterReserveDays));
   assert.deepEqual(afterNumbers, [...afterNumbers].sort((a, b) => b - a));
+
+  // Available stock is pooled in smallest units and sorted by the first unit
+  // before pagination, not by formatted strings or the current page alone.
+  const pooled = await f.owner.ok<Page<CoverageItem>>(
+    "GET", `/companies/${company.id}/items?sort=availableUnit1:desc&pageSize=100`,
+  );
+  const firstUnitValues = pooled.items.map(row => Number(row.availableSmallest ?? "0") / (row.factor2 * row.factor3));
+  assert.deepEqual(firstUnitValues, [...firstUnitValues].sort((a, b) => b - a));
+  for (const row of pooled.items) {
+    const vector = expected.get(row.id);
+    if (vector) assert.equal(row.availableSmallest, vector.stock, vector.name);
+  }
+
+  const reportByStock = (await f.owner.ok<{ report: ItemActivityReport }>(
+    "GET", `/companies/${company.id}/item-statistics-report?sortBy=availableUnit1&sortDir=asc&pageSize=100`,
+  )).report;
+  assert.equal(reportByStock.canViewStock, true);
+  assert.equal(reportByStock.canViewCoverage, true);
+  const reportStock = reportByStock.rows.map(row => Number(row.availableSmallest ?? "0") / (row.factor2 * row.factor3));
+  assert.deepEqual(reportStock, [...reportStock].sort((a, b) => a - b));
+  const reportByCoverage = (await f.owner.ok<{ report: ItemActivityReport }>(
+    "GET", `/companies/${company.id}/item-statistics-report?sortBy=approximateCoverageDays&sortDir=desc&pageSize=100`,
+  )).report;
+  const days = reportByCoverage.rows.map(row => Number(row.approximateCoverageDays));
+  assert.deepEqual(days, [...days].sort((a, b) => b - a));
 });
 
 test("coverage is company scoped and redacted by inventory, commerce, explicit denies and page availability", async (t) => {
