@@ -1,0 +1,46 @@
+name: Account statistics storage foundation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/**'
+      - 'packages/contracts/src/account-statistics.ts'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/account-statistics-foundation.test.ts'
+      - '.github/workflows/account-statistics-foundation-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ACCOUNT_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      TZ: Asia/Aden
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Verify account-statistics schema, isolation, history and migration replay
+        run: node --import tsx --test tests/account-statistics-foundation.test.ts
