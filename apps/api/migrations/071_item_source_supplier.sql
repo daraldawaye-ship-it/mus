@@ -68,7 +68,10 @@ BEGIN
  WHERE i.company_id=NEW.company_id AND i.id=lines.item_id
    AND lines.purchased IS NOT NULL AND lines.purchased>0
    AND lines.purchased>(v.quantity_smallest-lines.signed_total)
-   AND i.supplier_account_id IS DISTINCT FROM NEW.supplier_account_id;
+   AND i.supplier_account_id IS DISTINCT FROM NEW.supplier_account_id
+   AND EXISTS(SELECT 1 FROM accounts a WHERE a.company_id=NEW.company_id
+     AND a.id=NEW.supplier_account_id AND a.kind='posting'
+     AND a.category IN('asset','liability') AND NOT a.cash_or_bank);
  RETURN NEW;
 END $$;
 CREATE TRIGGER invoice_promote_item_supplier
