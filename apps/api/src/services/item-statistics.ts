@@ -13,7 +13,7 @@ export async function readItemStatistics(
   itemId: number,
 ): Promise<ItemStatistics> {
   const item = (
-    await client.query("SELECT * FROM items WHERE company_id=$1 AND id=$2", [
+    await client.query("SELECT i.*,i.settlement_approval_date::text AS settlement_approval_date,i.settlement_display_date::text AS settlement_display_date FROM items i WHERE i.company_id=$1 AND i.id=$2", [
       companyId,
       itemId,
     ])
@@ -140,12 +140,8 @@ export async function readItemStatistics(
           allTime: row.adjustments_all_time.toString(),
           sinceApproval: row.adjustments_since_approval.toString(),
           sinceDisplay: row.adjustments_since_display.toString(),
-          approvalDate: item.settlement_approval_date
-            ? new Date(item.settlement_approval_date).toISOString().slice(0, 10)
-            : null,
-          displayDate: item.settlement_display_date
-            ? new Date(item.settlement_display_date).toISOString().slice(0, 10)
-            : null,
+          approvalDate: item.settlement_approval_date ?? null,
+          displayDate: item.settlement_display_date ?? null,
           lastShowroomAt: row.last_showroom_adjustment_at
             ? new Date(row.last_showroom_adjustment_at).toISOString()
             : null,
