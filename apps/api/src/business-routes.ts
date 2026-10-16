@@ -10,6 +10,7 @@ import { attendanceRoutes } from "./routes-attendance.ts";
 import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
 import { employeeAttendanceRoutes } from "./routes-employee-attendance.ts";
 import { accountRoutes } from "./routes-accounts.ts";
+import { accountStatisticsRoutes } from "./routes-account-statistics.ts";
 import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
 import { generalTableRoutes } from "./routes-general-table.ts";
@@ -48,6 +49,7 @@ export function businessRoutes(pool: Pool): Router {
     controlRoutes(pool),
     configurationAdministrationRoutes(pool),
     accountRoutes(pool),
+    accountStatisticsRoutes(pool),
     currencyRoutes(pool),
     locationRoutes(pool),
     generalTableRoutes(pool),

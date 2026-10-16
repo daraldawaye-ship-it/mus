@@ -6,7 +6,9 @@ import {
   pageDefinitions,
   pageHref,
   pageRuleAllows,
+  type CompanyContext,
   type PageAction,
+  type PageDefinition,
   type PageEntry,
   type PageReference,
   type ResolvedPage,
@@ -19,14 +21,16 @@ import {
   permissionRuleEffects,
   pagePermissionAliases,
   requirementForAction,
+  type RuleEffect,
 } from "./permission-rules.ts";
 
 import { memoFollowerSql } from "./memo-followers.ts";
-export async function directoryEntries(
+
+async function directoryPermissionState(
   db: Database,
   user: User,
   companyId: number | null,
-): Promise<PageEntry[]> {
+) {
   const context = companyId ? await companyAccess(db, user, companyId) : null;
   const effects =
     context?.employee && !context.general
@@ -63,6 +67,92 @@ export async function directoryEntries(
     )
       baseContext.permissions.push("finance.view");
   }
+  return { context, baseContext, effects };
+}
+
+function directoryActionAllowed(
+  definition: PageDefinition,
+  action: PageAction,
+  user: User,
+  context: CompanyContext | null,
+  effects: Map<string, RuleEffect>,
+): boolean {
+  const aliases = pagePermissionAliases(definition.key, action);
+  if (!context?.general && aliases.some((key) => effects.get(key) === "deny"))
+    return false;
+  if (
+    !context?.general &&
+    definition.actions[action]?.role === "permissions" &&
+    aliases.some(
+      (key) =>
+        effects.get(key) === "allow" &&
+        definition.actions[action]!.permissions.every((permission) =>
+          requirementForAction(key).includes(permission),
+        ),
+    )
+  )
+    return true;
+  return pageRuleAllows(definition.actions[action], user, context);
+}
+
+/**
+ * Check the exact current account/ledger/action grants independently of page
+ * flags. Call before confirming an accepted UUID, then use
+ * assertRequestPagesEnabled for a new action. No action grant implies its views.
+ */
+export async function assertAccountBalanceAccess(
+  db: Database,
+  user: User,
+  companyId: number,
+  action?: "followup" | "approve",
+): Promise<void> {
+  if (action && user.suspended)
+    throw new HttpError(403, "forbidden", "الحساب موقوف عن المشاركة");
+  const { baseContext, effects } = await directoryPermissionState(
+    db,
+    user,
+    companyId,
+  );
+  const required: Array<[string, PageAction]> = [
+    ["company.accounts", "view"],
+    ["company.account-ledger", "view"],
+    ["company.account-statistics", "view"],
+  ];
+  if (action)
+    required.push([
+      "company.account-statistics",
+      action === "followup" ? "create" : "post",
+    ]);
+  for (const [key, requiredAction] of required) {
+    const definition = pageByKey(key);
+    if (
+      !definition ||
+      !directoryActionAllowed(
+        definition,
+        requiredAction,
+        user,
+        baseContext,
+        effects,
+      )
+    )
+      throw new HttpError(
+        403,
+        "forbidden",
+        "لا تملك صلاحية إجراء الحساب المطلوبة.",
+      );
+  }
+}
+
+export async function directoryEntries(
+  db: Database,
+  user: User,
+  companyId: number | null,
+): Promise<PageEntry[]> {
+  const { context, baseContext, effects } = await directoryPermissionState(
+    db,
+    user,
+    companyId,
+  );
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
     [companyId],
@@ -114,27 +204,13 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
-            (!context?.general &&
-            pagePermissionAliases(definition.key, action).some(
-              (key) => effects.get(key) === "deny",
-            )
-              ? false
-              : !context?.general &&
-                  pagePermissionAliases(definition.key, action).some(
-                    (key) =>
-                      effects.get(key) === "allow" &&
-                      definition.actions[action]?.permissions.every(
-                        (permission) =>
-                          requirementForAction(key).includes(permission),
-                      ),
-                  ) &&
-                  definition.actions[action]?.role === "permissions"
-                ? true
-                : pageRuleAllows(
-                    definition.actions[action],
-                    user,
-                    baseContext,
-                  )),
+            directoryActionAllowed(
+              definition,
+              action,
+              user,
+              baseContext,
+              effects,
+            ),
         ]),
       ) as Record<PageAction, boolean>,
     };
@@ -324,6 +400,12 @@ export async function requestPageKeys(
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (
+    /^accounts\/[1-9]\d*\/(statistics|balance-followups|balance-approvals)$/.test(
+      rest,
+    )
+  )
+    keys.push("company.account-ledger", "company.account-statistics");
   if (resource === "transaction-reset")
     keys.push(
       "company.settings",
@@ -519,6 +601,30 @@ export async function assertRequestPagesEnabled(
       `SELECT 1 FROM ${tables[creation[1]!]} WHERE company_id=$1 AND idempotency_key=$2`,
       [companyId, requestKey],
     );
+    if (existing.rowCount) return;
+  }
+  const accountBalanceAction = path.match(
+    /^\/companies\/[1-9]\d*\/accounts\/([1-9]\d*)\/(balance-followups|balance-approvals)$/,
+  );
+  if (
+    companyId &&
+    req.method === "POST" &&
+    accountBalanceAction &&
+    Number.isSafeInteger(Number(accountBalanceAction[1])) &&
+    Number(accountBalanceAction[1]) <= 2147483647 &&
+    typeof requestKey === "string" &&
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestKey)
+  ) {
+    const table =
+      accountBalanceAction[2] === "balance-followups"
+        ? "account_balance_followups"
+        : "account_balance_approvals";
+    const existing = await db.query(
+      `SELECT 1 FROM ${table} WHERE company_id=$1 AND account_id=$2 AND created_by=$3 AND idempotency_key=$4`,
+      [companyId, accountBalanceAction[1], req.auth.user.id, requestKey],
+    );
+    // This only opens the flag gate for the same account and actor. The route
+    // still rechecks current membership, exact grants and the canonical payload.
     if (existing.rowCount) return;
   }
   const decision = path.match(

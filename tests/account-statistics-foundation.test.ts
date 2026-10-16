@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import test, { type TestContext } from "node:test";
 import { Pool, type QueryResultRow } from "pg";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
-import { migrate, transaction } from "../apps/api/src/db.ts";
+import { transaction } from "../apps/api/src/db.ts";
 
 // Never inherit DATABASE_URL: these checks create and remove a disposable schema.
 // CI may explicitly provide a local PostgreSQL service using this test-only key.
@@ -32,6 +32,38 @@ assert(
 
 const migrationDirectory = new URL("../apps/api/migrations/", import.meta.url);
 const summaryFamilies = ["balance", "activity", "commerce", "stock"] as const;
+
+// This suite verifies phase two at its actual schema boundary. Later migrations
+// activate action guards and source hooks that intentionally change that scope.
+async function migrateFoundation(pool: Pool) {
+  const names = (await readdir(migrationDirectory))
+    .filter(
+      (name) =>
+        /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 75,
+    )
+    .sort();
+  await transaction(pool, async (client) => {
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext(current_schema()))",
+    );
+    await client.query(
+      "CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())",
+    );
+    for (const name of names) {
+      const applied = await client.query(
+        "SELECT 1 FROM schema_migrations WHERE version=$1",
+        [name],
+      );
+      if (applied.rowCount) continue;
+      await client.query(
+        await readFile(new URL(name, migrationDirectory), "utf8"),
+      );
+      await client.query("INSERT INTO schema_migrations(version) VALUES($1)", [
+        name,
+      ]);
+    }
+  });
+}
 
 async function fixture(t: TestContext) {
   const schema = `account_stats_${randomUUID().replaceAll("-", "")}`;
@@ -155,7 +187,7 @@ test("account statistics foundation upgrades posting accounts without inventing 
     )
   ).rows;
   assert.equal((await f.pool.query("SELECT 1 FROM company_currencies")).rowCount, 0);
-  await migrate(f.pool);
+  await migrateFoundation(f.pool);
   const initial = (
     await f.pool.query("SELECT * FROM account_statistics ORDER BY account_id")
   ).rows;
@@ -222,7 +254,7 @@ test("account statistics foundation upgrades posting accounts without inventing 
     newCompanyId,
     newGroupId,
   ]);
-  await migrate(f.pool);
+  await migrateFoundation(f.pool);
   assert.equal(
     await rowSnapshot(f.pool, f.companyId, f.accountId),
     beforeInitialize,
@@ -535,7 +567,7 @@ test("account statistics foundation upgrades posting accounts without inventing 
     f.companyId,
     f.accountId,
   ]);
-  await migrate(f.pool);
+  await migrateFoundation(f.pool);
   assert.deepEqual(
     await preservedRows(),
     explicitlyStored,

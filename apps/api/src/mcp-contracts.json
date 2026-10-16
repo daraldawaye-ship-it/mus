@@ -221,6 +221,90 @@
     },
     "source": "memoFeatureRuleRoutes.ts"
   },
+  "GET /companies/:companyId/accounts/:id/statistics": {
+    "queryFields": [
+      "asOfDate"
+    ],
+    "source": "routes-account-statistics.ts"
+  },
+  "POST /companies/:companyId/accounts/:id/balance-followups": {
+    "queryFields": [],
+    "bodyContract": "accountBalanceFollowUpSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "note": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-account-statistics.ts"
+  },
+  "POST /companies/:companyId/accounts/:id/balance-approvals": {
+    "queryFields": [],
+    "bodyContract": "accountBalanceApprovalSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "note": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "balanceDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "expectedBalanceBase": {
+          "type": "string",
+          "pattern": "^-?\\d{1,32}(?:\\.\\d{1,6})?$"
+        },
+        "expectedCurrencyId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedSourceRevision": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d{0,18})$"
+        },
+        "expectedSourceGeneration": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "balanceDate",
+        "expectedBalanceBase",
+        "expectedCurrencyId",
+        "expectedSourceRevision",
+        "expectedSourceGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-account-statistics.ts"
+  },
   "GET /companies/:companyId/accounts": {
     "queryFields": [],
     "source": "routes-accounts.ts"

@@ -1,4 +1,6 @@
-/** The storage foundation only; no statistics endpoint is enabled by this module. */
+import { z } from "zod";
+
+/** Shared policy for the staged account statistics engine. */
 export const ACCOUNT_STATISTICS_POLICY_VERSION = 1;
 export const ACCOUNT_STATISTICS_TIME_ZONE = "Asia/Aden";
 /** JavaScript weekday numbering: Saturday is 6. */
@@ -39,7 +41,7 @@ export interface AccountStatisticsMetadata {
   companyId: number;
   accountId: number;
   policyVersion: number;
-  /** The later calculation engine will advance this transactionally. */
+  /** Advanced transactionally when a financial source changes. */
   sourceRevision: string;
   components: Record<
     AccountStatisticsComponent,
@@ -60,3 +62,113 @@ export const accountDailyActivityFamilies = [
 ] as const;
 export type AccountDailyActivityFamily =
   (typeof accountDailyActivityFamilies)[number];
+
+const balanceDate = z.iso
+  .date()
+  .refine((value) => value >= "0003-01-01", "تاريخ الرصيد غير صالح");
+const signedBalance = z
+  .string()
+  .trim()
+  .regex(
+    /^-?\d{1,32}(?:\.\d{1,6})?$/,
+    "الرصيد نص عشري دقيق حتى 32 رقمًا و6 كسور",
+  )
+  .transform((value) => {
+    const negative = value.startsWith("-");
+    const [whole, fraction = ""] = value.replace(/^-/, "").split(".");
+    const normalized =
+      whole!.replace(/^0+(?=\d)/, "") +
+      (fraction.replace(/0+$/, "") ? `.${fraction.replace(/0+$/, "")}` : "");
+    return negative && normalized !== "0" ? `-${normalized}` : normalized;
+  });
+const sourceRevision = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,18})$/)
+  .refine(
+    (value) => BigInt(value) <= 9223372036854775807n,
+    "إصدار المصدر غير صالح",
+  );
+export const accountStatisticsQuerySchema = z
+  .object({ asOfDate: balanceDate.optional() })
+  .strict();
+export const accountBalanceFollowUpSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    note: z.string().trim().max(2000).default(""),
+  })
+  .strict();
+export const accountBalanceApprovalSchema = accountBalanceFollowUpSchema
+  .extend({
+    balanceDate,
+    expectedBalanceBase: signedBalance,
+    expectedCurrencyId: z.number().int().positive().max(2_147_483_647),
+    expectedSourceRevision: sourceRevision,
+    expectedSourceGeneration: z
+      .uuid()
+      .transform((value) => value.toLowerCase()),
+  })
+  .strict();
+export type AccountBalanceFollowUpInput = z.input<
+  typeof accountBalanceFollowUpSchema
+>;
+export type AccountBalanceApprovalInput = z.input<
+  typeof accountBalanceApprovalSchema
+>;
+
+export interface AccountBalanceCurrency {
+  id: number;
+  code: string;
+  decimalPlaces: number;
+}
+export interface AccountBalanceFollowUp {
+  id: number;
+  companyId: number;
+  accountId: number;
+  followedUpAt: string;
+  createdBy: number;
+  createdAt: string;
+  note: string;
+}
+export interface AccountBalanceApproval {
+  id: number;
+  companyId: number;
+  accountId: number;
+  balanceDate: string;
+  balanceBase: string;
+  currency: AccountBalanceCurrency;
+  sourceRevision: string;
+  sourceGeneration: string | null;
+  policyVersion: number;
+  createdBy: number;
+  createdAt: string;
+  note: string;
+}
+export type AccountBalanceApprovalQuote = Omit<
+  z.output<typeof accountBalanceApprovalSchema>,
+  "idempotencyKey" | "note"
+>;
+export interface AccountBalanceStatistics {
+  companyId: number;
+  accountId: number;
+  asOfDate: string;
+  policyVersion: number;
+  sourceRevision: string;
+  sourceGeneration: string;
+  coverage: "recorded_history_only";
+  currency: AccountBalanceCurrency;
+  balance: {
+    currentBase: string;
+    oneYearAgoBase: string;
+    atCurrentYearStartBase: string;
+    atPreviousYearStartBase: string;
+    atTwoYearsAgoStartBase: string;
+  };
+  components: Record<
+    AccountStatisticsComponent,
+    AccountStatisticsComponentMetadata
+  >;
+  lastFollowUp: AccountBalanceFollowUp | null;
+  lastApproval: AccountBalanceApproval | null;
+  approvalQuote: AccountBalanceApprovalQuote;
+  capabilities: { canFollowUp: boolean; canApprove: boolean };
+}
