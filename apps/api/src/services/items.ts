@@ -70,6 +70,7 @@ export type ItemFields = Pick<
   | "barcode"
   | "legacyId"
   | "agentId"
+  | "supplierAccountId"
   | "compositionId"
   | "unit1Name"
   | "unit2Name"
@@ -167,6 +168,15 @@ export async function checkItemReferences(
       && !composition.rows[0].active)
       conflict("اختر تركيبًا غير مؤرشف من الشركة نفسها");
   }
+  if (input.supplierAccountId !== null) {
+    const supplier = await db.query(
+      "SELECT active FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank FOR SHARE",
+      [companyId, input.supplierAccountId],
+    );
+    if (!supplier.rows[0]) conflict("اختر حساب مورد حركي من نفس الشركة، وليس صندوقًا أو بنكًا");
+    if ((!previous || previous.supplierAccountId !== input.supplierAccountId) && !supplier.rows[0].active)
+      conflict("اختر حساب مورد فعالًا");
+  }
   if (input.agentId !== null) {
     const agent = await db.query(
       "SELECT active FROM item_agents WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -190,6 +200,7 @@ export const itemFieldColumns = [
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],
+  ["supplierAccountId", "supplier_account_id"],
   ["compositionId", "composition_id"],
   ["unit1Name", "unit1_name"],
   ["unit2Name", "unit2_name"],
