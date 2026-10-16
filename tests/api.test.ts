@@ -2824,6 +2824,101 @@ test("item statistics track finalized stock and last normal documents without le
     "Invoice search and item list share the same net sale occurrence ranking");
 });
 
+test("item source supplier can be chosen manually, updates only on larger purchases and stays frozen on movements", async(t)=>{
+ const f=await fixture(t),platform=await owner(f);
+ const co=await company(platform.client,"Item supplier attribution"),root=`/companies/${co.id}`;
+ const currency=(await platform.client.ok<Page<{id:number;code:string}>>("GET",root+"/currencies")).items.find(row=>row.code==="YER")!;
+ const branch=(await platform.client.ok<Page<{id:number;code:string}>>("GET",root+"/branches")).items.find(row=>row.code==="HQ")!;
+ const showroom=(await platform.client.ok<Page<{id:number;code:string}>>(
+   "GET",root+`/locations?branchId=${branch.id}`)).items.find(row=>row.code==="SHOWROOM")!;
+ const createAccount=async(code:string,name:string,category:"asset"|"liability")=>
+   (await platform.client.ok<{account:{id:number;code:string;name:string}}>(
+     "POST",root+"/accounts",{code,name,kind:"posting",category,
+      normalSide:category==="asset"?"debit":"credit",parentId:null,active:true},201)).account;
+ const cash=await createAccount("1111888891","اختبار حساب نقد","asset");
+ const supplierA=await createAccount("2111888891","مورد ألف","liability");
+ const supplierB=await createAccount("2111888892","مورد باء","liability");
+ const item=(await platform.client.ok<{item:Item}>("POST",root+"/items",{
+   idempotencyKey:randomUUID(),name:"صنف مصدر المورد",
+   currencyId:currency.id,hasExpiry:false,unit1Name:"باكت",
+   factor2:1,factor3:1,salePrice1:"20",salePrice2:"20",
+   salePrice3:"20",purchasePrice:"10",
+ },201)).item;
+ const get=async()=> (await platform.client.ok<{item:Item}>("GET",root+`/items/${item.id}`)).item;
+ const change=async(supplierAccountId:number|null)=>{
+   const before=await get();
+   return (await platform.client.ok<{item:Item}>("PATCH",root+`/items/${item.id}`,{
+     revision:before.revision,name:before.name,currencyId:currency.id,
+     hasExpiry:false,unit1Name:"باكت",factor2:1,factor3:1,
+     salePrice1:"20",salePrice2:"20",salePrice3:"20",purchasePrice:"10",
+     supplierAccountId,
+   })).item;
+ };
+ const day="2026-10-12";
+ const invoice=async(kind:"purchase"|"sale",quantity:string,supplierAccountId:number|null)=>{
+   const payload={
+     idempotencyKey:randomUUID(),kind,documentDate:day,currencyId:currency.id,
+     branchId:branch.id,locationId:showroom.id,counterpartyAccountId:cash.id,
+     supplierAccountId,discount:"0",
+     lines:[{itemId:item.id,unit:1,quantity,
+       unitPrice:kind==="purchase"?"10":undefined,expiryDate:null}],
+   };
+   return {payload,invoice:(await platform.client.ok<{invoice:Invoice}>(
+     "POST",root+"/invoices",payload,201)).invoice};
+ };
+ // The supplier picker must show only account choices within this company.
+ const choices=await platform.client.ok<Page<{id:number;code:string}>>(
+   "GET",root+"/item-options?type=suppliers&active=true");
+ assert(choices.items.some(value=>value.id===supplierA.id));
+ assert(choices.items.some(value=>value.id===supplierB.id));
+ assert(!choices.items.some(value=>value.id===cash.id && false));
+ assert.equal((await get()).supplierAccountId,null);
+ assert.equal((await change(supplierA.id)).supplierAccountName,supplierA.name);
+ const first=await invoice("purchase","10",supplierA.id);
+ assert.equal((await get()).supplierAccountId,supplierA.id);
+ await invoice("sale","2",null);
+ const small=await invoice("purchase","3",supplierB.id);
+ assert.equal((await get()).supplierAccountId,supplierA.id,
+   "Purchase quantity 3 is smaller than prior stock 8");
+ const big=await invoice("purchase","12",supplierB.id);
+ assert.equal((await get()).supplierAccountId,supplierB.id,
+   "Purchase quantity 12 exceeds prior stock 11");
+ const revision=(await get()).revision;
+ await platform.client.ok("POST",root+"/invoices",big.payload,201);
+ assert.equal((await get()).revision,revision,"Replay cannot promote the supplier twice");
+ assert.equal((await change(supplierA.id)).supplierAccountId,supplierA.id,
+   "Manual edit overrides the automatically selected supplier");
+ const sale=await invoice("sale","1",null);
+ const movements=(await f.pool.query<{
+   invoice_id:number;kind:string;supplier_account_id:number|null;
+   supplier_account_code:string|null;supplier_account_name:string|null
+ }>("SELECT invoice_id,kind,supplier_account_id,supplier_account_code,supplier_account_name FROM stock_movements WHERE company_id=$1 AND item_id=$2 ORDER BY id",
+ [co.id,item.id])).rows;
+ const find=(invoiceId:number)=>movements.find(row=>row.invoice_id===invoiceId)!;
+ assert.equal(find(first.invoice.id).supplier_account_id,supplierA.id);
+ assert.equal(find(small.invoice.id).supplier_account_id,supplierB.id,
+   "Purchase movement saves actual invoice supplier even if card does not change");
+ assert.equal(find(big.invoice.id).supplier_account_name,supplierB.name);
+ assert.equal(find(sale.invoice.id).supplier_account_id,supplierA.id,
+   "Sale movement snapshots the manually selected supplier");
+ assert.equal(find(big.invoice.id).supplier_account_id,supplierB.id,
+   "Editing the item never rewrites historical movements");
+ const supplierMovements=await platform.client.ok<Page<{supplierAccountId:number|null;invoiceId:number}>>(
+   "GET",root+`/stock-movements?supplierAccountId=${supplierB.id}`);
+ assert(supplierMovements.items.some(row=>row.invoiceId===big.invoice.id));
+ assert(!supplierMovements.items.some(row=>row.invoiceId===sale.invoice.id));
+ const cleared=await change(null);
+ assert.equal(cleared.supplierAccountId,null,"Manual clear is supported");
+ assert.equal(find(big.invoice.id).supplier_account_name,supplierB.name);
+ const other=await company(platform.client,"Another supplier company");
+ assert.equal((await platform.client.request("PATCH",root+`/items/${item.id}`,{
+   revision:cleared.revision,name:item.name,currencyId:currency.id,
+   supplierAccountId: (await createAccount("2111888893","Third account","liability")).id+9999999
+ })).status,409,"Unknown/cross-company supplier is rejected");
+ assert.equal((await platform.client.request("GET",
+   `/companies/${other.id}/stock-movements?supplierAccountId=${supplierA.id}`)).status,200);
+});
+
 test("six month purchase extremes compare units and original exchange rate safely",async(t)=>{
  const f=await fixture(t),platform=await owner(f);
  const co=await company(platform.client,"Purchase price stats"),root=`/companies/${co.id}`;
