@@ -5,6 +5,16 @@ import { directoryEntries } from "./pages.ts";
 import { missing } from "../errors.ts";
 
 /** Current directory flags and explicit denies apply to every derived value. */
+export async function canReadItemStock(
+  client: PoolClient,
+  user: User,
+  companyId: number,
+): Promise<boolean> {
+  const pages = await directoryEntries(client, user, companyId);
+  return ["company.stock-balances", "company.stock-movements"]
+    .every(key => !!pages.find(page => page.key === key)?.actionAccess.view);
+}
+
 export async function canReadItemCoverage(
   client: PoolClient,
   user: User,
