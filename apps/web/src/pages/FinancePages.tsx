@@ -965,7 +965,7 @@ function DocumentEditor({
                 { type: "counterparty" },
               )}
               <Field
-                label={`المبلغ${currency ? ` (${currency.code})` : ""}`}
+                label={`المبلغ${showCurrency && currency ? ` (${currency.code})` : ""}`}
                 money
                 dir="ltr"
                 inputMode="decimal"
