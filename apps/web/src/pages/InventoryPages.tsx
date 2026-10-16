@@ -34,6 +34,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
 import { formatMoney } from "../format-money";
+import { firstUnitStockText } from "../sale-stock-quantity";
 import {
   Button,
   Card,
@@ -441,10 +442,9 @@ function BalancesList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => exact(row.original.expiryDate),
       },
       {
-        id: "quantityUnit1",
+        accessorKey: "quantityUnit1",
         header: "الرصيد بالوحدة الأولى",
         size: 185,
-        enableSorting: false,
         cell: ({ row }) => (
           <ValueCell
             value={`${quantityText(row.original.quantityUnit1)} ${row.original.unit1Name}`}
@@ -461,10 +461,30 @@ function BalancesList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => exact(row.original.quantitySmallest),
       },
       {
+        accessorKey: "pooledQuantityUnit1",
+        header: "إجمالي المتوفر بالوحدة الأولى",
+        size: 195,
+        cell: ({ row }) => <ValueCell>
+          <bdi>{firstUnitStockText(row.original.pooledQuantitySmallest, row.original)}</bdi>
+        </ValueCell>,
+      },
+      {
         accessorKey: "pooledQuantitySmallest",
         header: "إجمالي الصنف بأصغر جزء",
         size: 185,
         cell: ({ row }) => exact(row.original.pooledQuantitySmallest),
+      },
+      {
+        accessorKey: "approximateCoverageDays",
+        header: "الكفاية التقريبية (يوم)",
+        size: 180,
+        cell: ({ row }) => <ValueCell><bdi>{row.original.approximateCoverageDays ?? "—"}</bdi></ValueCell>,
+      },
+      {
+        accessorKey: "coverageAfterReserveDays",
+        header: "الكفاية بعد الاحتياط (يوم)",
+        size: 198,
+        cell: ({ row }) => <ValueCell><bdi>{row.original.coverageAfterReserveDays ?? "—"}</bdi></ValueCell>,
       },
       {
         accessorKey: "pooledValueBase",
@@ -486,7 +506,7 @@ function BalancesList({ context }: { context: CompanyContext }) {
     <>
       <PageHeader
         title="أرصدة المخزون"
-        description="الرصيد حسب الصنف والموقع ودفعة الانتهاء، مع كمية دقيقة بالوحدة الأولى."
+        description="الرصيد حسب الصنف والموقع والدفعة، مع إجمالي المتوفر بالوحدة الأولى والكفاية."
         actions={
           <InventoryLinks
             companyId={companyId}
@@ -497,8 +517,8 @@ function BalancesList({ context }: { context: CompanyContext }) {
       <Card>
         <StockFilters companyId={companyId} list={list} />
         <p className="muted">
-          قيمة الصنف وإجمالي كميته يشملان جميع المواقع والدفعات، ويتكرران للعرض؛
-          لا تُجمع هذه القيم بين الصفوف.
+          إجمالي كمية الصنف وكفايته وقيمته تشمل جميع المواقع والدفعات، وتتكرر للعرض؛
+          لا تُجمع هذه القيم بين الصفوف. اضغط عنوان العمود للفرز التصاعدي أو التنازلي.
         </p>
         {list.error && (
           <Notice tone="error">
