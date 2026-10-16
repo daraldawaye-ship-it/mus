@@ -55,6 +55,7 @@ import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
+import { useCompanyIdleLogout } from "./idle-logout";
 import { Button, Card, Dialog, Notice } from "./ui";
 import {
   AuthPage,
@@ -773,6 +774,7 @@ function Workspace() {
     : lastCompany.isError
       ? undefined
       : (lastCompany.data ?? undefined);
+  useCompanyIdleLogout(companyId, navigationContext?.employee?.id ?? null, inCompany && !!navigationContext);
   useEffect(() => {
     setDrawer(false);
     if (priorPath.current !== location.pathname) {
