@@ -790,7 +790,6 @@ function DocumentEditor({
         <Button
           variant="secondary"
           className="financial-picker"
-          aria-label={`${label}: ${value || (optional ? "كل الشركة" : "اختر الحساب")}`}
           disabled={pickerDisabled}
           onClick={() => setPicker(target)}
         >
