@@ -13,8 +13,21 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const directory = usePageDirectory(companyId);
   const page = directory.data?.find((entry) => entry.key === "company.wallet");
+  const control = useQuery({
+    queryKey: ["control", user?.id, companyId, context.employee?.id],
+    queryFn: ({ signal }) =>
+      api<{ options: { key: string; value: boolean | number }[] }>(
+        `/companies/${companyId}/control?employeeId=${context.employee?.id}`,
+        { signal },
+      ),
+    enabled: !!user && !!context.employee,
+  });
+  const showPoints = control.data?.options.find(
+    (option) => option.key === "show_header_points",
+  )?.value !== false;
   const allowed =
-    !!user && !!context.employee && !!page?.enabled && !!page.actionAccess.view;
+    !!user && !!context.employee && !!page?.enabled &&
+    !!page.actionAccess.view && showPoints;
   const query = useQuery({
     queryKey: ["wallet-summary", user?.id, companyId, context.employee?.id],
     queryFn: ({ signal }) =>

@@ -1,0 +1,56 @@
+name: Expiry month/year entry
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/ExpiryMonthField.tsx'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'apps/web/src/pages/ItemsPages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/api/src/services/items.ts'
+      - 'apps/api/src/routes-items.ts'
+      - 'packages/contracts/src/items.ts'
+      - 'tests/expiry-month.test.ts'
+      - 'tests/items.test.ts'
+      - '.github/workflows/expiry-month-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expiry-month:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      TZ: Asia/Aden
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Validate TypeScript
+        run: npm run check
+      - name: Build production UI
+        run: npm run build
+      - name: Verify expiry month input and historical display
+        run: node --import tsx --test tests/expiry-month.test.ts
+      - name: Verify item-card expiry revisions and audit
+        run: node --import tsx --test --test-name-pattern="item nearest expiry is editable" tests/items.test.ts

@@ -20,6 +20,7 @@ import { transaction } from "./db.ts";
 import { HttpError, missing } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
+import { assertEditableDocumentDate, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 import {
   accountDTO,
   accountSelect,
@@ -370,6 +371,11 @@ export function financeRoutes(pool: Pool): Router {
               document: await loadDocument(client, companyId, previous.id),
               created: false,
             };
+          await assertEditableDocumentDate(client, companyId,
+            input.kind === "receipt" ? "edit_receipts_date" :
+            input.kind === "payment" ? "edit_payments_date" : "edit_journals_date",
+            input.documentDate);
+          await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
           await checkDocumentReferences(client, companyId, input);
           const documentId = await insertDraft(
             client,
@@ -439,6 +445,10 @@ export function financeRoutes(pool: Pool): Router {
             conflict("المستند المرحل لا يعدل؛ استخدم العكس بقيد مستقل");
           if (before.revision !== input.revision)
             conflict("عدّل مستخدم آخر هذه المسودة؛ أعد تحميلها قبل الحفظ");
+          await assertEditableDocumentDate(client, companyId,
+            input.kind === "receipt" ? "edit_receipts_date" :
+            input.kind === "payment" ? "edit_payments_date" : "edit_journals_date",
+            input.documentDate, before.documentDate);
           await checkDocumentReferences(client, companyId, input);
           const totals = documentTotals(input.lines);
           await client.query(

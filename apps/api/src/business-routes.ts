@@ -22,6 +22,7 @@ import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
+import { controlRoutes } from "./routes-control.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { transactionResetRoutes } from "./routes-transaction-reset.ts";
 import { transactionImportRoutes } from "./routes-transaction-import.ts";
@@ -44,6 +45,7 @@ export function businessRoutes(pool: Pool): Router {
     memoFeatureRuleRoutes(pool),
     walletRoutes(pool),
     configurationRoutes(pool),
+    controlRoutes(pool),
     configurationAdministrationRoutes(pool),
     accountRoutes(pool),
     currencyRoutes(pool),
