@@ -41,6 +41,36 @@ export function commerceRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
   router.get(
+    `${base}/purchase-history/:itemId`,
+    handler(async (req, res) => {
+      const itemId = id(req.params.itemId);
+      const items = await readCommerce(pool, req, async (client, companyId) => {
+        const found = await client.query(
+          "SELECT 1 FROM items WHERE company_id=$1 AND id=$2",
+          [companyId, itemId],
+        );
+        if (!found.rowCount)
+          throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
+        const result = await client.query(
+          `SELECT il.id AS "lineId", i.id AS "invoiceId",
+             i.document_date::text AS "documentDate",
+             COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد') AS "supplierName",
+             round(il.smallest_quantity::numeric /
+               (il.factor2::numeric * il.factor3::numeric), 3)::text AS "quantityFirstUnit"
+           FROM invoice_lines il
+           JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
+           WHERE il.company_id=$1 AND il.item_id=$2
+             AND i.kind='purchase' AND il.smallest_quantity>0
+           ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+           LIMIT 5`,
+          [companyId, itemId],
+        );
+        return result.rows;
+      });
+      res.json({ items });
+    }),
+  );
+  router.get(
     `${base}/invoice-stock-preview`,
     handler(async (req, res) => {
       const locationId = id(typeof req.query.locationId === "string" ? req.query.locationId : undefined);
