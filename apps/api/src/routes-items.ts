@@ -28,6 +28,7 @@ import {
   readItemCoverage,
 } from "./services/item-coverage.ts";
 import { actor, handler, id, parse } from "./http.ts";
+import { companyAccess } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import {
   itemAgentDTO,
@@ -841,7 +842,8 @@ export function itemRoutes(pool: Pool): Router {
               { active: "boolean" },
               "name:asc",
             );
-          if (req.query.type === "suppliers")
+          if (req.query.type === "suppliers") {
+            await companyAccess(client, actor(req), companyId, "items.manage");
             return masterPage(
               client,req,companyId,
               "SELECT a.* FROM (SELECT id,company_id,code,name,category,cash_or_bank AS \"cashOrBank\",active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
@@ -852,6 +854,7 @@ export function itemRoutes(pool: Pool): Router {
               row=>({id:row.id,code:row.code,name:row.name,active:row.active,category:row.category,cashOrBank:row.cashOrBank}),
               { active:"boolean" },"name:asc",
             );
+          }
           if (req.query.type === "currencies")
             return masterPage(
               client,
