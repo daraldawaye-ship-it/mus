@@ -5,6 +5,7 @@ on:
     paths:
       - 'apps/api/migrations/070_incremental_item_statistics.sql'
       - 'apps/api/migrations/071_item_source_supplier.sql'
+      - 'apps/api/migrations/072_legacy_supplier_inference.sql'
       - 'apps/api/src/services/item-statistics.ts'
       - 'apps/web/src/pages/ItemsPages.tsx'
       - 'tests/api.test.ts'
