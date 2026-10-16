@@ -18,6 +18,7 @@ import type {
   Company,
   CompanyContext,
   Location,
+  Item,
   ItemStatistics,
   ItemActivity,
   ItemActivityReport,
