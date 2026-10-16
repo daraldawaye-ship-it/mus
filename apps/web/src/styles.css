@@ -1801,6 +1801,89 @@ ul {
   }
 }
 
+/* Compact labels inside controls. Scoped so invoice matrix cells and unrelated
+   forms keep their existing dense keyboard layouts. */
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) {
+  position: relative;
+  gap: 0;
+}
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) > label {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--control-height) / 2);
+  inset-inline-start: 10px;
+  max-width: calc(100% - 23px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 12px;
+  pointer-events: none;
+  transition: top 120ms ease, font-size 120ms ease, transform 120ms ease;
+}
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .field.floating-ready:not(.item-cell-field):not(.financial-cell-field):is(:focus-within, [data-label-raised="true"]) > label {
+  top: 2px;
+  font-size: 10px;
+  line-height: 11px;
+  transform: none;
+}
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) > :is(input, select) {
+  padding-block-start: 12px;
+  padding-block-end: 1px;
+  line-height: 16px;
+}
+/* Currency, agent, composition and account pickers are buttons rather than inputs. */
+.item-editor .item-floating-picker,
+:is(.financial-header-grid, .financial-voucher-grid) .financial-floating-picker {
+  position: relative;
+  gap: 0;
+}
+.item-editor .item-floating-picker > label,
+:is(.financial-header-grid, .financial-voucher-grid) .financial-floating-picker > .financial-field-label {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 10px;
+  z-index: 1;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  font-size: 10px;
+  line-height: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.item-editor .item-floating-picker .item-reference-field > .button-secondary,
+.item-editor .item-floating-picker > .button-secondary,
+:is(.financial-header-grid, .financial-voucher-grid) .financial-floating-picker > .financial-picker {
+  padding-block-start: 12px;
+  padding-block-end: 1px;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  line-height: 16px;
+}
+.commerce-header-content .server-lookup {
+  margin-block: 0;
+  gap: 4px;
+}
+.commerce-header-content .commerce-list-link {
+  margin-block-start: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+    .field.floating-ready > label {
+    transition: none;
+  }
+}
+
 /* Invoice and stock pages share the central compact control sizes and colors. */
 .inventory-operation-grid {
   display: grid;
