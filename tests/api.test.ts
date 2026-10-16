@@ -2832,11 +2832,11 @@ test("item source supplier can be chosen manually, updates only on larger purcha
  const branch=(await platform.client.ok<Page<{id:number;code:string}>>("GET",root+"/branches")).items.find(row=>row.code==="HQ")!;
  const showroom=(await platform.client.ok<Page<{id:number;code:string}>>(
    "GET",root+`/locations?branchId=${branch.id}`)).items.find(row=>row.code==="SHOWROOM")!;
- const createAccount=async(code:string,name:string,category:"asset"|"liability")=>
+ const createAccount=async(code:string,name:string,category:"asset"|"liability",cashOrBank=false)=>
    (await platform.client.ok<{account:{id:number;code:string;name:string}}>(
      "POST",root+"/accounts",{code,name,kind:"posting",category,
-      normalSide:category==="asset"?"debit":"credit",parentId:null,active:true},201)).account;
- const cash=await createAccount("1111888891","اختبار حساب نقد","asset");
+      normalSide:category==="asset"?"debit":"credit",parentId:null,active:true,cashOrBank},201)).account;
+ const cash=await createAccount("1111888891","اختبار حساب نقد","asset",true);
  const supplierA=await createAccount("2111888891","مورد ألف","liability");
  const supplierB=await createAccount("2111888892","مورد باء","liability");
  const item=(await platform.client.ok<{item:Item}>("POST",root+"/items",{
@@ -2872,7 +2872,7 @@ test("item source supplier can be chosen manually, updates only on larger purcha
    "GET",root+"/item-options?type=suppliers&active=true");
  assert(choices.items.some(value=>value.id===supplierA.id));
  assert(choices.items.some(value=>value.id===supplierB.id));
- assert(!choices.items.some(value=>value.id===cash.id && false));
+ assert(!choices.items.some(value=>value.id===cash.id),"Cashboxes must not be offered as suppliers");
  assert.equal((await get()).supplierAccountId,null);
  assert.equal((await change(supplierA.id)).supplierAccountName,supplierA.name);
  const first=await invoice("purchase","10",supplierA.id);
@@ -2912,10 +2912,20 @@ test("item source supplier can be chosen manually, updates only on larger purcha
  assert.equal(cleared.supplierAccountId,null,"Manual clear is supported");
  assert.equal(find(big.invoice.id).supplier_account_name,supplierB.name);
  const other=await company(platform.client,"Another supplier company");
- assert.equal((await platform.client.request("PATCH",root+`/items/${item.id}`,{
+ const foreign=(await platform.client.ok<{account:{id:number}}>("POST",
+   `/companies/${other.id}/accounts`,{
+     code:"2111888893",name:"مورد شركة ثانية",kind:"posting",category:"liability",
+     normalSide:"credit",parentId:null,active:true,
+   },201)).account;
+ const rejected=await platform.client.request<{error:{message:string}}>(
+   "PATCH",root+`/items/${item.id}`,{
    revision:cleared.revision,name:item.name,currencyId:currency.id,
-   supplierAccountId: (await createAccount("2111888893","Third account","liability")).id+9999999
- })).status,409,"Unknown/cross-company supplier is rejected");
+   hasExpiry:false,unit1Name:"باكت",factor2:1,factor3:1,
+   salePrice1:"20",salePrice2:"20",salePrice3:"20",purchasePrice:"10",
+   supplierAccountId:foreign.id
+ });
+ assert.equal(rejected.status,409,"Cross-company supplier must be rejected");
+ assert.match(rejected.body.error.message,/مورد/);
  assert.equal((await platform.client.request("GET",
    `/companies/${other.id}/stock-movements?supplierAccountId=${supplierA.id}`)).status,200);
 });
