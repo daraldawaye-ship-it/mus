@@ -802,7 +802,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
     items: { invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
   }>({
     queryKey: ["recent-item-purchases", companyId, selectedItemId],
-    queryFn: ({ signal }) => api(`/companies/${companyId}/items/${selectedItemId}/recent-purchases`, { signal }),
+    queryFn: ({ signal }) => api(`/companies/${companyId}/purchase-history/${selectedItemId}`, { signal }),
     enabled: showPurchases && !!selectedItemId,
   });
   return (
