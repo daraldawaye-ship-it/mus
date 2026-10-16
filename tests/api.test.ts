@@ -2928,6 +2928,46 @@ test("item source supplier can be chosen manually, updates only on larger purcha
  assert.match(rejected.body.error.message,/مورد/);
  assert.equal((await platform.client.request("GET",
    `/companies/${other.id}/stock-movements?supplierAccountId=${supplierA.id}`)).status,200);
+
+ // Simulate pre-migration records by clearing a previously chosen card supplier
+ // and posting a movement with no snapshot; source hints are separate metadata.
+ const oldSale=await invoice("sale","1",null);
+ const beforeHint=(await f.pool.query<{supplier_account_id:number|null}>(
+   "SELECT supplier_account_id FROM stock_movements WHERE company_id=$1 AND invoice_id=$2",
+   [co.id,oldSale.invoice.id]
+ )).rows[0];
+ assert.equal(beforeHint?.supplier_account_id,null);
+ const filled=(await f.pool.query<{assigned:string}>(
+   "SELECT guess_item_source_suppliers()::text AS assigned")).rows[0];
+ assert.equal(filled?.assigned,"1");
+ const predicted=await get();
+ assert.equal(predicted.supplierAccountId,supplierB.id);
+ assert.equal(predicted.supplierInferred,true,"Historical guess is visibly tentative in card");
+ const legacy=(await f.pool.query<{assigned:string}>(
+   "SELECT guess_legacy_movement_suppliers()::text AS assigned")).rows[0];
+ assert(BigInt(legacy?.assigned??"0")>=1n);
+ const inferredMovement=(await platform.client.ok<Page<{
+   invoiceId:number,supplierAccountId:number|null,
+   supplierInferenceSource:string|null,supplierAccountName:string|null
+ }>>("GET",root+`/stock-movements?supplierAccountId=${supplierB.id}`))
+   .items.find(m=>m.invoiceId===oldSale.invoice.id);
+ assert(inferredMovement);
+ assert.equal(inferredMovement.supplierAccountId,supplierB.id);
+ assert.equal(inferredMovement.supplierInferenceSource,"prior_purchase");
+ assert.equal(inferredMovement.supplierAccountName,supplierB.name);
+ await f.pool.query("SELECT guess_legacy_movement_suppliers()");
+ assert.equal((await f.pool.query<{n:number}>(
+   "SELECT count(*)::int AS n FROM stock_movement_supplier_hints WHERE company_id=$1 AND movement_id=(SELECT id FROM stock_movements WHERE company_id=$1 AND invoice_id=$2)",
+   [co.id,oldSale.invoice.id])).rows[0]?.n,1,"Repeated backfill must be idempotent");
+ const corrected=await change(supplierA.id);
+ assert.equal(corrected.supplierInferred,false,"Manual correction confirms the card value");
+ assert.equal(corrected.supplierAccountId,supplierA.id);
+ const still=(await platform.client.ok<Page<{
+   invoiceId:number,supplierAccountId:number|null
+ }>>("GET",root+`/stock-movements?supplierAccountId=${supplierB.id}`))
+   .items.find(m=>m.invoiceId===oldSale.invoice.id);
+ assert.equal(still?.supplierAccountId,supplierB.id,
+   "Correcting item card must not rewrite older movement supplier attribution");
 });
 
 test("six month purchase extremes compare units and original exchange rate safely",async(t)=>{
