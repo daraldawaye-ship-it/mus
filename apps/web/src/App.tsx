@@ -81,6 +81,11 @@ const GeneralTablePage = lazy(() =>
     default: module.GeneralTablePage,
   })),
 );
+const ControlPage = lazy(() =>
+  import("./pages/ControlPage").then((module) => ({
+    default: module.ControlPage,
+  })),
+);
 const ConfigurationPage = lazy(() =>
   import("./pages/ConfigurationPage").then((module) => ({
     default: module.ConfigurationPage,
@@ -253,6 +258,7 @@ const companySections = [
   "wallet-conversions",
   "pages",
   "configuration",
+  "control",
   "overview",
   "employees",
   "settings",
@@ -316,6 +322,7 @@ function Navigation({
     "public.notification-templates": <Settings2 size={17} />,
     "company.overview": <LayoutDashboard size={17} />,
     "company.configuration": <ShieldCheck size={17} />,
+    "company.control": <Settings2 size={17} />,
     "company.employees": <Users size={17} />,
     "company.attendance": <FileClock size={17} />,
     "company.wallet": <Wallet size={17} />,
@@ -506,6 +513,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل مهام المكافآت…</Notice>}>
           <RewardTasksPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "control":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل الكنترول…</Notice>}>
+          <ControlPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "wallet-settings":
