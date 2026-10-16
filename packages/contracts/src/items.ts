@@ -205,6 +205,7 @@ export const itemPatchSchema = itemFields
     compositionId: id.nullable().optional(),
     shelfId: id.nullable().optional(),
     reserveQuantity: itemWholeQuantitySchema.optional(),
+    supplierAccountId: id.nullable().optional(),
   })
   .strict()
   .superRefine(validateNames);
