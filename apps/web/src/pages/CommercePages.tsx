@@ -2328,7 +2328,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               <span>
                 الصافي{" "}
                 <strong>
-                  {amount(totals?.total ?? "—")} {currency?.code}
+                  {amount(totals?.total ?? "—")} {showCurrency ? currency?.code : ""}
                 </strong>
               </span>
             </div>
