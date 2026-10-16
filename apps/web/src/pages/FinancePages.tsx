@@ -785,11 +785,12 @@ function DocumentEditor({
     optional = false,
   ) {
     return (
-      <div className="field">
+      <div className="field financial-floating-picker">
         <span className="financial-field-label">{label}</span>
         <Button
           variant="secondary"
           className="financial-picker"
+          aria-label={`${label}: ${value || (optional ? "كل الشركة" : "اختر الحساب")}`}
           disabled={pickerDisabled}
           onClick={() => setPicker(target)}
         >
