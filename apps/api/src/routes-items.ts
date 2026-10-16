@@ -753,7 +753,7 @@ export function itemRoutes(pool: Pool): Router {
           );
           values.push(companyId, rowId);
           await client.query(
-            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=$${position + 1}`).join(",")},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 1} AND id=$${values.length}`,
+            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${input.supplierAccountId === undefined ? "supplier_inferred" : "false"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 1} AND id=$${values.length}`,
             values,
           );
           const next = itemDTO(

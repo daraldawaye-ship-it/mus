@@ -154,6 +154,8 @@ export interface StockMovement {
   supplierAccountId: number | null;
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
+  /** If populated from old history, records the provenance of the guess. */
+  supplierInferenceSource: "invoice" | "prior_purchase" | "item_estimate" | null;
   locationId: number;
   locationName: string;
   branchId: number;

@@ -1155,6 +1155,7 @@ function ItemEditor({
       setCurrency((selected) => selected ?? yemeni);
     }
   }, [item, defaultCurrency.data]);
+  const [supplierManuallyTouched, setSupplierManuallyTouched] = useState(false);
   const [supplier, setSupplier] = useState<ItemSupplierChoice | null>(item?.supplierAccountId ? {
     id:item.supplierAccountId,code:item.supplierAccountCode??"",name:item.supplierAccountName??"مورد الصنف"
   }:null);
@@ -1226,7 +1227,7 @@ function ItemEditor({
       purchaseFactor: fields.purchaseFactor,
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
-      supplierAccountId: supplier?.id ?? null,
+      ...(item && !supplierManuallyTouched ? {} : { supplierAccountId: supplier?.id ?? null }),
       orderStoppedUntil: fields.orderStoppedUntil || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
@@ -1473,9 +1474,11 @@ function ItemEditor({
                   <span id="item-supplier-choice">{supplier ? `${supplier.code} — ${supplier.name}` : "اختيار مورد الصنف"}</span>
                 </Button>
                 {supplier && <Button variant="ghost" disabled={disabled}
-                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setDirty(true)}}>×</Button>}
+                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setSupplierManuallyTouched(true);setDirty(true)}}>×</Button>}
               </div>
-              <small className="muted">يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق.</small>
+              <small className="muted">{item?.supplierInferred && !supplierManuallyTouched
+                ? "مورد مقترح تلقائيًا من آخر فاتورة مشتريات، وقد يحتاج إلى تصحيح. اختر المورد لتأكيده يدويًا."
+                : "يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق."}</small>
             </div>
             <div className="field item-floating-picker">
               <label id="item-composition-label">التركيب</label>
@@ -1946,7 +1949,7 @@ function ItemEditor({
             label="حساب مورد الصنف"
             value={supplier}
             display={option=>`${option.code} — ${option.name}`}
-            onChange={option=>{setSupplier(option);setDirty(true);setPicker(null)}}
+            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);setDirty(true);setPicker(null)}}
             disabled={disabled}
           />
         ) : picker === "shelf" ? (

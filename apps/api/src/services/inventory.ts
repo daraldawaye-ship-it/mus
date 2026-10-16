@@ -238,10 +238,17 @@ export function stockBalanceDTO(row: QueryResultRow): StockBalance {
     baseCurrencyCode: row.base_currency_code,
   };
 }
-export const stockMovementFrom = `FROM stock_movements m JOIN items i ON i.company_id=m.company_id AND i.id=m.item_id
+export const stockMovementFrom = `FROM stock_movements m
+  LEFT JOIN stock_movement_supplier_hints supplier_hint
+    ON supplier_hint.company_id=m.company_id AND supplier_hint.movement_id=m.id
+  JOIN items i ON i.company_id=m.company_id AND i.id=m.item_id
   JOIN locations l ON l.company_id=m.company_id AND l.id=m.location_id
   JOIN branches b ON b.company_id=l.company_id AND b.id=l.branch_id JOIN users u ON u.id=m.created_by`;
-export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_text,i.code AS item_code,i.name AS item_name,l.name AS location_name,l.branch_id,b.name AS branch_name,u.display_name AS created_by_name ${stockMovementFrom}`;
+export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_text,i.code AS item_code,i.name AS item_name,l.name AS location_name,l.branch_id,b.name AS branch_name,u.display_name AS created_by_name,
+  COALESCE(m.supplier_account_id,supplier_hint.supplier_account_id) AS effective_supplier_account_id,
+  COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) AS effective_supplier_account_code,
+  COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) AS effective_supplier_account_name,
+  supplier_hint.inference_source AS supplier_inference_source ${stockMovementFrom}`;
 export function stockMovementDTO(row: QueryResultRow): StockMovement {
   return {
     id: row.id,
@@ -249,9 +256,10 @@ export function stockMovementDTO(row: QueryResultRow): StockMovement {
     itemId: row.item_id,
     itemCode: row.item_code,
     itemName: row.item_name,
-    supplierAccountId: row.supplier_account_id ?? null,
-    supplierAccountCode: row.supplier_account_code ?? null,
-    supplierAccountName: row.supplier_account_name ?? null,
+    supplierAccountId: row.effective_supplier_account_id ?? null,
+    supplierAccountCode: row.effective_supplier_account_code ?? null,
+    supplierAccountName: row.effective_supplier_account_name ?? null,
+    supplierInferenceSource: row.supplier_inference_source ?? null,
     locationId: row.location_id,
     locationName: row.location_name,
     branchId: row.branch_id,

@@ -65,6 +65,7 @@ export function itemDTO(row: QueryResultRow): Item {
     legacyId: row.legacy_id,
     agentId: row.agent_id,
     supplierAccountId: row.supplier_account_id ?? null,
+    supplierInferred: row.supplier_inferred === true,
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
     compositionId: row.composition_id ?? null,
