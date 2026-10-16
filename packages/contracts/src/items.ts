@@ -240,6 +240,8 @@ export interface Item extends ItemIdentity {
   legacyId: string;
   agentId: number | null;
   supplierAccountId: number | null;
+  /** True only when the existing item's supplier was inferred from history. */
+  supplierInferred: boolean;
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
   compositionId: number | null;
