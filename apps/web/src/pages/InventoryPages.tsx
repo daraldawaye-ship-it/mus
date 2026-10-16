@@ -565,6 +565,13 @@ function MovementsList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
       },
       {
+        accessorKey: "supplierAccountName",
+        header: "مورد الصنف وقت الحركة",
+        size: 185,
+        enableSorting: false,
+        cell: ({ row }) => <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>,
+      },
+      {
         accessorKey: "locationName",
         header: "الموقع",
         size: 165,
