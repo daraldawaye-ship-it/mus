@@ -275,6 +275,8 @@ export interface Item extends ItemIdentity {
   orderQuantity: string;
   /** Exact quantity in the smallest enabled item unit. */
   reserveQuantity: string;
+  /** Combined available stock in exact smallest-unit integers; null without stock access. */
+  availableSmallest?: string | null;
   /** Permission-scoped derived days; populated on the primary items list. */
   approximateCoverageDays?: string | null;
   coverageAfterReserveDays?: string | null;
