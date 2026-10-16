@@ -205,7 +205,7 @@ export function ControlPage({ context }: { context: CompanyContext }) {
   return (
     <div className="stack">
       <PageHeader title="الكنترول" description="مركز التحكم بخيارات الشركة والموظف، مع تفويض تعديل كل خيار من المالك." />
-      <Notice tone="warning">هذه الدفعة تؤسس حفظ الإعدادات وصلاحياتها فقط. لن تتغيّر سلوكيات الفواتير أو السندات أو الجلسات قبل ربط كل خيار بوظيفته واختبار ذلك.</Notice>
+      <Notice tone="warning">هذه الخيارات مرتبطة بوظائفها. يطبَّق ضبط الانصراف التلقائي على الجلسات الجديدة، ولا يتغير توقيت جلسات الحضور السابقة. ويتطلب الخروج عند السكون بقاء الموقع مفتوحًا.</Notice>
       <Card>
         <div className="control-toolbar">
           <div className="control-tabs" role="group" aria-label="نوع الكنترول">
