@@ -2879,3 +2879,23 @@ ul {
   .inventory-sheet-panel { max-height: 92dvh; }
   .inventory-sheet-header { position: sticky; top: -12px; background: var(--bg); z-index: 1; padding-top: 10px; }
 }
+
+
+/* Control center: compact RTL-friendly options, no fixed footer. */
+.control-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.control-toolbar>.field{flex:1 1 220px}
+.control-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.control-options{display:grid;gap:0}
+.control-option{padding:12px 0;border-bottom:1px solid var(--border,#ddd)}
+.control-option:last-child{border-bottom:0}
+.control-option-main{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.control-option-main>div:first-child{flex:1 1 260px}
+.control-option-input{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.control-option-input>.field{width:118px}
+.control-option-help{display:block;color:var(--muted,#6b7280);font-size:12px;margin-top:4px}
+.control-toggle{display:inline-flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.control-toggle input{accent-color:var(--primary,#365ee8);width:17px;height:17px}
+.control-delegation{padding-top:8px;margin-top:8px;border-top:1px dashed var(--border,#ddd)}
+.control-delegation summary{cursor:pointer;font-size:13px;margin-bottom:8px}
+.control-editors{display:flex;flex-wrap:wrap;gap:8px 16px;margin:12px 0}
+@media(max-width:680px){.control-toolbar,.control-option-main{align-items:stretch}.control-option-input{justify-content:flex-start}}
