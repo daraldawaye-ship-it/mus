@@ -1065,6 +1065,14 @@ try {
         }));
       assert.equal(field.height, 32);
       assert.equal(field.font, "14px");
+      const voucherLabelInside = await page.getByLabel("البيان العام", { exact: true })
+        .evaluate((input) => {
+          const label = input.closest(".field")?.querySelector("label");
+          const box = input.getBoundingClientRect();
+          const title = label?.getBoundingClientRect();
+          return !!title && title.top >= box.top && title.bottom <= box.bottom;
+        });
+      assert(voucherLabelInside, "Voucher description label must stay inside its input");
       assert.equal(
         await page
           .locator(".topbar")
