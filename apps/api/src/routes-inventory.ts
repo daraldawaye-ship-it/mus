@@ -37,6 +37,7 @@ import {
   stockBalanceFrom,
   stockBalanceSelect,
   stockMovementDTO,
+  fractionQuantity,
   stockMovementFrom,
   stockMovementSelect,
   stockUnitMultiplier,
@@ -75,6 +76,9 @@ const movementColumns = {
   itemId: "m.item_id",
   itemCode: "i.code",
   itemName: "i.name",
+  supplierAccountId: "m.supplier_account_id",
+  supplierAccountCode: "m.supplier_account_code",
+  supplierAccountName: "m.supplier_account_name",
   locationId: "m.location_id",
   locationName: "l.name",
   branchId: "l.branch_id",
@@ -256,7 +260,7 @@ export function inventoryRoutes(pool: Pool): Router {
           );
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
           let where =
-            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2)";
+            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR m.supplier_account_name ILIKE $2 OR m.supplier_account_code ILIKE $2)";
           for (const key of [
             "itemId",
             "locationId",
@@ -264,6 +268,7 @@ export function inventoryRoutes(pool: Pool): Router {
             "createdBy",
             "invoiceId",
             "operationId",
+            "supplierAccountId",
           ] as const) {
             const value = req.query[key];
             if (value === undefined) continue;
@@ -310,11 +315,40 @@ export function inventoryRoutes(pool: Pool): Router {
             `${stockMovementSelect} WHERE ${where} ORDER BY ${query.order} LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
             [...parameters, query.pageSize, query.offset],
           );
+          // Return ALL qualifying period movement totals for each item, not
+          // just the current page. Per-item unit conversion stays exact.
+          const summary = req.query.supplierAccountId === undefined
+            ? []
+            : (await client.query(
+              `SELECT m.item_id,i.code AS item_code,i.name AS item_name,
+                i.unit1_name,i.factor2,i.factor3,
+                COALESCE(sum(CASE WHEN m.quantity_smallest>0
+                  THEN m.quantity_smallest ELSE 0 END),0)::text AS incoming,
+                COALESCE(sum(CASE WHEN m.quantity_smallest<0
+                  THEN -m.quantity_smallest ELSE 0 END),0)::text AS outgoing
+              ${stockMovementFrom} WHERE ${where}
+              GROUP BY m.item_id,i.code,i.name,i.unit1_name,i.factor2,i.factor3
+              ORDER BY i.name,m.item_id`, parameters,
+            )).rows.map(row => {
+              const divisor = BigInt(row.factor2) * BigInt(row.factor3);
+              const incoming = BigInt(row.incoming);
+              const outgoing = BigInt(row.outgoing);
+              return {
+                itemId: row.item_id,
+                itemCode: row.item_code,
+                itemName: row.item_name,
+                unit1Name: row.unit1_name,
+                incomingUnit1: fractionQuantity(incoming,divisor),
+                outgoingUnit1: fractionQuantity(outgoing,divisor),
+                netUnit1: fractionQuantity(incoming-outgoing,divisor),
+              };
+            });
           return {
             items: rows.rows.map(stockMovementDTO),
             total: count.rows[0].total as number,
             page: query.page,
             pageSize: query.pageSize,
+            supplierSummary: summary,
           };
         }),
       );
