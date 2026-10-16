@@ -73,6 +73,7 @@ const itemColumns = {
   barcode: "i.barcode",
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
+  supplierAccountId: "i.supplier_account_id",
   compositionId: "i.composition_id",
   shelfId: "i.shelf_id",
   compositionArabicName: "f.arabic_name",
@@ -743,6 +744,7 @@ export function itemRoutes(pool: Pool): Router {
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
+            supplierAccountId: input.supplierAccountId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
