@@ -844,8 +844,8 @@ export function itemRoutes(pool: Pool): Router {
           if (req.query.type === "suppliers")
             return masterPage(
               client,req,companyId,
-              "SELECT a.id,a.code,a.name,a.category,a.cash_or_bank AS \"cashOrBank\",a.active FROM accounts a WHERE a.kind='posting' AND a.category IN ('asset','liability') AND NOT a.cash_or_bank",
-              "FROM accounts a WHERE a.kind='posting' AND a.category IN ('asset','liability') AND NOT a.cash_or_bank",
+              "SELECT a.* FROM (SELECT id,company_id,code,name,category,cash_or_bank AS \"cashOrBank\",active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
+              "FROM (SELECT id,company_id,code,name,category,cash_or_bank AS \"cashOrBank\",active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
               "a",
               { id:"a.id",code:"a.code",name:"a.name",active:"a.active" },
               ["a.code","a.name"],
