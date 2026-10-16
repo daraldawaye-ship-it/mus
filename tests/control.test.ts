@@ -140,7 +140,7 @@ test("control center isolates companies/employees, audits optimistic writes and 
   );
   await assertMobileInvoiceCreation(runtime.pool, first.id, "purchase", "Mozilla/5.0 (iPhone)");
   await owner.ok("PUT",prefix+"/show_currency",
-    {value:false,employeeId:null,revision:3});
+    {value:false,employeeId:null,revision:2});
   const currencyRows = await runtime.pool.query(
     "SELECT id,code FROM company_currencies WHERE company_id=$1 AND code IN ('YER','SAR')",
     [first.id],
