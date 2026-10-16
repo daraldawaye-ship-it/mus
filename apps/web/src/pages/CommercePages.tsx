@@ -799,7 +799,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
   const controls = useControls(companyId, context.employee?.id ?? null);
   const showPurchases = kind === "purchase" && controls.value("show_recent_item_purchases") !== false;
   const recent = useQuery<{
-    items: { invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
+    items: { lineId: number; invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
   }>({
     queryKey: ["recent-item-purchases", companyId, selectedItemId],
     queryFn: ({ signal }) => api(`/companies/${companyId}/purchase-history/${selectedItemId}`, { signal }),
@@ -823,7 +823,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
               <table className="recent-purchases-table">
                 <thead><tr><th>التاريخ</th><th>المورد</th><th>الكمية (وحدة 1)</th></tr></thead>
                 <tbody>{recent.data.items.map(row => (
-                  <tr key={row.invoiceId + "-" + row.documentDate + "-" + row.supplierName}>
+                  <tr key={row.lineId}>
                     <td>{row.documentDate}</td><td>{row.supplierName}</td>
                     <td dir="ltr">{row.quantityFirstUnit}</td>
                   </tr>
