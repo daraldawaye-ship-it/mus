@@ -4,6 +4,18 @@ on:
   pull_request:
     paths:
       - 'apps/api/migrations/073_control_center.sql'
+      - 'apps/api/migrations/074_attendance_control_snapshot.sql'
+      - 'apps/api/src/services/control-values.ts'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/routes-finance.ts'
+      - 'apps/api/src/routes-attendance.ts'
+      - 'apps/api/src/services/attendance-rewards.ts'
+      - 'apps/api/src/services/attendance-notifications.ts'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/pages/FinancePages.tsx'
+      - 'apps/web/src/WalletIndicator.tsx'
+      - 'apps/web/src/control.ts'
+      - 'apps/web/src/idle-logout.ts'
       - 'apps/api/src/routes-control.ts'
       - 'apps/api/src/services/control-catalog.ts'
       - 'apps/api/src/services/pages.ts'
