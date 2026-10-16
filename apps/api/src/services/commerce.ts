@@ -813,6 +813,9 @@ export async function createInvoice(
             : directReturnCost,
         invoiceId,
         invoiceLineId: lineId,
+        // Purchase provenance is the actual supplier on this invoice,
+        // including small deliveries that leave the item-card supplier alone.
+        supplierSnapshot: input.kind === "purchase" ? supplier : undefined,
         allowExpired: line.quantity < 0n,
         allowInactive: line.quantity < 0n,
         allowUnknownExpiry: importContext?.allowUnknownExpiry,
