@@ -205,6 +205,15 @@ page(
   { critical: true },
 );
 page(
+  "company.control",
+  "الكنترول",
+  "الشركة",
+  "/companies/:companyId/control",
+  { view: member },
+  "خيارات الشركة والموظف وتفويض تعديل كل خيار.",
+  { critical: true },
+);
+page(
   "company.configuration",
   "الخيارات والصلاحيات",
   "الشركة",

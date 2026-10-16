@@ -1,0 +1,63 @@
+name: Control center foundation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/073_control_center.sql'
+      - 'apps/api/migrations/074_attendance_control_snapshot.sql'
+      - 'apps/api/src/services/control-values.ts'
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/src/routes-finance.ts'
+      - 'apps/api/src/routes-attendance.ts'
+      - 'apps/api/src/services/attendance-rewards.ts'
+      - 'apps/api/src/services/attendance-notifications.ts'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/pages/FinancePages.tsx'
+      - 'apps/web/src/WalletIndicator.tsx'
+      - 'apps/web/src/control.ts'
+      - 'apps/web/src/idle-logout.ts'
+      - 'apps/api/src/routes-control.ts'
+      - 'apps/api/src/services/control-catalog.ts'
+      - 'apps/api/src/services/pages.ts'
+      - 'apps/api/src/services/permission-rules.ts'
+      - 'apps/api/src/business-routes.ts'
+      - 'apps/web/src/pages/ControlPage.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/styles.css'
+      - 'packages/contracts/src/pages.ts'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/control.test.ts'
+      - '.github/workflows/control-center-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Scoped option value and permission tests
+        run: node --import tsx --test tests/control.test.ts

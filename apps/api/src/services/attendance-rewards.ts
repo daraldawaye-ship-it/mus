@@ -268,14 +268,14 @@ export async function closeAttendanceRecord(
       .now as string);
   const auto = (
     await client.query(
-      "SELECT $1::timestamptz>=checked_in_at+interval '16 hours' AS automatic FROM attendance_records WHERE company_id=$2 AND id=$3",
+      "SELECT $1::timestamptz>=checked_in_at+(automatic_checkout_hours * interval '1 hour') AS automatic FROM attendance_records WHERE company_id=$2 AND id=$3",
       [now, input.companyId, input.recordId],
     )
   ).rows[0].automatic as boolean;
   if (!input.actorUser && !auto)
     throw new HttpError(409, "not_due", "لم يحن موعد الانصراف الآلي");
   await client.query(
-    `UPDATE attendance_records SET checked_out_at=CASE WHEN $3::boolean THEN checked_in_at+interval '16 hours' ELSE $4::timestamptz END,
+    `UPDATE attendance_records SET checked_out_at=CASE WHEN $3::boolean THEN checked_in_at+(automatic_checkout_hours * interval '1 hour') ELSE $4::timestamptz END,
     close_source=CASE WHEN $3::boolean THEN 'automatic' ELSE 'manual' END,needs_review=$3,
     revision=revision+1,updated_by=$5,updated_at=clock_timestamp() WHERE company_id=$1 AND id=$2`,
     [
@@ -317,7 +317,7 @@ export async function closeAttendanceRecord(
       subjectEmployeeId: row.employee_id,
       subjectKey: `attendance:${row.id}`,
       eventKey: `attendance:${row.id}:auto-close`,
-      message: `${row.employee_name}: أُغلق الحضور آليًا بعد 16 ساعة ويحتاج مراجعة. تعالج الفروق بتعويض أو خصم نقاط دون تعديل وقت السجل.`,
+      message: `${row.employee_name}: أُغلق الحضور آليًا بعد ${row.automatic_checkout_hours} ساعة ويحتاج مراجعة. تعالج الفروق بتعويض أو خصم نقاط دون تعديل وقت السجل.`,
       href: `/companies/${input.companyId}/attendance?day=${row.work_date}`,
     });
   return saved;

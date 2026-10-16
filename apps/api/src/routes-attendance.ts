@@ -18,6 +18,7 @@ import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { permissionRuleEffects } from "./services/permission-rules.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { getAttendanceSettings } from "./services/attendance-settings.ts";
+import { attendanceAutoHours } from "./services/control-values.ts";
 import {
   awardAttendanceCheckIn,
   closeAttendanceRecord,
@@ -440,7 +441,7 @@ export function attendanceRoutes(pool: Pool) {
         if (open) {
           const expired = (
             await client.query(
-              "SELECT $1::timestamptz>=checked_in_at+interval '16 hours' AS expired FROM attendance_records WHERE company_id=$2 AND id=$3",
+              "SELECT $1::timestamptz>=checked_in_at+(automatic_checkout_hours * interval '1 hour') AS expired FROM attendance_records WHERE company_id=$2 AND id=$3",
               [time.instant, companyId, open.id],
             )
           ).rows[0]?.expired;
@@ -471,7 +472,7 @@ export function attendanceRoutes(pool: Pool) {
         const inserted = (
           await client.query(
             `INSERT INTO attendance_records(company_id,employee_id,employee_name,work_date,checked_in_at,idempotency_key,created_by,updated_by,
-    hourly_points,default_daily_hours,expected_start_time,allow_overtime,settings_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12) RETURNING id`,
+    hourly_points,default_daily_hours,expected_start_time,allow_overtime,settings_revision,automatic_checkout_hours) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
             [
               companyId,
               employee.id,
@@ -485,6 +486,7 @@ export function attendanceRoutes(pool: Pool) {
               settings.expectedStartTime,
               settings.allowOvertime,
               settings.revision,
+              await attendanceAutoHours(client, companyId),
             ],
           )
         ).rows[0];

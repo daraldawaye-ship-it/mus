@@ -96,7 +96,7 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
         // Auto-close protects the raw punch even when notification/attendance pages are disabled.
         const overdue = (
           await client.query(
-            "SELECT id FROM attendance_records WHERE company_id=$1 AND checked_out_at IS NULL AND checked_in_at+interval '16 hours'<=clock_timestamp() ORDER BY id FOR UPDATE",
+            "SELECT id FROM attendance_records WHERE company_id=$1 AND checked_out_at IS NULL AND checked_in_at+(automatic_checkout_hours * interval '1 hour')<=clock_timestamp() ORDER BY id FOR UPDATE",
             [companyId],
           )
         ).rows;

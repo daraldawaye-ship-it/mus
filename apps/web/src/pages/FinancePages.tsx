@@ -37,6 +37,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { useControls } from "../control";
 import { formatMoney } from "../format-money";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import {
@@ -67,7 +68,7 @@ export function financeAccess(
 }
 const documentPath = (companyId: number, id: number | "new") =>
   `/companies/${companyId}/financial-documents/${id}`;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
 const listPaths: Record<FinancialDocumentKind, string> = {
   journal: "journals",
   receipt: "receipts",
@@ -462,6 +463,10 @@ function DocumentEditor({
   );
   const changed = useFinanceChanges(companyId);
   const kind = document?.kind ?? newKind;
+  const controls = useControls(companyId, context.employee?.id ?? null);
+  const showCurrency = controls.value("show_currency") !== false;
+  const editDateKey = kind === "receipt" ? "edit_receipts_date" : kind === "payment" ? "edit_payments_date" : "edit_journals_date";
+  const allowDateEdit = controls.value(editDateKey) !== false;
   const hasManageAccess =
     financeAccess(context, "manage") &&
     (!document || document.status === "draft");
@@ -484,6 +489,12 @@ function DocumentEditor({
     if (document || !defaultYer || currencyManuallyChosen.current) return;
     if (currency === null) setCurrency(defaultYer);
   }, [document, defaultYer, currency]);
+  useEffect(() => {
+    if (!document && !showCurrency && defaultYer && currency?.code !== "YER") {
+      currencyManuallyChosen.current = false;
+      setCurrency(defaultYer);
+    }
+  }, [document, showCurrency, defaultYer, currency]);
   const [branch, setBranch] = useState<PickBranch | null>(
     document?.branchId
       ? {
@@ -898,7 +909,7 @@ function DocumentEditor({
               type="date"
               required
               value={documentDate}
-              disabled={!canEdit || saving}
+              disabled={!canEdit || saving || !allowDateEdit}
               onChange={(event) => {
                 touch();
                 setDate(event.target.value);
@@ -917,7 +928,7 @@ function DocumentEditor({
                 }}
               />
             )}
-            {pickerButton(
+            {showCurrency && pickerButton(
               "عملة المستند",
               currency ? `${currency.code} — ${currency.name}` : "اختر العملة",
               { type: "currency" },
@@ -954,7 +965,7 @@ function DocumentEditor({
                 { type: "counterparty" },
               )}
               <Field
-                label={`المبلغ${currency ? ` (${currency.code})` : ""}`}
+                label={`المبلغ${showCurrency && currency ? ` (${currency.code})` : ""}`}
                 money
                 dir="ltr"
                 inputMode="decimal"

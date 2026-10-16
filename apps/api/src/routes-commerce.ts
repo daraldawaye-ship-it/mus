@@ -20,6 +20,7 @@ import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
+import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -39,6 +40,36 @@ async function readCommerce<T>(
 export function commerceRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  router.get(
+    `${base}/purchase-history/:itemId`,
+    handler(async (req, res) => {
+      const itemId = id(req.params.itemId);
+      const items = await readCommerce(pool, req, async (client, companyId) => {
+        const found = await client.query(
+          "SELECT 1 FROM items WHERE company_id=$1 AND id=$2",
+          [companyId, itemId],
+        );
+        if (!found.rowCount)
+          throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
+        const result = await client.query(
+          `SELECT il.id AS "lineId", i.id AS "invoiceId",
+             i.document_date::text AS "documentDate",
+             COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد') AS "supplierName",
+             round(il.smallest_quantity::numeric /
+               (il.factor2::numeric * il.factor3::numeric), 3)::text AS "quantityFirstUnit"
+           FROM invoice_lines il
+           JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
+           WHERE il.company_id=$1 AND il.item_id=$2
+             AND i.kind='purchase' AND il.smallest_quantity>0
+           ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+           LIMIT 5`,
+          [companyId, itemId],
+        );
+        return result.rows;
+      });
+      res.json({ items });
+    }),
+  );
   router.get(
     `${base}/invoice-stock-preview`,
     handler(async (req, res) => {
@@ -221,6 +252,17 @@ export function commerceRoutes(pool: Pool): Router {
         "commerce.manage",
         async (client, user, companyId) => {
           await companyAccess(client, user, companyId, "finance.post", true);
+          // Accepted UUID retries remain verifiable even if a control changes.
+          const existing = await client.query(
+            "SELECT 1 FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+            [companyId, input.idempotencyKey],
+          );
+          if (!existing.rowCount) {
+            await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
+            await assertEditableDocumentDate(client, companyId,
+              input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date", input.documentDate);
+            await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
+          }
           return createInvoice(client, companyId, user, input);
         },
       ).catch(async (error:unknown)=>{
