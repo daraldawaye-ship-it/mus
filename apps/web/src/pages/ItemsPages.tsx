@@ -617,7 +617,7 @@ function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:nu
     queryKey:["items",user?.id,companyId,"composition-peers",itemId,page],
     queryFn:({signal})=>api<{peers:ItemCompositionPeers}>(
       `/companies/${companyId}/items/${itemId}/composition-peers?page=${page}`,{signal}),
-    enabled:!!user,staleTime:60_000,refetchOnWindowFocus:false,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const peers=result.data?.peers;
   return (
@@ -679,7 +679,7 @@ function ItemPurchasePricesCard({companyId,itemId}:{companyId:number;itemId:numb
     queryKey:["items",user?.id,companyId,"purchase-price-statistics",itemId],
     queryFn:({signal})=>api<{statistics:ItemPurchasePriceStatistics}>(
       `/companies/${companyId}/items/${itemId}/purchase-price-statistics`,{signal}),
-    enabled:!!user,staleTime:60_000,refetchOnWindowFocus:false,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const stats=result.data?.statistics;
   const detail=(p:ItemPurchasePricePoint)=>(
@@ -732,7 +732,7 @@ function ItemActivityCard({companyId,itemId}:{companyId:number;itemId:number}) {
   const result=useQuery({
     queryKey:["items",user?.id,companyId,"activity",itemId],
     queryFn:({signal})=>api<{activity:ItemActivity}>(`/companies/${companyId}/items/${itemId}/activity`,{signal}),
-    enabled:!!user,staleTime:60_000,refetchOnWindowFocus:false,
+    enabled:!!user,staleTime:0,refetchOnWindowFocus:false,
   });
   const activity=result.data?.activity;
   const fmt=(quantity:string)=>BigInt(quantity).toLocaleString("en-US");
@@ -802,7 +802,7 @@ function ItemStatisticsCard({
         { signal },
       ),
     enabled: !!user,
-    staleTime: 60_000,
+    staleTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   });
