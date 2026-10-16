@@ -6,6 +6,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "../apps/api/src/services/control-values.ts";
 import type { Company, Employee, SessionResponse } from "../packages/contracts/src/index.ts";
 
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -123,4 +124,33 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(log.rows.length,4);
   assert.equal(log.rows[0].action,"control.value");
   assert.equal(log.rows[0].after_value.value,false);
+
+  // Policies must protect API operations even when the form is bypassed.
+  await owner.ok("PUT",prefix+"/edit_sales_date",
+    {value:false,employeeId:null,revision:null});
+  await assert.rejects(
+    () => assertEditableDocumentDate(runtime.pool, first.id, "edit_sales_date", "2020-01-01"),
+    (error: unknown) => (error as {status:number;code:string}).status === 403,
+  );
+  await owner.ok("PUT",prefix+"/mobile_sales",
+    {value:false,employeeId:null,revision:null});
+  await assert.rejects(
+    () => assertMobileInvoiceCreation(runtime.pool, first.id, "sale", "Mozilla/5.0 (iPhone)"),
+    (error: unknown) => (error as {code:string}).code === "control_mobile_disabled",
+  );
+  await assertMobileInvoiceCreation(runtime.pool, first.id, "purchase", "Mozilla/5.0 (iPhone)");
+  await owner.ok("PUT",prefix+"/show_currency",
+    {value:false,employeeId:null,revision:3});
+  const currencyRows = await runtime.pool.query(
+    "SELECT id,code FROM company_currencies WHERE company_id=$1 AND code IN ('YER','SAR')",
+    [first.id],
+  );
+  const yer = currencyRows.rows.find(row => row.code === "YER")?.id;
+  const sar = currencyRows.rows.find(row => row.code === "SAR")?.id;
+  assert(yer && sar);
+  await assertYerWhenCurrencyHidden(runtime.pool, first.id, yer);
+  await assert.rejects(
+    () => assertYerWhenCurrencyHidden(runtime.pool, first.id, sar),
+    (error: unknown) => (error as {code:string}).code === "control_currency_hidden",
+  );
 });
