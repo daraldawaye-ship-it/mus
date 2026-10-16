@@ -20,6 +20,7 @@ import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
+import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -221,6 +222,17 @@ export function commerceRoutes(pool: Pool): Router {
         "commerce.manage",
         async (client, user, companyId) => {
           await companyAccess(client, user, companyId, "finance.post", true);
+          // Accepted UUID retries remain verifiable even if a control changes.
+          const existing = await client.query(
+            "SELECT 1 FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+            [companyId, input.idempotencyKey],
+          );
+          if (!existing.rowCount) {
+            await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
+            await assertEditableDocumentDate(client, companyId,
+              input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date", input.documentDate);
+            await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
+          }
           return createInvoice(client, companyId, user, input);
         },
       ).catch(async (error:unknown)=>{
