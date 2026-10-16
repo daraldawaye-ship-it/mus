@@ -341,6 +341,15 @@ function StockFilters({
       />
       {movements && (
         <>
+          <ReferenceField<Account>
+            companyId={companyId}
+            type="accounts"
+            label="مورد الصنف وقت الحركة"
+            id={filterId(params, "supplierAccountId")}
+            onChange={(value) =>
+              updateFilter(setParams, "supplierAccountId", value ? String(value.id) : "")
+            }
+          />
           <Select
             label="نوع الحركة"
             value={params.get("kind") ?? ""}
