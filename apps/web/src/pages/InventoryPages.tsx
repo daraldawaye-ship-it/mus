@@ -22,6 +22,7 @@ import {
   type StockAdjustmentInput,
   type StockBalance,
   type StockMovement,
+  type StockSupplierItemSummary,
   type StockOperation,
   type StockTransferInput,
 } from "../../../../packages/contracts/src/inventory";
@@ -158,6 +159,7 @@ function ReferenceField<T extends Reference>({
   disabled = false,
   category,
   nullable = true,
+  supplierOnly = false,
 }: {
   companyId: number;
   type: ReferenceType;
@@ -168,6 +170,7 @@ function ReferenceField<T extends Reference>({
   disabled?: boolean;
   category?: "asset" | "income" | "expense";
   nullable?: boolean;
+  supplierOnly?: boolean;
 }) {
   const { user } = useSession();
   const [open, setOpen] = useState(false);
@@ -234,6 +237,12 @@ function ReferenceField<T extends Reference>({
           label={label}
           value={resolved}
           display={referenceLabel}
+          accept={supplierOnly ? (option) => {
+            const account = option as unknown as Account;
+            return account.kind === "posting" &&
+              (account.category === "asset" || account.category === "liability") &&
+              !account.cashOrBank;
+          } : undefined}
           disabled={disabled}
           onChange={(option) => {
             if (!option) return;
@@ -341,6 +350,15 @@ function StockFilters({
       />
       {movements && (
         <>
+          <ReferenceField<Account>
+            companyId={companyId}
+            type="accounts"
+            label="مورد الحركة"
+            id={filterId(params,"supplierAccountId")}
+            supplierOnly
+            onChange={(value) => updateFilter(setParams,
+              "supplierAccountId", value ? String(value.id) : "")}
+          />
           <Select
             label="نوع الحركة"
             value={params.get("kind") ?? ""}
@@ -536,12 +554,15 @@ function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["itemId", "locationId", "kind", "dateFrom", "dateTo"])
+  for (const key of ["itemId", "locationId", "kind", "dateFrom", "dateTo", "supplierAccountId"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<StockMovement>(
     `/companies/${companyId}/stock-movements?${filters}`,
     `company:${companyId}:inventory:movements`,
   );
+  const supplierSummary = (
+    list.data as (Page<StockMovement> & {supplierSummary?:StockSupplierItemSummary[]}) | undefined
+  )?.supplierSummary ?? [];
   const columns = useMemo<ColumnDef<StockMovement, unknown>[]>(
     () => [
       { accessorKey: "id", header: "الحركة", size: 85 },
@@ -563,6 +584,17 @@ function MovementsList({ context }: { context: CompanyContext }) {
         header: "الصنف",
         size: 200,
         cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
+      },
+      {
+        accessorKey: "supplierAccountName",
+        header: "المورد وقت الحركة",
+        size: 185,
+        enableSorting: false,
+        cell: ({ row }) => <ValueCell>{
+          row.original.supplierAccountName
+            ? `${row.original.supplierAccountCode ?? ""} — ${row.original.supplierAccountName}`
+            : "غير محدد"
+        }</ValueCell>,
       },
       {
         accessorKey: "locationName",
@@ -635,6 +667,32 @@ function MovementsList({ context }: { context: CompanyContext }) {
       />
       <Card>
         <StockFilters companyId={companyId} list={list} movements />
+        {params.get("supplierAccountId") && (
+          <section className="stock-supplier-summary">
+            <h3>ملخص حركة أصناف المورد خلال الفترة المحددة</h3>
+            <div className="table-scroll">
+              <table aria-label="ملخص حركة أصناف المورد">
+                <thead><tr>
+                  <th>الصنف</th><th>الوارد بالوحدة الأولى</th>
+                  <th>الصادر بالوحدة الأولى</th><th>الصافي بالوحدة الأولى</th>
+                </tr></thead>
+                <tbody>
+                  {supplierSummary.map((row) => (
+                    <tr key={row.itemId}>
+                      <td>{row.itemCode} — {row.itemName}</td>
+                      <td>{quantityText(row.incomingUnit1)} {row.unit1Name}</td>
+                      <td>{quantityText(row.outgoingUnit1)} {row.unit1Name}</td>
+                      <td>{quantityText(row.netUnit1)} {row.unit1Name}</td>
+                    </tr>
+                  ))}
+                  {!supplierSummary.length && <tr><td colSpan={4}>
+                    لا توجد حركات لهذا المورد في الفترة
+                  </td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
         {list.error && (
           <Notice tone="error">
             {errorMessage(list.error)}{" "}

@@ -31,7 +31,7 @@ export async function itemIdempotent(
 ): Promise<QueryResultRow | null> {
   // Old accepted creates may predate these defaults; keep their payload immutable.
   const samePayload = table === "items"
-    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0"}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0"}'::jsonb || $3::jsonb)`
+    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null}'::jsonb || $3::jsonb)`
     : "creation_payload=$3::jsonb";
   const result = await db.query(
     `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -70,6 +70,7 @@ export type ItemFields = Pick<
   | "barcode"
   | "legacyId"
   | "agentId"
+  | "supplierAccountId"
   | "compositionId"
   | "unit1Name"
   | "unit2Name"
@@ -167,6 +168,17 @@ export async function checkItemReferences(
       && !composition.rows[0].active)
       conflict("اختر تركيبًا غير مؤرشف من الشركة نفسها");
   }
+  if (input.supplierAccountId !== null) {
+    const supplier = await db.query(
+      "SELECT active FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank FOR SHARE",
+      [companyId, input.supplierAccountId],
+    );
+    if (!supplier.rows[0])
+      conflict("اختر مورد الصنف من الحسابات الحركية التابعة للشركة وليس من الصناديق أو البنوك");
+    if ((!previous || reactivated || previous.supplierAccountId !== input.supplierAccountId)
+      && !supplier.rows[0].active)
+      conflict("اختر حساب مورد فعالًا داخل الشركة");
+  }
   if (input.agentId !== null) {
     const agent = await db.query(
       "SELECT active FROM item_agents WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -190,6 +202,7 @@ export const itemFieldColumns = [
   ["barcode", "barcode"],
   ["legacyId", "legacy_id"],
   ["agentId", "agent_id"],
+  ["supplierAccountId", "supplier_account_id"],
   ["compositionId", "composition_id"],
   ["unit1Name", "unit1_name"],
   ["unit2Name", "unit2_name"],

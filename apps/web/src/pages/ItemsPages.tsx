@@ -1091,6 +1091,7 @@ type SelectedCurrency = Pick<
   "id" | "code" | "name" | "decimalPlaces" | "active"
 >;
 type SelectedAgent = Pick<ItemAgent, "id" | "name" | "active">;
+type SelectedSupplier = { id: number; code: string; name: string; active: boolean };
 function ItemEditor({
   context,
   item,
@@ -1156,13 +1157,19 @@ function ItemEditor({
         }
       : null,
   );
+  const [supplier, setSupplier] = useState<SelectedSupplier | null>(
+    item?.supplierAccountId === null || !item ? null :
+      { id:item.supplierAccountId, code:item.supplierAccountCode ?? "",
+        name:item.supplierAccountName ?? "مورد الصنف",
+        active:item.supplierAccountActive ?? false },
+  );
   const compositionDetail = useQuery({
     queryKey: ["company", user?.id, companyId, "composition-detail", fields.compositionId],
     queryFn: ({signal}) => api<{composition: ItemComposition}>(
       `/companies/${companyId}/item-compositions/${fields.compositionId}`,{signal}),
     enabled: !!user && !!fields.compositionId,
   });
-  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | null>(null);
+  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | "supplier" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [unknownCreation, setUnknownCreation] = useState(false);
@@ -1215,6 +1222,7 @@ function ItemEditor({
       purchaseFactor: fields.purchaseFactor,
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
+      supplierAccountId: supplier?.id ?? null,
       orderStoppedUntil: fields.orderStoppedUntil || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
@@ -1451,6 +1459,23 @@ function ItemEditor({
               {agent && !agent.active && (
                 <small className="muted">الوكيل مؤرشف</small>
               )}
+            </div>
+            <div className="field item-floating-picker">
+              <label id="item-supplier-label">الصنف من المورد</label>
+              <div className="item-reference-field">
+                <Button variant="secondary" disabled={disabled}
+                  aria-labelledby="item-supplier-label item-supplier-choice"
+                  onClick={() => setPicker("supplier")}>
+                  <span id="item-supplier-choice">{supplier
+                    ? `${supplier.code} — ${supplier.name}`
+                    : "اختيار مورد الصنف"}</span>
+                </Button>
+                {supplier && <Button variant="ghost" disabled={disabled}
+                  aria-label="إزالة مورد الصنف"
+                  onClick={() => {setSupplier(null);setDirty(true);}}>×</Button>}
+              </div>
+              {supplier && !supplier.active &&
+                <small className="muted">المورد غير فعال؛ يمكن الاحتفاظ به حتى تغييره.</small>}
             </div>
             <div className="field item-floating-picker">
               <label id="item-composition-label">التركيب</label>
@@ -1878,7 +1903,8 @@ function ItemEditor({
         title={
           picker === "currency" ? "اختيار عملة الأسعار" :
             picker === "composition" ? "اختيار تركيب الصنف" :
-              picker === "shelf" ? "اختيار رف الصنف" : "اختيار وكيل الصنف"
+              picker === "shelf" ? "اختيار رف الصنف" :
+                picker === "supplier" ? "اختيار المورد" : "اختيار وكيل الصنف"
         }
         onClose={() => setPicker(null)}
       >
@@ -1923,6 +1949,21 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               edit("compositionId", option.id);
+              setPicker(null);
+            }}
+          />
+        ) : picker === "supplier" ? (
+          <ServerLookup<SelectedSupplier>
+            companyId={companyId}
+            resource={`/companies/${companyId}/item-options?type=suppliers&active=true`}
+            label="مورد الصنف"
+            value={supplier}
+            display={(option) => `${option.code} — ${option.name}`}
+            disabled={disabled}
+            onChange={(option) => {
+              if (!option) return;
+              setSupplier(option);
+              setDirty(true);
               setPicker(null);
             }}
           />

@@ -2950,3 +2950,88 @@ test("supplier receipt reference preserves external purchase invoice numbers", a
   assert.equal(bad.status, 400);
   await assertBalanced(f, s.company.id);
 });
+
+
+test("purchase supplier is independent of card quantity threshold and movement snapshot stays immutable", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Supplier movement history");
+  const second = (await f.owner.ok<{account:Account}>("POST",
+    `${s.path}/accounts`, {
+      code:"0000000099", name:"Second Supplier", parentId:null,
+      kind:"posting", category:"liability", normalSide:"credit", cashOrBank:false,
+    }, 201)).account;
+  const item = await s.item({hasExpiry:false});
+  const picker = await f.owner.ok<Page<{id:number;code:string;name:string;active:boolean}>>(
+    "GET", `${s.path}/item-options?type=suppliers&q=Supplier`);
+  assert(picker.items.some(row => row.id === s.supplier.id));
+  assert(picker.items.some(row => row.id === second.id));
+  const readItem = async () =>
+    (await f.owner.ok<{item:Item}>("GET",`${s.path}/items/${item.id}`)).item;
+  const firstBody = invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"2",unitPrice:"800",expiryDate:null}],
+  });
+  const first = await invoice(f,s,firstBody);
+  assert.equal((await readItem()).supplierAccountId,s.supplier.id,
+    "Initial positive purchase larger than zero stock assigns supplier");
+  const firstSale = await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"1"}],
+  }));
+  const smaller = await invoice(f,s,invoiceBody(s,item.id,{
+    counterpartyAccountId:s.cash.id,supplierAccountId:second.id,
+    lines:[{itemId:item.id,unit:1,quantity:"1",unitPrice:"800",expiryDate:null}],
+  }));
+  assert.equal((await readItem()).supplierAccountId,s.supplier.id,
+    "Purchase equal to the current stock must not replace the card supplier");
+  const bought = (await movements(f,s,item.id)).filter(m=>m.invoiceId===smaller.id);
+  assert(bought.length>0);
+  assert(bought.every(m=>m.supplierAccountId===second.id
+    && m.supplierAccountName===second.name),
+    "Purchase history snapshots the actual supplier, not the card supplier");
+  const current = await readItem();
+  const fields = [
+    "name","imageId","englishName","shelf","shelfId","barcode","legacyId",
+    "agentId","compositionId","unit1Name","unit2Name","unit3Name",
+    "factor2","factor3","defaultSaleUnit","salePrice1","salePrice2",
+    "salePrice3","purchasePrice","commissionRate","clearanceFrom","clearanceTo",
+    "settlementApprovalDate","settlementDisplayDate","purchaseFactor",
+    "currencyId","reorderLimit","orderQuantity","reserveQuantity","searchKeys",
+    "purchaseNotes","orderStoppedUntil","hasExpiry","active",
+  ] as const;
+  const full = Object.fromEntries(fields.map(key=>[key,current[key]]));
+  const manual = (await f.owner.ok<{item:Item}>("PATCH",`${s.path}/items/${item.id}`,{
+    ...full, supplierAccountId: second.id,revision:current.revision,
+  })).item;
+  assert.equal(manual.supplierAccountId,second.id);
+  const laterSale = await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"1"}],
+  }));
+  const returned = await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:firstSale.lines[0]!.id}],
+  }));
+  const all = await movements(f,s,item.id);
+  const source = (invoiceId:number)=>all.filter(row=>row.invoiceId===invoiceId);
+  assert(source(first.id).every(row=>row.supplierAccountId===s.supplier.id));
+  assert(source(firstSale.id).every(row=>row.supplierAccountId===s.supplier.id));
+  assert(source(laterSale.id).every(row=>row.supplierAccountId===second.id));
+  assert(source(returned.id).every(row=>row.supplierAccountId===s.supplier.id),
+    "Linked sale return inherits its original source supplier");
+  const report = await f.owner.ok<{
+    items:StockMovement[];
+    supplierSummary:{itemId:number;unit1Name:string;
+      incomingUnit1:{decimal:string|null};outgoingUnit1:{decimal:string|null};
+      netUnit1:{decimal:string|null}}[];
+  }>("GET",`${s.path}/stock-movements?supplierAccountId=${s.supplier.id}&dateFrom=2026-10-12&dateTo=2026-10-12`);
+  assert(report.items.length>0);
+  assert(report.items.every(row=>row.supplierAccountId===s.supplier.id));
+  const summary = report.supplierSummary.find(row=>row.itemId===item.id)!;
+  assert.equal(summary.incomingUnit1.decimal,"3");
+  assert.equal(summary.outgoingUnit1.decimal,"1");
+  assert.equal(summary.netUnit1.decimal,"2");
+  const replay = await invoice(f,s,firstBody);
+  assert.equal(replay.id,first.id);
+  assert.equal((await movements(f,s,item.id)).length,all.length,
+    "Idempotent purchase replay must not append movement snapshots");
+});

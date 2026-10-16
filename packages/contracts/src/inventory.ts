@@ -151,6 +151,10 @@ export interface StockMovement {
   itemId: number;
   itemCode: string;
   itemName: string;
+  /** Immutable supplier snapshot recorded when the movement was posted. */
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
   locationId: number;
   locationName: string;
   branchId: number;
@@ -167,6 +171,16 @@ export interface StockMovement {
   createdBy: number;
   createdByName: string;
   createdAt: string;
+}
+/** Period totals grouped by item; never add quantities of different items. */
+export interface StockSupplierItemSummary {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  unit1Name: string;
+  incomingUnit1: ExactQuantity;
+  outgoingUnit1: ExactQuantity;
+  netUnit1: ExactQuantity;
 }
 export interface StockOperation {
   id: number;

@@ -305,7 +305,7 @@ export async function createInvoice(
     (a, b) => a - b,
   );
   const items = await client.query(
-    "SELECT *, clearance_from::text AS clearance_from_text, clearance_to::text AS clearance_to_text FROM items WHERE company_id=$1 AND id=ANY($2::integer[]) ORDER BY id FOR SHARE",
+    `SELECT *, clearance_from::text AS clearance_from_text, clearance_to::text AS clearance_to_text FROM items WHERE company_id=$1 AND id=ANY($2::integer[]) ORDER BY id ${input.kind === "purchase" ? "FOR UPDATE" : "FOR SHARE"}`,
     [companyId, itemIds],
   );
   if (
@@ -662,6 +662,21 @@ export async function createInvoice(
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
+  // Snapshot the total stock BEFORE applying this purchase. The same item
+  // rows are locked FOR UPDATE above, serializing concurrent stock postings.
+  // Purchase quantities and valuation balances are both in smallest units.
+  const purchaseNet = new Map<number, bigint>();
+  const stockBefore = new Map<number, bigint>();
+  if (input.kind === "purchase" && supplier && !importContext) {
+    for (const line of prepared)
+      purchaseNet.set(line.item.id, (purchaseNet.get(line.item.id) ?? 0n) + line.smallest);
+    const previous = await client.query(
+      "SELECT item_id,quantity_smallest::text AS quantity FROM stock_item_valuations WHERE company_id=$1 AND item_id=ANY($2::integer[])",
+      [companyId, itemIds],
+    );
+    for (const row of previous.rows)
+      stockBefore.set(row.item_id, BigInt(row.quantity));
+  }
   let totalCost = 0n;
   let positivePurchaseVariance = 0n,
     negativePurchaseVariance = 0n;
@@ -798,6 +813,9 @@ export async function createInvoice(
             : directReturnCost,
         invoiceId,
         invoiceLineId: lineId,
+        // Purchase provenance is the actual supplier on this invoice,
+        // including small deliveries that leave the item-card supplier alone.
+        supplierSnapshot: input.kind === "purchase" ? supplier : undefined,
         allowExpired: line.quantity < 0n,
         allowInactive: line.quantity < 0n,
         allowUnknownExpiry: importContext?.allowUnknownExpiry,
@@ -941,6 +959,27 @@ export async function createInvoice(
       invoiceId,
     ],
   );
+  // A predominant NEW purchase determines the suggested supplier.
+  // Never overwrite manually chosen suppliers for small deliveries, return-only
+  // documents, unknown suppliers or old imported invoices.
+  if (input.kind === "purchase" && supplier && !importContext) {
+    for (const item of items.rows) {
+      const purchased = purchaseNet.get(item.id) ?? 0n;
+      const beforeQuantity = stockBefore.get(item.id) ?? 0n;
+      if (purchased <= 0n || purchased <= beforeQuantity ||
+          item.supplier_account_id === supplier.id)
+        continue;
+      await client.query(
+        "UPDATE items SET supplier_account_id=$1,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$2 AND id=$3",
+        [supplier.id, companyId, item.id],
+      );
+      await audit(client,user,"item.update","item",item.id,
+        {supplierAccountId:item.supplier_account_id ?? null},
+        {supplierAccountId:supplier.id,sourceInvoiceId:invoiceId,
+          purchasedSmallest:purchased.toString(),
+          previousStockSmallest:beforeQuantity.toString()},companyId);
+    }
+  }
   const invoice = await loadInvoice(client, companyId, invoiceId);
   if (!importContext?.suppressRewards)
     await awardPostedInvoice(
