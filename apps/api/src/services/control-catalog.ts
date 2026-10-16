@@ -12,7 +12,7 @@ export type ControlOption = {
   accountantDefault?: boolean;
   description?: string;
   /** First increment persists policy; operational consumers are integrated separately. */
-  integrated: false;
+  integrated: boolean;
 };
 export const controlCatalog: readonly ControlOption[] = [
   { key: "show_currency", label: "إظهار العملة في الفواتير والسندات", category: "الفواتير والسندات", scope: "company", type: "boolean", defaultValue: true, accountantDefault: true, integrated: false },
@@ -24,7 +24,7 @@ export const controlCatalog: readonly ControlOption[] = [
   { key: "mobile_sales", label: "السماح بإنشاء فواتير المبيعات من الهاتف", category: "الأجهزة", scope: "company", type: "boolean", defaultValue: true, integrated: false },
   { key: "mobile_purchases", label: "السماح بإنشاء فواتير المشتريات من الهاتف", category: "الأجهزة", scope: "company", type: "boolean", defaultValue: true, integrated: false },
   { key: "auto_checkout_hours", label: "عدد ساعات الانصراف التلقائي", category: "الدوام", scope: "company", type: "hours", defaultValue: 16, min: 1, max: 48, integrated: false },
-  { key: "show_header_points", label: "عرض مبلغ النقاط أعلى الشاشة", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: false },
+  { key: "show_header_points", label: "عرض مبلغ النقاط أعلى الشاشة", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
   { key: "idle_logout_hours", label: "تسجيل الخروج بعد السكون (ساعة؛ صفر للتعطيل)", category: "الموظف", scope: "employee", type: "hours", defaultValue: 0, min: 0, max: 72, integrated: false },
   { key: "show_recent_item_purchases", label: "إظهار آخر خمس مشتريات للصنف أثناء الشراء", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: false },
 ];
