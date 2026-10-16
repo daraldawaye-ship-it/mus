@@ -172,6 +172,16 @@ export interface StockMovement {
   createdByName: string;
   createdAt: string;
 }
+/** Period totals grouped by item; never add quantities of different items. */
+export interface StockSupplierItemSummary {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  unit1Name: string;
+  incomingUnit1: ExactQuantity;
+  outgoingUnit1: ExactQuantity;
+  netUnit1: ExactQuantity;
+}
 export interface StockOperation {
   id: number;
   companyId: number;
