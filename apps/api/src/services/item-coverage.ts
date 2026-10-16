@@ -76,13 +76,14 @@ export async function addItemCoverageToPage<T extends { id: number }>(
   client: PoolClient,
   companyId: number,
   items: T[],
+  itemIdOf: (item: T) => number = item => item.id,
 ): Promise<Array<T & Pick<ItemCoverage, "approximateCoverageDays" | "coverageAfterReserveDays">>> {
   if (!items.length) return [];
   const rows = (await client.query(
     `SELECT i.id ${itemCoverageSelect}
      FROM items i ${itemCoverageJoin}
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
-    [companyId, items.map(item => item.id)],
+    [companyId, items.map(itemIdOf)],
   )).rows;
   const values = new Map(rows.map(row => [row.id as number, {
     approximateCoverageDays: normalizeRate(row.approximate_coverage_days),
@@ -90,7 +91,7 @@ export async function addItemCoverageToPage<T extends { id: number }>(
   }]));
   return items.map(item => ({
     ...item,
-    ...(values.get(item.id) ?? { approximateCoverageDays: null, coverageAfterReserveDays: null }),
+    ...(values.get(itemIdOf(item)) ?? { approximateCoverageDays: null, coverageAfterReserveDays: null }),
   }));
 }
 
