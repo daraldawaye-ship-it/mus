@@ -27,6 +27,10 @@ const sortMetric=(metric:ItemActivityReportMetric,period:ItemActivityReportPerio
  return metric+periodKey;
 };
 const asQuantity=(s:string)=>BigInt(s).toLocaleString("en-US");
+const asFirstUnit=(q:{numerator:string;denominator:string;decimal:string|null})=>{
+ const exact=q.decimal??`${q.numerator}/${q.denominator}`;
+ return exact.replace(/^(-?\d+)/,n=>BigInt(n).toLocaleString("en-US"));
+};
 export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
  const companyId=context.company.id;
  const {user}=useSession();
@@ -135,12 +139,14 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
        <div className="table-scroll" role="region" aria-label="جدول إحصائيات جميع الأصناف">
          <table>
            <thead><tr>
-             <th>رمز الصنف</th><th>الصنف</th><th>{metric==="saleTimes"?"نوع العدد":"الوحدة الصغرى"}</th>
+             <th>الرصيد بالوحدة الأولى</th><th>الصنف</th><th>{metric==="saleTimes"?"نوع العدد":"الوحدة الصغرى"}</th>
              {periods.map(p=><th key={p.key}>{p.label}</th>)}
            </tr></thead>
            <tbody>
              {result.rows.map(row=><tr key={row.itemId}>
-               <td><bdi>{row.code}</bdi></td>
+               <td dir="ltr" style={{textAlign:"end"}}>{row.stockUnit1
+                 ? <><bdi>{asFirstUnit(row.stockUnit1)}</bdi>{" "}{row.unit1Name}</>
+                 : "—"}</td>
                <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
                  {!row.active&&" (مؤرشف)"}</td>
                <td>{metric==="saleTimes"?"مرة":row.unitName}</td>
@@ -164,7 +170,8 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
      </>}
      <small className="muted">
        مرات البيع = عدد فواتير بيع الصنف − عدد فواتير مرتجعه (ولو ظهر الناتج سالبًا).
-       أما الكميات فتُعرض بالوحدة الصغرى، ولا تُجمع كميات أصناف مختلفة.
+       الرصيد الحالي في العمود الأول محسوب بالوحدة الأولى بدقة، وقد يظهر على صورة كسر؛ ويُحجب عمن لا يملك صلاحية المخزون.
+       أما كميات الحركات خلال الفترات فتُعرض بالوحدة الصغرى، ولا تُجمع كميات أصناف مختلفة.
        تُحتسب الفترات من الفواتير المُرحّلة حتى اليوم. انقر اسم الصنف لعرض التفاصيل.
      </small>
    </Card>

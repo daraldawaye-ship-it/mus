@@ -2714,6 +2714,9 @@ test("item statistics track finalized stock and last normal documents without le
   const itemRow=report.rows.find(r=>r.itemId===item.id);
   assert.ok(itemRow,"The item must appear in the all-items report");
   assert.equal(itemRow.unitName,"حبة","Quantities are always in each item's smallest unit");
+  assert.equal(itemRow.unit1Name,"كرتون");
+  assert.deepEqual(itemRow.stockUnit1,{numerator:"2",denominator:"3",decimal:null},
+    "Current 14 smallest units / 21 per carton is precisely two thirds of a carton");
   assert.equal(itemRow.saleTimes.oneMonth,"0","Sale once minus return once gives zero times");
   assert.equal(itemRow.saleTimes.fourMonths,"0");
   assert.equal(itemRow.saleTimes.twelveMonths,"0");

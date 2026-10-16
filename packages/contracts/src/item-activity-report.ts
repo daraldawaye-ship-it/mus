@@ -13,6 +13,9 @@ export interface ItemActivityReportRow {
  name:string;
  active:boolean;
  unitName:string;
+ unit1Name:string;
+ /** Current company-wide stock, expressed exactly in the first unit; null without inventory viewing permission. */
+ stockUnit1:{numerator:string;denominator:string;decimal:string|null}|null;
  saleTimes:Record<ItemActivityReportPeriod,string>;
  sale:Record<ItemActivityReportPeriod,string>;
  purchase:Record<ItemActivityReportPeriod,string>;

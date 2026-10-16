@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivityReport, ItemActivityReportSort, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { HttpError } from "../errors.ts";
+import { fractionQuantity } from "./inventory.ts";
 
 export interface ItemActivityReportFilters {
  q:string;
@@ -55,6 +56,7 @@ export async function readItemActivityReport(
        "company.purchases","company.invoice"].every(visible))
    throw new HttpError(403,"item_report_denied",
      "عرض تقرير إحصائيات الأصناف يتطلب صلاحيات الأصناف وفواتير المبيعات والمشتريات");
+ const canViewStock=visible("company.stock-balances") && visible("company.stock-movements");
  const asOf=(await client.query(
    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
  )).rows[0].today as string;
@@ -80,8 +82,9 @@ export async function readItemActivityReport(
        WHERE d.company_id=$1 AND d.document_date<=$2::date GROUP BY d.item_id
    )
    SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
-          i.factor2,i.factor3,${columns}
+          i.factor2,i.factor3,COALESCE(s.stock_total,0)::text AS stock_smallest,${columns}
    FROM candidate i LEFT JOIN a ON a.item_id=i.id
+   LEFT JOIN item_statistics s ON s.company_id=$1 AND s.item_id=i.id
    ORDER BY ${order} LIMIT $5 OFFSET $6`,
    [...terms,filters.pageSize,(filters.page-1)*filters.pageSize],
  );
@@ -95,6 +98,10 @@ export async function readItemActivityReport(
   companyId,asOf,page:filters.page,pageSize:filters.pageSize,total:Number(count),
   rows:data.rows.map(r=>({
     itemId:r.id,code:r.code,name:r.name,active:r.active,
+    unit1Name:r.unit1_name,
+    stockUnit1:canViewStock
+      ? fractionQuantity(BigInt(r.stock_smallest),BigInt(r.factor2)*BigInt(r.factor3))
+      : null,
     unitName:r.factor3>1?r.unit3_name:r.factor2>1?r.unit2_name:r.unit1_name,
     saleTimes:periodMap(r,"saleTimes"),
     sale:periodMap(r,"sale"),purchase:periodMap(r,"purchase"),
