@@ -29,3 +29,19 @@ export function saleStockQuantity(
   const approximate = remainder * 10000n % factor !== 0n;
   return (approximate ? "≈" : "") + sign + whole.toString() + (digits ? "." + digits : "");
 }
+
+/** Present the exact combined smallest-unit stock as first-unit quantity, rounded to three decimals. */
+export function firstUnitStockText(
+  smallest: string | null | undefined,
+  item: Pick<Item, "factor2" | "factor3">,
+): string {
+  if (smallest === null || smallest === undefined) return "—";
+  const value = BigInt(smallest);
+  const denominator = BigInt(item.factor2) * BigInt(item.factor3);
+  const absolute = value < 0n ? -value : value;
+  const thousandths = (absolute * 1000n * 2n + denominator) / (2n * denominator);
+  const integer = thousandths / 1000n;
+  const fraction = (thousandths % 1000n).toString().padStart(3, "0").replace(/0+$/, "");
+  return (value < 0n && thousandths !== 0n ? "-" : "") + integer.toString()
+    + (fraction ? "." + fraction : "");
+}
