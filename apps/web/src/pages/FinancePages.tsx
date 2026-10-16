@@ -68,7 +68,7 @@ export function financeAccess(
 }
 const documentPath = (companyId: number, id: number | "new") =>
   `/companies/${companyId}/financial-documents/${id}`;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
 const listPaths: Record<FinancialDocumentKind, string> = {
   journal: "journals",
   receipt: "receipts",
