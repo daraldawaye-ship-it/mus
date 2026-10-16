@@ -33,6 +33,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
+import { ExpiryMonthField } from "../ExpiryMonthField";
 import { formatMoney } from "../format-money";
 import {
   Button,
@@ -1432,22 +1433,20 @@ function OperationEditor({
               </>
             )}
             {item?.hasExpiry && (
-              <Field
-                label="تاريخ انتهاء الدفعة"
-                type="date"
+              <ExpiryMonthField
+                label="شهر وسنة انتهاء الدفعة"
                 required
                 value={fields.expiryDate}
                 disabled={disabled}
-                onChange={(event) => edit("expiryDate", event.target.value)}
+                onChange={(date) => edit("expiryDate", date ?? "")}
               />
             )}
             {mode === "adjustment" && item?.hasExpiry && (
-              <Field
-                label="أقرب تاريخ انتهاء في كرت الصنف"
-                type="date"
+              <ExpiryMonthField
+                label="شهر وسنة أقرب انتهاء في كرت الصنف"
                 value={fields.nearestExpiryDate}
                 disabled={disabled}
-                onChange={(event) => edit("nearestExpiryDate", event.target.value)}
+                onChange={(date) => edit("nearestExpiryDate", date ?? "")}
                 hint="معلومة كرت الصنف؛ لا تغيّر تاريخ انتهاء دفعة المخزون."
               />
             )}
