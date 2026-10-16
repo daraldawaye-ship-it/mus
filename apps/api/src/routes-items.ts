@@ -77,6 +77,8 @@ const itemColumns = {
   shelfId: "i.shelf_id",
   compositionArabicName: "f.arabic_name",
   agentName: "a.name",
+  supplierAccountId: "i.supplier_account_id",
+  supplierAccountName: "sa.name",
   unit1Name: "i.unit1_name",
   unit2Name: "i.unit2_name",
   unit3Name: "i.unit3_name",
@@ -743,6 +745,7 @@ export function itemRoutes(pool: Pool): Router {
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
+            supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
           };
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
@@ -825,6 +828,14 @@ export function itemRoutes(pool: Pool): Router {
               ["f.arabic_name","f.english_name","f.description"],
               itemCompositionDTO,{active:"boolean"},"arabicName:asc",
             );
+          if (req.query.type === "suppliers")
+            return masterPage(client,req,companyId,
+              "SELECT a.id,a.code,a.name,a.active FROM (SELECT id,code,name,active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a",
+              "FROM (SELECT id,code,name,active FROM accounts WHERE kind='posting' AND category IN ('asset','liability') AND NOT cash_or_bank) a","a",
+              {id:"a.id",code:"a.code",name:"a.name",active:"a.active"},
+              ["a.code","a.name"],
+              (row)=>({id:row.id,code:row.code,name:row.name,active:row.active}),
+              {active:"boolean"}, "code:asc");
           if (req.query.type === "agents")
             return masterPage(
               client,
