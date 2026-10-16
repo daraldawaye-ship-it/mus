@@ -1097,6 +1097,7 @@ type SelectedCurrency = Pick<
   "id" | "code" | "name" | "decimalPlaces" | "active"
 >;
 type SelectedAgent = Pick<ItemAgent, "id" | "name" | "active">;
+type ItemSupplierChoice = { id: number; code: string; name: string; active?: boolean; category?: string; cashOrBank?: boolean };
 function ItemEditor({
   context,
   item,
@@ -1154,6 +1155,9 @@ function ItemEditor({
       setCurrency((selected) => selected ?? yemeni);
     }
   }, [item, defaultCurrency.data]);
+  const [supplier, setSupplier] = useState<ItemSupplierChoice | null>(item?.supplierAccountId ? {
+    id:item.supplierAccountId,code:item.supplierAccountCode??"",name:item.supplierAccountName??"مورد الصنف"
+  }:null);
   const [agent, setAgent] = useState<SelectedAgent | null>(
     item?.agentId
       ? {
@@ -1169,7 +1173,7 @@ function ItemEditor({
       `/companies/${companyId}/item-compositions/${fields.compositionId}`,{signal}),
     enabled: !!user && !!fields.compositionId,
   });
-  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | null>(null);
+  const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | "supplier" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [unknownCreation, setUnknownCreation] = useState(false);
@@ -1222,6 +1226,7 @@ function ItemEditor({
       purchaseFactor: fields.purchaseFactor,
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
+      supplierAccountId: supplier?.id ?? null,
       orderStoppedUntil: fields.orderStoppedUntil || null,
       clearanceFrom: fields.clearanceFrom || null,
       clearanceTo: fields.clearanceTo || null,
@@ -1458,6 +1463,19 @@ function ItemEditor({
               {agent && !agent.active && (
                 <small className="muted">الوكيل مؤرشف</small>
               )}
+            </div>
+            <div className="field item-floating-picker">
+              <label id="item-supplier-label">الصنف من المورد</label>
+              <div className="item-reference-field">
+                <Button variant="secondary" disabled={disabled}
+                  aria-labelledby="item-supplier-label item-supplier-choice"
+                  onClick={()=>setPicker("supplier")}>
+                  <span id="item-supplier-choice">{supplier ? `${supplier.code} — ${supplier.name}` : "اختيار مورد الصنف"}</span>
+                </Button>
+                {supplier && <Button variant="ghost" disabled={disabled}
+                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setDirty(true)}}>×</Button>}
+              </div>
+              <small className="muted">يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق.</small>
             </div>
             <div className="field item-floating-picker">
               <label id="item-composition-label">التركيب</label>
@@ -1920,6 +1938,16 @@ function ItemEditor({
               setDirty(true);
               setPicker(null);
             }}
+          />
+        ) : picker === "supplier" ? (
+          <ServerLookup<ItemSupplierChoice>
+            companyId={companyId}
+            resource={`/companies/${companyId}/item-options?type=suppliers&active=true`}
+            label="حساب مورد الصنف"
+            value={supplier}
+            display={option=>`${option.code} — ${option.name}`}
+            onChange={option=>{setSupplier(option);setDirty(true);setPicker(null)}}
+            disabled={disabled}
           />
         ) : picker === "shelf" ? (
           <ServerLookup<ItemShelf>
