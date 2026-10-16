@@ -1421,7 +1421,7 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("barcode", event.target.value)}
             />
-            <div className="field">
+            <div className="field item-floating-picker">
               <label id="item-agent-label">وكيل الصنف</label>
               <div className="item-reference-field">
                 <Button
@@ -1452,7 +1452,7 @@ function ItemEditor({
                 <small className="muted">الوكيل مؤرشف</small>
               )}
             </div>
-            <div className="field">
+            <div className="field item-floating-picker">
               <label id="item-composition-label">التركيب</label>
               <div className="item-reference-field">
                 <Button variant="secondary" disabled={disabled}
@@ -1475,7 +1475,7 @@ function ItemEditor({
               {fields.compositionId && compositionDetail.data?.composition.active === false &&
                 <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
-            <div className="field">
+            <div className="field item-floating-picker">
               <label id="item-currency-label">عملة الأسعار</label>
               <Button
                 variant="secondary"
