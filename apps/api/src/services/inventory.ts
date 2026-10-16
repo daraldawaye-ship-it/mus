@@ -71,6 +71,9 @@ export interface StockItemSnapshot {
   unit2Name: string;
   unit3Name: string;
   hasExpiry: boolean;
+  supplierAccountId: number | null;
+  supplierAccountCode: string | null;
+  supplierAccountName: string | null;
 }
 export async function itemStockSnapshot(
   db: Database,
@@ -79,7 +82,7 @@ export async function itemStockSnapshot(
   allowInactive = false,
 ): Promise<StockItemSnapshot> {
   const result = await db.query(
-    "SELECT * FROM items WHERE company_id=$1 AND id=$2 FOR SHARE",
+    "SELECT i.*,a.code AS supplier_account_code,a.name AS supplier_account_name FROM items i LEFT JOIN accounts a ON a.company_id=i.company_id AND a.id=i.supplier_account_id WHERE i.company_id=$1 AND i.id=$2 FOR SHARE OF i",
     [companyId, itemId],
   );
   const row = result.rows[0];
@@ -95,6 +98,9 @@ export async function itemStockSnapshot(
     unit2Name: row.unit2_name,
     unit3Name: row.unit3_name,
     hasExpiry: row.has_expiry,
+    supplierAccountId: row.supplier_account_id ?? null,
+    supplierAccountCode: row.supplier_account_code ?? null,
+    supplierAccountName: row.supplier_account_name ?? null,
   };
 }
 export function stockUnitMultiplier(
@@ -249,6 +255,9 @@ export function stockMovementDTO(row: QueryResultRow): StockMovement {
     itemId: row.item_id,
     itemCode: row.item_code,
     itemName: row.item_name,
+    supplierAccountId: row.supplier_account_id ?? null,
+    supplierAccountCode: row.supplier_account_code ?? null,
+    supplierAccountName: row.supplier_account_name ?? null,
     locationId: row.location_id,
     locationName: row.location_name,
     branchId: row.branch_id,
@@ -351,6 +360,8 @@ export interface ApplyStockInput {
   invoiceLineId?: number | null;
   operationId?: number | null;
   originalMovementId?: number | null;
+  /** Trusted invoice supplier snapshot. Undefined means use item-card supplier. */
+  supplierSnapshot?: { id: number; code: string; name: string } | null;
   allowExpired?: boolean;
   allowInactive?: boolean;
   /** Trusted historical purchase import only; retain the unknown batch as empty. */
@@ -394,6 +405,27 @@ export async function applyStock(
       "quantity_overflow",
       "كمية المخزون تتجاوز الحد المدعوم",
     );
+  let supplier = input.supplierSnapshot === undefined
+    ? (item.supplierAccountId === null ? null : {
+        id: item.supplierAccountId,
+        code: item.supplierAccountCode ?? "",
+        name: item.supplierAccountName ?? "",
+      })
+    : input.supplierSnapshot;
+  // Linked customer returns inherit the original stock movement's supplier.
+  // Reassigning the item's supplier must not reattribute a reversal.
+  if (input.originalMovementId) {
+    const previous = await client.query(
+      "SELECT supplier_account_id,supplier_account_code,supplier_account_name FROM stock_movements WHERE company_id=$1 AND id=$2",
+      [companyId, input.originalMovementId],
+    );
+    if (!previous.rows[0]) conflict("لم توجد الحركة الأصلية لاستعادة المورد");
+    supplier = previous.rows[0].supplier_account_id === null ? null : {
+      id: previous.rows[0].supplier_account_id,
+      code: previous.rows[0].supplier_account_code ?? "",
+      name: previous.rows[0].supplier_account_name ?? "",
+    };
+  }
   const batchKey = input.expiryDate ?? "";
   if (!item.hasExpiry && batchKey !== "")
     conflict("الصنف لا يتتبع تاريخ انتهاء؛ اترك تاريخ الدفعة فارغًا");
@@ -542,7 +574,7 @@ export async function applyStock(
       [companyId,item.id,input.locationId,batch.key,signedQuantity.toString()],
     );
     const move = await client.query(
-      "INSERT INTO stock_movements(company_id,item_id,location_id,batch_key,quantity_smallest,cost_base,kind,document_date,created_by,invoice_id,invoice_line_id,operation_id,original_movement_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
+      "INSERT INTO stock_movements(company_id,item_id,location_id,batch_key,quantity_smallest,cost_base,kind,document_date,created_by,invoice_id,invoice_line_id,operation_id,original_movement_id,supplier_account_id,supplier_account_code,supplier_account_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id",
       [
         companyId,
         item.id,
@@ -557,6 +589,9 @@ export async function applyStock(
         input.invoiceLineId ?? null,
         input.operationId ?? null,
         input.originalMovementId ?? null,
+        supplier?.id ?? null,
+        supplier?.code ?? null,
+        supplier?.name ?? null,
       ],
     );
     allocations.push({
