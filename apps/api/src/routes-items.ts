@@ -21,6 +21,7 @@ import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
 import {
   canReadItemCoverage,
+  canReadItemStock,
   addItemCoverageToPage,
   itemCoverageJoin,
   itemCoverageSelect,
@@ -497,6 +498,7 @@ export function itemRoutes(pool: Pool): Router {
         await readItems(pool, req, async (client, companyId) => {
           const canRank = await canOrderItemsBySales(client,actor(req),companyId);
           const canViewCoverage = await canReadItemCoverage(client, actor(req), companyId);
+          const canViewStock = await canReadItemStock(client, actor(req), companyId);
           // masterPage validates the complete sort expression. This check only
           // chooses whether coverage must be available before pagination.
           const coverageSort = canViewCoverage && typeof req.query.sort === "string"
@@ -504,16 +506,27 @@ export function itemRoutes(pool: Pool): Router {
               ["approximateCoverageDays", "coverageAfterReserveDays"].includes(sort.split(":")[0]),
             );
           const coverageJoin = coverageSort ? itemCoverageJoin : "";
+          const stockJoin = canViewStock
+            ? " LEFT JOIN item_statistics list_stock ON list_stock.company_id=i.company_id AND list_stock.item_id=i.id"
+            : "";
+          const listFrom = itemFrom + stockJoin + coverageJoin;
+          const stockSelect = canViewStock
+            ? ",COALESCE(list_stock.stock_total,0)::text AS available_smallest"
+            : ",NULL::text AS available_smallest";
+          const stockOrder = canViewStock
+            ? "COALESCE(list_stock.stock_total,0)::numeric / (i.factor2::numeric * i.factor3)"
+            : "NULL::numeric";
           const result = await masterPage(
             client,
             req,
             companyId,
-            itemSelect.replace(itemFrom, `${coverageSort ? itemCoverageSelect : itemCoverageRedactedSelect} ${itemFrom}${coverageJoin}`),
-            itemFrom + coverageJoin,
+            itemSelect.replace(itemFrom, `${stockSelect}${coverageSort ? itemCoverageSelect : itemCoverageRedactedSelect} ${listFrom}`),
+            listFrom,
             "i",
             {
               ...itemColumns,
               saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint",
+              availableUnit1: stockOrder,
               approximateCoverageDays: coverageSort ? "coverage.approximate_coverage_days" : "NULL::numeric",
               coverageAfterReserveDays: coverageSort ? "coverage.coverage_after_reserve_days" : "NULL::numeric",
             },
