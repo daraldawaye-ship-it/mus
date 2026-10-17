@@ -208,6 +208,7 @@ export async function createInvoice(
   if (replay.rows[0]) {
     const oldPayload = {...replay.rows[0].creation_payload} as Record<string,unknown>;
     if (!("doctorId" in oldPayload)) oldPayload.doctorId = null;
+    if (!("doctorName" in oldPayload)) oldPayload.doctorName = "";
     if (!("supplierAccountId" in oldPayload)) oldPayload.supplierAccountId = null;
     if (!("supplierReceiptNumber" in oldPayload)) oldPayload.supplierReceiptNumber = "";
     // JSONB is order-insensitive even for nested object keys, unlike JS
@@ -596,12 +597,12 @@ export async function createInvoice(
     total = gross - discount;
   assertAmount(gross);
   assertAmount(total);
-  let doctor: {id:number;name:string} | null = null;
+  let doctor: {id:number|null;name:string} | null = null;
   if (input.kind === "sale") {
     const limit = await controlValue(client, companyId, "sales_doctor_threshold");
     const threshold = BigInt(typeof limit === "number" ? limit : 1000) * 1000000n;
-    if (!importContext && abs(total) > threshold && input.doctorId === null)
-      throw new HttpError(400,"doctor_required","اختيار الطبيب أو الممرض أو الجهة مطلوب قبل حفظ هذه الفاتورة.");
+    if (!importContext && abs(total) > threshold && input.doctorId === null && !input.doctorName)
+      throw new HttpError(400,"doctor_required","اكتب اسم الطبيب أو الممرض أو الجهة، أو اختره من القائمة قبل حفظ الفاتورة.");
     if (input.doctorId !== null) {
       const result = await client.query(
         "SELECT id,name FROM doctors WHERE company_id=$1 AND id=$2 AND active FOR SHARE",
@@ -610,6 +611,9 @@ export async function createInvoice(
       if(!result.rows[0])
         throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة فعالة من كرت الأطباء والجهات.");
       doctor = result.rows[0] as {id:number;name:string};
+    } else if (input.doctorName) {
+      // An unlisted name remains an invoice snapshot, not an unverified directory card.
+      doctor = {id:null,name:input.doctorName};
     }
   }
   const baseMagnitude = convertedUnits(
