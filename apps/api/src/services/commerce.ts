@@ -28,6 +28,7 @@ import {
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { awardPostedInvoice } from "./invoice-rewards.ts";
+import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
 import { controlValue } from "./control-values.ts";
 
@@ -978,7 +979,7 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  if (!importContext?.suppressRewards)
+  if (!importContext?.suppressRewards) {
     await awardPostedInvoice(
       client,
       companyId,
@@ -987,6 +988,9 @@ export async function createInvoice(
       user,
       number,
     );
+    if (input.kind === "sale")
+      await accrueInvoiceClearance(client, companyId, invoiceId, user);
+  }
   await audit(
     client,
     user,
