@@ -2609,6 +2609,15 @@ test("item statistics track finalized stock and last normal documents without le
       discount: "0", lines: [{ itemId: item.id, unit, quantity, unitPrice: kind === "purchase" ? "84" : undefined, originalLineId, expiryDate: null }],
     }, 201)).invoice;
   const purchase = await save("purchase", "2", 1);
+  const itemHistory = (type: string) => platform.client.ok<{items: {
+    lineId: number; documentDate: string; quantityFirstUnit: string;
+    unitPriceFirstUnit?: string; partyName?: string; description?: string;
+  }[]}>("GET", prefix + `/item-history/${item.id}?type=${type}`);
+  const firstPurchases = await itemHistory("purchase");
+  assert.equal(firstPurchases.items.length, 1);
+  assert.equal(firstPurchases.items[0]?.quantityFirstUnit, "2.000");
+  assert.equal(firstPurchases.items[0]?.unitPriceFirstUnit, "84.00");
+  assert.equal((await platform.client.request("GET",prefix+`/item-history/${item.id}?type=invalid`)).status,400);
   const purchased = await statistics();
   assert.equal(purchased.stock?.total, "42", "Unit conversion uses the smallest part exactly");
   const preview = await platform.client.ok<{items:{itemId:number;quantitySmallest:string;shelf:string}[]}>(
@@ -2618,6 +2627,9 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(purchased.stock?.unitName, "حبة");
   assert.equal(purchased.lastPurchase?.invoiceId, purchase.id);
   const sale = await save("sale", "3", 2);
+  const recentSales = await itemHistory("sale");
+  assert.equal(recentSales.items[0]?.quantityFirstUnit, "0.429");
+  assert.equal(recentSales.items[0]?.unitPriceFirstUnit, "210.00");
   const sold = await statistics();
   assert.equal(sold.stock?.total, "33");
   assert.equal(sold.lastSale?.invoiceId, sale.id);
@@ -2631,6 +2643,9 @@ test("item statistics track finalized stock and last normal documents without le
     documentDate: "2026-10-12", itemId: item.id, fromLocationId: showroom.id, toLocationId: warehouse.id,
     quantity: "4", unit: 3, expiryDate: null, description: "مناقلة الإحصائيات", idempotencyKey: randomUUID(),
   }, 201);
+  const recentTransfers = await itemHistory("transfer");
+  assert.equal(recentTransfers.items.length,1,"Transfer in/out movements become one displayed operation");
+  assert.equal(recentTransfers.items[0]?.quantityFirstUnit,"0.190");
   const transferred = await statistics();
   assert.equal(transferred.stock?.total, "15", "A transfer preserves the company total");
   assert.equal(transferred.stock?.showroom, "11");
@@ -2640,6 +2655,8 @@ test("item statistics track finalized stock and last normal documents without le
     countedQuantity: "10", expectedQuantitySmallest: "11", unit: 3, expiryDate: null,
     unitCostBase: "4", description: "تسوية الإحصائيات", idempotencyKey: randomUUID(),
   }, 201)).operation;
+  const recentAdjustments = await itemHistory("adjustment");
+  assert.equal(recentAdjustments.items[0]?.quantityFirstUnit,"-0.048");
   const adjusted = await statistics();
   assert.equal(adjusted.stock?.total, "14");
   assert.equal(adjusted.lastAdjustment?.id, adjustment.id);
