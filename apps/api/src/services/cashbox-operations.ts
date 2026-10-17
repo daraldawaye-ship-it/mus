@@ -126,7 +126,7 @@ export async function postEmployeeCashboxOperation(
     // Actual count is transferred into the pouch, not the ledger balance.
     // Difference is booked to one variance account (debit shortage, credit overage).
     if (amount>0n) lines.push(journalLine(pouch.id,amount,memo));
-    if (variance!==0n) lines.push(journalLine(varianceAccountId,variance,memo));
+    if (variance!==0n) lines.push(journalLine(varianceAccountId!,variance,memo));
     if (book>0n) lines.push(journalLine(cash.id,-book,memo));
     if (!lines.length) error("empty_cashbox_close","الصندوق مصفّر بالفعل؛ لا يوجد مبلغ أو فرق للترحيل");
   } else {
