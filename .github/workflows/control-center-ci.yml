@@ -12,6 +12,8 @@ on:
       - 'apps/api/src/services/attendance-rewards.ts'
       - 'apps/api/src/services/attendance-notifications.ts'
       - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/invoice-clearance-label.ts'
+      - 'tests/invoice-clearance-label.test.ts'
       - 'apps/web/src/pages/FinancePages.tsx'
       - 'apps/web/src/WalletIndicator.tsx'
       - 'apps/web/src/control.ts'
@@ -67,6 +69,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Sales search clearance rate and dated campaign visibility
+        run: node --import tsx --test tests/invoice-clearance-label.test.ts
       - name: Item card field audit and revision regression
         run: node --import tsx --test --test-name-pattern="item field audit records" tests/items.test.ts
       - name: Scoped option value and permission tests
