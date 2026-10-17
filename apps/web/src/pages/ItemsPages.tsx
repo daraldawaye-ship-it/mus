@@ -1187,7 +1187,7 @@ function ItemEditor({
   const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
   const adjustmentDirectory = usePageDirectory(companyId);
   const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
-  const canAdjust = !!item && !!adjustmentPage?.enabled &&
+  const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
     !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
   const [conflict, setConflict] = useState(false);
   const [createKey] = useState(() => crypto.randomUUID());
