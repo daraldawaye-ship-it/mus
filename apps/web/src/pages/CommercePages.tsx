@@ -394,6 +394,13 @@ function emptyLine(returning = false): DraftLine {
 }
 const lineInputId = (line: DraftLine, field: string) =>
   `invoice-${field}-${line.key}`;
+/** Invoice item lookup quantities are display-only, never used for posting. */
+export function invoiceSearchStock(item: Pick<Item,"availableSmallest"|"factor2"|"factor3">): string {
+  if(item.availableSmallest == null) return "—";
+  const value=saleStockQuantity(item.availableSmallest,item,1,1);
+  return value.includes(".")?value:value+".0";
+}
+
 
 function ItemSearch({
   companyId,
@@ -608,6 +615,9 @@ function ItemSearch({
                 setOpen(false);
             }}
           >
+            <div className="commerce-search-item-head" aria-hidden="true">
+              <span>المتوفر (و1)</span><span>اسم الصنف</span><span>سعر البيع</span>
+            </div>
             <ul id={`${id}-results`} role="listbox" aria-label="نتائج الأصناف">
               {items.map((item, index) => (
                 <li
@@ -624,9 +634,14 @@ function ItemSearch({
                       disabled || result.isFetching || search !== query.trim()
                     }
                   >
-                    <bdi>{item.code}</bdi>
-                    <span>{item.name}</span>
-                    <bdi>{item.barcode}</bdi>
+                    <bdi className="commerce-search-item-stock"
+                      title={item.availableSmallest === null ? "الرصيد غير متاح بحسب الصلاحيات" : "المتوفر بالوحدة الأولى"}>
+                      {invoiceSearchStock(item)}
+                    </bdi>
+                    <span className="commerce-search-item-name" title={item.name}>{item.name}</span>
+                    <bdi className="commerce-search-item-price" title="سعر البيع بالوحدة الأولى">
+                      {formatMoney(item.salePrice1)}
+                    </bdi>
                   </Button>
                 </li>
               ))}
