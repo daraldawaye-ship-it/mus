@@ -57,3 +57,39 @@ test("profile shortcut geometry is independent of RTL and prevents overflow on p
     }
   }
 });
+
+test("empty shortcut lists stay beside their trigger instead of jumping to the page top",()=>{
+  // Screenshot: the trigger is near y=365, and a short flyout has only
+  // the default page list, quick-add and manage links (approx. 140px).
+  const p=positionShortcutFlyout(
+    {left:24,right:430,top:365},{width:949,height:620},140,
+  );
+  assert.equal(p.mode,"side");
+  if(p.mode!=="side")return;
+  assert.equal(p.side,"right");
+  assert.equal(p.top,365);
+  assert(p.left<=430&&p.left+p.width<=949);
+  assert(p.maxHeight>=140);
+});
+
+test("short menus near screen bottom shift just enough to overlap the trigger",()=>{
+  const p=positionShortcutFlyout(
+    {left:24,right:430,top:540},{width:949,height:620},136,
+  );
+  assert.equal(p.mode,"side");
+  if(p.mode!=="side")return;
+  assert.equal(p.top,620-8-136);
+  assert(p.top<=540 && p.top+p.maxHeight>=540,
+    "moving horizontally from the trigger must enter the flyout");
+});
+
+test("full-height shortcut lists still scroll and never exceed viewport",()=>{
+  const p=positionShortcutFlyout(
+    {left:24,right:430,top:350},{width:949,height:620},1200,
+  );
+  assert.equal(p.mode,"side");
+  if(p.mode!=="side")return;
+  assert.equal(p.maxHeight,540);
+  assert(p.top>=8);
+  assert(p.top+p.maxHeight<=620-8);
+});
