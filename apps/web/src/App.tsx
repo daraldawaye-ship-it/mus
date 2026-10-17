@@ -751,6 +751,10 @@ function Workspace() {
   const location = useLocation();
   const navigate = useNavigate();
   const main = useRef<HTMLElement>(null);
+  // Activations must finish even when navigating away from a company quickly.
+  // Queue them in visit order, so a slower earlier request cannot replace the
+  // last company the user actually opened.
+  const activationQueue = useRef<Promise<void>>(Promise.resolve());
   const priorPath = useRef(location.pathname);
   const company = useQuery({
     queryKey: ["company", user?.id, companyId],
@@ -801,29 +805,22 @@ function Workspace() {
   ]);
   useEffect(() => {
     if (!user || !inCompany || !company.data || company.isError) return;
-    const controller = new AbortController();
     const userId = user.id;
     const selectedContext = company.data;
-    void api(`/companies/${companyId}/activate`, {
-      method: "POST",
-      signal: controller.signal,
-    })
-      .then(() => {
-        if (!controller.signal.aborted) {
-          queryClient.setQueryData(
-            ["last-company-sidebar", userId],
-            selectedContext,
-          );
-          void queryClient.invalidateQueries({
-            queryKey: ["wallet-summary", userId, companyId],
-          });
-          void queryClient.invalidateQueries({
-            queryKey: ["list", userId, `company:${companyId}:wallet`],
-          });
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
+    // Do not abort this mutation in the cleanup: moving straight back to the
+    // public site previously cancelled the persisted last-company update.
+    // Serializing visits also prevents a delayed earlier activation winning.
+    activationQueue.current = activationQueue.current.catch(() => {}).then(async () => {
+      await api(`/companies/${companyId}/activate`, { method: "POST" });
+      queryClient.setQueryData(["last-company-sidebar", userId], selectedContext);
+      void queryClient.invalidateQueries({
+        queryKey: ["wallet-summary", userId, companyId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["list", userId, `company:${companyId}:wallet`],
+      });
+    });
+    void activationQueue.current.catch(() => {});
   }, [companyId, user?.id, !!company.data, company.isError, queryClient]);
   if (sessionLoading)
     return (
