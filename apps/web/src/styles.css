@@ -1992,6 +1992,31 @@ ul {
   list-style: none;
 }
 .invoice-item-options-menu summary::-webkit-details-marker { display: none; }
+.invoice-item-options-heading {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.invoice-item-options-view {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.invoice-item-options-selected-name {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: start;
+}
+
 .invoice-item-options-choices {
   position: absolute;
   inset-inline: 0;
