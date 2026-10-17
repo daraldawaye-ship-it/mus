@@ -573,6 +573,7 @@ export * from "./general-table.ts";
 export * from "./finance.ts";
 export * from "./items.ts";
 export * from "./commerce.ts";
+export * from "./doctors.ts";
 export * from "./item-activity-report.ts";
 export * from "./inventory.ts";
 
