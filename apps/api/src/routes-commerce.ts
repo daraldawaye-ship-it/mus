@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Pool, PoolClient } from "pg";
 import {
   documentDateSchema,
@@ -21,6 +22,7 @@ import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
+import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
@@ -308,6 +310,38 @@ export function commerceRoutes(pool: Pool): Router {
     });
     res.json({matches});
   }));
+  router.get(
+    `${base}/pouch-receipts`,
+    handler(async (req,res) => {
+      const companyId=id(req.params.companyId);
+      const status=parse(
+        z.enum(["all","pending","received"]),
+        typeof req.query.status==="string"?req.query.status:"pending",
+      );
+      const page=parse(z.coerce.number().int().min(1).max(1000000),
+        typeof req.query.page==="string"?req.query.page:"1");
+      const pageSize=parse(z.coerce.number().int().min(1).max(100),
+        typeof req.query.pageSize==="string"?req.query.pageSize:"50");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user=await currentActor(client,actor(req),false);
+        await companyAccess(client,user,companyId,"finance.view");
+        return listPouchReceipts(client,companyId,status,pageSize,(page-1)*pageSize);
+      });
+      res.json(result);
+    }),
+  );
+  router.post(
+    `${base}/pouch-receipts`,
+    handler(async (req,res)=>{
+      const input=parse(pouchReceiptSchema,req.body);
+      const result=await mutateMaster(pool,req,"finance.post",
+        async (client,user,companyId)=>
+          receivePouchMovement(client,companyId,user,input),
+      );
+      res.status(201).json({receipt:result});
+    }),
+  );
   // Sales-only quick till actions. No account identifiers are accepted from
   // the browser: the destination is resolved from the employee's links or
   // the administrator's company electronic-wallet configuration.
