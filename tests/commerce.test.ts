@@ -3217,3 +3217,90 @@ test("foreign-currency clearance is posted exactly once to the shared YER wallet
   assert.equal(ledger.rowCount,1);
   await assertBalanced(f,s.company.id);
 });
+
+
+test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments, shortage and overage exactly once", async t => {
+  const f=await fixture(t),s=await setup(f,"Employee till shortcuts company");
+  const seller=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post"],821);
+  const other=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post"],822);
+  await f.owner.ok("POST",`${s.path}/employees/${seller.employee.id}/accounts`,
+    {createSalesCashbox:true});
+  const snapshot=(await f.owner.ok<{
+    accounts:{links:{kind:string;accountId:number;code:string}[]}
+  }>("GET",`${s.path}/employees/${seller.employee.id}/accounts`)).accounts;
+  const cash=snapshot.links.find(x=>x.kind==="sales_cash")!;
+  const pouch=snapshot.links.find(x=>x.kind==="sales_pouch")!;
+  assert(cash&&pouch);
+  const ewallet=(await f.owner.ok<{account:Account}>("POST",`${s.path}/accounts`,{
+    code:"1112999100",name:"Company electronic wallet",parentId:null,
+    kind:"posting",category:"asset",normalSide:"debit",cashOrBank:false,
+  },201)).account;
+  const links=await f.owner.ok<{items:{purpose:string;accountId:number|null}[]}>(
+    "GET",`${s.path}/account-links`);
+  const variance=links.items.find(x=>x.purpose==="cashVariance");
+  assert(variance?.accountId,"Existing companies must receive the default variance account");
+  assert(links.items.some(x=>x.purpose==="electronicWallet"&&x.accountId===null));
+  await f.owner.ok("PUT",`${s.path}/account-links/electronicWallet`,{
+    accountId:ewallet.id,
+  });
+  const cashBalance=async(id:number)=>
+    (await f.pool.query<{balance:string}>(`SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS balance
+      FROM financial_document_lines l JOIN financial_documents d
+      ON d.company_id=l.company_id AND d.id=l.document_id
+      WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'`,
+      [s.company.id,id])).rows[0]!.balance;
+  const product=await s.item({hasExpiry:false,factor2:1,factor3:1,salePrice1:"1000"});
+  await invoice(f,s,invoiceBody(s,product.id,{
+    lines:[{itemId:product.id,unit:1,quantity:"120",unitPrice:"600",expiryDate:null}],
+  }));
+  await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"sale",counterpartyAccountId:cash.accountId,
+    lines:[{itemId:product.id,unit:1,quantity:"51",unitPrice:"1000",expiryDate:null}],
+  }),seller.client);
+  assert.equal(await cashBalance(cash.accountId),"51000.000000");
+  const endpoint=`${s.path}/sales/cashbox-operations`;
+  const send=(kind:"pouch"|"electronic"|"close",amount:string,notes="")=>({
+    kind,amount,notes,idempotencyKey:randomUUID()
+  });
+  const employeeDisallowed=await other.client.request("POST",endpoint,
+    send("pouch","100"));
+  assert.equal(employeeDisallowed.status,409,"Cannot move a different employee's linked till");
+  const pouchIn=send("pouch","5000","نهاية الوردية");
+  const saved=await seller.client.ok<{operationId:number;documentId:number}>(
+    "POST",endpoint,pouchIn,201);
+  assert.deepEqual(await seller.client.ok("POST",endpoint,pouchIn,201),saved);
+  assert.equal(await cashBalance(cash.accountId),"46000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"5000.000000");
+  assert.equal((await seller.client.request("POST",endpoint,
+    {...pouchIn,amount:"100"})).status,409,"UUID replay with changed value rejected");
+  await seller.client.ok("POST",endpoint,send("pouch","-2000","سحب من الحافظة"),201);
+  assert.equal(await cashBalance(cash.accountId),"48000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"3000.000000");
+  await seller.client.ok("POST",endpoint,send("electronic","3000","دفع عبر الهاتف"),201);
+  assert.equal(await cashBalance(cash.accountId),"45000.000000");
+  assert.equal(await cashBalance(ewallet.id),"3000.000000");
+  const shortage=await seller.client.ok<{difference:string;bookBalance:string}>(
+    "POST",endpoint,send("close","44000","إغلاق الوردية"),201);
+  assert.equal(shortage.bookBalance,"45000");
+  assert.equal(shortage.difference,"1000");
+  assert.equal(await cashBalance(cash.accountId),"0");
+  assert.equal(await cashBalance(pouch.accountId),"47000.000000");
+  assert.equal(await cashBalance(variance.accountId!),"1000.000000");
+  // New positive sales repopulate the same till after the completed closure.
+  await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"sale",counterpartyAccountId:cash.accountId,
+    lines:[{itemId:product.id,unit:1,quantity:"49",unitPrice:"1000",expiryDate:null}],
+  }),seller.client);
+  const surplus=await seller.client.ok<{difference:string}>(
+    "POST",endpoint,send("close","50000","زيادة صندوق"),201);
+  assert.equal(surplus.difference,"-1000");
+  assert.equal(await cashBalance(cash.accountId),"0");
+  assert.equal(await cashBalance(variance.accountId!),"0");
+  assert.equal(await cashBalance(pouch.accountId),"97000.000000");
+  const audits=await f.pool.query(
+    "SELECT count(*)::integer AS n FROM employee_cashbox_operations WHERE company_id=$1",
+    [s.company.id],
+  );
+  assert.equal(audits.rows[0].n,5);
+  await assertBalanced(f,s.company.id);
+});
