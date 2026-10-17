@@ -831,7 +831,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
   const menu = useRef<HTMLDetailsElement>(null);
   const history = useQuery<{ items: ItemInfoHistoryRow[] }>({
     queryKey: ["invoice-item-options", userId, companyId, selectedItemId, view],
-    queryFn: ({ signal }) => api(
+    queryFn: ({ signal }) => api<{ items: ItemInfoHistoryRow[] }>(
       `/companies/${companyId}/item-history/${selectedItemId}?type=${view}`,
       { signal },
     ),
@@ -840,7 +840,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
   });
   const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
     queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
-    queryFn: ({ signal }) => api(
+    queryFn: ({ signal }) => api<{ peers: ItemCompositionPeers }>(
       `/companies/${companyId}/items/${selectedItemId}/composition-peers?page=1`,
       { signal },
     ),
