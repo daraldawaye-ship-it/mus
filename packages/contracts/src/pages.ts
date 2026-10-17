@@ -631,7 +631,7 @@ page(
   "company.account-statistics",
   "إحصاءات الحسابات",
   "التقارير",
-  "/companies/:companyId/accounts",
+  "/companies/:companyId/account-statistics",
   {
     view: permission("accounts.view", "finance.view"),
     create: permission("accounts.balance-followup"),
@@ -641,8 +641,8 @@ page(
   {
     type: "report",
     parentKey: "company.accounts",
-    navigation: false,
-    visible: false,
+    navigation: true,
+    visible: true,
   },
 );
 page(

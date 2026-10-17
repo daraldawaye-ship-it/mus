@@ -77,6 +77,11 @@ const PageDirectoryPage = lazy(() =>
     default: module.PageDirectoryPage,
   })),
 );
+const AccountStatisticsReportPage = lazy(() =>
+  import("./pages/AccountStatisticsReportPage").then((module) => ({
+    default: module.AccountStatisticsReportPage,
+  })),
+);
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -265,6 +270,7 @@ const companySections = [
   "settings",
   "audit",
   "accounts",
+  "account-statistics",
   "currencies",
   "exchange-rates",
   "branches",
@@ -335,6 +341,7 @@ function Navigation({
     "company.memos": <FileText size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
+    "company.account-statistics": <TrendingUp size={17} />,
     "company.items": <Package size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
@@ -558,6 +565,15 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل دليل الحسابات…</Notice>}>
           <AccountsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "account-statistics":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل إحصاءات الحسابات…</Notice>}>
+          <AccountStatisticsReportPage
+            key={context.company.id}
+            context={context}
+          />
         </Suspense>
       );
     case "item-statistics-report":

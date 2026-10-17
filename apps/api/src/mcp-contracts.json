@@ -221,6 +221,20 @@
     },
     "source": "memoFeatureRuleRoutes.ts"
   },
+  "GET /companies/:companyId/account-statistics-report": {
+    "queryFields": [
+      "q",
+      "page",
+      "pageSize",
+      "active",
+      "category",
+      "accountChoice",
+      "asOfDate",
+      "metrics",
+      "sort"
+    ],
+    "source": "routes-account-statistics.ts"
+  },
   "GET /companies/:companyId/accounts/:id/statistics": {
     "queryFields": [
       "asOfDate"

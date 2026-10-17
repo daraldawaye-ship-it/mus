@@ -4,6 +4,7 @@ import {
   accountBalanceApprovalSchema,
   accountBalanceFollowUpSchema,
   accountStatisticsQuerySchema,
+  accountStatisticsReportQuerySchema,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -19,10 +20,37 @@ import {
   recordApproval,
   recordFollowUp,
 } from "./services/account-balances.ts";
+import { readAccountStatisticsReport } from "./services/account-statistics-report.ts";
 
 export function accountStatisticsRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId/accounts/:id";
+  router.get(
+    "/companies/:companyId/account-statistics-report",
+    handler(async (req, res) => {
+      const query = parse(accountStatisticsReportQuerySchema, {
+        ...req.query,
+        q: req.query.q,
+        page: req.query.page,
+        pageSize: req.query.pageSize,
+        active: req.query.active,
+        category: req.query.category,
+        accountChoice: req.query.accountChoice,
+        asOfDate: req.query.asOfDate,
+        metrics: req.query.metrics,
+        sort: req.query.sort,
+      });
+      const report = await transaction(pool, async (client) => {
+        const companyId = id(req.params.companyId);
+        const user = await currentActor(client, actor(req));
+        await companyAccess(client, user, companyId, undefined, true);
+        await assertAccountBalanceAccess(client, user, companyId);
+        await assertRequestPagesEnabled(client, req, true);
+        return readAccountStatisticsReport(client, user, companyId, query);
+      });
+      res.json({ report });
+    }),
+  );
   router.get(
     `${base}/statistics`,
     handler(async (req, res) => {
