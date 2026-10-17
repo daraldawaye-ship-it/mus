@@ -1875,6 +1875,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                       : "حساب السداد / الذمة"
                   }
                   value={account}
+                  pageSize={100}
+                  sort="name:asc"
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
@@ -1893,7 +1895,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     value={selectedSupplier}
                     onChange={setSupplier}
                     display={itemLabel}
-                    accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
+                    pageSize={100}
+                    sort="name:asc"
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
                 )}
