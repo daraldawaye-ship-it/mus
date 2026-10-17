@@ -3068,3 +3068,92 @@ test("supplier receipt reference preserves external purchase invoice numbers", a
   assert.equal(bad.status, 400);
   await assertBalanced(f, s.company.id);
 });
+
+
+test("clearance earnings credit saver only and returns require admin review without deduction", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Clearance employee posting company");
+  const seller = await f.member(s.company.id, ["commerce.manage","commerce.view","finance.post"], 491);
+  const receiver = await f.member(s.company.id, ["commerce.manage","commerce.view","finance.post"], 492);
+  const product = await s.item({
+    name: "صنف تصريف 10%",
+    commissionRate: "10",
+    clearanceFrom: "2026-10-10",
+    clearanceTo: "2026-10-19",
+  });
+  await invoice(f, s, invoiceBody(s, product.id, {
+    kind: "purchase", documentDate: "2026-10-09",
+    lines: [{itemId:product.id,unit:1,quantity:"30",unitPrice:"700",expiryDate:"2027-11-30"}],
+  }));
+  const sell = (date: string, qty = "1", discount = "0") =>
+    invoice(f, s, invoiceBody(s, product.id, {
+      kind:"sale", documentDate:date, discount,
+      counterpartyAccountId:s.customer.id,
+      lines:[{itemId:product.id,unit:1,quantity:qty,unitPrice:"1000",expiryDate:null}],
+    }), seller.client);
+  const outside = await sell("2026-10-09");
+  assert.equal(outside.lines[0]!.commissionAmount,"0");
+  const originalBody = invoiceBody(s, product.id, {
+    kind:"sale",documentDate:"2026-10-10",discount:"100",
+    counterpartyAccountId:s.customer.id,
+    lines:[{itemId:product.id,unit:1,quantity:"2",unitPrice:"1000",expiryDate:null}],
+  });
+  const first = await invoice(f,s,originalBody,seller.client);
+  assert.equal(first.lines[0]!.commissionAmount,"190");
+  assert.equal((await invoice(f,s,originalBody,seller.client)).id,first.id);
+  const last = await sell("2026-10-19");
+  assert.equal(last.lines[0]!.commissionAmount,"100");
+  const tooLate = await sell("2026-10-20");
+  assert.equal(tooLate.lines[0]!.commissionAmount,"0");
+
+  const wallet = await f.owner.ok<{
+    clearanceTotals:{amount:string;currencyCode:string}[];
+    clearanceHistory:{amount:string;invoiceId:number}[];
+  }>("GET", `${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.deepEqual(wallet.clearanceTotals.map(x=>[x.amount,x.currencyCode]), [["290.000000","YER"]]);
+  assert.deepEqual(wallet.clearanceHistory.map(x=>x.invoiceId), [last.id,first.id]);
+  const earnings = await f.pool.query(
+    "SELECT invoice_line_id,amount::text FROM employee_clearance_earnings WHERE company_id=$1 AND employee_id=$2 ORDER BY id",
+    [s.company.id,seller.employee.id],
+  );
+  assert.equal(earnings.rowCount,2,"Replaying a posted invoice must not duplicate earnings");
+  const otherWallet = await f.owner.ok<{clearanceTotals:unknown[]}>(
+    "GET", `${s.path}/wallet?employeeId=${receiver.employee.id}`);
+  assert.equal(otherWallet.clearanceTotals.length,0);
+
+  const returned = await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"sale",documentDate:"2026-10-20",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:product.id,unit:1,quantity:"-1",originalLineId:first.lines[0]!.id,expiryDate:null}],
+  }),receiver.client);
+  assert.equal(returned.lines[0]!.commissionAmount,"-95",
+    "Keep the original commission candidate only for management review");
+  const afterReturn = await f.owner.ok<{
+    clearanceTotals:{amount:string}[];
+    pendingReturnReviews:{id:number;originalEmployeeName:string|null;candidateAmount:string;originalInvoiceId:number}[];
+  }>("GET", `${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.equal(afterReturn.clearanceTotals[0]!.amount,"290.000000",
+    "The return must never debit the salesperson's commission");
+  assert.equal(afterReturn.pendingReturnReviews.length,1);
+  const review = afterReturn.pendingReturnReviews[0]!;
+  assert.equal(review.originalInvoiceId,first.id);
+  assert.equal(review.candidateAmount,"95.000000");
+  assert.equal(review.originalEmployeeName,seller.employee.name);
+  assert.equal((await receiver.client.request("POST",
+    `${s.path}/wallet/clearance-returns/${review.id}/review`,
+    {note:"Unauthorized employee review"})).status,403);
+  await f.owner.ok("POST",`${s.path}/wallet/clearance-returns/${review.id}/review`,
+    {note:"تمت المراجعة ولا تخصم عمولة الموظف"});
+  assert.equal((await f.owner.request("POST",
+    `${s.path}/wallet/clearance-returns/${review.id}/review`,
+    {note:"Repeated review"})).status,409);
+  const final = await f.owner.ok<{
+    clearanceTotals:{amount:string}[];pendingReturnReviews:unknown[]
+  }>("GET",`${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.equal(final.clearanceTotals[0]!.amount,"290.000000");
+  assert.equal(final.pendingReturnReviews.length,0);
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::int AS count FROM employee_clearance_earnings WHERE company_id=$1",
+    [s.company.id],
+  )).rows[0].count,2);
+  await assertBalanced(f,s.company.id);
+});
