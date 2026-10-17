@@ -1664,7 +1664,7 @@ test("item field audit records independent before/after events and rejects stale
     "PATCH", url, patchItem(initial, { shelf: "ب-6", shelfId: null }),
   )).item;
   const onOrder = (await f.owner.ok<{item:Item}>(
-    "PATCH", url, patchItem(onShelf, { orderQuantity: "10" }),
+    "PATCH", url, patchItem(onShelf, { shelf: onShelf.shelf, orderQuantity: "10" }),
   )).item;
   assert.equal(onOrder.shelf, "ب-6");
   assert.equal(onOrder.orderQuantity, "10");
