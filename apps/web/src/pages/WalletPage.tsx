@@ -131,6 +131,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   const [previewEmployeeId, setPreviewEmployeeId] = useState<number | null>(
     null,
   );
+  const [returnToReview, setReturnToReview] = useState<number | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
   const [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -141,6 +143,27 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         queryKey: ["wallet-summary", user?.id, companyId],
       }),
     ]);
+  }
+  async function confirmReturnReview() {
+    if (returnToReview === null || !reviewNote.trim() || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api(`${base}/wallet/clearance-returns/${returnToReview}/review`, {
+        method: "POST", body: { note: reviewNote.trim() }, signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      await refresh();
+      if (guard.isCurrent()) {
+        setNotice("تم توثيق مراجعة المرتجع دون خصم أي عمولة من الموظف.");
+        setReviewNote("");
+        setReturnToReview(null);
+      }
+    } catch (cause) {
+      if (guard.isCurrent()) setError(errorMessage(cause));
+    } finally {
+      if (guard.isCurrent()) setPending(false);
+    }
   }
   function changeEmployee(value: string) {
     setParams((previous) => {
@@ -389,14 +412,19 @@ export function WalletPage({ context }: { context: CompanyContext }) {
             </div>
           </Card>
           <Card
-            title="الرصيد المالي"
-            description="تحويل النقاط يُرحّل إلى حساب الموظف. عمولة التصريف لم تُفعّل بعد."
+            title="عمولات التصريف المستحقة"
+            description="مبالغ اكتسبها الموظف عند ترحيل المبيعات المؤهلة. ليست نقاطًا أو مبالغ مصروفة، والمرتجعات لا تخصم منها تلقائيًا."
           >
-            <strong className="wallet-balance">
-              <bdi>
-                {formatMoney(wallet.money)} {wallet.currencyCode}
-              </bdi>
-            </strong>
+            {(list.data?.clearanceTotals?.length ?? 0) === 0 ? (
+              <strong className="wallet-balance">لا توجد عمولات مسجلة بعد</strong>
+            ) : list.data!.clearanceTotals.map(total => (
+              <p key={total.currencyId}>
+                <strong className="wallet-balance"><bdi>
+                  {formatMoney(total.amount)} {total.currencyCode}
+                </bdi></strong>
+                <small className="muted"> — {total.lineCount} سطر بيع</small>
+              </p>
+            ))}
           </Card>
         </div>
       )}
@@ -406,6 +434,65 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           أولًا.
         </Notice>
       )}
+      {list.data && list.data.clearanceHistory.length > 0 && (
+        <Card title="سجل عمولات تصريف الأصناف"
+          description="هذه العمولات مبالغ مستحقة مستقلة عن نقاط المكافآت؛ محفوظة بنسبة الصنف وقت البيع. لا تنشئ دفعًا نقديًا تلقائيًا.">
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr>
+                <th>تاريخ البيع</th><th>الفاتورة</th><th>الصنف</th>
+                <th>النسبة</th><th>العمولة المستحقة</th>
+              </tr></thead>
+              <tbody>{list.data.clearanceHistory.map(earning => (
+                <tr key={earning.id}>
+                  <td>{earning.documentDate}</td>
+                  <td>{canViewInvoice ? (
+                    <Link to={`${base}/invoices/${earning.invoiceId}`}>{earning.invoiceNumber}</Link>
+                  ) : earning.invoiceNumber}</td>
+                  <td>{earning.itemName}</td>
+                  <td><bdi>{earning.rate}%</bdi></td>
+                  <td><bdi>{formatMoney(earning.amount)} {earning.currencyCode}</bdi></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <small className="muted">آخر 50 سطر استحقاق. إجمالي المستحقات بالأعلى يشمل جميع السطور.</small>
+        </Card>
+      )}
+      {list.data?.canManage && list.data.pendingReturnReviews.length > 0 && (
+        <Card title="مرتجعات التصريف — بانتظار مراجعة الإدارة"
+          description="لا تُخصم أي عمولة آليًا. راجع فاتورة البيع الأصلية والمرتجع، ثم وثّق نتيجة المراجعة.">
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr><th>المرتجع</th><th>فاتورة البيع</th>
+                <th>الصنف</th><th>الموظف الأصلي</th><th>عمولة مرتبطة للمراجعة</th><th>الإجراء</th></tr></thead>
+              <tbody>{list.data.pendingReturnReviews.map(row => (
+                <tr key={row.id}>
+                  <td>{canViewInvoice ? <Link to={`${base}/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link> : row.invoiceNumber}</td>
+                  <td>{canViewInvoice ? <Link to={`${base}/invoices/${row.originalInvoiceId}`}>{row.originalInvoiceNumber}</Link> : row.originalInvoiceNumber}</td>
+                  <td>{row.itemName}</td><td>{row.originalEmployeeName ?? "غير محدد"}</td>
+                  <td><bdi>{formatMoney(row.candidateAmount)} {row.currencyCode}</bdi></td>
+                  <td><Button variant="secondary" size="compact" disabled={pending}
+                    onClick={() => {setReviewNote("");setError("");setReturnToReview(row.id);}}>
+                    مراجعة
+                  </Button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+      <Dialog open={returnToReview !== null} title="مراجعة مرتجع تصريف"
+        onClose={() => {if(!pending){setReturnToReview(null);setReviewNote("");}}}>
+        <p>هذا الإجراء يوثّق المراجعة فقط؛ لن يخصم عمولة الموظف ولن ينشئ قيدًا ماليًا.</p>
+        {error && <Notice tone="error">{error}</Notice>}
+        <Field label="ملاحظات الإدارة" value={reviewNote} maxLength={1000}
+          disabled={pending} onChange={event => setReviewNote(event.target.value)} />
+        <div className="form-actions">
+          <Button onClick={() => void confirmReturnReview()} disabled={pending || !reviewNote.trim()}>تأكيد المراجعة</Button>
+          <Button variant="secondary" disabled={pending} onClick={() => setReturnToReview(null)}>إلغاء</Button>
+        </div>
+      </Dialog>
       <Card title="سجل النقاط والمحفظة">
         <div className="wallet-filters">
           {list.data?.canManage && (
