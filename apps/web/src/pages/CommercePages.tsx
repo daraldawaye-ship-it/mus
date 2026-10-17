@@ -2753,14 +2753,17 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             />
             {cashboxDraft.kind==="pouch" && <small className="muted">
               المبلغ السالب يعني استلام مبلغ من الحافظة وإعادته للصندوق.
+              يُسمح بالترحيل حتى لو أصبح رصيد أحد الحسابين سالبًا.
             </small>}
             {cashboxDraft.kind==="electronic" && <small className="muted">
               المبلغ الموجب يُرحّل من صندوقك إلى محفظة الشركة الإلكترونية،
               والسالب يعني استلام المبلغ من محفظة الشركة إلى صندوقك.
+              يُسمح بالحركة حتى لو أصبح الرصيد الدفتري للحساب المحوّل منه سالبًا.
             </small>}
             {cashboxDraft.kind==="close" && <small className="muted">
               هذا حقل جرد النقد الفعلي وليس تحويلًا باتجاهين، لذلك لا يقبل السالب.
-              سيتم تحويل النقد المعدود للحافظة، وترحيل أي عجز أو زيادة تلقائيًا ثم تصفير الصندوق.
+              سيتم تحويل النقد المعدود للحافظة، وترحيل أي عجز أو زيادة تلقائيًا ثم تصفير الصندوق،
+              حتى لو كان رصيد الصندوق الدفتري سالبًا.
             </small>}
             {cashboxError && <Notice tone="error">{cashboxError}</Notice>}
             <div className="form-actions">
