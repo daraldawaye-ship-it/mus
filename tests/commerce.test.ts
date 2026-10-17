@@ -3283,7 +3283,7 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
     "POST",endpoint,send("close","44000","إغلاق الوردية"),201);
   assert.equal(shortage.bookBalance,"45000");
   assert.equal(shortage.difference,"1000");
-  assert.equal(await cashBalance(cash.accountId),"0");
+  assert.equal(await cashBalance(cash.accountId),"0.000000");
   assert.equal(await cashBalance(pouch.accountId),"47000.000000");
   assert.equal(await cashBalance(variance.accountId!),"1000.000000");
   // New positive sales repopulate the same till after the completed closure.
@@ -3294,8 +3294,8 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   const surplus=await seller.client.ok<{difference:string}>(
     "POST",endpoint,send("close","50000","زيادة صندوق"),201);
   assert.equal(surplus.difference,"-1000");
-  assert.equal(await cashBalance(cash.accountId),"0");
-  assert.equal(await cashBalance(variance.accountId!),"0");
+  assert.equal(await cashBalance(cash.accountId),"0.000000");
+  assert.equal(await cashBalance(variance.accountId!),"0.000000");
   assert.equal(await cashBalance(pouch.accountId),"97000.000000");
   const audits=await f.pool.query(
     "SELECT count(*)::integer AS n FROM employee_cashbox_operations WHERE company_id=$1",
