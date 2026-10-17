@@ -149,6 +149,7 @@ export const auditActionLabels = {
   "item.create": "إضافة صنف",
   "item.update": "تعديل صنف",
   "clearance.earn": "إثبات عمولة تصريف للموظف",
+  "clearance.wallet-credit": "ترحيل عمولة التصريف إلى رصيد المحفظة",
   "clearance.return-queue": "إحالة مرتجع تصريف لمراجعة الإدارة",
   "clearance.return-reviewed": "مراجعة الإدارة لمرتجع التصريف",
   "item.field.update": "تعديل حقل في كرت الصنف",

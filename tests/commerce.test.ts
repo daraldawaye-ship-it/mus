@@ -3112,6 +3112,15 @@ test("clearance earnings credit saver only and returns require admin review with
   }>("GET", `${s.path}/wallet?employeeId=${seller.employee.id}`);
   assert.deepEqual(wallet.clearanceTotals.map(x=>[x.amount,x.currencyCode]), [["290.000000","YER"]]);
   assert.deepEqual(wallet.clearanceHistory.map(x=>x.invoiceId), [last.id,first.id]);
+  const unified = await f.owner.ok<{
+    wallet:{points:string;totalPoints:string};
+    items:{kind:string;points:string;invoiceId:number}[];
+  }>("GET", `${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.equal(unified.wallet.points,"290");
+  assert.equal(unified.wallet.totalPoints,"290");
+  assert.deepEqual(unified.items.filter(x=>x.kind==="clearance")
+    .map(x=>[x.points,x.invoiceId]), [["100",last.id],["190",first.id]]);
+
   const earnings = await f.pool.query(
     "SELECT invoice_line_id,amount::text FROM employee_clearance_earnings WHERE company_id=$1 AND employee_id=$2 ORDER BY id",
     [s.company.id,seller.employee.id],
@@ -3133,6 +3142,11 @@ test("clearance earnings credit saver only and returns require admin review with
   }>("GET", `${s.path}/wallet?employeeId=${seller.employee.id}`);
   assert.equal(afterReturn.clearanceTotals[0]!.amount,"290.000000",
     "The return must never debit the salesperson's commission");
+  const unifiedAfterReturn = await f.owner.ok<{wallet:{points:string}}>(
+    "GET",`${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.equal(unifiedAfterReturn.wallet.points,"290",
+    "Return by another employee cannot debit the unified wallet");
+
   assert.equal(afterReturn.pendingReturnReviews.length,1);
   const review = afterReturn.pendingReturnReviews[0]!;
   assert.equal(review.originalInvoiceId,first.id);
@@ -3155,5 +3169,51 @@ test("clearance earnings credit saver only and returns require admin review with
     "SELECT count(*)::int AS count FROM employee_clearance_earnings WHERE company_id=$1",
     [s.company.id],
   )).rows[0].count,2);
+  await assertBalanced(f,s.company.id);
+});
+
+test("foreign-currency clearance is posted exactly once to the shared YER wallet at invoice rate", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Foreign currency unified wallet");
+  const seller = await f.member(s.company.id,
+    ["commerce.manage","commerce.view","finance.post"], 498);
+  const product = await s.item({
+    name:"Imported clearance item", hasExpiry:false, currencyId:s.usd.id,
+    commissionRate:"10",clearanceFrom:"2026-10-10",clearanceTo:"2026-10-19",
+    salePrice1:"100",purchasePrice:"70",
+  });
+  await f.owner.ok("POST",`${s.path}/exchange-rates`,{
+    currencyId:s.usd.id, rate:"2.5",
+    effectiveAt:"2026-10-12T00:00:00Z",source:"Unified wallet FX test"
+  },201);
+  await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"purchase",currencyId:s.usd.id,documentDate:"2026-10-12",
+    lines:[{itemId:product.id,unit:1,quantity:"5",unitPrice:"70",expiryDate:null}],
+  }));
+  const body=invoiceBody(s,product.id,{
+    kind:"sale",currencyId:s.usd.id,documentDate:"2026-10-12",
+    counterpartyAccountId:s.customer.id,
+    lines:[{itemId:product.id,unit:1,quantity:"2",unitPrice:"100",expiryDate:null}]
+  });
+  const sold=await invoice(f,s,body,seller.client);
+  assert.equal(sold.lines[0]!.commissionAmount,"20");
+  assert.equal(sold.exchangeRate,"2.5");
+  assert.equal((await invoice(f,s,body,seller.client)).id,sold.id);
+  const wallet=await f.owner.ok<{
+    wallet:{points:string};items:{kind:string;points:string;clearanceEarningId:number|null}[];
+  }>("GET",`${s.path}/wallet?employeeId=${seller.employee.id}`);
+  assert.equal(wallet.wallet.points,"50");
+  const lines=wallet.items.filter(x=>x.kind==="clearance");
+  assert.equal(lines.length,1);
+  assert.equal(lines[0]!.points,"50");
+  assert(lines[0]!.clearanceEarningId);
+  const ledger=await f.pool.query(
+    "SELECT points::text AS points,request_payload FROM employee_wallet_entries WHERE company_id=$1 AND employee_id=$2 AND kind='clearance'",
+    [s.company.id,seller.employee.id]
+  );
+  assert.equal(ledger.rows[0].points,"50");
+  assert.equal(ledger.rows[0].request_payload.currency,"USD");
+  assert.equal(ledger.rows[0].request_payload.invoiceExchangeRate,"2.500000000000");
+  assert.equal(ledger.rowCount,1);
   await assertBalanced(f,s.company.id);
 });

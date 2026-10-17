@@ -206,8 +206,9 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "automatic" | "reversal" | "conversion" | "attendance";
+  kind: "manual" | "automatic" | "reversal" | "conversion" | "attendance" | "clearance";
   attendanceEntryId?: number | null;
+  clearanceEarningId?: number | null;
   attendanceRecordId?: number | null;
   points: string;
   money: string;
