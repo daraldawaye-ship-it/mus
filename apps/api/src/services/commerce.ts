@@ -288,11 +288,11 @@ export async function createInvoice(
   let supplier: { id: number; code: string; name: string } | null = null;
   if (supplierId !== null) {
     const selected = await client.query(
-      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND (category IN ('asset','liability') OR ($3::boolean AND category='expense')) AND NOT cash_or_bank FOR SHARE",
-      [companyId, supplierId, importContext?.allowExpenseCounterparty === true],
+      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' FOR SHARE",
+      [companyId, supplierId],
     );
     if (!selected.rows[0])
-      conflict("اختر موردًا حركيًا فعالًا من حسابات الشركة، وليس صندوقًا أو بنكًا");
+      conflict("اختر حسابًا حركيًا فعالًا للمورد من الشركة");
     supplier = selected.rows[0];
   }
   const base = await client.query(

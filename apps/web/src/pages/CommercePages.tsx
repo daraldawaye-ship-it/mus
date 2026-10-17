@@ -51,7 +51,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { saleStockQuantity } from "../sale-stock-quantity";
+import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -395,6 +395,7 @@ function emptyLine(returning = false): DraftLine {
 const lineInputId = (line: DraftLine, field: string) =>
   `invoice-${field}-${line.key}`;
 
+
 function ItemSearch({
   companyId,
   id,
@@ -608,6 +609,9 @@ function ItemSearch({
                 setOpen(false);
             }}
           >
+            <div className="commerce-search-item-head" aria-hidden="true">
+              <span>المتوفر (و1)</span><span>اسم الصنف</span><span>سعر البيع</span>
+            </div>
             <ul id={`${id}-results`} role="listbox" aria-label="نتائج الأصناف">
               {items.map((item, index) => (
                 <li
@@ -618,15 +622,21 @@ function ItemSearch({
                 >
                   <Button
                     variant={index === active ? "secondary" : "ghost"}
+                    className="commerce-search-item-row"
                     onClick={() => choose(item)}
                     onMouseDown={(event) => event.preventDefault()}
                     disabled={
                       disabled || result.isFetching || search !== query.trim()
                     }
                   >
-                    <bdi>{item.code}</bdi>
-                    <span>{item.name}</span>
-                    <bdi>{item.barcode}</bdi>
+                    <bdi className="commerce-search-item-stock"
+                      title={item.availableSmallest === null ? "الرصيد غير متاح بحسب الصلاحيات" : "المتوفر بالوحدة الأولى"}>
+                      {invoiceSearchStock(item)}
+                    </bdi>
+                    <span className="commerce-search-item-name" title={item.name}>{item.name}</span>
+                    <bdi className="commerce-search-item-price" title="سعر البيع بالوحدة الأولى">
+                      {formatMoney(item.salePrice1)}
+                    </bdi>
                   </Button>
                 </li>
               ))}
@@ -1875,6 +1885,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                       : "حساب السداد / الذمة"
                   }
                   value={account}
+                  pageSize={100}
+                  sort="name:asc"
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
@@ -1893,7 +1905,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     value={selectedSupplier}
                     onChange={setSupplier}
                     display={itemLabel}
-                    accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
+                    pageSize={100}
+                    sort="name:asc"
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
                 )}

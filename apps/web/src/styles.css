@@ -2365,6 +2365,41 @@ ul {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Invoice search results: available first-unit stock, item name, sale price. */
+.commerce-search-item-head,
+.commerce-search-results .button.commerce-search-item-row {
+  display: grid;
+  grid-template-columns: minmax(68px, 78px) minmax(95px, 1fr) minmax(78px, 90px);
+  align-items: center;
+  gap: 7px;
+  text-align: start;
+  direction: rtl;
+}
+.commerce-search-item-head {
+  padding: 3px 9px 5px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.commerce-search-results .button.commerce-search-item-row {
+  min-height: 34px;
+}
+.commerce-search-item-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.commerce-search-item-stock,
+.commerce-search-item-price {
+  direction: ltr;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .commerce-document-meta {
   display: flex;
   flex-wrap: wrap;

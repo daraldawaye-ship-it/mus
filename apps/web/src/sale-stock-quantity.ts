@@ -45,3 +45,12 @@ export function firstUnitStockText(
   return (value < 0n && thousandths !== 0n ? "-" : "") + integer.toString()
     + (fraction ? "." + fraction : "");
 }
+
+/** Compact invoice search presentation: exactly one decimal in first-unit stock. */
+export function invoiceSearchStock(
+  item: Pick<Item, "availableSmallest" | "factor2" | "factor3">,
+): string {
+  if (item.availableSmallest == null) return "—";
+  const value = saleStockQuantity(item.availableSmallest, item, 1, 1);
+  return value.includes(".") ? value : value + ".0";
+}
