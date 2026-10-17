@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivityReport, ItemActivityReportSort, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { HttpError } from "../errors.ts";
+import { addItemCoverageToPage, canReadItemCoverage, canReadItemStock, itemCoverageJoin, itemCoverageRedactedSelect, itemCoverageSelect } from "./item-coverage.ts";
 
 export interface ItemActivityReportFilters {
  q:string;
@@ -15,6 +16,9 @@ export interface ItemActivityReportFilters {
 /** All sort expressions are from a static whitelist; user input is never interpolated into SQL. */
 const sorts:Record<ItemActivityReportSort,string>={
  code:"i.code",name:"i.name",
+ availableUnit1:'i."availableUnit1"',
+ approximateCoverageDays:"coverage.approximate_coverage_days",
+ coverageAfterReserveDays:"coverage.coverage_after_reserve_days",
  saleOneMonth:'a."saleOneMonth"',saleFourMonths:'a."saleFourMonths"',
  saleTwelveMonths:'a."saleTwelveMonths"',saleAllTime:'a."saleAllTime"',
  purchaseOneMonth:'a."purchaseOneMonth"',purchaseFourMonths:'a."purchaseFourMonths"',
@@ -55,6 +59,11 @@ export async function readItemActivityReport(
        "company.purchases","company.invoice"].every(visible))
    throw new HttpError(403,"item_report_denied",
      "عرض تقرير إحصائيات الأصناف يتطلب صلاحيات الأصناف وفواتير المبيعات والمشتريات");
+ const canViewStock=await canReadItemStock(client,user,companyId);
+ const canViewCoverage=await canReadItemCoverage(client,user,companyId);
+ const sortingCoverage=["approximateCoverageDays","coverageAfterReserveDays"].includes(filters.sortBy);
+ if((filters.sortBy==="availableUnit1"&&!canViewStock)||(sortingCoverage&&!canViewCoverage))
+   throw new HttpError(403,"item_report_stock_denied","فرز المخزون والكفاية يتطلب صلاحيات عرضها");
  const asOf=(await client.query(
    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
  )).rows[0].today as string;
@@ -72,19 +81,28 @@ export async function readItemActivityReport(
    : `COALESCE(${sort},0) ${direction},i.code ASC,i.id ASC`;
  const data=await client.query(
   `WITH candidate AS (
-     SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
-            i.factor2,i.factor3 FROM items i WHERE ${predicate}
+     SELECT i.company_id,i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
+            i.factor2,i.factor3,i.reserve_quantity,
+            ${canViewStock ? "COALESCE(stock.stock_total,0)::text" : "NULL::text"} AS available_smallest,
+            ${canViewStock ? "COALESCE(stock.stock_total,0)::numeric/(i.factor2::numeric*i.factor3)" : "NULL::numeric"} AS "availableUnit1"
+     FROM items i ${canViewStock ? "LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id" : ""}
+     WHERE ${predicate}
    ), a AS (
      SELECT d.item_id, ${aggregates}
        FROM item_daily_activity d JOIN candidate i ON i.id=d.item_id
        WHERE d.company_id=$1 AND d.document_date<=$2::date GROUP BY d.item_id
    )
    SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
-          i.factor2,i.factor3,${columns}
+          i.factor2,i.factor3,i.available_smallest,${columns}
+          ${sortingCoverage ? itemCoverageSelect : itemCoverageRedactedSelect}
    FROM candidate i LEFT JOIN a ON a.item_id=i.id
+   ${sortingCoverage ? itemCoverageJoin : ""}
    ORDER BY ${order} LIMIT $5 OFFSET $6`,
    [...terms,filters.pageSize,(filters.page-1)*filters.pageSize],
  );
+ const rows=canViewCoverage && !sortingCoverage
+   ? await addItemCoverageToPage(client,companyId,data.rows)
+   : data.rows;
  const periodMap=(r:Record<string,unknown>,metric:string)=>({
    oneMonth:String(r[metric+"OneMonth"]),
    fourMonths:String(r[metric+"FourMonths"]),
@@ -93,8 +111,13 @@ export async function readItemActivityReport(
  });
  return {
   companyId,asOf,page:filters.page,pageSize:filters.pageSize,total:Number(count),
-  rows:data.rows.map(r=>({
+  canViewStock,canViewCoverage,
+  rows:rows.map(r=>({
     itemId:r.id,code:r.code,name:r.name,active:r.active,
+    factor2:r.factor2,factor3:r.factor3,
+    availableSmallest:canViewStock?String(r.available_smallest):null,
+    approximateCoverageDays:canViewCoverage?(r.approximateCoverageDays??r.approximate_coverage_days??null):null,
+    coverageAfterReserveDays:canViewCoverage?(r.coverageAfterReserveDays??r.coverage_after_reserve_days??null):null,
     unitName:r.factor3>1?r.unit3_name:r.factor2>1?r.unit2_name:r.unit1_name,
     saleTimes:periodMap(r,"saleTimes"),
     sale:periodMap(r,"sale"),purchase:periodMap(r,"purchase"),

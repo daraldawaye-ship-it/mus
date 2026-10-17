@@ -39,7 +39,7 @@ async function migrateFoundation(pool: Pool) {
   const names = (await readdir(migrationDirectory))
     .filter(
       (name) =>
-        /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 75,
+        /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 85,
     )
     .sort();
   await transaction(pool, async (client) => {
@@ -88,18 +88,24 @@ async function fixture(t: TestContext) {
   // current tables to impersonate an older schema.
   const legacyMigrations = (await readdir(migrationDirectory))
     .filter(
-      (name) => /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 74,
+      (name) =>
+        /^\d+_[a-z_]+\.sql$/.test(name) && Number(name.split("_")[0]) <= 84,
     )
     .sort();
   assert(legacyMigrations.includes("072_legacy_supplier_inference.sql"));
   assert(legacyMigrations.includes("074_attendance_control_snapshot.sql"));
+  assert(legacyMigrations.includes("084_electronic_wallet_receipts.sql"));
   await transaction(pool, async (client) => {
     await client.query(
       "CREATE TABLE schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())",
     );
     for (const name of legacyMigrations) {
-      await client.query(await readFile(new URL(name, migrationDirectory), "utf8"));
-      await client.query("INSERT INTO schema_migrations(version) VALUES($1)", [name]);
+      await client.query(
+        await readFile(new URL(name, migrationDirectory), "utf8"),
+      );
+      await client.query("INSERT INTO schema_migrations(version) VALUES($1)", [
+        name,
+      ]);
     }
   });
   const actorId = (
@@ -124,7 +130,13 @@ async function fixture(t: TestContext) {
     (
       await pool.query<{ id: number }>(
         "INSERT INTO accounts(company_id,code,name,kind,category,normal_side,created_by) VALUES($1,$2,$3,$4,'asset','debit',$5) RETURNING id",
-        [company, (++accountCode).toString(), `Foundation ${kind}`, kind, actorId],
+        [
+          company,
+          (++accountCode).toString(),
+          `Foundation ${kind}`,
+          kind,
+          actorId,
+        ],
       )
     ).rows[0].id;
   const accountId = await createAccount(companyId);
@@ -171,7 +183,12 @@ function assertUncomputed(row: QueryResultRow) {
   }
 }
 
-async function rejectsSql(pool: Pool, sql: string, values: unknown[], code: string) {
+async function rejectsSql(
+  pool: Pool,
+  sql: string,
+  values: unknown[],
+  code: string,
+) {
   await assert.rejects(pool.query(sql, values), (error: unknown) => {
     assert(error && typeof error === "object" && "code" in error);
     assert.equal(error.code, code);
@@ -186,7 +203,10 @@ test("account statistics foundation upgrades posting accounts without inventing 
       "SELECT to_jsonb(a)::text AS snapshot FROM accounts a ORDER BY id",
     )
   ).rows;
-  assert.equal((await f.pool.query("SELECT 1 FROM company_currencies")).rowCount, 0);
+  assert.equal(
+    (await f.pool.query("SELECT 1 FROM company_currencies")).rowCount,
+    0,
+  );
   await migrateFoundation(f.pool);
   const initial = (
     await f.pool.query("SELECT * FROM account_statistics ORDER BY account_id")
@@ -224,9 +244,10 @@ test("account statistics foundation upgrades posting accounts without inventing 
   assertUncomputed(added[0]);
   assert.equal(
     (
-      await f.pool.query("SELECT 1 FROM company_currencies WHERE company_id=$1", [
-        newCompanyId,
-      ])
+      await f.pool.query(
+        "SELECT 1 FROM company_currencies WHERE company_id=$1",
+        [newCompanyId],
+      )
     ).rowCount,
     0,
     "Account creation must not require or invent a currency",
@@ -474,7 +495,15 @@ test("account statistics foundation upgrades posting accounts without inventing 
   await rejectsSql(
     f.pool,
     approvalInsert,
-    [f.companyId, secondAccountId, currencyId, f.actorId, approvalKey, "YER", 2],
+    [
+      f.companyId,
+      secondAccountId,
+      currencyId,
+      f.actorId,
+      approvalKey,
+      "YER",
+      2,
+    ],
     "23505",
   );
   await f.pool.query(approvalInsert, [
@@ -489,13 +518,29 @@ test("account statistics foundation upgrades posting accounts without inventing 
   await rejectsSql(
     f.pool,
     approvalInsert,
-    [f.companyId, f.otherAccountId, currencyId, f.actorId, randomUUID(), "YER", 2],
+    [
+      f.companyId,
+      f.otherAccountId,
+      currencyId,
+      f.actorId,
+      randomUUID(),
+      "YER",
+      2,
+    ],
     "23503",
   );
   await rejectsSql(
     f.pool,
     approvalInsert,
-    [f.companyId, f.accountId, otherCurrencyId, f.actorId, randomUUID(), "YER", 2],
+    [
+      f.companyId,
+      f.accountId,
+      otherCurrencyId,
+      f.actorId,
+      randomUUID(),
+      "YER",
+      2,
+    ],
     "23514",
   );
   // Matching a real local currency is insufficient: the snapshot must use the
@@ -503,7 +548,15 @@ test("account statistics foundation upgrades posting accounts without inventing 
   await rejectsSql(
     f.pool,
     approvalInsert,
-    [f.companyId, f.accountId, nonBaseCurrencyId, f.actorId, randomUUID(), "SAR", 2],
+    [
+      f.companyId,
+      f.accountId,
+      nonBaseCurrencyId,
+      f.actorId,
+      randomUUID(),
+      "SAR",
+      2,
+    ],
     "23514",
   );
   await rejectsSql(
@@ -543,14 +596,22 @@ test("account statistics foundation upgrades posting accounts without inventing 
       [eventId],
       "23514",
     );
-    await rejectsSql(f.pool, `DELETE FROM ${table} WHERE id=$1`, [eventId], "23514");
+    await rejectsSql(
+      f.pool,
+      `DELETE FROM ${table} WHERE id=$1`,
+      [eventId],
+      "23514",
+    );
   }
 
   const preservedRows = async () => {
     const result: Record<string, string[]> = {};
     for (const [table, order] of [
       ["account_statistics", "company_id,account_id"],
-      ["account_daily_activity", "company_id,account_id,document_date,currency_id,family"],
+      [
+        "account_daily_activity",
+        "company_id,account_id,document_date,currency_id,family",
+      ],
       ["account_balance_followups", "id"],
       ["account_balance_approvals", "id"],
     ]) {

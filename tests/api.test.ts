@@ -1702,6 +1702,121 @@ test("general table stores reusable records, filters them and enforces public ad
     && event.after?.title === "Updated entry"));
 });
 
+test("general table numeric columns sort across pages and inline edits preserve other fields",async(t)=>{
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const ordinary=await register(f,"general-table-inline-ordinary@example.test");
+  const template={
+    tableName:"inline-numbers",category:"sorting",title:"Account snapshot",
+    description:"Keep my description",number1:"2",number2:"20",
+    date1:null,date2:null,...Object.fromEntries(
+      Array.from({length:9},(_,i)=>[`text${i+1}`,i===0?"keep text":""]),
+    ),
+  };
+  const first=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST","/general-table",template,201)).record;
+  const second=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST","/general-table",{...template,title:"Second",number1:"10",number2:"-3.5"},201)).record;
+  const third=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST","/general-table",{...template,title:"Third",number1:"-4.125",number2:"0"},201)).record;
+  async function ids(sort:string){
+    const rows=await platform.client.ok<Page<GeneralTableRecord>>(
+      "GET","/general-table?tableName=inline-numbers&pageSize=10&sort="+sort);
+    return rows.items.map(item=>item.id);
+  }
+  assert.deepEqual(await ids("number1:asc"),[third.id,first.id,second.id],
+    "Numbers must be sorted numerically in PostgreSQL, not as strings");
+  assert.deepEqual(await ids("number1:desc"),[second.id,first.id,third.id]);
+  assert.deepEqual(await ids("number2:asc"),[second.id,third.id,first.id]);
+  assert.deepEqual(await ids("number2:desc"),[first.id,third.id,second.id]);
+  assert.equal((await platform.client.request("GET",
+    "/general-table?sort=number1:desc;DROP TABLE general_table")).status,400);
+  const url=`/general-table/${first.id}/number`;
+  assert.equal((await f.client().request("PATCH",url,{
+    field:"number1",value:"12.5",expectedValue:"2",
+  })).status,401);
+  assert.equal((await ordinary.client.request("PATCH",url,{
+    field:"number1",value:"12.5",expectedValue:"2",
+  })).status,403);
+  assert.equal((await platform.client.request("PATCH",url,{
+    field:"number1",value:"12.123456789",expectedValue:"2",
+  })).status,400);
+  assert.equal((await platform.client.request("PATCH",url,{
+    field:"number1",value:"12",expectedValue:"2",title:"malicious",
+  })).status,400);
+  const changed=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "PATCH",url,{field:"number1",value:"12.5",expectedValue:"2"})).record;
+  assert.equal(changed.number1,"12.5");
+  assert.equal(changed.number2,"20");
+  assert.equal(changed.title,template.title);
+  assert.equal(changed.description,template.description);
+  assert.equal(changed.text1,"keep text");
+  assert.equal((await platform.client.request("PATCH",url,{
+    field:"number1",value:"20",expectedValue:"2",
+  })).status,409,"Concurrent stale numeric cell must not overwrite");
+  const cleared=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "PATCH",url,{field:"number2",value:null,expectedValue:"20"})).record;
+  assert.equal(cleared.number2,null);
+  assert.equal(cleared.number1,"12.5");
+  assert.deepEqual(await ids("number1:desc"),[first.id,second.id,third.id]);
+  const auditEvents=await platform.client.ok<Page<AuditEvent>>(
+    "GET","/audit?action=generalTable.update");
+  assert(auditEvents.items.some(event=>event.targetId===first.id &&
+    event.after?.number1==="12.5"));
+  assert(auditEvents.items.some(event=>event.targetId===first.id &&
+    event.after?.number2===null));
+});
+
+test("general table inline title edit preserves the description and rejects concurrent overwrites",async(t)=>{
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const ordinary=await register(f,"general-table-title-editor-restricted@example.test");
+  const row={
+    tableName:"وصف للاحتفاظ",category:"أقسام",title:"عنوان أول",
+    description:"نص متعدد الأسطر\\nيجب أن يبقى متاحًا للنسخ",
+    number1:"19.1",number2:"-3",date1:null,date2:null,
+    ...Object.fromEntries(Array.from({length:9},(_,i)=>[`text${i+1}`,i===0?"تفاصيل":""])),
+  };
+  const original=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST","/general-table",row,201)).record;
+  const url=`/general-table/${original.id}/title`;
+  assert.equal((await f.client().request("PATCH",url,{
+    title:"عنوان جديد",expectedTitle:row.title,
+  })).status,401);
+  assert.equal((await ordinary.client.request("PATCH",url,{
+    title:"عنوان جديد",expectedTitle:row.title,
+  })).status,403);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"",expectedTitle:row.title,
+  })).status,400);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"م".repeat(201),expectedTitle:row.title,
+  })).status,400);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"مختلف",expectedTitle:row.title,description:"overwrite",
+  })).status,400);
+  const changed=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "PATCH",url,{title:"  عنوان معدل  ",expectedTitle:row.title})).record;
+  assert.equal(changed.title,"عنوان معدل");
+  assert.equal(changed.description,row.description);
+  assert.equal(changed.number1,"19.1");
+  assert.equal(changed.number2,"-3");
+  assert.equal(changed.tableName,row.tableName);
+  assert.equal(changed.category,row.category);
+  assert.equal(changed.text1,"تفاصيل");
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"كتابة قديمة",expectedTitle:row.title,
+  })).status,409);
+  const detail=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "GET",`/general-table/${original.id}`)).record;
+  assert.equal(detail.title,changed.title);
+  assert.equal(detail.description,row.description);
+  const events=await platform.client.ok<Page<AuditEvent>>(
+    "GET","/audit?action=generalTable.update");
+  assert(events.items.some(event=>event.targetId===original.id &&
+    event.after?.title==="عنوان معدل"));
+});
+
 test("company audit records canonical database values and mutation rolls back when audit insertion fails", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
@@ -2609,6 +2724,15 @@ test("item statistics track finalized stock and last normal documents without le
       discount: "0", lines: [{ itemId: item.id, unit, quantity, unitPrice: kind === "purchase" ? "84" : undefined, originalLineId, expiryDate: null }],
     }, 201)).invoice;
   const purchase = await save("purchase", "2", 1);
+  const itemHistory = (type: string) => platform.client.ok<{items: {
+    lineId: number; documentDate: string; quantityFirstUnit: string;
+    unitPriceFirstUnit?: string; partyName?: string; description?: string;
+  }[]}>("GET", prefix + `/item-history/${item.id}?type=${type}`);
+  const firstPurchases = await itemHistory("purchase");
+  assert.equal(firstPurchases.items.length, 1);
+  assert.equal(firstPurchases.items[0]?.quantityFirstUnit, "2.000");
+  assert.equal(firstPurchases.items[0]?.unitPriceFirstUnit, "84.00");
+  assert.equal((await platform.client.request("GET",prefix+`/item-history/${item.id}?type=invalid`)).status,400);
   const purchased = await statistics();
   assert.equal(purchased.stock?.total, "42", "Unit conversion uses the smallest part exactly");
   const preview = await platform.client.ok<{items:{itemId:number;quantitySmallest:string;shelf:string}[]}>(
@@ -2618,6 +2742,9 @@ test("item statistics track finalized stock and last normal documents without le
   assert.equal(purchased.stock?.unitName, "حبة");
   assert.equal(purchased.lastPurchase?.invoiceId, purchase.id);
   const sale = await save("sale", "3", 2);
+  const recentSales = await itemHistory("sale");
+  assert.equal(recentSales.items[0]?.quantityFirstUnit, "0.429");
+  assert.equal(recentSales.items[0]?.unitPriceFirstUnit, "210.00");
   const sold = await statistics();
   assert.equal(sold.stock?.total, "33");
   assert.equal(sold.lastSale?.invoiceId, sale.id);
@@ -2631,6 +2758,9 @@ test("item statistics track finalized stock and last normal documents without le
     documentDate: "2026-10-12", itemId: item.id, fromLocationId: showroom.id, toLocationId: warehouse.id,
     quantity: "4", unit: 3, expiryDate: null, description: "مناقلة الإحصائيات", idempotencyKey: randomUUID(),
   }, 201);
+  const recentTransfers = await itemHistory("transfer");
+  assert.equal(recentTransfers.items.length,1,"Transfer in/out movements become one displayed operation");
+  assert.equal(recentTransfers.items[0]?.quantityFirstUnit,"0.190");
   const transferred = await statistics();
   assert.equal(transferred.stock?.total, "15", "A transfer preserves the company total");
   assert.equal(transferred.stock?.showroom, "11");
@@ -2640,6 +2770,8 @@ test("item statistics track finalized stock and last normal documents without le
     countedQuantity: "10", expectedQuantitySmallest: "11", unit: 3, expiryDate: null,
     unitCostBase: "4", description: "تسوية الإحصائيات", idempotencyKey: randomUUID(),
   }, 201)).operation;
+  const recentAdjustments = await itemHistory("adjustment");
+  assert.equal(recentAdjustments.items[0]?.quantityFirstUnit,"-0.048");
   const adjusted = await statistics();
   assert.equal(adjusted.stock?.total, "14");
   assert.equal(adjusted.lastAdjustment?.id, adjustment.id);

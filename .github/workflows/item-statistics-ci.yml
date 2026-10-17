@@ -7,8 +7,12 @@ on:
       - 'apps/api/migrations/071_item_source_supplier.sql'
       - 'apps/api/migrations/072_legacy_supplier_inference.sql'
       - 'apps/api/src/services/item-statistics.ts'
+      - 'apps/api/src/services/item-composition-peers.ts'
+      - 'apps/api/src/routes-items.ts'
+      - 'tests/items.test.ts'
       - 'apps/web/src/pages/ItemsPages.tsx'
       - 'tests/api.test.ts'
+      - 'tests/item-coverage.test.ts'
       - '.github/workflows/item-statistics-ci.yml'
   workflow_dispatch:
 
@@ -44,5 +48,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Prevent archiving stocked items and hide archived alternatives
+        run: node --import tsx --test --test-name-pattern="item archival is denied|item compositions support multilingual" tests/items.test.ts
+      - name: Verify pooled first-unit stock and cross-page coverage sorting
+        run: node --import tsx --test tests/item-coverage.test.ts tests/sale-stock-quantity.test.ts
       - name: Verify stock statistics and source supplier attribution in Aden timezone
         run: node --import tsx --test --test-name-pattern="item statistics track|item source supplier can" tests/api.test.ts

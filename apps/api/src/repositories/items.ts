@@ -98,6 +98,9 @@ export function itemDTO(row: QueryResultRow): Item {
     reorderLimit: normalizeRate(row.reorder_limit),
     orderQuantity: normalizeRate(row.order_quantity),
     reserveQuantity: normalizeRate(row.reserve_quantity),
+    ...(Object.hasOwn(row, "available_smallest") ? {
+      availableSmallest: row.available_smallest === null ? null : String(row.available_smallest),
+    } : {}),
     ...(Object.hasOwn(row, "approximate_coverage_days") ? {
       approximateCoverageDays: row.approximate_coverage_days === null
         ? null : normalizeRate(row.approximate_coverage_days),

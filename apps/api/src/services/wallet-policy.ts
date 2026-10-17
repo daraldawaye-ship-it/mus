@@ -43,7 +43,8 @@ export async function walletPolicy(
   );
   const row = found.rows[0];
   return {
-    pointValue: row?.point_value ? normalizeRate(row.point_value) : null,
+    // Every point represents exactly one Yemeni rial.
+    pointValue: "1",
     currencyId: row?.currency_id ?? null,
     currency: row?.currency ?? null,
     expenseAccountId: row?.expense_account_id ?? null,
@@ -125,6 +126,9 @@ export async function saveWalletPolicy(
   input: z.output<typeof walletPolicySchema>,
 ): Promise<WalletPolicy> {
   const before = await walletPolicy(db, companyId);
+  if (input.pointValue !== "1")
+    throw new HttpError(400, "fixed_wallet_unit",
+      "قيمة النقطة ثابتة: نقطة واحدة تساوي ريالًا يمنيًا واحدًا");
   if (input.revision !== before.revision)
     throw new HttpError(
       409,
@@ -133,11 +137,11 @@ export async function saveWalletPolicy(
     );
   if (input.currencyId !== null) {
     const base = await walletBaseCurrency(db, companyId);
-    if (!base?.active || base.id !== input.currencyId)
+    if (!base?.active || base.code !== "YER" || base.id !== input.currencyId)
       throw new HttpError(
         400,
         "invalid_currency",
-        "اختر عملة الشركة الأساسية الفعالة؛ التحويل بعملات أخرى غير متاح بعد",
+        "يجب أن تكون العملة الأساسية وعملة المحفظة هي الريال اليمني",
       );
     await db.query(
       "SELECT 1 FROM company_currencies WHERE company_id=$1 AND id=$2 FOR SHARE",
@@ -282,6 +286,8 @@ export async function walletConversionPreview(
     currencyValid =
       !!policy.currency?.active &&
       !!base?.active &&
+      base.code === "YER" &&
+      policy.currency.code === "YER" &&
       policy.currency.id === base.id,
     expenseValid =
       !!policy.expenseAccount?.active &&
@@ -292,16 +298,14 @@ export async function walletConversionPreview(
       binding.account.kind === "posting" &&
       binding.account.id !== policy.expenseAccountId,
     configurationComplete =
-      !!policy.pointValue &&
+      policy.pointValue === "1" &&
       currencyValid &&
       expenseValid &&
       accountValid &&
       policy.approvalMode !== null;
   let amount: string | null = null,
-    unavailableReason = !policy.pointValue
-      ? "لم تحدد الإدارة قيمة النقطة بعد"
-      : !currencyValid
-        ? "حدد عملة الشركة الأساسية الفعالة في إعدادات المحفظة"
+    unavailableReason = !currencyValid
+        ? "يلزم تحديد الريال اليمني عملة أساسية وعملة تحويل المحفظة"
         : !expenseValid
           ? "حدد حساب مصروف مكافآت فعالًا وترحيليًا"
           : !accountValid
@@ -309,11 +313,11 @@ export async function walletConversionPreview(
             : policy.approvalMode === null
               ? "لم تحدد الإدارة طريقة اعتماد التحويل بعد"
               : "";
-  if (policy.pointValue && currencyValid) {
+  if (currencyValid) {
     try {
       amount = pointConversionAmount(
         points,
-        policy.pointValue,
+        "1",
         policy.currency!.decimalPlaces,
       );
       if (configurationComplete && points === "0")

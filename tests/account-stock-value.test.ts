@@ -462,7 +462,37 @@ test("current stock value pools each assigned item once across batches, location
     },
     201,
   );
-  await s.patchItem(product.id, { active: false });
+  const stockedItem = (
+    await f.owner.ok<{ item: Item }>("GET", `${s.base}/items/${product.id}`)
+  ).item;
+  assert.equal(
+    (
+      await f.owner.request("PATCH", `${s.base}/items/${product.id}`, {
+        ...Object.fromEntries(
+          Object.keys(itemPatchSchema.shape)
+            .filter(
+              (key) =>
+                (stockedItem as unknown as Record<string, unknown>)[key] !==
+                undefined,
+            )
+            .map((key) => [
+              key,
+              (stockedItem as unknown as Record<string, unknown>)[key],
+            ]),
+        ),
+        revision: stockedItem.revision,
+        active: false,
+      })
+    ).status,
+    409,
+    "The current item policy must still reject archiving a stocked card",
+  );
+  // Older releases permitted this state. Keep it as an explicit legacy fixture
+  // so statistics continue including its stock without relaxing today's API.
+  await f.pool.query(
+    "UPDATE items SET active=false,revision=revision+1 WHERE company_id=$1 AND id=$2",
+    [s.company.id, product.id],
+  );
   await f.owner.ok("PATCH", `${s.base}/locations/${s.warehouse.id}`, {
     active: false,
   });

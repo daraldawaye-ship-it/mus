@@ -21,6 +21,7 @@ import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
 import {
   canReadItemCoverage,
+  canReadItemStock,
   addItemCoverageToPage,
   itemCoverageJoin,
   itemCoverageSelect,
@@ -497,6 +498,7 @@ export function itemRoutes(pool: Pool): Router {
         await readItems(pool, req, async (client, companyId) => {
           const canRank = await canOrderItemsBySales(client,actor(req),companyId);
           const canViewCoverage = await canReadItemCoverage(client, actor(req), companyId);
+          const canViewStock = await canReadItemStock(client, actor(req), companyId);
           // masterPage validates the complete sort expression. This check only
           // chooses whether coverage must be available before pagination.
           const coverageSort = canViewCoverage && typeof req.query.sort === "string"
@@ -504,16 +506,27 @@ export function itemRoutes(pool: Pool): Router {
               ["approximateCoverageDays", "coverageAfterReserveDays"].includes(sort.split(":")[0]),
             );
           const coverageJoin = coverageSort ? itemCoverageJoin : "";
+          const stockJoin = canViewStock
+            ? " LEFT JOIN item_statistics list_stock ON list_stock.company_id=i.company_id AND list_stock.item_id=i.id"
+            : "";
+          const listFrom = itemFrom + stockJoin + coverageJoin;
+          const stockSelect = canViewStock
+            ? ",COALESCE(list_stock.stock_total,0)::text AS available_smallest"
+            : ",NULL::text AS available_smallest";
+          const stockOrder = canViewStock
+            ? "COALESCE(list_stock.stock_total,0)::numeric / (i.factor2::numeric * i.factor3)"
+            : "NULL::numeric";
           const result = await masterPage(
             client,
             req,
             companyId,
-            itemSelect.replace(itemFrom, `${coverageSort ? itemCoverageSelect : itemCoverageRedactedSelect} ${itemFrom}${coverageJoin}`),
-            itemFrom + coverageJoin,
+            itemSelect.replace(itemFrom, `${stockSelect}${coverageSort ? itemCoverageSelect : itemCoverageRedactedSelect} ${listFrom}`),
+            listFrom,
             "i",
             {
               ...itemColumns,
               saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint",
+              availableUnit1: stockOrder,
               approximateCoverageDays: coverageSort ? "coverage.approximate_coverage_days" : "NULL::numeric",
               coverageAfterReserveDays: coverageSort ? "coverage.coverage_after_reserve_days" : "NULL::numeric",
             },
@@ -720,6 +733,19 @@ export function itemRoutes(pool: Pool): Router {
             conflict(
               "تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ",
             );
+          // An archived item must have no remaining stock in any location.
+          // Include negative balances and opposing showroom/warehouse balances:
+          // a zero company total alone does not mean the item is empty.
+          if (before.active && !input.active) {
+            const balance = await client.query(
+              `SELECT 1 FROM item_statistics WHERE company_id=$1 AND item_id=$2
+               AND (stock_total<>0 OR stock_showroom<>0 OR stock_warehouse<>0)
+               FOR UPDATE`,
+              [companyId, rowId],
+            );
+            if (balance.rowCount)
+              conflict("لا يمكن أرشفة صنف له كمية في المخزون؛ صفّر رصيد جميع المواقع بالتسوية أولًا");
+          }
           const unitFields = [
             "unit1Name",
             "unit2Name",
@@ -770,6 +796,43 @@ export function itemRoutes(pool: Pool): Router {
             next,
             companyId,
           );
+          // Keep the complete immutable audit snapshot above for existing
+          // consumers, then provide an independently readable event for every
+          // modified card field, including its previous and next values.
+          const fieldLabels: Record<string, string> = {
+            name: "اسم الصنف", englishName: "الاسم بالإنجليزية",
+            shelf: "الرف الحالي", shelfId: "ربط الرف",
+            imageId: "الصورة", barcode: "الباركود",
+            legacyId: "المعرف في النظام السابق", agentId: "وكيل الصنف",
+            supplierAccountId: "مورد الصنف", compositionId: "التركيب",
+            unit1Name: "الوحدة الأولى", unit2Name: "الوحدة الثانية",
+            unit3Name: "الوحدة الثالثة", factor2: "عدد الوحدة الثانية",
+            factor3: "عدد الوحدة الثالثة", defaultSaleUnit: "وحدة البيع الافتراضية",
+            salePrice1: "سعر بيع الوحدة الأولى", salePrice2: "سعر بيع الوحدة الثانية",
+            salePrice3: "سعر بيع الوحدة الثالثة", purchasePrice: "سعر الشراء",
+            purchaseFactor: "عامل وحدة الشراء", currencyId: "عملة الأسعار",
+            reorderLimit: "حد الطلب", orderQuantity: "كمية الطلب",
+            reserveQuantity: "الكمية الاحتياطية", searchKeys: "مفاتيح البحث",
+            purchaseNotes: "ملاحظات الشراء", orderStoppedUntil: "توقف الطلب حتى",
+            hasExpiry: "يتطلب تاريخ انتهاء", nearestExpiryDate: "أقرب تاريخ انتهاء",
+            commissionRate: "نسبة العمولة", clearanceFrom: "بداية التصريف",
+            clearanceTo: "نهاية التصريف",
+            settlementApprovalDate: "تاريخ اعتماد التسوية",
+            settlementDisplayDate: "تاريخ عرض التسوية", active: "حالة الأرشفة",
+          };
+          const oldValues = before as unknown as Record<string, unknown>;
+          const newValues = next as unknown as Record<string, unknown>;
+          for (const [field] of itemFieldColumns) {
+            if (JSON.stringify(oldValues[field]) === JSON.stringify(newValues[field]))
+              continue;
+            const label = fieldLabels[field] ?? field;
+            await audit(
+              client, user, "item.field.update", "item", rowId,
+              { field, label, value: oldValues[field] ?? null },
+              { field, label, value: newValues[field] ?? null },
+              companyId,
+            );
+          }
           return next;
         },
       );

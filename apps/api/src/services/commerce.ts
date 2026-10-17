@@ -28,7 +28,9 @@ import {
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { awardPostedInvoice } from "./invoice-rewards.ts";
+import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
+import { controlValue } from "./control-values.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -139,6 +141,8 @@ export async function invoiceDTOs(
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
     supplierReceiptNumber: row.supplier_receipt_number ?? "",
+    doctorId: row.doctor_id ?? null,
+    doctorName: row.doctor_name ?? null,
     description: row.description,
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
@@ -197,12 +201,24 @@ export async function createInvoice(
   input: InvoiceFields,
   importContext?: InvoiceImportContext,
 ): Promise<Invoice> {
+  // New optional doctor reference must not invalidate a legacy UUID retry.
   const replay = await client.query(
-    "SELECT id, (((creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierReceiptNumber') OR (NOT (creation_payload ? 'supplierAccountId') AND (creation_payload - 'supplierReceiptNumber')=($3::jsonb - 'supplierAccountId' - 'supplierReceiptNumber') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AND COALESCE(creation_payload->>'supplierReceiptNumber','')=COALESCE($3::jsonb->>'supplierReceiptNumber','')) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
-    [companyId, input.idempotencyKey, JSON.stringify(input)],
+    "SELECT id,creation_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    [companyId, input.idempotencyKey],
   );
   if (replay.rows[0]) {
-    if (!replay.rows[0].same_payload)
+    const oldPayload = {...replay.rows[0].creation_payload} as Record<string,unknown>;
+    if (!("doctorId" in oldPayload)) oldPayload.doctorId = null;
+    if (!("doctorName" in oldPayload)) oldPayload.doctorName = "";
+    if (!("supplierAccountId" in oldPayload)) oldPayload.supplierAccountId = null;
+    if (!("supplierReceiptNumber" in oldPayload)) oldPayload.supplierReceiptNumber = "";
+    // JSONB is order-insensitive even for nested object keys, unlike JS
+    // JSON.stringify. Legacy and current replay payloads must compare exactly.
+    const same = await client.query(
+      "SELECT $1::jsonb = $2::jsonb AS equal",
+      [JSON.stringify(oldPayload),JSON.stringify(input)],
+    );
+    if (!same.rows[0]?.equal)
       conflict("مفتاح الفاتورة مستخدم لبيانات مختلفة؛ أعد إرسال الطلب الأصلي");
     return loadInvoice(client, companyId, replay.rows[0].id);
   }
@@ -273,11 +289,11 @@ export async function createInvoice(
   let supplier: { id: number; code: string; name: string } | null = null;
   if (supplierId !== null) {
     const selected = await client.query(
-      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND (category IN ('asset','liability') OR ($3::boolean AND category='expense')) AND NOT cash_or_bank FOR SHARE",
-      [companyId, supplierId, importContext?.allowExpenseCounterparty === true],
+      "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' FOR SHARE",
+      [companyId, supplierId],
     );
     if (!selected.rows[0])
-      conflict("اختر موردًا حركيًا فعالًا من حسابات الشركة، وليس صندوقًا أو بنكًا");
+      conflict("اختر حسابًا حركيًا فعالًا للمورد من الشركة");
     supplier = selected.rows[0];
   }
   const base = await client.query(
@@ -582,6 +598,25 @@ export async function createInvoice(
     total = gross - discount;
   assertAmount(gross);
   assertAmount(total);
+  let doctor: {id:number|null;name:string} | null = null;
+  if (input.kind === "sale") {
+    const limit = await controlValue(client, companyId, "sales_doctor_threshold");
+    const threshold = BigInt(typeof limit === "number" ? limit : 1000) * 1000000n;
+    if (!importContext && abs(total) > threshold && input.doctorId === null && !input.doctorName)
+      throw new HttpError(400,"doctor_required","اكتب اسم الطبيب أو الممرض أو الجهة، أو اختره من القائمة قبل حفظ الفاتورة.");
+    if (input.doctorId !== null) {
+      const result = await client.query(
+        "SELECT id,name FROM doctors WHERE company_id=$1 AND id=$2 AND active FOR SHARE",
+        [companyId,input.doctorId],
+      );
+      if(!result.rows[0])
+        throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة فعالة من كرت الأطباء والجهات.");
+      doctor = result.rows[0] as {id:number;name:string};
+    } else if (input.doctorName) {
+      // An unlisted name remains an invoice snapshot, not an unverified directory card.
+      doctor = {id:null,name:input.doctorName};
+    }
+  }
   const baseMagnitude = convertedUnits(
     moneyString(abs(total)),
     rate,
@@ -625,7 +660,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number,doctor_id,doctor_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34) RETURNING id",
     [
       companyId,
       number,
@@ -659,6 +694,8 @@ export async function createInvoice(
       supplier?.code ?? null,
       supplier?.name ?? null,
       input.supplierReceiptNumber,
+      doctor?.id ?? null,
+      doctor?.name ?? null,
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
@@ -942,7 +979,7 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  if (!importContext?.suppressRewards)
+  if (!importContext?.suppressRewards) {
     await awardPostedInvoice(
       client,
       companyId,
@@ -951,6 +988,9 @@ export async function createInvoice(
       user,
       number,
     );
+    if (input.kind === "sale")
+      await accrueInvoiceClearance(client, companyId, invoiceId, user);
+  }
   await audit(
     client,
     user,

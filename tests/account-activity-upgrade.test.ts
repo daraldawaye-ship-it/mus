@@ -109,11 +109,11 @@ async function fixture(t: TestContext) {
     max: 3,
   });
   const scoped = pool;
-  await migrateThrough(scoped, 77);
+  await migrateThrough(scoped, 87);
   assert.equal(
     (await scoped.query("SELECT max(version) AS latest FROM schema_migrations"))
       .rows[0]!.latest,
-    "077_account_balance_permissions.sql",
+    "087_account_balance_permissions.sql",
   );
   const owner = await provisionOwner(scoped, {
     name: "Activity upgrade owner",
@@ -124,7 +124,7 @@ async function fixture(t: TestContext) {
 
   // Only the test's HTTP authentication transport is stubbed. All company,
   // master and invoice writes use the existing business routes, authorization,
-  // posting services, triggers and audit transactions at the actual 077 schema.
+  // posting services, triggers and audit transactions at the actual 087 schema.
   const app = express();
   app.use(express.json());
   app.use("/api", (req, _res, next) => {
@@ -186,7 +186,7 @@ const visibility: AccountOperationVisibility = {
   receipt: true,
 };
 
-test("077 to 078 preserves unknown legacy zero cash history and snapshots new zero purchases", async (t) => {
+test("087 to 088 preserves unknown legacy zero cash history and snapshots new zero purchases", async (t) => {
   const f = await fixture(t);
   const company = (
     await f.request<{ company: Company }>(
@@ -293,11 +293,11 @@ test("077 to 078 preserves unknown legacy zero cash history and snapshots new ze
   ).rows;
   assert(before.every(({ row }) => !("counterparty_cash_snapshot" in row)));
 
-  await migrateThrough(f.pool, 78);
+  await migrateThrough(f.pool, 88);
   assert.equal(
     (await f.pool.query("SELECT max(version) AS latest FROM schema_migrations"))
       .rows[0]!.latest,
-    "078_account_activity_statistics.sql",
+    "088_account_activity_statistics.sql",
   );
   assert.deepEqual(
     (

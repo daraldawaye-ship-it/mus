@@ -29,11 +29,13 @@ import {
   type Branch,
   type CompanyContext,
   type CompanyCurrency,
+  type Doctor,
   type Invoice,
   type InvoiceInput,
   type InvoiceKind,
   type InvoiceLine,
   type Item,
+  type ItemCompositionPeers,
   type Location,
   type Page,
 } from "../../../../packages/contracts/src/index";
@@ -49,8 +51,9 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { saleStockQuantity } from "../sale-stock-quantity";
-import { formatMoney } from "../format-money";
+import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
+import { saleClearanceRate } from "../invoice-clearance-label";
+import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
   Button,
@@ -216,6 +219,13 @@ function InvoiceList({
           <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>
         ),
       } satisfies ColumnDef<Invoice, unknown>] : []),
+      ...(kind === "sale" ? [{
+        accessorKey: "doctorName",
+        header: "الطبيب أو الجهة",
+        size: 175,
+        enableSorting: false,
+        cell: ({row}) => <ValueCell>{row.original.doctorName || "—"}</ValueCell>,
+      } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
         header: "الموقع",
@@ -279,7 +289,7 @@ function InvoiceList({
         </Notice>
       )}
       <Card>
-        <div className="table-filters">
+        <div className={`table-filters invoice-kind-${kind}`} aria-label={`تصفية فواتير ${kind === "sale" ? "المبيعات" : "المشتريات"}`}>
           <Field
             label="بحث الفواتير"
             type="search"
@@ -386,9 +396,12 @@ function emptyLine(returning = false): DraftLine {
 const lineInputId = (line: DraftLine, field: string) =>
   `invoice-${field}-${line.key}`;
 
+
 function ItemSearch({
   companyId,
   id,
+  invoiceKind,
+  documentDate,
   value,
   selected,
   disabled,
@@ -399,6 +412,8 @@ function ItemSearch({
 }: {
   companyId: number;
   id: string;
+  invoiceKind: InvoiceKind;
+  documentDate: string;
   value: string;
   selected: boolean;
   disabled: boolean;
@@ -415,7 +430,7 @@ function ItemSearch({
   const [placement, setPlacement] = useState({
     left: 0,
     top: 0,
-    width: 310,
+    width: 680,
     maxHeight: 320,
   });
   const [search, setSearch] = useState("");
@@ -440,7 +455,9 @@ function ItemSearch({
     const position = () => {
       const rect = anchor.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(Math.max(rect.width, 310), window.innerWidth - 16);
+      // Give Arabic item names room while keeping stock and sale price visible.
+      // On narrow screens the dropdown still fits within the viewport.
+      const width = Math.min(Math.max(rect.width, 680), window.innerWidth - 16);
       const below = window.innerHeight - rect.bottom - 8;
       const above = rect.top - 8;
       const down = below >= Math.min(240, above);
@@ -599,6 +616,9 @@ function ItemSearch({
                 setOpen(false);
             }}
           >
+            <div className="commerce-search-item-head" aria-hidden="true">
+              <span>المتوفر (و1)</span><span>اسم الصنف</span><span>سعر البيع</span>
+            </div>
             <ul id={`${id}-results`} role="listbox" aria-label="نتائج الأصناف">
               {items.map((item, index) => (
                 <li
@@ -609,15 +629,31 @@ function ItemSearch({
                 >
                   <Button
                     variant={index === active ? "secondary" : "ghost"}
+                    className="commerce-search-item-row"
                     onClick={() => choose(item)}
                     onMouseDown={(event) => event.preventDefault()}
                     disabled={
                       disabled || result.isFetching || search !== query.trim()
                     }
                   >
-                    <bdi>{item.code}</bdi>
-                    <span>{item.name}</span>
-                    <bdi>{item.barcode}</bdi>
+                    <bdi className="commerce-search-item-stock"
+                      title={item.availableSmallest === null ? "الرصيد غير متاح بحسب الصلاحيات" : "المتوفر بالوحدة الأولى"}>
+                      {invoiceSearchStock(item)}
+                    </bdi>
+                    <span className="commerce-search-item-name" title={item.name}>
+                      {item.name}
+                      {invoiceKind === "sale" && (() => {
+                        const rate = saleClearanceRate(item, documentDate);
+                        return rate ? (
+                          <>{" "}<span className="commerce-search-clearance-label">
+                            (تصريف {rate}%)
+                          </span></>
+                        ) : null;
+                      })()}
+                    </span>
+                    <bdi className="commerce-search-item-price" title="سعر البيع بالوحدة الأولى">
+                      {formatMoney(item.salePrice1)}
+                    </bdi>
                   </Button>
                 </li>
               ))}
@@ -790,51 +826,241 @@ function OriginalInvoicePicker({
   );
 }
 
-function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
+type ItemInfoView = "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
+type ItemInfoHistoryRow = {
+  lineId: number;
+  documentId: number;
+  documentDate: string;
+  partyName?: string;
+  description?: string;
+  quantityFirstUnit: string;
+  unitPriceFirstUnit?: string;
+  currencyCode?: string;
+};
+/** Format stock to exactly one displayed decimal, without losing conversion precision. */
+function alternativeFirstUnitText(
+  row: ItemCompositionPeers["peers"][number],
+): string {
+  if (row.stockSmallest === null) return "—";
+  const quantity = saleStockQuantity(row.stockSmallest, row, 1, 1);
+  return quantity.includes(".") ? quantity : quantity + ".0";
+}
+const itemInfoViews: { value: ItemInfoView; label: string }[] = [
+  { value: "purchase", label: "مشتريات الصنف" },
+  { value: "sale", label: "مبيعات الصنف" },
+  { value: "adjustment", label: "تسويات الصنف" },
+  { value: "transfer", label: "مناقلات الصنف" },
+  { value: "alternatives", label: "بدائل الصنف" },
+];
+function isItemInfoView(value: string | null): value is ItemInfoView {
+  return itemInfoViews.some(view => view.value === value);
+}
+function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, userId }: {
+  context: CompanyContext;
+  kind: InvoiceKind;
+  selectedItemId: number | null;
+  selectedItemName: string | null;
+  userId: number | undefined;
+}) {
+  const companyId = context.company.id;
+  const storageKey = `tijara:item-options:${userId ?? 0}:${companyId}:${kind}`;
+  const [view, setView] = useState<ItemInfoView>(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      return isItemInfoView(saved) ? saved : kind === "purchase" ? "purchase" : "sale";
+    } catch {
+      return kind === "purchase" ? "purchase" : "sale";
+    }
+  });
+  const menu = useRef<HTMLDetailsElement>(null);
+  const client = useQueryClient();
+  const [alternateItemId, setAlternateItemId] = useState<number | null>(null);
+  const [accountFullName, setAccountFullName] = useState<string | null>(null);
+  const [alternateSaving, setAlternateSaving] = useState(false);
+  const history = useQuery<{ items: ItemInfoHistoryRow[] }>({
+    queryKey: ["invoice-item-options", userId, companyId, selectedItemId, view],
+    queryFn: ({ signal }) => api<{ items: ItemInfoHistoryRow[] }>(
+      `/companies/${companyId}/item-history/${selectedItemId}?type=${view}`,
+      { signal },
+    ),
+    enabled: !!userId && !!selectedItemId && view !== "alternatives",
+    staleTime: 10000,
+  });
+  const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
+    queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
+    queryFn: ({ signal }) => api<{ peers: ItemCompositionPeers }>(
+      `/companies/${companyId}/items/${selectedItemId}/composition-peers?page=1`,
+      { signal },
+    ),
+    enabled: !!userId && !!selectedItemId && view === "alternatives",
+    staleTime: 10000,
+  });
+  const selectedLabel = itemInfoViews.find(option => option.value === view)?.label;
+  function selectView(value: ItemInfoView) {
+    setView(value);
+    if (menu.current) menu.current.open = false;
+    try { window.localStorage.setItem(storageKey, value); } catch { /* Storage may be disabled. */ }
+  }
+  const isInvoiceView = view === "purchase" || view === "sale";
+  const peers = alternatives.data?.peers;
+  return (
+    <>
+    <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
+      <details ref={menu} className="invoice-item-options-menu">
+        <summary aria-label="اختر خيارات الصنف">
+          <span className="invoice-item-options-heading"
+            title={selectedItemName ? `${selectedLabel} (${selectedItemName})` : selectedLabel}>
+            <span className="invoice-item-options-view">{selectedLabel}</span>
+            {selectedItemName && <span className="invoice-item-options-selected-name"> ({selectedItemName})</span>}
+          </span><span aria-hidden="true">▾</span>
+        </summary>
+        <div className="invoice-item-options-choices">
+          {itemInfoViews.map(option => (
+            <button type="button" key={option.value}
+              className={option.value === view ? "is-selected" : ""}
+              aria-current={option.value === view ? "true" : undefined}
+              onClick={() => selectView(option.value)}>{option.label}</button>
+          ))}
+        </div>
+      </details>
+      <div className="invoice-item-options-content">
+        {!selectedItemId ? <small>اختر صنفًا في الفاتورة لعرض {selectedLabel}.</small> :
+          view === "alternatives" ? (
+            <>
+              {alternatives.isLoading && <small>جارٍ تحميل الأصناف المرتبطة…</small>}
+              {alternatives.isError && <small>تعذر عرض البدائل. تحقق من صلاحية عرض الأصناف.</small>}
+              {peers && !peers.composition && <small>لا يوجد تركيب معرّف لهذا الصنف.</small>}
+              {peers?.composition && (
+                <>
+                  <small className="invoice-item-options-relation">
+                    {peers.relation === "identicalAlternative" ? "بدائل مطابقة بحسب كرت التركيب" :
+                      peers.relation === "nonInterchangeable" ? "تنبيه: هذه الأصناف غير قابلة للتبديل" :
+                      "أصناف تشترك في التركيب؛ ليست بدائل معتمدة"}
+                  </small>
+                  {peers.peers.length === 0 ? <small>لا توجد أصناف أخرى بنفس التركيب.</small> : (
+                    <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
+                      <table className="invoice-item-options-table">
+                        <colgroup><col style={{width:"30%"}}/><col style={{width:"70%"}}/></colgroup>
+                        <thead><tr><th className="invoice-item-options-number">الكمية (و1)</th><th>الصنف</th></tr></thead>
+                        <tbody>{peers.peers.map(row => (
+                          <tr key={row.id}>
+                            <td className="invoice-item-options-number" title={alternativeFirstUnitText(row)}>
+                              <bdi>{alternativeFirstUnitText(row)}</bdi>
+                            </td>
+                            <td title={row.name}>
+                              <button type="button" className="invoice-item-options-link"
+                                onClick={() => setAlternateItemId(row.id)}
+                                aria-label={`فتح كرت الصنف ${row.name}`}>
+                                {row.name}{row.active ? "": " (مؤرشف)"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                  {peers.total > peers.pageSize &&
+                    <small>تظهر أول {peers.pageSize} أصناف من أصل {peers.total}. استعرض البقية من كرت الصنف.</small>}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {history.isLoading && <small>جارٍ تحميل الحركات…</small>}
+              {history.isError && <small>تعذر تحميل الحركات؛ تحقق من صلاحية عرض {isInvoiceView ? "الفواتير" : "المخزون"}.</small>}
+              {history.data?.items.length === 0 && <small>لا توجد حركات سابقة للصنف في هذا القسم.</small>}
+              {history.data && history.data.items.length > 0 && (
+                <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label={`جدول ${selectedLabel}`}>
+                  <table className="invoice-item-options-table">
+                    <colgroup>{isInvoiceView ? (
+                      <><col style={{width:"25%"}}/><col style={{width:"35%"}}/>
+                        <col style={{width:"20%"}}/><col style={{width:"20%"}}/></>
+                    ) : (
+                      <><col style={{width:"27%"}}/><col style={{width:"46%"}}/>
+                        <col style={{width:"27%"}}/></>
+                    )}</colgroup>
+                    <thead><tr>
+                      <th>التاريخ</th>
+                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th className="invoice-item-options-number">السعر</th></> : <th>البيان</th>}
+                      <th className="invoice-item-options-number">الكمية (و1)</th>
+                    </tr></thead>
+                    <tbody>{history.data.items.map(row => (
+                      <tr key={row.lineId}>
+                        <td dir="ltr">{row.documentDate}</td>
+                        {isInvoiceView ? <>
+                          <td title={row.partyName ?? "—"}><button type="button"
+                            className="invoice-item-options-link"
+                            onClick={() => setAccountFullName(row.partyName ?? "غير محدد")}
+                            aria-label={`عرض اسم الحساب كاملًا: ${row.partyName ?? "غير محدد"}`}>
+                            {row.partyName ?? "—"}
+                          </button></td>
+                          <td className="invoice-item-options-number" title={row.unitPriceFirstUnit == null ? "—" : formatWholeMoney(row.unitPriceFirstUnit)}>
+                            <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
+                          </td>
+                        </> : <td title={row.description || "—"}>{row.description || "—"}</td>}
+                        <td className="invoice-item-options-number"><bdi>{row.quantityFirstUnit}</bdi></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+      </div>
+    </section>
+    <Dialog open={accountFullName !== null} title="اسم الحساب بالكامل"
+      onClose={() => setAccountFullName(null)}>
+      <p className="invoice-item-full-account" dir="auto">{accountFullName}</p>
+      <div className="form-actions">
+        <Button variant="secondary" onClick={() => setAccountFullName(null)}>إغلاق</Button>
+      </div>
+    </Dialog>
+    <Dialog open={alternateItemId !== null} title="كرت الصنف"
+      className="invoice-item-sheet" onClose={() => {
+        if (!alternateSaving) setAlternateItemId(null);
+      }}>
+      {alternateItemId !== null && (
+        <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
+          <InvoiceItemEditor
+            key={`${userId}:${companyId}:${alternateItemId}`}
+            context={context} itemId={alternateItemId}
+            onSaved={() => {
+              void client.invalidateQueries({
+                queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
+              });
+              setAlternateItemId(null);
+            }}
+            onClose={() => { if (!alternateSaving) setAlternateItemId(null); }}
+            onSavingChange={setAlternateSaving}
+          />
+        </Suspense>
+      )}
+    </Dialog>
+    </>
+  );
+}
+function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName }: {
   children: ReactNode;
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
+  selectedItemName: string | null;
 }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const controls = useControls(companyId, context.employee?.id ?? null);
-  const showPurchases = kind === "purchase" && controls.value("show_recent_item_purchases") !== false;
-  const recent = useQuery<{
-    items: { lineId: number; invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
-  }>({
-    queryKey: ["recent-item-purchases", companyId, selectedItemId],
-    queryFn: ({ signal }) => api(`/companies/${companyId}/purchase-history/${selectedItemId}`, { signal }),
-    enabled: showPurchases && !!selectedItemId,
-  });
+  const showOptions = controls.value(
+    kind === "purchase" ? "show_recent_item_purchases" : "show_item_options_sales",
+  ) !== false;
   return (
-    <div className="invoice-workspace">
+    <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
       <div className="invoice-workspace-main">{children}</div>
-      <aside
-        className="invoice-side-space"
-        aria-label="المساحة الجانبية للفاتورة"
-        tabIndex={0}
-      >
-        {showPurchases && selectedItemId ? (
-          <section className="invoice-empty-panel recent-item-purchases" aria-label="آخر خمس مشتريات للصنف">
-            <strong>آخر خمس مشتريات للصنف</strong>
-            {recent.isLoading && <small>جارٍ تحميل المشتريات…</small>}
-            {recent.isError && <small>تعذر تحميل المشتريات.</small>}
-            {recent.data?.items.length === 0 && <small>لا توجد مشتريات سابقة.</small>}
-            {recent.data && recent.data.items.length > 0 && (
-              <table className="recent-purchases-table">
-                <thead><tr><th>التاريخ</th><th>المورد</th><th>الكمية (وحدة 1)</th></tr></thead>
-                <tbody>{recent.data.items.map(row => (
-                  <tr key={row.lineId}>
-                    <td>{row.documentDate}</td><td>{row.supplierName}</td>
-                    <td dir="ltr">{row.quantityFirstUnit}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
-        ) : <section className="invoice-empty-panel" aria-label="المساحة الأولى" />}
+      {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
+        <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
+          context={context} kind={kind} selectedItemId={selectedItemId}
+          selectedItemName={selectedItemName} userId={user?.id} />
         <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
-      </aside>
+      </aside>}
     </div>
   );
 }
@@ -844,7 +1070,7 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
   const [params] = useSearchParams();
   const { user } = useSession();
   const kind = params.get("kind") === "purchase" ? "purchase" : "sale";
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Pick<Item,"id"|"name"> | null>(null);
   const control = useControls(context.company.id, context.employee?.id ?? null);
   if (!commerceAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
@@ -852,10 +1078,11 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     return canPost(context) ? ((isMobileDevice() && control.value(kind === "sale" ? "mobile_sales" : "mobile_purchases") === false) ? (
       <Notice tone="warning">إنشاء هذا النوع من الفواتير من الهاتف غير مسموح في الكنترول.</Notice>
     ) : (
-      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItemId}>
+      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItem?.id ?? null}
+        selectedItemName={selectedItem?.name ?? null}>
         <InvoiceEditor
           key={`${user?.id}:${context.company.id}:${kind}`}
-          context={context} onChooseItem={setSelectedItemId}
+          context={context} onChooseItem={setSelectedItem}
         />
       </InvoiceWorkspace>
     )) : (
@@ -864,12 +1091,12 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
       </Notice>
     );
   return (
-    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null}>
+    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null} selectedItemName={null}>
       <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
     </InvoiceWorkspace>
   );
 }
-function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (itemId: number) => void }) {
+function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
@@ -888,6 +1115,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [editingBusy, setEditingBusy] = useState(false);
   const [itemNotice, setItemNotice] = useState("");
   const [memoBlocked,setMemoBlocked]=useState(false);
+  const [resetConfirmOpen,setResetConfirmOpen]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -951,6 +1179,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     !account.cashOrBank;
   const selectedSupplier = creditPurchase ? account : supplier;
   const defaultCashbox = useEmployeeCashbox(context);
+  const [cashboxDraft,setCashboxDraft]=useState<{
+    kind:"pouch"|"electronic"|"close";
+    amount:string;notes:string;idempotencyKey:string;
+  }|null>(null);
+  const [cashboxBusy,setCashboxBusy]=useState(false);
+  const [cashboxUnknown,setCashboxUnknown]=useState(false);
+  const [cashboxError,setCashboxError]=useState("");
+  const [cashboxNotice,setCashboxNotice]=useState("");
   const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
@@ -1061,6 +1297,90 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
+  const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
+  const [doctorQuery,setDoctorQuery]=useState("");
+  const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(null);
+  const [doctorActiveIndex,setDoctorActiveIndex]=useState(-1);
+  const doctorOptionsRef=useRef<HTMLDivElement>(null);
+  const [doctorError,setDoctorError]=useState("");
+  const doctorField=useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if(doctorPromptOpen) doctorField.current?.focus();
+  },[doctorPromptOpen]);
+  const doctorChoices=useQuery({
+    queryKey:["invoice-doctors",user?.id,companyId,doctorQuery],
+    enabled:!!user && kind==="sale" && doctorPromptOpen,
+    queryFn:({signal})=>api<Page<Doctor>>(
+      `/companies/${companyId}/doctors?active=true&q=${encodeURIComponent(doctorQuery)}&page=1&pageSize=20&sort=name:asc`,
+      {signal},
+    ),
+  });
+  const doctorResults = doctorChoices.data?.items ?? [];
+  useEffect(() => {
+    if(doctorActiveIndex < 0) return;
+    doctorOptionsRef.current?.querySelector<HTMLElement>(
+      `[data-doctor-index="${doctorActiveIndex}"]`,
+    )?.scrollIntoView({block:"nearest"});
+  },[doctorActiveIndex,doctorChoices.data]);
+  const doctorThreshold = Number(controls.value("sales_doctor_threshold") ?? 1000);
+
+  function openCashboxAction(operation:"pouch"|"electronic"|"close") {
+    setCashboxError("");
+    setCashboxUnknown(false);
+    setCashboxNotice("");
+    setCashboxDraft({kind:operation,amount:"",notes:"",
+      idempotencyKey:crypto.randomUUID()});
+  }
+  async function submitCashboxAction(event?:FormEvent) {
+    event?.preventDefault();
+    if (!cashboxDraft || cashboxBusy || !defaultCashbox || !canPost(context)) return;
+    if (!/^-?(?:0|[1-9][0-9]{0,19})(?:\\.[0-9]{1,2})?$/.test(normalizeDigits(cashboxDraft.amount))) {
+      setCashboxError("أدخل مبلغًا صالحًا بالريال اليمني حتى منزلتين عشريتين.");
+      return;
+    }
+    setCashboxBusy(true);
+    setCashboxError("");
+    try {
+      const result=await api<{operationId:number;documentId:number;
+        bookBalance:string|null;difference:string|null}>(
+        `/companies/${companyId}/sales/cashbox-operations`,{
+          method:"POST",
+          body:{...cashboxDraft,amount:normalizeDigits(cashboxDraft.amount)},
+          signal:guard.signal,
+        });
+      if(!guard.isCurrent()) return;
+      const diff=result.difference?Number(result.difference):0;
+      const message=cashboxDraft.kind==="close"
+        ? diff>0
+          ? `تم إغلاق الصندوق وترحيل العجز ${formatMoney(result.difference!)} ريال.`
+          : diff<0
+            ? `تم إغلاق الصندوق وترحيل الزيادة ${formatMoney(String(-diff))} ريال.`
+            : "تم إغلاق الصندوق وتصفير الرصيد دون فرق."
+        : cashboxDraft.kind==="pouch"
+          ? cashboxDraft.amount.startsWith("-")
+            ? "تم استلام المبلغ من الحافظة وإضافته إلى صندوق البائع."
+            : "تم ترحيل المبلغ من صندوق البائع إلى الحافظة."
+          : cashboxDraft.amount.startsWith("-")
+            ? "تم استلام المبلغ من المحفظة الإلكترونية وإضافته إلى صندوق البائع."
+            : "تم ترحيل المبلغ من صندوق البائع إلى المحفظة الإلكترونية.";
+      setCashboxNotice(`${message} رقم القيد #${result.documentId}`);
+      setCashboxDraft(null);
+      setCashboxUnknown(false);
+      void invalidate();
+      void client.invalidateQueries({predicate:q=>
+        q.queryKey.includes(companyId) &&
+        ["account-balances","account-ledger","financial-documents"].includes(String(q.queryKey[0]))});
+    }catch(cause) {
+      if (!guard.isCurrent()) return;
+      const uncertain=!(cause instanceof ApiFailure)||cause.status>=500;
+      setCashboxUnknown(uncertain);
+      setCashboxError(uncertain
+        ? "قد تكون العملية قد ترحّلت. أعد التأكيد بنفس الطلب دون تعديل المبلغ لتجنب التكرار. "+errorMessage(cause)
+        : errorMessage(cause));
+    }finally{
+      if(guard.isCurrent())setCashboxBusy(false);
+    }
+  }
   const allowNavigation = useRef(false);
   const dirty =
     lines.some((line) => line.itemId || line.search.trim()) ||
@@ -1096,16 +1416,17 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, saving, unknown]);
   // Start new invoices with the cursor in the first item/barcode search.
-  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(() => ({
+  const [focusTarget, setFocusTarget] = useState<{ id: string; select?: boolean } | null>(() => ({
     id: lineInputId(lines[0]!, "item-search"),
   }));
-  const focus = (id: string) => setFocusTarget({ id });
+  const focus = (id: string, select = false) => setFocusTarget({ id, select });
   useLayoutEffect(() => {
     if (!focusTarget || locked || !guard.isCurrent()) return;
     const element = document.getElementById(focusTarget.id);
     // Selection and a new row must commit before their controls can receive focus.
     if (!element || element.matches(":disabled")) return;
     element.focus();
+    if (focusTarget.select && element instanceof HTMLInputElement) element.select();
     setFocusTarget(null);
   }, [focusTarget, lines, locked]);
   const salePrice = (selected: Item, level: 1 | 2 | 3) =>
@@ -1163,13 +1484,15 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       return null;
     }
   }, [lines, discount, currency?.decimalPlaces, hasPositiveLines]);
+  const doctorNeeded = kind==="sale" && totals !== null &&
+    Math.abs(Number(totals.total)) > doctorThreshold;
   function updateLine(key: string, patch: Partial<DraftLine>) {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
-    if (kind === "purchase") onChooseItem(selected.id);
+    onChooseItem({id:selected.id,name:selected.name});
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
@@ -1192,13 +1515,16 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       originalSelection: false,
       originalSource: undefined,
     });
-    focus(lineInputId(line, "quantity"));
+    // After selecting a purchase item, overwrite its suggested price directly.
+    // Sale invoices keep their existing quantity-first workflow.
+    focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase");
   }
   function closeItemEditor() {
     if (!editingBusy) setEditingItem(null);
   }
   function itemSaved(item: Item) {
     if (!guard.isCurrent() || item.companyId !== companyId) return;
+    onChooseItem({id:item.id,name:item.name});
     setLines((current) =>
       current.map((line) => {
         if (line.itemId !== item.id) return line;
@@ -1453,9 +1779,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   function resetInvoice() {
     if (locked || editingItem) return;
+    setResetConfirmOpen(false);
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
+    onChooseItem(null);
     setLines([first]);
     setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
@@ -1475,14 +1803,25 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     automaticLocationId.current = null;
     setDescription("");
     setDiscount("0");
+    setDoctorSelected(null);
+    setDoctorActiveIndex(-1);
+    setDoctorQuery("");
+    setDoctorPromptOpen(false);
+    setDoctorError("");
     setError("");
     setSavedInvoice(null);
     setItemNotice("");
     focus(lineInputId(first, "item-search"));
   }
-  async function save(event?: FormEvent) {
+  async function save(event?: FormEvent, selectedDoctorId?: number, freeTextDoctorName = "") {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
+    const enteredDoctorName = freeTextDoctorName.trim();
+    if (doctorPromptOpen && !selectedDoctorId && !enteredDoctorName) {
+      setDoctorError("اكتب اسم الطبيب أو الجهة، أو اختره من النتائج.");
+      doctorField.current?.focus();
+      return;
+    }
     setError("");
     setMemoBlocked(false);
     let payload = pending.current;
@@ -1496,6 +1835,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         return;
       }
       if (selectedLines.some((line) => !validateLine(line))) return;
+      if (doctorNeeded && !selectedDoctorId && !enteredDoctorName) {
+        setDoctorSelected(null);
+        setDoctorActiveIndex(-1);
+        setDoctorQuery("");
+        setDoctorError("");
+        setDoctorPromptOpen(true);
+        return;
+      }
       const parsed = invoiceSchema.safeParse({
         idempotencyKey: crypto.randomUUID(),
         kind,
@@ -1505,6 +1852,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         locationId: location?.id,
         counterpartyAccountId: account?.id,
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
+        doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
+        doctorName: kind === "sale" ? enteredDoctorName : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
@@ -1539,6 +1888,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const next = emptyLine();
       pending.current = null;
+      onChooseItem(null);
       setLines([next]);
       setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
@@ -1549,6 +1899,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setDocumentDate(today());
       setDescription("");
       setDiscount("0");
+      setDoctorPromptOpen(false);
+      setDoctorSelected(null);
+      setDoctorActiveIndex(-1);
+      setDoctorQuery("");
+      setDoctorError("");
       // Reuse currency, branch and stock location for efficient consecutive
       // invoices, but always clear the old customer/supplier.
       currencyManuallyChosen.current = false;
@@ -1566,6 +1921,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
       setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
+      if (error instanceof ApiFailure && error.code === "doctor_required") {
+        setDoctorPromptOpen(true);
+        setDoctorError("يلزم اختيار الطبيب أو الجهة قبل حفظ هذه الفاتورة.");
+      }
       setUnknown(uncertain);
       if (!uncertain) pending.current = null;
       setError(
@@ -1597,7 +1956,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   return (
     <div className="commerce-document-page">
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
-        <Card className="commerce-header-card">
+        <Card className={`commerce-header-card invoice-kind-${kind}`}>
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
               <div className="commerce-header-content">
@@ -1610,6 +1969,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                       : "حساب السداد / الذمة"
                   }
                   value={account}
+                  pageSize={100}
+                  sort="name:asc"
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
@@ -1628,7 +1989,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     value={selectedSupplier}
                     onChange={setSupplier}
                     display={itemLabel}
-                    accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
+                    pageSize={100}
+                    sort="name:asc"
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
                 )}
@@ -1641,6 +2003,16 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     disabled={locked}
                     onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
+                )}
+                {kind==="sale" && (
+                  <div className="cashbox-shortcuts">
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("pouch")}>ترحيل إلى الحافظة</Button>
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("electronic")}>ترحيل إلى المحفظة الإلكترونية</Button>
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("close")}>إغلاق الصندوق</Button>
+                  </div>
                 )}
                 <Link
                   className="button button-secondary commerce-list-link"
@@ -1991,6 +2363,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                           ) : (
                             <ItemSearch
                               companyId={companyId}
+                              invoiceKind={kind}
+                              documentDate={documentDate}
                               id={lineInputId(line, "item-search")}
                               value={line.search}
                               selected={!!line.itemId}
@@ -2006,7 +2380,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                 chooseItem(line, selected)
                               }
                               onConfirmSelected={() =>
-                                focus(lineInputId(line, "quantity"))
+                                focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase")
                               }
                               onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
@@ -2335,7 +2709,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <div className="commerce-save-actions">
               <Button
                 variant="secondary"
-                onClick={resetInvoice}
+                onClick={() => setResetConfirmOpen(true)}
                 disabled={locked || !!editingItem}
               >
                 تصفير الفاتورة
@@ -2357,6 +2731,172 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
         </footer>
       </form>
+      {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
+      <Dialog open={cashboxDraft!==null}
+        title={cashboxDraft?.kind==="pouch"?"ترحيل إلى الحافظة":cashboxDraft?.kind==="electronic"?
+          "ترحيل إلى المحفظة الإلكترونية":"إغلاق الصندوق"}
+        onClose={()=>{if(!cashboxBusy && !cashboxUnknown)setCashboxDraft(null);}}>
+        {cashboxDraft && (
+          <form className="form-stack" onSubmit={event=>void submitCashboxAction(event)}>
+            <Field
+              label={cashboxDraft.kind==="close"?"المبلغ النقدي الفعلي":"المبلغ"}
+              money inputMode="decimal" autoFocus required
+              value={cashboxDraft.amount}
+              disabled={cashboxBusy||cashboxUnknown}
+              onChange={event=>setCashboxDraft(previous=>previous?
+                {...previous,amount:normalizeDigits(event.target.value)}:previous)}
+            />
+            <Field label="ملاحظات" maxLength={1000}
+              value={cashboxDraft.notes} disabled={cashboxBusy||cashboxUnknown}
+              onChange={event=>setCashboxDraft(previous=>previous?
+                {...previous,notes:event.target.value}:previous)}
+            />
+            {cashboxDraft.kind==="pouch" && <small className="muted">
+              المبلغ السالب يعني استلام مبلغ من الحافظة وإعادته للصندوق.
+              يُسمح بالترحيل حتى لو أصبح رصيد أحد الحسابين سالبًا.
+            </small>}
+            {cashboxDraft.kind==="electronic" && <small className="muted">
+              المبلغ الموجب يُرحّل من صندوقك إلى محفظة الشركة الإلكترونية،
+              والسالب يعني استلام المبلغ من محفظة الشركة إلى صندوقك.
+              يُسمح بالحركة حتى لو أصبح الرصيد الدفتري للحساب المحوّل منه سالبًا.
+            </small>}
+            {cashboxDraft.kind==="close" && <small className="muted">
+              هذا حقل جرد النقد الفعلي وليس تحويلًا باتجاهين، لذلك لا يقبل السالب.
+              سيتم تحويل النقد المعدود للحافظة، وترحيل أي عجز أو زيادة تلقائيًا ثم تصفير الصندوق،
+              حتى لو كان رصيد الصندوق الدفتري سالبًا.
+            </small>}
+            {cashboxError && <Notice tone="error">{cashboxError}</Notice>}
+            <div className="form-actions">
+              <Button type="submit" disabled={cashboxBusy}>
+                {cashboxBusy?"جارٍ الترحيل…":cashboxUnknown?"إعادة تأكيد الطلب نفسه":"حفظ وترحيل"}
+              </Button>
+              <Button variant="secondary" type="button" disabled={cashboxBusy||cashboxUnknown}
+                onClick={()=>setCashboxDraft(null)}>إلغاء</Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
+      <Dialog open={resetConfirmOpen}
+        title="تأكيد تصفير الفاتورة"
+        onClose={() => setResetConfirmOpen(false)}>
+        <p>هل تريد تصفير هذه الفاتورة؟ ستُحذف جميع السطور والبيانات المدخلة غير المحفوظة، ولن يمكن استعادتها.</p>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setResetConfirmOpen(false)}>
+            العودة إلى الفاتورة
+          </Button>
+          <Button variant="danger" disabled={locked || !!editingItem}
+            onClick={resetInvoice}>
+            نعم، تصفير الفاتورة
+          </Button>
+        </div>
+      </Dialog>
+      <Dialog open={doctorPromptOpen}
+        title="اختيار الطبيب أو الجهة لفاتورة المبيعات"
+        onClose={() => {
+          // Choosing a doctor is mandatory; use the explicit Back button
+          // to return to the unsaved invoice instead of silently dismissing.
+          doctorField.current?.focus();
+        }}>
+        <div className="form-stack">
+          <Notice>صافي الفاتورة يتجاوز الحد المحدد في الكنترول ({formatMoney(doctorThreshold)}).
+            اختر طبيبًا أو ممرضًا أو جهة من الكروت المسجلة للمتابعة.</Notice>
+          {doctorError&&<Notice tone="error">{doctorError}</Notice>}
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
+            <input id="invoice-doctor-name" type="search" required autoFocus
+            ref={doctorField} value={doctorQuery} autoComplete="off"
+            role="combobox" aria-autocomplete="list" aria-expanded={doctorPromptOpen}
+            aria-controls="invoice-doctor-options"
+            aria-activedescendant={doctorActiveIndex >= 0 && doctorResults[doctorActiveIndex]
+              ? `invoice-doctor-option-${doctorResults[doctorActiveIndex]!.id}` : undefined}
+            maxLength={240}
+            placeholder="ابحث أو اكتب اسمًا جديدًا دون إضافته للكروت"
+            onChange={event=>{
+              setDoctorQuery(event.target.value);
+              setDoctorSelected(null);
+              setDoctorActiveIndex(-1);
+              setDoctorError("");
+            }}
+            onKeyDown={event=>{
+              if(event.key==="ArrowDown" || event.key==="ArrowUp"){
+                event.preventDefault();
+                if(doctorResults.length){
+                  setDoctorActiveIndex(old => event.key==="ArrowDown"
+                    ? (old + 1) % doctorResults.length
+                    : (old < 0 ? doctorResults.length - 1
+                        : (old - 1 + doctorResults.length) % doctorResults.length));
+                }
+                return;
+              }
+              if(event.key==="Escape"){
+                event.preventDefault();
+                setDoctorActiveIndex(-1);
+                return;
+              }
+              if(event.key==="Enter"){
+                event.preventDefault();
+                const highlighted=doctorActiveIndex>=0 ? doctorResults[doctorActiveIndex] : null;
+                if(highlighted){
+                  setDoctorSelected(highlighted);
+                  setDoctorQuery(highlighted.name);
+                  setDoctorActiveIndex(-1);
+                  setDoctorError("");
+                  return;
+                }
+                if(doctorSelected){
+                  void save(undefined,doctorSelected.id);
+                }else if(doctorQuery.trim()){
+                  void save(undefined,undefined,doctorQuery);
+                }else{
+                  setDoctorError("اكتب اسم الطبيب أو الجهة أولًا.");
+                  doctorField.current?.focus();
+                }
+              }
+            }}/>
+          </div>
+          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل وحفظه دون إنشاء كرت.</small>
+          <div id="invoice-doctor-options" ref={doctorOptionsRef} className="invoice-doctor-options"
+            role="listbox" aria-label="نتائج الأطباء والجهات">
+            {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
+            {doctorChoices.isError&&<Notice tone="error">{errorMessage(doctorChoices.error)}</Notice>}
+            {doctorResults.map((doctor,index)=><button type="button" key={doctor.id}
+              id={`invoice-doctor-option-${doctor.id}`} data-doctor-index={index}
+              className={doctorSelected?.id===doctor.id || doctorActiveIndex===index?"invoice-doctor-selected":""}
+              role="option" aria-selected={doctorSelected?.id===doctor.id || doctorActiveIndex===index}
+              onClick={()=>{
+                setDoctorSelected(doctor);
+                setDoctorActiveIndex(-1);
+                setDoctorQuery(doctor.name);
+                setDoctorError("");
+                doctorField.current?.focus();
+              }}>
+              <strong>{doctor.name}</strong>
+              <small>{doctor.kind==="doctor"?"طبيب":doctor.kind==="nurse"?"ممرض":"جهة"}{doctor.department?" · "+doctor.department:""}</small>
+            </button>)}
+            {!doctorChoices.isLoading&&doctorChoices.data?.items.length===0&&<small>
+              لا يوجد اسم مطابق في الكروت. يمكنك حفظ الاسم المكتوب مباشرة دون معرّف.
+            </small>}
+          </div>
+          <div className="form-actions">
+            <Button disabled={saving} onClick={()=>{
+              if(doctorSelected) {
+                void save(undefined,doctorSelected.id);
+              } else if(doctorQuery.trim()) {
+                void save(undefined,undefined,doctorQuery);
+              } else {
+                setDoctorError("اكتب اسم الطبيب أو الجهة أولًا.");
+                doctorField.current?.focus();
+              }
+            }}>حفظ وترحيل الفاتورة</Button>
+            <Button variant="secondary" disabled={saving} onClick={()=>{
+              setDoctorPromptOpen(false);
+              setDoctorError("");
+              setDoctorSelected(null);
+              setDoctorActiveIndex(-1);
+            }}>العودة إلى الفاتورة دون حفظ</Button>
+          </div>
+        </div>
+      </Dialog>
       <Dialog
         open={editingItem !== null}
         className="invoice-item-sheet"
@@ -2509,6 +3049,9 @@ function InvoiceViewer({
               ) : "غير محدد"}
             </span>
           )}
+          {invoice.kind === "sale" && invoice.doctorName && (
+            <span>الطبيب أو الجهة: {invoice.doctorName}</span>
+          )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
           </span>
@@ -2561,7 +3104,9 @@ function InvoiceViewer({
                   <td>{amount(line.total)}</td>
                   {invoice.kind === "sale" && context.general && (
                     <td className="commerce-no-print">
-                      {amount(line.commissionAmount)} ({line.commissionRate}%)
+                      {line.commissionAmount.startsWith("-")
+                        ? `مراجعة مرتجع: ${amount(line.commissionAmount.slice(1))} — دون خصم`
+                        : `${amount(line.commissionAmount)} (${line.commissionRate}%)`}
                     </td>
                   )}
                 </tr>
@@ -2573,9 +3118,10 @@ function InvoiceViewer({
           context.general &&
           invoice.lines.some((line) => line.commissionAmount !== "0") && (
             <Notice>
-              مبالغ عمولة التصريف محسوبة ومثبتة على سطور هذه الفاتورة حسب فترة
-              الصنف. لا تمثل صرفًا نقديًا أو قيدًا على حساب موظف قبل اعتماد
-              المستفيد والتسوية.
+              تُثبت عمولة التصريف بحسب إعداد الصنف وتاريخ الفاتورة.
+              المبيعات الجديدة المؤهلة تُسجل كمستحق للموظف الذي رحّلها إذا كان موظفًا فعالًا،
+              ولا تُدفع نقدًا تلقائيًا. أي مبلغ مرتبط بمرتجع مخصص لمراجعة الإدارة فقط؛
+              لا يُخصم من عمولة الموظف.
             </Notice>
           )}
         <div className="commerce-totals">

@@ -131,6 +131,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
   const [previewEmployeeId, setPreviewEmployeeId] = useState<number | null>(
     null,
   );
+  const [returnToReview, setReturnToReview] = useState<number | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
   const [pending, setPending] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -141,6 +143,27 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         queryKey: ["wallet-summary", user?.id, companyId],
       }),
     ]);
+  }
+  async function confirmReturnReview() {
+    if (returnToReview === null || !reviewNote.trim() || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api(`${base}/wallet/clearance-returns/${returnToReview}/review`, {
+        method: "POST", body: { note: reviewNote.trim() }, signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      await refresh();
+      if (guard.isCurrent()) {
+        setNotice("تم توثيق مراجعة المرتجع دون خصم أي عمولة من الموظف.");
+        setReviewNote("");
+        setReturnToReview(null);
+      }
+    } catch (cause) {
+      if (guard.isCurrent()) setError(errorMessage(cause));
+    } finally {
+      if (guard.isCurrent()) setPending(false);
+    }
   }
   function changeEmployee(value: string) {
     setParams((previous) => {
@@ -192,7 +215,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         setReversal(null);
         setNotice(
           isAward
-            ? "تمت إضافة النقاط وحفظها في السجل."
+            ? (BigInt(award?.points ?? "0") < 0n
+              ? "تم خصم النقاط وتوثيق السبب في سجل المحفظة."
+              : "تمت إضافة النقاط وحفظها في السجل.")
             : "تم عكس المكافأة مع الاحتفاظ بسجلها الأصلي.",
         );
       }
@@ -217,9 +242,13 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       cell: ({ row }) =>
         row.original.kind === "manual"
           ? "إضافة إدارية"
+          : row.original.kind === "manual_debit"
+            ? "خصم إداري"
           : row.original.kind === "attendance"
-            ? "نقاط الدوام"
-            : row.original.kind === "automatic"
+            ? "مكافأة الدوام والحضور"
+            : row.original.kind === "clearance"
+              ? "عمولة تصريف"
+              : row.original.kind === "automatic"
               ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
               : row.original.kind === "conversion"
                 ? "تحويل النقاط إلى الحساب"
@@ -302,7 +331,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     <div className="wallet-page">
       <PageHeader
         title="النقاط والمحفظة"
-        description="رصيد الموظف وسجل المكافآت الآلية والإضافات الإدارية والتصحيحات داخل الشركة."
+        description="رصيد موحد بالريال اليمني: مكافآت وحضور وعمولات تصريف، بسجل واحد. الترحيل للحساب المحاسبي بطلب الموظف فقط."
         actions={
           <>
             {conversionsPage?.enabled && conversionsPage.actionAccess.view && (
@@ -363,19 +392,19 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       )}
       {wallet && (
         <div className="wallet-summary">
-          <Card title="النقاط المتاحة" description={wallet.employeeName}>
+          <Card title="رصيد المحفظة الموحد — ريال يمني" description={wallet.employeeName}>
             <strong
               className="wallet-balance"
               data-wallet-points={wallet.points}
             >
               <bdi>{pointValue(wallet.points)}</bdi>
             </strong>
-            <span> نقطة</span>
+            <span> نقطة = {pointValue(wallet.points)} ريال يمني</span>
             {BigInt(wallet.reservedPoints) > 0n && (
               <p>
                 محجوزة لطلبات الاعتماد:{" "}
-                <bdi>{pointValue(wallet.reservedPoints)}</bdi> نقطة. إجمالي
-                الرصيد: <bdi>{pointValue(wallet.totalPoints)}</bdi> نقطة.
+                <bdi>{pointValue(wallet.reservedPoints)}</bdi> ريال. إجمالي
+                الرصيد: <bdi>{pointValue(wallet.totalPoints)}</bdi> ريال.
               </p>
             )}
             <div className="form-actions">
@@ -388,16 +417,6 @@ export function WalletPage({ context }: { context: CompanyContext }) {
               </Button>
             </div>
           </Card>
-          <Card
-            title="الرصيد المالي"
-            description="تحويل النقاط يُرحّل إلى حساب الموظف. عمولة التصريف لم تُفعّل بعد."
-          >
-            <strong className="wallet-balance">
-              <bdi>
-                {formatMoney(wallet.money)} {wallet.currencyCode}
-              </bdi>
-            </strong>
-          </Card>
         </div>
       )}
       {list.data && !wallet && (
@@ -406,7 +425,42 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           أولًا.
         </Notice>
       )}
-      <Card title="سجل النقاط والمحفظة">
+      {list.data?.canManage && list.data.pendingReturnReviews.length > 0 && (
+        <Card title="مرتجعات التصريف — بانتظار مراجعة الإدارة"
+          description="لا تُخصم أي عمولة آليًا. راجع فاتورة البيع الأصلية والمرتجع، ثم وثّق نتيجة المراجعة.">
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr><th>المرتجع</th><th>فاتورة البيع</th>
+                <th>الصنف</th><th>الموظف الأصلي</th><th>عمولة مرتبطة للمراجعة</th><th>الإجراء</th></tr></thead>
+              <tbody>{list.data.pendingReturnReviews.map(row => (
+                <tr key={row.id}>
+                  <td>{canViewInvoice ? <Link to={`${base}/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link> : row.invoiceNumber}</td>
+                  <td>{canViewInvoice ? <Link to={`${base}/invoices/${row.originalInvoiceId}`}>{row.originalInvoiceNumber}</Link> : row.originalInvoiceNumber}</td>
+                  <td>{row.itemName}</td><td>{row.originalEmployeeName ?? "غير محدد"}</td>
+                  <td><bdi>{formatMoney(row.candidateAmount)} {row.currencyCode}</bdi></td>
+                  <td><Button variant="secondary" size="compact" disabled={pending}
+                    onClick={() => {setReviewNote("");setError("");setReturnToReview(row.id);}}>
+                    مراجعة
+                  </Button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+      <Dialog open={returnToReview !== null} title="مراجعة مرتجع تصريف"
+        onClose={() => {if(!pending){setReturnToReview(null);setReviewNote("");}}}>
+        <p>هذا الإجراء يوثّق المراجعة فقط؛ لن يخصم عمولة الموظف ولن ينشئ قيدًا ماليًا.</p>
+        {error && <Notice tone="error">{error}</Notice>}
+        <Field label="ملاحظات الإدارة" value={reviewNote} maxLength={1000}
+          disabled={pending} onChange={event => setReviewNote(event.target.value)} />
+        <div className="form-actions">
+          <Button onClick={() => void confirmReturnReview()} disabled={pending || !reviewNote.trim()}>تأكيد المراجعة</Button>
+          <Button variant="secondary" disabled={pending} onClick={() => setReturnToReview(null)}>إلغاء</Button>
+        </div>
+      </Dialog>
+      <Card title="سجل جميع حركات المحفظة"
+        description="يشمل نقاط الحضور والمكافآت وعمولات التصريف؛ تُضاف كلها إلى الرصيد نفسه. 1 نقطة = 1 ريال يمني.">
         <div className="wallet-filters">
           {list.data?.canManage && (
             <Select
@@ -479,8 +533,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
                 label="عدد النقاط"
                 required
                 inputMode="numeric"
-                pattern="[1-9][0-9]*"
-                maxLength={18}
+                pattern="-?[0-9]+"
+                maxLength={19}
                 value={award.points}
                 disabled={pending}
                 onChange={(event) =>
@@ -490,8 +544,11 @@ export function WalletPage({ context }: { context: CompanyContext }) {
                   })
                 }
               />
+              <small className="muted">
+                الموجب يضاف إلى المحفظة والسالب يخصم منها، دون تجاوز الرصيد المتاح.
+              </small>
               <Field
-                label="سبب الإضافة"
+                label="سبب الإضافة أو الخصم"
                 required
                 maxLength={500}
                 value={award.reason}
@@ -524,7 +581,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           )}
           <div className="form-actions">
             <Button type="submit" disabled={pending}>
-              {pending ? "جارٍ الحفظ…" : award ? "إضافة النقاط" : "تأكيد العكس"}
+              {pending ? "جارٍ الحفظ…" : award
+                ? (award.points.startsWith("-") ? "خصم النقاط" : "إضافة النقاط")
+                : "تأكيد العكس"}
             </Button>
             <Button
               variant="secondary"
@@ -734,16 +793,16 @@ function ConversionPreviewDialog({
           preview && (
             <>
               <Field
-                label="النقاط المتاحة"
+                label="الرصيد المتاح (ريال يمني)"
                 value={pointValue(preview.points)}
                 readOnly
               />
               <Field
-                label="قيمة النقطة الواحدة"
+                label="وحدة الرصيد الثابتة"
                 value={
                   preview.pointValue !== null
-                    ? `${formatMoney(preview.pointValue)} ${preview.currency?.code ?? ""}`.trim()
-                    : "لم تحدد بعد"
+                    ? "1 نقطة = 1 ريال يمني"
+                    : "غير متاح"
                 }
                 readOnly
               />

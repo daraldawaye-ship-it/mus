@@ -12,6 +12,8 @@ on:
       - 'apps/api/src/services/attendance-rewards.ts'
       - 'apps/api/src/services/attendance-notifications.ts'
       - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/invoice-clearance-label.ts'
+      - 'tests/invoice-clearance-label.test.ts'
       - 'apps/web/src/pages/FinancePages.tsx'
       - 'apps/web/src/WalletIndicator.tsx'
       - 'apps/web/src/control.ts'
@@ -23,7 +25,15 @@ on:
       - 'apps/api/src/business-routes.ts'
       - 'apps/web/src/pages/ControlPage.tsx'
       - 'apps/web/src/App.tsx'
+      - 'apps/web/src/UserShortcuts.tsx'
+      - 'apps/web/src/shortcut-position.ts'
+      - 'tests/shortcut-position.test.ts'
+      - 'apps/web/src/last-company-activation.ts'
       - 'apps/web/src/styles.css'
+      - 'tests/last-company-activation.test.ts'
+      - 'apps/web/src/pages/GeneralTablePage.tsx'
+      - 'apps/api/src/routes-general-table.ts'
+      - 'tests/api.test.ts'
       - 'packages/contracts/src/pages.ts'
       - 'packages/contracts/src/index.ts'
       - 'tests/control.test.ts'
@@ -59,5 +69,17 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Sales search clearance rate and dated campaign visibility
+        run: node --import tsx --test tests/invoice-clearance-label.test.ts
+      - name: Item card field audit and revision regression
+        run: node --import tsx --test --test-name-pattern="item field audit records" tests/items.test.ts
       - name: Scoped option value and permission tests
         run: node --import tsx --test tests/control.test.ts
+      - name: Persist last visited company across rapid public-page navigation
+        run: node --import tsx --test tests/last-company-activation.test.ts
+      - name: Keep user shortcut flyout inside viewport in RTL and narrow layouts
+        run: node --import tsx --test tests/shortcut-position.test.ts
+      - name: General table numeric inline edit and sort regressions
+        run: node --import tsx --test --test-name-pattern="general table numeric columns sort" tests/api.test.ts
+      - name: General table inline title update and data-preservation checks
+        run: node --import tsx --test --test-name-pattern="general table inline title edit preserves" tests/api.test.ts

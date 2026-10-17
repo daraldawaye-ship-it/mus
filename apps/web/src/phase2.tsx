@@ -75,6 +75,8 @@ export function ServerLookup<T extends { id: number }>({
   required = false,
   accept,
   emptyLabel = "اختر من النتائج",
+  pageSize = 20,
+  sort = "code:asc",
 }: {
   companyId: number;
   resource: string;
@@ -86,6 +88,8 @@ export function ServerLookup<T extends { id: number }>({
   required?: boolean;
   accept?: (value: T) => boolean;
   emptyLabel?: string;
+  pageSize?: 20 | 50 | 100;
+  sort?: "code:asc" | "name:asc";
 }) {
   const { user } = useSession();
   const [query, setQuery] = useState("");
@@ -99,14 +103,14 @@ export function ServerLookup<T extends { id: number }>({
     return () => window.removeEventListener("resize", resize);
   }, []);
   const result = useQuery({
-    queryKey: ["master", user?.id, companyId, "lookup", resource, query, page],
+    queryKey: ["master", user?.id, companyId, "lookup", resource, query, page, pageSize, sort],
     queryFn: ({ signal }) => {
       const [path, search = ""] = resource.split("?");
       const params = new URLSearchParams(search);
       params.set("q", query);
       params.set("page", String(page));
-      params.set("pageSize", "20");
-      params.set("sort", "code:asc");
+      params.set("pageSize", String(pageSize));
+      params.set("sort", sort);
       return api<Page<T>>(`${path}?${params}`, { signal });
     },
     enabled: !!user,
@@ -174,7 +178,7 @@ export function ServerLookup<T extends { id: number }>({
           disabled={
             disabled ||
             result.isFetching ||
-            page * 20 >= (result.data?.total ?? 0)
+            page * pageSize >= (result.data?.total ?? 0)
           }
           onClick={() => setPage(page + 1)}
         >

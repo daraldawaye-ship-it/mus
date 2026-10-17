@@ -994,6 +994,39 @@ test("archiving never reuses automatic codes and database guards protect identit
     );
 });
 
+test("item archival is denied while any location retains positive or negative stock",async(t)=>{
+  const f=await fixture(t);
+  const c=await f.company("أرشفة الأرصدة");
+  const curr=(await f.owner.ok<Page<CompanyCurrency>>(
+    "GET",`/companies/${c.id}/currencies`,
+  )).items.find(currency=>currency.code==="YER")!;
+  const saved=await item(f,c.id,curr.id);
+  const url=`/companies/${c.id}/items/${saved.id}`;
+  async function setStock(showroom:string,warehouse:string,total:string) {
+    await f.pool.query(
+      "UPDATE item_statistics SET stock_total=$3,stock_showroom=$4,stock_warehouse=$5 WHERE company_id=$1 AND item_id=$2",
+      [c.id,saved.id,total,showroom,warehouse],
+    );
+  }
+  await setStock("5","0","5");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Positive total stock prevents archiving");
+  await setStock("-5","0","-5");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Negative stock also prevents archiving");
+  await setStock("5","-5","0");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Opposing location balances cannot be hidden by zero aggregate stock");
+  // Other edits remain allowed, even when the item currently has a balance.
+  const renamed=(await f.owner.ok<{item:Item}>("PATCH",url,
+    patchItem(saved,{name:"رصيد قيد الجرد"}))).item;
+  assert.equal(renamed.active,true);
+  await setStock("0","0","0");
+  const archived=(await f.owner.ok<{item:Item}>("PATCH",url,
+    patchItem(renamed,{active:false}))).item;
+  assert.equal(archived.active,false);
+});
+
 test("item lists search each name, barcode and search key with stable multi-sort and scoped pagination", async (t) => {
   const f = await fixture(t),
     c = await f.company(),
@@ -1354,6 +1387,35 @@ test("item compositions support multilingual cards, strict flags, archived links
   assert.equal(redacted.canViewStock,false);
   assert.equal(redacted.peers[0]?.stockSmallest,null);
   assert.equal(redacted.total,1);
+  const removedPeer=await item(f,companyA.id,currencyA.id,{
+    name:"بديل مؤرشف",compositionId:created.id,
+  });
+  await f.owner.ok("PATCH",`/companies/${companyA.id}/items/${removedPeer.id}`,
+    patchItem(removedPeer,{active:false}));
+  const withoutArchived=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(withoutArchived.total,1,
+    "Archived items do not count towards alternative pagination");
+  assert(withoutArchived.peers.every(peer=>peer.id!==removedPeer.id),
+    "Archived products are hidden from invoice alternative suggestions");
+  // Sort by converted first-unit stock before paging, not by raw smallest units.
+  const medium=await item(f,companyA.id,currencyA.id,{
+    name:"بديل كمية عشرة",compositionId:created.id,factor2:2,factor3:2,
+  });
+  const high=await item(f,companyA.id,currencyA.id,{
+    name:"بديل كمية تسعة",compositionId:created.id,factor2:1,factor3:1,
+  });
+  for(const [id,stock] of [[related.id,"100"],[medium.id,"40"],[high.id,"9"]] as const) {
+    await f.pool.query("UPDATE item_statistics SET stock_total=$3,stock_showroom=$3,stock_warehouse=0 WHERE company_id=$1 AND item_id=$2",
+      [companyA.id,id,stock]);
+  }
+  const ordered=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(ordered.total,3);
+  assert.deepEqual(ordered.peers.map(peer=>peer.id),[medium.id,high.id,related.id],
+    "Alternative list sorts true stock in unit 1, not raw smallest units");
+  assert.deepEqual(ordered.peers.map(peer=>peer.stockSmallest),["40","9","100"]);
+  const limited=(await viewRelated.client.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(limited.canViewStock,false);
+  assert.equal(limited.peers.every(peer=>peer.stockSmallest===null),true);
   assert.equal((await f.owner.request("GET",peersPath+"?page=0")).status,400);
   assert.equal((await f.owner.request("GET",peersPath+"?page=1x")).status,400);
   assert.equal((await f.owner.request("GET",`/companies/${companyB.id}/items/${itemA.id}/composition-peers`)).status,404);
@@ -1585,4 +1647,57 @@ test("item nearest expiry is editable from card and preserves original dates on 
     [company.id, created.id],
   );
   assert.equal(audit.rows[0]?.expiry, null);
+});
+
+test("item field audit records independent before/after events and rejects stale revisions", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company("اختبار سجل حقول الأصناف");
+  const currencies = await f.pool.query<{id:number}>(
+    "SELECT id FROM company_currencies WHERE company_id=$1 AND code='YER'",
+    [company.id],
+  );
+  const initial = await item(f, company.id, Number(currencies.rows[0]!.id), {
+    shelf: "ا-1",
+  });
+  const url = `/companies/${company.id}/items/${initial.id}`;
+  const onShelf = (await f.owner.ok<{item:Item}>(
+    "PATCH", url, patchItem(initial, { shelf: "ب-6", shelfId: null }),
+  )).item;
+  const onOrder = (await f.owner.ok<{item:Item}>(
+    "PATCH", url, patchItem(onShelf, { shelf: onShelf.shelf, orderQuantity: "10" }),
+  )).item;
+  assert.equal(onOrder.shelf, "ب-6");
+  assert.equal(onOrder.orderQuantity, "10");
+  const audit = await f.pool.query<{
+    action:string;
+    before_value:{field?:string;label?:string;value?:unknown};
+    after_value:{field?:string;label?:string;value?:unknown};
+  }>(
+    `SELECT action,before_value,after_value FROM audit_events
+     WHERE company_id=$1 AND target_type='item' AND target_id=$2
+       AND action IN ('item.update','item.field.update')
+     ORDER BY id`,
+    [company.id, initial.id],
+  );
+  const fields = audit.rows.filter(row => row.action === "item.field.update");
+  assert.equal(fields.length, 2);
+  assert.deepEqual(fields.map(row => ({
+    field: row.after_value.field,
+    before: row.before_value.value,
+    after: row.after_value.value,
+  })), [
+    { field: "shelf", before: "ا-1", after: "ب-6" },
+    { field: "orderQuantity", before: "0", after: "10" },
+  ]);
+  assert.deepEqual(fields.map(row => row.after_value.label), ["الرف الحالي", "كمية الطلب"]);
+  assert.equal(audit.rows.filter(row => row.action === "item.update").length, 2,
+    "Keep full item snapshots for pre-existing audit consumers");
+  const stale = await f.owner.request("PATCH", url,
+    patchItem(initial, { shelf: "ج-1" }));
+  assert.equal(stale.status, 409);
+  const noExtra = await f.pool.query(
+    "SELECT count(*)::int AS total FROM audit_events WHERE company_id=$1 AND target_type='item' AND target_id=$2 AND action='item.field.update'",
+    [company.id, initial.id],
+  );
+  assert.equal(noExtra.rows[0]!.total, 2);
 });

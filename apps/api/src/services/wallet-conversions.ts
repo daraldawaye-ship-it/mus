@@ -155,6 +155,8 @@ async function currentReferences(
     !base?.active ||
     !policy.currency?.active ||
     base.id !== policy.currency.id ||
+    base.code !== "YER" || policy.currency.code !== "YER" ||
+    policy.pointValue !== "1" ||
     !policy.expenseAccount?.active ||
     policy.expenseAccount.kind !== "posting" ||
     policy.expenseAccount.category !== "expense" ||

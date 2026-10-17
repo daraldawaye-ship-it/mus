@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Pool, PoolClient } from "pg";
 import {
   documentDateSchema,
@@ -20,6 +21,9 @@ import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
+import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
+import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
+import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
 import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
@@ -64,6 +68,71 @@ export function commerceRoutes(pool: Pool): Router {
            ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
            LIMIT 5`,
           [companyId, itemId],
+        );
+        return result.rows;
+      });
+      res.json({ items });
+    }),
+  );
+  // Compact read-only history for the invoice item sidebar. The type is allowlisted
+  // and inventory operations additionally require permission to view inventory.
+  router.get(
+    `${base}/item-history/:itemId`,
+    handler(async (req, res) => {
+      const itemId = id(req.params.itemId);
+      const type = req.query.type;
+      if (type !== "purchase" && type !== "sale" &&
+          type !== "adjustment" && type !== "transfer")
+        throw new HttpError(400, "invalid_query", "نوع تاريخ الصنف غير صالح.");
+      const items = await readCommerce(pool, req, async (client, companyId) => {
+        const found = await client.query(
+          "SELECT 1 FROM items WHERE company_id=$1 AND id=$2",
+          [companyId, itemId],
+        );
+        if (!found.rowCount)
+          throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
+        if (type === "purchase" || type === "sale") {
+          const result = await client.query(
+            `SELECT il.id AS "lineId", i.id AS "documentId",
+               i.document_date::text AS "documentDate",
+               CASE WHEN i.kind='purchase'
+                 THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
+                 ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
+               END AS "partyName",
+               round(il.smallest_quantity::numeric /
+                 (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
+               round(il.unit_price::numeric * CASE il.unit
+                 WHEN 1 THEN 1 WHEN 2 THEN il.factor2
+                 ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
+               i.currency_code AS "currencyCode"
+             FROM invoice_lines il
+             JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
+             WHERE il.company_id=$1 AND il.item_id=$2
+               AND i.kind=$3 AND il.smallest_quantity>0
+             ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+             LIMIT 5`,
+            [companyId, itemId, type],
+          );
+          return result.rows;
+        }
+        const user = await currentActor(client, actor(req), false);
+        await companyAccess(client, user, companyId, "inventory.view");
+        const result = await client.query(
+          `SELECT o.id AS "lineId", o.id AS "documentId",
+             o.document_date::text AS "documentDate",
+             COALESCE(NULLIF(o.description,''),'—') AS "description",
+             round(sum(CASE WHEN o.kind='transfer'
+               THEN CASE WHEN m.kind='transfer_out' THEN -m.quantity_smallest ELSE 0 END
+               ELSE m.quantity_smallest END)::numeric /
+               (it.factor2::numeric * it.factor3::numeric),3)::text AS "quantityFirstUnit"
+           FROM stock_operations o
+           JOIN stock_movements m ON m.company_id=o.company_id AND m.operation_id=o.id
+           JOIN items it ON it.company_id=m.company_id AND it.id=m.item_id
+           WHERE o.company_id=$1 AND m.item_id=$2 AND o.kind=$3
+           GROUP BY o.id,o.document_date,o.description,it.factor2,it.factor3
+           ORDER BY o.document_date DESC,o.id DESC
+           LIMIT 5`,
+          [companyId, itemId, type],
         );
         return result.rows;
       });
@@ -242,6 +311,87 @@ export function commerceRoutes(pool: Pool): Router {
     });
     res.json({matches});
   }));
+  router.get(
+    `${base}/pouch-receipts`,
+    handler(async (req,res) => {
+      const companyId=id(req.params.companyId);
+      const status=parse(
+        z.enum(["all","pending","received"]),
+        typeof req.query.status==="string"?req.query.status:"pending",
+      );
+      const page=parse(z.coerce.number().int().min(1).max(1000000),
+        typeof req.query.page==="string"?req.query.page:"1");
+      const pageSize=parse(z.coerce.number().int().min(1).max(100),
+        typeof req.query.pageSize==="string"?req.query.pageSize:"50");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user=await currentActor(client,actor(req),false);
+        await companyAccess(client,user,companyId,"finance.view");
+        return listPouchReceipts(client,companyId,status,pageSize,(page-1)*pageSize);
+      });
+      res.json(result);
+    }),
+  );
+  router.post(
+    `${base}/pouch-receipts`,
+    handler(async (req,res)=>{
+      const input=parse(pouchReceiptSchema,req.body);
+      const result=await mutateMaster(pool,req,"finance.post",
+        async (client,user,companyId)=>
+          receivePouchMovement(client,companyId,user,input),
+      );
+      res.status(201).json({receipt:result});
+    }),
+  );
+  // Receipt source is resolved from the original electronic-wallet transfer,
+  // whose destination was selected via the company's account links.
+  router.get(
+    `${base}/electronic-receipts`,
+    handler(async (req,res) => {
+      const companyId=id(req.params.companyId);
+      const status=parse(
+        z.enum(["all","pending","received"]),
+        typeof req.query.status==="string"?req.query.status:"pending",
+      );
+      const page=parse(z.coerce.number().int().min(1).max(1000000),
+        typeof req.query.page==="string"?req.query.page:"1");
+      const pageSize=parse(z.coerce.number().int().min(1).max(100),
+        typeof req.query.pageSize==="string"?req.query.pageSize:"50");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user=await currentActor(client,actor(req),false);
+        await companyAccess(client,user,companyId,"finance.view");
+        return listElectronicReceipts(client,companyId,status,pageSize,(page-1)*pageSize);
+      });
+      res.json(result);
+    }),
+  );
+  router.post(
+    `${base}/electronic-receipts`,
+    handler(async (req,res)=>{
+      const input=parse(electronicReceiptSchema,req.body);
+      const result=await mutateMaster(pool,req,"finance.post",
+        async (client,user,companyId)=>
+          receiveElectronicMovement(client,companyId,user,input),
+      );
+      res.status(201).json({receipt:result});
+    }),
+  );
+  // Sales-only quick till actions. No account identifiers are accepted from
+  // the browser: the destination is resolved from the employee's links or
+  // the administrator's company electronic-wallet configuration.
+  router.post(
+    `${base}/sales/cashbox-operations`,
+    handler(async (req, res) => {
+      const input=parse(cashboxOperationSchema,req.body);
+      const result=await mutateMaster(pool,req,"commerce.manage",
+        async (client,user,companyId)=>{
+          await companyAccess(client,user,companyId,"finance.post",true);
+          return postEmployeeCashboxOperation(client,companyId,user,input);
+        });
+      res.status(201).json(result);
+    }),
+  );
   router.post(
     `${base}/invoices`,
     handler(async (req, res) => {

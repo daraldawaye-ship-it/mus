@@ -9,6 +9,7 @@ import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
+import { firstUnitStockText } from "../sale-stock-quantity";
 
 const periods:readonly {key:ItemActivityReportPeriod;label:string}[]=[
  {key:"oneMonth",label:"آخر شهر"},
@@ -41,8 +42,10 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
  const sortPeriod=(["oneMonth","fourMonths","twelveMonths","allTime"] as string[])
     .includes(params.get("sortPeriod")??"") ?
     params.get("sortPeriod") as ItemActivityReportPeriod:"oneMonth";
- const order=params.get("order")==="asc"?"asc":"desc";
- const sort=params.get("sort")??"code";
+ const sort=["code","name","quantity","stock","coverage","coverageAfterReserve"].includes(params.get("sort")??"")
+   ? params.get("sort")! : "code";
+ const order=params.get("order")==="asc"?"asc":params.get("order")==="desc"?"desc":
+   (sort==="code"||sort==="name"?"asc":"desc");
  const page=Math.max(1,Number(params.get("page")??"1")||1);
  const pageSize=Number(params.get("pageSize"))===100?100:50;
  useEffect(()=>setTypedSearch(q),[q,companyId]);
@@ -54,12 +57,35 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
      return next;
    });
  };
+ const clickSort=(column:"code"|"name"|"quantity"|"stock"|"coverage"|"coverageAfterReserve",period?:ItemActivityReportPeriod)=>{
+   const same=sort===column&&(column!=="quantity"||sortPeriod===period);
+   const direction=same?(order==="asc"?"desc":"asc"):
+     (column==="code"||column==="name"?"asc":"desc");
+   setParams(prev=>{
+     const next=new URLSearchParams(prev);
+     next.set("sort",column);
+     next.set("order",direction);
+     if(period)next.set("sortPeriod",period);
+     next.delete("page");
+     return next;
+   });
+ };
+ const sortHeader=(column:"code"|"name"|"quantity"|"stock"|"coverage"|"coverageAfterReserve",label:string,period?:ItemActivityReportPeriod,enabled=true)=>{
+   const selected=sort===column&&(column!=="quantity"||sortPeriod===period);
+   return <th key={column==="quantity"?period:column} aria-sort={selected?(order==="asc"?"ascending":"descending"):undefined}>
+     {enabled?<button type="button" className="sort-button" onClick={()=>clickSort(column,period)}>
+       {label}{selected?<span className="sort-indicator">{order==="asc"?" ▲":" ▼"}</span>:null}
+     </button>:label}
+   </th>;
+ };
  const canView=!!directory.data?.find(x=>x.key==="company.item-statistics-report")?.actionAccess.view;
  const request=new URLSearchParams({
    q,active,
    page:String(page),pageSize:String(pageSize),
-   sortBy:sort==="code"?"code":sort==="name"?"name":sortMetric(metric,sortPeriod),
-   sortDir:sort==="code"||sort==="name"?"asc":order,
+   sortBy:sort==="code"?"code":sort==="name"?"name":sort==="stock"?"availableUnit1":
+     sort==="coverage"?"approximateCoverageDays":sort==="coverageAfterReserve"?"coverageAfterReserveDays":
+       sortMetric(metric,sortPeriod),
+   sortDir:order,
  });
  const report=useQuery({
    queryKey:["item-statistics-report",user?.id,companyId,request.toString()],
@@ -106,6 +132,9 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
          <option value="code">رمز الصنف</option>
          <option value="name">اسم الصنف</option>
          <option value="quantity">حسب القيمة المحددة (مرات أو كمية)</option>
+         {result?.canViewStock&&<option value="stock">المتوفر بالوحدة الأولى</option>}
+         {result?.canViewCoverage&&<option value="coverage">الكفاية التقريبية</option>}
+         {result?.canViewCoverage&&<option value="coverageAfterReserve">الكفاية بعد الاحتياط</option>}
        </Select>
        {sort==="quantity"&&<>
          <Select label="فترة الفرز" value={sortPeriod} onChange={e=>change("sortPeriod",e.target.value)}>
@@ -135,8 +164,13 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
        <div className="table-scroll" role="region" aria-label="جدول إحصائيات جميع الأصناف">
          <table>
            <thead><tr>
-             <th>رمز الصنف</th><th>الصنف</th><th>{metric==="saleTimes"?"نوع العدد":"الوحدة الصغرى"}</th>
-             {periods.map(p=><th key={p.key}>{p.label}</th>)}
+             {sortHeader("code","رمز الصنف")}
+             {sortHeader("name","الصنف")}
+             <th>{metric==="saleTimes"?"نوع العدد":"الوحدة الصغرى"}</th>
+             {periods.map(p=>sortHeader("quantity",p.label,p.key))}
+             {sortHeader("stock","المتوفر بالوحدة الأولى",undefined,result.canViewStock)}
+             {sortHeader("coverage","الكفاية (يوم)",undefined,result.canViewCoverage)}
+             {sortHeader("coverageAfterReserve","الكفاية بعد الاحتياط (يوم)",undefined,result.canViewCoverage)}
            </tr></thead>
            <tbody>
              {result.rows.map(row=><tr key={row.itemId}>
@@ -147,8 +181,11 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
                {periods.map(p=><td key={p.key} dir="ltr" style={{textAlign:"end"}}>
                  <bdi>{asQuantity(row[metric][p.key])}</bdi>
                </td>)}
+               <td><bdi>{firstUnitStockText(row.availableSmallest,row)}</bdi></td>
+               <td><bdi>{row.approximateCoverageDays??"—"}</bdi></td>
+               <td><bdi>{row.coverageAfterReserveDays??"—"}</bdi></td>
              </tr>)}
-             {result.rows.length===0&&<tr><td colSpan={7}>
+             {result.rows.length===0&&<tr><td colSpan={10}>
                لا توجد أصناف مطابقة لهذه التصفية.
              </td></tr>}
            </tbody>
@@ -165,6 +202,7 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
      <small className="muted">
        مرات البيع = عدد فواتير بيع الصنف − عدد فواتير مرتجعه (ولو ظهر الناتج سالبًا).
        أما الكميات فتُعرض بالوحدة الصغرى، ولا تُجمع كميات أصناف مختلفة.
+       المتوفر يجمع كل المواقع والدفعات ويحوّل أصغر وحدات الصنف إلى الوحدة الأولى مع تقريب العرض إلى ثلاث منازل.
        تُحتسب الفترات من الفواتير المُرحّلة حتى اليوم. انقر اسم الصنف لعرض التفاصيل.
      </small>
    </Card>

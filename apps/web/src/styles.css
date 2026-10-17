@@ -134,6 +134,10 @@ legend {
 .text-error {
   color: var(--error-text);
 }
+.text-success {
+  color: var(--success-text);
+}
+
 .workspace {
   --sidebar-width: 214px;
   display: flex;
@@ -556,6 +560,63 @@ legend {
 .user-menu-item:hover,
 .user-menu-item:focus-visible {
   background: var(--hover);
+}
+/* Shortcut placement uses measured viewport space; on narrow screens
+   the list expands inside the avatar menu instead of leaving the viewport. */
+/* The avatar dropdown and its fixed shortcut submenu must paint above the
+   desktop icon rail (z-index: 20). Raise the topbar only while the menu is
+   open, so the sticky header keeps its normal stacking order otherwise. */
+.topbar:has(.user-menu-panel) {
+  z-index: 60;
+}
+.user-menu-panel:has(.user-shortcut-root) { overflow: visible; }
+.user-menu-panel:has(.user-shortcut-flyout--inline) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100dvh - 65px);
+}
+.user-shortcut-root { position: relative; min-width: 0; }
+.user-shortcut-arrow { margin-inline-start: auto; }
+.user-shortcut-flyout {
+  position: static;
+  z-index: 52;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(46dvh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px #0003;
+}
+.user-shortcut-flyout--side {
+  position: fixed;
+  inset: auto;
+  /* Physical left/top/width/max-height are set from window geometry. */
+}
+.user-shortcut-flyout .user-menu-item { font-size: 12px; min-height: 32px; }
+.user-shortcut-label {
+  display: block; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.user-shortcut-hint { display: block; padding: 5px 9px; color: var(--muted); }
+.user-shortcut-options {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: min(52dvh, 410px); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px;
+}
+.user-shortcut-option {
+  display: flex; gap: 9px; align-items: center; cursor: pointer;
+  padding: 6px 8px; border-radius: 4px;
+}
+.user-shortcut-option:hover { background: var(--hover); }
+.user-shortcut-option input { flex: 0 0 auto; accent-color: var(--primary); }
+.user-shortcut-option span { flex: 1; min-width: 0; }
+.user-shortcut-option small { color: var(--muted); font-size: 10px; }
+@media (max-width: 700px) {
+  .user-shortcut-flyout--inline { box-shadow: none; }
 }
 .user-menu-logout {
   border-top: 1px solid var(--border);
@@ -1427,6 +1488,25 @@ ul {
   }
 }
 
+/* Account directory: editable classification and activation without opening a card. */
+.table-scroll .account-inline-select {
+  width: 100%;
+  min-width: 116px;
+  max-width: 100%;
+  height: 29px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.table-scroll .account-inline-active {
+  min-width: 88px;
+}
+.table-scroll .account-inline-select:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
 .table-scroll .button-primary:focus-visible {
   outline-color: var(--on-primary);
 }
@@ -1874,7 +1954,19 @@ ul {
   margin-block: 0;
   gap: 4px;
 }
-.commerce-header-content .commerce-list-link {
+.commerce-header-content .cashbox-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+.cashbox-shortcuts .button {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  padding-inline: 9px;
+}
+.commerce-list-link {
   margin-block-start: 0;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1940,6 +2032,255 @@ ul {
   border-radius: calc(var(--card-radius) - 2px);
   background: var(--surface);
 }
+.invoice-workspace:not(.invoice-workspace-no-options) {
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 350px);
+}
+.invoice-workspace-no-options {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "invoice";
+}
+.invoice-item-options {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.invoice-item-options-menu {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.invoice-item-options-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+.invoice-item-options-menu summary::-webkit-details-marker { display: none; }
+.invoice-item-options-heading {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.invoice-item-options-view {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.invoice-item-options-selected-name {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: start;
+}
+
+.invoice-item-options-choices {
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  display: grid;
+  max-height: 200px;
+  padding: 3px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 5px 14px #0004;
+}
+.invoice-item-options-choices button {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 3px;
+  text-align: start;
+  font-size: 11px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.invoice-item-options-choices button:hover,
+.invoice-item-options-choices .is-selected {
+  background: var(--surface-raised, var(--border));
+}
+.invoice-item-options-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.invoice-item-options-content > small {
+  font-size: 10px;
+}
+.invoice-item-options-relation {
+  line-height: 1.35;
+}
+.invoice-item-options-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.invoice-item-options-table {
+  width: 100%;
+  min-width: 285px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.invoice-item-options-table th,
+.invoice-item-options-table td {
+  padding: 5px 3px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+.invoice-item-options-table td > a,
+.invoice-item-options-table td > bdi {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.invoice-item-options-table tbody tr { height: 25px; }
+.invoice-item-options-table .invoice-item-options-number {
+  direction: ltr;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-item-options-table td.invoice-item-options-number bdi {
+  width: 100%;
+  text-align: right;
+  direction: ltr;
+}
+.invoice-item-options-link {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: start;
+  font: inherit;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.invoice-item-options-link:hover,
+.invoice-item-options-link:focus-visible {
+  text-decoration-thickness: 2px;
+}
+.invoice-item-full-account {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+.invoice-item-options-table th {
+  font-weight: 700;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+}
+.invoice-item-options-table td small {
+  display: block;
+  font-size: 9px;
+}
+@media (max-width: 680px) {
+  .invoice-workspace:not(.invoice-workspace-no-options) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invoice-workspace-no-options {
+    display: block;
+  }
+}
+/* Shared expiry editor: numeric month and year regardless of browser locale. */
+.expiry-month-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 7px minmax(0, 3fr);
+  gap: 2px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  direction: ltr;
+}
+.expiry-month-fields input {
+  min-width: 0;
+  width: 100%;
+  height: var(--control-height);
+  padding: 1px 3px;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+}
+.expiry-month-fields .expiry-month-separator {
+  font-size: 12px;
+  text-align: center;
+}
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .expiry-month-field:not(.item-cell-field) .expiry-month-fields input {
+  padding-top: 11px;
+  padding-bottom: 1px;
+}
+.commerce-matrix .expiry-month-fields input {
+  width: 100%;
+  padding-inline: 1px;
+  font-size: 12px;
+}
+/* Semantic stock-expiry warnings without altering stored dates. */
+.expiry-month-field--too-future .expiry-month-fields input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+.expiry-month-alert--too-future { color: #ef4444; }
+.expiry-month-field--expired .expiry-month-fields input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+.expiry-month-field--soon .expiry-month-fields input {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+}
+.expiry-month-alert {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding-top: 2px;
+}
+.expiry-month-alert--expired { color: #ef4444; }
+.expiry-month-alert--soon { color: #d97706; }
 .commerce-fieldset {
   border: 0;
   padding: 0;
@@ -1986,6 +2327,32 @@ ul {
   padding: 8px;
   overflow: visible;
 }
+/* Keep the original theme surface; use the bright outline only to
+   distinguish sales (blue) from purchases (green). No tinted fill. */
+.invoice-kind-sale {
+  --invoice-kind-accent: #00a9ed;
+}
+.invoice-kind-purchase {
+  --invoice-kind-accent: #26c665;
+}
+.table-filters.invoice-kind-sale,
+.table-filters.invoice-kind-purchase,
+.commerce-header-card.invoice-kind-sale,
+.commerce-header-card.invoice-kind-purchase {
+  background: var(--surface);
+  border: 4px solid var(--invoice-kind-accent);
+  border-radius: 18px;
+}
+.table-filters.invoice-kind-sale,
+.table-filters.invoice-kind-purchase {
+  padding: 9px;
+  margin-block-end: 10px;
+}
+.commerce-header-card.invoice-kind-sale .commerce-header-blank,
+.commerce-header-card.invoice-kind-purchase .commerce-header-blank {
+  background: var(--surface);
+}
+
 .commerce-list-link {
   width: max-content;
   max-width: 100%;
@@ -2047,6 +2414,57 @@ ul {
 .commerce-search-results .button span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Invoice search results: available first-unit stock, item name, sale price. */
+.commerce-search-item-head,
+.commerce-search-results .button.commerce-search-item-row {
+  display: grid;
+  /* Narrow numeric cells leave nearly all popup width for the item name. */
+  grid-template-columns: minmax(46px, 56px) minmax(0, 1fr) minmax(66px, 80px);
+  align-items: center;
+  gap: 4px;
+  text-align: start;
+  direction: rtl;
+}
+.commerce-search-item-head {
+  padding: 3px 9px 5px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.commerce-search-results .button.commerce-search-item-row {
+  min-height: 34px;
+  height: auto;
+  padding-block: 6px;
+}
+.commerce-search-item-name {
+  min-width: 0;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.commerce-search-clearance-label {
+  color: #e95889;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  background: transparent;
+}
+.commerce-search-item-stock,
+.commerce-search-item-price {
+  direction: ltr;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .commerce-document-meta {
   display: flex;
@@ -2900,3 +3318,116 @@ ul {
 .control-delegation summary{cursor:pointer;font-size:13px;margin-bottom:8px}
 .control-editors{display:flex;flex-wrap:wrap;gap:8px 16px;margin:12px 0}
 @media(max-width:680px){.control-toolbar,.control-option-main{align-items:stretch}.control-option-input{justify-content:flex-start}}
+
+
+/* Sales-only doctor selection stays inside the modal; typed search never posts
+   a free-text name without choosing a stable company doctor ID. */
+.invoice-doctor-options {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: min(40vh, 300px);
+  min-height: 50px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px;
+}
+.invoice-doctor-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: start;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+.invoice-doctor-options button:hover,
+.invoice-doctor-options button.invoice-doctor-selected {
+  border-color: var(--accent);
+  background: var(--surface-raised, var(--surface));
+}
+.invoice-doctor-options small {
+  font-size: 11px;
+}
+
+
+/* General table: two editable DECIMAL cells, compact and right-aligned.
+   Server sorting handles the entire table, not just the visible page. */
+.table-scroll input.general-table-inline-number {
+  width: 100%;
+  min-width: 92px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--surface);
+  text-align: right;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+.table-scroll input.general-table-inline-number:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.table-scroll input.general-table-inline-number[aria-invalid="true"] {
+  border-color: #dc2626;
+  background: rgba(220,38,38,.07);
+}
+
+
+/* General-table inline title and stable, selectable full-description modal. */
+.table-scroll input.general-table-inline-title {
+  width: 100%;
+  min-width: 120px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--surface);
+  text-align: start;
+  direction: rtl;
+}
+.table-scroll input.general-table-inline-title:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.table-scroll input.general-table-inline-title[aria-invalid="true"] {
+  border-color: #dc2626;
+  background: rgba(220,38,38,.07);
+}
+.general-table-description-copy {
+  width: 100%;
+  min-height: 150px;
+  max-height: min(56dvh,460px);
+  box-sizing: border-box;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.7;
+  direction: auto;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Pouch receipt register is readable on mobile without squeezing amount fields. */
+.pouch-receipts-table-wrap { max-width:100%; overflow-x:auto; }
+.pouch-receipts-table { min-width:900px; width:100%; }
+.pouch-receipts-table th,
+.pouch-receipts-table td { padding:9px; vertical-align:middle; }
+.pouch-receipts-actions { display:flex; gap:6px; flex-wrap:wrap; min-width:210px; }
+
+/* Only the two receipt registers: display negative balances distinctly. */
+.pouch-receipts-page .receipt-negative-amount {
+  color: var(--error-text);
+  font-weight: 700;
+}

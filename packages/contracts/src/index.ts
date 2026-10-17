@@ -144,7 +144,12 @@ export const auditActionLabels = {
   "financialDocument.create": "إنشاء مسودة مالية",
   "financialDocument.update": "تعديل مسودة مالية",
   "financialDocument.post": "ترحيل مستند مالي",
+  "cashbox.quick-post": "ترحيل سريع لصندوق مبيعات الموظف",
+  "pouch.received": "استلام وترحيل حركة الحافظة إلى صندوق المستلم",
+  "electronic.received": "استلام وترحيل حركة المحفظة الإلكترونية إلى صندوق المستلم",
   "financialDocument.reverse": "عكس مستند مالي",
+  "doctor.create": "إضافة طبيب أو جهة",
+  "doctor.update": "تعديل كرت طبيب أو جهة",
   "itemAgent.create": "إضافة وكيل صنف",
   "itemAgent.update": "تعديل وكيل صنف",
   "itemComposition.create": "إضافة تركيب صنف",
@@ -152,6 +157,11 @@ export const auditActionLabels = {
   "itemShelf.update": "تعديل كرت رف",
   "item.create": "إضافة صنف",
   "item.update": "تعديل صنف",
+  "clearance.earn": "إثبات عمولة تصريف للموظف",
+  "clearance.wallet-credit": "ترحيل عمولة التصريف إلى رصيد المحفظة",
+  "clearance.return-queue": "إحالة مرتجع تصريف لمراجعة الإدارة",
+  "clearance.return-reviewed": "مراجعة الإدارة لمرتجع التصريف",
+  "item.field.update": "تعديل حقل في كرت الصنف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "memo.feature-rule": "تعديل قاعدة متابعة المذكرات",
   "memo.feature-trigger": "تحقق قاعدة ميزات مرتبطة بالمذكرات",
@@ -177,6 +187,7 @@ export const auditActionLabels = {
   "memo.followers": "تعديل المتابعين وصلاحياتهم",
   "memo.follower-comment": "إضافة تعليق متابعة",
   "wallet.award": "إضافة نقاط إدارية",
+  "wallet.deduct": "خصم نقاط إداري",
   "wallet.auto-award": "احتساب مكافأة آلية",
   "wallet.reverse": "تصحيح حركة نقاط",
   "wallet.task": "إعداد مهمة مكافأة",
@@ -236,6 +247,7 @@ export const companyAuditActions: AuditAction[] = [
   "company.transactions.reset",
   "company.transactions.import",
   "wallet.award",
+  "wallet.deduct",
   "wallet.auto-award",
   "wallet.reverse",
   "wallet.task",
@@ -273,6 +285,8 @@ export const companyAuditActions: AuditAction[] = [
   "inventory.settings",
   "stock.transfer",
   "stock.adjustment",
+  "doctor.create",
+  "doctor.update",
   "itemAgent.create",
   "itemAgent.update",
   "itemComposition.create",
@@ -284,6 +298,9 @@ export const companyAuditActions: AuditAction[] = [
   "financialDocument.create",
   "financialDocument.update",
   "financialDocument.post",
+  "cashbox.quick-post",
+  "pouch.received",
+  "electronic.received",
   "financialDocument.reverse",
   "account.create",
   "account.update",
@@ -583,6 +600,7 @@ export * from "./account-statistics.ts";
 export * from "./account-statistics-report.ts";
 export * from "./items.ts";
 export * from "./commerce.ts";
+export * from "./doctors.ts";
 export * from "./item-activity-report.ts";
 export * from "./inventory.ts";
 

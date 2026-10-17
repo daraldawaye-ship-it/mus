@@ -85,8 +85,15 @@ test("control center isolates companies/employees, audits optimistic writes and 
   const empty=await owner.ok<Directory>("GET",prefix);
   assert.equal(option(empty,"show_currency").value,true);
   assert.equal(option(empty,"auto_checkout_hours").value,16);
+  assert.equal(option(empty,"sales_doctor_threshold").value,1000);
   assert.equal(option(empty,"idle_logout_hours").value,0);
+  assert.equal(option(empty,"show_shortcuts_menu").value,true);
   assert.equal(option(empty,"show_currency").revision,null);
+  const purchaseOptionsKey = "show_recent_item_purchases";
+  const salesOptionsKey = "show_item_options_sales";
+  assert.equal(option(empty, purchaseOptionsKey).value, true);
+  assert.equal(option(empty, salesOptionsKey).value, true);
+
   const write=await owner.ok<{revision:number}>("PUT",prefix+"/show_currency",
     {value:false,employeeId:null,revision:null});
   assert.equal(write.revision,1);
@@ -125,6 +132,89 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(log.rows[0].action,"control.value");
   assert.equal(log.rows[0].after_value.value,false);
 
+  // Purchase and sales item options are independently scoped per employee and company.
+  await owner.ok("PUT",prefix+"/"+purchaseOptionsKey,
+    {value:false,employeeId:salesperson.employee.id,revision:null});
+  const oneDisabled=await owner.ok<Directory>("GET",prefix+`?employeeId=${salesperson.employee.id}`);
+  assert.equal(option(oneDisabled,purchaseOptionsKey).value,false);
+  assert.equal(option(oneDisabled,salesOptionsKey).value,true);
+  assert.equal(option(await owner.ok<Directory>("GET",prefix+`?employeeId=${accountant.employee.id}`),purchaseOptionsKey).value,true);
+  assert.equal(option(await owner.ok<Directory>("GET",`/companies/${second.id}/control`),purchaseOptionsKey).value,true);
+  assert.equal((await owner.request("PUT",prefix+"/"+salesOptionsKey,
+    {value:false,employeeId:null,revision:null})).status,400);
+  await owner.ok("PUT",prefix+"/"+salesOptionsKey,
+    {value:false,employeeId:salesperson.employee.id,revision:null});
+  const bothDisabled=await owner.ok<Directory>("GET",prefix+`?employeeId=${salesperson.employee.id}`);
+  assert.equal(option(bothDisabled,purchaseOptionsKey).value,false);
+  assert.equal(option(bothDisabled,salesOptionsKey).value,false);
+
+  // Personal shortcuts are isolated by user and active company. A remembered
+  // key never becomes a grant: server accepts only currently viewable pages.
+  type Shortcuts={pageKeys:string[]};
+  const publicShortcuts="/my-shortcuts";
+  const alphaShortcuts=publicShortcuts+`?companyId=${first.id}`;
+  const betaShortcuts=publicShortcuts+`?companyId=${second.id}`;
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,[]);
+  await owner.ok<Shortcuts>("PUT",alphaShortcuts,
+    {pageKeys:["company.pages","company.accounts","public.pages"]});
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,
+    ["company.pages","company.accounts","public.pages"]);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",betaShortcuts)).pageKeys,[]);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",publicShortcuts)).pageKeys,[]);
+  await owner.ok<Shortcuts>("PUT",publicShortcuts,{pageKeys:["public.pages","public.general-table"]});
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",publicShortcuts)).pageKeys,
+    ["public.pages","public.general-table"]);
+  assert.deepEqual((await salesperson.client.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,[]);
+  await salesperson.client.ok<Shortcuts>("PUT",alphaShortcuts,{pageKeys:["company.pages"]});
+  assert.deepEqual((await salesperson.client.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,
+    ["company.pages"]);
+  assert.equal((await salesperson.client.request("PUT",alphaShortcuts,
+    {pageKeys:["company.accounts"]})).status,403);
+  assert.equal((await salesperson.client.request("PUT",publicShortcuts,
+    {pageKeys:["public.general-table"]})).status,403);
+  assert.equal((await salesperson.client.request("GET",betaShortcuts)).status,403);
+  assert.equal((await salesperson.client.request("PUT",alphaShortcuts,
+    {pageKeys:["company.pages","company.pages"]})).status,400);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,
+    ["company.pages","company.accounts","public.pages"],
+    "Staff preference changes cannot alter owner shortcuts");
+  // The public header recovers the last company from /companies, so opening
+  // shortcuts on the home page must retrieve that company's saved selection.
+  await owner.ok("POST",`/companies/${first.id}/activate`);
+  const rememberedFirst=await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1");
+  assert.equal(rememberedFirst.lastCompanyId,first.id);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",
+    publicShortcuts+"?companyId="+rememberedFirst.lastCompanyId)).pageKeys,
+    ["company.pages","company.accounts","public.pages"]);
+  await owner.ok("POST",`/companies/${second.id}/activate`);
+  const rememberedSecond=await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1");
+  assert.equal(rememberedSecond.lastCompanyId,second.id);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",
+    publicShortcuts+"?companyId="+rememberedSecond.lastCompanyId)).pageKeys,[]);
+  await owner.ok("POST",`/companies/${first.id}/activate`);
+  assert.equal((await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1")).lastCompanyId,first.id,
+    "Last opened company remains available after switching to public pages");
+  // Quick-add uses existing general_table records, not a separate table.
+  const quickPayload={
+    tableName:"متابعة الملاحظات",category:"",title:"أول إدخال",
+    description:"",number1:null,number2:null,date1:null,date2:null,
+    text1:"",text2:"",text3:"",text4:"",text5:"",
+    text6:"",text7:"",text8:"",text9:"",
+  };
+  const quick=(await owner.ok<{record:{id:number;tableName:string}}>(
+    "POST","/general-table",quickPayload,201)).record;
+  assert.equal(quick.tableName,quickPayload.tableName);
+  const names=await owner.ok<{items:string[]}>(
+    "GET","/general-table/table-names?q="+encodeURIComponent("الملاحظات"));
+  assert(names.items.includes("متابعة الملاحظات"));
+  assert.equal((await salesperson.client.request("GET",
+    "/general-table/table-names")).status,403);
+  const newNamed=await owner.ok<{record:{id:number;tableName:string}}>(
+    "POST","/general-table",{...quickPayload,tableName:"عنوان جديد",title:"سجل آخر"},201);
+  assert.notEqual(newNamed.record.id,quick.id);
   // Policies must protect API operations even when the form is bypassed.
   await owner.ok("PUT",prefix+"/edit_sales_date",
     {value:false,employeeId:null,revision:null});

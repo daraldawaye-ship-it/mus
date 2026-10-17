@@ -388,6 +388,15 @@ page(
   "مواقع المخزون وإتاحتها داخل الفروع.",
 );
 page(
+  "company.doctors",
+  "الأطباء والجهات",
+  "المبيعات",
+  "/companies/:companyId/doctors",
+  { view: permission("commerce.view"), create: permission("commerce.manage"), edit: permission("commerce.manage") },
+  "كروت الأطباء والممرضين والجهات، لربط الطبيب بفواتير المبيعات.",
+  { keywords: ["طبيب", "ممرض", "مستشفى", "قسم", "جهات"] },
+);
+page(
   "company.items",
   "الأصناف",
   "الأصناف والمخزون",
@@ -509,6 +518,24 @@ page(
   invoices,
   "المبيعات ومردوداتها؛ السعر من كرت الصنف والترحيل ذري.",
   { keywords: ["بيع", "مردود", "فاتورة"] },
+);
+page(
+  "company.pouch-receipts",
+  "استلام الترحيلات",
+  "الفواتير",
+  "/companies/:companyId/pouch-receipts",
+  {view:permission("finance.view"),post:permission("finance.post")},
+  "حركات الحوافظ: استلام مطابق أو غير مطابق إلى صندوق المستلم وترحيل الفرق تلقائيًا.",
+  {parentKey:"company.sales",keywords:["الحوافظ","استلام","ترحيل","صندوق","عجز","زيادة"]},
+);
+page(
+  "company.electronic-receipts",
+  "استلام المحفظة الإلكترونية",
+  "الفواتير",
+  "/companies/:companyId/electronic-receipts",
+  {view:permission("finance.view"),post:permission("finance.post")},
+  "استلام الترحيلات إلى محفظة الشركة الإلكترونية مطابقة أو غير مطابقة إلى صندوق الموظف المستلم، مع تسجيل العجز والزيادة.",
+  {parentKey:"company.sales",keywords:["المحفظة الإلكترونية","استلام","تحويل","الهاتف","صندوق","عجز","زيادة"]},
 );
 page(
   "company.purchases",

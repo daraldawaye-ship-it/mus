@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -43,6 +43,97 @@ export function GeneralTablePage() {
   return <GeneralTableContent />;
 }
 
+type NumericColumn = "number1" | "number2";
+function InlineNumber({
+  record, field, onSave,
+}: {
+  record:GeneralTableRecord;
+  field:NumericColumn;
+  onSave:(record:GeneralTableRecord,field:NumericColumn,value:string|null)=>Promise<boolean>;
+}) {
+  const original = record[field] ?? "";
+  const [draft,setDraft] = useState(original);
+  const [saving,setSaving] = useState(false);
+  const skipBlur=useRef(false);
+  useEffect(()=>{if(!saving)setDraft(original);},[original]);
+  async function commit() {
+    if(skipBlur.current){skipBlur.current=false;return;}
+    if(saving)return;
+    const value=draft.trim() || null;
+    if(value===record[field])return;
+    const parsed=generalTableSchema.shape.number1.safeParse(value);
+    if(!parsed.success){
+      // The API and the item card share the same decimal constraints.
+      // Keep focus until the user corrects invalid input.
+      return;
+    }
+    setSaving(true);
+    try {
+      const ok=await onSave(record,field,parsed.data);
+      if(!ok)return;
+      setDraft(parsed.data ?? "");
+    }finally{setSaving(false);}
+  }
+  const candidate=draft.trim() || null;
+  const valid=generalTableSchema.shape.number1.safeParse(candidate).success;
+  return <input type="text" inputMode="decimal" className="general-table-inline-number"
+    aria-label={`تعديل ${field==="number1"?"الرقم 1":"الرقم 2"} للسجل ${record.id}`}
+    title={valid ? "عدّل الرقم ثم اضغط Enter أو غادر الحقل للحفظ" :
+      "رقم غير صالح: حتى 24 رقمًا و8 منازل عشرية"}
+    aria-invalid={!valid || undefined}
+    disabled={saving}
+    value={draft} placeholder="—"
+    onChange={event=>setDraft(event.target.value)}
+    onBlur={()=>{void commit();}}
+    onKeyDown={event=>{
+      if(event.key==="Enter"){
+        event.preventDefault();
+        event.currentTarget.blur();
+      }else if(event.key==="Escape"){
+        event.preventDefault();
+        skipBlur.current=true;
+        setDraft(original);
+        event.currentTarget.blur();
+      }
+    }}/>;
+}
+
+function InlineTitle({record,onSave}:{
+  record:GeneralTableRecord;
+  onSave:(record:GeneralTableRecord,value:string)=>Promise<boolean>;
+}) {
+  const [draft,setDraft]=useState(record.title);
+  const [saving,setSaving]=useState(false);
+  const cancelOnBlur=useRef(false);
+  useEffect(()=>{if(!saving)setDraft(record.title);},[record.title]);
+  async function commit() {
+    if(cancelOnBlur.current){cancelOnBlur.current=false;return;}
+    if(saving)return;
+    const parsed=generalTableSchema.shape.title.safeParse(draft);
+    if(!parsed.success || parsed.data===record.title)return;
+    setSaving(true);
+    try {
+      if(await onSave(record,parsed.data))setDraft(parsed.data);
+    }finally{setSaving(false);}
+  }
+  const valid=generalTableSchema.shape.title.safeParse(draft).success;
+  return <input type="text" className="general-table-inline-title"
+    aria-label={`تعديل عنوان السجل ${record.id}`}
+    title={valid?"Enter للحفظ، وEsc للتراجع":"العنوان مطلوب؛ الحد الأقصى 200 حرف"}
+    maxLength={200} aria-invalid={!valid || undefined}
+    disabled={saving} value={draft}
+    onChange={event=>setDraft(event.target.value)}
+    onBlur={()=>void commit()}
+    onKeyDown={event=>{
+      if(event.key==="Enter"){
+        event.preventDefault();event.currentTarget.blur();
+      }else if(event.key==="Escape"){
+        event.preventDefault();cancelOnBlur.current=true;
+        setDraft(record.title);event.currentTarget.blur();
+      }
+    }}/>;
+}
+
 function GeneralTableContent() {
   const { user } = useSession();
   const guard = useScopeGuard("public:general-table");
@@ -61,6 +152,10 @@ function GeneralTableContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionEpoch, setSelectionEpoch] = useState(0);
   const [duplicating, setDuplicating] = useState(false);
+  const [savingNumber, setSavingNumber] = useState<string | null>(null);
+  const [savingTitle,setSavingTitle]=useState<number|null>(null);
+  const [descriptionPopup,setDescriptionPopup]=useState<{id:number;text:string}|null>(null);
+  const [copyError,setCopyError]=useState("");
   async function duplicateSelected() {
     if (duplicating || !selectedIds.length || selectedIds.length > 100) return;
     setError("");
@@ -83,16 +178,89 @@ function GeneralTableContent() {
       if (guard.isCurrent()) setDuplicating(false);
     }
   }
+  async function saveNumber(record:GeneralTableRecord,field:NumericColumn,value:string|null) {
+    if(savingNumber !== null)return false;
+    setError("");setNotice("");
+    setSavingNumber(`${record.id}:${field}`);
+    try {
+      const result=await api<{record:GeneralTableRecord}>(
+        `/general-table/${record.id}/number`,{
+          method:"PATCH",
+          body:{field,value,expectedValue:record[field]},
+          signal:guard.signal,
+        },
+      );
+      if(!guard.isCurrent())return false;
+      setNotice(`تم تحديث ${field==="number1"?"الرقم 1":"الرقم 2"} للسجل رقم ${result.record.id}.`);
+      await list.refetch();
+      return true;
+    }catch(cause){
+      if(guard.isCurrent())setError(`تعذر حفظ الرقم في السجل ${record.id}: ${errorMessage(cause)}`);
+      return false;
+    }finally{
+      if(guard.isCurrent())setSavingNumber(null);
+    }
+  }
+  async function saveTitle(record:GeneralTableRecord,title:string):Promise<boolean>{
+    if(savingTitle!==null)return false;
+    setSavingTitle(record.id);setError("");setNotice("");
+    try {
+      const result=await api<{record:GeneralTableRecord}>(
+        `/general-table/${record.id}/title`,{
+          method:"PATCH",
+          body:{title,expectedTitle:record.title},
+          signal:guard.signal,
+        },
+      );
+      if(!guard.isCurrent())return false;
+      setNotice(`تم تحديث عنوان السجل رقم ${result.record.id}.`);
+      await list.refetch();
+      return true;
+    }catch(cause){
+      if(guard.isCurrent()) {
+        setError(`تعذر حفظ عنوان السجل ${record.id}: ${errorMessage(cause)}`);
+        void list.refetch();
+      }
+      return false;
+    }finally{
+      if(guard.isCurrent())setSavingTitle(null);
+    }
+  }
+  async function copyDescription(){
+    if(!descriptionPopup)return;
+    try {
+      await navigator.clipboard.writeText(descriptionPopup.text);
+      setCopyError("");
+      setDescriptionPopup(null);
+    }catch {
+      setCopyError("تعذر النسخ تلقائيًا. يمكنك تحديد النص ونسخه يدويًا من المربع.");
+    }
+  }
   const columns: ColumnDef<GeneralTableRecord, unknown>[] = [
-    { accessorKey:"id",header:"الرقم",size:85 },
-    { accessorKey:"tableName",header:"اسم الجدول / الاستخدام",size:190,
-      cell:({row})=><ValueCell>{row.original.tableName}</ValueCell> },
     { accessorKey:"category",header:"التصنيف",size:150,
       cell:({row})=><ValueCell>{row.original.category || "—"}</ValueCell> },
     { accessorKey:"title",header:"العنوان",size:230,
-      cell:({row})=><ValueCell>{row.original.title}</ValueCell> },
+      cell:({row})=><InlineTitle key={row.original.id+":title"}
+        record={row.original} onSave={saveTitle}/> },
+    { accessorKey:"number1",header:"الرقم 1",size:140,
+      cell:({row})=><InlineNumber key={row.original.id+":number1"}
+        record={row.original} field="number1" onSave={saveNumber}/> },
+    { accessorKey:"number2",header:"الرقم 2",size:140,
+      cell:({row})=><InlineNumber key={row.original.id+":number2"}
+        record={row.original} field="number2" onSave={saveNumber}/> },
     { id:"description",header:"الوصف",size:260,enableSorting:false,
-      cell:({row})=><ValueCell value={row.original.description}>{row.original.description || "—"}</ValueCell> },
+      cell:({row})=><button type="button" className="table-value"
+        aria-label={`عرض ونسخ وصف السجل ${row.original.id}`}
+        title={row.original.description || "—"}
+        onClick={()=>{
+          setCopyError("");
+          setDescriptionPopup({id:row.original.id,text:row.original.description});
+        }}>
+          <span className="truncate">{row.original.description || "—"}</span>
+        </button> },
+    { accessorKey:"id",header:"الرقم",size:57 },
+    { accessorKey:"tableName",header:"اسم الجدول / الاستخدام",size:127,
+      cell:({row})=><ValueCell>{row.original.tableName}</ValueCell> },
     { accessorKey:"updatedAt",header:"آخر تعديل",size:170,
       cell:({row})=>formatDate(row.original.updatedAt) },
     { id:"actions",header:"الإجراءات",size:100,enableSorting:false,
@@ -138,9 +306,29 @@ function GeneralTableContent() {
         getRowId={(row) => String(row.id)}
         page={list.page} pageSize={list.pageSize} onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize} sorting={list.sorting}
-        onSortingChange={list.setSorting} loading={list.loading}
+        onSortingChange={list.setSorting}
+        loading={list.loading || savingNumber !== null || savingTitle !== null}
         ariaLabel="سجلات الجدول العام" />
     </Card>
+    <Dialog open={descriptionPopup !== null}
+      title={`الوصف الكامل — السجل ${descriptionPopup?.id ?? ""}`}
+      onClose={()=>{setDescriptionPopup(null);setCopyError("");}}>
+      <div className="form-stack">
+        {copyError&&<Notice tone="error">{copyError}</Notice>}
+        <textarea className="general-table-description-copy" readOnly
+          aria-label="نص الوصف للنسخ اليدوي"
+          value={descriptionPopup?.text ?? ""} rows={7}
+          onFocus={event=>event.currentTarget.select()}/>
+        <div className="form-actions">
+          <Button onClick={()=>void copyDescription()} disabled={!descriptionPopup?.text}>
+            نسخ وإغلاق
+          </Button>
+          <Button variant="secondary" onClick={()=>{setDescriptionPopup(null);setCopyError("");}}>
+            إغلاق
+          </Button>
+        </div>
+      </div>
+    </Dialog>
     {editor && <GeneralTableEditor key={editor==="new"?"new":editor.id} record={editor==="new"?null:editor}
       onClose={()=>setEditor(null)} onSaved={(saved, created)=>{
         if(!guard.isCurrent())return;

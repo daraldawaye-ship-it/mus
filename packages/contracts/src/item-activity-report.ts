@@ -1,7 +1,7 @@
 /** All quantities are exact counts in each item's own smallest unit; never sum across items. */
 export type ItemActivityReportPeriod="oneMonth"|"fourMonths"|"twelveMonths"|"allTime";
 export type ItemActivityReportMetric="saleTimes"|"sale"|"purchase"|"saleReturn"|"purchaseReturn";
-export type ItemActivityReportSort="code"|"name"|
+export type ItemActivityReportSort="code"|"name"|"availableUnit1"|"approximateCoverageDays"|"coverageAfterReserveDays"|
  "saleOneMonth"|"saleFourMonths"|"saleTwelveMonths"|"saleAllTime"|
  "purchaseOneMonth"|"purchaseFourMonths"|"purchaseTwelveMonths"|"purchaseAllTime"|
  "saleReturnOneMonth"|"saleReturnFourMonths"|"saleReturnTwelveMonths"|"saleReturnAllTime"|
@@ -13,6 +13,11 @@ export interface ItemActivityReportRow {
  name:string;
  active:boolean;
  unitName:string;
+ factor2:number;
+ factor3:number;
+ availableSmallest:string|null;
+ approximateCoverageDays:string|null;
+ coverageAfterReserveDays:string|null;
  saleTimes:Record<ItemActivityReportPeriod,string>;
  sale:Record<ItemActivityReportPeriod,string>;
  purchase:Record<ItemActivityReportPeriod,string>;
@@ -25,5 +30,7 @@ export interface ItemActivityReport {
  page:number;
  pageSize:number;
  total:number;
+ canViewStock:boolean;
+ canViewCoverage:boolean;
  rows:ItemActivityReportRow[];
 }

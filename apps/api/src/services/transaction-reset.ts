@@ -20,6 +20,48 @@ const linkedRewardsCte = `WITH source_rewards AS (
     AND e.reference_id IN (SELECT id FROM source_rewards)
 )`;
 
+// These append-only operational records reference invoices, invoice lines or
+// journals removed by a reset. Their deletion/settlement policies are separate
+// from document rewards; never silently remove accruals, credits or receipts.
+const protectedOperationalSources = [
+  {
+    key: "clearanceEarnings",
+    table: "employee_clearance_earnings",
+    message:
+      "توجد استحقاقات تصريف مرتبطة بالفواتير؛ لا يمكن حذف حركتها المحمية.",
+  },
+  {
+    key: "clearanceReturnReviews",
+    table: "employee_clearance_return_reviews",
+    message:
+      "توجد مراجعات مرتجعات تصريف مرتبطة بسطور الفواتير؛ لا يمكن حذف تاريخها.",
+  },
+  {
+    key: "cashboxOperations",
+    table: "employee_cashbox_operations",
+    message:
+      "توجد عمليات ترحيل أو إغلاق صناديق مرتبطة بالقيود؛ لا يمكن حذف تاريخها.",
+  },
+  {
+    key: "pouchReceipts",
+    table: "employee_pouch_receipts",
+    message:
+      "توجد استلامات حوافظ مرتبطة بالقيود والترحيلات؛ لا يمكن حذف تاريخها.",
+  },
+  {
+    key: "electronicReceipts",
+    table: "employee_electronic_receipts",
+    message:
+      "توجد استلامات محافظ إلكترونية مرتبطة بالقيود والترحيلات؛ لا يمكن حذف تاريخها.",
+  },
+] as const;
+
+function operationalBlockers(present: Record<string, number | boolean>) {
+  return protectedOperationalSources
+    .filter((source) => present[source.key])
+    .map((source) => source.message);
+}
+
 async function linkedWalletState(
   db: Database,
   companyId: number,
@@ -136,6 +178,7 @@ const snapshotSources = [
     order: "id",
     filter: "financial_document_id IS NOT NULL",
   },
+  ...protectedOperationalSources.map((source) => ({ ...source, order: "id" })),
 ] as const;
 
 /** Read under the caller's repeatable-read snapshot or locked company transaction. */
@@ -145,7 +188,7 @@ export async function transactionResetSnapshot(
 ): Promise<TransactionResetSnapshot> {
   const counts: Record<string, number> = {};
   const hash = createHash("sha256");
-  hash.update(JSON.stringify({ version: 2, companyId }));
+  hash.update(JSON.stringify({ version: 3, companyId }));
   for (const source of snapshotSources) {
     const filter = "filter" in source ? ` AND ${source.filter}` : "";
     const result = await db.query<{ snapshot: string }>(
@@ -172,7 +215,7 @@ export async function transactionResetSnapshot(
     hash.update(`\n${key}:${rows.length}\n`);
     for (const row of rows) hash.update(row.snapshot + "\n");
   }
-  const blockers: string[] = [];
+  const blockers: string[] = operationalBlockers(counts);
   if (counts.walletConversions)
     blockers.push(
       "توجد تحويلات نقاط مالية مرتبطة بالقيود؛ يلزم معالجتها قبل حذف الحركة.",
@@ -199,6 +242,24 @@ export async function deleteCompanyTransactions(
   client: PoolClient,
   companyId: number,
 ): Promise<void> {
+  // Recheck under the caller's company lock, independently of the preview and
+  // before enabling deletion or changing any ledger/projection/wallet row.
+  const protectedHistory = await client.query<Record<string, boolean>>(
+    `SELECT ${protectedOperationalSources
+      .map(
+        (source) =>
+          `EXISTS(SELECT 1 FROM ${source.table} WHERE company_id=$1) AS "${source.key}"`,
+      )
+      .join(",")}`,
+    [companyId],
+  );
+  const operational = operationalBlockers(protectedHistory.rows[0]!);
+  if (operational.length)
+    throw new HttpError(
+      409,
+      "transaction_reset_blocked",
+      operational.join("؛ "),
+    );
   const blockers = await client.query<{ blocked: boolean }>(
     `SELECT (
        EXISTS(SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND financial_document_id IS NOT NULL)

@@ -75,6 +75,14 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const pendingStatisticsAccounts =
     usePendingAccountStatisticsActions(companyId);
   const [params, setParams] = useSearchParams();
+  // Show active accounts by default. Explicit "all" is a UI sentinel that
+  // must be omitted from the API request (which only accepts true/false).
+  const activeFilter =
+    params.get("active") === "false"
+      ? "false"
+      : params.get("active") === "all"
+        ? "all"
+        : "true";
   const filters = new URLSearchParams();
   for (const key of [
     "kind",
@@ -82,8 +90,11 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     "accountChoice",
     "active",
     ...optionFilterKeys,
-  ])
-    if (params.get(key)) filters.set(key, params.get(key)!);
+  ]) {
+    const value = key === "active" ? activeFilter : params.get(key);
+    if (value && !(key === "active" && value === "all"))
+      filters.set(key, value);
+  }
   const list = usePagedQuery<
     OptionListRecord<Account>,
     OptionListMetadata & { baseCurrencyCode?: string | null }
@@ -118,6 +129,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [savingInline, setSavingInline] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   function filter(key: string, value: string) {
@@ -176,8 +188,104 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     if (guard.isCurrent())
       setNotice(`تم حفظ الحساب ${account.code} — ${account.name}.`);
   }
+  async function updateInline(
+    account: Account,
+    patch: {
+      accountChoice?: AccountChoice | null;
+      active?: boolean;
+    },
+  ) {
+    if (!canManage || savingInline !== null) return;
+    setError("");
+    setNotice("");
+    setSavingInline(account.id);
+    try {
+      const result = await api<{ account: Account }>(
+        `/companies/${companyId}/accounts/${account.id}`,
+        { method: "PATCH", body: patch, signal: guard.signal },
+      );
+      if (!guard.isCurrent()) return;
+      await changed();
+      if (guard.isCurrent())
+        setNotice(
+          `تم تحديث ${Object.hasOwn(patch, "active") ? "حالة" : "خيار"} الحساب ${result.account.name}.`,
+        );
+    } catch (reason) {
+      if (guard.isCurrent())
+        setError(`تعذر تعديل الحساب ${account.name}: ${errorMessage(reason)}`);
+    } finally {
+      if (guard.isCurrent()) setSavingInline(null);
+    }
+  }
   const columns = useMemo<ColumnDef<OptionListRecord<Account>, unknown>[]>(
     () => [
+      {
+        accessorKey: "name",
+        header: "اسم الحساب",
+        cell: ({ row }) => <ValueCell>{row.original.name}</ValueCell>,
+      },
+      {
+        accessorKey: "accountChoice",
+        header: "خيار الحساب",
+        cell: ({ row }) =>
+          canManage ? (
+            <select
+              className="account-inline-select"
+              aria-label={`خيار الحساب — ${row.original.name}`}
+              title={
+                row.original.accountChoice
+                  ? accountChoiceLabels[row.original.accountChoice]
+                  : "دون خيار"
+              }
+              disabled={savingInline !== null || loadingDetail}
+              value={row.original.accountChoice ?? ""}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) =>
+                void updateInline(row.original, {
+                  accountChoice: (event.target.value ||
+                    null) as AccountChoice | null,
+                })
+              }
+            >
+              <option value="">دون خيار</option>
+              {accountChoices.map((choice) => (
+                <option key={choice} value={choice}>
+                  {accountChoiceLabels[choice]}
+                </option>
+              ))}
+            </select>
+          ) : row.original.accountChoice ? (
+            accountChoiceLabels[row.original.accountChoice]
+          ) : (
+            "—"
+          ),
+      },
+      {
+        accessorKey: "active",
+        header: "فعّال",
+        cell: ({ row }) =>
+          canManage ? (
+            <select
+              className="account-inline-select account-inline-active"
+              aria-label={`حالة الحساب — ${row.original.name}`}
+              disabled={savingInline !== null || loadingDetail}
+              value={row.original.active ? "true" : "false"}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) =>
+                void updateInline(row.original, {
+                  active: event.target.value === "true",
+                })
+              }
+            >
+              <option value="true">فعّال</option>
+              <option value="false">غير فعّال</option>
+            </select>
+          ) : row.original.active ? (
+            "فعّال"
+          ) : (
+            "غير فعّال"
+          ),
+      },
       {
         accessorKey: "code",
         header: "الكود",
@@ -186,11 +294,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             <bdi>{row.original.code}</bdi>
           </ValueCell>
         ),
-      },
-      {
-        accessorKey: "name",
-        header: "اسم الحساب",
-        cell: ({ row }) => <ValueCell>{row.original.name}</ValueCell>,
       },
       {
         accessorKey: "parentName",
@@ -215,14 +318,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         cell: ({ row }) => accountCategoryLabels[row.original.category],
       },
       {
-        accessorKey: "accountChoice",
-        header: "خيار الحساب",
-        cell: ({ row }) =>
-          row.original.accountChoice
-            ? accountChoiceLabels[row.original.accountChoice]
-            : "—",
-      },
-      {
         id: "actualBalance",
         header: "الرصيد الفعلي",
         enableSorting: false,
@@ -243,11 +338,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         },
       },
       {
-        accessorKey: "active",
-        header: "الحالة",
-        cell: ({ row }) => (row.original.active ? "فعال" : "موقف"),
-      },
-      {
         id: "range",
         header: "مجال الترقيم",
         enableSorting: false,
@@ -263,7 +353,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       ...(canManage || canViewStatistics || pendingStatisticsAccounts.length > 0
         ? [
             {
-              id: "actions",
+              id: "accountActions",
               header: "الإجراء",
               size: canManage && canViewStatistics ? 250 : 170,
               enableSorting: false,
@@ -302,6 +392,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     ],
     [
       canManage,
+      savingInline,
       canViewStatistics,
       pendingStatisticsAccounts,
       loadingDetail,
@@ -344,6 +435,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {notice && <Notice tone="success">{notice}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {loadingDetail && <Notice>جارٍ تحميل السجل الحالي…</Notice>}
+      {savingInline !== null && <Notice>جارٍ حفظ تعديل الحساب…</Notice>}
       {presence.error && (
         <Notice tone="error">{errorMessage(presence.error)}</Notice>
       )}
@@ -394,12 +486,12 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           </Select>
           <Select
             label="حالة الحساب"
-            value={params.get("active") ?? ""}
+            value={activeFilter}
             onChange={(event) => filter("active", event.target.value)}
           >
-            <option value="">كل الحالات</option>
-            <option value="true">فعال</option>
-            <option value="false">موقف</option>
+            <option value="true">فعّال</option>
+            <option value="false">غير فعّال</option>
+            <option value="all">كل الحالات</option>
           </Select>
         </div>
         <OptionListTools
@@ -425,7 +517,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           onPageSizeChange={list.setPageSize}
           sorting={list.sorting}
           onSortingChange={list.setSorting}
-          loading={list.loading}
+          loading={list.loading || savingInline !== null}
           getRowId={(account) => String(account.id)}
           ariaLabel="دليل الحسابات"
         />

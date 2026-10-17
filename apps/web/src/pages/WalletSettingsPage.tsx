@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Coins, RefreshCw } from "lucide-react";
 import {
   employeeWalletAccountSchema,
-  normalizeDigits,
   walletPolicySchema,
   type CompanyContext,
   type EmployeeWalletAccount,
@@ -93,7 +92,7 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
     event.preventDefault();
     if (!draft || saving || !canEdit) return;
     const parsed = walletPolicySchema.safeParse({
-      pointValue: draft.pointValue || null,
+      pointValue: "1",
       currencyId: draft.currencyId,
       expenseAccountId: draft.expenseAccountId,
       approvalMode: draft.approvalMode,
@@ -201,7 +200,9 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
         }
       />
       <Notice>
-        تحدد الإدارة قيمة النقطة وسياسة التحويل؛ تبقى الحقول غير المحددة فارغة.
+        رصيد واحد: كل نقطة تساوي ريالًا يمنيًا واحدًا. تضيف المحفظة تلقائيًا نقاط
+        المكافآت والحضور وعمولات التصريف بعد تحويل العملة بسعر الفاتورة.
+        تختار الإدارة حسابات وسياسة اعتماد الترحيل فقط؛ لا يوجد سعر متغير للنقطة.
         عند تحويل النقاط إلى مبلغ، يُرحّل إلى حساب «سلفة الموظف» المنشأ تلقائيًا، وطلب الاعتماد يحجز النقاط
         حتى قرار الإدارة. تبقى قيمة الطلب وحساباته ثابتة بعد إرساله.
       </Notice>
@@ -214,17 +215,8 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
             {error && <Notice tone="error">{error}</Notice>}
             <Field
               label="قيمة النقطة الواحدة"
-              money
-              hint="مبلغ موجب بالعملة الأساسية؛ اتركه فارغًا حتى تحدده الإدارة."
-              inputMode="decimal"
-              maxLength={100}
-              value={policy.pointValue ?? ""}
-              disabled={!canEdit || saving}
-              onChange={(event) =>
-                changePolicy({
-                  pointValue: normalizeDigits(event.target.value),
-                })
-              }
+              value="1 نقطة = 1 ريال يمني (ثابتة)"
+              readOnly
             />
             <Select
               label="عملة التحويل"

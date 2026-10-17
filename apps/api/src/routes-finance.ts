@@ -558,6 +558,23 @@ export function financeRoutes(pool: Pool): Router {
           if (linkedStock.rowCount) conflict("هذا القيد مرتبط بفاتورة أو حركة مخزون؛ صححه بمردود مرتبط أو تسوية مخزون موثقة");
           const linkedWallet = await client.query("SELECT 1 FROM wallet_conversions WHERE company_id=$1 AND financial_document_id=$2", [companyId, documentId]);
           if (linkedWallet.rowCount) conflict("هذا القيد مرتبط بتحويل نقاط؛ لا يمكن عكسه مستقلاً عن المحفظة");
+          const linkedCashbox=await client.query(
+            "SELECT 1 FROM employee_cashbox_operations WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId,documentId],
+          );
+          if(linkedCashbox.rowCount) conflict("القيد مرتبط بترحيل أو إغلاق صندوق الموظف؛ لا يمكن عكسه منفصلًا عن سجل الصندوق");
+          const linkedPouchReceipt=await client.query(
+            "SELECT 1 FROM employee_pouch_receipts WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId,documentId],
+          );
+          if(linkedPouchReceipt.rowCount)
+            conflict("القيد مرتبط باستلام حركة حافظة؛ لا يمكن عكسه مستقلًا عن سجل الاستلام");
+          const linkedElectronicReceipt=await client.query(
+            "SELECT 1 FROM employee_electronic_receipts WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId,documentId],
+          );
+          if(linkedElectronicReceipt.rowCount)
+            conflict("القيد مرتبط باستلام حركة محفظة إلكترونية؛ لا يمكن عكسه مستقلًا عن سجل الاستلام");
           if (before.status !== "posted")
             conflict("يمكن عكس المستند المرحل مرة واحدة فقط");
           if (before.reversesDocumentId !== null)

@@ -10,7 +10,7 @@ const query=z.object({
  active:z.enum(["active","archived","all"]).default("active"),
  page:z.coerce.number().int().min(1).max(100000).default(1),
  pageSize:z.coerce.number().int().min(1).max(100).default(50),
- sortBy:z.enum(["code","name",
+ sortBy:z.enum(["code","name","availableUnit1","approximateCoverageDays","coverageAfterReserveDays",
     "saleOneMonth","saleFourMonths","saleTwelveMonths","saleAllTime",
     "purchaseOneMonth","purchaseFourMonths","purchaseTwelveMonths","purchaseAllTime",
     "saleReturnOneMonth","saleReturnFourMonths","saleReturnTwelveMonths","saleReturnAllTime",

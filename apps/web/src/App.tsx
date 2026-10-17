@@ -53,6 +53,7 @@ import {
 } from "./page-directory";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
+import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
 import { useCompanyIdleLogout } from "./idle-logout";
@@ -144,6 +145,7 @@ const MemoReportPage = lazy(() =>
 const MemoDetailPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
 );
+const DoctorsPage = lazy(() => import("./pages/DoctorsPage").then(module => ({ default: module.DoctorsPage })));
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -240,6 +242,12 @@ const InventorySettingsPage = lazy(() =>
     default: module.InventorySettingsPage,
   })),
 );
+const ElectronicReceiptsPage = lazy(() =>
+  import("./pages/PouchReceiptsPage").then(module=>({default:module.ElectronicReceiptsPage})),
+);
+const PouchReceiptsPage = lazy(() =>
+  import("./pages/PouchReceiptsPage").then(module=>({default:module.PouchReceiptsPage})),
+);
 const InvoicesPage = lazy(() =>
   import("./pages/CommercePages").then((module) => ({
     default: module.InvoicesPage,
@@ -271,6 +279,7 @@ const companySections = [
   "audit",
   "accounts",
   "account-statistics",
+  "doctors",
   "currencies",
   "exchange-rates",
   "branches",
@@ -295,6 +304,8 @@ const companySections = [
   "inventory-settings",
   "purchases",
   "sales",
+  "pouch-receipts",
+  "electronic-receipts",
   "invoice",
 ] as const;
 type CompanySection = (typeof companySections)[number];
@@ -342,6 +353,7 @@ function Navigation({
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.account-statistics": <TrendingUp size={17} />,
+    "company.doctors": <Users size={17} />,
     "company.items": <Package size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
@@ -353,6 +365,8 @@ function Navigation({
     "company.stock-adjustments": <Package size={17} />,
     "company.inventory-settings": <Settings2 size={17} />,
     "company.sales": <FileText size={17} />,
+    "company.pouch-receipts": <HandCoins size={17} />,
+    "company.electronic-receipts": <Wallet size={17} />,
     "company.purchases": <FileText size={17} />,
     "company.financial-documents": <FileText size={17} />,
     "company.journals": <BookOpen size={17} />,
@@ -561,6 +575,10 @@ function CompanyContent({
       return <CompanySettingsPage key={context.company.id} context={context} />;
     case "audit":
       return <CompanyAuditPage key={context.company.id} context={context} />;
+    case "doctors":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأطباء والجهات…</Notice>}>
+        <DoctorsPage key={context.company.id} context={context} />
+      </Suspense>;
     case "accounts":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل دليل الحسابات…</Notice>}>
@@ -654,6 +672,18 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الفاتورة…</Notice>}>
           <InvoicePage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "electronic-receipts":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل استلام المحفظة الإلكترونية…</Notice>}>
+          <ElectronicReceiptsPage key={context.company.id} context={context}/>
+        </Suspense>
+      );
+    case "pouch-receipts":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل حركات الحوافظ…</Notice>}>
+          <PouchReceiptsPage key={context.company.id} context={context}/>
         </Suspense>
       );
     case "sales":
@@ -760,6 +790,10 @@ function Workspace() {
   const location = useLocation();
   const navigate = useNavigate();
   const main = useRef<HTMLElement>(null);
+  // Activations must finish even when navigating away from a company quickly.
+  // Queue them in visit order, so a slower earlier request cannot replace the
+  // last company the user actually opened.
+  const activationQueue = useRef<Promise<void>>(Promise.resolve());
   const priorPath = useRef(location.pathname);
   const company = useQuery({
     queryKey: ["company", user?.id, companyId],
@@ -810,29 +844,21 @@ function Workspace() {
   ]);
   useEffect(() => {
     if (!user || !inCompany || !company.data || company.isError) return;
-    const controller = new AbortController();
     const userId = user.id;
     const selectedContext = company.data;
-    void api(`/companies/${companyId}/activate`, {
-      method: "POST",
-      signal: controller.signal,
-    })
-      .then(() => {
-        if (!controller.signal.aborted) {
-          queryClient.setQueryData(
-            ["last-company-sidebar", userId],
-            selectedContext,
-          );
-          void queryClient.invalidateQueries({
-            queryKey: ["wallet-summary", userId, companyId],
-          });
-          void queryClient.invalidateQueries({
-            queryKey: ["list", userId, `company:${companyId}:wallet`],
-          });
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
+    // Do not abort this mutation in the cleanup: moving straight back to the
+    // public site previously cancelled the persisted last-company update.
+    // Serializing visits also prevents a delayed earlier activation winning.
+    void enqueueCompanyActivation(activationQueue, async () => {
+      await api(`/companies/${companyId}/activate`, { method: "POST" });
+      queryClient.setQueryData(["last-company-sidebar", userId], selectedContext);
+      void queryClient.invalidateQueries({
+        queryKey: ["wallet-summary", userId, companyId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["list", userId, `company:${companyId}:wallet`],
+      });
+    }).catch(() => {});
   }, [companyId, user?.id, !!company.data, company.isError, queryClient]);
   if (sessionLoading)
     return (
@@ -915,6 +941,10 @@ function Workspace() {
               {user ? (
                 <UserMenu
                   user={user}
+                  // The last visited, still-accessible company is already resolved
+                  // for public routes. Use it for personal shortcuts too.
+                  companyId={navigationContext?.company.id ?? null}
+                  employeeId={navigationContext?.employee?.id ?? null}
                   onLogout={() => {
                     setLogoutError("");
                     void logout()

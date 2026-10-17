@@ -142,6 +142,9 @@ export interface StockBalance {
   factor2: number;
   factor3: number;
   pooledQuantitySmallest: string;
+  /** Permission-scoped stock coverage in days; null when hidden. */
+  approximateCoverageDays?: string | null;
+  coverageAfterReserveDays?: string | null;
   pooledValueBase: string;
   baseCurrencyCode: string;
 }

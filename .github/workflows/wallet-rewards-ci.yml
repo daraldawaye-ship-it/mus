@@ -81,6 +81,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="Item shelf cards are real company-scoped" tests/items.test.ts
       - name: Test safe composition bulk import and long names
         run: node --import tsx --test --test-name-pattern="composition bulk import" tests/items.test.ts
+      - name: Test signed administrative wallet deduction and idempotence
+        run: node --import tsx --test --test-name-pattern="signed manual wallet additions deduct" tests/wallet.test.ts
       - name: Test wallets, page visits and daily company entry
         run: node --import tsx --test tests/wallet.test.ts
       - name: Test wallet conversion policy and read-only preview
@@ -89,6 +91,8 @@ jobs:
         run: node --import tsx --test tests/wallet-conversions.test.ts
       - name: Test supplier receipt references on purchases and payment vouchers
         run: node --import tsx --test --test-name-pattern="supplier receipt reference" tests/commerce.test.ts tests/finance.test.ts
+      - name: Test doctor and institution cards, sales threshold and refund enforcement
+        run: node --import tsx --test --test-name-pattern="doctor cards and positive" tests/commerce.test.ts
       - name: Test independent purchase supplier, cash and credit posting
         run: node --import tsx --test --test-name-pattern="purchase supplier is independent" tests/commerce.test.ts
       - name: Test automatic invoice and invoice-line rewards
@@ -101,6 +105,16 @@ jobs:
         run: node --import tsx --test tests/employee-accounts.test.ts
       - name: Test dated item clearance commissions
         run: node --import tsx --test --test-name-pattern="dated item clearance commissions" tests/commerce.test.ts
+      - name: Test electronic wallet receipt exact and discrepancy reconciliation
+        run: node --import tsx --test --test-name-pattern="electronic wallet receipt register" tests/commerce.test.ts
+      - name: Test pouch receipt exact and discrepant signed reconciliation
+        run: node --import tsx --test --test-name-pattern="pouch receipt register posts exactly once" tests/commerce.test.ts
+      - name: Test employee sales cashbox quick transfer and close
+        run: node --import tsx --test --test-name-pattern="sales header cashbox shortcuts post" tests/commerce.test.ts
+      - name: Test employee clearance ledger and no-deduction return review
+        run: node --import tsx --test --test-name-pattern="clearance earnings credit saver only" tests/commerce.test.ts
+      - name: Test unified employee wallet foreign-currency commission conversion
+        run: node --import tsx --test --test-name-pattern="foreign-currency clearance is posted" tests/commerce.test.ts
       - name: Test dynamic debit and credit account balances
         run: node --import tsx --test --test-name-pattern="dynamic account balances" tests/finance.test.ts
       - name: Test receipt and payment print rewards
