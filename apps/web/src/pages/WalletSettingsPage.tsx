@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Coins, RefreshCw } from "lucide-react";
 import {
   employeeWalletAccountSchema,
-  normalizeDigits,
   walletPolicySchema,
   type CompanyContext,
   type EmployeeWalletAccount,
