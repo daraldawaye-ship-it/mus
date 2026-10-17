@@ -1144,6 +1144,29 @@ try {
           ),
           true,
         );
+        const searchLayout = await popup.evaluate((element) => {
+          const dropdown = element.getBoundingClientRect();
+          const row = element.querySelector<HTMLElement>(".commerce-search-item-row");
+          const stock = row?.querySelector<HTMLElement>(".commerce-search-item-stock");
+          const name = row?.querySelector<HTMLElement>(".commerce-search-item-name");
+          const price = row?.querySelector<HTMLElement>(".commerce-search-item-price");
+          return {
+            width: dropdown.width,
+            withinViewport: dropdown.left >= 0 && dropdown.right <= window.innerWidth,
+            stockWidth: stock?.getBoundingClientRect().width ?? 0,
+            nameWidth: name?.getBoundingClientRect().width ?? 0,
+            priceWidth: price?.getBoundingClientRect().width ?? 0,
+            nameLines: name ? getComputedStyle(name).webkitLineClamp : "",
+          };
+        });
+        assert(searchLayout.width >= 600, "Desktop lookup must allow wide item names");
+        assert(searchLayout.withinViewport, "Wider item lookup must stay on screen");
+        assert(searchLayout.stockWidth <= 60 && searchLayout.priceWidth <= 85,
+          "Compact quantity and sale-price columns must leave room for the name");
+        assert(searchLayout.nameWidth > 3 * searchLayout.stockWidth,
+          "Item name must take most of the lookup width");
+        assert.equal(searchLayout.nameLines, "2",
+          "Names must wrap across two rows before being abbreviated");
         await page
           .getByRole("listbox", { name: "نتائج الأصناف" })
           .getByRole("button", { name: new RegExp(item.name) })
