@@ -50,7 +50,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { firstUnitStockText, saleStockQuantity } from "../sale-stock-quantity";
+import { saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -829,6 +829,10 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
     }
   });
   const menu = useRef<HTMLDetailsElement>(null);
+  const client = useQueryClient();
+  const [alternateItemId, setAlternateItemId] = useState<number | null>(null);
+  const [accountFullName, setAccountFullName] = useState<string | null>(null);
+  const [alternateSaving, setAlternateSaving] = useState(false);
   const history = useQuery<{ items: ItemInfoHistoryRow[] }>({
     queryKey: ["invoice-item-options", userId, companyId, selectedItemId, view],
     queryFn: ({ signal }) => api<{ items: ItemInfoHistoryRow[] }>(
@@ -856,6 +860,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
   const isInvoiceView = view === "purchase" || view === "sale";
   const peers = alternatives.data?.peers;
   return (
+    <>
     <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
       <details ref={menu} className="invoice-item-options-menu">
         <summary aria-label="اختر خيارات الصنف">
@@ -888,16 +893,21 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                     <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
                       <table className="invoice-item-options-table">
                         <colgroup><col style={{width:"70%"}}/><col style={{width:"30%"}}/></colgroup>
-                        <thead><tr><th>الصنف</th><th>الرصيد</th></tr></thead>
+                        <thead><tr><th>الصنف</th><th className="invoice-item-options-number">الرصيد (و1)</th></tr></thead>
                         <tbody>{peers.peers.map(row => (
                           <tr key={row.id}>
-                            <td title={row.name}><Link to={`/companies/${companyId}/items/${row.id}`}>
-                              {row.name}{row.active ? "" : " (مؤرشف)"}
-                            </Link></td>
-                            <td title={row.stockSmallest === null ? "—" :
-                              `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}>
+                            <td title={row.name}>
+                              <button type="button" className="invoice-item-options-link"
+                                onClick={() => setAlternateItemId(row.id)}
+                                aria-label={`فتح كرت الصنف ${row.name}`}>
+                                {row.name}{row.active ? "": " (مؤرشف)"}
+                              </button>
+                            </td>
+                            <td className="invoice-item-options-number" title={row.stockSmallest === null ? "غير متاح" :
+                              saleStockQuantity(row.stockSmallest, row, 1, 1)}>
                               <bdi>{row.stockSmallest === null ? "—" :
-                                `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}</bdi></td>
+                                saleStockQuantity(row.stockSmallest, row, 1, 1)}</bdi>
+                            </td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -925,19 +935,24 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                     )}</colgroup>
                     <thead><tr>
                       <th>التاريخ</th>
-                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th>السعر</th></> : <th>البيان</th>}
-                      <th>الكمية (و1)</th>
+                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th className="invoice-item-options-number">السعر</th></> : <th>البيان</th>}
+                      <th className="invoice-item-options-number">الكمية (و1)</th>
                     </tr></thead>
                     <tbody>{history.data.items.map(row => (
                       <tr key={row.lineId}>
                         <td dir="ltr">{row.documentDate}</td>
                         {isInvoiceView ? <>
-                          <td title={row.partyName ?? "—"}>{row.partyName ?? "—"}</td>
-                          <td title={row.unitPriceFirstUnit == null ? "—" : formatWholeMoney(row.unitPriceFirstUnit)}>
+                          <td title={row.partyName ?? "—"}><button type="button"
+                            className="invoice-item-options-link"
+                            onClick={() => setAccountFullName(row.partyName ?? "غير محدد")}
+                            aria-label={`عرض اسم الحساب كاملًا: ${row.partyName ?? "غير محدد"}`}>
+                            {row.partyName ?? "—"}
+                          </button></td>
+                          <td className="invoice-item-options-number" title={row.unitPriceFirstUnit == null ? "—" : formatWholeMoney(row.unitPriceFirstUnit)}>
                             <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
                           </td>
                         </> : <td title={row.description || "—"}>{row.description || "—"}</td>}
-                        <td><bdi>{row.quantityFirstUnit}</bdi></td>
+                        <td className="invoice-item-options-number"><bdi>{row.quantityFirstUnit}</bdi></td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -947,6 +962,35 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
           )}
       </div>
     </section>
+    <Dialog open={accountFullName !== null} title="اسم الحساب بالكامل"
+      onClose={() => setAccountFullName(null)}>
+      <p className="invoice-item-full-account" dir="auto">{accountFullName}</p>
+      <div className="form-actions">
+        <Button variant="secondary" onClick={() => setAccountFullName(null)}>إغلاق</Button>
+      </div>
+    </Dialog>
+    <Dialog open={alternateItemId !== null} title="كرت الصنف"
+      className="invoice-item-sheet" onClose={() => {
+        if (!alternateSaving) setAlternateItemId(null);
+      }}>
+      {alternateItemId !== null && (
+        <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
+          <InvoiceItemEditor
+            key={`${userId}:${companyId}:${alternateItemId}`}
+            context={context} itemId={alternateItemId} readOnly
+            onSaved={() => {
+              void client.invalidateQueries({
+                queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
+              });
+              setAlternateItemId(null);
+            }}
+            onClose={() => { if (!alternateSaving) setAlternateItemId(null); }}
+            onSavingChange={setAlternateSaving}
+          />
+        </Suspense>
+      )}
+    </Dialog>
+    </>
   );
 }
 function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
