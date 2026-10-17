@@ -18,6 +18,7 @@ import {
 import { itemDTO, itemFrom, itemSelect } from "./repositories/items.ts";
 import { masterPage } from "./services/masters.ts";
 import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
+import { canReadItemStock } from "./services/item-coverage.ts";
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
@@ -45,12 +46,18 @@ export function commerceOptionRoutes(pool: Pool): Router {
         Object.defineProperty(request, "query", { value: query });
         if (req.query.type === "items") {
           const canRank = await canOrderItemsBySales(client,user,companyId);
+          const canShowStock = await canReadItemStock(client,user,companyId);
+          const stockFrom = itemFrom + (canShowStock
+            ? " LEFT JOIN item_statistics lookup_stock ON lookup_stock.company_id=i.company_id AND lookup_stock.item_id=i.id" : "");
+          const stockSelect = canShowStock
+            ? ",COALESCE(lookup_stock.stock_total,0)::text AS available_smallest "
+            : ",NULL::text AS available_smallest ";
           return masterPage(
             client,
             request,
             companyId,
-            itemSelect,
-            itemFrom,
+            itemSelect.replace(itemFrom, stockSelect + stockFrom),
+            stockFrom,
             "i",
             { id: "i.id", code: "i.code", name: "i.name", active: "i.active", saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint" },
             [
