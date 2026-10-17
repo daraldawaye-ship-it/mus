@@ -2105,6 +2105,24 @@ ul {
   padding-inline: 1px;
   font-size: 12px;
 }
+/* Semantic stock-expiry warnings without altering stored dates. */
+.expiry-month-field--expired .expiry-month-fields input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+.expiry-month-field--soon .expiry-month-fields input {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+}
+.expiry-month-alert {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding-top: 2px;
+}
+.expiry-month-alert--expired { color: #ef4444; }
+.expiry-month-alert--soon { color: #d97706; }
 .commerce-fieldset {
   border: 0;
   padding: 0;

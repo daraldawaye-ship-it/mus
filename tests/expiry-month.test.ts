@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enteredMonthStart, expiryDigits, expiryMonth, monthIsComplete, monthShouldAdvance, monthStartDate } from "../apps/web/src/ExpiryMonthField.tsx";
+import { enteredMonthStart, expiryDigits, expiryMonth, expiryUrgency, monthIsComplete, monthShouldAdvance, monthStartDate } from "../apps/web/src/ExpiryMonthField.tsx";
 import { formatWholeMoney } from "../apps/web/src/format-money.ts";
 
 test("month/year expiry entry generates the first calendar day", () => {
@@ -49,4 +49,20 @@ test("compact item history prices display whole amounts without unsafe number co
   assert.equal(formatWholeMoney("-1500.99"),"-1,501");
   assert.equal(formatWholeMoney("0.49"),"0");
   assert.equal(formatWholeMoney(null),"—");
+});
+
+test("expiry alerts use the end of each month in Aden, not the stored first day", () => {
+  assert.equal(expiryUrgency("2026-09-01", "2026-10"), "expired");
+  assert.equal(expiryUrgency("2026-10-01", "2026-10"), "soon");
+  assert.equal(expiryUrgency("2026-11-01", "2026-10"), "soon");
+  assert.equal(expiryUrgency("2026-12-01", "2026-10"), "none");
+  assert.equal(expiryUrgency("2026-12-01", "2026-12"), "soon");
+  assert.equal(expiryUrgency("2027-01-01", "2026-12"), "soon");
+  assert.equal(expiryUrgency("2027-02-01", "2026-12"), "none");
+  assert.equal(expiryUrgency("2025-12-01", "2026-01"), "expired");
+  assert.equal(expiryUrgency("2026-10-31", "2026-10"), "soon");
+  assert.equal(expiryUrgency("2026-10-01", "2026-11"), "expired");
+  assert.equal(expiryUrgency(null, "2026-10"), "none");
+  assert.equal(expiryUrgency("invalid", "2026-10"), "none");
+  assert.equal(expiryUrgency("2026-13-01", "2026-10"), "none");
 });

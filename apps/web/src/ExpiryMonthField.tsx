@@ -27,6 +27,32 @@ export function enteredMonthStart(month: string, year: string): string | null {
   if (!monthIsComplete(month) || !/^[0-9]{4}$/.test(year)) return null;
   return monthStartDate(`${year}-${month.padStart(2, "0")}`);
 }
+export type ExpiryUrgency = "none" | "expired" | "soon";
+
+/** The date's month is valid through its last day, although stored as day 01. */
+export function expiryUrgency(
+  expiryDate: string | null | undefined,
+  currentMonth: string,
+): ExpiryUrgency {
+  const expiry = /^(\d{4})-(0[1-9]|1[0-2])(?:-\d{2})?$/.exec(expiryDate ?? "");
+  const current = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(currentMonth);
+  if (!expiry || !current) return "none";
+  const monthsRemaining =
+    (Number(expiry[1]) - Number(current[1])) * 12 +
+    Number(expiry[2]) - Number(current[2]);
+  return monthsRemaining < 0 ? "expired" :
+    monthsRemaining <= 1 ? "soon" : "none";
+}
+
+/** Local business date in Yemen, independent of the browser's time zone. */
+function adenCurrentMonth(): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric", month: "2-digit", timeZone: "Asia/Aden",
+  }).formatToParts(new Date());
+  return (parts.find(part => part.type === "year")?.value ?? "") + "-" +
+    (parts.find(part => part.type === "month")?.value ?? "");
+}
+
 function fromDate(date: string | null | undefined): { month: string; year: string } {
   return { month: date?.slice(5, 7) ?? "", year: date?.slice(0, 4) ?? "" };
 }
@@ -81,8 +107,10 @@ export function ExpiryMonthField({
     commit(month, digits);
   }
   const invalid = month !== "" && month.length === 2 && !monthIsComplete(month);
+  const urgency = expiryUrgency(enteredMonthStart(month, year), adenCurrentMonth());
+
   return (
-    <div className={`field floating-ready expiry-month-field ${className}`}
+    <div className={["field floating-ready expiry-month-field", urgency === "none" ? "" : "expiry-month-field--" + urgency, className].filter(Boolean).join(" ")}
       data-label-raised="true" style={style} title={title}>
       <label htmlFor={monthId}>{label}</label>
       <div className="expiry-month-fields" dir="ltr">
@@ -137,6 +165,11 @@ export function ExpiryMonthField({
       </div>
       {(hint || error) && <small id={`${monthId}-hint`}
         className={error ? "text-error" : undefined}>{error ?? hint}</small>}
+      {urgency !== "none" && (
+        <small role="status" className={"expiry-month-alert expiry-month-alert--" + urgency}>
+          {urgency === "expired" ? "انتهت صلاحية الصنف" : "قريب الانتهاء: خلال الشهر الحالي أو القادم"}
+        </small>
+      )}
     </div>
   );
 }
