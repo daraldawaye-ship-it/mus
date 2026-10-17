@@ -179,6 +179,10 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 async function setup(f: Fixture, name?: string) {
   const company = await f.company(name);
   const path = `/companies/${company.id}`;
+  // Legacy commerce fixtures exercise accounting independently of the new
+  // referral gate; dedicated referral tests lower the threshold explicitly.
+  await f.owner.ok("PUT",`${path}/control/sales_doctor_threshold`,
+    {value:999999999,employeeId:null,revision:null});
   // New companies already have YER as their base currency; legacy fixtures may not.
   const currencySettings = await f.owner.ok<{ settings: { baseCurrencyId: number } | null }>(
     "GET",
