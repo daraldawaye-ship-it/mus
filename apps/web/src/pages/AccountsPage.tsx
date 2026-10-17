@@ -63,7 +63,8 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const [params, setParams] = useSearchParams();
   // Show active accounts by default. Explicit "all" is a UI sentinel that
   // must be omitted from the API request (which only accepts true/false).
-  const activeFilter = params.get("active") ?? "true";
+  const activeFilter = params.get("active") === "false" ? "false" :
+    params.get("active") === "all" ? "all" : "true";
   const filters = new URLSearchParams();
   for (const key of ["kind", "category", "accountChoice", "active", ...optionFilterKeys]) {
     const value = key === "active" ? activeFilter : params.get(key);
