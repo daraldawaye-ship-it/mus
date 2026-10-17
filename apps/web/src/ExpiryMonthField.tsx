@@ -51,11 +51,11 @@ export function ExpiryMonthField({
   const monthId = id ?? `${generated}-month`;
   const [month, setMonth] = useState(() => fromDate(value).month);
   const [year, setYear] = useState(() => fromDate(value).year);
-  const lastIssued = useRef<string | null>(value ?? null);
+  const lastIssued = useRef<string | null>(value || null);
   const yearInput = useRef<HTMLInputElement>(null);
   const monthInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const incoming = value ?? null;
+    const incoming = value || null;
     // An internal incomplete edit emits null; do not erase its in-progress
     // digits when the parent receives that null and re-renders.
     if (incoming === lastIssued.current) return;
