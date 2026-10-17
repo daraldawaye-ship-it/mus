@@ -572,7 +572,7 @@ export function walletRoutes(pool: Pool) {
         await audit(
           client,
           user,
-          "wallet.award",
+          BigInt(input.points) < 0n ? "wallet.deduct" : "wallet.award",
           "wallet-entry",
           after.id,
           { wallet: before },
