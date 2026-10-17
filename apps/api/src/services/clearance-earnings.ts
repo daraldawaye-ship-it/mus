@@ -47,6 +47,35 @@ export async function accrueInvoiceClearance(
           itemName: row.item_name, amount: row.amount,
           currencyCode: row.currency_code, commissionRate: row.commission_rate,
         }, companyId);
+    // Credit the SAME wallet ledger that stores attendance and reward points.
+    // Each source has one immutable wallet entry; convert using the sale's
+    // exact saved exchange rate to YER and round to one whole rial.
+    const posted = await client.query(
+      `INSERT INTO employee_wallet_entries(
+         company_id,employee_id,employee_name,kind,points,reason,
+         invoice_id,clearance_earning_id,idempotency_key,request_payload,
+         created_by,created_by_name)
+       SELECT ce.company_id,ce.employee_id,ce.employee_name,'clearance',
+         round(ce.amount*i.exchange_rate),
+         ('عمولة تصريف: '||ce.item_name||' — فاتورة '||i.number),
+         ce.invoice_id,ce.id,gen_random_uuid(),
+         jsonb_build_object('source','clearance','earningId',ce.id,
+           'amount',ce.amount::text,'currency',ce.currency_code,
+           'invoiceExchangeRate',i.exchange_rate::text,
+           'walletYER',round(ce.amount*i.exchange_rate)::text),
+         ce.created_by,$3
+       FROM employee_clearance_earnings ce
+       JOIN invoices i ON i.company_id=ce.company_id AND i.id=ce.invoice_id
+       WHERE ce.company_id=$1 AND ce.invoice_id=$2
+         AND i.base_currency_code='YER'
+         AND round(ce.amount*i.exchange_rate)>0
+       ON CONFLICT DO NOTHING RETURNING id,points::text AS points`,
+      [companyId, invoiceId, user.displayName],
+    );
+    for (const entry of posted.rows)
+      await audit(client, user, "clearance.wallet-credit", "wallet-entry",
+        entry.id, null, { invoiceId, employeeId: employee.id,
+          points: entry.points, unit: "YER" }, companyId);
   }
 
   // Do this even if the employee who accepted the return has no wallet.
