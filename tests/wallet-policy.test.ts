@@ -202,7 +202,7 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
     "GET",
     policyPath,
   );
-  assert.equal(empty.pointValue, null, "No value per point is invented");
+  assert.equal(empty.pointValue, "1", "Each reward unit is now exactly one YER");
   assert.equal(empty.currencyId, yer.id, "The base currency is prepared by default");
   assert.equal(empty.expenseAccount?.code, "5500000002");
   assert.equal(empty.approvalMode, null, "Conversion still requires a decision");
@@ -215,7 +215,7 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
   ).preview;
   assert.equal(ownEmpty.employeeId, recipient.employee.id);
   assert.equal(ownEmpty.configurationComplete, false);
-  assert.equal(ownEmpty.amount, null);
+  assert.equal(ownEmpty.amount, "0");
   assert.equal(ownEmpty.canConvert, false);
   assert.equal(
     (await peer.client.request("GET", policyPath)).status,
@@ -252,7 +252,7 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
     assert.equal(
       (
         await f.owner.request("PUT", policyPath, {
-          pointValue: "0.125",
+          pointValue: "1",
           currencyId: yer.id,
           expenseAccountId: expenseAccount.id,
           approvalMode: "direct",
@@ -267,14 +267,14 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
     "PUT",
     policyPath,
     {
-      pointValue: "٠٫١٢٥",
+      pointValue: "١",
       currencyId: yer.id,
       expenseAccountId: expenseAccount.id,
       approvalMode: "direct",
       revision: empty.revision,
     },
   );
-  assert.equal(policy.pointValue, "0.125");
+  assert.equal(policy.pointValue, "1");
   assert.equal(policy.currencyId, yer.id);
   assert.equal(policy.approvalMode, "direct");
   assert.equal(
@@ -359,11 +359,11 @@ test("wallet policies and employee bindings are scoped, revisioned and produce e
     )
   ).preview;
   assert.equal(preview.points, "9007199254740993");
-  assert.equal(preview.pointValue, "0.125");
+  assert.equal(preview.pointValue, "1");
   assert.equal(
     preview.amount,
-    "1125899906842624.13",
-    "Exact multiplication rounds half up to the two-decimal YER quantum",
+    "9007199254740993",
+    "Wallet conversion uses the fixed one YER per point with no rate multiplication",
   );
   assert.equal(preview.currency?.id, yer.id);
   assert.equal(preview.account?.id, employeeAccount.id);
