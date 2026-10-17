@@ -565,7 +565,10 @@ legend {
 .user-shortcut-flyout {
   position: absolute;
   inset-block-start: -3px;
-  inset-inline-end: calc(100% - 2px);
+  /* In RTL, inline-start is the right edge. Anchor the flyout to the
+     inside (left) of the avatar menu instead of beyond the viewport. */
+  inset-inline-start: calc(100% - 2px);
+  inset-inline-end: auto;
   z-index: 52;
   width: min(290px, calc(100vw - 18px));
   max-height: min(66dvh, 540px);
