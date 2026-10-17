@@ -310,6 +310,7 @@ export async function requestPageKeys(
     items: "items",
     "item-statistics-report": "item-statistics-report",
     "item-options": "items",
+    doctors: "doctors",
     "item-agents": "item-agents",
     "stock-balances": "stock-balances",
     "stock-movements": "stock-movements",
