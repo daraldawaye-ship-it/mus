@@ -50,7 +50,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { saleStockQuantity } from "../sale-stock-quantity";
+import { firstUnitStockText, saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -894,7 +894,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                               {row.name}{row.active ? "" : " (مؤرشف)"}
                             </Link></td>
                             <td><bdi>{row.stockSmallest === null ? "—" :
-                              `${formatMoney(row.stockSmallest)} ${row.smallestUnitName}`}</bdi></td>
+                              `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}</bdi></td>
                           </tr>
                         ))}</tbody>
                       </table>
