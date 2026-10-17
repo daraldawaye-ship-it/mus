@@ -207,14 +207,16 @@ export async function createInvoice(
   );
   if (replay.rows[0]) {
     const oldPayload = {...replay.rows[0].creation_payload} as Record<string,unknown>;
-    const incoming = {...input} as Record<string,unknown>;
     if (!("doctorId" in oldPayload)) oldPayload.doctorId = null;
     if (!("supplierAccountId" in oldPayload)) oldPayload.supplierAccountId = null;
     if (!("supplierReceiptNumber" in oldPayload)) oldPayload.supplierReceiptNumber = "";
-    if (JSON.stringify(oldPayload) !== JSON.stringify(incoming) &&
-        Object.keys(oldPayload).sort().some(key =>
-          JSON.stringify(oldPayload[key]) !== JSON.stringify(incoming[key])) ||
-        Object.keys(oldPayload).length !== Object.keys(incoming).length)
+    // JSONB is order-insensitive even for nested object keys, unlike JS
+    // JSON.stringify. Legacy and current replay payloads must compare exactly.
+    const same = await client.query(
+      "SELECT $1::jsonb = $2::jsonb AS equal",
+      [JSON.stringify(oldPayload),JSON.stringify(input)],
+    );
+    if (!same.rows[0]?.equal)
       conflict("مفتاح الفاتورة مستخدم لبيانات مختلفة؛ أعد إرسال الطلب الأصلي");
     return loadInvoice(client, companyId, replay.rows[0].id);
   }
