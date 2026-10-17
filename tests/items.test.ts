@@ -1362,7 +1362,7 @@ test("item compositions support multilingual cards, strict flags, archived links
     name:"بديل كمية تسعة",compositionId:created.id,factor2:1,factor3:1,
   });
   for(const [id,stock] of [[related.id,"100"],[medium.id,"40"],[high.id,"9"]] as const) {
-    await f.pool.query("UPDATE item_statistics SET stock_total=$3 WHERE company_id=$1 AND item_id=$2",
+    await f.pool.query("UPDATE item_statistics SET stock_total=$3,stock_showroom=$3,stock_warehouse=0 WHERE company_id=$1 AND item_id=$2",
       [companyA.id,id,stock]);
   }
   const ordered=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
