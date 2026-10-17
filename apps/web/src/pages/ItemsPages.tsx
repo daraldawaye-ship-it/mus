@@ -462,13 +462,17 @@ type InvoiceItemEditorProps = {
 export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   const { user } = useSession();
   const directory = usePageDirectory(props.context.company.id);
-  const allowed =
-    itemsAccess(props.context, !props.readOnly) &&
-    ["company.items", "company.item-card"].every((key) => {
-      const page = directory.data?.find((entry) => entry.key === key);
-      return !!page?.enabled && page.actionAccess.view &&
-        (props.readOnly || page.actionAccess.edit);
+  const pageKeys = ["company.items", "company.item-card"];
+  const canView = itemsAccess(props.context) &&
+    pageKeys.every(key => {
+      const page = directory.data?.find(entry => entry.key === key);
+      return !!page?.enabled && page.actionAccess.view;
     });
+  const canEdit = canView && itemsAccess(props.context, true) &&
+    pageKeys.every(key => !!directory.data?.find(entry => entry.key === key)?.actionAccess.edit);
+  // Open an editable card when authorized; fall back to read-only for staff.
+  const readOnly = props.readOnly ?? !canEdit;
+  const allowed = readOnly ? canView : canEdit;
   if (directory.isPending)
     return <Notice>جارٍ التحقق من صلاحية تعديل الصنف…</Notice>;
   if (directory.error)
@@ -483,7 +487,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   if (!allowed)
     return (
       <>
-        <Notice tone="warning">ليس لديك صلاحية {props.readOnly ? "عرض" : "تعديل"} كرت الصنف.</Notice>
+        <Notice tone="warning">ليس لديك صلاحية {readOnly ? "عرض" : "تعديل"} كرت الصنف.</Notice>
         <Button variant="secondary" onClick={props.onClose}>
           إغلاق
         </Button>
@@ -493,6 +497,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
     <InvoiceItemDetail
       key={`${user?.id}:${props.context.company.id}:${props.itemId}`}
       {...props}
+      readOnly={readOnly}
     />
   );
 }
