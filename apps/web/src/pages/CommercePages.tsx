@@ -1164,6 +1164,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     !account.cashOrBank;
   const selectedSupplier = creditPurchase ? account : supplier;
   const defaultCashbox = useEmployeeCashbox(context);
+  const [cashboxDraft,setCashboxDraft]=useState<{
+    kind:"pouch"|"electronic"|"close";
+    amount:string;notes:string;idempotencyKey:string;
+  }|null>(null);
+  const [cashboxBusy,setCashboxBusy]=useState(false);
+  const [cashboxUnknown,setCashboxUnknown]=useState(false);
+  const [cashboxError,setCashboxError]=useState("");
+  const [cashboxNotice,setCashboxNotice]=useState("");
   const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
   const [discount, setDiscount] = useState("0");
@@ -1301,6 +1309,59 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   },[doctorActiveIndex,doctorChoices.data]);
   const doctorThreshold = Number(controls.value("sales_doctor_threshold") ?? 1000);
 
+  function openCashboxAction(operation:"pouch"|"electronic"|"close") {
+    setCashboxError("");
+    setCashboxUnknown(false);
+    setCashboxNotice("");
+    setCashboxDraft({kind:operation,amount:"",notes:"",
+      idempotencyKey:crypto.randomUUID()});
+  }
+  async function submitCashboxAction(event?:FormEvent) {
+    event?.preventDefault();
+    if (!cashboxDraft || cashboxBusy || !defaultCashbox || !canPost(context)) return;
+    if (!/^-?(?:0|[1-9][0-9]{0,19})(?:\\.[0-9]{1,2})?$/.test(normalizeDigits(cashboxDraft.amount))) {
+      setCashboxError("أدخل مبلغًا صالحًا بالريال اليمني حتى منزلتين عشريتين.");
+      return;
+    }
+    setCashboxBusy(true);
+    setCashboxError("");
+    try {
+      const result=await api<{operationId:number;documentId:number;
+        bookBalance:string|null;difference:string|null}>(
+        `/companies/${companyId}/sales/cashbox-operations`,{
+          method:"POST",
+          body:{...cashboxDraft,amount:normalizeDigits(cashboxDraft.amount)},
+          signal:guard.signal,
+        });
+      if(!guard.isCurrent()) return;
+      const diff=result.difference?Number(result.difference):0;
+      const message=cashboxDraft.kind==="close"
+        ? diff>0
+          ? `تم إغلاق الصندوق وترحيل العجز ${formatMoney(result.difference!)} ريال.`
+          : diff<0
+            ? `تم إغلاق الصندوق وترحيل الزيادة ${formatMoney(String(-diff))} ريال.`
+            : "تم إغلاق الصندوق وتصفير الرصيد دون فرق."
+        : cashboxDraft.kind==="pouch"
+          ? "تم ترحيل المبلغ بين الصندوق والحافظة."
+          : "تم ترحيل المبلغ إلى محفظة الشركة الإلكترونية.";
+      setCashboxNotice(`${message} رقم القيد #${result.documentId}`);
+      setCashboxDraft(null);
+      setCashboxUnknown(false);
+      void invalidate();
+      void client.invalidateQueries({predicate:q=>
+        q.queryKey.includes(companyId) &&
+        ["account-balances","account-ledger","financial-documents"].includes(String(q.queryKey[0]))});
+    }catch(cause) {
+      if (!guard.isCurrent()) return;
+      const uncertain=!(cause instanceof ApiFailure)||cause.status>=500;
+      setCashboxUnknown(uncertain);
+      setCashboxError(uncertain
+        ? "قد تكون العملية قد ترحّلت. أعد التأكيد بنفس الطلب دون تعديل المبلغ لتجنب التكرار. "+errorMessage(cause)
+        : errorMessage(cause));
+    }finally{
+      if(guard.isCurrent())setCashboxBusy(false);
+    }
+  }
   const allowNavigation = useRef(false);
   const dirty =
     lines.some((line) => line.itemId || line.search.trim()) ||
@@ -1923,6 +1984,16 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     disabled={locked}
                     onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
+                )}
+                {kind==="sale" && (
+                  <div className="cashbox-shortcuts">
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("pouch")}>ترحيل إلى الحافظة</Button>
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("electronic")}>ترحيل إلى المحفظة الإلكترونية</Button>
+                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
+                      onClick={()=>openCashboxAction("close")}>إغلاق الصندوق</Button>
+                  </div>
                 )}
                 <Link
                   className="button button-secondary commerce-list-link"
@@ -2639,6 +2710,43 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
         </footer>
       </form>
+      {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
+      <Dialog open={cashboxDraft!==null}
+        title={cashboxDraft?.kind==="pouch"?"ترحيل إلى الحافظة":cashboxDraft?.kind==="electronic"?
+          "ترحيل إلى المحفظة الإلكترونية":"إغلاق الصندوق"}
+        onClose={()=>{if(!cashboxBusy && !cashboxUnknown)setCashboxDraft(null);}}>
+        {cashboxDraft && (
+          <form className="form-stack" onSubmit={event=>void submitCashboxAction(event)}>
+            <Field
+              label={cashboxDraft.kind==="close"?"المبلغ النقدي الفعلي":"المبلغ"}
+              money inputMode="decimal" autoFocus required
+              value={cashboxDraft.amount}
+              disabled={cashboxBusy||cashboxUnknown}
+              onChange={event=>setCashboxDraft(previous=>previous?
+                {...previous,amount:normalizeDigits(event.target.value)}:previous)}
+            />
+            <Field label="ملاحظات" maxLength={1000}
+              value={cashboxDraft.notes} disabled={cashboxBusy||cashboxUnknown}
+              onChange={event=>setCashboxDraft(previous=>previous?
+                {...previous,notes:event.target.value}:previous)}
+            />
+            {cashboxDraft.kind==="pouch" && <small className="muted">
+              المبلغ السالب يعني استلام مبلغ من الحافظة وإعادته للصندوق.
+            </small>}
+            {cashboxDraft.kind==="close" && <small className="muted">
+              سيتم تحويل النقد المعدود للحافظة، وترحيل أي عجز أو زيادة تلقائيًا ثم تصفير الصندوق.
+            </small>}
+            {cashboxError && <Notice tone="error">{cashboxError}</Notice>}
+            <div className="form-actions">
+              <Button type="submit" disabled={cashboxBusy}>
+                {cashboxBusy?"جارٍ الترحيل…":cashboxUnknown?"إعادة تأكيد الطلب نفسه":"حفظ وترحيل"}
+              </Button>
+              <Button variant="secondary" type="button" disabled={cashboxBusy||cashboxUnknown}
+                onClick={()=>setCashboxDraft(null)}>إلغاء</Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
       <Dialog open={resetConfirmOpen}
         title="تأكيد تصفير الفاتورة"
         onClose={() => setResetConfirmOpen(false)}>

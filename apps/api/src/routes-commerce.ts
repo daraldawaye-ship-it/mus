@@ -20,6 +20,7 @@ import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
+import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
 import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
@@ -307,6 +308,21 @@ export function commerceRoutes(pool: Pool): Router {
     });
     res.json({matches});
   }));
+  // Sales-only quick till actions. No account identifiers are accepted from
+  // the browser: the destination is resolved from the employee's links or
+  // the administrator's company electronic-wallet configuration.
+  router.post(
+    `${base}/sales/cashbox-operations`,
+    handler(async (req, res) => {
+      const input=parse(cashboxOperationSchema,req.body);
+      const result=await mutateMaster(pool,req,"commerce.manage",
+        async (client,user,companyId)=>{
+          await companyAccess(client,user,companyId,"finance.post",true);
+          return postEmployeeCashboxOperation(client,companyId,user,input);
+        });
+      res.status(201).json(result);
+    }),
+  );
   router.post(
     `${base}/invoices`,
     handler(async (req, res) => {

@@ -1954,7 +1954,19 @@ ul {
   margin-block: 0;
   gap: 4px;
 }
-.commerce-header-content .commerce-list-link {
+.commerce-header-content .cashbox-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+.cashbox-shortcuts .button {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  padding-inline: 9px;
+}
+.commerce-list-link {
   margin-block-start: 0;
 }
 @media (prefers-reduced-motion: reduce) {

@@ -332,6 +332,7 @@ export async function initializeCompanyAccounts(
         [companyId, seed.purpose, next.id],
       );
   }
+  await client.query("SELECT ensure_company_cash_variance($1,$2)", [companyId,user.id]);
   await audit(
     client,
     user,
