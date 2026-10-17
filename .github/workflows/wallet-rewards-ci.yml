@@ -89,6 +89,8 @@ jobs:
         run: node --import tsx --test tests/wallet-conversions.test.ts
       - name: Test supplier receipt references on purchases and payment vouchers
         run: node --import tsx --test --test-name-pattern="supplier receipt reference" tests/commerce.test.ts tests/finance.test.ts
+      - name: Test doctor and institution cards, sales threshold and refund enforcement
+        run: node --import tsx --test --test-name-pattern="doctor cards and positive" tests/commerce.test.ts
       - name: Test independent purchase supplier, cash and credit posting
         run: node --import tsx --test --test-name-pattern="purchase supplier is independent" tests/commerce.test.ts
       - name: Test automatic invoice and invoice-line rewards

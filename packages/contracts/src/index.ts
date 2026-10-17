@@ -139,6 +139,8 @@ export const auditActionLabels = {
   "financialDocument.update": "تعديل مسودة مالية",
   "financialDocument.post": "ترحيل مستند مالي",
   "financialDocument.reverse": "عكس مستند مالي",
+  "doctor.create": "إضافة طبيب أو جهة",
+  "doctor.update": "تعديل كرت طبيب أو جهة",
   "itemAgent.create": "إضافة وكيل صنف",
   "itemAgent.update": "تعديل وكيل صنف",
   "itemComposition.create": "إضافة تركيب صنف",
@@ -267,6 +269,8 @@ export const companyAuditActions: AuditAction[] = [
   "inventory.settings",
   "stock.transfer",
   "stock.adjustment",
+  "doctor.create",
+  "doctor.update",
   "itemAgent.create",
   "itemAgent.update",
   "itemComposition.create",
@@ -573,6 +577,7 @@ export * from "./general-table.ts";
 export * from "./finance.ts";
 export * from "./items.ts";
 export * from "./commerce.ts";
+export * from "./doctors.ts";
 export * from "./item-activity-report.ts";
 export * from "./inventory.ts";
 
