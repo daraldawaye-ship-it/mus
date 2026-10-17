@@ -1803,7 +1803,7 @@ test("general table inline title edit preserves the description and rejects conc
   assert.equal(changed.number2,"-3");
   assert.equal(changed.tableName,row.tableName);
   assert.equal(changed.category,row.category);
-  assert.equal(changed.text1,row.text1);
+  assert.equal(changed.text1,"تفاصيل");
   assert.equal((await platform.client.request("PATCH",url,{
     title:"كتابة قديمة",expectedTitle:row.title,
   })).status,409);
