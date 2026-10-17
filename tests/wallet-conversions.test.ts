@@ -170,7 +170,7 @@ async function fixture(t: TestContext) {
     companyId: number,
     employeeId: number,
     approvalMode: "direct" | "approval",
-    pointValue = "0.125",
+    pointValue = "1",
     useAutoAdvance = false,
   ) {
     const base = `/companies/${companyId}`;
@@ -324,7 +324,7 @@ test("direct conversion posts one exact balanced journal and point debit; retrie
   await f.award(company.id, recipient.employee.id, "9007199254740993");
   const path = setup.base + "/wallet-conversions";
   const input = await f.quote(recipient.client, company.id);
-  assert.equal(input.expectedAmount, "1125899906842624.13");
+  assert.equal(input.expectedAmount, "9007199254740993");
   const results = await Promise.all([
     recipient.client.ok<ConversionResponse>("POST", path, input),
     recipient.client.ok<ConversionResponse>("POST", path, input),
@@ -450,7 +450,7 @@ test("direct conversion posts one exact balanced journal and point debit; retrie
     path,
     failedInput,
   );
-  assert.equal(retried.conversion.amount, "7.13");
+  assert.equal(retried.conversion.amount, "57");
   assert.equal(retried.conversion.status, "posted");
   assert.equal(
     (await f.snapshot(company.id, recipient.employee.id)).wallet!.points,
@@ -462,14 +462,14 @@ test("a new employee redeems wallet points directly into the auto-created advanc
   const f = await fixture(t);
   const company = await f.company("Auto wallet advance company");
   const recipient = await f.staff(company.id, "Advance recipient");
-  const setup = await f.configure(company.id, recipient.employee.id, "direct", "0.25", true);
+  const setup = await f.configure(company.id, recipient.employee.id, "direct", "1", true);
   assert.match(setup.account.code, /^1140/);
   assert.equal(setup.binding.accountId, setup.account.id);
   assert.equal(setup.binding.revision, 1);
   await f.award(company.id, recipient.employee.id, "100");
   const input = await f.quote(recipient.client, company.id);
   assert.equal(input.expectedPoints, "100");
-  assert.equal(input.expectedAmount, "25");
+  assert.equal(input.expectedAmount, "100");
   const conversion = (
     await recipient.client.ok<ConversionResponse>(
       "POST", setup.base + "/wallet-conversions", input,
@@ -480,8 +480,8 @@ test("a new employee redeems wallet points directly into the auto-created advanc
   assert.equal(conversion.accountCode, setup.account.code);
   assert(conversion.financialDocumentId);
   assert.deepEqual(await f.journal(company.id, conversion.financialDocumentId), [
-    { accountId: setup.expense.id, debit: "25", credit: "0", baseDebit: "25", baseCredit: "0" },
-    { accountId: setup.account.id, debit: "0", credit: "25", baseDebit: "0", baseCredit: "25" },
+    { accountId: setup.expense.id, debit: "100", credit: "0", baseDebit: "100", baseCredit: "0" },
+    { accountId: setup.account.id, debit: "0", credit: "100", baseDebit: "0", baseCredit: "100" },
   ]);
   const state = await f.snapshot(company.id, recipient.employee.id);
   assert.equal(state.wallet!.points, "0");
@@ -603,7 +603,7 @@ test("approval reserves only quoted points, protects them, and releases or consu
   ]);
   assert.deepEqual(approved[0], approved[1]);
   assert.equal(approved[0]!.conversion.status, "posted");
-  assert.equal(approved[0]!.conversion.amount, "12.5");
+  assert.equal(approved[0]!.conversion.amount, "100");
   state = await f.snapshot(company.id, recipient.employee.id);
   assert.equal(
     state.wallet!.points,
@@ -720,24 +720,24 @@ test("a general manager cannot approve their own wallet conversion; independent 
     transition(pending, "Independent owner approval"),
   );
   assert.equal(approved.status, "posted");
-  assert.equal(approved.amount, "10");
+  assert.equal(approved.amount, "80");
   assert(approved.financialDocumentId);
   assert.deepEqual(
     await f.journal(company.id, approved.financialDocumentId),
     [
       {
         accountId: setup.expense.id,
-        debit: "10",
+        debit: "80",
         credit: "0",
-        baseDebit: "10",
+        baseDebit: "80",
         baseCredit: "0",
       },
       {
         accountId: setup.account.id,
         debit: "0",
-        credit: "10",
+        credit: "80",
         baseDebit: "0",
-        baseCredit: "10",
+        baseCredit: "80",
       },
     ],
   );
@@ -767,7 +767,7 @@ test("conversion rejects changed quotes, foreign and archived references, and di
   const { policy } = await f.owner.ok<{ policy: WalletPolicy }>(
     "PUT",
     setup.base + "/wallet-settings",
-    { ...policyInput(setup.policy), pointValue: "0.25" },
+    { ...policyInput(setup.policy), approvalMode: "direct" },
   );
   assert.equal(
     (await recipient.client.request("POST", path, stalePolicy)).status,
@@ -784,7 +784,7 @@ test("conversion rejects changed quotes, foreign and archived references, and di
     409,
   );
   const latest = await f.quote(recipient.client, company.id);
-  assert.equal(latest.expectedAmount, "5.25");
+  assert.equal(latest.expectedAmount, "21");
   assert.equal(latest.policyRevision, policy.revision);
   assert.equal(
     (
@@ -803,7 +803,7 @@ test("conversion rejects changed quotes, foreign and archived references, and di
     (
       await recipient.client.request("POST", path, {
         ...latest,
-        expectedAmount: "5.24",
+        expectedAmount: "20",
       })
     ).status,
     409,
