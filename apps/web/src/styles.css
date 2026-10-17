@@ -2373,9 +2373,10 @@ ul {
 .commerce-search-item-head,
 .commerce-search-results .button.commerce-search-item-row {
   display: grid;
-  grid-template-columns: minmax(68px, 78px) minmax(95px, 1fr) minmax(78px, 90px);
+  /* Narrow numeric cells leave nearly all popup width for the item name. */
+  grid-template-columns: minmax(46px, 56px) minmax(0, 1fr) minmax(66px, 80px);
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   text-align: start;
   direction: rtl;
 }
@@ -2388,12 +2389,19 @@ ul {
 }
 .commerce-search-results .button.commerce-search-item-row {
   min-height: 34px;
+  height: auto;
+  padding-block: 6px;
 }
 .commerce-search-item-name {
   min-width: 0;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .commerce-search-item-stock,
 .commerce-search-item-price {
