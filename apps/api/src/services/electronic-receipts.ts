@@ -95,7 +95,7 @@ export async function receiveElectronicMovement(
      WHERE o.company_id=$1 AND o.id=$2 FOR UPDATE`,
     [companyId,input.sourceOperationId],
   )).rows[0];
-  if (!origin || !["electronic"].includes(origin.kind) ||
+  if (!origin || origin.kind!=="electronic" ||
     origin.amount==="0.000000" || origin.amount==="0")
     conflict("electronic_movement_missing","حركة المحفظة الإلكترونية غير موجودة أو لا تحتوي على مبلغ قابل للاستلام");
   const already=await client.query(
@@ -193,7 +193,7 @@ export async function receiveElectronicMovement(
       input.idempotencyKey,payload,user.id],
   );
   const receiptId=saved.rows[0].id as number;
-  await audit(client,user,"wallet.received","electronic-receipt",receiptId,null,
+  await audit(client,user,"electronic.received","electronic-receipt",receiptId,null,
     {sourceOperationId:origin.id,sourceDocumentId:origin.financial_document_id,
       employeeId:receiver.id,mode:input.mode,
       expected:moneyString(original),received:moneyString(actual),
