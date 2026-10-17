@@ -25,6 +25,7 @@ type Props = {
   recordKind: "item" | "account";
   recordId: number;
   canEdit: boolean;
+  onPendingChange?: (pending: boolean) => void;
 };
 export function RecordOptionCard(props: Props) {
   const { user } = useSession();
@@ -40,6 +41,7 @@ function RecordOptionFields({
   recordKind,
   recordId,
   canEdit,
+  onPendingChange,
 }: Props) {
   const { user } = useSession();
   const client = useQueryClient();
@@ -59,6 +61,10 @@ function RecordOptionFields({
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    onPendingChange?.(pending !== null || Object.keys(edited).length > 0);
+    return () => onPendingChange?.(false);
+  }, [onPendingChange, pending, edited]);
   function changeOption(definitionId: number, value: string | boolean | null) {
     setError("");
     setEdited(previous => ({ ...previous, [definitionId]: value }));
