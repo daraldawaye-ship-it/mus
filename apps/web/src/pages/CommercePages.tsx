@@ -218,6 +218,13 @@ function InvoiceList({
           <ValueCell>{row.original.supplierAccountName ?? "—"}</ValueCell>
         ),
       } satisfies ColumnDef<Invoice, unknown>] : []),
+      ...(kind === "sale" ? [{
+        accessorKey: "doctorName",
+        header: "الطبيب أو الجهة",
+        size: 175,
+        enableSorting: false,
+        cell: ({row}) => <ValueCell>{row.original.doctorName || "—"}</ValueCell>,
+      } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
         header: "الموقع",
@@ -2799,6 +2806,9 @@ function InvoiceViewer({
                 </>
               ) : "غير محدد"}
             </span>
+          )}
+          {invoice.kind === "sale" && invoice.doctorName && (
+            <span>الطبيب أو الجهة: {invoice.doctorName}</span>
           )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
