@@ -2598,7 +2598,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           <Notice>صافي الفاتورة يتجاوز الحد المحدد في الكنترول ({formatMoney(doctorThreshold)}).
             اختر طبيبًا أو ممرضًا أو جهة من الكروت المسجلة للمتابعة.</Notice>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
-          <Field label="اسم الطبيب أو الجهة" type="search" required autoFocus
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
+            <input id="invoice-doctor-name" type="search" required autoFocus
             ref={doctorField} value={doctorQuery} autoComplete="off"
             placeholder="اكتب الاسم أو الجهة أو مفاتيح البحث"
             onChange={event=>{
@@ -2613,6 +2615,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 else {setDoctorError("اختر من نتائج البحث أولًا.");doctorField.current?.focus();}
               }
             }}/>
+          </div>
           <div className="invoice-doctor-options" role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
             {doctorChoices.isError&&<Notice tone="error">{errorMessage(doctorChoices.error)}</Notice>}
