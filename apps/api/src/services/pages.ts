@@ -300,6 +300,7 @@ export async function requestPageKeys(
     accounts: "accounts",
     "account-links": "accounts",
     "pouch-receipts": "pouch-receipts",
+    "electronic-receipts": "electronic-receipts",
     currencies: "currencies",
     "finance-settings": "currencies",
     configuration: "configuration",
