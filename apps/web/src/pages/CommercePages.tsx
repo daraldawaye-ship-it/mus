@@ -892,21 +892,21 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                   {peers.peers.length === 0 ? <small>لا توجد أصناف أخرى بنفس التركيب.</small> : (
                     <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
                       <table className="invoice-item-options-table">
-                        <colgroup><col style={{width:"70%"}}/><col style={{width:"30%"}}/></colgroup>
-                        <thead><tr><th>الصنف</th><th className="invoice-item-options-number">الرصيد (و1)</th></tr></thead>
+                        <colgroup><col style={{width:"30%"}}/><col style={{width:"70%"}}/></colgroup>
+                        <thead><tr><th className="invoice-item-options-number">الكمية (و1)</th><th>الصنف</th></tr></thead>
                         <tbody>{peers.peers.map(row => (
                           <tr key={row.id}>
+                            <td className="invoice-item-options-number" title={row.stockSmallest === null ? "غير متاح" :
+                              saleStockQuantity(row.stockSmallest, row, 1, 1)}>
+                              <bdi>{row.stockSmallest === null ? "—" :
+                                saleStockQuantity(row.stockSmallest, row, 1, 1)}</bdi>
+                            </td>
                             <td title={row.name}>
                               <button type="button" className="invoice-item-options-link"
                                 onClick={() => setAlternateItemId(row.id)}
                                 aria-label={`فتح كرت الصنف ${row.name}`}>
                                 {row.name}{row.active ? "": " (مؤرشف)"}
                               </button>
-                            </td>
-                            <td className="invoice-item-options-number" title={row.stockSmallest === null ? "غير متاح" :
-                              saleStockQuantity(row.stockSmallest, row, 1, 1)}>
-                              <bdi>{row.stockSmallest === null ? "—" :
-                                saleStockQuantity(row.stockSmallest, row, 1, 1)}</bdi>
                             </td>
                           </tr>
                         ))}</tbody>
