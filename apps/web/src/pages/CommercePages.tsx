@@ -1101,8 +1101,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [itemNotice, setItemNotice] = useState("");
   const [memoBlocked,setMemoBlocked]=useState(false);
   const [resetConfirmOpen,setResetConfirmOpen]=useState(false);
-  const [minimizeConfirmOpen,setMinimizeConfirmOpen]=useState(false);
-  const [invoiceMinimized,setInvoiceMinimized]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -1938,25 +1936,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   });
   return (
     <div className="commerce-document-page">
-      <div className="form-actions invoice-minimize-controls">
-        <Button variant="secondary" disabled={locked || cashboxBusy || !!editingItem}
-          onClick={() => {
-            if (invoiceMinimized) {
-              setInvoiceMinimized(false);
-              setFocusTarget({id:lineInputId(lines[0]!,"item-search")});
-            } else {
-              setMinimizeConfirmOpen(true);
-            }
-          }}>
-          {invoiceMinimized ? "تكبير الفاتورة" : "تصغير الفاتورة"}
-        </Button>
-        {invoiceMinimized && <small className="muted" role="status">
-          الفاتورة مصغّرة؛ جميع البيانات المدخلة ما زالت محفوظة مؤقتًا في هذه الصفحة ولم تُرحّل.
-        </small>}
-      </div>
-      <form onSubmit={(event) => void save(event)}
-        className="commerce-editor"
-        style={{display:invoiceMinimized?"none":undefined}}>
+      <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className={`commerce-header-card invoice-kind-${kind}`}>
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
@@ -2766,21 +2746,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             </div>
           </form>
         )}
-      </Dialog>
-      <Dialog open={minimizeConfirmOpen}
-        title="تأكيد تصغير الفاتورة"
-        onClose={() => setMinimizeConfirmOpen(false)}>
-        <p>هل تريد تصغير الفاتورة؟ سيُخفى نموذج الإدخال مؤقتًا دون حفظ أو ترحيل،
-          وستبقى الأصناف والمبالغ المدخلة كما هي عند تكبيرها.</p>
-        <div className="form-actions">
-          <Button variant="secondary" onClick={() => setMinimizeConfirmOpen(false)}>
-            إلغاء
-          </Button>
-          <Button onClick={() => {
-            setInvoiceMinimized(true);
-            setMinimizeConfirmOpen(false);
-          }}>نعم، تصغير الفاتورة</Button>
-        </div>
       </Dialog>
       <Dialog open={resetConfirmOpen}
         title="تأكيد تصفير الفاتورة"
