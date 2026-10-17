@@ -7,7 +7,7 @@ import type {
 } from "../../../../packages/contracts/src/wallet.ts";
 import { HttpError } from "../errors.ts";
 
-export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,(w.points-COALESCE(reserved.points,0))::text AS points,w.points::text AS total_points,COALESCE(reserved.points,0)::text AS reserved_points,w.money::text,c.code AS currency_code
+export const walletSummaryQuery = `SELECT w.employee_id,e.name AS employee_name,(w.points-COALESCE(reserved.points,0))::text AS points,w.points::text AS total_points,COALESCE(reserved.points,0)::text AS reserved_points,w.money::text,'YER'::text AS currency_code
  FROM employee_wallets w JOIN employees e ON e.company_id=w.company_id AND e.id=w.employee_id
  LEFT JOIN LATERAL (SELECT sum(points) AS points FROM wallet_conversions WHERE company_id=w.company_id AND employee_id=w.employee_id AND status='pending') reserved ON true
  LEFT JOIN finance_settings f ON f.company_id=w.company_id
