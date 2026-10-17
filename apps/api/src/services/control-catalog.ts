@@ -26,7 +26,8 @@ export const controlCatalog: readonly ControlOption[] = [
   { key: "auto_checkout_hours", label: "عدد ساعات الانصراف التلقائي", category: "الدوام", scope: "company", type: "hours", defaultValue: 16, min: 1, max: 48, integrated: true },
   { key: "show_header_points", label: "عرض مبلغ النقاط أعلى الشاشة", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
   { key: "idle_logout_hours", label: "تسجيل الخروج بعد السكون (ساعة؛ صفر للتعطيل)", category: "الموظف", scope: "employee", type: "hours", defaultValue: 0, min: 0, max: 72, integrated: true },
-  { key: "show_recent_item_purchases", label: "إظهار آخر خمس مشتريات للصنف أثناء الشراء", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
+  { key: "show_recent_item_purchases", label: "إظهار خيارات الصنف في فاتورة المشتريات", category: "الفواتير والسندات", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
+  { key: "show_item_options_sales", label: "إظهار خيارات الصنف في فاتورة المبيعات", category: "الفواتير والسندات", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
 ];
 export function controlByKey(key: string): ControlOption | undefined {
   return controlCatalog.find((option) => option.key === key);

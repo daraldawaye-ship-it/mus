@@ -550,6 +550,9 @@ export interface ItemCompositionPeers {
    name: string;
    active: boolean;
    smallestUnitName: string;
+   unit1Name: string;
+   factor2: number;
+   factor3: number;
    stockSmallest: string | null;
  }>;
 }

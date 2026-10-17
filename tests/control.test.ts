@@ -87,6 +87,11 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(option(empty,"auto_checkout_hours").value,16);
   assert.equal(option(empty,"idle_logout_hours").value,0);
   assert.equal(option(empty,"show_currency").revision,null);
+  const purchaseOptionsKey = "show_recent_item_purchases";
+  const salesOptionsKey = "show_item_options_sales";
+  assert.equal(option(empty, purchaseOptionsKey).value, true);
+  assert.equal(option(empty, salesOptionsKey).value, true);
+
   const write=await owner.ok<{revision:number}>("PUT",prefix+"/show_currency",
     {value:false,employeeId:null,revision:null});
   assert.equal(write.revision,1);
@@ -124,6 +129,22 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(log.rows.length,4);
   assert.equal(log.rows[0].action,"control.value");
   assert.equal(log.rows[0].after_value.value,false);
+
+  // Purchase and sales item options are independently scoped per employee and company.
+  await owner.ok("PUT",prefix+"/"+purchaseOptionsKey,
+    {value:false,employeeId:salesperson.employee.id,revision:null});
+  const oneDisabled=await owner.ok<Directory>("GET",prefix+`?employeeId=${salesperson.employee.id}`);
+  assert.equal(option(oneDisabled,purchaseOptionsKey).value,false);
+  assert.equal(option(oneDisabled,salesOptionsKey).value,true);
+  assert.equal(option(await owner.ok<Directory>("GET",prefix+`?employeeId=${accountant.employee.id}`),purchaseOptionsKey).value,true);
+  assert.equal(option(await owner.ok<Directory>("GET",`/companies/${second.id}/control`),purchaseOptionsKey).value,true);
+  assert.equal((await owner.request("PUT",prefix+"/"+salesOptionsKey,
+    {value:false,employeeId:null,revision:null})).status,400);
+  await owner.ok("PUT",prefix+"/"+salesOptionsKey,
+    {value:false,employeeId:salesperson.employee.id,revision:null});
+  const bothDisabled=await owner.ok<Directory>("GET",prefix+`?employeeId=${salesperson.employee.id}`);
+  assert.equal(option(bothDisabled,purchaseOptionsKey).value,false);
+  assert.equal(option(bothDisabled,salesOptionsKey).value,false);
 
   // Policies must protect API operations even when the form is bypassed.
   await owner.ok("PUT",prefix+"/edit_sales_date",
