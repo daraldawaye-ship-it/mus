@@ -85,7 +85,8 @@ function RecordOptionFields({
           : "لا"
         : value;
   const save = async (definition: OptionDefinition) => {
-    if (pending !== null || !canEdit) return;
+    if (pending !== null || !canEdit ||
+      (recordKind === "item" && !Object.prototype.hasOwnProperty.call(edited, definition.id))) return;
     const validation = optionValueError(definition, valueOf(definition));
     if (validation) {
       setError(definition.name + ": " + validation);
