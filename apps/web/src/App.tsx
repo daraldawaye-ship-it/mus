@@ -906,6 +906,8 @@ function Workspace() {
               {user ? (
                 <UserMenu
                   user={user}
+                  companyId={inCompany ? companyId : null}
+                  employeeId={inCompany ? navigationContext?.employee?.id ?? null : null}
                   onLogout={() => {
                     setLogoutError("");
                     void logout()
