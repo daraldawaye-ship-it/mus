@@ -733,6 +733,19 @@ export function itemRoutes(pool: Pool): Router {
             conflict(
               "تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ",
             );
+          // An archived item must have no remaining stock in any location.
+          // Include negative balances and opposing showroom/warehouse balances:
+          // a zero company total alone does not mean the item is empty.
+          if (before.active && !input.active) {
+            const balance = await client.query(
+              `SELECT 1 FROM item_statistics WHERE company_id=$1 AND item_id=$2
+               AND (stock_total<>0 OR stock_showroom<>0 OR stock_warehouse<>0)
+               FOR UPDATE`,
+              [companyId, rowId],
+            );
+            if (balance.rowCount)
+              conflict("لا يمكن أرشفة صنف له كمية في المخزون؛ صفّر رصيد جميع المواقع بالتسوية أولًا");
+          }
           const unitFields = [
             "unit1Name",
             "unit2Name",

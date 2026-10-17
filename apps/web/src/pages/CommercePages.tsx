@@ -1098,6 +1098,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [editingBusy, setEditingBusy] = useState(false);
   const [itemNotice, setItemNotice] = useState("");
   const [memoBlocked,setMemoBlocked]=useState(false);
+  const [resetConfirmOpen,setResetConfirmOpen]=useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const kind: InvoiceKind =
@@ -1696,6 +1697,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   function resetInvoice() {
     if (locked || editingItem) return;
+    setResetConfirmOpen(false);
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
@@ -2613,7 +2615,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <div className="commerce-save-actions">
               <Button
                 variant="secondary"
-                onClick={resetInvoice}
+                onClick={() => setResetConfirmOpen(true)}
                 disabled={locked || !!editingItem}
               >
                 تصفير الفاتورة
@@ -2635,6 +2637,20 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
         </footer>
       </form>
+      <Dialog open={resetConfirmOpen}
+        title="تأكيد تصفير الفاتورة"
+        onClose={() => setResetConfirmOpen(false)}>
+        <p>هل تريد تصفير هذه الفاتورة؟ ستُحذف جميع السطور والبيانات المدخلة غير المحفوظة، ولن يمكن استعادتها.</p>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setResetConfirmOpen(false)}>
+            العودة إلى الفاتورة
+          </Button>
+          <Button variant="danger" disabled={locked || !!editingItem}
+            onClick={resetInvoice}>
+            نعم، تصفير الفاتورة
+          </Button>
+        </div>
+      </Dialog>
       <Dialog open={doctorPromptOpen}
         title="اختيار الطبيب أو الجهة لفاتورة المبيعات"
         onClose={() => {
