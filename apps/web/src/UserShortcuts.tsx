@@ -1,7 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
-import { ChevronLeft, ListTree, Plus, Settings2, TableProperties } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ListTree, Settings2, TableProperties } from "lucide-react";
 import type { PageEntry, User, GeneralTableInput } from "../../../packages/contracts/src/index";
 import { generalTableSchema } from "../../../packages/contracts/src/index";
 import { api } from "./api";
@@ -9,6 +9,7 @@ import { usePageDirectory } from "./page-directory";
 import { useControls } from "./control";
 import { errorMessage } from "./phase2";
 import { Button, Dialog, Field, Notice } from "./ui";
+import { positionShortcutFlyout, type ShortcutPlacement } from "./shortcut-position";
 
 type Shortcuts = {pageKeys:string[]};
 type ShortcutsProps = {
@@ -28,6 +29,26 @@ export function UserShortcutFlyout({
   user,companyId,employeeId,onNavigate,onManage,onQuickAdd,
 }:ShortcutsProps) {
   const [open,setOpen]=useState(false);
+  const [placement,setPlacement]=useState<ShortcutPlacement>({mode:"inline"});
+  const root=useRef<HTMLDivElement>(null);
+  const flyoutId=useId();
+  useLayoutEffect(()=>{
+    if(!open)return;
+    const position=()=>{
+      const rect=root.current?.getBoundingClientRect();
+      if(!rect)return;
+      setPlacement(positionShortcutFlyout(rect,{
+        width:window.innerWidth,height:window.innerHeight,
+      }));
+    };
+    position();
+    window.addEventListener("resize",position);
+    window.addEventListener("scroll",position,true);
+    return ()=>{
+      window.removeEventListener("resize",position);
+      window.removeEventListener("scroll",position,true);
+    };
+  },[open]);
   const catalog=usePageDirectory(companyId??undefined);
   const settings=useControls(companyId??0,employeeId);
   const shortcutQuery=useQuery({
@@ -51,10 +72,18 @@ export function UserShortcutFlyout({
   const quickAllowed=(user.owner||user.kind==="admin") &&
     !!lookup.get("public.general-table")?.actionAccess.create;
   if(settings.value("show_shortcuts_menu")===false)return null;
-  return <div className="user-shortcut-root"
-    onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}>
+  return <div className="user-shortcut-root" ref={root}
+    onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}
+    onKeyDown={event=>{
+      if(event.key==="Escape" && open){
+        event.stopPropagation();
+        setOpen(false);
+      }
+    }}>
     <button className="user-menu-item" role="menuitem" type="button"
-      aria-haspopup="true" aria-expanded={open} onClick={()=>setOpen(v=>!v)}
+      aria-haspopup="true" aria-expanded={open}
+      aria-controls={open?flyoutId:undefined}
+      onClick={()=>setOpen(v=>!v)}
       onKeyDown={event=>{
         if(event.key==="ArrowLeft" || event.key==="ArrowRight"){
           event.preventDefault();setOpen(true);
@@ -62,9 +91,19 @@ export function UserShortcutFlyout({
       }}>
       <ListTree size={17} aria-hidden="true"/>
       <span>اختصار إلى</span>
-      <ChevronLeft size={14} aria-hidden="true" className="user-shortcut-arrow"/>
+      {placement.mode==="inline"
+        ? <ChevronDown size={14} aria-hidden="true" className="user-shortcut-arrow"/>
+        : placement.side==="left"
+          ? <ChevronLeft size={14} aria-hidden="true" className="user-shortcut-arrow"/>
+          : <ChevronRight size={14} aria-hidden="true" className="user-shortcut-arrow"/>}
     </button>
-    {open&&<div className="user-shortcut-flyout" aria-label="اختصاراتي">
+    {open&&<div id={flyoutId}
+      className={`user-shortcut-flyout user-shortcut-flyout--${placement.mode}`}
+      style={placement.mode==="side"?{
+        left:placement.left,top:placement.top,
+        width:placement.width,maxHeight:placement.maxHeight,
+      }:undefined}
+      aria-label="اختصاراتي">
       {defaultHref&&<NavLink to={defaultHref} onClick={onNavigate}
         className="user-menu-item"><ListTree size={15}/>قائمة الصفحات</NavLink>}
       {shortcuts.map(entry=><NavLink key={entry.key} to={entry.href!}
