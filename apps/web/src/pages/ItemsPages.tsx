@@ -453,6 +453,7 @@ export function ItemPage({ context }: { context: CompanyContext }) {
 type InvoiceItemEditorProps = {
   context: CompanyContext;
   itemId: number;
+  readOnly?: boolean;
   onSaved: (item: Item) => void;
   onClose: () => void;
   onSavingChange?: (saving: boolean) => void;
@@ -461,12 +462,17 @@ type InvoiceItemEditorProps = {
 export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   const { user } = useSession();
   const directory = usePageDirectory(props.context.company.id);
-  const allowed =
-    itemsAccess(props.context, true) &&
-    ["company.items", "company.item-card"].every((key) => {
-      const page = directory.data?.find((entry) => entry.key === key);
-      return !!page?.enabled && page.actionAccess.view && page.actionAccess.edit;
+  const pageKeys = ["company.items", "company.item-card"];
+  const canView = itemsAccess(props.context) &&
+    pageKeys.every(key => {
+      const page = directory.data?.find(entry => entry.key === key);
+      return !!page?.enabled && page.actionAccess.view;
     });
+  const canEdit = canView && itemsAccess(props.context, true) &&
+    pageKeys.every(key => !!directory.data?.find(entry => entry.key === key)?.actionAccess.edit);
+  // Open an editable card when authorized; fall back to read-only for staff.
+  const readOnly = props.readOnly ?? !canEdit;
+  const allowed = readOnly ? canView : canEdit;
   if (directory.isPending)
     return <Notice>جارٍ التحقق من صلاحية تعديل الصنف…</Notice>;
   if (directory.error)
@@ -481,7 +487,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   if (!allowed)
     return (
       <>
-        <Notice tone="warning">ليس لديك صلاحية تعديل كرت الصنف.</Notice>
+        <Notice tone="warning">ليس لديك صلاحية {readOnly ? "عرض" : "تعديل"} كرت الصنف.</Notice>
         <Button variant="secondary" onClick={props.onClose}>
           إغلاق
         </Button>
@@ -491,6 +497,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
     <InvoiceItemDetail
       key={`${user?.id}:${props.context.company.id}:${props.itemId}`}
       {...props}
+      readOnly={readOnly}
     />
   );
 }
@@ -501,6 +508,7 @@ function InvoiceItemDetail({
   onSaved,
   onClose,
   onSavingChange,
+  readOnly,
 }: InvoiceItemEditorProps) {
   const { user } = useSession();
   const [openingKey] = useState(() => crypto.randomUUID());
@@ -554,6 +562,7 @@ function InvoiceItemDetail({
       context={context}
       item={item}
       embedded
+      readOnly={readOnly}
       onClose={onClose}
       onSavingChange={onSavingChange}
       onSaved={onSaved}
@@ -1095,6 +1104,7 @@ function ItemEditor({
   item,
   onSaved,
   embedded = false,
+  readOnly = false,
   onClose,
   onReloaded,
   onSavingChange,
@@ -1103,6 +1113,7 @@ function ItemEditor({
   item: Item | null;
   onSaved: (item: Item, message: string) => void;
   embedded?: boolean;
+  readOnly?: boolean;
   onClose?: () => void;
   onReloaded?: (item: Item) => void;
   onSavingChange?: (saving: boolean) => void;
@@ -1176,13 +1187,13 @@ function ItemEditor({
   const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
   const adjustmentDirectory = usePageDirectory(companyId);
   const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
-  const canAdjust = !!item && !!adjustmentPage?.enabled &&
+  const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
     !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
   const [conflict, setConflict] = useState(false);
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
-  const disabled = !manage || saving || unknownCreation;
+  const disabled = readOnly || !manage || saving || unknownCreation;
   const allowNavigation = useRef(false);
   useEffect(() => {
     onSavingChange?.(saving);
@@ -1210,7 +1221,7 @@ function ItemEditor({
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!manage || saving) return;
+    if (readOnly || !manage || saving) return;
     setError("");
     const body = {
       ...fields,
@@ -1338,7 +1349,7 @@ function ItemEditor({
       )}
       <form onSubmit={(event) => void save(event)}>
         <div className="form-actions item-save-actions">
-          {manage && (
+          {manage && !readOnly && (
             <Button type="submit" disabled={saving}>
               {saving
                 ? "جارٍ الحفظ…"

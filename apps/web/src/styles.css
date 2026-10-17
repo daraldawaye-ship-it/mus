@@ -2053,6 +2053,42 @@ ul {
   text-overflow: ellipsis;
 }
 .invoice-item-options-table tbody tr { height: 25px; }
+.invoice-item-options-table .invoice-item-options-number {
+  direction: ltr;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-item-options-table td.invoice-item-options-number bdi {
+  width: 100%;
+  text-align: right;
+  direction: ltr;
+}
+.invoice-item-options-link {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: start;
+  font: inherit;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.invoice-item-options-link:hover,
+.invoice-item-options-link:focus-visible {
+  text-decoration-thickness: 2px;
+}
+.invoice-item-full-account {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
 .invoice-item-options-table th {
   font-weight: 700;
   background: var(--surface);
@@ -2106,6 +2142,11 @@ ul {
   font-size: 12px;
 }
 /* Semantic stock-expiry warnings without altering stored dates. */
+.expiry-month-field--too-future .expiry-month-fields input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+.expiry-month-alert--too-future { color: #ef4444; }
 .expiry-month-field--expired .expiry-month-fields input {
   border-color: #ef4444;
   background: rgba(239, 68, 68, 0.14);

@@ -1354,6 +1354,25 @@ test("item compositions support multilingual cards, strict flags, archived links
   assert.equal(redacted.canViewStock,false);
   assert.equal(redacted.peers[0]?.stockSmallest,null);
   assert.equal(redacted.total,1);
+  // Sort by converted first-unit stock before paging, not by raw smallest units.
+  const medium=await item(f,companyA.id,currencyA.id,{
+    name:"بديل كمية عشرة",compositionId:created.id,factor2:2,factor3:2,
+  });
+  const high=await item(f,companyA.id,currencyA.id,{
+    name:"بديل كمية تسعة",compositionId:created.id,factor2:1,factor3:1,
+  });
+  for(const [id,stock] of [[related.id,"100"],[medium.id,"40"],[high.id,"9"]] as const) {
+    await f.pool.query("UPDATE item_statistics SET stock_total=$3,stock_showroom=$3,stock_warehouse=0 WHERE company_id=$1 AND item_id=$2",
+      [companyA.id,id,stock]);
+  }
+  const ordered=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(ordered.total,3);
+  assert.deepEqual(ordered.peers.map(peer=>peer.id),[medium.id,high.id,related.id],
+    "Alternative list sorts true stock in unit 1, not raw smallest units");
+  assert.deepEqual(ordered.peers.map(peer=>peer.stockSmallest),["40","9","100"]);
+  const limited=(await viewRelated.client.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(limited.canViewStock,false);
+  assert.equal(limited.peers.every(peer=>peer.stockSmallest===null),true);
   assert.equal((await f.owner.request("GET",peersPath+"?page=0")).status,400);
   assert.equal((await f.owner.request("GET",peersPath+"?page=1x")).status,400);
   assert.equal((await f.owner.request("GET",`/companies/${companyB.id}/items/${itemA.id}/composition-peers`)).status,404);

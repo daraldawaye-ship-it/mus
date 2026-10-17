@@ -23,8 +23,16 @@ export function monthIsComplete(month: string): boolean {
 export function monthShouldAdvance(month: string): boolean {
   return monthIsComplete(month) && (month.length === 2 || /^[2-9]$/.test(month));
 }
-export function enteredMonthStart(month: string, year: string): string | null {
-  if (!monthIsComplete(month) || !/^[0-9]{4}$/.test(year)) return null;
+/** Reject future dates outside the next 30 calendar years or beyond year 2099. */
+export function expiryYearTooFar(year: string, currentMonth: string): boolean {
+  if (!/^[0-9]{4}$/.test(year)) return false;
+  const currentYear = Number(currentMonth.slice(0, 4));
+  if (!Number.isInteger(currentYear) || currentYear < 1) return false;
+  return Number(year) > Math.min(2099, currentYear + 30);
+}
+export function enteredMonthStart(month: string, year: string, currentMonth = adenCurrentMonth()): string | null {
+  if (!monthIsComplete(month) || !/^[0-9]{4}$/.test(year) ||
+      expiryYearTooFar(year, currentMonth)) return null;
   return monthStartDate(`${year}-${month.padStart(2, "0")}`);
 }
 export type ExpiryUrgency = "none" | "expired" | "soon";
@@ -106,8 +114,19 @@ export function ExpiryMonthField({
     setYear(digits);
     commit(month, digits);
   }
+  const todayMonth = adenCurrentMonth();
+  const tooFuture = expiryYearTooFar(year, todayMonth);
+  const entered = enteredMonthStart(month, year, todayMonth);
   const invalid = month !== "" && month.length === 2 && !monthIsComplete(month);
-  const urgency = expiryUrgency(enteredMonthStart(month, year), adenCurrentMonth());
+  const partiallyEntered = !!month || !!year;
+  const validationMessage = tooFuture
+    ? `سنة انتهاء غير منطقية؛ الحد الأقصى ${Math.min(2099, Number(todayMonth.slice(0,4)) + 30)}`
+    : partiallyEntered && !entered ? "يرجى إدخال شهر وسنة صالحين" : "";
+  useEffect(() => {
+    // Native form constraint validation also blocks optional expiry fields.
+    yearInput.current?.setCustomValidity(validationMessage);
+  }, [validationMessage]);
+  const urgency = tooFuture ? "too-future" : expiryUrgency(entered, todayMonth);
 
   return (
     <div className={["field floating-ready expiry-month-field", urgency === "none" ? "" : "expiry-month-field--" + urgency, className].filter(Boolean).join(" ")}
@@ -116,7 +135,7 @@ export function ExpiryMonthField({
       <div className="expiry-month-fields" dir="ltr">
         <input id={monthId} ref={monthInput} type="text" inputMode="numeric"
           autoComplete="off" placeholder="MM" maxLength={2}
-          aria-label={`${label} — الشهر`} aria-invalid={!!error || invalid || undefined}
+          aria-label={`${label} — الشهر`} aria-invalid={!!error || invalid || tooFuture || undefined}
           aria-describedby={hint || error ? `${monthId}-hint` : undefined}
           required={required} disabled={disabled} readOnly={readOnly}
           value={month} onChange={event => editMonth(event.target.value)}
@@ -146,7 +165,7 @@ export function ExpiryMonthField({
           autoComplete="off" placeholder="YYYY" maxLength={4}
           aria-label={`${label} — السنة`}
           aria-describedby={hint || error ? `${monthId}-hint` : undefined}
-          aria-invalid={!!error || undefined}
+          aria-invalid={!!error || !!validationMessage || undefined}
           name={name} required={required} disabled={disabled} readOnly={readOnly}
           value={year} onChange={event => editYear(event.target.value)}
           onFocus={event => { event.target.select(); onFocus?.(event); }}
@@ -167,7 +186,9 @@ export function ExpiryMonthField({
         className={error ? "text-error" : undefined}>{error ?? hint}</small>}
       {urgency !== "none" && (
         <small role="status" className={"expiry-month-alert expiry-month-alert--" + urgency}>
-          {urgency === "expired" ? "انتهت صلاحية الصنف" : "قريب الانتهاء: خلال الشهر الحالي أو القادم"}
+          {urgency === "too-future" ? validationMessage :
+            urgency === "expired" ? "انتهت صلاحية الصنف" :
+            "قريب الانتهاء: خلال الشهر الحالي أو القادم"}
         </small>
       )}
     </div>

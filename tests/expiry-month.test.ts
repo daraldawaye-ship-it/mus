@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { enteredMonthStart, expiryDigits, expiryMonth, expiryUrgency, monthIsComplete, monthShouldAdvance, monthStartDate } from "../apps/web/src/ExpiryMonthField.tsx";
+import { enteredMonthStart, expiryDigits, expiryMonth, expiryUrgency, expiryYearTooFar, monthIsComplete, monthShouldAdvance, monthStartDate } from "../apps/web/src/ExpiryMonthField.tsx";
 import { formatWholeMoney } from "../apps/web/src/format-money.ts";
 
 test("month/year expiry entry generates the first calendar day", () => {
@@ -65,4 +65,19 @@ test("expiry alerts use the end of each month in Aden, not the stored first day"
   assert.equal(expiryUrgency(null, "2026-10"), "none");
   assert.equal(expiryUrgency("invalid", "2026-10"), "none");
   assert.equal(expiryUrgency("2026-13-01", "2026-10"), "none");
+});
+
+test("expiry date cannot be committed more than 30 years ahead or after 2099", () => {
+  assert.equal(expiryYearTooFar("2127", "2026-10"), true);
+  assert.equal(expiryYearTooFar("2056", "2026-10"), false);
+  assert.equal(expiryYearTooFar("2057", "2026-10"), true);
+  assert.equal(expiryYearTooFar("2099", "2080-01"), false);
+  assert.equal(expiryYearTooFar("2100", "2080-01"), true);
+  assert.equal(expiryYearTooFar("2099", "2060-01"), true);
+  assert.equal(expiryYearTooFar("2050", "2026-10"), false);
+  assert.equal(expiryYearTooFar("", "2026-10"), false);
+  assert.equal(enteredMonthStart("10", "2127", "2026-10"), null);
+  assert.equal(enteredMonthStart("10", "2056", "2026-10"), "2056-10-01");
+  assert.equal(enteredMonthStart("10", "2057", "2026-10"), null);
+  assert.equal(enteredMonthStart("01", "2100", "2080-01"), null);
 });
