@@ -51,7 +51,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { saleStockQuantity } from "../sale-stock-quantity";
+import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -394,12 +394,6 @@ function emptyLine(returning = false): DraftLine {
 }
 const lineInputId = (line: DraftLine, field: string) =>
   `invoice-${field}-${line.key}`;
-/** Invoice item lookup quantities are display-only, never used for posting. */
-export function invoiceSearchStock(item: Pick<Item,"availableSmallest"|"factor2"|"factor3">): string {
-  if(item.availableSmallest == null) return "—";
-  const value=saleStockQuantity(item.availableSmallest,item,1,1);
-  return value.includes(".")?value:value+".0";
-}
 
 
 function ItemSearch({
