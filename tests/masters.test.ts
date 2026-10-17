@@ -2053,16 +2053,16 @@ test("account card choice labels retain exact order and support create, update, 
     "Stopped account is hidden in active-only listing");
   const reclassified = (await f.owner.ok<{account:Account}>(
     "PATCH",`/companies/${company.id}/accounts/${chosen.id}`,
-    {accountChoice:"supplier"},
+    {accountChoice:"customer"},
   )).account;
   assert.equal(reclassified.active,false, "Choice change must not reactivate account");
-  assert.equal(reclassified.accountChoice,"supplier");
+  assert.equal(reclassified.accountChoice,"customer");
   const reactivated = (await f.owner.ok<{account:Account}>(
     "PATCH",`/companies/${company.id}/accounts/${chosen.id}`,
     {active:true},
   )).account;
   assert.equal(reactivated.active,true);
-  assert.equal(reactivated.accountChoice,"supplier",
+  assert.equal(reactivated.accountChoice,"customer",
     "Active change must preserve account choice");
   for (const invalid of ["cashbox-third","nonexistent",1]) {
     assert.equal((await f.owner.request("PATCH",
