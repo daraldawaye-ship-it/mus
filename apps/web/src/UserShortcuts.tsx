@@ -31,24 +31,8 @@ export function UserShortcutFlyout({
   const [open,setOpen]=useState(false);
   const [placement,setPlacement]=useState<ShortcutPlacement>({mode:"inline"});
   const root=useRef<HTMLDivElement>(null);
+  const flyout=useRef<HTMLDivElement>(null);
   const flyoutId=useId();
-  useLayoutEffect(()=>{
-    if(!open)return;
-    const position=()=>{
-      const rect=root.current?.getBoundingClientRect();
-      if(!rect)return;
-      setPlacement(positionShortcutFlyout(rect,{
-        width:window.innerWidth,height:window.innerHeight,
-      }));
-    };
-    position();
-    window.addEventListener("resize",position);
-    window.addEventListener("scroll",position,true);
-    return ()=>{
-      window.removeEventListener("resize",position);
-      window.removeEventListener("scroll",position,true);
-    };
-  },[open]);
   const catalog=usePageDirectory(companyId??undefined);
   const settings=useControls(companyId??0,employeeId);
   const shortcutQuery=useQuery({
@@ -71,6 +55,40 @@ export function UserShortcutFlyout({
       !!entry && entry.key!==defaultPage?.key);
   const quickAllowed=(user.owner||user.kind==="admin") &&
     !!lookup.get("public.general-table")?.actionAccess.create;
+  useLayoutEffect(()=>{
+    if(!open)return;
+    const position=()=>{
+      const anchor=root.current?.getBoundingClientRect();
+      if(!anchor)return;
+      // scrollHeight measures all links, even if the inline preview is
+      // currently scroll-clipped. It changes when shortcuts load.
+      const measuredHeight=Math.ceil(flyout.current?.scrollHeight??0)+2;
+      const next=positionShortcutFlyout(anchor,{
+        width:window.innerWidth,height:window.innerHeight,
+      },measuredHeight);
+      setPlacement(previous=>{
+        if(previous.mode!==next.mode)return next;
+        if(previous.mode==="inline")return previous;
+        if(next.mode==="side" && previous.side===next.side &&
+          previous.left===next.left && previous.top===next.top &&
+          previous.width===next.width &&
+          previous.maxHeight===next.maxHeight)return previous;
+        return next;
+      });
+    };
+    position();
+    window.addEventListener("resize",position);
+    window.addEventListener("scroll",position,true);
+    const observer=typeof ResizeObserver!=="undefined"
+      ? new ResizeObserver(position):null;
+    if(flyout.current)observer?.observe(flyout.current);
+    return ()=>{
+      window.removeEventListener("resize",position);
+      window.removeEventListener("scroll",position,true);
+      observer?.disconnect();
+    };
+  },[open,shortcuts.length,!!defaultHref,quickAllowed,
+     catalog.isLoading,shortcutQuery.isError]);
   if(settings.value("show_shortcuts_menu")===false)return null;
   return <div className="user-shortcut-root" ref={root}
     onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}
@@ -97,7 +115,7 @@ export function UserShortcutFlyout({
           ? <ChevronLeft size={14} aria-hidden="true" className="user-shortcut-arrow"/>
           : <ChevronRight size={14} aria-hidden="true" className="user-shortcut-arrow"/>}
     </button>
-    {open&&<div id={flyoutId}
+    {open&&<div id={flyoutId} ref={flyout}
       className={`user-shortcut-flyout user-shortcut-flyout--${placement.mode}`}
       style={placement.mode==="side"?{
         left:placement.left,top:placement.top,
