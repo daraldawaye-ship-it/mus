@@ -23,6 +23,7 @@ import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
+import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
 import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
 
 async function readCommerce<T>(
@@ -338,6 +339,40 @@ export function commerceRoutes(pool: Pool): Router {
       const result=await mutateMaster(pool,req,"finance.post",
         async (client,user,companyId)=>
           receivePouchMovement(client,companyId,user,input),
+      );
+      res.status(201).json({receipt:result});
+    }),
+  );
+  // Receipt source is resolved from the original electronic-wallet transfer,
+  // whose destination was selected via the company's account links.
+  router.get(
+    `${base}/electronic-receipts`,
+    handler(async (req,res) => {
+      const companyId=id(req.params.companyId);
+      const status=parse(
+        z.enum(["all","pending","received"]),
+        typeof req.query.status==="string"?req.query.status:"pending",
+      );
+      const page=parse(z.coerce.number().int().min(1).max(1000000),
+        typeof req.query.page==="string"?req.query.page:"1");
+      const pageSize=parse(z.coerce.number().int().min(1).max(100),
+        typeof req.query.pageSize==="string"?req.query.pageSize:"50");
+      const result=await transaction(pool,async client=>{
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user=await currentActor(client,actor(req),false);
+        await companyAccess(client,user,companyId,"finance.view");
+        return listElectronicReceipts(client,companyId,status,pageSize,(page-1)*pageSize);
+      });
+      res.json(result);
+    }),
+  );
+  router.post(
+    `${base}/electronic-receipts`,
+    handler(async (req,res)=>{
+      const input=parse(electronicReceiptSchema,req.body);
+      const result=await mutateMaster(pool,req,"finance.post",
+        async (client,user,companyId)=>
+          receiveElectronicMovement(client,companyId,user,input),
       );
       res.status(201).json({receipt:result});
     }),
