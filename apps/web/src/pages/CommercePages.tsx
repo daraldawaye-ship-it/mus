@@ -2014,6 +2014,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                       onClick={()=>openCashboxAction("close")}>إغلاق الصندوق</Button>
                   </div>
                 )}
+                {kind==="sale" && (
+                  <Link className="button button-secondary commerce-list-link"
+                    to={`/companies/${companyId}/pouch-receipts`}>
+                    استلام الترحيلات
+                  </Link>
+                )}
                 <Link
                   className="button button-secondary commerce-list-link"
                   to={listPath(companyId, kind)}
