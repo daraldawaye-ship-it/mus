@@ -997,7 +997,9 @@ test("archiving never reuses automatic codes and database guards protect identit
 test("item archival is denied while any location retains positive or negative stock",async(t)=>{
   const f=await fixture(t);
   const c=await f.company("أرشفة الأرصدة");
-  const curr=await currency(f,c.id);
+  const curr=(await f.owner.ok<Page<CompanyCurrency>>(
+    "GET",`/companies/${c.id}/currencies`,
+  )).items.find(currency=>currency.code==="YER")!;
   const saved=await item(f,c.id,curr.id);
   const url=`/companies/${c.id}/items/${saved.id}`;
   async function setStock(showroom:string,warehouse:string,total:string) {
