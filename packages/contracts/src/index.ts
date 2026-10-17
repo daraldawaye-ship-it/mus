@@ -148,6 +148,7 @@ export const auditActionLabels = {
   "itemShelf.update": "تعديل كرت رف",
   "item.create": "إضافة صنف",
   "item.update": "تعديل صنف",
+  "item.field.update": "تعديل حقل في كرت الصنف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "memo.feature-rule": "تعديل قاعدة متابعة المذكرات",
   "memo.feature-trigger": "تحقق قاعدة ميزات مرتبطة بالمذكرات",
