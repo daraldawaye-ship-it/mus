@@ -18,6 +18,12 @@ const points = z
       ),
   )
   .transform((value) => BigInt(value).toString());
+const signedManualPoints = z.string().max(100).trim()
+  .transform(normalizeDigits)
+  .pipe(z.string().regex(/^-?[0-9]{1,18}$/,
+    "أدخل عدد نقاط صحيحًا؛ استخدم السالب للخصم"))
+  .transform(value => BigInt(value).toString())
+  .refine(value => value !== "0", "لا يمكن إدخال صفر");
 const reason = z.string().trim().min(1, "اكتب سبب العملية").max(500);
 export const rewardRepeatRuleSchema = z.enum([
   "per-document",
@@ -29,10 +35,7 @@ export type RewardRepeatRule = z.infer<typeof rewardRepeatRuleSchema>;
 export const walletAwardSchema = z
   .object({
     employeeId: id,
-    points: points.refine(
-      (value) => value !== "0",
-      "يجب أن تكون النقاط أكبر من صفر",
-    ),
+    points: signedManualPoints,
     reason,
     idempotencyKey: z.uuid(),
   })
@@ -206,7 +209,7 @@ export interface WalletEntry {
   id: number;
   employeeId: number;
   employeeName: string;
-  kind: "manual" | "automatic" | "reversal" | "conversion" | "attendance" | "clearance";
+  kind: "manual" | "manual_debit" | "automatic" | "reversal" | "conversion" | "attendance" | "clearance";
   attendanceEntryId?: number | null;
   clearanceEarningId?: number | null;
   attendanceRecordId?: number | null;

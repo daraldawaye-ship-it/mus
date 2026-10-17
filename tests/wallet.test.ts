@@ -195,7 +195,7 @@ test("wallet awards and reversals are exact, transactional, immutable and idempo
   );
   for (const invalid of [
     { points: "1e3" },
-    { points: "-1" },
+    { points: "-0" },
     { money: "50" },
   ]) {
     assert.equal(
@@ -746,4 +746,40 @@ test("daily company entry rewards are opt-in, scoped, role-limited and once per 
     (await peer.client.request("POST", secondBase + "/activate")).status,
     403,
   );
+});
+
+test("signed manual wallet additions deduct the shared balance exactly once and cannot overdraft", async t => {
+  const f=await fixture(t);
+  const company=await f.company("Signed wallet operations");
+  const staff=await f.staff(company.id,"Deduction employee");
+  const path=`/companies/${company.id}/wallet`;
+  const summary=async()=>f.owner.ok<WalletDirectory>(
+    "GET",`${path}?employeeId=${staff.employee.id}`);
+  const add={employeeId:staff.employee.id,points:"100",
+    reason:"مكافأة إدارية",idempotencyKey:randomUUID()};
+  const saved=(await f.owner.ok<{entry:WalletEntry}>("POST",path+"/awards",add)).entry;
+  assert.equal(saved.kind,"manual");
+  const deduct={employeeId:staff.employee.id,points:"-35",
+    reason:"خصم إداري مسجل",idempotencyKey:randomUUID()};
+  const results=await Promise.all([
+    f.owner.ok<{entry:WalletEntry}>("POST",path+"/awards",deduct),
+    f.owner.ok<{entry:WalletEntry}>("POST",path+"/awards",deduct),
+  ]);
+  assert.deepEqual(results[0]!.entry,results[1]!.entry);
+  assert.equal(results[0]!.entry.kind,"manual_debit");
+  assert.equal(results[0]!.entry.points,"-35");
+  assert.equal((await summary()).wallet!.points,"65");
+  assert.equal((await f.owner.request("POST",path+"/awards",
+    {...deduct,points:"-36"})).status,409);
+  assert.equal((await f.owner.request("POST",path+"/awards",
+    {...deduct,points:"-66",idempotencyKey:randomUUID()})).status,409,
+    "Not even an administrator may deduct more than the available wallet");
+  assert.equal((await summary()).wallet!.points,"65");
+  const ledger=await summary();
+  assert.equal(ledger.items.filter(x=>x.kind==="manual_debit").length,1);
+  assert.equal(ledger.items.find(x=>x.kind==="manual_debit")!.reason,"خصم إداري مسجل");
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::integer AS count FROM audit_events WHERE company_id=$1 AND action='wallet.deduct'",
+    [company.id]
+  )).rows[0]!.count,1);
 });

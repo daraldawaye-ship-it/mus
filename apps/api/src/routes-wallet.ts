@@ -522,7 +522,7 @@ export function walletRoutes(pool: Pool) {
         const { companyId, user, context } = await scope(client, req, true);
         manageEmployees(user, context);
         const payload = {
-          kind: "manual",
+          kind: BigInt(input.points) < 0n ? "manual_debit" : "manual",
           employeeId: input.employeeId,
           points: input.points,
           reason: input.reason,
@@ -541,9 +541,13 @@ export function walletRoutes(pool: Pool) {
           input.employeeId,
         );
         const before = await walletSummary(client, companyId, employee.id);
+        if (BigInt(input.points) < 0n &&
+            (!before || BigInt(before.points) < -BigInt(input.points)))
+          throw new HttpError(409, "insufficient_points",
+            "لا يمكن الخصم بأكثر من الرصيد المتاح بعد حجز طلبات التحويل");
         const inserted = await client.query(
           `INSERT INTO employee_wallet_entries(company_id,employee_id,employee_name,kind,points,reason,idempotency_key,request_payload,created_by,created_by_name)
-        VALUES($1,$2,$3,'manual',$4,$5,$6,$7,$8,$9) RETURNING id`,
+        VALUES($1,$2,$3,$10,$4,$5,$6,$7,$8,$9) RETURNING id`,
           [
             companyId,
             employee.id,
@@ -554,6 +558,7 @@ export function walletRoutes(pool: Pool) {
             JSON.stringify(payload),
             user.id,
             user.displayName,
+            BigInt(input.points) < 0n ? "manual_debit" : "manual",
           ],
         );
         const after = walletEntryDTO(
@@ -567,7 +572,7 @@ export function walletRoutes(pool: Pool) {
         await audit(
           client,
           user,
-          "wallet.award",
+          BigInt(input.points) < 0n ? "wallet.deduct" : "wallet.award",
           "wallet-entry",
           after.id,
           { wallet: before },

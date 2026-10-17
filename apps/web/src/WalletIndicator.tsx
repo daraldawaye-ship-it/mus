@@ -61,7 +61,7 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
             ? BigInt(wallet.points).toLocaleString("ar-YE")
             : "…"}
       </span>
-      <span className="desktop-only">نقطة</span>
+      {/* The coin glyph and amount identify the unified YER balance. */}
     </Link>
   );
 }

@@ -215,7 +215,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         setReversal(null);
         setNotice(
           isAward
-            ? "تمت إضافة النقاط وحفظها في السجل."
+            ? (BigInt(award?.points ?? "0") < 0n
+              ? "تم خصم النقاط وتوثيق السبب في سجل المحفظة."
+              : "تمت إضافة النقاط وحفظها في السجل.")
             : "تم عكس المكافأة مع الاحتفاظ بسجلها الأصلي.",
         );
       }
@@ -240,6 +242,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       cell: ({ row }) =>
         row.original.kind === "manual"
           ? "إضافة إدارية"
+          : row.original.kind === "manual_debit"
+            ? "خصم إداري"
           : row.original.kind === "attendance"
             ? "مكافأة الدوام والحضور"
             : row.original.kind === "clearance"
@@ -529,8 +533,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
                 label="عدد النقاط"
                 required
                 inputMode="numeric"
-                pattern="[1-9][0-9]*"
-                maxLength={18}
+                pattern="-?[0-9]+"
+                maxLength={19}
                 value={award.points}
                 disabled={pending}
                 onChange={(event) =>
@@ -540,8 +544,11 @@ export function WalletPage({ context }: { context: CompanyContext }) {
                   })
                 }
               />
+              <small className="muted">
+                الموجب يضاف إلى المحفظة والسالب يخصم منها، دون تجاوز الرصيد المتاح.
+              </small>
               <Field
-                label="سبب الإضافة"
+                label="سبب الإضافة أو الخصم"
                 required
                 maxLength={500}
                 value={award.reason}
@@ -574,7 +581,9 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           )}
           <div className="form-actions">
             <Button type="submit" disabled={pending}>
-              {pending ? "جارٍ الحفظ…" : award ? "إضافة النقاط" : "تأكيد العكس"}
+              {pending ? "جارٍ الحفظ…" : award
+                ? (award.points.startsWith("-") ? "خصم النقاط" : "إضافة النقاط")
+                : "تأكيد العكس"}
             </Button>
             <Button
               variant="secondary"

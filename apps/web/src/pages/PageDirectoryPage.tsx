@@ -195,9 +195,13 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
             <Button
               variant="ghost"
               size="compact"
+              title={row.original.record
+                ? "حدد السجل المطلوب من تفاصيل الصفحة"
+                : "اطلع على سبب عدم توفر فتح الصفحة وما تحتاجه من صلاحيات"}
+              aria-label={`فتح ${row.original.name} (التفاصيل)`}
               onClick={() => setSelected(row.original.key)}
             >
-              {row.original.record ? "سجل محدد" : "التفاصيل"}
+              <ArrowUpRight size={14} /> فتح
             </Button>
           ),
       },

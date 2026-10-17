@@ -81,6 +81,8 @@ jobs:
         run: node --import tsx --test --test-name-pattern="Item shelf cards are real company-scoped" tests/items.test.ts
       - name: Test safe composition bulk import and long names
         run: node --import tsx --test --test-name-pattern="composition bulk import" tests/items.test.ts
+      - name: Test signed administrative wallet deduction and idempotence
+        run: node --import tsx --test --test-name-pattern="signed manual wallet additions deduct" tests/wallet.test.ts
       - name: Test wallets, page visits and daily company entry
         run: node --import tsx --test tests/wallet.test.ts
       - name: Test wallet conversion policy and read-only preview
