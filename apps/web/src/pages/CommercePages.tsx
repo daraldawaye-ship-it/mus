@@ -1258,6 +1258,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(null);
   const [doctorError,setDoctorError]=useState("");
   const doctorField=useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if(doctorPromptOpen) doctorField.current?.focus();
+  },[doctorPromptOpen]);
   const doctorChoices=useQuery({
     queryKey:["invoice-doctors",user?.id,companyId,doctorQuery],
     enabled:!!user && kind==="sale" && doctorPromptOpen,
