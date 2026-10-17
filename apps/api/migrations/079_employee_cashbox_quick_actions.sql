@@ -20,13 +20,15 @@ BEGIN
    AND code='5000000000' AND category='expense' AND kind='group' AND active;
  IF NOT FOUND THEN RETURN; END IF;
  -- Do not reuse an unrelated account if the preferred code is already taken.
- FOR k IN 5499999000..5499999999 LOOP
+ k:=5499999000;
+ WHILE k<=5499999999 LOOP
    SELECT * INTO a FROM accounts WHERE company_id=p_company_id AND code=k::text;
    IF FOUND THEN
      IF a.kind='posting' AND a.category='expense' AND a.active
        AND a.parent_id=root.id AND a.name='عجز وزيادة الصناديق' THEN
        chosen:=a.id; EXIT;
      END IF;
+     k:=k+1;
      CONTINUE;
    END IF;
    INSERT INTO accounts(company_id,code,name,parent_id,kind,category,normal_side,
@@ -35,6 +37,7 @@ BEGIN
           'expense','debit',true,p_actor_id,false,'administrative')
    ON CONFLICT(company_id,code) DO NOTHING RETURNING id INTO chosen;
    IF chosen IS NOT NULL THEN EXIT; END IF;
+   k:=k+1;
  END LOOP;
  IF chosen IS NULL THEN RETURN; END IF;
  INSERT INTO account_links(company_id,purpose,account_id)
