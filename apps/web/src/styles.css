@@ -3418,3 +3418,10 @@ ul {
   overflow-wrap: anywhere;
   user-select: text;
 }
+
+/* Pouch receipt register is readable on mobile without squeezing amount fields. */
+.pouch-receipts-table-wrap { max-width:100%; overflow-x:auto; }
+.pouch-receipts-table { min-width:900px; width:100%; }
+.pouch-receipts-table th,
+.pouch-receipts-table td { padding:9px; vertical-align:middle; }
+.pouch-receipts-actions { display:flex; gap:6px; flex-wrap:wrap; min-width:210px; }
