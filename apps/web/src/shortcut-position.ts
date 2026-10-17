@@ -10,7 +10,7 @@ export type ShortcutPlacement =
   | {mode:"side";side:"left"|"right";left:number;top:number;width:number;maxHeight:number};
 
 export function positionShortcutFlyout(
-  anchor:ShortcutAnchor,viewport:ShortcutViewport,
+  anchor:ShortcutAnchor,viewport:ShortcutViewport,contentHeight=540,
 ):ShortcutPlacement {
   const margin=8;
   const overlap=2; // no mouse-leave gap between parent and flyout
@@ -24,7 +24,11 @@ export function positionShortcutFlyout(
   const side=rightSpace>=leftSpace?"right":"left";
   const width=Math.min(desiredWidth,maximumSideSpace);
   const left=side==="right"?anchor.right-overlap:anchor.left-width+overlap;
-  const maxHeight=Math.min(540,Math.max(0,viewport.height-2*margin));
+  // A short flyout (e.g. three default links for a new user) must be
+  // aligned with its trigger. Clamping by a hypothetical 540px menu used to
+  // push such flyouts to the viewport top, leaving an unhoverable gap.
+  const maxHeight=Math.min(540,Math.max(0,viewport.height-2*margin),
+    Math.max(1,Math.ceil(contentHeight)));
   const top=Math.max(margin,Math.min(anchor.top,viewport.height-margin-maxHeight));
   return {mode:"side",side,left,top,width,maxHeight};
 }
