@@ -197,7 +197,7 @@ test("calendar windows include exact boundaries, Saturday, leap day, and exclude
   assert.equal(refreshed.operations.payment?.totalsBase.currentMonth, "22528");
   assert.equal(refreshed.components.activity?.state, "ready");
   assert.equal(refreshed.components.commerce?.state, "ready");
-  assert.equal(refreshed.components.stock.state, "uncomputed");
+  assert.equal(refreshed.components.stock?.state, "ready");
   await f.owner.ok("POST", `${s.base}/financial-documents/${posted.id}/post`, { revision: draft.revision });
   assert.equal((await s.stats()).operations.payment?.documentsAllTime, "14", "A successful posting retry cannot duplicate activity");
 });
@@ -393,7 +393,7 @@ test("family permissions redact values, source references and metadata without c
   }
   assert.equal(hidden.components.activity, null);
   assert.equal(hidden.components.commerce, null);
-  assert.equal(hidden.components.stock.state, "uncomputed");
+  assert.equal(hidden.components.stock?.state, "ready");
   assert.equal((await foreign.client.request("GET", `${s.base}/accounts/${s.customer.id}/statistics?asOfDate=2024-01-31`)).status, 403);
   assert.equal((await f.owner.request("GET", `${s.base}/accounts/${other.customer.id}/statistics?asOfDate=2024-01-31`)).status, 404);
 });

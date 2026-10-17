@@ -405,7 +405,7 @@ test("historical account balances use exact posted history, inclusive cutoffs an
   assert.equal(historical.components.balance.asOfDate, "2024-03-01");
   for (const part of ["activity", "commerce"] as const)
     assert.equal(historical.components[part]?.state, "ready");
-  assert.equal(historical.components.stock.state, "uncomputed");
+  assert.equal(historical.components.stock?.state, "ready");
   assert.equal(historical.lastFollowUp, null);
   assert.equal(historical.lastApproval, null);
   assert.deepEqual(historical.approvalQuote, {

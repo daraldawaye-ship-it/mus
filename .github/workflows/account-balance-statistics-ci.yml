@@ -1,4 +1,4 @@
-name: Account balance and activity statistics
+name: Account balance, activity and stock statistics
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ on:
       - "tests/account-balance-statistics.test.ts"
       - "tests/account-activity-statistics.test.ts"
       - "tests/account-activity-upgrade.test.ts"
+      - "tests/account-stock-value.test.ts"
       - "tests/account-statistics-foundation.test.ts"
       - ".github/workflows/account-balance-statistics-ci.yml"
   workflow_dispatch:
@@ -37,6 +38,7 @@ jobs:
       ACCOUNT_BALANCE_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
       ACCOUNT_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
       ACCOUNT_ACTIVITY_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_STOCK_VALUE_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
       TZ: Asia/Aden
     steps:
       - uses: actions/checkout@v4
@@ -47,5 +49,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - name: Verify history, periods, source deduplication, authorization and upgrades
-        run: node --import tsx --test tests/account-statistics-foundation.test.ts tests/account-balance-statistics.test.ts tests/account-activity-statistics.test.ts tests/account-activity-upgrade.test.ts
+      - name: Verify history, periods, stock valuation, authorization and upgrades
+        run: node --import tsx --test tests/account-statistics-foundation.test.ts tests/account-balance-statistics.test.ts tests/account-activity-statistics.test.ts tests/account-activity-upgrade.test.ts tests/account-stock-value.test.ts
