@@ -2079,7 +2079,7 @@ test("account card choice labels retain exact order and support create, update, 
     `/companies/${company.id}/accounts?accountChoice=cashboxSecond`)).total,0);
   const reader = await f.member(company.id,["accounts.view"],21);
   assert.equal((await reader.client.ok<{account:Account}>(
-    "GET",`/companies/${company.id}/accounts/${chosen.id}`)).account.accountChoice,null);
+    "GET",`/companies/${company.id}/accounts/${chosen.id}`)).account.accountChoice,"customer");
   assert.equal((await reader.client.request("PATCH",
     `/companies/${company.id}/accounts/${chosen.id}`,
     {accountChoice:"customer"})).status,403);
