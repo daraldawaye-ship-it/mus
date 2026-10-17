@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Pool, PoolClient } from "pg";
 import {
   walletAwardSchema,
@@ -443,9 +444,74 @@ export function walletRoutes(pool: Pool) {
               : await walletSummary(client, companyId, selected),
           employees,
           canManage: context.general,
+          clearanceTotals: selected === null ? [] : (await client.query(
+            `SELECT currency_id AS "currencyId", currency_code AS "currencyCode",
+               sum(amount)::text AS amount, count(*)::int AS "lineCount"
+             FROM employee_clearance_earnings
+             WHERE company_id=$1 AND employee_id=$2
+             GROUP BY currency_id,currency_code ORDER BY currency_code`,
+            [companyId, selected],
+          )).rows,
+          clearanceHistory: selected === null ? [] : (await client.query(
+            `SELECT ce.id,ce.invoice_id AS "invoiceId",
+               i.number AS "invoiceNumber",ce.invoice_line_id AS "invoiceLineId",
+               ce.item_name AS "itemName",ce.document_date::text AS "documentDate",
+               ce.currency_code AS "currencyCode",ce.commission_rate::text AS "rate",
+               ce.amount::text AS amount,ce.created_at AS "createdAt"
+             FROM employee_clearance_earnings ce
+             JOIN invoices i ON i.company_id=ce.company_id AND i.id=ce.invoice_id
+             WHERE ce.company_id=$1 AND ce.employee_id=$2
+             ORDER BY ce.created_at DESC,ce.id DESC LIMIT 50`,
+            [companyId, selected],
+          )).rows,
+          pendingReturnReviews: context.general ? (await client.query(
+            `SELECT r.id,r.invoice_id AS "invoiceId",i.number AS "invoiceNumber",
+               o.invoice_id AS "originalInvoiceId",oi.number AS "originalInvoiceNumber",
+               r.item_name AS "itemName",r.document_date::text AS "documentDate",
+               r.currency_code AS "currencyCode",r.candidate_amount::text AS "candidateAmount",
+               e.name AS "originalEmployeeName"
+             FROM employee_clearance_return_reviews r
+             JOIN invoices i ON i.company_id=r.company_id AND i.id=r.invoice_id
+             JOIN invoice_lines o ON o.company_id=r.company_id AND o.id=r.original_invoice_line_id
+             JOIN invoices oi ON oi.company_id=o.company_id AND oi.id=o.invoice_id
+             LEFT JOIN employees e ON e.company_id=r.company_id AND e.id=r.original_employee_id
+             WHERE r.company_id=$1 AND r.status='pending'
+             ORDER BY r.created_at DESC,r.id DESC LIMIT 50`,
+            [companyId],
+          )).rows : [],
         };
       });
       res.json(result);
+    }),
+  );
+  router.post(
+    base + "/wallet/clearance-returns/:id/review",
+    handler(async (req, res) => {
+      const reviewId = id(req.params.id);
+      const input = parse(z.object({ note: z.string().trim().min(1).max(1000) }).strict(), req.body);
+      const result = await transaction(pool, async client => {
+        const { companyId, user, context } = await scope(client, req, true);
+        if (!context.general) deny("مراجعة مرتجعات التصريف مخصصة للإدارة");
+        const found = await client.query(
+          "SELECT * FROM employee_clearance_return_reviews WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [companyId, reviewId],
+        );
+        const row = found.rows[0];
+        if (!row) missing();
+        if (row.status !== "pending")
+          throw new HttpError(409, "already_reviewed", "تمت مراجعة هذا المرتجع سابقًا");
+        await client.query(
+          `UPDATE employee_clearance_return_reviews SET
+             status='reviewed',review_note=$3,reviewed_by=$4,reviewed_at=clock_timestamp()
+           WHERE company_id=$1 AND id=$2`,
+          [companyId, reviewId, input.note, user.id],
+        );
+        await audit(client, user, "clearance.return-reviewed", "clearance-return",
+          reviewId, {status:"pending"},
+          {status:"reviewed",note:input.note,commissionDeducted:false}, companyId);
+        return {id:reviewId,status:"reviewed" as const};
+      });
+      res.json({review:result});
     }),
   );
   router.post(
