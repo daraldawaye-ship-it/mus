@@ -105,6 +105,8 @@ jobs:
         run: node --import tsx --test tests/employee-accounts.test.ts
       - name: Test dated item clearance commissions
         run: node --import tsx --test --test-name-pattern="dated item clearance commissions" tests/commerce.test.ts
+      - name: Test pouch receipt exact and discrepant signed reconciliation
+        run: node --import tsx --test --test-name-pattern="pouch receipt register posts exactly once" tests/commerce.test.ts
       - name: Test employee sales cashbox quick transfer and close
         run: node --import tsx --test --test-name-pattern="sales header cashbox shortcuts post" tests/commerce.test.ts
       - name: Test employee clearance ledger and no-deduction return review

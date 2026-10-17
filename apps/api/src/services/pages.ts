@@ -299,6 +299,7 @@ export async function requestPageKeys(
     users: "employees",
     accounts: "accounts",
     "account-links": "accounts",
+    "pouch-receipts": "pouch-receipts",
     currencies: "currencies",
     "finance-settings": "currencies",
     configuration: "configuration",

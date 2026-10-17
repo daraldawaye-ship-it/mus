@@ -520,6 +520,15 @@ page(
   { keywords: ["بيع", "مردود", "فاتورة"] },
 );
 page(
+  "company.pouch-receipts",
+  "استلام الترحيلات",
+  "الفواتير",
+  "/companies/:companyId/pouch-receipts",
+  {view:permission("finance.view"),post:permission("finance.post")},
+  "حركات الحوافظ: استلام مطابق أو غير مطابق إلى صندوق المستلم وترحيل الفرق تلقائيًا.",
+  {parentKey:"company.sales",keywords:["الحوافظ","استلام","ترحيل","صندوق","عجز","زيادة"]},
+);
+page(
   "company.purchases",
   "فواتير المشتريات",
   "الفواتير",

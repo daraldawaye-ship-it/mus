@@ -3364,3 +3364,102 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   assert.equal(audits.rows[0].n,11);
   await assertBalanced(f,s.company.id);
 });
+
+
+test("pouch receipt register posts exactly once, supports zero/full shortage and signed surplus", async t => {
+  const f=await fixture(t),s=await setup(f,"Pouch reconciliation company");
+  const seller=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post","finance.view"],901);
+  const cashier=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post","finance.view"],902);
+  for (const member of [seller,cashier]) {
+    await f.owner.ok("POST",`${s.path}/employees/${member.employee.id}/accounts`,
+      {createSalesCashbox:true});
+  }
+  const accounts=async(employeeId:number)=>(await f.owner.ok<{
+    accounts:{links:{kind:string;accountId:number}[]}
+  }>("GET",`${s.path}/employees/${employeeId}/accounts`)).accounts.links;
+  const sellerLinks=await accounts(seller.employee.id);
+  const receiverLinks=await accounts(cashier.employee.id);
+  const cash=sellerLinks.find(x=>x.kind==="sales_cash")!.accountId;
+  const pouch=sellerLinks.find(x=>x.kind==="sales_pouch")!.accountId;
+  const receivedCash=receiverLinks.find(x=>x.kind==="sales_cash")!.accountId;
+  const linkDirectory=await f.owner.ok<{
+    items:{purpose:string;accountId:number|null}[]
+  }>("GET",`${s.path}/account-links`);
+  const variance=linkDirectory.items.find(x=>x.purpose==="cashVariance")!.accountId!;
+  const product=await s.item({hasExpiry:false,salePrice1:"1000"});
+  await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"purchase",lines:[{itemId:product.id,unit:1,quantity:"30",unitPrice:"700",expiryDate:null}],
+  }));
+  await invoice(f,s,invoiceBody(s,product.id,{
+    kind:"sale",counterpartyAccountId:cash,
+    lines:[{itemId:product.id,unit:1,quantity:"15",unitPrice:"1000",expiryDate:null}],
+  }),seller.client);
+  const cashBalance=async (accountId:number)=>(await f.pool.query<{n:string}>(
+    `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS n
+      FROM financial_document_lines l JOIN financial_documents d
+        ON d.company_id=l.company_id AND d.id=l.document_id
+      WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'`,
+    [s.company.id,accountId],
+  )).rows[0]!.n;
+  const transfer=(kind:"pouch"|"close",amount:string)=>seller.client.ok<{
+    operationId:number
+  }>("POST",`${s.path}/sales/cashbox-operations`,{
+    kind,amount,notes:"حركة للاختبار",idempotencyKey:randomUUID(),
+  },201);
+  const exact=await transfer("pouch","1000");
+  const zeroShortage=await transfer("pouch","3000");
+  const partial=await transfer("pouch","500");
+  const negative=await transfer("pouch","-400");
+  const negativeExtra=await transfer("pouch","-200");
+  const endpoint=`${s.path}/pouch-receipts`;
+  const list=async(status:"pending"|"received"|"all")=>cashier.client.ok<{
+    total:number;items:{id:number;receiptId:number|null;receivedAmount:string|null}[]
+  }>("GET",`${endpoint}?status=${status}&page=1&pageSize=50`);
+  const pending=await list("pending");
+  assert.equal(pending.total,5);
+  assert(pending.items.some(x=>x.id===negative.operationId));
+  const receipt=async(id:number,mode:"exact"|"difference",amount?:string,key=randomUUID())=>{
+    const body=mode==="exact"
+      ? {sourceOperationId:id,mode,notes:"استلام مطابق",idempotencyKey:key}
+      : {sourceOperationId:id,mode,receivedAmount:amount,notes:"استلام غير مطابق",idempotencyKey:key};
+    return cashier.client.ok<{
+      receipt:{id:number;documentId:number;expected:string;received:string;difference:string}
+    }>("POST",endpoint,body,201);
+  };
+  const key=randomUUID();
+  const match=await receipt(exact.operationId,"exact",undefined,key);
+  assert.deepEqual(match,await receipt(exact.operationId,"exact",undefined,key));
+  assert.equal(match.receipt.received,"1000");
+  assert.equal(match.receipt.difference,"0");
+  assert.equal((await cashier.client.request("POST",endpoint,{
+    sourceOperationId:exact.operationId,mode:"exact",notes:"",
+    idempotencyKey:randomUUID(),
+  })).status,409,"Cannot acknowledge a previously received transfer twice");
+  const zero=await receipt(zeroShortage.operationId,"difference","0");
+  assert.equal(zero.receipt.difference,"3000");
+  const part=await receipt(partial.operationId,"difference","300");
+  assert.equal(part.receipt.difference,"200");
+  const surplus=await receipt(negative.operationId,"difference","0");
+  assert.equal(surplus.receipt.difference,"-400");
+  const signedPartial=await receipt(negativeExtra.operationId,"difference","-300");
+  assert.equal(signedPartial.receipt.difference,"100");
+  assert.equal((await list("pending")).total,0);
+  assert.equal((await list("received")).total,5);
+  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,5);
+  assert.equal(await cashBalance(receivedCash),"1000.000000");
+  // The signed partials cancel in the receiving till: +300 and -300.
+  assert.equal(await cashBalance(pouch),"0.000000");
+  assert.equal(await cashBalance(variance),"2900.000000");
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::int AS n FROM employee_pouch_receipts WHERE company_id=$1",
+    [s.company.id],
+  )).rows[0].n,5);
+  // A new close-to-pouch transfer must also be visible as a receivable movement.
+  const closed=await transfer("close","5");
+  assert((await list("pending")).items.some(x=>x.id===closed.operationId));
+  const closedReceipt=await receipt(closed.operationId,"exact");
+  assert.equal(closedReceipt.receipt.received,"5");
+  assert.equal((await list("pending")).total,0);
+  assert.equal(await cashBalance(receivedCash),"1005.000000");
+  await assertBalanced(f,s.company.id);
+});

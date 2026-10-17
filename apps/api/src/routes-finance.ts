@@ -563,6 +563,12 @@ export function financeRoutes(pool: Pool): Router {
             [companyId,documentId],
           );
           if(linkedCashbox.rowCount) conflict("القيد مرتبط بترحيل أو إغلاق صندوق الموظف؛ لا يمكن عكسه منفصلًا عن سجل الصندوق");
+          const linkedPouchReceipt=await client.query(
+            "SELECT 1 FROM employee_pouch_receipts WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId,documentId],
+          );
+          if(linkedPouchReceipt.rowCount)
+            conflict("القيد مرتبط باستلام حركة حافظة؛ لا يمكن عكسه مستقلًا عن سجل الاستلام");
           if (before.status !== "posted")
             conflict("يمكن عكس المستند المرحل مرة واحدة فقط");
           if (before.reversesDocumentId !== null)
