@@ -3317,3 +3317,41 @@ ul {
   border-color: #dc2626;
   background: rgba(220,38,38,.07);
 }
+
+
+/* General-table inline title and stable, selectable full-description modal. */
+.table-scroll input.general-table-inline-title {
+  width: 100%;
+  min-width: 120px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--surface);
+  text-align: start;
+  direction: rtl;
+}
+.table-scroll input.general-table-inline-title:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.table-scroll input.general-table-inline-title[aria-invalid="true"] {
+  border-color: #dc2626;
+  background: rgba(220,38,38,.07);
+}
+.general-table-description-copy {
+  width: 100%;
+  min-height: 150px;
+  max-height: min(56dvh,460px);
+  box-sizing: border-box;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.7;
+  direction: auto;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

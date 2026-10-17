@@ -71,3 +71,5 @@ jobs:
         run: node --import tsx --test tests/last-company-activation.test.ts
       - name: General table numeric inline edit and sort regressions
         run: node --import tsx --test --test-name-pattern="general table numeric columns sort" tests/api.test.ts
+      - name: General table inline title update and data-preservation checks
+        run: node --import tsx --test --test-name-pattern="general table inline title edit preserves" tests/api.test.ts

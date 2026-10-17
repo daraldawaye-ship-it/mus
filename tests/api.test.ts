@@ -1767,6 +1767,56 @@ test("general table numeric columns sort across pages and inline edits preserve 
     event.after?.number2===null));
 });
 
+test("general table inline title edit preserves the description and rejects concurrent overwrites",async(t)=>{
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const ordinary=await register(f,"general-table-title-editor-restricted@example.test");
+  const row={
+    tableName:"وصف للاحتفاظ",category:"أقسام",title:"عنوان أول",
+    description:"نص متعدد الأسطر\\nيجب أن يبقى متاحًا للنسخ",
+    number1:"19.1",number2:"-3",date1:null,date2:null,
+    ...Object.fromEntries(Array.from({length:9},(_,i)=>[`text${i+1}`,i===0?"تفاصيل":""])),
+  };
+  const original=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "POST","/general-table",row,201)).record;
+  const url=`/general-table/${original.id}/title`;
+  assert.equal((await f.client().request("PATCH",url,{
+    title:"عنوان جديد",expectedTitle:row.title,
+  })).status,401);
+  assert.equal((await ordinary.client.request("PATCH",url,{
+    title:"عنوان جديد",expectedTitle:row.title,
+  })).status,403);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"",expectedTitle:row.title,
+  })).status,400);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"م".repeat(201),expectedTitle:row.title,
+  })).status,400);
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"مختلف",expectedTitle:row.title,description:"overwrite",
+  })).status,400);
+  const changed=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "PATCH",url,{title:"  عنوان معدل  ",expectedTitle:row.title})).record;
+  assert.equal(changed.title,"عنوان معدل");
+  assert.equal(changed.description,row.description);
+  assert.equal(changed.number1,"19.1");
+  assert.equal(changed.number2,"-3");
+  assert.equal(changed.tableName,row.tableName);
+  assert.equal(changed.category,row.category);
+  assert.equal(changed.text1,"تفاصيل");
+  assert.equal((await platform.client.request("PATCH",url,{
+    title:"كتابة قديمة",expectedTitle:row.title,
+  })).status,409);
+  const detail=(await platform.client.ok<{record:GeneralTableRecord}>(
+    "GET",`/general-table/${original.id}`)).record;
+  assert.equal(detail.title,changed.title);
+  assert.equal(detail.description,row.description);
+  const events=await platform.client.ok<Page<AuditEvent>>(
+    "GET","/audit?action=generalTable.update");
+  assert(events.items.some(event=>event.targetId===original.id &&
+    event.after?.title==="عنوان معدل"));
+});
+
 test("company audit records canonical database values and mutation rolls back when audit insertion fails", async (t) => {
   const f = await fixture(t);
   const platform = await owner(f);
