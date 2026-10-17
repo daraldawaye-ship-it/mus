@@ -676,6 +676,26 @@ test("doctor cards and positive/negative sales referral are company-scoped and e
   const returned=await invoice(f,s,refund);
   assert.equal(returned.doctorId,entity.id);
   assert.equal(returned.total,"-2000");
+  // Unlisted names are permitted; keep an invoice snapshot without creating a card.
+  const manualBody={...saleBody,idempotencyKey:randomUUID(),
+    doctorId:null,doctorName:"  الدكتورة سعاد الخاصة  "};
+  const manual=await invoice(f,s,manualBody);
+  assert.equal(manual.doctorId,null);
+  assert.equal(manual.doctorName,"الدكتورة سعاد الخاصة");
+  assert.equal((await invoice(f,s,manualBody)).id,manual.id,
+    "Retry of manually-entered doctor reuses the original posted invoice");
+  assert.equal((await f.owner.request("POST",`${s.path}/invoices`,{
+    ...manualBody,doctorName:"طبيب مختلف",
+  })).status,409,"Idempotency does not allow changing a manually entered name");
+  assert.equal((await f.owner.request("POST",`${s.path}/invoices`,{
+    ...saleBody,idempotencyKey:randomUUID(),doctorId:null,doctorName:"   ",
+  })).status,400,"Whitespace alone cannot bypass the mandatory doctor name");
+  assert.equal((await f.owner.request("POST",`${s.path}/invoices`,{
+    ...saleBody,idempotencyKey:randomUUID(),doctorId:null,doctorName:"س".repeat(241),
+  })).status,400,"Unlisted doctor names are bounded to 240 characters");
+  const allDoctors=await f.owner.ok<{items:{id:number}[];total:number}>(
+    "GET",root+"?active=true");
+  assert.equal(allDoctors.total,2,"Typing a name on an invoice never creates a directory card");
   const stillLinked=await f.owner.ok<{invoice:Invoice}>(
     "GET",`${s.path}/invoices/${sale.id}`);
   assert.equal(stillLinked.invoice.doctorName,"الدكتور محمد علي",

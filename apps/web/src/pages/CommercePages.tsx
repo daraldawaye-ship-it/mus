@@ -828,10 +828,11 @@ const itemInfoViews: { value: ItemInfoView; label: string }[] = [
 function isItemInfoView(value: string | null): value is ItemInfoView {
   return itemInfoViews.some(view => view.value === value);
 }
-function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
+function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, userId }: {
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
+  selectedItemName: string | null;
   userId: number | undefined;
 }) {
   const companyId = context.company.id;
@@ -880,7 +881,11 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
     <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
       <details ref={menu} className="invoice-item-options-menu">
         <summary aria-label="اختر خيارات الصنف">
-          <span>{selectedLabel}</span><span aria-hidden="true">▾</span>
+          <span className="invoice-item-options-heading"
+            title={selectedItemName ? `${selectedLabel} (${selectedItemName})` : selectedLabel}>
+            <span className="invoice-item-options-view">{selectedLabel}</span>
+            {selectedItemName && <span className="invoice-item-options-selected-name"> ({selectedItemName})</span>}
+          </span><span aria-hidden="true">▾</span>
         </summary>
         <div className="invoice-item-options-choices">
           {itemInfoViews.map(option => (
@@ -1007,11 +1012,12 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
     </>
   );
 }
-function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
+function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName }: {
   children: ReactNode;
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
+  selectedItemName: string | null;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -1024,7 +1030,8 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
       <div className="invoice-workspace-main">{children}</div>
       {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
-          context={context} kind={kind} selectedItemId={selectedItemId} userId={user?.id} />
+          context={context} kind={kind} selectedItemId={selectedItemId}
+          selectedItemName={selectedItemName} userId={user?.id} />
         <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
       </aside>}
     </div>
@@ -1036,7 +1043,7 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
   const [params] = useSearchParams();
   const { user } = useSession();
   const kind = params.get("kind") === "purchase" ? "purchase" : "sale";
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Pick<Item,"id"|"name"> | null>(null);
   const control = useControls(context.company.id, context.employee?.id ?? null);
   if (!commerceAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
@@ -1044,10 +1051,11 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     return canPost(context) ? ((isMobileDevice() && control.value(kind === "sale" ? "mobile_sales" : "mobile_purchases") === false) ? (
       <Notice tone="warning">إنشاء هذا النوع من الفواتير من الهاتف غير مسموح في الكنترول.</Notice>
     ) : (
-      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItemId}>
+      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItem?.id ?? null}
+        selectedItemName={selectedItem?.name ?? null}>
         <InvoiceEditor
           key={`${user?.id}:${context.company.id}:${kind}`}
-          context={context} onChooseItem={setSelectedItemId}
+          context={context} onChooseItem={setSelectedItem}
         />
       </InvoiceWorkspace>
     )) : (
@@ -1056,12 +1064,12 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
       </Notice>
     );
   return (
-    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null}>
+    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null} selectedItemName={null}>
       <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
     </InvoiceWorkspace>
   );
 }
-function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (itemId: number) => void }) {
+function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
@@ -1256,6 +1264,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
   const [doctorQuery,setDoctorQuery]=useState("");
   const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(null);
+  const [doctorActiveIndex,setDoctorActiveIndex]=useState(-1);
+  const doctorOptionsRef=useRef<HTMLDivElement>(null);
   const [doctorError,setDoctorError]=useState("");
   const doctorField=useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -1269,6 +1279,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       {signal},
     ),
   });
+  const doctorResults = doctorChoices.data?.items ?? [];
+  useEffect(() => {
+    if(doctorActiveIndex < 0) return;
+    doctorOptionsRef.current?.querySelector<HTMLElement>(
+      `[data-doctor-index="${doctorActiveIndex}"]`,
+    )?.scrollIntoView({block:"nearest"});
+  },[doctorActiveIndex,doctorChoices.data]);
   const doctorThreshold = Number(controls.value("sales_doctor_threshold") ?? 1000);
 
   const allowNavigation = useRef(false);
@@ -1382,7 +1399,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
-    onChooseItem(selected.id);
+    onChooseItem({id:selected.id,name:selected.name});
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
@@ -1414,6 +1431,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   function itemSaved(item: Item) {
     if (!guard.isCurrent() || item.companyId !== companyId) return;
+    onChooseItem({id:item.id,name:item.name});
     setLines((current) =>
       current.map((line) => {
         if (line.itemId !== item.id) return line;
@@ -1671,6 +1689,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
+    onChooseItem(null);
     setLines([first]);
     setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
@@ -1691,6 +1710,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setDescription("");
     setDiscount("0");
     setDoctorSelected(null);
+    setDoctorActiveIndex(-1);
     setDoctorQuery("");
     setDoctorPromptOpen(false);
     setDoctorError("");
@@ -1699,11 +1719,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setItemNotice("");
     focus(lineInputId(first, "item-search"));
   }
-  async function save(event?: FormEvent, selectedDoctorId?: number) {
+  async function save(event?: FormEvent, selectedDoctorId?: number, freeTextDoctorName = "") {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
-    if (doctorPromptOpen && !selectedDoctorId) {
-      setDoctorError("اختر اسمًا من كرت الأطباء والجهات أولًا.");
+    const enteredDoctorName = freeTextDoctorName.trim();
+    if (doctorPromptOpen && !selectedDoctorId && !enteredDoctorName) {
+      setDoctorError("اكتب اسم الطبيب أو الجهة، أو اختره من النتائج.");
       doctorField.current?.focus();
       return;
     }
@@ -1720,8 +1741,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         return;
       }
       if (selectedLines.some((line) => !validateLine(line))) return;
-      if (doctorNeeded && !selectedDoctorId) {
+      if (doctorNeeded && !selectedDoctorId && !enteredDoctorName) {
         setDoctorSelected(null);
+        setDoctorActiveIndex(-1);
         setDoctorQuery("");
         setDoctorError("");
         setDoctorPromptOpen(true);
@@ -1737,6 +1759,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         counterpartyAccountId: account?.id,
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
         doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
+        doctorName: kind === "sale" ? enteredDoctorName : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
@@ -1771,6 +1794,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const next = emptyLine();
       pending.current = null;
+      onChooseItem(null);
       setLines([next]);
       setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
@@ -1783,6 +1807,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setDiscount("0");
       setDoctorPromptOpen(false);
       setDoctorSelected(null);
+      setDoctorActiveIndex(-1);
       setDoctorQuery("");
       setDoctorError("");
       // Reuse currency, branch and stock location for efficient consecutive
@@ -2612,28 +2637,67 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
             <input id="invoice-doctor-name" type="search" required autoFocus
             ref={doctorField} value={doctorQuery} autoComplete="off"
-            placeholder="اكتب الاسم أو الجهة أو مفاتيح البحث"
+            role="combobox" aria-autocomplete="list" aria-expanded={doctorPromptOpen}
+            aria-controls="invoice-doctor-options"
+            aria-activedescendant={doctorActiveIndex >= 0 && doctorResults[doctorActiveIndex]
+              ? `invoice-doctor-option-${doctorResults[doctorActiveIndex]!.id}` : undefined}
+            maxLength={240}
+            placeholder="ابحث أو اكتب اسمًا جديدًا دون إضافته للكروت"
             onChange={event=>{
               setDoctorQuery(event.target.value);
               setDoctorSelected(null);
+              setDoctorActiveIndex(-1);
               setDoctorError("");
             }}
             onKeyDown={event=>{
+              if(event.key==="ArrowDown" || event.key==="ArrowUp"){
+                event.preventDefault();
+                if(doctorResults.length){
+                  setDoctorActiveIndex(old => event.key==="ArrowDown"
+                    ? (old + 1) % doctorResults.length
+                    : (old < 0 ? doctorResults.length - 1
+                        : (old - 1 + doctorResults.length) % doctorResults.length));
+                }
+                return;
+              }
+              if(event.key==="Escape"){
+                event.preventDefault();
+                setDoctorActiveIndex(-1);
+                return;
+              }
               if(event.key==="Enter"){
                 event.preventDefault();
-                if(doctorSelected) void save(undefined,doctorSelected.id);
-                else {setDoctorError("اختر من نتائج البحث أولًا.");doctorField.current?.focus();}
+                const highlighted=doctorActiveIndex>=0 ? doctorResults[doctorActiveIndex] : null;
+                if(highlighted){
+                  setDoctorSelected(highlighted);
+                  setDoctorQuery(highlighted.name);
+                  setDoctorActiveIndex(-1);
+                  setDoctorError("");
+                  return;
+                }
+                if(doctorSelected){
+                  void save(undefined,doctorSelected.id);
+                }else if(doctorQuery.trim()){
+                  void save(undefined,undefined,doctorQuery);
+                }else{
+                  setDoctorError("اكتب اسم الطبيب أو الجهة أولًا.");
+                  doctorField.current?.focus();
+                }
               }
             }}/>
           </div>
-          <div className="invoice-doctor-options" role="listbox" aria-label="نتائج الأطباء والجهات">
+          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل وحفظه دون إنشاء كرت.</small>
+          <div id="invoice-doctor-options" ref={doctorOptionsRef} className="invoice-doctor-options"
+            role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
             {doctorChoices.isError&&<Notice tone="error">{errorMessage(doctorChoices.error)}</Notice>}
-            {doctorChoices.data?.items.map(doctor=><button type="button" key={doctor.id}
-              className={doctorSelected?.id===doctor.id?"invoice-doctor-selected":""}
-              role="option" aria-selected={doctorSelected?.id===doctor.id}
+            {doctorResults.map((doctor,index)=><button type="button" key={doctor.id}
+              id={`invoice-doctor-option-${doctor.id}`} data-doctor-index={index}
+              className={doctorSelected?.id===doctor.id || doctorActiveIndex===index?"invoice-doctor-selected":""}
+              role="option" aria-selected={doctorSelected?.id===doctor.id || doctorActiveIndex===index}
               onClick={()=>{
                 setDoctorSelected(doctor);
+                setDoctorActiveIndex(-1);
                 setDoctorQuery(doctor.name);
                 setDoctorError("");
                 doctorField.current?.focus();
@@ -2642,18 +2706,25 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               <small>{doctor.kind==="doctor"?"طبيب":doctor.kind==="nurse"?"ممرض":"جهة"}{doctor.department?" · "+doctor.department:""}</small>
             </button>)}
             {!doctorChoices.isLoading&&doctorChoices.data?.items.length===0&&<small>
-              لم يوجد اسم مطابق. أضف كرتًا من صفحة الأطباء والجهات ثم عد إلى هذه الفاتورة.
+              لا يوجد اسم مطابق في الكروت. يمكنك حفظ الاسم المكتوب مباشرة دون معرّف.
             </small>}
           </div>
           <div className="form-actions">
             <Button disabled={saving} onClick={()=>{
-              if(!doctorSelected){setDoctorError("اختر الطبيب أو الجهة من النتائج أولًا.");doctorField.current?.focus();return;}
-              void save(undefined,doctorSelected.id);
+              if(doctorSelected) {
+                void save(undefined,doctorSelected.id);
+              } else if(doctorQuery.trim()) {
+                void save(undefined,undefined,doctorQuery);
+              } else {
+                setDoctorError("اكتب اسم الطبيب أو الجهة أولًا.");
+                doctorField.current?.focus();
+              }
             }}>حفظ وترحيل الفاتورة</Button>
             <Button variant="secondary" disabled={saving} onClick={()=>{
               setDoctorPromptOpen(false);
               setDoctorError("");
               setDoctorSelected(null);
+              setDoctorActiveIndex(-1);
             }}>العودة إلى الفاتورة دون حفظ</Button>
           </div>
         </div>
