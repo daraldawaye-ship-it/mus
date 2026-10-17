@@ -983,7 +983,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
         <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
           <InvoiceItemEditor
             key={`${userId}:${companyId}:${alternateItemId}`}
-            context={context} itemId={alternateItemId} readOnly
+            context={context} itemId={alternateItemId}
             onSaved={() => {
               void client.invalidateQueries({
                 queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
