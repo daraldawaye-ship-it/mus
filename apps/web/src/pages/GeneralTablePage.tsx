@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -43,6 +43,61 @@ export function GeneralTablePage() {
   return <GeneralTableContent />;
 }
 
+type NumericColumn = "number1" | "number2";
+function InlineNumber({
+  record, field, onSave,
+}: {
+  record:GeneralTableRecord;
+  field:NumericColumn;
+  onSave:(record:GeneralTableRecord,field:NumericColumn,value:string|null)=>Promise<boolean>;
+}) {
+  const original = record[field] ?? "";
+  const [draft,setDraft] = useState(original);
+  const [saving,setSaving] = useState(false);
+  const skipBlur=useRef(false);
+  useEffect(()=>{if(!saving)setDraft(original);},[original]);
+  async function commit() {
+    if(skipBlur.current){skipBlur.current=false;return;}
+    if(saving)return;
+    const value=draft.trim() || null;
+    if(value===record[field])return;
+    const parsed=generalTableSchema.shape.number1.safeParse(value);
+    if(!parsed.success){
+      // The API and the item card share the same decimal constraints.
+      // Keep focus until the user corrects invalid input.
+      return;
+    }
+    setSaving(true);
+    try {
+      const ok=await onSave(record,field,parsed.data);
+      if(!ok)return;
+      setDraft(parsed.data ?? "");
+    }finally{setSaving(false);}
+  }
+  const candidate=draft.trim() || null;
+  const valid=generalTableSchema.shape.number1.safeParse(candidate).success;
+  return <input type="text" inputMode="decimal" className="general-table-inline-number"
+    aria-label={`تعديل ${field==="number1"?"الرقم 1":"الرقم 2"} للسجل ${record.id}`}
+    title={valid ? "عدّل الرقم ثم اضغط Enter أو غادر الحقل للحفظ" :
+      "رقم غير صالح: حتى 24 رقمًا و8 منازل عشرية"}
+    aria-invalid={!valid || undefined}
+    disabled={saving}
+    value={draft} placeholder="—"
+    onChange={event=>setDraft(event.target.value)}
+    onBlur={()=>{void commit();}}
+    onKeyDown={event=>{
+      if(event.key==="Enter"){
+        event.preventDefault();
+        event.currentTarget.blur();
+      }else if(event.key==="Escape"){
+        event.preventDefault();
+        skipBlur.current=true;
+        setDraft(original);
+        event.currentTarget.blur();
+      }
+    }}/>;
+}
+
 function GeneralTableContent() {
   const { user } = useSession();
   const guard = useScopeGuard("public:general-table");
@@ -61,6 +116,7 @@ function GeneralTableContent() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionEpoch, setSelectionEpoch] = useState(0);
   const [duplicating, setDuplicating] = useState(false);
+  const [savingNumber, setSavingNumber] = useState<string | null>(null);
   async function duplicateSelected() {
     if (duplicating || !selectedIds.length || selectedIds.length > 100) return;
     setError("");
@@ -83,6 +139,29 @@ function GeneralTableContent() {
       if (guard.isCurrent()) setDuplicating(false);
     }
   }
+  async function saveNumber(record:GeneralTableRecord,field:NumericColumn,value:string|null) {
+    if(savingNumber !== null)return false;
+    setError("");setNotice("");
+    setSavingNumber(`${record.id}:${field}`);
+    try {
+      const result=await api<{record:GeneralTableRecord}>(
+        `/general-table/${record.id}/number`,{
+          method:"PATCH",
+          body:{field,value,expectedValue:record[field]},
+          signal:guard.signal,
+        },
+      );
+      if(!guard.isCurrent())return false;
+      setNotice(`تم تحديث ${field==="number1"?"الرقم 1":"الرقم 2"} للسجل رقم ${result.record.id}.`);
+      await list.refetch();
+      return true;
+    }catch(cause){
+      if(guard.isCurrent())setError(`تعذر حفظ الرقم في السجل ${record.id}: ${errorMessage(cause)}`);
+      return false;
+    }finally{
+      if(guard.isCurrent())setSavingNumber(null);
+    }
+  }
   const columns: ColumnDef<GeneralTableRecord, unknown>[] = [
     { accessorKey:"id",header:"الرقم",size:85 },
     { accessorKey:"tableName",header:"اسم الجدول / الاستخدام",size:190,
@@ -91,6 +170,12 @@ function GeneralTableContent() {
       cell:({row})=><ValueCell>{row.original.category || "—"}</ValueCell> },
     { accessorKey:"title",header:"العنوان",size:230,
       cell:({row})=><ValueCell>{row.original.title}</ValueCell> },
+    { accessorKey:"number1",header:"الرقم 1",size:140,
+      cell:({row})=><InlineNumber key={row.original.id+":number1"}
+        record={row.original} field="number1" onSave={saveNumber}/> },
+    { accessorKey:"number2",header:"الرقم 2",size:140,
+      cell:({row})=><InlineNumber key={row.original.id+":number2"}
+        record={row.original} field="number2" onSave={saveNumber}/> },
     { id:"description",header:"الوصف",size:260,enableSorting:false,
       cell:({row})=><ValueCell value={row.original.description}>{row.original.description || "—"}</ValueCell> },
     { accessorKey:"updatedAt",header:"آخر تعديل",size:170,
@@ -138,7 +223,7 @@ function GeneralTableContent() {
         getRowId={(row) => String(row.id)}
         page={list.page} pageSize={list.pageSize} onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize} sorting={list.sorting}
-        onSortingChange={list.setSorting} loading={list.loading}
+        onSortingChange={list.setSorting} loading={list.loading || savingNumber !== null}
         ariaLabel="سجلات الجدول العام" />
     </Card>
     {editor && <GeneralTableEditor key={editor==="new"?"new":editor.id} record={editor==="new"?null:editor}

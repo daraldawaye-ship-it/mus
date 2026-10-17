@@ -3288,3 +3288,29 @@ ul {
 .invoice-doctor-options small {
   font-size: 11px;
 }
+
+
+/* General table: two editable DECIMAL cells, compact and right-aligned.
+   Server sorting handles the entire table, not just the visible page. */
+.table-scroll input.general-table-inline-number {
+  width: 100%;
+  min-width: 92px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--surface);
+  text-align: right;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+.table-scroll input.general-table-inline-number:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+.table-scroll input.general-table-inline-number[aria-invalid="true"] {
+  border-color: #dc2626;
+  background: rgba(220,38,38,.07);
+}

@@ -24,6 +24,9 @@ on:
       - 'apps/web/src/pages/ControlPage.tsx'
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/styles.css'
+      - 'apps/web/src/pages/GeneralTablePage.tsx'
+      - 'apps/api/src/routes-general-table.ts'
+      - 'tests/api.test.ts'
       - 'packages/contracts/src/pages.ts'
       - 'packages/contracts/src/index.ts'
       - 'tests/control.test.ts'
@@ -61,3 +64,5 @@ jobs:
       - run: npm run build
       - name: Scoped option value and permission tests
         run: node --import tsx --test tests/control.test.ts
+      - name: General table numeric inline edit and sort regressions
+        run: node --import tsx --test --test-name-pattern="general table numeric columns sort" tests/api.test.ts
