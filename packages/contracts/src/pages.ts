@@ -529,6 +529,15 @@ page(
   {parentKey:"company.sales",keywords:["الحوافظ","استلام","ترحيل","صندوق","عجز","زيادة"]},
 );
 page(
+  "company.electronic-receipts",
+  "استلام المحفظة الإلكترونية",
+  "الفواتير",
+  "/companies/:companyId/electronic-receipts",
+  {view:permission("finance.view"),post:permission("finance.post")},
+  "استلام الترحيلات إلى محفظة الشركة الإلكترونية مطابقة أو غير مطابقة إلى صندوق الموظف المستلم، مع تسجيل العجز والزيادة.",
+  {parentKey:"company.sales",keywords:["المحفظة الإلكترونية","استلام","تحويل","الهاتف","صندوق","عجز","زيادة"]},
+);
+page(
   "company.purchases",
   "فواتير المشتريات",
   "الفواتير",

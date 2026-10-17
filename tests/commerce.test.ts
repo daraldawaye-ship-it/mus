@@ -3463,3 +3463,101 @@ test("pouch receipt register posts exactly once, supports zero/full shortage and
   assert.equal(await cashBalance(receivedCash),"1005.000000");
   await assertBalanced(f,s.company.id);
 });
+
+
+test("electronic wallet receipt register posts exact, partial, zero and negative amounts once", async t => {
+  const f=await fixture(t),s=await setup(f,"Digital wallet receipt company");
+  const seller=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post","finance.view"],911);
+  const cashier=await f.member(s.company.id,["commerce.manage","commerce.view","finance.post","finance.view"],912);
+  for (const member of [seller,cashier]) {
+    await f.owner.ok("POST",`${s.path}/employees/${member.employee.id}/accounts`,
+      {createSalesCashbox:true});
+  }
+  const getAccounts=async(employeeId:number)=>(await f.owner.ok<{
+    accounts:{links:{kind:string;accountId:number}[]}
+  }>("GET",`${s.path}/employees/${employeeId}/accounts`)).accounts.links;
+  const sellerAccounts=await getAccounts(seller.employee.id);
+  const cashierAccounts=await getAccounts(cashier.employee.id);
+  const sellerCash=sellerAccounts.find(x=>x.kind==="sales_cash")!.accountId;
+  const cashierCash=cashierAccounts.find(x=>x.kind==="sales_cash")!.accountId;
+  const wallet=(await f.owner.ok<{account:Account}>("POST",`${s.path}/accounts`,{
+    code:"1112999161",name:"Company wallet for electronic receipt",
+    parentId:null,kind:"posting",category:"asset",normalSide:"debit",
+    cashOrBank:false,
+  },201)).account;
+  const accountLinks=await f.owner.ok<{
+    items:{purpose:string;accountId:number|null}[]
+  }>("GET",`${s.path}/account-links`);
+  const variance=accountLinks.items.find(x=>x.purpose==="cashVariance")!.accountId!;
+  await f.owner.ok("PUT",`${s.path}/account-links/electronicWallet`,{
+    accountId:wallet.id,
+  });
+  const book=async(accountId:number)=>(await f.pool.query<{value:string}>(
+    `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS value
+      FROM financial_document_lines l JOIN financial_documents d
+      ON d.company_id=l.company_id AND d.id=l.document_id
+      WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'`,
+    [s.company.id,accountId],
+  )).rows[0]!.value;
+  const transfer=async(kind:"electronic"|"pouch",amount:string)=>
+    seller.client.ok<{operationId:number}>(
+      "POST",`${s.path}/sales/cashbox-operations`,{
+        kind,amount,notes:"عملية إلكترونية مسجلة",idempotencyKey:randomUUID(),
+      },201);
+  const exact=await transfer("electronic","1000");
+  const fullShortage=await transfer("electronic","2000");
+  const partial=await transfer("electronic","500");
+  const negative=await transfer("electronic","-400");
+  const negativePart=await transfer("electronic","-200");
+  const unrelatedPouch=await transfer("pouch","50");
+  assert.equal(await book(wallet.id),"2900.000000");
+  const endpoint=`${s.path}/electronic-receipts`;
+  const list=async(status:"pending"|"received"|"all")=>
+    cashier.client.ok<{
+      total:number;items:{id:number;kind:string;walletName:string;
+        receiptId:number|null;receivedAmount:string|null}[]
+    }>("GET",`${endpoint}?status=${status}&page=1&pageSize=50`);
+  const before=await list("pending");
+  assert.equal(before.total,5,"The unrelated pouch movement is excluded");
+  assert(before.items.every(x=>x.kind==="electronic"&&x.walletName===wallet.name));
+  const settle=async(id:number,mode:"exact"|"difference",amount?:string,key=randomUUID())=>{
+    const body=mode==="exact"
+      ? {sourceOperationId:id,mode,notes:"مطابق",idempotencyKey:key}
+      : {sourceOperationId:id,mode,receivedAmount:amount,notes:"غير مطابق",
+         idempotencyKey:key};
+    return cashier.client.ok<{
+      receipt:{id:number;documentId:number;expected:string;
+        received:string;difference:string}
+    }>("POST",endpoint,body,201);
+  };
+  assert.equal((await cashier.client.request("POST",endpoint,{
+    sourceOperationId:unrelatedPouch.operationId,mode:"exact",notes:"",
+    idempotencyKey:randomUUID(),
+  })).status,409,"A pouch movement must not be received via electronic wallet");
+  const repeatedKey=randomUUID();
+  const match=await settle(exact.operationId,"exact",undefined,repeatedKey);
+  assert.deepEqual(await settle(exact.operationId,"exact",undefined,repeatedKey),match);
+  assert.equal(match.receipt.received,"1000");
+  assert.equal(match.receipt.difference,"0");
+  assert.equal((await cashier.client.request("POST",endpoint,{
+    sourceOperationId:exact.operationId,mode:"exact",notes:"",
+    idempotencyKey:randomUUID(),
+  })).status,409,"Each electronic receipt may only be settled once");
+  assert.equal((await settle(fullShortage.operationId,"difference","0")).receipt.difference,"2000");
+  assert.equal((await settle(partial.operationId,"difference","300")).receipt.difference,"200");
+  assert.equal((await settle(negative.operationId,"difference","0")).receipt.difference,"-400");
+  assert.equal((await settle(negativePart.operationId,"difference","-300")).receipt.difference,"100");
+  assert.equal((await list("pending")).total,0);
+  assert.equal((await list("received")).total,5);
+  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,5);
+  assert.equal(await book(cashierCash),"1000.000000");
+  assert.equal(await book(wallet.id),"0.000000");
+  assert.equal(await book(variance),"1900.000000");
+  assert.equal(await book(sellerCash),"-2950.000000");
+  const recorded=await f.pool.query(
+    "SELECT count(*)::int AS n FROM employee_electronic_receipts WHERE company_id=$1",
+    [s.company.id],
+  );
+  assert.equal(recorded.rows[0].n,5);
+  await assertBalanced(f,s.company.id);
+});

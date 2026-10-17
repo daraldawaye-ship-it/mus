@@ -237,6 +237,9 @@ const InventorySettingsPage = lazy(() =>
     default: module.InventorySettingsPage,
   })),
 );
+const ElectronicReceiptsPage = lazy(() =>
+  import("./pages/PouchReceiptsPage").then(module=>({default:module.ElectronicReceiptsPage})),
+);
 const PouchReceiptsPage = lazy(() =>
   import("./pages/PouchReceiptsPage").then(module=>({default:module.PouchReceiptsPage})),
 );
@@ -296,6 +299,7 @@ const companySections = [
   "purchases",
   "sales",
   "pouch-receipts",
+  "electronic-receipts",
   "invoice",
 ] as const;
 type CompanySection = (typeof companySections)[number];
@@ -355,6 +359,7 @@ function Navigation({
     "company.inventory-settings": <Settings2 size={17} />,
     "company.sales": <FileText size={17} />,
     "company.pouch-receipts": <HandCoins size={17} />,
+    "company.electronic-receipts": <Wallet size={17} />,
     "company.purchases": <FileText size={17} />,
     "company.financial-documents": <FileText size={17} />,
     "company.journals": <BookOpen size={17} />,
@@ -651,6 +656,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الفاتورة…</Notice>}>
           <InvoicePage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "electronic-receipts":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل استلام المحفظة الإلكترونية…</Notice>}>
+          <ElectronicReceiptsPage key={context.company.id} context={context}/>
         </Suspense>
       );
     case "pouch-receipts":
