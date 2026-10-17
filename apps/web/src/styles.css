@@ -2038,10 +2038,21 @@ ul {
 .invoice-item-options-table td {
   padding: 5px 3px;
   border: 1px solid var(--border);
-  vertical-align: top;
-  overflow-wrap: anywhere;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: start;
 }
+.invoice-item-options-table td > a,
+.invoice-item-options-table td > bdi {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.invoice-item-options-table tbody tr { height: 25px; }
 .invoice-item-options-table th {
   font-weight: 700;
   background: var(--surface);
@@ -2059,6 +2070,40 @@ ul {
   .invoice-workspace-no-options {
     display: block;
   }
+}
+/* Shared expiry editor: numeric month and year regardless of browser locale. */
+.expiry-month-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 7px minmax(0, 3fr);
+  gap: 2px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  direction: ltr;
+}
+.expiry-month-fields input {
+  min-width: 0;
+  width: 100%;
+  height: var(--control-height);
+  padding: 1px 3px;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+}
+.expiry-month-fields .expiry-month-separator {
+  font-size: 12px;
+  text-align: center;
+}
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  .expiry-month-field:not(.item-cell-field) .expiry-month-fields input {
+  padding-top: 11px;
+  padding-bottom: 1px;
+}
+.commerce-matrix .expiry-month-fields input {
+  width: 100%;
+  padding-inline: 1px;
+  font-size: 12px;
 }
 .commerce-fieldset {
   border: 0;
