@@ -1230,16 +1230,17 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, saving, unknown]);
   // Start new invoices with the cursor in the first item/barcode search.
-  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(() => ({
+  const [focusTarget, setFocusTarget] = useState<{ id: string; select?: boolean } | null>(() => ({
     id: lineInputId(lines[0]!, "item-search"),
   }));
-  const focus = (id: string) => setFocusTarget({ id });
+  const focus = (id: string, select = false) => setFocusTarget({ id, select });
   useLayoutEffect(() => {
     if (!focusTarget || locked || !guard.isCurrent()) return;
     const element = document.getElementById(focusTarget.id);
     // Selection and a new row must commit before their controls can receive focus.
     if (!element || element.matches(":disabled")) return;
     element.focus();
+    if (focusTarget.select && element instanceof HTMLInputElement) element.select();
     setFocusTarget(null);
   }, [focusTarget, lines, locked]);
   const salePrice = (selected: Item, level: 1 | 2 | 3) =>
@@ -1326,7 +1327,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       originalSelection: false,
       originalSource: undefined,
     });
-    focus(lineInputId(line, "quantity"));
+    // After selecting a purchase item, overwrite its suggested price directly.
+    // Sale invoices keep their existing quantity-first workflow.
+    focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase");
   }
   function closeItemEditor() {
     if (!editingBusy) setEditingItem(null);
@@ -2140,7 +2143,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                 chooseItem(line, selected)
                               }
                               onConfirmSelected={() =>
-                                focus(lineInputId(line, "quantity"))
+                                focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase")
                               }
                               onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
