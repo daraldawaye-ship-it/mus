@@ -3279,6 +3279,24 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   await seller.client.ok("POST",endpoint,send("electronic","3000","دفع عبر الهاتف"),201);
   assert.equal(await cashBalance(cash.accountId),"45000.000000");
   assert.equal(await cashBalance(ewallet.id),"3000.000000");
+  // Negative digital-wallet transfers are receipts INTO the seller's till.
+  const electronicReceipt=send("electronic","-1000","استلام نقد من المحفظة الإلكترونية");
+  const received=await seller.client.ok<{operationId:number;documentId:number}>(
+    "POST",endpoint,electronicReceipt,201);
+  assert.deepEqual(await seller.client.ok("POST",endpoint,electronicReceipt,201),received,
+    "Replaying a negative electronic transfer must never duplicate the receipt");
+  assert.equal(await cashBalance(cash.accountId),"46000.000000");
+  assert.equal(await cashBalance(ewallet.id),"2000.000000");
+  assert.equal((await seller.client.request("POST",endpoint,
+    send("electronic","-2001","طلب سحب أكثر من رصيد المحفظة"))).status,409);
+  assert.equal(await cashBalance(cash.accountId),"46000.000000",
+    "An insufficient electronic-wallet balance must not alter the till");
+  await seller.client.ok("POST",endpoint,
+    send("electronic","1000","إعادة مبلغ المحفظة بعد التجربة"),201);
+  assert.equal(await cashBalance(cash.accountId),"45000.000000");
+  assert.equal(await cashBalance(ewallet.id),"3000.000000");
+  assert.equal((await seller.client.request("POST",endpoint,
+    send("close","-1","لا يمكن إدخال جرد نقدي فعلي بالسالب"))).status,409);
   const shortage=await seller.client.ok<{difference:string;bookBalance:string}>(
     "POST",endpoint,send("close","44000","إغلاق الوردية"),201);
   assert.equal(shortage.bookBalance,"45000");
@@ -3301,6 +3319,6 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
     "SELECT count(*)::integer AS n FROM employee_cashbox_operations WHERE company_id=$1",
     [s.company.id],
   );
-  assert.equal(audits.rows[0].n,5);
+  assert.equal(audits.rows[0].n,7);
   await assertBalanced(f,s.company.id);
 });

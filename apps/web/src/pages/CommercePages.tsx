@@ -1342,8 +1342,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             ? `تم إغلاق الصندوق وترحيل الزيادة ${formatMoney(String(-diff))} ريال.`
             : "تم إغلاق الصندوق وتصفير الرصيد دون فرق."
         : cashboxDraft.kind==="pouch"
-          ? "تم ترحيل المبلغ بين الصندوق والحافظة."
-          : "تم ترحيل المبلغ إلى محفظة الشركة الإلكترونية.";
+          ? cashboxDraft.amount.startsWith("-")
+            ? "تم استلام المبلغ من الحافظة وإضافته إلى صندوق البائع."
+            : "تم ترحيل المبلغ من صندوق البائع إلى الحافظة."
+          : cashboxDraft.amount.startsWith("-")
+            ? "تم استلام المبلغ من المحفظة الإلكترونية وإضافته إلى صندوق البائع."
+            : "تم ترحيل المبلغ من صندوق البائع إلى المحفظة الإلكترونية.";
       setCashboxNotice(`${message} رقم القيد #${result.documentId}`);
       setCashboxDraft(null);
       setCashboxUnknown(false);
@@ -2733,7 +2737,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             {cashboxDraft.kind==="pouch" && <small className="muted">
               المبلغ السالب يعني استلام مبلغ من الحافظة وإعادته للصندوق.
             </small>}
+            {cashboxDraft.kind==="electronic" && <small className="muted">
+              المبلغ الموجب يُرحّل من صندوقك إلى محفظة الشركة الإلكترونية،
+              والسالب يعني استلام المبلغ من محفظة الشركة إلى صندوقك.
+            </small>}
             {cashboxDraft.kind==="close" && <small className="muted">
+              هذا حقل جرد النقد الفعلي وليس تحويلًا باتجاهين، لذلك لا يقبل السالب.
               سيتم تحويل النقد المعدود للحافظة، وترحيل أي عجز أو زيادة تلقائيًا ثم تصفير الصندوق.
             </small>}
             {cashboxError && <Notice tone="error">{cashboxError}</Notice>}

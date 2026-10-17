@@ -98,14 +98,19 @@ export async function postEmployeeCashboxOperation(
   const amount=moneyUnits(input.amount);
   if (input.kind!=="close" && amount===0n)
     error("invalid_cashbox_amount","أدخل مبلغًا غير صفري");
-  if (input.kind!=="pouch" && amount<0n)
-    error("invalid_cashbox_amount","لا يقبل هذا الإجراء مبلغًا سالبًا");
+  // Transfers are signed in both directions; a physical cash count cannot
+  // be negative because closure records the actual cash in the till.
+  if (input.kind==="close" && amount<0n)
+    error("invalid_cashbox_amount","المبلغ النقدي الفعلي عند إغلاق الصندوق لا يمكن أن يكون سالبًا");
   if (amount>10n**28n-1n || amount<-(10n**28n-1n))
     error("cashbox_amount_excess","المبلغ أكبر من الحد المسموح");
   const book=await balance(client,companyId,cash.id);
-  const description = input.kind==="pouch"?"ترحيل بين صندوق البائع وحافظته":
-    input.kind==="electronic"?"تحويل دفعة هاتفية إلى المحفظة الإلكترونية للشركة":
-    "إغلاق صندوق المبيعات وجرد النقد الفعلي";
+  const description = input.kind==="pouch"
+    ? (amount<0n?"استلام مبلغ من الحافظة إلى صندوق البائع":"ترحيل مبلغ من صندوق البائع إلى حافظته")
+    : input.kind==="electronic"
+      ? (amount<0n?"استلام مبلغ من محفظة الشركة الإلكترونية إلى صندوق البائع"
+        :"ترحيل مبلغ من صندوق البائع إلى محفظة الشركة الإلكترونية")
+      : "إغلاق صندوق المبيعات وجرد النقد الفعلي";
   const memo=`${description} — ${employee.name}${input.notes?" — "+input.notes:""}`;
   const lines: ReturnType<typeof journalLine>[]=[];
   let variance:bigint|null=null;
