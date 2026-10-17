@@ -51,6 +51,7 @@ export async function readItemCompositionPeers(
  result.peers=rows.rows.map(r=>({
    id:r.id,code:r.code,name:r.name,active:r.active,
    smallestUnitName:r.factor3>1?r.unit3_name:r.factor2>1?r.unit2_name:r.unit1_name,
+   unit1Name:r.unit1_name,factor2:r.factor2,factor3:r.factor3,
    stockSmallest:r.stock_smallest??(canViewStock?"0":null),
  }));
  return result;
