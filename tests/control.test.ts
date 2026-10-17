@@ -178,6 +178,25 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.deepEqual((await owner.ok<Shortcuts>("GET",alphaShortcuts)).pageKeys,
     ["company.pages","company.accounts","public.pages"],
     "Staff preference changes cannot alter owner shortcuts");
+  // The public header recovers the last company from /companies, so opening
+  // shortcuts on the home page must retrieve that company's saved selection.
+  await owner.ok("POST",`/companies/${first.id}/activate`);
+  const rememberedFirst=await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1");
+  assert.equal(rememberedFirst.lastCompanyId,first.id);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",
+    publicShortcuts+"?companyId="+rememberedFirst.lastCompanyId)).pageKeys,
+    ["company.pages","company.accounts","public.pages"]);
+  await owner.ok("POST",`/companies/${second.id}/activate`);
+  const rememberedSecond=await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1");
+  assert.equal(rememberedSecond.lastCompanyId,second.id);
+  assert.deepEqual((await owner.ok<Shortcuts>("GET",
+    publicShortcuts+"?companyId="+rememberedSecond.lastCompanyId)).pageKeys,[]);
+  await owner.ok("POST",`/companies/${first.id}/activate`);
+  assert.equal((await owner.ok<{lastCompanyId:number|null}>(
+    "GET","/companies?pageSize=1")).lastCompanyId,first.id,
+    "Last opened company remains available after switching to public pages");
   // Quick-add uses existing general_table records, not a separate table.
   const quickPayload={
     tableName:"متابعة الملاحظات",category:"",title:"أول إدخال",

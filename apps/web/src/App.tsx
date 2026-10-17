@@ -906,8 +906,10 @@ function Workspace() {
               {user ? (
                 <UserMenu
                   user={user}
-                  companyId={inCompany ? companyId : null}
-                  employeeId={inCompany ? navigationContext?.employee?.id ?? null : null}
+                  // The last visited, still-accessible company is already resolved
+                  // for public routes. Use it for personal shortcuts too.
+                  companyId={navigationContext?.company.id ?? null}
+                  employeeId={navigationContext?.employee?.id ?? null}
                   onLogout={() => {
                     setLogoutError("");
                     void logout()
