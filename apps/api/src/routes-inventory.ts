@@ -21,6 +21,7 @@ import {
   quantum,
 } from "./services/finance.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { addItemCoverageToPage, canReadItemCoverage, itemCoverageJoin, itemCoverageSelect, itemCoverageRedactedSelect } from "./services/item-coverage.ts";
 import { postCommerceJournal } from "./services/commerce-ledger.ts";
 import {
   applyStock,
@@ -67,6 +68,8 @@ const balanceColumns = {
   branchName: "b.name",
   expiryDate: "COALESCE(NULLIF(s.batch_key,''),'none')",
   quantitySmallest: "s.quantity_smallest",
+  quantityUnit1: "s.quantity_smallest::numeric/(i.factor2::numeric*i.factor3)",
+  pooledQuantityUnit1: "v.quantity_smallest::numeric/(i.factor2::numeric*i.factor3)",
   pooledQuantitySmallest: "v.quantity_smallest",
   pooledValueBase: "v.value_base",
 };
@@ -223,15 +226,26 @@ export function inventoryRoutes(pool: Pool): Router {
             : parse(documentDateSchema, req.query.expiryDate);
       }
       res.json(
-        await readInventory(pool, req, (client, companyId) =>
-          masterPage(
+        await readInventory(pool, req, async (client, companyId) => {
+          const canViewCoverage = await canReadItemCoverage(client, actor(req), companyId);
+          const sortByCoverage = canViewCoverage && typeof req.query.sort === "string"
+            && req.query.sort.split(",").some(value =>
+              ["approximateCoverageDays", "coverageAfterReserveDays"].includes(value.split(":")[0]));
+          const from = stockBalanceFrom + (sortByCoverage ? itemCoverageJoin : "");
+          const select = stockBalanceSelect.replace(stockBalanceFrom,
+            `${sortByCoverage ? itemCoverageSelect : itemCoverageRedactedSelect} ${from}`);
+          const result = await masterPage(
             client,
             req,
             companyId,
-            stockBalanceSelect,
-            stockBalanceFrom,
+            select,
+            from,
             "s",
-            balanceColumns,
+            {
+              ...balanceColumns,
+              approximateCoverageDays: sortByCoverage ? "coverage.approximate_coverage_days" : "NULL::numeric",
+              coverageAfterReserveDays: sortByCoverage ? "coverage.coverage_after_reserve_days" : "NULL::numeric",
+            },
             ["i.code", "i.name", "l.name", "b.name"],
             stockBalanceDTO,
             {
@@ -240,8 +254,11 @@ export function inventoryRoutes(pool: Pool): Router {
               expiryDate: expiry === undefined ? [] : [expiry],
             },
             "itemCode:asc,locationName:asc,expiryDate:asc",
-          ),
-        ),
+          );
+          if (canViewCoverage && !sortByCoverage)
+            result.items = await addItemCoverageToPage(client, companyId, result.items, row => row.itemId);
+          return result;
+        }),
       );
     }),
   );

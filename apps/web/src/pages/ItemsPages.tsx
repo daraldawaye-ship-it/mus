@@ -56,6 +56,7 @@ import { ExpiryMonthField } from "../ExpiryMonthField";
 import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
+import { firstUnitStockText } from "../sale-stock-quantity";
 import { usePageDirectory } from "../page-directory";
 import {
   OptionListTools,
@@ -230,26 +231,6 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         ) : "—",
       },
       {
-        accessorKey: "code",
-        header: "رمز الصنف",
-        size: 115,
-        cell: ({ row }) => (
-          <ValueCell>
-            <bdi>{row.original.code}</bdi>
-          </ValueCell>
-        ),
-      },
-      {
-        accessorKey: "legacyId",
-        header: "المعرف في النظام السابق",
-        size: 180,
-        cell: ({ row }) => (
-          <ValueCell>
-            <bdi>{row.original.legacyId || "—"}</bdi>
-          </ValueCell>
-        ),
-      },
-      {
         accessorKey: "name",
         header: "اسم الصنف",
         size: 210,
@@ -304,6 +285,14 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         enableSorting: false,
         size: 100,
         cell: ({ row }) => <bdi>{row.original.currencyCode}</bdi>,
+      },
+      {
+        accessorKey: "availableUnit1",
+        header: "المتوفر بالوحدة الأولى",
+        size: 170,
+        cell: ({ row }) => <ValueCell>
+          <bdi>{firstUnitStockText(row.original.availableSmallest, row.original)}</bdi>
+        </ValueCell>,
       },
       {
         accessorKey: "approximateCoverageDays",

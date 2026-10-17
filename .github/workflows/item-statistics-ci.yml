@@ -9,6 +9,7 @@ on:
       - 'apps/api/src/services/item-statistics.ts'
       - 'apps/web/src/pages/ItemsPages.tsx'
       - 'tests/api.test.ts'
+      - 'tests/item-coverage.test.ts'
       - '.github/workflows/item-statistics-ci.yml'
   workflow_dispatch:
 
@@ -44,5 +45,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Verify pooled first-unit stock and cross-page coverage sorting
+        run: node --import tsx --test tests/item-coverage.test.ts tests/sale-stock-quantity.test.ts
       - name: Verify stock statistics and source supplier attribution in Aden timezone
         run: node --import tsx --test --test-name-pattern="item statistics track|item source supplier can" tests/api.test.ts
