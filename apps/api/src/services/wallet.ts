@@ -35,6 +35,7 @@ export const walletEntryDTO = (row: QueryResultRow): WalletEntry => ({
   employeeName: row.employee_name,
   kind: row.kind,
   attendanceEntryId: row.attendance_entry_id ?? null,
+  clearanceEarningId: row.clearance_earning_id ?? null,
   attendanceRecordId: row.attendance_record_id ?? null,
   points: row.points,
   money: row.money === "0.000000" ? "0" : row.money,
