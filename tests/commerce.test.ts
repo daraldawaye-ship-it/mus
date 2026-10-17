@@ -2973,6 +2973,22 @@ test("purchase supplier is independent from cash settlement but matches credit l
   );
   assert(rows.rows.some((row) => row.account_id === s.cash.id && Number(row.credit) === 1600));
   assert(!rows.rows.some((row) => row.account_id === s.supplier.id));
+  const accountOptions = await f.owner.ok<{items:{id:number}[];total:number}>(
+    "GET",s.path+"/commerce-options?type=accounts&page=1&pageSize=100&sort=name:asc");
+  for(const account of [s.cash,s.customer,s.supplier])
+    assert(accountOptions.items.some(row=>row.id===account.id),
+      "Account lookup must include cash, customer credit, and supplier liabilities");
+  const itemOptions = await f.owner.ok<{items:{id:number;availableSmallest?:string|null;salePrice1:string}[]}>(
+    "GET",s.path+"/commerce-options?type=items&page=1&pageSize=10&sort=saleTimes:desc,code:asc");
+  const matchingItem=itemOptions.items.find(row=>row.id===product.id);
+  assert(matchingItem,"Item is searchable in invoice lookup");
+  const storedStock=await f.pool.query(
+    "SELECT stock_total::text AS available FROM item_statistics WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,product.id]);
+  assert.equal(matchingItem.availableSmallest,storedStock.rows[0]?.available??"0",
+    "First-unit lookup stock is based on actual pooled inventory statistics");
+  assert(matchingItem.salePrice1,
+    "Invoice item search includes the sale price even in purchase invoices");
   const cashDetail = await f.owner.ok<{ invoice: Invoice }>("GET", s.path + "/invoices/" + cashInvoice.id);
   assert.equal(cashDetail.invoice.supplierAccountName, s.supplier.name);
 
@@ -3003,10 +3019,13 @@ test("purchase supplier is independent from cash settlement but matches credit l
     counterpartyAccountId: s.supplier.id,
     supplierAccountId: s.customer.id,
   }))).status, 409);
-  assert.equal((await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
+  const arbitrarySupplier = await invoice(f, s, invoiceBody(s, product.id, {
     counterpartyAccountId: s.cash.id,
     supplierAccountId: s.cash.id,
-  }))).status, 409);
+  }));
+  assert.equal(arbitrarySupplier.supplierAccountId, s.cash.id,
+    "The informative actual supplier field accepts all active posting accounts");
+  assert.equal(arbitrarySupplier.counterpartyAccountId, s.cash.id);
   assert.equal((await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
     kind: "sale",
     counterpartyAccountId: s.customer.id,
