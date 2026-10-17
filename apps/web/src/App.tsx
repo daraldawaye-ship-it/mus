@@ -53,6 +53,7 @@ import {
 } from "./page-directory";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
+import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
 import { useCompanyIdleLogout } from "./idle-logout";
@@ -810,7 +811,7 @@ function Workspace() {
     // Do not abort this mutation in the cleanup: moving straight back to the
     // public site previously cancelled the persisted last-company update.
     // Serializing visits also prevents a delayed earlier activation winning.
-    activationQueue.current = activationQueue.current.catch(() => {}).then(async () => {
+    void enqueueCompanyActivation(activationQueue, async () => {
       await api(`/companies/${companyId}/activate`, { method: "POST" });
       queryClient.setQueryData(["last-company-sidebar", userId], selectedContext);
       void queryClient.invalidateQueries({
@@ -819,8 +820,7 @@ function Workspace() {
       void queryClient.invalidateQueries({
         queryKey: ["list", userId, `company:${companyId}:wallet`],
       });
-    });
-    void activationQueue.current.catch(() => {});
+    }).catch(() => {});
   }, [companyId, user?.id, !!company.data, company.isError, queryClient]);
   if (sessionLoading)
     return (
