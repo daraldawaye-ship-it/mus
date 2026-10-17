@@ -453,6 +453,7 @@ export function ItemPage({ context }: { context: CompanyContext }) {
 type InvoiceItemEditorProps = {
   context: CompanyContext;
   itemId: number;
+  readOnly?: boolean;
   onSaved: (item: Item) => void;
   onClose: () => void;
   onSavingChange?: (saving: boolean) => void;
@@ -462,10 +463,11 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   const { user } = useSession();
   const directory = usePageDirectory(props.context.company.id);
   const allowed =
-    itemsAccess(props.context, true) &&
+    itemsAccess(props.context, !props.readOnly) &&
     ["company.items", "company.item-card"].every((key) => {
       const page = directory.data?.find((entry) => entry.key === key);
-      return !!page?.enabled && page.actionAccess.view && page.actionAccess.edit;
+      return !!page?.enabled && page.actionAccess.view &&
+        (props.readOnly || page.actionAccess.edit);
     });
   if (directory.isPending)
     return <Notice>جارٍ التحقق من صلاحية تعديل الصنف…</Notice>;
@@ -481,7 +483,7 @@ export function InvoiceItemEditor(props: InvoiceItemEditorProps) {
   if (!allowed)
     return (
       <>
-        <Notice tone="warning">ليس لديك صلاحية تعديل كرت الصنف.</Notice>
+        <Notice tone="warning">ليس لديك صلاحية {props.readOnly ? "عرض" : "تعديل"} كرت الصنف.</Notice>
         <Button variant="secondary" onClick={props.onClose}>
           إغلاق
         </Button>
@@ -501,6 +503,7 @@ function InvoiceItemDetail({
   onSaved,
   onClose,
   onSavingChange,
+  readOnly,
 }: InvoiceItemEditorProps) {
   const { user } = useSession();
   const [openingKey] = useState(() => crypto.randomUUID());
@@ -554,6 +557,7 @@ function InvoiceItemDetail({
       context={context}
       item={item}
       embedded
+      readOnly={readOnly}
       onClose={onClose}
       onSavingChange={onSavingChange}
       onSaved={onSaved}
@@ -1095,6 +1099,7 @@ function ItemEditor({
   item,
   onSaved,
   embedded = false,
+  readOnly = false,
   onClose,
   onReloaded,
   onSavingChange,
@@ -1103,6 +1108,7 @@ function ItemEditor({
   item: Item | null;
   onSaved: (item: Item, message: string) => void;
   embedded?: boolean;
+  readOnly?: boolean;
   onClose?: () => void;
   onReloaded?: (item: Item) => void;
   onSavingChange?: (saving: boolean) => void;
@@ -1182,7 +1188,7 @@ function ItemEditor({
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
-  const disabled = !manage || saving || unknownCreation;
+  const disabled = readOnly || !manage || saving || unknownCreation;
   const allowNavigation = useRef(false);
   useEffect(() => {
     onSavingChange?.(saving);
