@@ -10,7 +10,7 @@ type ControlOption = {
   label: string;
   category: string;
   scope: "company" | "employee";
-  type: "boolean" | "hours";
+  type: "boolean" | "hours" | "number";
   defaultValue: boolean | number;
   value: boolean | number;
   min?: number;
@@ -119,7 +119,7 @@ function ControlRow({
           <strong>{option.label}</strong>
           <small className="control-option-help">القيمة الافتراضية: {option.type === "boolean"
             ? (option.defaultValue ? "مفعّل" : "معطّل")
-            : `${option.defaultValue} ساعة`}</small>
+            : `${option.defaultValue}${option.type==="hours"?" ساعة":" ريال"}`}</small>
         </div>
         <div className="control-option-input">
           {option.type === "boolean" ? (
@@ -131,15 +131,15 @@ function ControlRow({
               <span>{value ? "إظهار / سماح" : "إخفاء / منع"}</span>
             </label>
           ) : (
-            <Field label="عدد الساعات" type="number"
-              min={option.min ?? 0} max={option.max ?? 72} step={1}
+            <Field label={option.type==="hours"?"عدد الساعات":"قيمة الحد بالريال"} type="number"
+              min={option.min ?? 0} max={option.max ?? (option.type==="hours"?72:999999999)} step={1}
               value={String(value)} onChange={(event) => setValue(Number(event.target.value))}
               disabled={!option.canEdit || busy || noEmployee} />
           )}
           <Button size="compact" disabled={!option.canEdit || busy || noEmployee ||
-            value === option.value || (option.type === "hours" && (
+            value === option.value || (option.type !== "boolean" && (
               !Number.isSafeInteger(value) || Number(value) < (option.min ?? 0) ||
-              Number(value) > (option.max ?? 72)))}
+              Number(value) > (option.max ?? (option.type==="hours"?72:999999999))))}
             onClick={() => void save()}>حفظ</Button>
           <Button size="compact" variant="ghost"
             disabled={!option.canEdit || busy || noEmployee || option.revision === null}
