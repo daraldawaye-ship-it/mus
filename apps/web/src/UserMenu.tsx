@@ -4,6 +4,7 @@ import { CircleUserRound, Link2, LogOut, Palette } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
 import { thumbnailUrl } from "./ImageUpload";
+import { UserShortcutFlyout, ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -31,13 +32,19 @@ function Avatar({ user, large = false }: { user: User; large?: boolean }) {
 export function UserMenu({
   user,
   onLogout,
+  companyId = null,
+  employeeId = null,
 }: {
   user: User;
   onLogout: () => void;
+  companyId?: number | null;
+  employeeId?: number | null;
 }) {
   const appearance = useAppearance();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -123,6 +130,12 @@ export function UserMenu({
                 اتصالات ChatGPT
               </a>
             )}
+            <UserShortcutFlyout user={user} companyId={companyId}
+              employeeId={employeeId}
+              onNavigate={dismiss}
+              onManage={()=>{dismiss();setShortcutEditorOpen(true);}}
+              onQuickAdd={()=>{dismiss();setQuickAddOpen(true);}}
+            />
             <button
               className="user-menu-item user-menu-logout"
               type="button"
@@ -138,6 +151,10 @@ export function UserMenu({
           </div>
         </div>
       )}
+      <ShortcutEditor user={user} companyId={companyId}
+        open={shortcutEditorOpen} onClose={()=>setShortcutEditorOpen(false)}/>
+      {(user.owner||user.kind==="admin")&&<GeneralTableQuickAdd
+        open={quickAddOpen} onClose={()=>setQuickAddOpen(false)}/>}
     </div>
   );
 }
