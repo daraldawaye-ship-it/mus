@@ -24,6 +24,8 @@ on:
       - 'apps/web/src/pages/ControlPage.tsx'
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/UserShortcuts.tsx'
+      - 'apps/web/src/shortcut-position.ts'
+      - 'tests/shortcut-position.test.ts'
       - 'apps/web/src/last-company-activation.ts'
       - 'apps/web/src/styles.css'
       - 'tests/last-company-activation.test.ts'
@@ -69,6 +71,8 @@ jobs:
         run: node --import tsx --test tests/control.test.ts
       - name: Persist last visited company across rapid public-page navigation
         run: node --import tsx --test tests/last-company-activation.test.ts
+      - name: Keep user shortcut flyout inside viewport in RTL and narrow layouts
+        run: node --import tsx --test tests/shortcut-position.test.ts
       - name: General table numeric inline edit and sort regressions
         run: node --import tsx --test --test-name-pattern="general table numeric columns sort" tests/api.test.ts
       - name: General table inline title update and data-preservation checks
