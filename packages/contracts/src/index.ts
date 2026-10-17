@@ -288,6 +288,7 @@ export const companyAuditActions: AuditAction[] = [
   "financialDocument.create",
   "financialDocument.update",
   "financialDocument.post",
+  "cashbox.quick-post",
   "financialDocument.reverse",
   "account.create",
   "account.update",
