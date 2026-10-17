@@ -2341,8 +2341,8 @@ ul {
 .table-filters.invoice-kind-purchase,
 .commerce-header-card.invoice-kind-sale,
 .commerce-header-card.invoice-kind-purchase {
-  background: color-mix(in srgb, var(--surface) 78%, var(--invoice-kind-wash));
-  border: 1px solid color-mix(in srgb, var(--border) 40%, var(--invoice-kind-accent));
+  background: color-mix(in srgb, var(--surface) 66%, var(--invoice-kind-wash));
+  border: 1px solid color-mix(in srgb, var(--border) 35%, var(--invoice-kind-accent));
   border-radius: 9px;
 }
 .table-filters.invoice-kind-sale,
@@ -2352,7 +2352,7 @@ ul {
 }
 .commerce-header-card.invoice-kind-sale .commerce-header-blank,
 .commerce-header-card.invoice-kind-purchase .commerce-header-blank {
-  background: color-mix(in srgb, var(--surface) 90%, var(--invoice-kind-wash));
+  background: color-mix(in srgb, var(--surface) 78%, var(--invoice-kind-wash));
 }
 
 .commerce-list-link {
