@@ -2033,6 +2033,37 @@ test("account card choice labels retain exact order and support create, update, 
     {accountChoice:null},
   )).account;
   assert.equal(cleared.accountChoice,null);
+  // Table cell actions patch one field at a time. Activation and the
+  // descriptive choice must remain independent, including filter results.
+  const deactivated = (await f.owner.ok<{account:Account}>(
+    "PATCH",`/companies/${company.id}/accounts/${chosen.id}`,
+    {active:false},
+  )).account;
+  assert.equal(deactivated.active,false);
+  assert.equal(deactivated.accountChoice,null);
+  const inactiveList=await f.owner.ok<Page<Account>>(
+    "GET",`/companies/${company.id}/accounts?active=false&q=%D8%B5%D9%86%D8%AF%D9%88%D9%82`,
+  );
+  assert(inactiveList.items.some(row=>row.id===chosen.id),
+    "Stopped account appears when inactive filter is selected");
+  const activeList=await f.owner.ok<Page<Account>>(
+    "GET",`/companies/${company.id}/accounts?active=true&q=%D8%B5%D9%86%D8%AF%D9%88%D9%82`,
+  );
+  assert(!activeList.items.some(row=>row.id===chosen.id),
+    "Stopped account is hidden in active-only listing");
+  const reclassified = (await f.owner.ok<{account:Account}>(
+    "PATCH",`/companies/${company.id}/accounts/${chosen.id}`,
+    {accountChoice:"customer"},
+  )).account;
+  assert.equal(reclassified.active,false, "Choice change must not reactivate account");
+  assert.equal(reclassified.accountChoice,"customer");
+  const reactivated = (await f.owner.ok<{account:Account}>(
+    "PATCH",`/companies/${company.id}/accounts/${chosen.id}`,
+    {active:true},
+  )).account;
+  assert.equal(reactivated.active,true);
+  assert.equal(reactivated.accountChoice,"customer",
+    "Active change must preserve account choice");
   for (const invalid of ["cashbox-third","nonexistent",1]) {
     assert.equal((await f.owner.request("PATCH",
       `/companies/${company.id}/accounts/${chosen.id}`,
@@ -2048,7 +2079,7 @@ test("account card choice labels retain exact order and support create, update, 
     `/companies/${company.id}/accounts?accountChoice=cashboxSecond`)).total,0);
   const reader = await f.member(company.id,["accounts.view"],21);
   assert.equal((await reader.client.ok<{account:Account}>(
-    "GET",`/companies/${company.id}/accounts/${chosen.id}`)).account.accountChoice,null);
+    "GET",`/companies/${company.id}/accounts/${chosen.id}`)).account.accountChoice,"customer");
   assert.equal((await reader.client.request("PATCH",
     `/companies/${company.id}/accounts/${chosen.id}`,
     {accountChoice:"customer"})).status,403);
