@@ -443,12 +443,20 @@ try {
         .locator('th[data-column-id="name"]')
         .getByRole("button")
         .click({ modifiers: ["Shift"] });
-      assert.equal(await amountHeader.getAttribute("data-sort-priority"), "1");
-      assert.equal(
-        await table(page)
-          .locator('th[data-column-id="name"]')
-          .getAttribute("data-sort-priority"),
-        "2",
+      await eventually(
+        async () => ({
+          amountPriority: await amountHeader.getAttribute("data-sort-priority"),
+          namePriority: await table(page)
+            .locator('th[data-column-id="name"]')
+            .getAttribute("data-sort-priority"),
+          sort: new URL(page.url()).searchParams.get("sort"),
+        }),
+        (value) =>
+          assert.deepEqual(value, {
+            amountPriority: "1",
+            namePriority: "2",
+            sort: "balanceOneYearAgoBase:desc,name:asc",
+          }),
       );
       const sortedUrl = page.url();
       await page
