@@ -559,6 +559,12 @@ legend {
 }
 /* Shortcut placement uses measured viewport space; on narrow screens
    the list expands inside the avatar menu instead of leaving the viewport. */
+/* The avatar dropdown and its fixed shortcut submenu must paint above the
+   desktop icon rail (z-index: 20). Raise the topbar only while the menu is
+   open, so the sticky header keeps its normal stacking order otherwise. */
+.topbar:has(.user-menu-panel) {
+  z-index: 60;
+}
 .user-menu-panel:has(.user-shortcut-root) { overflow: visible; }
 .user-menu-panel:has(.user-shortcut-flyout--inline) {
   overflow-x: hidden;
