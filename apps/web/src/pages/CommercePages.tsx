@@ -2967,7 +2967,9 @@ function InvoiceViewer({
                   <td>{amount(line.total)}</td>
                   {invoice.kind === "sale" && context.general && (
                     <td className="commerce-no-print">
-                      {amount(line.commissionAmount)} ({line.commissionRate}%)
+                      {line.commissionAmount.startsWith("-")
+                        ? `مراجعة مرتجع: ${amount(line.commissionAmount.slice(1))} — دون خصم`
+                        : `${amount(line.commissionAmount)} (${line.commissionRate}%)`}
                     </td>
                   )}
                 </tr>
@@ -2979,9 +2981,10 @@ function InvoiceViewer({
           context.general &&
           invoice.lines.some((line) => line.commissionAmount !== "0") && (
             <Notice>
-              مبالغ عمولة التصريف محسوبة ومثبتة على سطور هذه الفاتورة حسب فترة
-              الصنف. لا تمثل صرفًا نقديًا أو قيدًا على حساب موظف قبل اعتماد
-              المستفيد والتسوية.
+              تُثبت عمولة التصريف بحسب إعداد الصنف وتاريخ الفاتورة.
+              المبيعات الجديدة المؤهلة تُسجل كمستحق للموظف الذي رحّلها إذا كان موظفًا فعالًا،
+              ولا تُدفع نقدًا تلقائيًا. أي مبلغ مرتبط بمرتجع مخصص لمراجعة الإدارة فقط؛
+              لا يُخصم من عمولة الموظف.
             </Notice>
           )}
         <div className="commerce-totals">
