@@ -39,6 +39,12 @@ export function UserShortcutFlyout({
     .map(entry=>[entry.key,entry]));
   const defaultPage=lookup.get(companyId?"company.pages":"public.pages")
     ??lookup.get("public.pages");
+  // Keep the default entry visible while the persisted-company catalog loads.
+  // Authorization remains checked by the page route itself; when the catalog
+  // resolves, only enabled and currently viewable links are retained.
+  const loadingDefaultHref = !catalog.data && catalog.isLoading
+    ? (companyId ? `/companies/${companyId}/pages` : "/pages") : null;
+  const defaultHref = defaultPage?.href ?? loadingDefaultHref;
   const shortcuts=(shortcutQuery.data?.pageKeys??[])
     .map(key=>lookup.get(key)).filter((entry):entry is PageEntry=>
       !!entry && entry.key!==defaultPage?.key);
@@ -59,7 +65,7 @@ export function UserShortcutFlyout({
       <ChevronLeft size={14} aria-hidden="true" className="user-shortcut-arrow"/>
     </button>
     {open&&<div className="user-shortcut-flyout" aria-label="اختصاراتي">
-      {defaultPage&&<NavLink to={defaultPage.href!} onClick={onNavigate}
+      {defaultHref&&<NavLink to={defaultHref} onClick={onNavigate}
         className="user-menu-item"><ListTree size={15}/>قائمة الصفحات</NavLink>}
       {shortcuts.map(entry=><NavLink key={entry.key} to={entry.href!}
         title={entry.name} onClick={onNavigate} className="user-menu-item">
