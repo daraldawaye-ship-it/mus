@@ -606,6 +606,81 @@ function minorUnits(value: string): bigint {
   );
 }
 
+test("doctor cards and positive/negative sales referral are company-scoped and enforce the control limit", async (t) => {
+  const f = await fixture(t), s = await setup(f), stockItem = await s.item();
+  const other = await f.company("Doctor referral isolation");
+  const root = `${s.path}/doctors`;
+  const newDoctor=(name:string,kind:"doctor"|"nurse"|"entity",department:string,active=true)=>({
+    name,kind,department,phone:"777888555",searchKeys:"النابهي",notes:"عيادة",active,
+  });
+  const first=(await f.owner.ok<{doctor:{id:number;revision:number;name:string}}>(
+    "POST",root,newDoctor("الدكتور محمد علي","doctor","قسم الحروق"),201)).doctor;
+  const nurse=(await f.owner.ok<{doctor:{id:number}}>(
+    "POST",root,newDoctor("محمد عبده","nurse","قسم الجراحة"),201)).doctor;
+  const entity=(await f.owner.ok<{doctor:{id:number}}>(
+    "POST",root,newDoctor("المستشفى الجمهوري","entity","المستشفى الجمهوري"),201)).doctor;
+  const departments=await f.owner.ok<{items:string[]}>("GET",root+"/departments");
+  assert(departments.items.includes("قسم الحروق"));
+  assert(departments.items.includes("قسم الجراحة"));
+  assert(departments.items.includes("المستشفى الجمهوري"));
+  const searchable=await f.owner.ok<{items:{id:number}[];total:number}>(
+    "GET",root+"?active=true&q=%D8%A7%D9%84%D9%86%D8%A7%D8%A8%D9%87%D9%8A");
+  assert.equal(searchable.total,3,"Search keys are searchable as well as names");
+  assert.equal((await f.owner.ok<{items:unknown[]}>(
+    "GET",`/companies/${other.id}/doctors`)).items.length,0);
+  assert.equal((await f.owner.request("GET",
+    `/companies/${other.id}/doctors/${first.id}`)).status,404);
+  assert.equal((await f.owner.request("POST",root,{
+    ...newDoctor("Bad","pharmacist" as "doctor",""), })).status,400);
+  await f.owner.ok("PUT",`${s.path}/control/sales_doctor_threshold`,
+    {value:1000,employeeId:null,revision:1});
+  assert.equal((await f.owner.request("PUT",
+    `${s.path}/control/sales_doctor_threshold`,
+    {value:-1,employeeId:null,revision:2})).status,400);
+  await invoice(f,s,invoiceBody(s,stockItem.id));
+  const saleBody=invoiceBody(s,stockItem.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:stockItem.id,unit:1,quantity:"2",expiryDate:null,originalLineId:null}],
+  });
+  const missingDoctor=await f.owner.request("POST",`${s.path}/invoices`,saleBody);
+  assert.equal(missingDoctor.status,400,JSON.stringify(missingDoctor.body));
+  const validSale={...saleBody,doctorId:first.id};
+  const sale=await invoice(f,s,validSale);
+  assert.equal(sale.doctorId,first.id);
+  assert.equal(sale.doctorName,"الدكتور محمد علي");
+  assert.equal((await invoice(f,s,validSale)).id,sale.id,
+    "UUID retry replays original doctor reference");
+  assert.equal((await f.owner.request("POST",`${s.path}/invoices`,{
+    ...validSale,doctorId:nurse.id,
+  })).status,409,"Same invoice key cannot be switched to another doctor");
+  const archived=(await f.owner.ok<{doctor:{id:number;active:boolean}}>(
+    "PATCH",`${root}/${first.id}`,{
+      ...newDoctor("الدكتور محمد علي","doctor","قسم الحروق",false),revision:first.revision,
+    })).doctor;
+  assert.equal(archived.active,false);
+  assert.equal((await f.owner.ok<{items:{id:number}[]}>("GET",root+"?active=true"))
+    .items.some(row=>row.id===first.id),false);
+  const bad=await f.owner.request("POST",`${s.path}/invoices`,{
+    ...saleBody,idempotencyKey:randomUUID(),doctorId:first.id,
+  });
+  assert.equal(bad.status,400,"Archived doctor is not selectable for new invoices");
+  const refund=invoiceBody(s,stockItem.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,doctorId:entity.id,
+    lines:[{itemId:stockItem.id,unit:1,quantity:"-2",originalLineId:sale.lines[0]!.id,expiryDate:null}],
+  });
+  const noDoctorRefund=await f.owner.request("POST",`${s.path}/invoices`,{
+    ...refund,doctorId:null,
+  });
+  assert.equal(noDoctorRefund.status,400,
+    "A sale refund below negative threshold must also require a doctor");
+  const returned=await invoice(f,s,refund);
+  assert.equal(returned.doctorId,entity.id);
+  assert.equal(returned.total,"-2000");
+  const stillLinked=await f.owner.ok<{invoice:Invoice}>(
+    "GET",`${s.path}/invoices/${sale.id}`);
+  assert.equal(stillLinked.invoice.doctorName,"الدكتور محمد علي",
+    "Invoice keeps original name after doctor is archived");
+});
 test("purchase and sale atomically post exact stock and balanced discounted revenue/COGS with locked independent unit prices", async (t) => {
   const f = await fixture(t),
     s = await setup(f),
