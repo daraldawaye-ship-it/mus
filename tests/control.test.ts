@@ -85,6 +85,7 @@ test("control center isolates companies/employees, audits optimistic writes and 
   const empty=await owner.ok<Directory>("GET",prefix);
   assert.equal(option(empty,"show_currency").value,true);
   assert.equal(option(empty,"auto_checkout_hours").value,16);
+  assert.equal(option(empty,"sales_doctor_threshold").value,1000);
   assert.equal(option(empty,"idle_logout_hours").value,0);
   assert.equal(option(empty,"show_currency").revision,null);
   const purchaseOptionsKey = "show_recent_item_purchases";
