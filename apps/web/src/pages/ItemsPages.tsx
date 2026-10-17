@@ -1181,6 +1181,7 @@ function ItemEditor({
   const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | "supplier" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [optionBusy, setOptionBusy] = useState(false);
   // Do not remount the current editor after each automatic save.
   const savedRevision = useRef(item?.revision ?? 0);
   const savedItem = useRef<Item | null>(null);
@@ -1207,9 +1208,9 @@ function ItemEditor({
   const allowNavigation = useRef(false);
   useEffect(() => {
     // The invoice's bottom sheet must not close while edits are pending.
-    onSavingChange?.(saving || (embedded && dirty));
+    onSavingChange?.(saving || (embedded && (dirty || optionBusy)));
     return () => onSavingChange?.(false);
-  }, [saving, dirty, embedded, onSavingChange]);
+  }, [saving, dirty, optionBusy, embedded, onSavingChange]);
   function markDirty() {
     draftVersion.current += 1;
     setError("");
@@ -1350,6 +1351,7 @@ function ItemEditor({
     fields, currency, agent, supplier, supplierManuallyTouched]);
 
   function leaveEditor() {
+    if (item && optionBusy) return;
     if (item && dirty) {
       // An explicit Close also commits the most recent text edit.
       void save();
@@ -1940,7 +1942,8 @@ function ItemEditor({
             companyId={companyId}
             recordKind="item"
             recordId={item.id}
-            canEdit={manage && !saving}
+            canEdit={manage}
+            onPendingChange={setOptionBusy}
           />
         )}
       </form>
@@ -1950,6 +1953,7 @@ function ItemEditor({
           recordKind="item"
           recordId={item.id}
           canEdit={manage}
+          onPendingChange={setOptionBusy}
         />
       )}
       {item && <ItemStatisticsCard companyId={companyId} itemId={item.id} />}
@@ -2102,7 +2106,7 @@ function ItemEditor({
       </Dialog>
       {!embedded && (
         <ItemEditorNavigation
-          dirty={dirty}
+          dirty={dirty || optionBusy}
           saving={saving}
           unknown={unknownCreation}
           allowNavigation={allowNavigation}
