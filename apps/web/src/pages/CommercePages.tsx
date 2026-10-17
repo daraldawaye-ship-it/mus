@@ -828,10 +828,11 @@ const itemInfoViews: { value: ItemInfoView; label: string }[] = [
 function isItemInfoView(value: string | null): value is ItemInfoView {
   return itemInfoViews.some(view => view.value === value);
 }
-function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
+function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, userId }: {
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
+  selectedItemName: string | null;
   userId: number | undefined;
 }) {
   const companyId = context.company.id;
@@ -880,7 +881,11 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
     <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
       <details ref={menu} className="invoice-item-options-menu">
         <summary aria-label="اختر خيارات الصنف">
-          <span>{selectedLabel}</span><span aria-hidden="true">▾</span>
+          <span className="invoice-item-options-heading"
+            title={selectedItemName ? `${selectedLabel} (${selectedItemName})` : selectedLabel}>
+            <span className="invoice-item-options-view">{selectedLabel}</span>
+            {selectedItemName && <span className="invoice-item-options-selected-name"> ({selectedItemName})</span>}
+          </span><span aria-hidden="true">▾</span>
         </summary>
         <div className="invoice-item-options-choices">
           {itemInfoViews.map(option => (
@@ -1007,11 +1012,12 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
     </>
   );
 }
-function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
+function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName }: {
   children: ReactNode;
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
+  selectedItemName: string | null;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -1024,7 +1030,8 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
       <div className="invoice-workspace-main">{children}</div>
       {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
-          context={context} kind={kind} selectedItemId={selectedItemId} userId={user?.id} />
+          context={context} kind={kind} selectedItemId={selectedItemId}
+          selectedItemName={selectedItemName} userId={user?.id} />
         <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
       </aside>}
     </div>
@@ -1036,7 +1043,7 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
   const [params] = useSearchParams();
   const { user } = useSession();
   const kind = params.get("kind") === "purchase" ? "purchase" : "sale";
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Pick<Item,"id"|"name"> | null>(null);
   const control = useControls(context.company.id, context.employee?.id ?? null);
   if (!commerceAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
@@ -1044,10 +1051,11 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     return canPost(context) ? ((isMobileDevice() && control.value(kind === "sale" ? "mobile_sales" : "mobile_purchases") === false) ? (
       <Notice tone="warning">إنشاء هذا النوع من الفواتير من الهاتف غير مسموح في الكنترول.</Notice>
     ) : (
-      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItemId}>
+      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItem?.id ?? null}
+        selectedItemName={selectedItem?.name ?? null}>
         <InvoiceEditor
           key={`${user?.id}:${context.company.id}:${kind}`}
-          context={context} onChooseItem={setSelectedItemId}
+          context={context} onChooseItem={setSelectedItem}
         />
       </InvoiceWorkspace>
     )) : (
@@ -1056,12 +1064,12 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
       </Notice>
     );
   return (
-    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null}>
+    <InvoiceWorkspace context={context} kind={kind} selectedItemId={null} selectedItemName={null}>
       <InvoiceViewer context={context} invoiceId={Number(invoiceId)} />
     </InvoiceWorkspace>
   );
 }
-function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (itemId: number) => void }) {
+function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
@@ -1382,7 +1390,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
-    onChooseItem(selected.id);
+    onChooseItem({id:selected.id,name:selected.name});
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
@@ -1414,6 +1422,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   function itemSaved(item: Item) {
     if (!guard.isCurrent() || item.companyId !== companyId) return;
+    onChooseItem({id:item.id,name:item.name});
     setLines((current) =>
       current.map((line) => {
         if (line.itemId !== item.id) return line;
@@ -1671,6 +1680,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
+    onChooseItem(null);
     setLines([first]);
     setAccount(initialInvoiceAccount(kind, defaultCashbox));
     setSupplier(null);
@@ -1771,6 +1781,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const next = emptyLine();
       pending.current = null;
+      onChooseItem(null);
       setLines([next]);
       setAccount(initialInvoiceAccount(kind, defaultCashbox));
       setSupplier(null);
