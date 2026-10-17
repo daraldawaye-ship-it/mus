@@ -167,13 +167,32 @@ export interface AccountBalanceStatistics {
     balance: AccountStatisticsComponentMetadata;
     activity: AccountStatisticsComponentMetadata | null;
     commerce: AccountStatisticsComponentMetadata | null;
-    stock: AccountStatisticsComponentMetadata;
+    stock: AccountStatisticsComponentMetadata | null;
   };
   lastFollowUp: AccountBalanceFollowUp | null;
   lastApproval: AccountBalanceApproval | null;
   approvalQuote: AccountBalanceApprovalQuote;
   capabilities: { canFollowUp: boolean; canApprove: boolean };
   operations: AccountOperationStatistics;
+  stockAvailability: "available" | "restricted";
+  stock: AccountAssignedStockValue | null;
+}
+
+/** Current posted stock state; independent of the historical report cutoff. */
+export interface AccountAssignedStockValue {
+  basis: "current_item_card_supplier";
+  scope: "current_transaction_state";
+  valuationMethod: "weighted_average";
+  asOfDate: string;
+  snapshotAt: string;
+  currency: AccountBalanceCurrency;
+  valueBase: string;
+  confirmedValueBase: string;
+  inferredValueBase: string;
+  assignedItemCount: string;
+  inferredItemCount: string;
+  negativeStockItemCount: string;
+  negativeStockValueBase: string;
 }
 
 export const accountOperationPeriods = [

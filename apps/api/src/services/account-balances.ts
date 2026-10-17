@@ -16,6 +16,7 @@ import {
   accountActivityVisibility,
 } from "./pages.ts";
 import { readAccountOperations } from "./account-operations.ts";
+import { readAccountStockValue } from "./account-stock-value.ts";
 import { audit } from "./audit.ts";
 import { conflict } from "./masters.ts";
 
@@ -103,10 +104,11 @@ export async function refreshBalance(
     conflict("يلزم تحديد عملة أساسية فعالة قبل احتساب الرصيد");
   return (
     await client.query(
-      `SELECT *,balance_as_of_date::text AS balance_date_text,
-        activity_as_of_date::text AS activity_date_text,
-        commerce_as_of_date::text AS commerce_date_text,
-        stock_as_of_date::text AS stock_date_text
+      `SELECT policy_version,source_revision,balance_state,balance_computed_revision,
+        balance_as_of_date::text AS balance_date_text,balance_computed_at,
+        balance_current_base,balance_one_year_ago_base,balance_at_current_year_start_base,
+        balance_at_previous_year_start_base,balance_at_two_years_ago_start_base,
+        balance_currency_id,balance_currency_code,balance_currency_decimal_places,balance_generation
        FROM account_statistics WHERE company_id=$1 AND account_id=$2`,
       [companyId, accountId],
     )
@@ -137,6 +139,12 @@ export async function readBalanceStatistics(
     asOfDate,
     visibility,
   );
+  const stockValue = await readAccountStockValue(
+    client,
+    user,
+    companyId,
+    accountId,
+  );
   const follow = await client.query(
     "SELECT * FROM account_balance_followups WHERE company_id=$1 AND account_id=$2 ORDER BY followed_up_at DESC,id DESC LIMIT 1",
     [companyId, accountId],
@@ -145,7 +153,7 @@ export async function readBalanceStatistics(
     "SELECT *,balance_date::text AS balance_date_text FROM account_balance_approvals WHERE company_id=$1 AND account_id=$2 AND source_generation=$3::uuid ORDER BY created_at DESC,id DESC LIMIT 1",
     [companyId, accountId, row.balance_generation],
   );
-  const metadata = (component: string): AccountStatisticsComponentMetadata =>
+  const metadata = (component: "balance"): AccountStatisticsComponentMetadata =>
     row[`${component}_state`] === "uncomputed"
       ? {
           state: "uncomputed",
@@ -192,7 +200,7 @@ export async function readBalanceStatistics(
       balance: metadata("balance"),
       activity: operational.activityMetadata,
       commerce: operational.commerceMetadata,
-      stock: metadata("stock"),
+      stock: stockValue.metadata,
     },
     lastFollowUp: follow.rows[0] ? followUpDTO(follow.rows[0]) : null,
     lastApproval: approval.rows[0] ? approvalDTO(approval.rows[0]) : null,
@@ -202,6 +210,8 @@ export async function readBalanceStatistics(
       canApprove: await allowed("approve"),
     },
     operations: operational.operations,
+    stockAvailability: stockValue.availability,
+    stock: stockValue.stock,
   };
 }
 /** Company/user locks and current permission checks precede this function. */
