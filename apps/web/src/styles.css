@@ -3425,3 +3425,9 @@ ul {
 .pouch-receipts-table th,
 .pouch-receipts-table td { padding:9px; vertical-align:middle; }
 .pouch-receipts-actions { display:flex; gap:6px; flex-wrap:wrap; min-width:210px; }
+
+/* Only the two receipt registers: display negative balances distinctly. */
+.pouch-receipts-page .receipt-negative-amount {
+  color: var(--error-text);
+  font-weight: 700;
+}
