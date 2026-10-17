@@ -2,11 +2,14 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { transaction } from "./db.ts";
-import { actor, handler, parse } from "./http.ts";
-import { optionalId } from "./services/lists.ts";
+import { actor, handler, parse, id } from "./http.ts";
+
 import { currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { HttpError } from "./errors.ts";
+
+const optionalId = (value: unknown) =>
+  value === undefined ? null : id(typeof value === "string" ? value : "");
 
 const shortcutInput = z.object({
   pageKeys: z.array(z.string().max(120)).max(40).refine(
