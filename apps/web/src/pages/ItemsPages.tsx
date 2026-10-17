@@ -89,11 +89,12 @@ export function itemsAccess(context: CompanyContext, manage = false) {
 function useItemChanges(companyId: number) {
   const client = useQueryClient();
   const { user } = useSession();
-  return async () =>
+  return async (skipEditorDetails = false) =>
     client.invalidateQueries({
       predicate: ({ queryKey }) =>
         queryKey[1] === user?.id &&
-        ((queryKey[0] === "items" && queryKey[2] === companyId) ||
+        ((queryKey[0] === "items" && queryKey[2] === companyId &&
+          (!skipEditorDetails || !["detail", "invoice-detail"].includes(String(queryKey[3])))) ||
           (queryKey[0] === "commerce" &&
             queryKey[2] === companyId &&
             queryKey[3] === "item-search") ||
@@ -1180,6 +1181,12 @@ function ItemEditor({
   const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | "supplier" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Do not remount the current editor after each automatic save.
+  const savedRevision = useRef(item?.revision ?? 0);
+  const savedItem = useRef<Item | null>(null);
+  const [visibleRevision, setVisibleRevision] = useState(item?.revision ?? 0);
+  const [savedMessage, setSavedMessage] = useState("");
+  const formElement = useRef<HTMLFormElement>(null);
   const [unknownCreation, setUnknownCreation] = useState(false);
   const [error, setError] = useState("");
   const [reloadConfirmation, setReloadConfirmation] = useState(false);
@@ -1200,7 +1207,8 @@ function ItemEditor({
     return () => onSavingChange?.(false);
   }, [saving, onSavingChange]);
   function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
-    setDirty(true);
+    setError("");
+    setError(""); setDirty(true);
     setFields((previous) => {
       const next = { ...previous, [key]: value };
       const secondFactor = itemFactorSchema.safeParse(next.factor2);
@@ -1219,9 +1227,9 @@ function ItemEditor({
       return next;
     });
   }
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (readOnly || !manage || saving) return;
+  async function save(event?: FormEvent) {
+    event?.preventDefault();
+    if (readOnly || !manage || saving || (item && (!dirty || conflict))) return;
     setError("");
     const body = {
       ...fields,
@@ -1239,7 +1247,7 @@ function ItemEditor({
       settlementDisplayDate: fields.settlementDisplayDate || null,
     };
     const parsed = item
-      ? itemPatchSchema.safeParse({ ...body, revision: item.revision })
+      ? itemPatchSchema.safeParse({ ...body, revision: savedRevision.current })
       : itemSchema.safeParse(
           unknownCreation
             ? submittedCreate.current
@@ -1264,14 +1272,18 @@ function ItemEditor({
       setDirty(false);
       setUnknownCreation(false);
       setConflict(false);
-      if (item) onSaved(result.item, `تم حفظ الصنف ${result.item.code}.`);
-      else {
+      if (item) {
+        savedRevision.current = result.item.revision;
+        savedItem.current = result.item;
+        setVisibleRevision(result.item.revision);
+        setSavedMessage("تم حفظ تعديل الحقل تلقائيًا في سجل الصنف.");
+      } else {
         allowNavigation.current = true;
         navigate(`/companies/${companyId}/items/${result.item.id}`, {
           replace: true,
         });
       }
-      void changed();
+      void changed(!!item);
     } catch (reason) {
       if (guard.isCurrent()) {
         if (!item && (!(reason instanceof ApiFailure) || reason.status >= 500))
@@ -1295,6 +1307,9 @@ function ItemEditor({
       );
       if (!guard.isCurrent()) return;
       setDirty(false);
+      savedRevision.current = result.item.revision;
+      savedItem.current = null;
+      setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
       if (onReloaded) onReloaded(result.item);
       else onSaved(result.item, "تم تحميل النسخة الحالية من الصنف.");
@@ -1302,6 +1317,37 @@ function ItemEditor({
       if (guard.isCurrent()) setError(errorMessage(reason));
     } finally {
       if (guard.isCurrent()) setSaving(false);
+    }
+  }
+  // Save edited cards after a field loses focus. For checkboxes, images,
+  // and picker choices save shortly after selection without a Save button.
+  // Never attempt to persist a half-typed field or retry invalid data in a loop.
+  useEffect(() => {
+    if (!item || !manage || readOnly || !dirty || saving || conflict || picker || error)
+      return;
+    const timeout = window.setTimeout(() => {
+      const active = document.activeElement;
+      const typing = active && formElement.current?.contains(active) &&
+        ((active instanceof HTMLInputElement &&
+          !["checkbox", "radio", "hidden"].includes(active.type)) ||
+          active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLSelectElement);
+      if (!typing) void save();
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [item, manage, readOnly, dirty, saving, conflict, picker, error,
+    fields, currency, agent, supplier, supplierManuallyTouched]);
+
+  function leaveEditor() {
+    if (item && dirty) {
+      setError("يوجد تعديل لم يكتمل حفظه؛ تحقق من الحقل أو حمّل النسخة الحالية قبل الإغلاق.");
+      return;
+    }
+    if (embedded) {
+      if (savedItem.current) onSaved(savedItem.current, "تم حفظ تعديلات الصنف.");
+      else onClose?.();
+    } else {
+      navigate(`/companies/${companyId}/items`);
     }
   }
   const parsedFactor2 = itemFactorSchema.safeParse(fields.factor2);
@@ -1323,12 +1369,15 @@ function ItemEditor({
           }
           description={
             item
-              ? `أُنشئ ${new Date(item.createdAt).toLocaleString("ar-YE")} · الإصدار ${item.revision}`
+              ? `أُنشئ ${new Date(item.createdAt).toLocaleString("ar-YE")} · الإصدار ${visibleRevision}`
               : "يُنشأ رمز الصنف تلقائيًا بعد تأكيد الحفظ."
           }
         />
       )}
       {error && <Notice tone="error">{error}</Notice>}
+      {item && saving && <small className="muted" role="status">جارٍ حفظ تعديل الحقل…</small>}
+      {item && !saving && !dirty && savedMessage &&
+        <small className="text-success" role="status">{savedMessage}</small>}
       {unknownCreation && (
         <Notice tone="warning">
           لم تُعرف نتيجة الحفظ. الحقول مثبتة؛ أعد تأكيد الطلب نفسه حتى لا يتكرر
@@ -1347,9 +1396,9 @@ function ItemEditor({
           </Button>
         </Notice>
       )}
-      <form onSubmit={(event) => void save(event)}>
+      <form ref={formElement} onSubmit={(event) => void save(event)}>
         <div className="form-actions item-save-actions">
-          {manage && !readOnly && (
+          {manage && !readOnly && !item && (
             <Button type="submit" disabled={saving}>
               {saving
                 ? "جارٍ الحفظ…"
@@ -1363,9 +1412,7 @@ function ItemEditor({
           <Button
             variant="secondary"
             disabled={saving}
-            onClick={() =>
-              embedded ? onClose?.() : navigate(`/companies/${companyId}/items`)
-            }
+            onClick={leaveEditor}
           >
             {embedded ? "إغلاق" : "العودة للقائمة"}
           </Button>
@@ -1458,7 +1505,7 @@ function ItemEditor({
                     aria-label="إزالة وكيل الصنف"
                     onClick={() => {
                       setAgent(null);
-                      setDirty(true);
+                      setError(""); setDirty(true);
                     }}
                   >
                     ×
@@ -1949,7 +1996,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setCurrency(option);
-              setDirty(true);
+              setError(""); setDirty(true);
               setPicker(null);
             }}
           />
@@ -1960,7 +2007,7 @@ function ItemEditor({
             label="حساب مورد الصنف"
             value={supplier}
             display={option=>`${option.code} — ${option.name}`}
-            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);setDirty(true);setPicker(null)}}
+            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);setError(""); setDirty(true);setPicker(null)}}
             disabled={disabled}
           />
         ) : picker === "shelf" ? (
@@ -2003,7 +2050,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setAgent(option);
-              setDirty(true);
+              setError(""); setDirty(true);
               setPicker(null);
             }}
           />
