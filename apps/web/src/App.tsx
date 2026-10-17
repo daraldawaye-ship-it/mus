@@ -139,6 +139,7 @@ const MemoReportPage = lazy(() =>
 const MemoDetailPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
 );
+const DoctorsPage = lazy(() => import("./pages/DoctorsPage").then(module => ({ default: module.DoctorsPage })));
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -265,6 +266,7 @@ const companySections = [
   "settings",
   "audit",
   "accounts",
+  "doctors",
   "currencies",
   "exchange-rates",
   "branches",
