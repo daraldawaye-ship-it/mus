@@ -42,12 +42,12 @@ export async function postEmployeeCashboxOperation(
   // The company lock taken by mutateMaster serializes the till with other
   // finance/commerce mutations and protects its book balance.
   const previous = await client.query(
-    "SELECT * FROM employee_cashbox_operations WHERE company_id=$1 AND idempotency_key=$2",
-    [companyId, input.idempotencyKey],
+    "SELECT *,request_payload=$3::jsonb AS same_payload FROM employee_cashbox_operations WHERE company_id=$1 AND idempotency_key=$2",
+    [companyId, input.idempotencyKey,JSON.stringify(input)],
   );
   if (previous.rows[0]) {
     const p=previous.rows[0];
-    if (p.created_by!==user.id || JSON.stringify(p.request_payload)!==JSON.stringify(input))
+    if (p.created_by!==user.id || !p.same_payload)
       error("cashbox_key_conflict","مفتاح هذه العملية مستخدم بالفعل لبيانات مختلفة");
     return { operationId:p.id, documentId:p.financial_document_id,
       bookBalance:p.book_balance === null?null:moneyString(moneyUnits(p.book_balance)),
