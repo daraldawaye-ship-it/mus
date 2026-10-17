@@ -1187,6 +1187,8 @@ function ItemEditor({
   const [visibleRevision, setVisibleRevision] = useState(item?.revision ?? 0);
   const [savedMessage, setSavedMessage] = useState("");
   const formElement = useRef<HTMLFormElement>(null);
+  const savingRequest = useRef(false);
+  const draftVersion = useRef(0);
   const [unknownCreation, setUnknownCreation] = useState(false);
   const [error, setError] = useState("");
   const [reloadConfirmation, setReloadConfirmation] = useState(false);
@@ -1200,16 +1202,21 @@ function ItemEditor({
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
-  const disabled = readOnly || !manage || saving || unknownCreation;
+  // Do not interrupt input into the next field while the prior one saves.
+  const disabled = readOnly || !manage || (!item && saving) || unknownCreation;
   const allowNavigation = useRef(false);
   useEffect(() => {
     // The invoice's bottom sheet must not close while edits are pending.
     onSavingChange?.(saving || (embedded && dirty));
     return () => onSavingChange?.(false);
   }, [saving, dirty, embedded, onSavingChange]);
-  function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
+  function markDirty() {
+    draftVersion.current += 1;
     setError("");
     setDirty(true);
+  }
+  function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
+    markDirty();
     setFields((previous) => {
       const next = { ...previous, [key]: value };
       const secondFactor = itemFactorSchema.safeParse(next.factor2);
@@ -1230,7 +1237,7 @@ function ItemEditor({
   }
   async function save(event?: FormEvent) {
     event?.preventDefault();
-    if (readOnly || !manage || saving || (item && (!dirty || conflict))) return;
+    if (readOnly || !manage || savingRequest.current || (item && (!dirty || conflict))) return;
     setError("");
     const body = {
       ...fields,
@@ -1259,6 +1266,8 @@ function ItemEditor({
       return;
     }
     if (!item) submittedCreate.current = parsed.data as ItemInput;
+    const savedVersion = draftVersion.current;
+    savingRequest.current = true;
     setSaving(true);
     try {
       const result = await api<{ item: Item }>(
@@ -1270,7 +1279,7 @@ function ItemEditor({
         },
       );
       if (!guard.isCurrent()) return;
-      setDirty(false);
+      if (draftVersion.current === savedVersion) setDirty(false);
       setUnknownCreation(false);
       setConflict(false);
       if (item) {
@@ -1294,6 +1303,7 @@ function ItemEditor({
         setError(errorMessage(reason));
       }
     } finally {
+      savingRequest.current = false;
       if (guard.isCurrent()) setSaving(false);
     }
   }
@@ -1398,7 +1408,15 @@ function ItemEditor({
           </Button>
         </Notice>
       )}
-      <form ref={formElement} onSubmit={(event) => void save(event)}>
+      <form ref={formElement} onSubmit={(event) => void save(event)}
+        onBlurCapture={event => {
+          if (!item || readOnly || !manage) return;
+          if (!(event.target instanceof HTMLInputElement ||
+                event.target instanceof HTMLTextAreaElement ||
+                event.target instanceof HTMLSelectElement)) return;
+          // Version checks retain any changes typed while this request runs.
+          window.setTimeout(() => void save(), 80);
+        }}>
         <div className="form-actions item-save-actions">
           {manage && !readOnly && !item && (
             <Button type="submit" disabled={saving}>
@@ -1507,7 +1525,7 @@ function ItemEditor({
                     aria-label="إزالة وكيل الصنف"
                     onClick={() => {
                       setAgent(null);
-                      setError(""); setDirty(true);
+                      markDirty();
                     }}
                   >
                     ×
@@ -1998,7 +2016,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setCurrency(option);
-              setError(""); setDirty(true);
+              markDirty();
               setPicker(null);
             }}
           />
@@ -2009,7 +2027,7 @@ function ItemEditor({
             label="حساب مورد الصنف"
             value={supplier}
             display={option=>`${option.code} — ${option.name}`}
-            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);setError(""); setDirty(true);setPicker(null)}}
+            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);markDirty();setPicker(null)}}
             disabled={disabled}
           />
         ) : picker === "shelf" ? (
@@ -2052,7 +2070,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setAgent(option);
-              setError(""); setDirty(true);
+              markDirty();
               setPicker(null);
             }}
           />
