@@ -3143,3 +3143,39 @@ ul {
 .control-delegation summary{cursor:pointer;font-size:13px;margin-bottom:8px}
 .control-editors{display:flex;flex-wrap:wrap;gap:8px 16px;margin:12px 0}
 @media(max-width:680px){.control-toolbar,.control-option-main{align-items:stretch}.control-option-input{justify-content:flex-start}}
+
+
+/* Sales-only doctor selection stays inside the modal; typed search never posts
+   a free-text name without choosing a stable company doctor ID. */
+.invoice-doctor-options {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: min(40vh, 300px);
+  min-height: 50px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px;
+}
+.invoice-doctor-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: start;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+.invoice-doctor-options button:hover,
+.invoice-doctor-options button.invoice-doctor-selected {
+  border-color: var(--accent);
+  background: var(--surface-raised, var(--surface));
+}
+.invoice-doctor-options small {
+  font-size: 11px;
+}
