@@ -134,6 +134,10 @@ legend {
 .text-error {
   color: var(--error-text);
 }
+.text-success {
+  color: var(--success-text);
+}
+
 .workspace {
   --sidebar-width: 214px;
   display: flex;
@@ -2311,6 +2315,34 @@ ul {
   padding: 8px;
   overflow: visible;
 }
+/* Distinguish the active invoice type while keeping native input contrast.
+   Mixing with the theme surface also supports individual dark appearances. */
+.invoice-kind-sale {
+  --invoice-kind-accent: #72a5ee;
+  --invoice-kind-wash: #dceaff;
+}
+.invoice-kind-purchase {
+  --invoice-kind-accent: #61bd83;
+  --invoice-kind-wash: #dcf5e5;
+}
+.table-filters.invoice-kind-sale,
+.table-filters.invoice-kind-purchase,
+.commerce-header-card.invoice-kind-sale,
+.commerce-header-card.invoice-kind-purchase {
+  background: color-mix(in srgb, var(--surface) 78%, var(--invoice-kind-wash));
+  border: 1px solid color-mix(in srgb, var(--border) 40%, var(--invoice-kind-accent));
+  border-radius: 9px;
+}
+.table-filters.invoice-kind-sale,
+.table-filters.invoice-kind-purchase {
+  padding: 9px;
+  margin-block-end: 10px;
+}
+.commerce-header-card.invoice-kind-sale .commerce-header-blank,
+.commerce-header-card.invoice-kind-purchase .commerce-header-blank {
+  background: color-mix(in srgb, var(--surface) 90%, var(--invoice-kind-wash));
+}
+
 .commerce-list-link {
   width: max-content;
   max-width: 100%;

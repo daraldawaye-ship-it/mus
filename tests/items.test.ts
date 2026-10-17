@@ -1648,3 +1648,56 @@ test("item nearest expiry is editable from card and preserves original dates on 
   );
   assert.equal(audit.rows[0]?.expiry, null);
 });
+
+test("item field audit records independent before/after events and rejects stale revisions", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company("اختبار سجل حقول الأصناف");
+  const currencies = await f.pool.query<{id:number}>(
+    "SELECT id FROM company_currencies WHERE company_id=$1 AND code='YER'",
+    [company.id],
+  );
+  const initial = await item(f, company.id, Number(currencies.rows[0]!.id), {
+    shelf: "ا-1",
+  });
+  const url = `/companies/${company.id}/items/${initial.id}`;
+  const onShelf = (await f.owner.ok<{item:Item}>(
+    "PATCH", url, patchItem(initial, { shelf: "ب-6", shelfId: null }),
+  )).item;
+  const onOrder = (await f.owner.ok<{item:Item}>(
+    "PATCH", url, patchItem(onShelf, { shelf: onShelf.shelf, orderQuantity: "10" }),
+  )).item;
+  assert.equal(onOrder.shelf, "ب-6");
+  assert.equal(onOrder.orderQuantity, "10");
+  const audit = await f.pool.query<{
+    action:string;
+    before_value:{field?:string;label?:string;value?:unknown};
+    after_value:{field?:string;label?:string;value?:unknown};
+  }>(
+    `SELECT action,before_value,after_value FROM audit_events
+     WHERE company_id=$1 AND target_type='item' AND target_id=$2
+       AND action IN ('item.update','item.field.update')
+     ORDER BY id`,
+    [company.id, initial.id],
+  );
+  const fields = audit.rows.filter(row => row.action === "item.field.update");
+  assert.equal(fields.length, 2);
+  assert.deepEqual(fields.map(row => ({
+    field: row.after_value.field,
+    before: row.before_value.value,
+    after: row.after_value.value,
+  })), [
+    { field: "shelf", before: "ا-1", after: "ب-6" },
+    { field: "orderQuantity", before: "0", after: "10" },
+  ]);
+  assert.deepEqual(fields.map(row => row.after_value.label), ["الرف الحالي", "كمية الطلب"]);
+  assert.equal(audit.rows.filter(row => row.action === "item.update").length, 2,
+    "Keep full item snapshots for pre-existing audit consumers");
+  const stale = await f.owner.request("PATCH", url,
+    patchItem(initial, { shelf: "ج-1" }));
+  assert.equal(stale.status, 409);
+  const noExtra = await f.pool.query(
+    "SELECT count(*)::int AS total FROM audit_events WHERE company_id=$1 AND target_type='item' AND target_id=$2 AND action='item.field.update'",
+    [company.id, initial.id],
+  );
+  assert.equal(noExtra.rows[0]!.total, 2);
+});

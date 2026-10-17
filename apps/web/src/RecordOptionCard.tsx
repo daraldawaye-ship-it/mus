@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ type Props = {
   recordKind: "item" | "account";
   recordId: number;
   canEdit: boolean;
+  onPendingChange?: (pending: boolean) => void;
 };
 export function RecordOptionCard(props: Props) {
   const { user } = useSession();
@@ -40,6 +41,7 @@ function RecordOptionFields({
   recordKind,
   recordId,
   canEdit,
+  onPendingChange,
 }: Props) {
   const { user } = useSession();
   const client = useQueryClient();
@@ -59,6 +61,14 @@ function RecordOptionFields({
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    onPendingChange?.(pending !== null || Object.keys(edited).length > 0);
+    return () => onPendingChange?.(false);
+  }, [onPendingChange, pending, edited]);
+  function changeOption(definitionId: number, value: string | boolean | null) {
+    setError("");
+    setEdited(previous => ({ ...previous, [definitionId]: value }));
+  }
   const valueOf = (definition: OptionDefinition): string | boolean | null => {
     if (
       definition.nativeBinding === "items.archived" ||
@@ -81,7 +91,8 @@ function RecordOptionFields({
           : "لا"
         : value;
   const save = async (definition: OptionDefinition) => {
-    if (pending !== null || !canEdit) return;
+    if (pending !== null || !canEdit ||
+      (recordKind === "item" && !Object.prototype.hasOwnProperty.call(edited, definition.id))) return;
     const validation = optionValueError(definition, valueOf(definition));
     if (validation) {
       setError(definition.name + ": " + validation);
@@ -128,6 +139,22 @@ function RecordOptionFields({
       if (guard.isCurrent()) setPending(null);
     }
   };
+  // Save item options on field completion; accounts retain explicit Save.
+  useEffect(() => {
+    if (recordKind !== "item" || !canEdit || pending !== null || error || !query.data)
+      return;
+    const next = query.data.definitions.find(definition => {
+      if (!definition.active || definition.nativeBinding ||
+          !Object.prototype.hasOwnProperty.call(edited, definition.id) ||
+          optionValueError(definition, valueOf(definition))) return false;
+      const focused = document.activeElement;
+      return !(focused instanceof HTMLInputElement &&
+        focused.closest(`[data-record-option-id="${definition.id}"]`));
+    });
+    if (!next) return;
+    const timeout = window.setTimeout(() => void save(next), 300);
+    return () => window.clearTimeout(timeout);
+  }, [recordKind, canEdit, pending, error, query.data, edited]);
   return (
     <Card
       title="الخيارات الإضافية"
@@ -166,7 +193,8 @@ function RecordOptionFields({
             ? optionValueError(definition, current)
             : null;
           return (
-            <div className="configuration-value-row" key={definition.id}>
+            <div className="configuration-value-row" key={definition.id}
+              data-record-option-id={definition.id}>
               <div className="configuration-value-heading">
                 <strong>
                   {definition.name}
@@ -193,15 +221,8 @@ function RecordOptionFields({
                   label={definition.name}
                   value={current === null ? "" : String(current)}
                   disabled={pending !== null}
-                  onChange={(e) =>
-                    setEdited((previous) => ({
-                      ...previous,
-                      [definition.id]:
-                        e.target.value === ""
-                          ? null
-                          : e.target.value === "true",
-                    }))
-                  }
+                  onChange={e => changeOption(definition.id,
+                    e.target.value === "" ? null : e.target.value === "true")}
                 >
                   <option value="">غير محدد</option>
                   <option value="true">نعم</option>
@@ -212,12 +233,7 @@ function RecordOptionFields({
                   label={definition.name}
                   value={String(current ?? "")}
                   disabled={pending !== null}
-                  onChange={(e) =>
-                    setEdited((previous) => ({
-                      ...previous,
-                      [definition.id]: e.target.value || null,
-                    }))
-                  }
+                  onChange={e => changeOption(definition.id, e.target.value || null)}
                 >
                   <option value="">غير محدد</option>
                   {definition.choices.map((c) => (
@@ -241,15 +257,13 @@ function RecordOptionFields({
                         : undefined
                   }
                   value={String(current ?? "")}
-                  onChange={(e) =>
-                    setEdited((previous) => ({
-                      ...previous,
-                      [definition.id]: e.target.value || null,
-                    }))
-                  }
+                  onChange={e => changeOption(definition.id, e.target.value || null)}
+                  onBlur={() => {
+                    if (recordKind === "item") window.setTimeout(() => void save(definition), 80);
+                  }}
                 />
               )}
-              {!locked && (
+              {!locked && recordKind !== "item" && (
                 <Button
                   variant="secondary"
                   size="compact"

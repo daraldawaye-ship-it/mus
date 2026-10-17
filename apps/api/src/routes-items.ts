@@ -796,6 +796,43 @@ export function itemRoutes(pool: Pool): Router {
             next,
             companyId,
           );
+          // Keep the complete immutable audit snapshot above for existing
+          // consumers, then provide an independently readable event for every
+          // modified card field, including its previous and next values.
+          const fieldLabels: Record<string, string> = {
+            name: "اسم الصنف", englishName: "الاسم بالإنجليزية",
+            shelf: "الرف الحالي", shelfId: "ربط الرف",
+            imageId: "الصورة", barcode: "الباركود",
+            legacyId: "المعرف في النظام السابق", agentId: "وكيل الصنف",
+            supplierAccountId: "مورد الصنف", compositionId: "التركيب",
+            unit1Name: "الوحدة الأولى", unit2Name: "الوحدة الثانية",
+            unit3Name: "الوحدة الثالثة", factor2: "عدد الوحدة الثانية",
+            factor3: "عدد الوحدة الثالثة", defaultSaleUnit: "وحدة البيع الافتراضية",
+            salePrice1: "سعر بيع الوحدة الأولى", salePrice2: "سعر بيع الوحدة الثانية",
+            salePrice3: "سعر بيع الوحدة الثالثة", purchasePrice: "سعر الشراء",
+            purchaseFactor: "عامل وحدة الشراء", currencyId: "عملة الأسعار",
+            reorderLimit: "حد الطلب", orderQuantity: "كمية الطلب",
+            reserveQuantity: "الكمية الاحتياطية", searchKeys: "مفاتيح البحث",
+            purchaseNotes: "ملاحظات الشراء", orderStoppedUntil: "توقف الطلب حتى",
+            hasExpiry: "يتطلب تاريخ انتهاء", nearestExpiryDate: "أقرب تاريخ انتهاء",
+            commissionRate: "نسبة العمولة", clearanceFrom: "بداية التصريف",
+            clearanceTo: "نهاية التصريف",
+            settlementApprovalDate: "تاريخ اعتماد التسوية",
+            settlementDisplayDate: "تاريخ عرض التسوية", active: "حالة الأرشفة",
+          };
+          const oldValues = before as unknown as Record<string, unknown>;
+          const newValues = next as unknown as Record<string, unknown>;
+          for (const [field] of itemFieldColumns) {
+            if (JSON.stringify(oldValues[field]) === JSON.stringify(newValues[field]))
+              continue;
+            const label = fieldLabels[field] ?? field;
+            await audit(
+              client, user, "item.field.update", "item", rowId,
+              { field, label, value: oldValues[field] ?? null },
+              { field, label, value: newValues[field] ?? null },
+              companyId,
+            );
+          }
           return next;
         },
       );

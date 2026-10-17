@@ -288,7 +288,7 @@ function InvoiceList({
         </Notice>
       )}
       <Card>
-        <div className="table-filters">
+        <div className={`table-filters invoice-kind-${kind}`} aria-label={`تصفية فواتير ${kind === "sale" ? "المبيعات" : "المشتريات"}`}>
           <Field
             label="بحث الفواتير"
             type="search"
@@ -1876,7 +1876,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   return (
     <div className="commerce-document-page">
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
-        <Card className="commerce-header-card">
+        <Card className={`commerce-header-card invoice-kind-${kind}`}>
           <fieldset disabled={locked} className="commerce-fieldset">
             <div className="commerce-header-grid">
               <div className="commerce-header-content">

@@ -67,6 +67,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - name: Item card field audit and revision regression
+        run: node --import tsx --test --test-name-pattern="item field audit records" tests/items.test.ts
       - name: Scoped option value and permission tests
         run: node --import tsx --test tests/control.test.ts
       - name: Persist last visited company across rapid public-page navigation
