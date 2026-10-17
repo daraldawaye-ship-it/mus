@@ -51,7 +51,7 @@ import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { firstUnitStockText, saleStockQuantity } from "../sale-stock-quantity";
-import { formatMoney } from "../format-money";
+import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
   Button,
@@ -887,14 +887,17 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                   {peers.peers.length === 0 ? <small>لا توجد أصناف أخرى بنفس التركيب.</small> : (
                     <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
                       <table className="invoice-item-options-table">
+                        <colgroup><col style={{width:"70%"}}/><col style={{width:"30%"}}/></colgroup>
                         <thead><tr><th>الصنف</th><th>الرصيد</th></tr></thead>
                         <tbody>{peers.peers.map(row => (
                           <tr key={row.id}>
-                            <td><Link to={`/companies/${companyId}/items/${row.id}`}>
+                            <td title={row.name}><Link to={`/companies/${companyId}/items/${row.id}`}>
                               {row.name}{row.active ? "" : " (مؤرشف)"}
                             </Link></td>
-                            <td><bdi>{row.stockSmallest === null ? "—" :
-                              `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}</bdi></td>
+                            <td title={row.stockSmallest === null ? "—" :
+                              `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}>
+                              <bdi>{row.stockSmallest === null ? "—" :
+                                `${firstUnitStockText(row.stockSmallest, row)} ${row.unit1Name}`}</bdi></td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -913,6 +916,13 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
               {history.data && history.data.items.length > 0 && (
                 <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label={`جدول ${selectedLabel}`}>
                   <table className="invoice-item-options-table">
+                    <colgroup>{isInvoiceView ? (
+                      <><col style={{width:"25%"}}/><col style={{width:"35%"}}/>
+                        <col style={{width:"20%"}}/><col style={{width:"20%"}}/></>
+                    ) : (
+                      <><col style={{width:"27%"}}/><col style={{width:"46%"}}/>
+                        <col style={{width:"27%"}}/></>
+                    )}</colgroup>
                     <thead><tr>
                       <th>التاريخ</th>
                       {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th>السعر</th></> : <th>البيان</th>}
@@ -922,11 +932,11 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                       <tr key={row.lineId}>
                         <td dir="ltr">{row.documentDate}</td>
                         {isInvoiceView ? <>
-                          <td>{row.partyName ?? "—"}</td>
-                          <td><bdi>{row.unitPriceFirstUnit == null ? "—" : formatMoney(row.unitPriceFirstUnit)}</bdi>
-                            {row.currencyCode && <small>{row.currencyCode}</small>}
+                          <td title={row.partyName ?? "—"}>{row.partyName ?? "—"}</td>
+                          <td title={row.unitPriceFirstUnit == null ? "—" : formatWholeMoney(row.unitPriceFirstUnit)}>
+                            <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
                           </td>
-                        </> : <td>{row.description || "—"}</td>}
+                        </> : <td title={row.description || "—"}>{row.description || "—"}</td>}
                         <td><bdi>{row.quantityFirstUnit}</bdi></td>
                       </tr>
                     ))}</tbody>
