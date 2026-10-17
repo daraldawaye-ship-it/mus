@@ -34,6 +34,7 @@ import {
   type InvoiceKind,
   type InvoiceLine,
   type Item,
+  type ItemCompositionPeers,
   type Location,
   type Page,
 } from "../../../../packages/contracts/src/index";
@@ -790,6 +791,154 @@ function OriginalInvoicePicker({
   );
 }
 
+type ItemInfoView = "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
+type ItemInfoHistoryRow = {
+  lineId: number;
+  documentId: number;
+  documentDate: string;
+  partyName?: string;
+  description?: string;
+  quantityFirstUnit: string;
+  unitPriceFirstUnit?: string;
+  currencyCode?: string;
+};
+const itemInfoViews: { value: ItemInfoView; label: string }[] = [
+  { value: "purchase", label: "مشتريات الصنف" },
+  { value: "sale", label: "مبيعات الصنف" },
+  { value: "adjustment", label: "تسويات الصنف" },
+  { value: "transfer", label: "مناقلات الصنف" },
+  { value: "alternatives", label: "بدائل الصنف" },
+];
+function isItemInfoView(value: string | null): value is ItemInfoView {
+  return itemInfoViews.some(view => view.value === value);
+}
+function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
+  context: CompanyContext;
+  kind: InvoiceKind;
+  selectedItemId: number | null;
+  userId: number | undefined;
+}) {
+  const companyId = context.company.id;
+  const storageKey = `tijara:item-options:${userId ?? 0}:${companyId}:${kind}`;
+  const [view, setView] = useState<ItemInfoView>(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      return isItemInfoView(saved) ? saved : kind === "purchase" ? "purchase" : "sale";
+    } catch {
+      return kind === "purchase" ? "purchase" : "sale";
+    }
+  });
+  const menu = useRef<HTMLDetailsElement>(null);
+  const history = useQuery<{ items: ItemInfoHistoryRow[] }>({
+    queryKey: ["invoice-item-options", userId, companyId, selectedItemId, view],
+    queryFn: ({ signal }) => api(
+      `/companies/${companyId}/item-history/${selectedItemId}?type=${view}`,
+      { signal },
+    ),
+    enabled: !!userId && !!selectedItemId && view !== "alternatives",
+    staleTime: 10000,
+  });
+  const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
+    queryKey: ["invoice-item-alternatives", userId, companyId, selectedItemId],
+    queryFn: ({ signal }) => api(
+      `/companies/${companyId}/items/${selectedItemId}/composition-peers?page=1`,
+      { signal },
+    ),
+    enabled: !!userId && !!selectedItemId && view === "alternatives",
+    staleTime: 10000,
+  });
+  const selectedLabel = itemInfoViews.find(option => option.value === view)?.label;
+  function selectView(value: ItemInfoView) {
+    setView(value);
+    if (menu.current) menu.current.open = false;
+    try { window.localStorage.setItem(storageKey, value); } catch { /* Storage may be disabled. */ }
+  }
+  const isInvoiceView = view === "purchase" || view === "sale";
+  const peers = alternatives.data?.peers;
+  return (
+    <section className="invoice-empty-panel invoice-item-options" aria-label="خيارات الصنف">
+      <details ref={menu} className="invoice-item-options-menu">
+        <summary aria-label="اختر خيارات الصنف">
+          <span>{selectedLabel}</span><span aria-hidden="true">▾</span>
+        </summary>
+        <div className="invoice-item-options-choices">
+          {itemInfoViews.map(option => (
+            <button type="button" key={option.value}
+              className={option.value === view ? "is-selected" : ""}
+              aria-current={option.value === view ? "true" : undefined}
+              onClick={() => selectView(option.value)}>{option.label}</button>
+          ))}
+        </div>
+      </details>
+      <div className="invoice-item-options-content">
+        {!selectedItemId ? <small>اختر صنفًا في الفاتورة لعرض {selectedLabel}.</small> :
+          view === "alternatives" ? (
+            <>
+              {alternatives.isLoading && <small>جارٍ تحميل الأصناف المرتبطة…</small>}
+              {alternatives.isError && <small>تعذر عرض البدائل. تحقق من صلاحية عرض الأصناف.</small>}
+              {peers && !peers.composition && <small>لا يوجد تركيب معرّف لهذا الصنف.</small>}
+              {peers?.composition && (
+                <>
+                  <small className="invoice-item-options-relation">
+                    {peers.relation === "identicalAlternative" ? "بدائل مطابقة بحسب كرت التركيب" :
+                      peers.relation === "nonInterchangeable" ? "تنبيه: هذه الأصناف غير قابلة للتبديل" :
+                      "أصناف تشترك في التركيب؛ ليست بدائل معتمدة"}
+                  </small>
+                  {peers.peers.length === 0 ? <small>لا توجد أصناف أخرى بنفس التركيب.</small> : (
+                    <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول بدائل الصنف">
+                      <table className="invoice-item-options-table">
+                        <thead><tr><th>الصنف</th><th>الرصيد</th></tr></thead>
+                        <tbody>{peers.peers.map(row => (
+                          <tr key={row.id}>
+                            <td><Link to={`/companies/${companyId}/items/${row.id}`}>
+                              {row.name}{row.active ? "" : " (مؤرشف)"}
+                            </Link></td>
+                            <td><bdi>{row.stockSmallest === null ? "—" :
+                              `${formatMoney(row.stockSmallest)} ${row.smallestUnitName}`}</bdi></td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                  {peers.total > peers.pageSize &&
+                    <small>تظهر أول {peers.pageSize} أصناف من أصل {peers.total}. استعرض البقية من كرت الصنف.</small>}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {history.isLoading && <small>جارٍ تحميل الحركات…</small>}
+              {history.isError && <small>تعذر تحميل الحركات؛ تحقق من صلاحية عرض {isInvoiceView ? "الفواتير" : "المخزون"}.</small>}
+              {history.data?.items.length === 0 && <small>لا توجد حركات سابقة للصنف في هذا القسم.</small>}
+              {history.data && history.data.items.length > 0 && (
+                <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label={`جدول ${selectedLabel}`}>
+                  <table className="invoice-item-options-table">
+                    <thead><tr>
+                      <th>التاريخ</th>
+                      {isInvoiceView ? <><th>{view === "purchase" ? "المورد" : "العميل"}</th><th>السعر</th></> : <th>البيان</th>}
+                      <th>الكمية (و1)</th>
+                    </tr></thead>
+                    <tbody>{history.data.items.map(row => (
+                      <tr key={row.lineId}>
+                        <td dir="ltr">{row.documentDate}</td>
+                        {isInvoiceView ? <>
+                          <td>{row.partyName ?? "—"}</td>
+                          <td><bdi>{row.unitPriceFirstUnit == null ? "—" : formatMoney(row.unitPriceFirstUnit)}</bdi>
+                            {row.currencyCode && <small>{row.currencyCode}</small>}
+                          </td>
+                        </> : <td>{row.description || "—"}</td>}
+                        <td><bdi>{row.quantityFirstUnit}</bdi></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+      </div>
+    </section>
+  );
+}
 function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
   children: ReactNode;
   context: CompanyContext;
@@ -797,44 +946,19 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
   selectedItemId: number | null;
 }) {
   const companyId = context.company.id;
+  const { user } = useSession();
   const controls = useControls(companyId, context.employee?.id ?? null);
-  const showPurchases = kind === "purchase" && controls.value("show_recent_item_purchases") !== false;
-  const recent = useQuery<{
-    items: { lineId: number; invoiceId: number; documentDate: string; supplierName: string; quantityFirstUnit: string }[];
-  }>({
-    queryKey: ["recent-item-purchases", companyId, selectedItemId],
-    queryFn: ({ signal }) => api(`/companies/${companyId}/purchase-history/${selectedItemId}`, { signal }),
-    enabled: showPurchases && !!selectedItemId,
-  });
+  const showOptions = controls.value(
+    kind === "purchase" ? "show_item_options_purchases" : "show_item_options_sales",
+  ) !== false;
   return (
-    <div className="invoice-workspace">
+    <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
       <div className="invoice-workspace-main">{children}</div>
-      <aside
-        className="invoice-side-space"
-        aria-label="المساحة الجانبية للفاتورة"
-        tabIndex={0}
-      >
-        {showPurchases && selectedItemId ? (
-          <section className="invoice-empty-panel recent-item-purchases" aria-label="آخر خمس مشتريات للصنف">
-            <strong>آخر خمس مشتريات للصنف</strong>
-            {recent.isLoading && <small>جارٍ تحميل المشتريات…</small>}
-            {recent.isError && <small>تعذر تحميل المشتريات.</small>}
-            {recent.data?.items.length === 0 && <small>لا توجد مشتريات سابقة.</small>}
-            {recent.data && recent.data.items.length > 0 && (
-              <table className="recent-purchases-table">
-                <thead><tr><th>التاريخ</th><th>المورد</th><th>الكمية (وحدة 1)</th></tr></thead>
-                <tbody>{recent.data.items.map(row => (
-                  <tr key={row.lineId}>
-                    <td>{row.documentDate}</td><td>{row.supplierName}</td>
-                    <td dir="ltr">{row.quantityFirstUnit}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
-        ) : <section className="invoice-empty-panel" aria-label="المساحة الأولى" />}
+      {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
+        <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
+          context={context} kind={kind} selectedItemId={selectedItemId} userId={user?.id} />
         <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
-      </aside>
+      </aside>}
     </div>
   );
 }
@@ -1169,7 +1293,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
-    if (kind === "purchase") onChooseItem(selected.id);
+    onChooseItem(selected.id);
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
