@@ -237,10 +237,23 @@ export async function deleteCompanyTransactions(
   // removing immutable source rows; rebuilding follows after balances are empty.
   await client.query(
     `UPDATE item_statistics SET last_movement_id=NULL,last_sale_invoice_id=NULL,
-       last_purchase_line_id=NULL,last_adjustment_movement_id=NULL
+       last_purchase_line_id=NULL,last_adjustment_movement_id=NULL,
+       last_adjustment_operation_id=NULL
      WHERE company_id=$1`,
     [companyId],
   );
+  // Remove rebuildable history before its immediate source FKs. Daily price
+  // extrema reference facts, which in turn reference invoice lines/invoices;
+  // legacy supplier hints reference movements. Other daily buckets have no
+  // document FK, but must not retain transactions that this reset removes.
+  for (const table of [
+    "item_purchase_price_daily",
+    "item_purchase_price_facts",
+    "stock_movement_supplier_hints",
+    "item_daily_activity",
+    "account_daily_activity",
+  ])
+    await client.query(`DELETE FROM ${table} WHERE company_id=$1`, [companyId]);
   await client.query(
     `DELETE FROM option_values WHERE company_id=$1
        AND (invoice_id IS NOT NULL OR financial_document_id IS NOT NULL)`,
@@ -268,6 +281,10 @@ export async function deleteCompanyTransactions(
   );
   await client.query(
     "SELECT refresh_item_statistics(company_id,id) FROM items WHERE company_id=$1 ORDER BY id",
+    [companyId],
+  );
+  await client.query(
+    "SELECT refresh_item_adjustment_counts(company_id,id) FROM items WHERE company_id=$1 ORDER BY id",
     [companyId],
   );
   await client.query("SET CONSTRAINTS ALL IMMEDIATE");
