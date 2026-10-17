@@ -2327,23 +2327,21 @@ ul {
   padding: 8px;
   overflow: visible;
 }
-/* Distinguish the active invoice type while keeping native input contrast.
-   Mixing with the theme surface also supports individual dark appearances. */
+/* Keep the original theme surface; use the bright outline only to
+   distinguish sales (blue) from purchases (green). No tinted fill. */
 .invoice-kind-sale {
-  --invoice-kind-accent: #72a5ee;
-  --invoice-kind-wash: #dceaff;
+  --invoice-kind-accent: #00a9ed;
 }
 .invoice-kind-purchase {
-  --invoice-kind-accent: #61bd83;
-  --invoice-kind-wash: #dcf5e5;
+  --invoice-kind-accent: #26c665;
 }
 .table-filters.invoice-kind-sale,
 .table-filters.invoice-kind-purchase,
 .commerce-header-card.invoice-kind-sale,
 .commerce-header-card.invoice-kind-purchase {
-  background: color-mix(in srgb, var(--surface) 66%, var(--invoice-kind-wash));
-  border: 1px solid color-mix(in srgb, var(--border) 35%, var(--invoice-kind-accent));
-  border-radius: 9px;
+  background: var(--surface);
+  border: 4px solid var(--invoice-kind-accent);
+  border-radius: 18px;
 }
 .table-filters.invoice-kind-sale,
 .table-filters.invoice-kind-purchase {
@@ -2352,7 +2350,7 @@ ul {
 }
 .commerce-header-card.invoice-kind-sale .commerce-header-blank,
 .commerce-header-card.invoice-kind-purchase .commerce-header-blank {
-  background: color-mix(in srgb, var(--surface) 78%, var(--invoice-kind-wash));
+  background: var(--surface);
 }
 
 .commerce-list-link {
@@ -2451,6 +2449,14 @@ ul {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+.commerce-search-clearance-label {
+  color: #e95889;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  background: transparent;
 }
 .commerce-search-item-stock,
 .commerce-search-item-price {
