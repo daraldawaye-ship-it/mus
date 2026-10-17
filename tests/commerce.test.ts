@@ -3287,10 +3287,9 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
     "Replaying a negative electronic transfer must never duplicate the receipt");
   assert.equal(await cashBalance(cash.accountId),"46000.000000");
   assert.equal(await cashBalance(ewallet.id),"2000.000000");
-  assert.equal((await seller.client.request("POST",endpoint,
-    send("electronic","-2001","طلب سحب أكثر من رصيد المحفظة"))).status,409);
-  assert.equal(await cashBalance(cash.accountId),"46000.000000",
-    "An insufficient electronic-wallet balance must not alter the till");
+  // A receipt bigger than the destination's book funds now succeeds and
+  // leaves the company's e-wallet account in debit/credit overdraft.
+  // The broader overdraft and negative-till close case is tested below.
   await seller.client.ok("POST",endpoint,
     send("electronic","1000","إعادة مبلغ المحفظة بعد التجربة"),201);
   assert.equal(await cashBalance(cash.accountId),"45000.000000");
@@ -3315,10 +3314,53 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   assert.equal(await cashBalance(cash.accountId),"0.000000");
   assert.equal(await cashBalance(variance.accountId!),"0.000000");
   assert.equal(await cashBalance(pouch.accountId),"97000.000000");
+
+  // Book balances may be negative: an electronic receipt can exceed the
+  // wallet's balance, and a pouch transfer can exceed cash on hand.
+  const overdrawnWallet=send("electronic","-4000","استلام مع رصيد المحفظة غير كاف");
+  const walletResult=await seller.client.ok<{operationId:number;documentId:number}>(
+    "POST",endpoint,overdrawnWallet,201);
+  assert.deepEqual(
+    await seller.client.ok("POST",endpoint,overdrawnWallet,201),
+    walletResult, "Retrying an overdrawn transfer must not double-post",
+  );
+  assert.equal(await cashBalance(ewallet.id),"-1000.000000");
+  assert.equal(await cashBalance(cash.accountId),"4000.000000");
+
+  await seller.client.ok("POST",endpoint,
+    send("pouch","-98000","استلام أكبر من رصيد الحافظة"),201);
+  assert.equal(await cashBalance(pouch.accountId),"-1000.000000");
+  assert.equal(await cashBalance(cash.accountId),"102000.000000");
+
+  await seller.client.ok("POST",endpoint,
+    send("pouch","103000","ترحيل أكبر من رصيد الصندوق"),201);
+  assert.equal(await cashBalance(cash.accountId),"-1000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"102000.000000");
+
+  // Closing with a negative book balance must zero the till. Counted cash
+  // remains nonnegative, and the offset is recorded as a credit overage.
+  const negativeClose=send("close","5","إغلاق صندوق رصيده الدفتري سالب");
+  const closed=await seller.client.ok<{
+    operationId:number;documentId:number;bookBalance:string;difference:string
+  }>("POST",endpoint,negativeClose,201);
+  assert.equal(closed.bookBalance,"-1000");
+  assert.equal(closed.difference,"-1005");
+  assert.deepEqual(await seller.client.ok("POST",endpoint,negativeClose,201),closed);
+  assert.equal(await cashBalance(cash.accountId),"0.000000");
+  assert.equal(await cashBalance(pouch.accountId),"102005.000000");
+  assert.equal(await cashBalance(variance.accountId!),"-1005.000000");
+  assert.equal(await cashBalance(ewallet.id),"-1000.000000");
+  const history=await f.pool.query(
+    "SELECT book_balance::text AS book, variance_amount::text AS diff FROM employee_cashbox_operations WHERE company_id=$1 AND id=$2",
+    [s.company.id,closed.operationId],
+  );
+  assert.equal(history.rows[0].book,"-1000.000000");
+  assert.equal(history.rows[0].diff,"-1005.000000");
+
   const audits=await f.pool.query(
     "SELECT count(*)::integer AS n FROM employee_cashbox_operations WHERE company_id=$1",
     [s.company.id],
   );
-  assert.equal(audits.rows[0].n,7);
+  assert.equal(audits.rows[0].n,11);
   await assertBalanced(f,s.company.id);
 });

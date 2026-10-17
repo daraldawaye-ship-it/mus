@@ -116,7 +116,9 @@ export async function postEmployeeCashboxOperation(
   let variance:bigint|null=null;
   let varianceAccountId:number|null=null;
   if (input.kind==="close") {
-    if (book<0n) error("negative_cashbox_balance","رصيد الصندوق الدفتري سالب؛ صحّح العمليات أولًا");
+    // A negative ledger balance is valid here. Close the till against the
+    // physically counted (nonnegative) cash and post the entire difference to
+    // the configured over/short account, regardless of its sign.
     variance=book-amount;
     const found=(await client.query(
       `SELECT a.id,a.active,a.kind,a.category FROM account_links l
@@ -132,14 +134,14 @@ export async function postEmployeeCashboxOperation(
     // Difference is booked to one variance account (debit shortage, credit overage).
     if (amount>0n) lines.push(journalLine(pouch.id,amount,memo));
     if (variance!==0n) lines.push(journalLine(varianceAccountId!,variance,memo));
-    if (book>0n) lines.push(journalLine(cash.id,-book,memo));
+    if (book!==0n) lines.push(journalLine(cash.id,-book,memo));
     if (!lines.length) error("empty_cashbox_close","الصندوق مصفّر بالفعل؛ لا يوجد مبلغ أو فرق للترحيل");
   } else {
+    // The posting is a ledger transfer, not a cash-availability test. Either
+    // side may end up negative; preserve the true debit/credit history rather
+    // than refusing the operator's signed movement.
     const source=amount>0n?cash.id:destination.id;
     const total=amount>0n?amount:-amount;
-    const available=source===cash.id?book:await balance(client,companyId,source);
-    if (available<total) error("insufficient_cashbox_funds",
-      "المبلغ أكبر من الرصيد الدفتري المتاح للحساب المحوّل منه");
     lines.push(journalLine(source,-total,memo));
     lines.push(journalLine(amount>0n?destination.id:cash.id,total,memo));
   }
