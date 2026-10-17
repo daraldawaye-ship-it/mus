@@ -217,6 +217,41 @@ export function generalTableRoutes(pool: Pool): Router {
       res.status(201).json({ record });
     }),
   );
+  // Title changes are scoped to a single column so quick edits cannot
+  // overwrite a concurrently modified description or numeric field.
+  router.patch(
+    "/general-table/:id/title",
+    handler(async (req, res) => {
+      const recordId = id(req.params.id);
+      const input = parse(z.object({
+        title: generalTableSchema.shape.title,
+        expectedTitle: generalTableSchema.shape.title,
+      }).strict(), req.body);
+      const record = await transaction(pool, async client => {
+        const user = await currentActor(client, actor(req));
+        publicAdmin(user);
+        await assertRequestPagesEnabled(client, req, true);
+        const current = await client.query(
+          "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE",
+          [recordId],
+        );
+        if (!current.rows[0]) missing();
+        const before = recordDTO(current.rows[0]);
+        if (before.title !== input.expectedTitle)
+          throw new HttpError(409, "stale_title",
+            "تم تعديل العنوان من مستخدم آخر؛ حدث القائمة قبل الحفظ.");
+        if (before.title === input.title) return before;
+        const changed = await client.query(
+          "UPDATE general_table SET general_table_title=$1,updated_at=now() WHERE general_table_id=$2 RETURNING *",
+          [input.title,recordId],
+        );
+        const after = recordDTO(changed.rows[0]);
+        await audit(client,user,"generalTable.update","generalTable",recordId,before,after);
+        return after;
+      });
+      res.json({record});
+    }),
+  );
   // Dedicated inline numeric updates change one column only, preventing an
   // outdated table row from overwriting titles, descriptions or other fields.
   router.patch(
