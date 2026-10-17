@@ -5,7 +5,7 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index.ts
 import { normalizeDigits } from "../../../../packages/contracts/src/index.ts";
 import { ApiFailure, api, useSession } from "../api";
 import { errorMessage } from "../phase2";
-import { formatMoney } from "../format-money";
+import { formatWholeMoney } from "../format-money";
 import { Button, Card, Dialog, Field, Notice, PageHeader } from "../ui";
 
 type Status="pending"|"received"|"all";
@@ -19,6 +19,13 @@ type Movement={
 };
 type Response={items:Movement[];total:number;page:number;pageSize:number};
 type Draft={movement:Movement;amount:string;notes:string;key:string};
+
+/** The register is whole-rial display only; preserve the original amount in API/DB. */
+function ReceiptAmount({value}:{value:string|null|undefined}) {
+  return <bdi className={value?.startsWith("-") ? "receipt-negative-amount" : undefined}>
+    {formatWholeMoney(value)}
+  </bdi>;
+}
 
 const dateTime=(value:string)=>new Intl.DateTimeFormat("ar-YE",{
   dateStyle:"short",timeStyle:"short",timeZone:"Asia/Aden",
@@ -39,7 +46,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const [draft,setDraft]=useState<Draft|null>(null);
   const [pending,setPending]=useState(false);
   const [error,setError]=useState("");
-  const [notice,setNotice]=useState("");
+  const [notice,setNotice]=useState<{documentId:number;difference:string}|null>(null);
   const [uncertain,setUncertain]=useState(false);
   const [exactKeys,setExactKeys]=useState<Record<number,string>>({});
   const canPost=context.general||context.permissions.includes("finance.post");
@@ -57,7 +64,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     item:Movement,mode:"exact"|"difference",amount:string,notes:string,key:string,
   ) {
     if(pending || !canPost)return;
-    setError("");setNotice("");setPending(true);
+    setError("");setNotice(null);setPending(true);
     try {
       const body=mode==="exact"
         ? {sourceOperationId:item.id,mode,notes,idempotencyKey:key}
@@ -69,11 +76,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
       }>(`/companies/${companyId}/${endpoint}`,{
         method:"POST",body,
       });
-      setNotice(
-        `تم الاستلام وتسجيل القيد #${result.receipt.documentId}.`+
-        (Number(result.receipt.difference)===0?" المبلغ مطابق.":
-          ` الفرق: ${formatMoney(result.receipt.difference)} ريال في حساب العجز والزيادة.`),
-      );
+      setNotice({documentId:result.receipt.documentId,
+        difference:result.receipt.difference});
       setDraft(null);setUncertain(false);
       setExactKeys(prev=>{const next={...prev};delete next[item.id];return next;});
       await client.invalidateQueries({predicate:query=>
@@ -127,7 +131,12 @@ export function PouchReceiptsPage({context,source="pouch"}:{
           : "حركات الحوافظ وإغلاق الصناديق التي رحّلت نقدًا إلى الحافظة. الاستلام إلى صندوقك فقط، والفرق يُرحّل إلى حساب العجز والزيادة."}
         actions={<Button variant="secondary" onClick={()=>void list.refetch()}
           disabled={list.isFetching||pending}>تحديث</Button>}/>
-      {notice&&<Notice tone="success">{notice}</Notice>}
+      {notice&&<Notice tone="success">
+        تم الاستلام وتسجيل القيد #{notice.documentId}.
+        {Number(notice.difference)===0
+          ? " المبلغ مطابق."
+          : <> الفرق: <ReceiptAmount value={notice.difference}/> ريال في حساب العجز والزيادة.</>}
+      </Notice>}
       {error&&!draft&&<Notice tone="error">{error}</Notice>}
       <div className="form-actions" role="group" aria-label={`حالة استلام ${sourceName}`}>
         {(["pending","received","all"] as const).map(value=>
@@ -159,14 +168,14 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                   <td>{electronic?item.walletName:item.pouchName}</td>
                   <td>{item.kind==="close"?"إغلاق صندوق":
                     electronic?"ترحيل إلكتروني":"ترحيل حافظة"}</td>
-                  <td><bdi>{formatMoney(item.amount)}</bdi> ر.ي</td>
+                  <td><ReceiptAmount value={item.amount}/> ر.ي</td>
                   <td>{item.notes||"—"}</td>
                   <td>{item.receiptId===null?"بانتظار الاستلام":
                     <><strong>تم الاستلام</strong>
                       <div className="muted">{item.receiverName}</div>
-                      <div className="muted">فعلي: <bdi>{formatMoney(item.receivedAmount!)}</bdi></div>
+                      <div className="muted">فعلي: <ReceiptAmount value={item.receivedAmount}/></div>
                       {Number(item.differenceAmount)!==0&&
-                        <div>الفرق: <bdi>{formatMoney(item.differenceAmount!)}</bdi></div>}
+                        <div>الفرق: <ReceiptAmount value={item.differenceAmount}/></div>}
                     </>}</td>
                   <td>{item.receiptId!==null
                     ? <Link to={`/companies/${companyId}/financial-documents/${item.receiptDocumentId}`}>قيد الاستلام</Link>
@@ -197,7 +206,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
       <Dialog open={!!draft} title="استلام غير مطابق / جزء"
         onClose={()=>{if(!pending&&!uncertain){setDraft(null);setError("");}}}>
         {draft&&<form className="form-stack" onSubmit={submit}>
-          <p>الحركة #{draft.movement.id} — المبلغ الأصلي: <bdi>{formatMoney(draft.movement.amount)}</bdi> ريال.</p>
+          <p>الحركة #{draft.movement.id} — المبلغ الأصلي: <ReceiptAmount value={draft.movement.amount}/> ريال.</p>
           <Field label="المبلغ المستلم فعليًا" money inputMode="decimal"
             value={draft.amount} required autoFocus disabled={pending||uncertain}
             onChange={event=>setDraft(previous=>previous?
