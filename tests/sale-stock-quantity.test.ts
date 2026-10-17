@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { firstUnitStockText, saleStockQuantity } from "../apps/web/src/sale-stock-quantity.ts";
+import { firstUnitStockText, invoiceSearchStock, saleStockQuantity } from "../apps/web/src/sale-stock-quantity.ts";
 const item={factor2:7,factor3:3};
 test("available sale units use exact integer arithmetic",()=>{
   assert.equal(saleStockQuantity("42",item,1),"2");
@@ -33,4 +33,14 @@ test("combined first-unit stock displays up to three decimals, including returns
   assert.equal(firstUnitStockText("0",{factor2:3,factor3:2}),"0");
   assert.equal(firstUnitStockText("40000000000000000000",{factor2:2,factor3:2}),"10000000000000000000");
   assert.equal(firstUnitStockText(null,{factor2:2,factor3:2}),"—");
+});
+
+test("invoice search shows first-unit stock rounded to exactly one digit, or permission-redacted",()=>{
+  const sample={factor2:2000,factor3:1};
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:"100247"}),"50.1");
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:"100000"}),"50.0");
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:"0"}),"0.0");
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:"-100247"}),"-50.1");
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:null}),"—");
+  assert.equal(invoiceSearchStock({...sample,availableSmallest:undefined}),"—");
 });
