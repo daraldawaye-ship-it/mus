@@ -33,7 +33,7 @@ export async function readItemCompositionPeers(
  };
  if(!composition)return result;
  const count=await client.query(
-   "SELECT count(*)::int AS total FROM items WHERE company_id=$1 AND composition_id=$2 AND id<>$3",
+   "SELECT count(*)::int AS total FROM items WHERE company_id=$1 AND composition_id=$2 AND id<>$3 AND active=true",
    [companyId,composition.id,itemId],
  );
  result.total=count.rows[0]?.total??0;
@@ -49,7 +49,7 @@ export async function readItemCompositionPeers(
    `SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
      i.factor2,i.factor3,${stockCol}
     FROM items i ${stockJoin}
-    WHERE i.company_id=$1 AND i.composition_id=$2 AND i.id<>$3
+    WHERE i.company_id=$1 AND i.composition_id=$2 AND i.id<>$3 AND i.active=true
     ORDER BY ${stockOrder} LIMIT 20 OFFSET $4`,
    [companyId,composition.id,itemId,(page-1)*20],
  );
