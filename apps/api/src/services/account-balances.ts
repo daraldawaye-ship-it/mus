@@ -13,7 +13,9 @@ import { HttpError, missing } from "../errors.ts";
 import {
   assertAccountBalanceAccess,
   assertRequestPagesEnabled,
+  accountActivityVisibility,
 } from "./pages.ts";
+import { readAccountOperations } from "./account-operations.ts";
 import { audit } from "./audit.ts";
 import { conflict } from "./masters.ts";
 
@@ -127,6 +129,14 @@ export async function readBalanceStatistics(
   asOfDate: string,
 ): Promise<AccountBalanceStatistics> {
   const row = await refreshBalance(client, companyId, accountId, asOfDate);
+  const visibility = await accountActivityVisibility(client, user, companyId);
+  const operational = await readAccountOperations(
+    client,
+    companyId,
+    accountId,
+    asOfDate,
+    visibility,
+  );
   const follow = await client.query(
     "SELECT * FROM account_balance_followups WHERE company_id=$1 AND account_id=$2 ORDER BY followed_up_at DESC,id DESC LIMIT 1",
     [companyId, accountId],
@@ -180,8 +190,8 @@ export async function readBalanceStatistics(
     },
     components: {
       balance: metadata("balance"),
-      activity: metadata("activity"),
-      commerce: metadata("commerce"),
+      activity: operational.activityMetadata,
+      commerce: operational.commerceMetadata,
       stock: metadata("stock"),
     },
     lastFollowUp: follow.rows[0] ? followUpDTO(follow.rows[0]) : null,
@@ -191,6 +201,7 @@ export async function readBalanceStatistics(
       canFollowUp: await allowed("followup"),
       canApprove: await allowed("approve"),
     },
+    operations: operational.operations,
   };
 }
 /** Company/user locks and current permission checks precede this function. */

@@ -163,12 +163,78 @@ export interface AccountBalanceStatistics {
     atPreviousYearStartBase: string;
     atTwoYearsAgoStartBase: string;
   };
-  components: Record<
-    AccountStatisticsComponent,
-    AccountStatisticsComponentMetadata
-  >;
+  components: {
+    balance: AccountStatisticsComponentMetadata;
+    activity: AccountStatisticsComponentMetadata | null;
+    commerce: AccountStatisticsComponentMetadata | null;
+    stock: AccountStatisticsComponentMetadata;
+  };
   lastFollowUp: AccountBalanceFollowUp | null;
   lastApproval: AccountBalanceApproval | null;
   approvalQuote: AccountBalanceApprovalQuote;
   capabilities: { canFollowUp: boolean; canApprove: boolean };
+  operations: AccountOperationStatistics;
+}
+
+export const accountOperationPeriods = [
+  "oneMonth",
+  "fourMonths",
+  "currentMonth",
+  "previousMonth",
+  "twoMonthsAgo",
+  "last30Days",
+  "last7Days",
+  "currentWeek",
+] as const;
+export type AccountOperationPeriod = (typeof accountOperationPeriods)[number];
+export interface AccountOperationReference {
+  sourceKind: "invoice" | "financial_document";
+  sourceId: number;
+  documentNumber: string;
+  documentDate: string;
+  currency: AccountBalanceCurrency;
+  baseCurrency: AccountBalanceCurrency;
+  amount: string;
+  baseAmount: string;
+  isCorrection: boolean;
+}
+export interface AccountOperationFamilyStatistics {
+  documentsAllTime: string;
+  documentsFourMonths: string;
+  totalsBase: Record<AccountOperationPeriod, string>;
+  last: AccountOperationReference | null;
+}
+export interface AccountOperationVisibility {
+  ledger: boolean;
+  sale: boolean;
+  purchase: boolean;
+  purchaseCash: boolean;
+  payment: boolean;
+  receipt: boolean;
+  activity: boolean;
+}
+export interface AccountOperationStatistics {
+  availability: AccountOperationVisibility;
+  periods: Record<AccountOperationPeriod, { from: string; to: string }>;
+  activity: {
+    documentsAllTime: string;
+    documentsFourMonths: string;
+    last: AccountOperationReference | null;
+  } | null;
+  sale: AccountOperationFamilyStatistics | null;
+  purchase:
+    | (AccountOperationFamilyStatistics & {
+        /** NULL if any purchase in this window has an unknown cash classification. */
+        cashPurchasesFourMonthsBase: string | null;
+        knownCashPurchasesFourMonthsBase: string;
+        quality: {
+          cashClassificationUnknownFourMonths: string;
+          supplierConflictsFourMonths: string;
+          /** Company-wide coverage, never an attribution of unknown invoices to this account. */
+          companyUnknownSupplierDocumentsFourMonths: string;
+        };
+      })
+    | null;
+  payment: AccountOperationFamilyStatistics | null;
+  receipt: AccountOperationFamilyStatistics | null;
 }

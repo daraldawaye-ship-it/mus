@@ -216,6 +216,52 @@ export async function directoryEntries(
     };
   });
 }
+
+export interface AccountActivityVisibility {
+  ledger: boolean;
+  sale: boolean;
+  purchase: boolean;
+  purchaseCash: boolean;
+  payment: boolean;
+  receipt: boolean;
+  activity: boolean;
+}
+
+/** Optional activity families redact independently of balance-route access. */
+export async function accountActivityVisibility(
+  db: Database,
+  user: User,
+  companyId: number,
+): Promise<AccountActivityVisibility> {
+  const entries = await directoryEntries(db, user, companyId);
+  const views = new Map(
+    entries.map((entry) => [entry.key, entry.actionAccess.view] as const),
+  );
+  const view = (key: string): boolean => views.get(key) === true;
+  const financialDocument = view("company.financial-document");
+  // Document and kind entries already inherit the financial-documents parent
+  // flag and explicit-deny alias. Requiring its independent list grant would
+  // incorrectly reject a user granted access to the specific kind and card.
+  const ledger =
+    view("company.account-ledger") &&
+    view("company.journals") &&
+    financialDocument;
+  const invoice = view("company.invoice");
+  const sale = view("company.sales") && invoice;
+  const purchase = view("company.purchases") && invoice;
+  const payment = view("company.payments") && financialDocument;
+  const receipt = view("company.receipts") && financialDocument;
+  return {
+    ledger,
+    sale,
+    purchase,
+    purchaseCash: purchase,
+    payment,
+    receipt,
+    activity: ledger && sale && purchase && payment && receipt,
+  };
+}
+
 export function assertDirectoryAccess(
   entry: PageEntry,
   action: PageAction = "view",
