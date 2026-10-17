@@ -949,7 +949,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId }: {
   const { user } = useSession();
   const controls = useControls(companyId, context.employee?.id ?? null);
   const showOptions = controls.value(
-    kind === "purchase" ? "show_item_options_purchases" : "show_item_options_sales",
+    kind === "purchase" ? "show_recent_item_purchases" : "show_item_options_sales",
   ) !== false;
   return (
     <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
