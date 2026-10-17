@@ -1216,7 +1216,7 @@ function ItemEditor({
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!manage || saving) return;
+    if (readOnly || !manage || saving) return;
     setError("");
     const body = {
       ...fields,
@@ -1344,7 +1344,7 @@ function ItemEditor({
       )}
       <form onSubmit={(event) => void save(event)}>
         <div className="form-actions item-save-actions">
-          {manage && (
+          {manage && !readOnly && (
             <Button type="submit" disabled={saving}>
               {saving
                 ? "جارٍ الحفظ…"
