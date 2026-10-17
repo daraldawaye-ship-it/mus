@@ -802,6 +802,14 @@ type ItemInfoHistoryRow = {
   unitPriceFirstUnit?: string;
   currencyCode?: string;
 };
+/** Format stock to exactly one displayed decimal, without losing conversion precision. */
+function alternativeFirstUnitText(
+  row: ItemCompositionPeers["peers"][number],
+): string {
+  if (row.stockSmallest === null) return "—";
+  const quantity = saleStockQuantity(row.stockSmallest, row, 1, 1);
+  return quantity.includes(".") ? quantity : quantity + ".0";
+}
 const itemInfoViews: { value: ItemInfoView; label: string }[] = [
   { value: "purchase", label: "مشتريات الصنف" },
   { value: "sale", label: "مبيعات الصنف" },
@@ -896,10 +904,8 @@ function InvoiceItemOptions({ context, kind, selectedItemId, userId }: {
                         <thead><tr><th className="invoice-item-options-number">الكمية (و1)</th><th>الصنف</th></tr></thead>
                         <tbody>{peers.peers.map(row => (
                           <tr key={row.id}>
-                            <td className="invoice-item-options-number" title={row.stockSmallest === null ? "غير متاح" :
-                              saleStockQuantity(row.stockSmallest, row, 1, 1)}>
-                              <bdi>{row.stockSmallest === null ? "—" :
-                                saleStockQuantity(row.stockSmallest, row, 1, 1)}</bdi>
+                            <td className="invoice-item-options-number" title={alternativeFirstUnitText(row)}>
+                              <bdi>{alternativeFirstUnitText(row)}</bdi>
                             </td>
                             <td title={row.name}>
                               <button type="button" className="invoice-item-options-link"
