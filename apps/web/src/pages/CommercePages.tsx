@@ -52,6 +52,7 @@ import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
+import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -399,6 +400,8 @@ const lineInputId = (line: DraftLine, field: string) =>
 function ItemSearch({
   companyId,
   id,
+  invoiceKind,
+  documentDate,
   value,
   selected,
   disabled,
@@ -409,6 +412,8 @@ function ItemSearch({
 }: {
   companyId: number;
   id: string;
+  invoiceKind: InvoiceKind;
+  documentDate: string;
   value: string;
   selected: boolean;
   disabled: boolean;
@@ -635,7 +640,17 @@ function ItemSearch({
                       title={item.availableSmallest === null ? "الرصيد غير متاح بحسب الصلاحيات" : "المتوفر بالوحدة الأولى"}>
                       {invoiceSearchStock(item)}
                     </bdi>
-                    <span className="commerce-search-item-name" title={item.name}>{item.name}</span>
+                    <span className="commerce-search-item-name" title={item.name}>
+                      {item.name}
+                      {invoiceKind === "sale" && (() => {
+                        const rate = saleClearanceRate(item, documentDate);
+                        return rate ? (
+                          <>{" "}<span className="commerce-search-clearance-label">
+                            (تصريف {rate}%)
+                          </span></>
+                        ) : null;
+                      })()}
+                    </span>
                     <bdi className="commerce-search-item-price" title="سعر البيع بالوحدة الأولى">
                       {formatMoney(item.salePrice1)}
                     </bdi>
@@ -2348,6 +2363,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                           ) : (
                             <ItemSearch
                               companyId={companyId}
+                              invoiceKind={kind}
+                              documentDate={documentDate}
                               id={lineInputId(line, "item-search")}
                               value={line.search}
                               selected={!!line.itemId}
