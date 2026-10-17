@@ -128,7 +128,7 @@ test("new companies get mapped salary, reward and commission accounts without fi
     [first],
   );
   await runtime.pool.query(
-    `UPDATE wallet_conversion_policies SET point_value=0.25,approval_mode='approval',
+    `UPDATE wallet_conversion_policies SET point_value=1,approval_mode='approval',
         expense_account_id=(SELECT id FROM accounts WHERE company_id=$1 AND code='5500000001'),
         revision=revision+1 WHERE company_id=$1`, [first],
   );
@@ -142,7 +142,7 @@ test("new companies get mapped salary, reward and commission accounts without fi
     `SELECT revision,point_value::text,approval_mode FROM wallet_conversion_policies WHERE company_id=$1`,
     [first],
   );
-  assert.deepEqual(policyAfter.rows[0], { revision: 2, point_value: "0.250000000000", approval_mode: "approval" });
+  assert.deepEqual(policyAfter.rows[0], { revision: 2, point_value: "1.000000000000", approval_mode: "approval" });
   const otherPolicy = await runtime.pool.query(
     "SELECT point_value FROM wallet_conversion_policies WHERE company_id=$1", [second],
   );
