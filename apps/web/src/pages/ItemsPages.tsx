@@ -663,7 +663,7 @@ function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:nu
             <div key={peer.id} className="form-actions">
               <Button variant="ghost" size="compact" onClick={()=>
                 navigate(`/companies/${companyId}/items/${peer.id}`)}>
-                {peer.code} — {peer.name}{peer.active?"":" (مؤرشف)"}
+                {peer.code} — {peer.name}
               </Button>
               {peer.stockSmallest!==null&&(
                 <small className="muted">
