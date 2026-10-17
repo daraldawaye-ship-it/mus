@@ -134,6 +134,10 @@ legend {
 .text-error {
   color: var(--error-text);
 }
+.text-success {
+  color: var(--success-text);
+}
+
 .workspace {
   --sidebar-width: 214px;
   display: flex;
