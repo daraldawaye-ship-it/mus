@@ -44,6 +44,7 @@ export const invoiceSchema = z
     counterpartyAccountId: id,
     supplierAccountId: id.nullable().default(null),
     doctorId: id.nullable().default(null),
+    doctorName: z.string().trim().max(240).default(""),
     supplierReceiptNumber: z.string().trim().max(100).default(""),
     description: z.string().trim().max(1000).default(""),
     discount: amountSchema.default("0"),
@@ -51,7 +52,7 @@ export const invoiceSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.kind === "purchase" && value.doctorId !== null)
+    if (value.kind === "purchase" && (value.doctorId !== null || value.doctorName))
       context.addIssue({ code: "custom", path: ["doctorId"], message: "اختيار الطبيب أو الجهة مخصص للمبيعات" });
     if (value.kind === "sale" && value.supplierReceiptNumber)
       context.addIssue({ code: "custom", path: ["supplierReceiptNumber"], message: "رقم وصل المورد مخصص للمشتريات فقط" });
