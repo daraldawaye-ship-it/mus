@@ -224,10 +224,43 @@ export interface WalletEntry {
   createdAt: string;
   createdByName: string;
 }
+export interface ClearanceTotal {
+  currencyId: number;
+  currencyCode: string;
+  amount: string;
+  lineCount: number;
+}
+export interface ClearanceHistoryRow {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  invoiceLineId: number;
+  itemName: string;
+  documentDate: string;
+  currencyCode: string;
+  rate: string;
+  amount: string;
+  createdAt: string;
+}
+export interface ClearanceReturnReview {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  originalInvoiceId: number;
+  originalInvoiceNumber: string;
+  itemName: string;
+  documentDate: string;
+  currencyCode: string;
+  candidateAmount: string;
+  originalEmployeeName: string | null;
+}
 export interface WalletDirectory extends Page<WalletEntry> {
   wallet: WalletSummary | null;
   employees: { id: number; name: string }[];
   canManage: boolean;
+  clearanceTotals: ClearanceTotal[];
+  clearanceHistory: ClearanceHistoryRow[];
+  pendingReturnReviews: ClearanceReturnReview[];
 }
 export interface RewardTask {
   code: string;
