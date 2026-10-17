@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -30,7 +30,12 @@ import {
   useMasterChanges,
 } from "../phase2";
 import { RecordOptionCard } from "../RecordOptionCard";
+import {
+  AccountStatisticsCard,
+  usePendingAccountStatisticsActions,
+} from "../AccountStatisticsCard";
 import { formatMoney } from "../format-money";
+import { usePageDirectory } from "../page-directory";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -60,11 +65,29 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const guard = useScopeGuard(`company:${companyId}:accounts`);
   const changed = useMasterChanges(companyId);
   const canManage = moduleAccess(context, "accounts", true);
+  const directory = usePageDirectory(companyId);
+  const canViewStatistics = !!directory.data?.some(
+    (page) =>
+      page.key === "company.account-statistics" &&
+      page.enabled &&
+      page.actionAccess.view,
+  );
+  const pendingStatisticsAccounts =
+    usePendingAccountStatisticsActions(companyId);
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["kind", "category", "accountChoice", "active", ...optionFilterKeys])
+  for (const key of [
+    "kind",
+    "category",
+    "accountChoice",
+    "active",
+    ...optionFilterKeys,
+  ])
     if (params.get(key)) filters.set(key, params.get(key)!);
-  const list = usePagedQuery<OptionListRecord<Account>, OptionListMetadata & {baseCurrencyCode?: string|null}>(
+  const list = usePagedQuery<
+    OptionListRecord<Account>,
+    OptionListMetadata & { baseCurrencyCode?: string | null }
+  >(
     `/companies/${companyId}/accounts?${filters}`,
     `company:${companyId}:accounts`,
   );
@@ -84,6 +107,9 @@ function AccountsManager({ context }: { context: CompanyContext }) {
     enabled: canManage,
   });
   const [editor, setEditor] = useState<{ account: Account | null } | null>(
+    null,
+  );
+  const [statisticsAccount, setStatisticsAccount] = useState<Account | null>(
     null,
   );
   const [linkEditor, setLinkEditor] = useState<{
@@ -191,8 +217,10 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {
         accessorKey: "accountChoice",
         header: "خيار الحساب",
-        cell: ({ row }) => row.original.accountChoice
-          ? accountChoiceLabels[row.original.accountChoice] : "—",
+        cell: ({ row }) =>
+          row.original.accountChoice
+            ? accountChoiceLabels[row.original.accountChoice]
+            : "—",
       },
       {
         id: "actualBalance",
@@ -206,9 +234,10 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           const grouped = formatMoney(amount);
           return (
             <ValueCell value={formatMoney(amount)}>
-              <bdi>{grouped}</bdi>{" "}
-              {direction === "credit" ? "له" : "عليه"}
-              {list.data?.baseCurrencyCode ? ` (${list.data.baseCurrencyCode})` : ""}
+              <bdi>{grouped}</bdi> {direction === "credit" ? "له" : "عليه"}
+              {list.data?.baseCurrencyCode
+                ? ` (${list.data.baseCurrencyCode})`
+                : ""}
             </ValueCell>
           );
         },
@@ -231,28 +260,55 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         ),
       },
       ...optionListColumns<Account>(list.data?.optionDefinitions ?? []),
-      ...(canManage
+      ...(canManage || canViewStatistics || pendingStatisticsAccounts.length > 0
         ? [
             {
               id: "actions",
               header: "الإجراء",
+              size: canManage && canViewStatistics ? 250 : 170,
               enableSorting: false,
               cell: ({ row }: { row: { original: Account } }) => (
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  disabled={loadingDetail}
-                  aria-label={`تعديل الحساب ${row.original.code}`}
-                  onClick={() => void edit(row.original)}
-                >
-                  تعديل
-                </Button>
+                <div className="row-actions">
+                  {canManage && (
+                    <Button
+                      variant="ghost"
+                      size="compact"
+                      disabled={loadingDetail}
+                      aria-label={`تعديل الحساب ${row.original.code}`}
+                      onClick={() => void edit(row.original)}
+                    >
+                      تعديل
+                    </Button>
+                  )}
+                  {(canViewStatistics ||
+                    pendingStatisticsAccounts.includes(row.original.id)) &&
+                    row.original.kind === "posting" && (
+                      <Button
+                        variant="ghost"
+                        size="compact"
+                        aria-label={`إحصاءات الحساب ${row.original.code}`}
+                        onClick={() => setStatisticsAccount(row.original)}
+                      >
+                        {canViewStatistics
+                          ? "إحصاءات الحساب"
+                          : "متابعة طلب سابق"}
+                      </Button>
+                    )}
+                </div>
               ),
             } satisfies ColumnDef<OptionListRecord<Account>, unknown>,
           ]
         : []),
     ],
-    [canManage, loadingDetail, companyId, list.data?.optionDefinitions],
+    [
+      canManage,
+      canViewStatistics,
+      pendingStatisticsAccounts,
+      loadingDetail,
+      companyId,
+      list.data?.optionDefinitions,
+      list.data?.baseCurrencyCode,
+    ],
   );
   return (
     <>
@@ -260,19 +316,29 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         title="دليل الحسابات"
         description="الحسابات بأكواد من عشرة أرقام، ورصيد كل حساب حركي يتحدد من القيود المرحّلة: له أو عليه."
         actions={
-          canManage && (
-            <>
-              <Button
-                disabled={loadingDetail}
-                onClick={() => {
-                  setNotice("");
-                  setEditor({ account: null });
-                }}
+          <>
+            {canViewStatistics && (
+              <Link
+                className="button button-secondary"
+                to={`/companies/${companyId}/account-statistics`}
               >
-                إضافة حساب
-              </Button>
-            </>
-          )
+                جدول إحصاءات الحسابات
+              </Link>
+            )}
+            {canManage && (
+              <>
+                <Button
+                  disabled={loadingDetail}
+                  onClick={() => {
+                    setNotice("");
+                    setEditor({ account: null });
+                  }}
+                >
+                  إضافة حساب
+                </Button>
+              </>
+            )}
+          </>
         }
       />
       {notice && <Notice tone="success">{notice}</Notice>}
@@ -321,7 +387,9 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           >
             <option value="">جميع الخيارات</option>
             {accountChoices.map((choice) => (
-              <option key={choice} value={choice}>{accountChoiceLabels[choice]}</option>
+              <option key={choice} value={choice}>
+                {accountChoiceLabels[choice]}
+              </option>
             ))}
           </Select>
           <Select
@@ -401,12 +469,27 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       </Card>
       {canManage && editor && (
         <AccountEditor
-          key={`${companyId}:${editor.account?.id ?? "new"}`}
+          key={`${user?.id}:${companyId}:${editor.account?.id ?? "new"}`}
           companyId={companyId}
           account={editor.account}
           onClose={() => setEditor(null)}
           onSaved={(account) => void saved(account)}
         />
+      )}
+      {statisticsAccount && (
+        <Dialog
+          open
+          title={`إحصاءات الحساب — ${statisticsAccount.name}`}
+          onClose={() => setStatisticsAccount(null)}
+        >
+          <p>
+            <bdi>{statisticsAccount.code}</bdi> — {statisticsAccount.name}
+          </p>
+          <AccountStatisticsCard
+            companyId={companyId}
+            account={statisticsAccount}
+          />
+        </Dialog>
       )}
       {canManage && initializing && (
         <InitializeAccounts
@@ -461,7 +544,9 @@ function AccountEditor({
   );
   const [name, setName] = useState(account?.name ?? "");
   const [active, setActive] = useState(account?.active ?? true);
-  const [accountChoice, setAccountChoice] = useState<AccountChoice | "">(account?.accountChoice ?? "administrative");
+  const [accountChoice, setAccountChoice] = useState<AccountChoice | "">(
+    account?.accountChoice ?? "administrative",
+  );
   const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
@@ -474,7 +559,12 @@ function AccountEditor({
     event.preventDefault();
     if (saving) return;
     setError("");
-    let body: unknown = { name, active, cashOrBank, accountChoice: accountChoice || null };
+    let body: unknown = {
+      name,
+      active,
+      cashOrBank,
+      accountChoice: accountChoice || null,
+    };
     if (!account) {
       const parsed = accountSchema.safeParse({
         name,
@@ -558,11 +648,15 @@ function AccountEditor({
           label="خيار الحساب"
           value={accountChoice}
           disabled={saving}
-          onChange={(event) => setAccountChoice(event.target.value as AccountChoice | "")}
+          onChange={(event) =>
+            setAccountChoice(event.target.value as AccountChoice | "")
+          }
         >
           <option value="">بدون خيار</option>
           {accountChoices.map((choice) => (
-            <option key={choice} value={choice}>{accountChoiceLabels[choice]}</option>
+            <option key={choice} value={choice}>
+              {accountChoiceLabels[choice]}
+            </option>
           ))}
         </Select>
         {!account && (
@@ -691,6 +785,13 @@ function AccountEditor({
           </Button>
         </div>
       </form>
+      {account?.kind === "posting" && (
+        <AccountStatisticsCard
+          companyId={companyId}
+          account={account}
+          compact
+        />
+      )}
       {account && (
         <RecordOptionCard
           companyId={companyId}

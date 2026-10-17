@@ -431,6 +431,7 @@ export async function requestPageKeys(
     locations: "locations",
     items: "items",
     "item-statistics-report": "item-statistics-report",
+    "account-statistics-report": "account-statistics",
     "item-options": "items",
     "item-agents": "item-agents",
     "stock-balances": "stock-balances",
@@ -446,6 +447,8 @@ export async function requestPageKeys(
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (resource === "account-statistics-report")
+    keys.push("company.accounts", "company.account-ledger");
   if (
     /^accounts\/[1-9]\d*\/(statistics|balance-followups|balance-approvals)$/.test(
       rest,
