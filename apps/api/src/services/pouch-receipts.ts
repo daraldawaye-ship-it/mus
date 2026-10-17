@@ -82,7 +82,11 @@ export async function receivePouchMovement(
   if(retry.rows[0]) {
     if (!retry.rows[0].same) conflict("receipt_key_conflict",
       "المفتاح مستخدم لاستلام مختلف؛ افتح قائمة الترحيلات وحدّثها");
-    return retry.rows[0];
+    const row=retry.rows[0];
+    return {id:row.id,sourceId:row.sourceId,documentId:row.documentId,
+      expected:moneyString(moneyUnits(row.expected)),
+      received:moneyString(moneyUnits(row.received)),
+      difference:moneyString(moneyUnits(row.difference))};
   }
   const origin=(await client.query(
     `SELECT o.id,o.kind,o.employee_id,o.amount::text AS amount,
