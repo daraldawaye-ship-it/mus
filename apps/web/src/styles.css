@@ -557,6 +557,55 @@ legend {
 .user-menu-item:focus-visible {
   background: var(--hover);
 }
+/* The avatar's personal shortcuts open towards the page, not off-screen.
+   The menu is per user/company and the available links follow live page grants. */
+.user-menu-panel:has(.user-shortcut-root) { overflow: visible; }
+.user-shortcut-root { position: relative; min-width: 0; }
+.user-shortcut-arrow { margin-inline-start: auto; }
+.user-shortcut-flyout {
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: calc(100% - 2px);
+  z-index: 52;
+  width: min(290px, calc(100vw - 18px));
+  max-height: min(66dvh, 540px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px #0003;
+}
+.user-shortcut-flyout .user-menu-item { font-size: 12px; min-height: 32px; }
+.user-shortcut-label {
+  display: block; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.user-shortcut-hint { display: block; padding: 5px 9px; color: var(--muted); }
+.user-shortcut-options {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: min(52dvh, 410px); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px;
+}
+.user-shortcut-option {
+  display: flex; gap: 9px; align-items: center; cursor: pointer;
+  padding: 6px 8px; border-radius: 4px;
+}
+.user-shortcut-option:hover { background: var(--hover); }
+.user-shortcut-option input { flex: 0 0 auto; accent-color: var(--primary); }
+.user-shortcut-option span { flex: 1; min-width: 0; }
+.user-shortcut-option small { color: var(--muted); font-size: 10px; }
+@media (max-width: 700px) {
+  .user-shortcut-flyout {
+    position: static; inset: auto; width: 100%;
+    max-height: min(46dvh, 360px); box-shadow: none;
+  }
+  .user-menu-panel:has(.user-shortcut-root) {
+    max-height: calc(100dvh - 65px);
+    overflow-y: auto;
+  }
+}
 .user-menu-logout {
   border-top: 1px solid var(--border);
   border-radius: 0 0 6px 6px;

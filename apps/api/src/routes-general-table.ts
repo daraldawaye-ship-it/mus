@@ -159,6 +159,23 @@ export function generalTableRoutes(pool: Pool): Router {
     }),
   );
   router.get(
+    "/general-table/table-names",
+    handler(async (req, res) => {
+      publicAdmin(actor(req));
+      const query = req.query.q;
+      if (query !== undefined && (typeof query !== "string" || query.length > 120))
+        throw new HttpError(400, "invalid_query", "اسم الجدول غير صالح");
+      const q = typeof query === "string" ? query.trim() : "";
+      const rows = await pool.query(
+        `SELECT DISTINCT general_table_table_name AS name FROM general_table
+         WHERE general_table_table_name<>'' AND general_table_table_name ILIKE $1
+         ORDER BY name LIMIT 100`,
+        [searchPattern(q)],
+      );
+      res.json({ items: rows.rows.map(row => row.name as string) });
+    }),
+  );
+  router.get(
     "/general-table/:id",
     handler(async (req, res) => {
       publicAdmin(actor(req));
