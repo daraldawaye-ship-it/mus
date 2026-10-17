@@ -241,8 +241,10 @@ export function WalletPage({ context }: { context: CompanyContext }) {
         row.original.kind === "manual"
           ? "إضافة إدارية"
           : row.original.kind === "attendance"
-            ? "نقاط الدوام"
-            : row.original.kind === "automatic"
+            ? "مكافأة الدوام والحضور"
+            : row.original.kind === "clearance"
+              ? "عمولة تصريف"
+              : row.original.kind === "automatic"
               ? (automaticLabels[row.original.taskCode ?? ""] ?? "مكافأة آلية")
               : row.original.kind === "conversion"
                 ? "تحويل النقاط إلى الحساب"
@@ -325,7 +327,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     <div className="wallet-page">
       <PageHeader
         title="النقاط والمحفظة"
-        description="رصيد الموظف وسجل المكافآت الآلية والإضافات الإدارية والتصحيحات داخل الشركة."
+        description="رصيد موحد بالريال اليمني: مكافآت وحضور وعمولات تصريف، بسجل واحد. الترحيل للحساب المحاسبي بطلب الموظف فقط."
         actions={
           <>
             {conversionsPage?.enabled && conversionsPage.actionAccess.view && (
@@ -386,19 +388,19 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       )}
       {wallet && (
         <div className="wallet-summary">
-          <Card title="النقاط المتاحة" description={wallet.employeeName}>
+          <Card title="رصيد المحفظة الموحد — ريال يمني" description={wallet.employeeName}>
             <strong
               className="wallet-balance"
               data-wallet-points={wallet.points}
             >
               <bdi>{pointValue(wallet.points)}</bdi>
             </strong>
-            <span> نقطة</span>
+            <span> نقطة = {pointValue(wallet.points)} ريال يمني</span>
             {BigInt(wallet.reservedPoints) > 0n && (
               <p>
                 محجوزة لطلبات الاعتماد:{" "}
-                <bdi>{pointValue(wallet.reservedPoints)}</bdi> نقطة. إجمالي
-                الرصيد: <bdi>{pointValue(wallet.totalPoints)}</bdi> نقطة.
+                <bdi>{pointValue(wallet.reservedPoints)}</bdi> ريال. إجمالي
+                الرصيد: <bdi>{pointValue(wallet.totalPoints)}</bdi> ريال.
               </p>
             )}
             <div className="form-actions">
@@ -411,21 +413,6 @@ export function WalletPage({ context }: { context: CompanyContext }) {
               </Button>
             </div>
           </Card>
-          <Card
-            title="عمولات التصريف المستحقة"
-            description="مبالغ اكتسبها الموظف عند ترحيل المبيعات المؤهلة. ليست نقاطًا أو مبالغ مصروفة، والمرتجعات لا تخصم منها تلقائيًا."
-          >
-            {(list.data?.clearanceTotals?.length ?? 0) === 0 ? (
-              <strong className="wallet-balance">لا توجد عمولات مسجلة بعد</strong>
-            ) : list.data!.clearanceTotals.map(total => (
-              <p key={total.currencyId}>
-                <strong className="wallet-balance"><bdi>
-                  {formatMoney(total.amount)} {total.currencyCode}
-                </bdi></strong>
-                <small className="muted"> — {total.lineCount} سطر بيع</small>
-              </p>
-            ))}
-          </Card>
         </div>
       )}
       {list.data && !wallet && (
@@ -433,31 +420,6 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           لا توجد محفظة موظف لعرضها. أضف موظفًا مرتبطًا بمستخدم داخل الشركة
           أولًا.
         </Notice>
-      )}
-      {list.data && list.data.clearanceHistory.length > 0 && (
-        <Card title="سجل عمولات تصريف الأصناف"
-          description="هذه العمولات مبالغ مستحقة مستقلة عن نقاط المكافآت؛ محفوظة بنسبة الصنف وقت البيع. لا تنشئ دفعًا نقديًا تلقائيًا.">
-          <div style={{overflowX:"auto"}}>
-            <table>
-              <thead><tr>
-                <th>تاريخ البيع</th><th>الفاتورة</th><th>الصنف</th>
-                <th>النسبة</th><th>العمولة المستحقة</th>
-              </tr></thead>
-              <tbody>{list.data.clearanceHistory.map(earning => (
-                <tr key={earning.id}>
-                  <td>{earning.documentDate}</td>
-                  <td>{canViewInvoice ? (
-                    <Link to={`${base}/invoices/${earning.invoiceId}`}>{earning.invoiceNumber}</Link>
-                  ) : earning.invoiceNumber}</td>
-                  <td>{earning.itemName}</td>
-                  <td><bdi>{earning.rate}%</bdi></td>
-                  <td><bdi>{formatMoney(earning.amount)} {earning.currencyCode}</bdi></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-          <small className="muted">آخر 50 سطر استحقاق. إجمالي المستحقات بالأعلى يشمل جميع السطور.</small>
-        </Card>
       )}
       {list.data?.canManage && list.data.pendingReturnReviews.length > 0 && (
         <Card title="مرتجعات التصريف — بانتظار مراجعة الإدارة"
@@ -493,7 +455,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           <Button variant="secondary" disabled={pending} onClick={() => setReturnToReview(null)}>إلغاء</Button>
         </div>
       </Dialog>
-      <Card title="سجل النقاط والمحفظة">
+      <Card title="سجل جميع حركات المحفظة"
+        description="يشمل نقاط الحضور والمكافآت وعمولات التصريف؛ تُضاف كلها إلى الرصيد نفسه. 1 نقطة = 1 ريال يمني.">
         <div className="wallet-filters">
           {list.data?.canManage && (
             <Select
@@ -821,16 +784,16 @@ function ConversionPreviewDialog({
           preview && (
             <>
               <Field
-                label="النقاط المتاحة"
+                label="الرصيد المتاح (ريال يمني)"
                 value={pointValue(preview.points)}
                 readOnly
               />
               <Field
-                label="قيمة النقطة الواحدة"
+                label="وحدة الرصيد الثابتة"
                 value={
                   preview.pointValue !== null
-                    ? `${formatMoney(preview.pointValue)} ${preview.currency?.code ?? ""}`.trim()
-                    : "لم تحدد بعد"
+                    ? "1 نقطة = 1 ريال يمني"
+                    : "غير متاح"
                 }
                 readOnly
               />
