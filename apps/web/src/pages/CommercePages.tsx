@@ -628,6 +628,7 @@ function ItemSearch({
                 >
                   <Button
                     variant={index === active ? "secondary" : "ghost"}
+                    className="commerce-search-item-row"
                     onClick={() => choose(item)}
                     onMouseDown={(event) => event.preventDefault()}
                     disabled={
