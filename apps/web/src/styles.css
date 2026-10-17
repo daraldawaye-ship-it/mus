@@ -557,21 +557,22 @@ legend {
 .user-menu-item:focus-visible {
   background: var(--hover);
 }
-/* The avatar's personal shortcuts open towards the page, not off-screen.
-   The menu is per user/company and the available links follow live page grants. */
+/* Shortcut placement uses measured viewport space; on narrow screens
+   the list expands inside the avatar menu instead of leaving the viewport. */
 .user-menu-panel:has(.user-shortcut-root) { overflow: visible; }
+.user-menu-panel:has(.user-shortcut-flyout--inline) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100dvh - 65px);
+}
 .user-shortcut-root { position: relative; min-width: 0; }
 .user-shortcut-arrow { margin-inline-start: auto; }
 .user-shortcut-flyout {
-  position: absolute;
-  inset-block-start: -3px;
-  /* In RTL, inline-start is the right edge. Anchor the flyout to the
-     inside (left) of the avatar menu instead of beyond the viewport. */
-  inset-inline-start: calc(100% - 2px);
-  inset-inline-end: auto;
+  position: static;
   z-index: 52;
-  width: min(290px, calc(100vw - 18px));
-  max-height: min(66dvh, 540px);
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(46dvh, 360px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 5px;
@@ -579,6 +580,11 @@ legend {
   border-radius: 9px;
   background: var(--surface);
   box-shadow: 0 12px 30px #0003;
+}
+.user-shortcut-flyout--side {
+  position: fixed;
+  inset: auto;
+  /* Physical left/top/width/max-height are set from window geometry. */
 }
 .user-shortcut-flyout .user-menu-item { font-size: 12px; min-height: 32px; }
 .user-shortcut-label {
@@ -600,14 +606,7 @@ legend {
 .user-shortcut-option span { flex: 1; min-width: 0; }
 .user-shortcut-option small { color: var(--muted); font-size: 10px; }
 @media (max-width: 700px) {
-  .user-shortcut-flyout {
-    position: static; inset: auto; width: 100%;
-    max-height: min(46dvh, 360px); box-shadow: none;
-  }
-  .user-menu-panel:has(.user-shortcut-root) {
-    max-height: calc(100dvh - 65px);
-    overflow-y: auto;
-  }
+  .user-shortcut-flyout--inline { box-shadow: none; }
 }
 .user-menu-logout {
   border-top: 1px solid var(--border);
