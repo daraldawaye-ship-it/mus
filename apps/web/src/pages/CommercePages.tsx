@@ -1260,8 +1260,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     ),
   });
   const doctorThreshold = Number(controls.value("sales_doctor_threshold") ?? 1000);
-  const doctorNeeded = kind==="sale" && totals !== null &&
-    Math.abs(Number(totals.total)) > doctorThreshold;
 
   const allowNavigation = useRef(false);
   const dirty =
@@ -1366,6 +1364,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       return null;
     }
   }, [lines, discount, currency?.decimalPlaces, hasPositiveLines]);
+  const doctorNeeded = kind==="sale" && totals !== null &&
+    Math.abs(Number(totals.total)) > doctorThreshold;
   function updateLine(key: string, patch: Partial<DraftLine>) {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
