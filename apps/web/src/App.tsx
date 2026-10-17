@@ -337,6 +337,7 @@ function Navigation({
     "company.memos": <FileText size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.accounts": <BookOpen size={17} />,
+    "company.doctors": <Users size={17} />,
     "company.items": <Package size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
@@ -556,6 +557,10 @@ function CompanyContent({
       return <CompanySettingsPage key={context.company.id} context={context} />;
     case "audit":
       return <CompanyAuditPage key={context.company.id} context={context} />;
+    case "doctors":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأطباء والجهات…</Notice>}>
+        <DoctorsPage key={context.company.id} context={context} />
+      </Suspense>;
     case "accounts":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل دليل الحسابات…</Notice>}>
