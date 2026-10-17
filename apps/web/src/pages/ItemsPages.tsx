@@ -1203,12 +1203,13 @@ function ItemEditor({
   const disabled = readOnly || !manage || saving || unknownCreation;
   const allowNavigation = useRef(false);
   useEffect(() => {
-    onSavingChange?.(saving);
+    // The invoice's bottom sheet must not close while edits are pending.
+    onSavingChange?.(saving || (embedded && dirty));
     return () => onSavingChange?.(false);
-  }, [saving, onSavingChange]);
+  }, [saving, dirty, embedded, onSavingChange]);
   function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
     setError("");
-    setError(""); setDirty(true);
+    setDirty(true);
     setFields((previous) => {
       const next = { ...previous, [key]: value };
       const secondFactor = itemFactorSchema.safeParse(next.factor2);
@@ -1340,7 +1341,8 @@ function ItemEditor({
 
   function leaveEditor() {
     if (item && dirty) {
-      setError("يوجد تعديل لم يكتمل حفظه؛ تحقق من الحقل أو حمّل النسخة الحالية قبل الإغلاق.");
+      // An explicit Close also commits the most recent text edit.
+      void save();
       return;
     }
     if (embedded) {
@@ -1416,7 +1418,7 @@ function ItemEditor({
           >
             {embedded ? "إغلاق" : "العودة للقائمة"}
           </Button>
-          {item && manage && !embedded && (
+          {item && manage && (
             <Button
               variant="secondary"
               disabled={saving || unknownCreation}
