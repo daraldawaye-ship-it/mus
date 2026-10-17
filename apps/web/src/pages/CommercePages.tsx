@@ -425,7 +425,7 @@ function ItemSearch({
   const [placement, setPlacement] = useState({
     left: 0,
     top: 0,
-    width: 310,
+    width: 680,
     maxHeight: 320,
   });
   const [search, setSearch] = useState("");
@@ -450,7 +450,9 @@ function ItemSearch({
     const position = () => {
       const rect = anchor.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(Math.max(rect.width, 310), window.innerWidth - 16);
+      // Give Arabic item names room while keeping stock and sale price visible.
+      // On narrow screens the dropdown still fits within the viewport.
+      const width = Math.min(Math.max(rect.width, 680), window.innerWidth - 16);
       const below = window.innerHeight - rect.bottom - 8;
       const above = rect.top - 8;
       const down = below >= Math.min(240, above);
