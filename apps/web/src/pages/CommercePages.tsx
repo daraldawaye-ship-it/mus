@@ -29,6 +29,7 @@ import {
   type Branch,
   type CompanyContext,
   type CompanyCurrency,
+  type Doctor,
   type Invoice,
   type InvoiceInput,
   type InvoiceKind,
@@ -1245,6 +1246,23 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
+  const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
+  const [doctorQuery,setDoctorQuery]=useState("");
+  const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(null);
+  const [doctorError,setDoctorError]=useState("");
+  const doctorField=useRef<HTMLInputElement>(null);
+  const doctorChoices=useQuery({
+    queryKey:["invoice-doctors",user?.id,companyId,doctorQuery],
+    enabled:!!user && kind==="sale" && doctorPromptOpen,
+    queryFn:({signal})=>api<Page<Doctor>>(
+      `/companies/${companyId}/doctors?active=true&q=${encodeURIComponent(doctorQuery)}&page=1&pageSize=20&sort=name:asc`,
+      {signal},
+    ),
+  });
+  const doctorThreshold = Number(controls.value("sales_doctor_threshold") ?? 1000);
+  const doctorNeeded = kind==="sale" && totals !== null &&
+    Math.abs(Number(totals.total)) > doctorThreshold;
+
   const allowNavigation = useRef(false);
   const dirty =
     lines.some((line) => line.itemId || line.search.trim()) ||
@@ -1662,14 +1680,23 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     automaticLocationId.current = null;
     setDescription("");
     setDiscount("0");
+    setDoctorSelected(null);
+    setDoctorQuery("");
+    setDoctorPromptOpen(false);
+    setDoctorError("");
     setError("");
     setSavedInvoice(null);
     setItemNotice("");
     focus(lineInputId(first, "item-search"));
   }
-  async function save(event?: FormEvent) {
+  async function save(event?: FormEvent, selectedDoctorId?: number) {
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
+    if (doctorPromptOpen && !selectedDoctorId) {
+      setDoctorError("اختر اسمًا من كرت الأطباء والجهات أولًا.");
+      doctorField.current?.focus();
+      return;
+    }
     setError("");
     setMemoBlocked(false);
     let payload = pending.current;
@@ -1683,6 +1710,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         return;
       }
       if (selectedLines.some((line) => !validateLine(line))) return;
+      if (doctorNeeded && !selectedDoctorId) {
+        setDoctorSelected(null);
+        setDoctorQuery("");
+        setDoctorError("");
+        setDoctorPromptOpen(true);
+        return;
+      }
       const parsed = invoiceSchema.safeParse({
         idempotencyKey: crypto.randomUUID(),
         kind,
@@ -1692,6 +1726,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         locationId: location?.id,
         counterpartyAccountId: account?.id,
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
+        doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
@@ -1736,6 +1771,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setDocumentDate(today());
       setDescription("");
       setDiscount("0");
+      setDoctorPromptOpen(false);
+      setDoctorSelected(null);
+      setDoctorQuery("");
+      setDoctorError("");
       // Reuse currency, branch and stock location for efficient consecutive
       // invoices, but always clear the old customer/supplier.
       currencyManuallyChosen.current = false;
@@ -1753,6 +1792,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
       setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
+      if (error instanceof ApiFailure && error.code === "doctor_required") {
+        setDoctorPromptOpen(true);
+        setDoctorError("يلزم اختيار الطبيب أو الجهة قبل حفظ هذه الفاتورة.");
+      }
       setUnknown(uncertain);
       if (!uncertain) pending.current = null;
       setError(
@@ -2544,6 +2587,64 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
         </footer>
       </form>
+      <Dialog open={doctorPromptOpen}
+        title="اختيار الطبيب أو الجهة لفاتورة المبيعات"
+        onClose={() => {
+          // Choosing a doctor is mandatory; use the explicit Back button
+          // to return to the unsaved invoice instead of silently dismissing.
+          doctorField.current?.focus();
+        }}>
+        <div className="form-stack">
+          <Notice>صافي الفاتورة يتجاوز الحد المحدد في الكنترول ({formatMoney(doctorThreshold)}).
+            اختر طبيبًا أو ممرضًا أو جهة من الكروت المسجلة للمتابعة.</Notice>
+          {doctorError&&<Notice tone="error">{doctorError}</Notice>}
+          <Field label="اسم الطبيب أو الجهة" type="search" required autoFocus
+            ref={doctorField} value={doctorQuery} autoComplete="off"
+            placeholder="اكتب الاسم أو الجهة أو مفاتيح البحث"
+            onChange={event=>{
+              setDoctorQuery(event.target.value);
+              setDoctorSelected(null);
+              setDoctorError("");
+            }}
+            onKeyDown={event=>{
+              if(event.key==="Enter"){
+                event.preventDefault();
+                if(doctorSelected) void save(undefined,doctorSelected.id);
+                else {setDoctorError("اختر من نتائج البحث أولًا.");doctorField.current?.focus();}
+              }
+            }}/>
+          <div className="invoice-doctor-options" role="listbox" aria-label="نتائج الأطباء والجهات">
+            {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
+            {doctorChoices.isError&&<Notice tone="error">{errorMessage(doctorChoices.error)}</Notice>}
+            {doctorChoices.data?.items.map(doctor=><button type="button" key={doctor.id}
+              className={doctorSelected?.id===doctor.id?"invoice-doctor-selected":""}
+              role="option" aria-selected={doctorSelected?.id===doctor.id}
+              onClick={()=>{
+                setDoctorSelected(doctor);
+                setDoctorQuery(doctor.name);
+                setDoctorError("");
+                doctorField.current?.focus();
+              }}>
+              <strong>{doctor.name}</strong>
+              <small>{doctor.kind==="doctor"?"طبيب":doctor.kind==="nurse"?"ممرض":"جهة"}{doctor.department?" · "+doctor.department:""}</small>
+            </button>)}
+            {!doctorChoices.isLoading&&doctorChoices.data?.items.length===0&&<small>
+              لم يوجد اسم مطابق. أضف كرتًا من صفحة الأطباء والجهات ثم عد إلى هذه الفاتورة.
+            </small>}
+          </div>
+          <div className="form-actions">
+            <Button disabled={saving} onClick={()=>{
+              if(!doctorSelected){setDoctorError("اختر الطبيب أو الجهة من النتائج أولًا.");doctorField.current?.focus();return;}
+              void save(undefined,doctorSelected.id);
+            }}>حفظ وترحيل الفاتورة</Button>
+            <Button variant="secondary" disabled={saving} onClick={()=>{
+              setDoctorPromptOpen(false);
+              setDoctorError("");
+              setDoctorSelected(null);
+            }}>العودة إلى الفاتورة دون حفظ</Button>
+          </div>
+        </div>
+      </Dialog>
       <Dialog
         open={editingItem !== null}
         className="invoice-item-sheet"
