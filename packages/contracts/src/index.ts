@@ -138,6 +138,7 @@ export const auditActionLabels = {
   "financialDocument.create": "إنشاء مسودة مالية",
   "financialDocument.update": "تعديل مسودة مالية",
   "financialDocument.post": "ترحيل مستند مالي",
+  "cashbox.quick-post": "ترحيل سريع لصندوق مبيعات الموظف",
   "financialDocument.reverse": "عكس مستند مالي",
   "doctor.create": "إضافة طبيب أو جهة",
   "doctor.update": "تعديل كرت طبيب أو جهة",
