@@ -40,12 +40,17 @@ export async function readItemCompositionPeers(
  const stockCol=canViewStock?"s.stock_total::text AS stock_smallest":"NULL::text AS stock_smallest";
  const stockJoin=canViewStock
    ?"LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id":"";
+ // Sort across the entire set before paging, comparing real unit-1 quantities,
+ // not raw smallest-unit stock from items with different conversion factors.
+ const stockOrder=canViewStock
+   ? "COALESCE(s.stock_total,0)::numeric / (i.factor2::numeric * i.factor3::numeric) DESC,i.code,i.id"
+   : "i.code,i.id";
  const rows=await client.query(
    `SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
      i.factor2,i.factor3,${stockCol}
     FROM items i ${stockJoin}
     WHERE i.company_id=$1 AND i.composition_id=$2 AND i.id<>$3
-    ORDER BY i.code,i.id LIMIT 20 OFFSET $4`,
+    ORDER BY ${stockOrder} LIMIT 20 OFFSET $4`,
    [companyId,composition.id,itemId,(page-1)*20],
  );
  result.peers=rows.rows.map(r=>({
