@@ -994,6 +994,37 @@ test("archiving never reuses automatic codes and database guards protect identit
     );
 });
 
+test("item archival is denied while any location retains positive or negative stock",async(t)=>{
+  const f=await fixture(t);
+  const c=await f.company("أرشفة الأرصدة");
+  const curr=await currency(f,c.id);
+  const saved=await item(f,c.id,curr.id);
+  const url=`/companies/${c.id}/items/${saved.id}`;
+  async function setStock(showroom:string,warehouse:string,total:string) {
+    await f.pool.query(
+      "UPDATE item_statistics SET stock_total=$3,stock_showroom=$4,stock_warehouse=$5 WHERE company_id=$1 AND item_id=$2",
+      [c.id,saved.id,total,showroom,warehouse],
+    );
+  }
+  await setStock("5","0","5");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Positive total stock prevents archiving");
+  await setStock("-5","0","-5");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Negative stock also prevents archiving");
+  await setStock("5","-5","0");
+  assert.equal((await f.owner.request("PATCH",url,patchItem(saved,{active:false}))).status,409,
+    "Opposing location balances cannot be hidden by zero aggregate stock");
+  // Other edits remain allowed, even when the item currently has a balance.
+  const renamed=(await f.owner.ok<{item:Item}>("PATCH",url,
+    patchItem(saved,{name:"رصيد قيد الجرد"}))).item;
+  assert.equal(renamed.active,true);
+  await setStock("0","0","0");
+  const archived=(await f.owner.ok<{item:Item}>("PATCH",url,
+    patchItem(renamed,{active:false}))).item;
+  assert.equal(archived.active,false);
+});
+
 test("item lists search each name, barcode and search key with stable multi-sort and scoped pagination", async (t) => {
   const f = await fixture(t),
     c = await f.company(),
@@ -1354,6 +1385,16 @@ test("item compositions support multilingual cards, strict flags, archived links
   assert.equal(redacted.canViewStock,false);
   assert.equal(redacted.peers[0]?.stockSmallest,null);
   assert.equal(redacted.total,1);
+  const removedPeer=await item(f,companyA.id,currencyA.id,{
+    name:"بديل مؤرشف",compositionId:created.id,
+  });
+  await f.owner.ok("PATCH",`/companies/${companyA.id}/items/${removedPeer.id}`,
+    patchItem(removedPeer,{active:false}));
+  const withoutArchived=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
+  assert.equal(withoutArchived.total,1,
+    "Archived items do not count towards alternative pagination");
+  assert(withoutArchived.peers.every(peer=>peer.id!==removedPeer.id),
+    "Archived products are hidden from invoice alternative suggestions");
   // Sort by converted first-unit stock before paging, not by raw smallest units.
   const medium=await item(f,companyA.id,currencyA.id,{
     name:"بديل كمية عشرة",compositionId:created.id,factor2:2,factor3:2,
