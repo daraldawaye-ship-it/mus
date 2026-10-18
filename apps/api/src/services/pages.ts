@@ -446,6 +446,7 @@ export async function requestPageKeys(
     "account-balances": "account-balances",
     "account-ledger": "account-ledger",
     "my-cashbox-ledger": "my-cashbox-ledger",
+    "letterhead": "letterhead",
     audit: "audit",
     "financial-options": "financial-documents",
     "purchase-history": "purchases",

@@ -206,6 +206,36 @@ async function fixture(t: TestContext) {
   };
 }
 
+test("letterhead is a dedicated company page without company.edit and owner-only upload remains protected", async (t) => {
+  const f=await fixture(t);
+  const company=await f.company("Standalone company letterhead");
+  const other=await f.company("Unrelated company");
+  const staff=await f.member(company.id,[],35);
+  const registry=await f.pool.query(
+    "SELECT key FROM permission_definitions WHERE page_key='company.letterhead'",
+  );
+  assert.deepEqual(registry.rows.map(row=>row.key),["company.letterhead:view"]);
+  const directory=await f.entries(staff.client,company.id);
+  const entry=directory.items.find(item=>item.key==="company.letterhead");
+  assert(entry);
+  assert.equal(entry.href,`/companies/${company.id}/letterhead`);
+  assert.equal(entry.actionAccess.view,true);
+  assert.equal(entry.navigation,true);
+  const old=directory.items.find(item=>item.key==="company.settings");
+  assert(old);
+  assert.equal(old.actionAccess.view,false,"No implicit company.edit for staff");
+  assert.equal(
+    (await staff.client.ok<{mediaId:string|null}>(
+      "GET",`/companies/${company.id}/letterhead`,
+    )).mediaId,null,
+  );
+  assert.equal((await staff.client.request("GET",`/companies/${other.id}/letterhead`)).status,403);
+  assert.equal((await staff.client.request("PUT",`/companies/${company.id}/letterhead`,{mediaId:null})).status,403);
+  const ownerEntry=(await f.entries(f.owner,company.id)).items.find(item=>item.key==="company.letterhead");
+  assert.equal(ownerEntry?.actionAccess.view,true);
+  assert.equal((await f.owner.request("GET",`/companies/${company.id}/letterhead`)).status,200);
+});
+
 test("page registry covers stable actual routes, Arabic search, reports, pagination and independent action permissions", async (t) => {
   const f = await fixture(t),
     company = await f.company();
