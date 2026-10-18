@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -98,6 +98,7 @@ export function ServerLookup<T extends { id: number }>({
   const { user } = useSession();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const dropdownId = useId();
   const [entry, setEntry] = useState(() => value ? display(value) : "");
   const [lookupOpen, setLookupOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -183,7 +184,7 @@ export function ServerLookup<T extends { id: number }>({
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={lookupOpen}
-        aria-controls={lookupOpen ? "account-lookup-results" : undefined}
+        aria-controls={lookupOpen ? dropdownId : undefined}
         autoComplete="off"
         value={entry}
         disabled={disabled}
@@ -209,7 +210,7 @@ export function ServerLookup<T extends { id: number }>({
         }}
       />
       {lookupOpen && bounds && createPortal(
-        <div ref={popup} className="account-lookup-popup" role="listbox"
+        <div ref={popup} id={dropdownId} className="account-lookup-popup" role="listbox"
           aria-label={label}
           style={{position:"fixed",zIndex:10020,top:bounds.top,left:bounds.left,width:bounds.width,maxHeight:bounds.maxHeight}}>
           {result.error && <div className="account-lookup-status text-error">{errorMessage(result.error)}</div>}
