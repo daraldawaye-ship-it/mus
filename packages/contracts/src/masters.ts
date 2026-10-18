@@ -291,7 +291,7 @@ export interface Location {
 }
 
 const accountMoney = z.string().trim().transform(normalizeDigits).pipe(
-  z.string().regex(/^\\d{1,22}(?:\\.\\d{1,6})?$/, "المبلغ غير صالح")
+  z.string().regex(/^\d{1,22}(?:\.\d{1,6})?$/, "المبلغ غير صالح")
 ).nullable();
 export const accountSchema = z
   .object({
