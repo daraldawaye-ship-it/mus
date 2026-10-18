@@ -445,9 +445,32 @@ export function inventoryRoutes(pool: Pool): Router {
             input.itemId,
             input.documentDate,
           );
-          if (item.hasExpiry && input.expiryDate === null)
-            conflict("اختر تاريخ الدفعة التي جردتها لهذا الصنف");
-          if (!item.hasExpiry && input.expiryDate !== null)
+          // The reconciliation form only asks for the item's nearest expiry.
+          // Preserve existing batch bookkeeping without exposing a second date:
+          // use the single stocked batch when unambiguous; for a newly counted
+          // item, use the entered nearest expiry as the opening batch date.
+          let movementExpiryDate = input.expiryDate;
+          if (item.hasExpiry && movementExpiryDate === null) {
+            const existingBatches = await client.query(
+              `SELECT batch_key FROM stock_balances
+               WHERE company_id=$1 AND item_id=$2 AND location_id=$3
+                 AND quantity_smallest<>0
+               ORDER BY batch_key LIMIT 2 FOR UPDATE`,
+              [companyId,input.itemId,input.locationId],
+            );
+            if (existingBatches.rows.length > 1)
+              conflict("يوجد أكثر من تاريخ دفعة لهذا الصنف في موقع الجرد؛ لا يمكن تسوية إجماليها كتاريخ واحد. راجع الدفعات أولًا.");
+            movementExpiryDate = existingBatches.rows[0]?.batch_key
+              || input.nearestExpiryDate
+              || (await client.query(
+                "SELECT nearest_expiry_date::text AS expiry FROM items WHERE company_id=$1 AND id=$2",
+                [companyId,input.itemId],
+              )).rows[0]?.expiry
+              || null;
+            if (!movementExpiryDate)
+              conflict("حدد أقرب تاريخ انتهاء للصنف لبدء تسوية رصيده.");
+          }
+          if (!item.hasExpiry && movementExpiryDate !== null)
             conflict("الصنف لا يتتبع تاريخ انتهاء");
           if (input.nearestExpiryDate !== undefined && !item.hasExpiry && input.nearestExpiryDate !== null)
             conflict("لا يمكن تعيين تاريخ انتهاء لصنف لا يتتبع الانتهاء");
@@ -488,7 +511,7 @@ export function inventoryRoutes(pool: Pool): Router {
           }
           const existing = await client.query(
             "SELECT quantity_smallest FROM stock_balances WHERE company_id=$1 AND item_id=$2 AND location_id=$3 AND batch_key=$4 FOR UPDATE",
-            [companyId, input.itemId, input.locationId, input.expiryDate ?? ""],
+            [companyId, input.itemId, input.locationId, movementExpiryDate ?? ""],
           );
           const current = existing.rows[0]
             ? BigInt(existing.rows[0].quantity_smallest)
@@ -552,7 +575,7 @@ export function inventoryRoutes(pool: Pool): Router {
               costBase: cost,
               kind: delta > 0n ? "adjustment_surplus" : "adjustment_shortage",
               documentDate: input.documentDate,
-              expiryDate: input.expiryDate,
+              expiryDate: movementExpiryDate,
               operationId,
               allowExpired: true,
             });
@@ -632,7 +655,7 @@ export function inventoryRoutes(pool: Pool): Router {
               {
                 itemId: item.id,
                 locationId: input.locationId,
-                expiryDate: input.expiryDate,
+                expiryDate: movementExpiryDate,
                 nearestExpiryDate: input.nearestExpiryDate,
                 shelfId: input.shelfId,
                 quantitySmallest: current.toString(),

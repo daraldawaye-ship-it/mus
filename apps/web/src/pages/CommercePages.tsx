@@ -2231,15 +2231,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             {rule.message} ({rule.count} تكليفات).
             {" "}<Link to={`/companies/${companyId}/memos?box=required`}>مطلوب مني</Link>
           </Notice>)}
-        {savedInvoice && (
-          <Notice tone="success">
-            تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-            <Link to={invoicePath(companyId, savedInvoice.id)}>
-              عرض الفاتورة المحفوظة
-            </Link>
-            . يمكنك إدخال الفاتورة التالية مباشرة.
-          </Notice>
-        )}
         <Card className="commerce-matrix-card">
           <fieldset disabled={locked} className="commerce-fieldset">
             <div
@@ -2742,6 +2733,17 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             </small>
           )}
         </footer>
+        {savedInvoice && (
+          <div className="commerce-saved-confirmation">
+            <Notice tone="success">
+            تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
+            <Link to={invoicePath(companyId, savedInvoice.id)}>
+              عرض الفاتورة المحفوظة
+            </Link>
+            . يمكنك إدخال الفاتورة التالية مباشرة.
+            </Notice>
+          </div>
+        )}
       </form>
       {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
       <Dialog open={cashboxDraft!==null}

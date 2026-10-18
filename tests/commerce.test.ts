@@ -3725,3 +3725,47 @@ test("cashier optional receipt voucher remains atomic, signed, scoped and idempo
   assert.equal(digitalDocument.rows[0].status,"posted");
   await assertBalanced(f,s.company.id);
 });
+
+
+test("reconciliation uses nearest expiry only and preserves the existing batch date", async (t) => {
+  const f=await fixture(t),s=await setup(f,"Nearest only reconciliation");
+  const item=await s.item({
+    hasExpiry:true,factor2:1,factor3:1,purchasePrice:"15",
+    nearestExpiryDate:"2027-01-01",
+  });
+  const post=async(count:string,expected:string,nearest:string,key=randomUUID())=>{
+    const payload={
+      itemId:item.id,locationId:s.showroom.id,documentDate:"2026-10-12",
+      countedQuantity:count,expectedQuantitySmallest:expected,unit:1 as const,
+      nearestExpiryDate:nearest,idempotencyKey:key,
+    };
+    return f.owner.ok<{operation:StockOperation}>(
+      "POST",`${s.path}/stock-adjustments`,payload,201,
+    );
+  };
+  const first=await post("3","0","2027-02-01");
+  assert.equal(first.operation.movements[0]?.expiryDate,"2027-02-01");
+  assert.equal(first.operation.movements[0]?.costBase,"45");
+  const second=await post("4","3","2027-04-01");
+  assert.equal(second.operation.movements[0]?.expiryDate,"2027-02-01",
+    "Changing the nearest card expiry must not rebatch historical stock");
+  assert.equal(second.operation.movements[0]?.costBase,"15");
+  const card=(await f.owner.ok<{item:Item}>("GET",`${s.path}/items/${item.id}`)).item;
+  assert.equal(card.nearestExpiryDate,"2027-04-01");
+  const quantity=(await balances(f,s,item.id)).find(x=>
+    x.locationId===s.showroom.id&&x.expiryDate==="2027-02-01");
+  assert.equal(quantity?.quantitySmallest,"4");
+
+  await invoice(f,s,invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"2",unitPrice:"15",expiryDate:"2027-03-01"}],
+  }));
+  const response=await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+    itemId:item.id,locationId:s.showroom.id,documentDate:"2026-10-12",
+    countedQuantity:"6",expectedQuantitySmallest:"4",unit:1,
+    nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
+  });
+  assert.equal(response.status,409,"Multiple inventory batches cannot be silently combined");
+  assert.equal((await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item.nearestExpiryDate,"2027-04-01");
+  await assertBalanced(f,s.company.id);
+});
