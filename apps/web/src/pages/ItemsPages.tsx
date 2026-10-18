@@ -1968,9 +1968,12 @@ function ItemEditor({
           context={context}
           item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
           onClose={() => setAdjustmentOpen(false)}
-          onSaved={(date) => {
+          onSaved={(date, shelf) => {
             setNearestExpirySaved(date);
-            setFields((previous) => ({ ...previous, nearestExpiryDate: date ?? "" }));
+            setFields((previous) => ({ ...previous,
+              nearestExpiryDate: date ?? "",
+              shelf:shelf.shelf,shelfId:shelf.shelfId,
+            }));
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "statistics", item.id],
             });
