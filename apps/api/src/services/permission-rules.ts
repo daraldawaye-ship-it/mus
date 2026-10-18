@@ -97,6 +97,7 @@ export async function requestPermissionTargets(
     "stock-adjustments": "company.stock-operations",
     "account-balances": "company.account-balances",
     "account-ledger": "company.account-ledger",
+    "my-cashbox-ledger": "company.my-cashbox-ledger",
     audit: "company.audit",
     configuration: "company.configuration",
     "configuration-foundation": "company.configuration",

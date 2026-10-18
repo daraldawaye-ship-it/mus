@@ -592,6 +592,15 @@ page(
   { type: "report", keywords: ["تقارير", "حركة الحساب"] },
 );
 page(
+  "company.my-cashbox-ledger",
+  "كشف حساب صندوقي",
+  "التقارير",
+  "/companies/:companyId/my-cashbox-ledger",
+  { view: permission("finance.own-cashbox.view") },
+  "كشف مستقل يعرض حركات صندوق المبيعات المرتبط بالموظف فقط، بصلاحية خاصة حتى لو كان لديه صندوق.",
+  { type: "report", keywords: ["صندوقي", "صندوق المبيعات", "كشف الصندوق", "رصيد الصندوق"] },
+);
+page(
   "company.audit",
   "سجل الشركة",
   "التدقيق",
