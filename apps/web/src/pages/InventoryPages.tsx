@@ -1040,7 +1040,7 @@ export function InventoryAdjustmentSheet({
   context: CompanyContext;
   item: Item;
   onClose: () => void;
-  onSaved?: (nearestExpiryDate: string | null) => void;
+  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string}) => void;
 }) {
   const { user } = useSession();
   if (!adjustmentAccess(context))
@@ -1058,7 +1058,7 @@ function OperationEditor({
   lockedMode?: boolean;
   preselectedItem?: Item | null;
   onClose?: () => void;
-  onSaved?: (nearestExpiryDate: string | null) => void;
+  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string}) => void;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -1070,6 +1070,11 @@ function OperationEditor({
     nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "",
   }));
   const [item, setItem] = useState<Item | null>(preselectedItem);
+  const [selectedShelf, setSelectedShelf] = useState<{id:number;name:string}|null>(
+    () => preselectedItem?.shelfId
+      ? {id:preselectedItem.shelfId,name:preselectedItem.shelf}
+      : null,
+  );
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [createKey, setCreateKey] = useState(() => crypto.randomUUID());
@@ -1139,6 +1144,7 @@ function OperationEditor({
   }
   function selectItem(value: Item | null) {
     setItem(value);
+    setSelectedShelf(value?.shelfId ? {id:value.shelfId,name:value.shelf} : null);
     setFields((current) => ({
       ...current, unit: 1, expiryDate: "",
       countUnit1: "0", countUnit2: "0", countUnit3: "0",
@@ -1195,7 +1201,7 @@ function OperationEditor({
         return;
       }
       const common = {
-        documentDate: fields.documentDate,
+        documentDate: mode === "adjustment" ? today() : fields.documentDate,
         itemId: item.id,
         unit: fields.unit,
         expiryDate: item.hasExpiry ? fields.expiryDate || null : null,
@@ -1220,8 +1226,8 @@ function OperationEditor({
                 ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
               },
               nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
+              shelfId: selectedShelf?.id ?? null,
               expectedQuantitySmallest: batchQuantity,
-              unitCostBase: fields.unitCostBase,
             });
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? "تحقق من بيانات العملية.");
@@ -1242,7 +1248,8 @@ function OperationEditor({
       setDirty(false);
       setResult(response.operation);
       if (action === "adjustment")
-        onSaved?.(item?.hasExpiry ? (fields.nearestExpiryDate || null) : null);
+        onSaved?.(item?.hasExpiry ? (fields.nearestExpiryDate || null) : null,
+          {shelfId:selectedShelf?.id??null,shelf:selectedShelf?.name??""});
       void changed();
     } catch (reason) {
       if (guard.isCurrent()) {
@@ -1260,6 +1267,8 @@ function OperationEditor({
     setError("");
     setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
     setItem(preselectedItem);
+    setSelectedShelf(preselectedItem?.shelfId
+      ? {id:preselectedItem.shelfId,name:preselectedItem.shelf} : null);
     setFromLocation(null);
     setToLocation(null);
     setCreateKey(crypto.randomUUID());
@@ -1358,14 +1367,14 @@ function OperationEditor({
               <option value="transfer">مناقلة بين موقعين</option>
               <option value="adjustment">جرد وتسوية رصيد دفعة</option>
             </Select>}
-            <Field
+            {mode === "transfer" && <Field
               label="تاريخ المستند"
               type="date"
               required
               value={fields.documentDate}
               disabled={disabled}
               onChange={(event) => edit("documentDate", event.target.value)}
-            />
+            />}
             <ReferenceField<Item>
               companyId={companyId}
               type="items"
@@ -1461,6 +1470,21 @@ function OperationEditor({
                 onChange={(date) => edit("expiryDate", date ?? "")}
               />
             )}
+            {mode === "adjustment" && (
+              <ServerLookup<{id:number;name:string}>
+                companyId={companyId}
+                resource={`/companies/${companyId}/item-options?type=shelves&archived=false`}
+                label="رف الصنف في الكرت"
+                value={selectedShelf}
+                disabled={disabled || !item}
+                onChange={option=>{
+                  setSelectedShelf(option);
+                  setDirty(true);
+                }}
+                display={option=>option.name}
+                emptyLabel="اختر الرف أو اتركه دون رف"
+              />
+            )}
             {mode === "adjustment" && item?.hasExpiry && (
               <ExpiryMonthField
                 label="شهر وسنة أقرب انتهاء في كرت الصنف"
@@ -1468,19 +1492,6 @@ function OperationEditor({
                 disabled={disabled}
                 onChange={(date) => edit("nearestExpiryDate", date ?? "")}
                 hint="معلومة كرت الصنف؛ لا تغيّر تاريخ انتهاء دفعة المخزون."
-              />
-            )}
-            {mode === "adjustment" && (
-              <Field
-                label="تكلفة الوحدة الأولى بالعملة الأساسية"
-                inputMode="decimal"
-                dir="ltr"
-                required
-                value={fields.unitCostBase}
-                money
-                disabled={disabled}
-                hint="تستخدم لتقييم زيادة الجرد؛ العجز بتكلفة المتوسط المرجح"
-                onChange={(event) => edit("unitCostBase", event.target.value)}
               />
             )}
             <Field
