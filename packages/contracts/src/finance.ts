@@ -155,6 +155,7 @@ export interface AccountLedgerLine {
   baseDebit: string;
   baseCredit: string;
   runningBalance: string;
+  counterpartAccounts?: string;
   reversesDocumentId: number | null;
 }
 export interface AccountLedgerTotals {
