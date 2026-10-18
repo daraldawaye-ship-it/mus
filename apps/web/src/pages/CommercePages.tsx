@@ -2288,10 +2288,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
         }}
         onSelect={accountId => {
-          void api<{account:Account}>(`/companies/${companyId}/accounts/${accountId}`)
+          void api<Page<Account>>(`/companies/${companyId}/commerce-options?type=accounts&id=${accountId}&pageSize=1`)
             .then(result => {
+              const selected = result.items.find(value => value.id === accountId);
+              if (!selected) throw new Error("حساب الرهن غير متاح.");
               accountManuallyChosen.current = true;
-              setAccount(result.account);
+              setAccount(selected);
             })
             .catch(reason => setError(errorMessage(reason)));
         }}
