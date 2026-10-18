@@ -39,7 +39,7 @@ export function SalesHeaderActionsDropdown({
       if(!trigger.current?.contains(target)&&!menu.current?.contains(target))close();
     };
     const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape"){close();trigger.current?.focus();}};
-    const onScroll=()=>close();
+    const onScroll=(event:Event)=>{ if (!menu.current?.contains(event.target as Node)) close(); };
     document.addEventListener("pointerdown",onPointer);
     document.addEventListener("keydown",onKey);
     window.addEventListener("scroll",onScroll,true);
