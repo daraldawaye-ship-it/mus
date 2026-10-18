@@ -55,6 +55,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
+import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
@@ -1188,6 +1189,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const [pledgeMode, setPledgeMode] = useState<"add"|"list"|null>(null);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
@@ -2035,6 +2037,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 >
                   قائمة الفواتير
                 </Link>
+                {kind === "sale" && commerceAccess(context,true) && (
+                  <>
+                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("add")}>إضافة رهن</Button>
+                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("list")}>عرض الرهونات</Button>
+                  </>
+                )}
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
@@ -2937,6 +2945,28 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         تم إرسال التقرير المرتبط بالصنف.{" "}
         <Link to={`/companies/${companyId}/memos/${reportSentId}`}>فتح التقرير</Link>
       </Notice>}
+      {kind === "sale" && <PledgeDialogs
+        companyId={companyId}
+        mode={pledgeMode}
+        onClose={() => setPledgeMode(null)}
+        onCreated={(newAccount, points) => {
+          accountManuallyChosen.current = true;
+          setAccount(newAccount);
+          setError("");
+          setItemNotice(points ? `تم إنشاء الرهن ومنح ${points} نقطة.` : "تم إنشاء حساب الرهن.");
+          void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
+        }}
+        onSelect={accountId => {
+          void api<Page<Account>>(`/companies/${companyId}/commerce-options?type=accounts&id=${accountId}&pageSize=1`)
+            .then(result => {
+              const selected = result.items.find(value => value.id === accountId);
+              if (!selected) throw new Error("حساب الرهن غير متاح.");
+              accountManuallyChosen.current = true;
+              setAccount(selected);
+            })
+            .catch(reason => setError(errorMessage(reason)));
+        }}
+      />}
       <Dialog
         open={editingItem !== null}
         className="invoice-item-sheet"
