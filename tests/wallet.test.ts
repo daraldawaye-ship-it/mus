@@ -783,3 +783,42 @@ test("signed manual wallet additions deduct the shared balance exactly once and 
     [company.id]
   )).rows[0]!.count,1);
 });
+
+test("pledge creation uses account 1120, persists limit, and awards staff only once", async t => {
+  const f=await fixture(t);
+  const company=await f.company("Pledge test company");
+  const employee=await f.staff(company.id,"Pledge cashier");
+  const base=`/companies/${company.id}`;
+  await f.pool.query("UPDATE employees SET permissions=ARRAY['commerce.view','commerce.manage','accounts.view','accounts.manage']::text[] WHERE company_id=$1 AND id=$2",[company.id,employee.employee.id]);
+  const input={
+    idempotencyKey:randomUUID(), customerName:"محمد محمد صلاح قاسم",
+    phone:"770731624", collateral:"خاتم ذهب", durationDays:2, limit:"12000",
+  };
+  const first=await employee.client.ok<{account:{id:number;code:string;accountChoice:string;accountLimit:string;ownerPhone:string;name:string};awardedPoints:number}>(
+    "POST",base+"/pledges",input,201
+  );
+  assert.equal(first.account.accountChoice,"pledges");
+  assert.match(first.account.code,/^1120[0-9]{6}$/);
+  assert.equal(Number(first.account.accountLimit),12000);
+  assert.equal(first.account.ownerPhone,input.phone);
+  assert.match(first.account.name,/خاتم ذهب/);
+  assert.equal(first.awardedPoints,50);
+  const repeated=await employee.client.ok<{account:{id:number};awardedPoints:number}>(
+    "POST",base+"/pledges",input,200
+  );
+  assert.equal(repeated.account.id,first.account.id);
+  assert.equal(repeated.awardedPoints,50);
+  const list=await employee.client.ok<{items:{accountId:number;phone:string}[]}>("GET",base+"/pledges?q=خاتم");
+  assert.equal(list.items.length,1);
+  assert.equal(list.items[0]?.phone,input.phone);
+  const wallet=await f.owner.ok<WalletDirectory>("GET",base+"/wallet?employeeId="+employee.employee.id);
+  assert.equal(wallet.wallet?.points,"50");
+  await employee.client.ok<{account:{accountLimit:string}}>("PATCH",base+"/accounts/"+first.account.id,{accountLimit:"15000"});
+  const updated=await employee.client.ok<{account:{accountLimit:string}}>("GET",base+"/accounts/"+first.account.id);
+  assert.equal(Number(updated.account.accountLimit),15000);
+  const count=await f.pool.query(
+    "SELECT count(*)::integer AS n FROM employee_wallet_entries WHERE company_id=$1 AND pledge_account_id=$2",
+    [company.id,first.account.id]
+  );
+  assert.equal(count.rows[0]?.n,1);
+});

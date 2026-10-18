@@ -16,6 +16,7 @@ import { businessRoutes } from "./business-routes.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
+import { pledgeRoutes } from "./routes-pledges.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -57,6 +58,7 @@ export async function createApp(options: AppOptions = {}) {
     chatRoutes(pool),
     chatGroupRoutes(pool),
     business,
+    pledgeRoutes(pool),
   );
   app.use("/api", (_req, res) =>
     res

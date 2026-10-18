@@ -457,7 +457,7 @@ test("my cashbox ledger requires explicit permission and is limited to the emplo
 
   const own = await mine.client.ok<
     LedgerResponse & { account: { id: number } | null }
-  >("GET", `${route}?accountId=${s.bank.id}`);
+  >("GET", `${route}?accountId=${s.bank.id}&dateFrom=&dateTo=`);
   assert.equal(own.account?.id, s.cash.id);
   assert.equal(own.total, 1);
   assert.equal(own.items[0]?.baseDebit, "100.25");

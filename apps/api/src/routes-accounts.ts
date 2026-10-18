@@ -74,6 +74,12 @@ async function links(db: Database, companyId: number): Promise<AccountLink[]> {
         };
   });
 }
+async function accountMetadataReady(client: PoolClient): Promise<boolean> {
+  const result = await client.query(
+    "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='accounts' AND column_name='account_limit'",
+  );
+  return Boolean(result.rowCount);
+}
 async function insertAccount(
   client: PoolClient,
   user: User,
@@ -135,6 +141,9 @@ async function insertAccount(
       input.accountChoice,
     ],
   );
+  if (await accountMetadataReady(client)) {
+  await client.query("UPDATE accounts SET account_limit=$3,daily_limit=$4,weekly_limit=$5,monthly_limit=$6,privacy_level=$7,last_approval_date=$8,goods_value_account_id=$9,owner_phone=$10,daily_default=$11,weekly_default=$12,monthly_default=$13 WHERE company_id=$1 AND id=$2", [companyId, result.rows[0].id, input.accountLimit, input.dailyLimit, input.weeklyLimit, input.monthlyLimit, input.privacyLevel, input.lastApprovalDate, input.goodsValueAccountId, input.ownerPhone, input.dailyDefault, input.weeklyDefault, input.monthlyDefault]);
+  }
   await client.query(
     `INSERT INTO option_values(company_id,definition_id,record_kind,account_id,value,created_by,updated_by)
      SELECT company_id,id,'account',$2,default_value,$3,$3 FROM option_definitions
@@ -312,7 +321,7 @@ export async function initializeCompanyAccounts(
     const parentId = seed.parentCode
       ? created.find((account) => account.code === seed.parentCode)!.id
       : null;
-    const next = await insertAccount(client, user, companyId, {
+    const next = await insertAccount(client, user, companyId, accountSchema.parse({
       code: seed.code,
       name: seed.name,
       parentId,
@@ -324,7 +333,7 @@ export async function initializeCompanyAccounts(
       cashOrBank: false,
       rangeStart: seed.rangeStart ?? null,
       rangeEnd: seed.rangeEnd ?? null,
-    });
+    }));
     created.push(next);
     if (seed.purpose)
       await client.query(
@@ -561,6 +570,21 @@ export function accountRoutes(pool: Pool): Router {
               input.accountChoice === undefined ? before.accountChoice : input.accountChoice,
             ],
           );
+          if (await accountMetadataReady(client)) {
+          await client.query("UPDATE accounts SET account_limit=$3,daily_limit=$4,weekly_limit=$5,monthly_limit=$6,privacy_level=$7,last_approval_date=$8,goods_value_account_id=$9,owner_phone=$10,daily_default=$11,weekly_default=$12,monthly_default=$13 WHERE company_id=$1 AND id=$2", [companyId, accountId,
+            input.accountLimit === undefined ? before.accountLimit ?? null : input.accountLimit,
+            input.dailyLimit === undefined ? before.dailyLimit ?? null : input.dailyLimit,
+            input.weeklyLimit === undefined ? before.weeklyLimit ?? null : input.weeklyLimit,
+            input.monthlyLimit === undefined ? before.monthlyLimit ?? null : input.monthlyLimit,
+            input.privacyLevel === undefined ? before.privacyLevel ?? 1 : input.privacyLevel,
+            input.lastApprovalDate === undefined ? before.lastApprovalDate ?? null : input.lastApprovalDate,
+            input.goodsValueAccountId === undefined ? before.goodsValueAccountId ?? null : input.goodsValueAccountId,
+            input.ownerPhone === undefined ? before.ownerPhone ?? "" : input.ownerPhone,
+            input.dailyDefault === undefined ? before.dailyDefault ?? null : input.dailyDefault,
+            input.weeklyDefault === undefined ? before.weeklyDefault ?? null : input.weeklyDefault,
+            input.monthlyDefault === undefined ? before.monthlyDefault ?? null : input.monthlyDefault,
+          ]);
+          }
           const next = accountDTO(
             await masterRow(client, accountSelect, "a", companyId, accountId),
           );
