@@ -31,8 +31,10 @@ class Client {
     });
     for (const value of response.headers.getSetCookie()) this.cookie = value.split(";", 1)[0]!;
     const result = await response.json() as T;
-    if (result && typeof result === "object" && "csrf" in result)
-      this.csrf = (result as SessionResponse).csrf;
+    if (result && typeof result === "object" && "csrf" in result) {
+      const csrf = result.csrf;
+      if (csrf === null || typeof csrf === "string") this.csrf = csrf;
+    }
     return { status: response.status, body: result };
   }
   async ok<T>(method: string, path: string, body?: unknown, status = 200): Promise<T> {
