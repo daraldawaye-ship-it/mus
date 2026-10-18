@@ -4000,3 +4000,113 @@ ul {
     color: #444;
   }
 }
+
+
+/* Cash-pouch and electronic-wallet receipts: identical, practical RTL order. */
+@media screen {
+  .pouch-receipts-page .pouch-receipts-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .pouch-receipts-page .pouch-receipts-table {
+    table-layout: fixed;
+    direction: rtl;
+    width: 100%;
+    min-width: 900px;
+    max-width: 1080px;
+    border-collapse: collapse;
+    font-size: 14px; /* preserve readable text */
+  }
+  .pouch-receipts-table .receipt-col-employee { width: 11%; }
+  .pouch-receipts-table .receipt-col-amount { width: 10%; }
+  .pouch-receipts-table .receipt-col-notes { width: 15%; }
+  .pouch-receipts-table .receipt-col-exact { width: 11%; }
+  .pouch-receipts-table .receipt-col-partial { width: 8%; }
+  .pouch-receipts-table .receipt-col-date { width: 13%; }
+  .pouch-receipts-table .receipt-col-source { width: 13%; }
+  .pouch-receipts-table .receipt-col-kind { width: 11%; }
+  .pouch-receipts-table .receipt-col-status { width: 8%; }
+  .pouch-receipts-page .pouch-receipts-table th,
+  .pouch-receipts-page .pouch-receipts-table td {
+    box-sizing: border-box;
+    padding: 3px 5px;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .pouch-receipts-table th {
+    white-space: nowrap;
+  }
+  .pouch-receipts-table .receipt-cell-ellipsis {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pouch-receipts-table .receipt-cell-amount,
+  .pouch-receipts-table .receipt-cell-date {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pouch-receipts-table .receipt-cell-trigger,
+  .pouch-receipts-table .receipt-status-button {
+    display: block;
+    width: 100%;
+    min-height: var(--control-height);
+    margin: 0;
+    padding: 2px 3px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    font: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .pouch-receipts-table .receipt-cell-trigger:hover,
+  .pouch-receipts-table .receipt-status-button:hover { background: var(--hover); }
+  .pouch-receipts-table .receipt-cell-trigger:focus-visible,
+  .pouch-receipts-table .receipt-status-button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+  .pouch-receipts-table .receipt-status-pending {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .pouch-receipts-table .receipt-entry-link,
+  .pouch-receipts-table .button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0;
+    min-height: var(--control-height);
+    padding-inline: 5px;
+    line-height: 1.2;
+    white-space: nowrap;
+    font-size: inherit;
+  }
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(4),
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(5),
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(9) {
+    text-align: center;
+  }
+  .pouch-receipts-table .receipt-status-button { text-align: center; }
+}
+@media screen and (max-width: 680px) {
+  .pouch-receipts-page .pouch-receipts-table {
+    min-width: 900px;
+  }
+  .pouch-receipts-page .pouch-receipts-table th,
+  .pouch-receipts-page .pouch-receipts-table td {
+    padding: 3px 4px;
+  }
+}
