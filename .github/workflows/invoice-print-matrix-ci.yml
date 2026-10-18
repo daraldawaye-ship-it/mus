@@ -1,0 +1,30 @@
+name: Invoice print matrix checks
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/InvoicePrintSheet.tsx'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'tests/invoice-print-sheet.test.ts'
+      - 'tests/browser-commerce.ts'
+      - '.github/workflows/invoice-print-matrix-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  printed-invoices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: TypeScript safety
+        run: npm run check
+      - name: Build printable invoice view
+        run: npm run build
+      - name: Sales and purchase matrix contracts
+        run: node --import tsx --test tests/invoice-print-sheet.test.ts
