@@ -142,17 +142,17 @@ export const accountLinkCategories: Record<
 };
 
 export interface Account {
-  accountLimit: string | null;
-  dailyLimit: string | null;
-  weeklyLimit: string | null;
-  monthlyLimit: string | null;
-  privacyLevel: number;
-  lastApprovalDate: string | null;
-  goodsValueAccountId: number | null;
-  ownerPhone: string;
-  dailyDefault: string | null;
-  weeklyDefault: string | null;
-  monthlyDefault: string | null;
+  accountLimit?: string | null;
+  dailyLimit?: string | null;
+  weeklyLimit?: string | null;
+  monthlyLimit?: string | null;
+  privacyLevel?: number;
+  lastApprovalDate?: string | null;
+  goodsValueAccountId?: number | null;
+  ownerPhone?: string;
+  dailyDefault?: string | null;
+  weeklyDefault?: string | null;
+  monthlyDefault?: string | null;
   id: number;
   companyId: number;
   code: string;
