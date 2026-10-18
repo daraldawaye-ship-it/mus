@@ -11,8 +11,11 @@ on:
       - "apps/web/**"
       - "packages/contracts/**"
       - "tests/chat.test.ts"
+      - "tests/chat-groups.test.ts"
       - "tests/browser-chat.ts"
+      - "tests/browser-chat-groups.ts"
       - "tests/helpers.ts"
+      - "docs/CHAT.md"
       - "package*.json"
       - "tsconfig.json"
       - ".github/workflows/chat-ci.yml"
@@ -56,14 +59,18 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: Focused chat API checks
-        run: npx tsx --test tests/chat.test.ts
+        run: npx tsx --test tests/chat.test.ts tests/chat-groups.test.ts
       - run: npx playwright install --with-deps chromium
       - name: Focused chat browser checks
         run: npx tsx tests/browser-chat.ts
+      - name: Focused group chat browser checks
+        run: npx tsx tests/browser-chat-groups.ts
       - name: Browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: chat-browser-evidence
-          path: /tmp/tijara-chat-browser
+          path: |
+            /tmp/tijara-chat-browser
+            /tmp/tijara-chat-groups-browser
           if-no-files-found: ignore

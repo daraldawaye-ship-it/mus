@@ -99,6 +99,11 @@ export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   purchases: [],
 };
 export const auditActionLabels = {
+  "chat.group.create": "إنشاء مجموعة دردشة خاصة",
+  "chat.group.update": "تعديل إدارة أو أعضاء مجموعة دردشة",
+  "chat.group.leave": "مغادرة مجموعة دردشة",
+  "chat.group.send": "إرسال رسالة مجموعة دردشة",
+  "chat.group.receipt": "تأكيد استلام أو عرض رسالة مجموعة",
   "chat.send": "إرسال رسالة دردشة خاصة",
   "chat.receipt": "تأكيد استلام أو عرض رسالة دردشة",
   "owner.create": "إنشاء مالك المنصة",
@@ -223,6 +228,7 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "chat.group.create", "chat.group.update", "chat.group.leave", "chat.group.send", "chat.group.receipt",
   "chat.send",
   "chat.receipt",
   "notification.create",
@@ -248,6 +254,7 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "chat.group.create", "chat.group.update", "chat.group.leave", "chat.group.send", "chat.group.receipt",
   "chat.send",
   "chat.receipt",
   "company.transactions.reset",
@@ -618,3 +625,4 @@ export * from "./memos.ts";
 
 export * from "./wallet.ts";
 export * from "./chat.ts";
+export * from "./chat-groups.ts";

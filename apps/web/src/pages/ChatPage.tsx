@@ -38,8 +38,11 @@ import type {
   ChatScope,
   ChatUser,
 } from "../../../../packages/contracts/src/chat";
+import type { ChatGroup } from "../../../../packages/contracts/src/chat-groups";
 import { api, ApiFailure, useScopeGuard } from "../api";
 import { Button, Dialog, Field, Notice, PageHeader } from "../ui";
+import { ChatGroupCreateDialog } from "./ChatGroupDialogs";
+import { GroupChatPanel } from "./GroupChatPanel";
 
 interface ChatProps {
   scope: ChatScope;
@@ -134,6 +137,8 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   const active = usePageActivity();
   const guard = useScopeGuard(`chat:${scope}:${companyId ?? "public"}`);
   const [peer, setPeer] = useState<ChatUser | null>(null);
+  const [group, setGroup] = useState<ChatGroup | null>(null);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [directoryOpen, setDirectoryOpen] = useState(false);
@@ -167,6 +172,17 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
     refetchInterval: active ? 6_000 : false,
     retry: false,
   });
+  const groups = useInfiniteQuery({
+    queryKey: [...scopeKey, "groups", "list", deferredSearch],
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) => api<ChatResultPage<ChatGroup>>(
+      `/chat/groups?${queryString(scope, companyId, { search: deferredSearch, cursor: pageParam })}`, { signal },
+    ),
+    getNextPageParam: page => page.nextCursor ?? undefined,
+    refetchInterval: active ? 6_000 : false,
+    retry: false,
+  });
+  const groupRows = [...new Map((groups.data?.pages.flatMap(page => page.items) ?? []).map(item => [item.id, item])).values()];
   const directory = useInfiniteQuery({
     queryKey: [...scopeKey, "directory", deferredDirectorySearch],
     initialPageParam: null as string | null,
@@ -202,6 +218,31 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.data, conversations.error, companyId, scope, user.id]);
   useEffect(() => { void acknowledgePreviews(); }, [acknowledgePreviews, conversations.dataUpdatedAt]);
+  const deliveredGroupPreviews = useRef(new Set<number>());
+  const groupPreviewBusy = useRef(false);
+  const [groupPreviewError, setGroupPreviewError] = useState<Error | null>(null);
+  const acknowledgeGroupPreviews = useCallback(async () => {
+    if (groupPreviewBusy.current || !guard.isCurrent() || groups.error) return;
+    groupPreviewBusy.current = true;
+    try {
+      for (const item of groups.data?.pages.flatMap(page => page.items) ?? []) {
+        const message = item.lastMessage;
+        const ownReceipt = message?.receipts.find(receipt => receipt.userId === user.id);
+        if (!message || !ownReceipt || ownReceipt.deliveredAt || deliveredGroupPreviews.current.has(message.id)) continue;
+        await api(`/chat/groups/${item.id}/receipt`, {
+          method: "POST", signal: guard.signal,
+          body: { scope, ...(scope === "company" ? { companyId } : {}), deliveredMessageIds: [message.id], readMessageIds: [] },
+        });
+        if (!guard.isCurrent()) return;
+        deliveredGroupPreviews.current.add(message.id);
+      }
+      if (guard.isCurrent()) setGroupPreviewError(null);
+    } catch (error) {
+      if (guard.isCurrent()) setGroupPreviewError(error instanceof Error ? error : new Error("تعذر تحديث استلام رسائل المجموعات"));
+    } finally { groupPreviewBusy.current = false; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups.data, groups.error, companyId, scope, user.id]);
+  useEffect(() => { void acknowledgeGroupPreviews(); }, [acknowledgeGroupPreviews, groups.dataUpdatedAt]);
   const rows = useMemo(() => {
     if (accessDenied(conversations.error) || accessDenied(previewReceiptError)) return [];
     const result: { peer: ChatUser; lastMessage?: ChatMessage; unreadCount: number; pending?: PendingMessage }[] =
@@ -227,18 +268,25 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
         actions={<span className="chat-scope-badge">{scope === "global" ? <Globe2 size={15} /> : <Users size={15} />}{scope === "global" ? "مستخدمو تجارة" : "أعضاء الشركة"}</span>}
       />
       {storageFailed && <Notice tone="warning">تعذر حفظ المسودات على هذا الجهاز. أبقِ الصفحة مفتوحة حتى يتأكد إرسال رسائلك.</Notice>}
-      <div className={`chat-shell ${peer ? "chat-shell-selected" : ""}`}>
+      <div className={`chat-shell ${peer || group ? "chat-shell-selected" : ""}`}>
         <aside className="chat-sidebar" aria-label="المحادثات">
           <div className="chat-sidebar-heading">
             <div><h2>المحادثات</h2><small>مساحتك للتواصل المباشر</small></div>
-            <Button variant="secondary" size="compact" onClick={openDirectory} aria-label="محادثة جديدة" title="محادثة جديدة"><MessageSquarePlus size={18} /></Button>
           </div>
+          <div className="chat-sidebar-actions"><Button variant="secondary" size="compact" onClick={openDirectory} aria-label="محادثة جديدة"><MessageSquarePlus size={15} />محادثة جديدة</Button><Button variant="secondary" size="compact" onClick={() => setCreateGroupOpen(true)}><Users size={15} />إنشاء مجموعة</Button></div>
           <div className="chat-search"><Search size={16} /><input aria-label="البحث في المحادثات" placeholder="ابحث في محادثاتك…" maxLength={100} value={search} onChange={event => setSearch(event.target.value)} /></div>
           {conversations.error && <div className="chat-inline-notice"><Notice tone="error">{errorText(conversations.error)}<Button variant="ghost" size="compact" onClick={() => void conversations.refetch()}>إعادة المحاولة</Button></Notice></div>}
           {previewReceiptError && <div className="chat-inline-notice"><Notice tone="error">{errorText(previewReceiptError)}<Button variant="ghost" size="compact" onClick={() => void acknowledgePreviews()}>إعادة المحاولة</Button></Notice></div>}
           <div className="chat-conversations" aria-busy={conversations.isFetching}>
+            <h3 className="chat-list-section-title">المجموعات</h3>
+            {(groups.error || groupPreviewError) && <Notice tone="error">{errorText(groups.error ?? groupPreviewError)}<Button variant="ghost" size="compact" onClick={() => { void groups.refetch(); void acknowledgeGroupPreviews(); }}>إعادة المحاولة</Button></Notice>}
+            {!groups.error && !accessDenied(groupPreviewError) && groupRows.map(item => <button key={item.id} className={`chat-conversation ${group?.id === item.id ? "chat-conversation-selected" : ""}`} aria-label={`فتح مجموعة ${item.name}`} aria-current={group?.id === item.id ? "true" : undefined} onClick={() => { setGroup(item); setPeer(null); }}><span className="chat-avatar chat-group-avatar" aria-hidden="true"><Users size={20} /></span><span className="chat-conversation-copy"><span className="chat-conversation-title"><strong>{item.name}</strong><small className="muted">{item.memberCount} أعضاء</small></span><span className="chat-conversation-preview">{item.lastMessage ? `${item.lastMessage.senderName}: ${item.lastMessage.text}` : "ابدأ أول رسالة في المجموعة"}</span></span>{item.unreadCount > 0 && <span className="chat-unread" aria-label={`${item.unreadCount} رسائل مجموعة غير مقروءة`}>{item.unreadCount > 99 ? "+99" : item.unreadCount.toLocaleString("ar")}</span>}</button>)}
+            {!groups.error && !groups.isPending && !groups.data?.pages.some(page => page.items.length) && <p className="chat-groups-empty">{search ? "لا توجد مجموعة تطابق البحث" : "أنشئ مجموعة لتجمع فريقك في محادثة واحدة"}</p>}
+            {groups.isPending && <p className="chat-groups-empty">جارٍ تحميل المجموعات…</p>}
+            {groups.hasNextPage && <Button className="chat-load-more" variant="ghost" size="compact" disabled={groups.isFetchingNextPage} onClick={() => void groups.fetchNextPage()}>عرض مجموعات أخرى</Button>}
+            <h3 className="chat-list-section-title">الرسائل الخاصة</h3>
             {rows.map(row => (
-              <button className={`chat-conversation ${peer?.id === row.peer.id ? "chat-conversation-selected" : ""}`} key={row.peer.id} onClick={() => setPeer(row.peer)} aria-label={`فتح محادثة ${row.peer.name}`} aria-current={peer?.id === row.peer.id ? "true" : undefined}>
+              <button className={`chat-conversation ${peer?.id === row.peer.id ? "chat-conversation-selected" : ""}`} key={row.peer.id} onClick={() => { setPeer(row.peer); setGroup(null); }} aria-label={`فتح محادثة ${row.peer.name}`} aria-current={peer?.id === row.peer.id ? "true" : undefined}>
                 <Avatar peer={row.peer} />
                 <span className="chat-conversation-copy"><span className="chat-conversation-title"><strong>{row.peer.name}</strong><time dateTime={row.lastMessage?.createdAt ?? row.pending?.createdAt}>{row.lastMessage ? timeFormat.format(new Date(row.lastMessage.createdAt)) : ""}</time></span><span className="chat-conversation-preview">{row.lastMessage?.senderId === user.id && <Check size={12} />}{row.lastMessage?.text ?? row.pending?.text}</span></span>
                 {row.unreadCount > 0 && <span className="chat-unread" aria-label={`${row.unreadCount} رسائل غير مقروءة`}>{row.unreadCount > 99 ? "+99" : row.unreadCount.toLocaleString("ar")}</span>}
@@ -247,9 +295,9 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
             {!rows.length && !conversations.error && <div className="chat-sidebar-empty">{conversations.isPending ? <><LoaderCircle size={24} className="chat-spinner" />جارٍ تحميل المحادثات…</> : <><MessageCircle size={30} /><strong>{search ? "لا توجد محادثة تطابق البحث" : "ابدأ أول محادثة"}</strong><span>{search ? "جرّب اسمًا آخر." : "اختر مستخدمًا وابدأ التواصل."}</span>{!search && <Button variant="secondary" size="compact" onClick={openDirectory}>محادثة جديدة</Button>}</>}</div>}
             {conversations.hasNextPage && <Button className="chat-load-more" variant="ghost" size="compact" disabled={conversations.isFetchingNextPage} onClick={() => void conversations.fetchNextPage()}>عرض محادثات أقدم</Button>}
           </div>
-          <div className="chat-sidebar-footer"><ShieldCheck size={14} /><span>لا يطّلع على المحادثة إلا طرفاها</span></div>
+          <div className="chat-sidebar-footer"><ShieldCheck size={14} /><span>المحادثات خاصة بالمشاركين فيها</span></div>
         </aside>
-        {peer ? <ConversationPanel key={peer.id} user={user} scope={scope} companyId={companyId} peer={peer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen} onBack={() => setPeer(null)} /> : (
+        {group ? <GroupChatPanel key={group.id} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : peer ? <ConversationPanel key={peer.id} user={user} scope={scope} companyId={companyId} peer={peer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
           <section className="chat-welcome" aria-label="اختر محادثة">
             <span className="chat-welcome-icon"><MessageCircle size={38} strokeWidth={1.5} /></span>
             <span className="chat-eyebrow">تواصل أوضح، وعمل أقرب</span>
@@ -265,11 +313,12 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
         <Field autoFocus label="البحث عن مستخدم" placeholder="اكتب الاسم…" maxLength={100} value={directorySearch} onChange={event => setDirectorySearch(event.target.value)} />
         {directory.error && <Notice tone="error">{errorText(directory.error)}<Button variant="ghost" size="compact" onClick={() => void directory.refetch()}>إعادة المحاولة</Button></Notice>}
         <div className="chat-directory-list" aria-busy={directory.isFetching}>
-          {!directory.error && directory.data?.pages.flatMap(page => page.items).map(person => <button key={person.id} className="chat-directory-user" aria-label={`بدء محادثة مع ${person.name}`} onClick={() => { setPeer(person); setDirectoryOpen(false); }}><Avatar peer={person} /><strong>{person.name}</strong><MessageCircle size={17} /></button>)}
+          {!directory.error && directory.data?.pages.flatMap(page => page.items).map(person => <button key={person.id} className="chat-directory-user" aria-label={`بدء محادثة مع ${person.name}`} onClick={() => { setPeer(person); setGroup(null); setDirectoryOpen(false); }}><Avatar peer={person} /><strong>{person.name}</strong><MessageCircle size={17} /></button>)}
           {!directory.error && !(directory.data?.pages.some(page => page.items.length)) && <div className="chat-sidebar-empty">{directory.isPending ? "جارٍ البحث…" : "لا يوجد مستخدم يطابق البحث"}</div>}
           {directory.hasNextPage && <Button variant="ghost" disabled={directory.isFetchingNextPage} onClick={() => void directory.fetchNextPage()}>عرض المزيد</Button>}
         </div>
       </Dialog>
+      <ChatGroupCreateDialog open={createGroupOpen} onClose={() => setCreateGroupOpen(false)} user={user} scope={scope} companyId={companyId} onCreated={created => { setGroup(created); setPeer(null); setCreateGroupOpen(false); }} />
     </div>
   );
 }
