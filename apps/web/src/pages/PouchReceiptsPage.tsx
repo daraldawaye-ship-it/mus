@@ -127,8 +127,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     <div className="pouch-receipts-page">
       <PageHeader title={heading}
         description={electronic
-          ? "التحويلات إلى محفظة الشركة الإلكترونية المحددة من ربط الحسابات. استلام مطابق أو غير مطابق إلى صندوقك، مع ترحيل الفرق إلى العجز والزيادة."
-          : "حركات الحوافظ وإغلاق الصناديق التي رحّلت نقدًا إلى الحافظة. الاستلام إلى صندوقك فقط، والفرق يُرحّل إلى حساب العجز والزيادة."}
+          ? "تحويلات المحفظة الإلكترونية إلى صندوقك؛ ويُرحّل أي فرق إلى العجز والزيادة."
+          : "حركات الحوافظ وإغلاق الصناديق للاستلام في صندوقك؛ ويُرحّل الفرق إلى العجز والزيادة."}
         actions={<Button variant="secondary" onClick={()=>void list.refetch()}
           disabled={list.isFetching||pending}>تحديث</Button>}/>
       {notice&&<Notice tone="success">
@@ -147,14 +147,13 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         )}
       </div>
       <Card title={electronic?"حركات المحفظة الإلكترونية":"حركات الحوافظ"}
-        description={`عدد الحركات: ${list.data?.total??"…"} — ${electronic
-          ? "يشمل الترحيلات الإلكترونية الموجبة والسالبة المسجلة على حساب محفظة الشركة."
-          : "يشمل التحويلات الموجبة والسالبة، والنقد المرحّل للحافظة عند إغلاق الصندوق."}`}>
+        description={`عدد الحركات: ${list.data?.total??"…"} — يشمل الحركات الموجبة والسالبة.`}>
         {list.isLoading&&<p>جارٍ تحميل الحركات…</p>}
         {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
         {list.data?.items.length===0&&<p className="muted">لا توجد حركات مطابقة لهذه الحالة.</p>}
         {!!list.data?.items.length&&(
-          <div className="pouch-receipts-table-wrap">
+          <div className="pouch-receipts-table-wrap" role="region"
+            aria-label={`جدول حركات ${sourceName} — مرّر أفقيًا لعرض بقية الأعمدة`} tabIndex={0}>
             <table className="pouch-receipts-table">
               <thead><tr>
                 <th>التاريخ</th><th>الموظف</th><th>{sourceName}</th>
