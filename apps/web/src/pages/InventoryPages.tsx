@@ -1101,8 +1101,7 @@ function OperationEditor({
         { signal },
       ),
   });
-  const targetReady =
-    !!item && !!fromLocation && (!item.hasExpiry || !!fields.expiryDate);
+  const targetReady = !!item && !!fromLocation;
   const batch = useQuery({
     queryKey: [
       "inventory",
@@ -1111,13 +1110,11 @@ function OperationEditor({
       "count-batch",
       item?.id,
       fromLocation?.id,
-      fields.expiryDate,
     ],
     queryFn: ({ signal }) => {
       const filters = new URLSearchParams({
         itemId: String(item!.id),
         locationId: String(fromLocation!.id),
-        expiryDate: item!.hasExpiry ? fields.expiryDate : "none",
         page: "1",
         pageSize: "20",
         sort: "id:asc",
@@ -1146,7 +1143,7 @@ function OperationEditor({
     setItem(value);
     setSelectedShelf(value?.shelfId ? {id:value.shelfId,name:value.shelf} : null);
     setFields((current) => ({
-      ...current, unit: 1, expiryDate: "",
+      ...current, unit: 1,
       countUnit1: "0", countUnit2: "0", countUnit3: "0",
       nearestExpiryDate: value?.nearestExpiryDate ?? "",
     }));
@@ -1189,8 +1186,9 @@ function OperationEditor({
         setError("اختر الصنف والمواقع المطلوبة.");
         return;
       }
-      if (item.hasExpiry && !fields.expiryDate) {
-        setError("أدخل تاريخ انتهاء الدفعة لهذا الصنف.");
+      if (mode === "adjustment" && item.hasExpiry &&
+          batchQuantity === "0" && !fields.nearestExpiryDate && !item.nearestExpiryDate) {
+        setError("حدد أقرب تاريخ انتهاء للصنف لبدء جرد رصيده.");
         return;
       }
       if (
@@ -1204,7 +1202,7 @@ function OperationEditor({
         documentDate: mode === "adjustment" ? today() : fields.documentDate,
         itemId: item.id,
         unit: fields.unit,
-        expiryDate: item.hasExpiry ? fields.expiryDate || null : null,
+        expiryDate: mode === "adjustment" ? null : item.hasExpiry ? fields.expiryDate || null : null,
         description: fields.description,
         idempotencyKey: createKey,
       };
@@ -1461,7 +1459,7 @@ function OperationEditor({
                 )}
               </>
             )}
-            {item?.hasExpiry && (
+            {mode === "transfer" && item?.hasExpiry && (
               <ExpiryMonthField
                 label="شهر وسنة انتهاء الدفعة"
                 required
@@ -1491,7 +1489,7 @@ function OperationEditor({
                 value={fields.nearestExpiryDate}
                 disabled={disabled}
                 onChange={(date) => edit("nearestExpiryDate", date ?? "")}
-                hint="معلومة كرت الصنف؛ لا تغيّر تاريخ انتهاء دفعة المخزون."
+                hint="يُحدّث تاريخ الكرت. أما دفعة المخزون الحالية فيختارها النظام تلقائيًا دون تغيير تاريخها التاريخي."
               />
             )}
             <Field
@@ -1512,13 +1510,13 @@ function OperationEditor({
               <div className="form-full">
                 <Notice tone={batch.error ? "error" : "info"}>
                   {!targetReady ? (
-                    "اختر الصنف وموقع الجرد ودفعة الانتهاء لتحميل رصيدها قبل الجرد."
+                    "اختر الصنف وموقع الجرد لتحميل رصيده قبل الجرد."
                   ) : batch.isFetching ? (
                     "جارٍ تحميل رصيد الدفعة…"
                   ) : batch.error ? (
                     errorMessage(batch.error)
                   ) : batchQuantity === null ? (
-                    "لم يُحدد رصيد الدفعة بدقة. أعد تحميله قبل الحفظ."
+                    "توجد أكثر من دفعة لهذا الصنف في الموقع. راجع الدفعات من حركة المخزون قبل تسوية الرصيد."
                   ) : (
                     <>
                       الرصيد المحمل قبل الجرد: {exact(batchQuantity)} من أصغر
