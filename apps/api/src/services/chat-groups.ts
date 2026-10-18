@@ -145,9 +145,10 @@ async function creationConfirmation(client: PoolClient, row: QueryResultRow): Pr
   // especially when page flags changed after the original request.
   return { ...result, group: { ...result.group, lastMessage: null, unreadCount: 0 } };
 }
-const cursorSchema = z.object({ actorId: z.number().int().positive(), scopeId: z.number().int().nonnegative(),
-  groupId: z.number().int().positive().nullable(), membershipId: z.number().int().positive().nullable(),
-  id: z.number().int().positive(), search: z.string().max(100), at: z.iso.datetime({ precision: 3 }).nullable() }).strict();
+const cursorId = z.number().int().positive().max(2_147_483_647);
+const cursorSchema = z.object({ actorId: cursorId, scopeId: z.number().int().nonnegative().max(2_147_483_647),
+  groupId: cursorId.nullable(), membershipId: cursorId.nullable(),
+  id: cursorId, search: z.string().max(100), at: z.iso.datetime({ precision: 3 }).nullable() }).strict();
 type Cursor = z.infer<typeof cursorSchema>;
 function decodeCursor(current: Access, query: ChatListQuery, groupRow?: QueryResultRow): Cursor | null {
   if (!query.cursor) return null;
