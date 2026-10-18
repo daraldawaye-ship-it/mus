@@ -1968,9 +1968,19 @@ function ItemEditor({
           context={context}
           item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
           onClose={() => setAdjustmentOpen(false)}
-          onSaved={(date) => {
+          onSaved={(date, shelf) => {
             setNearestExpirySaved(date);
-            setFields((previous) => ({ ...previous, nearestExpiryDate: date ?? "" }));
+            setFields((previous) => ({ ...previous,
+              nearestExpiryDate: date ?? "",
+              shelf:shelf.shelf,shelfId:shelf.shelfId,
+            }));
+            // A posted adjustment also increments the item's revision.
+            // Keep this open card in sync so its next save does not conflict.
+            savedRevision.current += 1;
+            setVisibleRevision(savedRevision.current);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "detail", item.id],
+            });
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "statistics", item.id],
             });

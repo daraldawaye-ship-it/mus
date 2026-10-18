@@ -2912,10 +2912,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       {adjustingItem!==null && (
         <InvoiceItemAdjustmentSheet context={context} itemId={adjustingItem}
           onClose={()=>setAdjustingItem(null)}
-          onSaved={(itemId,date)=>{
+          onSaved={(itemId,date,shelf)=>{
             setLines(current=>current.map(line=>
               line.itemId===itemId&&line.sourceItem
-                ? {...line,sourceItem:{...line.sourceItem,nearestExpiryDate:date}}
+                ? {...line,sourceItem:{...line.sourceItem,
+                    nearestExpiryDate:date,shelf:shelf.shelf,shelfId:shelf.shelfId}}
                 : line,
             ));
             void client.invalidateQueries({queryKey:["sale-stock-preview",user?.id,companyId]});

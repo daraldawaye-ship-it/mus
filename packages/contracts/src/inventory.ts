@@ -87,10 +87,11 @@ export const stockAdjustmentSchema = z
       unit3: itemWholeQuantitySchema.optional(),
     }).strict().optional(),
     nearestExpiryDate: documentDateSchema.nullable().optional(),
+    shelfId: id.nullable().optional(),
     expectedQuantitySmallest: stockSmallestQuantitySchema,
     unit,
     expiryDate: documentDateSchema.nullable().default(null),
-    unitCostBase: amountSchema.default("0"),
+    unitCostBase: amountSchema.optional(),
     description: z.string().trim().max(1000).default(""),
     idempotencyKey: z.uuid(),
   })
