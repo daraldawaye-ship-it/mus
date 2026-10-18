@@ -44,7 +44,6 @@ import { api, SessionProvider, useSession } from "./api";
 import {
   pageKeyForLocation,
   pageDefinitions,
-  pageByKey,
   pageHref,
   pageRuleAllows,
 } from "../../../packages/contracts/src/index";
@@ -59,6 +58,7 @@ import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
+import { reportPrintLayout } from "./reportPrintLayout";
 import { CompanyLetterheadPage } from "./pages/CompanyLetterheadPage";
 import { useCompanyIdleLogout } from "./idle-logout";
 import { Button, Card, Dialog, Notice } from "./ui";
@@ -491,7 +491,7 @@ function CompanyView({
       pageKey={pageKey}
       companyId={context.company.id}
     >
-      {pageKey && pageByKey(pageKey)?.type === "report" ? (
+      {reportPrintLayout(pageKey) === "generic" ? (
         <div className="company-report-printable">
           <CompanyPrintHeader context={context} />
           <div className="company-report-print-toolbar">
