@@ -190,6 +190,11 @@ const AccountBalancesPage = lazy(() =>
     default: module.AccountBalancesPage,
   })),
 );
+const MyCashboxLedgerPage = lazy(() =>
+  import("./pages/MyCashboxLedgerPage").then((module) => ({
+    default: module.MyCashboxLedgerPage,
+  })),
+);
 const AccountLedgerPage = lazy(() =>
   import("./pages/FinancePages").then((module) => ({
     default: module.AccountLedgerPage,
@@ -296,6 +301,7 @@ const companySections = [
   "payments",
   "account-balances",
   "account-ledger",
+  "my-cashbox-ledger",
   "items",
   "item-statistics-report",
   "item",
@@ -381,6 +387,7 @@ function Navigation({
     "company.payments": <Wallet size={17} />,
     "company.account-balances": <Landmark size={17} />,
     "company.account-ledger": <FileText size={17} />,
+    "company.my-cashbox-ledger": <Landmark size={17} />,
     "company.currencies": <Coins size={17} />,
     "company.exchange-rates": <TrendingUp size={17} />,
     "company.branches": <MapPin size={17} />,
@@ -741,6 +748,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الأرصدة…</Notice>}>
           <AccountBalancesPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "my-cashbox-ledger":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل كشف حساب صندوقي…</Notice>}>
+          <MyCashboxLedgerPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "account-ledger":
