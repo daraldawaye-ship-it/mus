@@ -1517,11 +1517,16 @@ function BalancesContent({ context }: { context: CompanyContext }) {
 }
 
 export function AccountLedgerPage({ context }: { context: CompanyContext }) {
-  if (!financeAccess(context))
+  const [params] = useSearchParams();
+  const pledge = params.get("pledge") === "1";
+  const allowedPledge = pledge && (context.general ||
+    context.permissions.includes("commerce.view") ||
+    context.permissions.includes("commerce.manage"));
+  if (!financeAccess(context) && !allowedPledge)
     return <Notice tone="warning">ليس لديك صلاحية عرض كشف الحساب.</Notice>;
-  return <LedgerContent context={context} />;
+  return <LedgerContent context={context} pledge={pledge} />;
 }
-function LedgerContent({ context }: { context: CompanyContext }) {
+function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: boolean }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
@@ -1535,22 +1540,59 @@ function LedgerContent({ context }: { context: CompanyContext }) {
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize"))
-    : 20;
+    : pledge ? 50 : 20;
   query.set("page", String(page));
   query.set("pageSize", String(pageSize));
+  const ledgerUrl = pledge
+    ? `/companies/${companyId}/pledges/${accountId}/ledger`
+    : `/companies/${companyId}/account-ledger`;
   const result = useQuery({
-    queryKey: ["finance", user?.id, companyId, "ledger", query.toString()],
+    queryKey: ["finance", user?.id, companyId, "ledger", ledgerUrl, query.toString()],
     queryFn: ({ signal }) =>
       api<
         Page<AccountLedgerLine> & {
           totals: AccountLedgerTotals;
           account: PickAccount;
         }
-      >(`/companies/${companyId}/account-ledger?${query}`, { signal }),
+      >(`${ledgerUrl}?${query}`, { signal }),
     enabled: accountId > 0,
   });
+  const [preparePrint, setPreparePrint] = useState(false);
+  const printQuery = useQuery({
+    queryKey: ["ledger-full-print", user?.id, companyId, ledgerUrl, query.toString(), result.data?.total],
+    enabled: preparePrint && !!result.data && accountId > 0,
+    queryFn: async ({ signal }) => {
+      const total = result.data?.total ?? 0;
+      const rows: AccountLedgerLine[] = [];
+      for (let printPage = 1; printPage <= Math.ceil(total / 100); printPage++) {
+        const printParams = new URLSearchParams(query);
+        printParams.set("page", String(printPage));
+        printParams.set("pageSize", "100");
+        const response = await api<Page<AccountLedgerLine>>(
+          `${ledgerUrl}?${printParams}`, { signal },
+        );
+        rows.push(...response.items);
+      }
+      return rows;
+    },
+  });
+  useEffect(() => {
+    if (!preparePrint || !printQuery.data) return;
+    // Print only after the full statement has been placed in the DOM.
+    const frame = window.requestAnimationFrame(() => window.print());
+    return () => window.cancelAnimationFrame(frame);
+  }, [preparePrint, printQuery.data]);
   const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(
     () => [
+      {
+        accessorKey: "runningBalance",
+        header: "الرصيد",
+        enableSorting: false,
+        size: 210,
+        cell: ({ row }) => (
+          <bdi>{balanceText(row.original.runningBalance)}</bdi>
+        ),
+      },
       {
         accessorKey: "documentDate",
         header: "التاريخ",
@@ -1620,24 +1662,20 @@ function LedgerContent({ context }: { context: CompanyContext }) {
         size: 160,
         cell: ({ row }) => money(row.original.baseCredit),
       },
-      {
-        accessorKey: "runningBalance",
-        header: "الرصيد بالأساسية",
-        enableSorting: false,
-        size: 210,
-        cell: ({ row }) => (
-          <bdi>{balanceText(row.original.runningBalance)}</bdi>
-        ),
-      },
+
     ],
     [companyId],
   );
   return (
-    <>
+    <div className="ledger-page">
+      <div className="ledger-print-heading"><CompanyPrintHeader context={context} /><h2>كشف حساب {result.data?.account?.name ?? ""}</h2></div>
       <PageHeader
         title="كشف حساب"
         description="الحركات مرتبة حسب التاريخ والمستند والسطر؛ الإجماليات لكامل الفترة، والرصيد الجاري بالعملة الأساسية."
-        actions={<Button variant="secondary" onClick={() => window.print()}><Printer size={16} /> طباعة كشف الحساب</Button>}
+        actions={<Button variant="secondary" disabled={result.isLoading || preparePrint && printQuery.isFetching}
+          onClick={() => { if (printQuery.data) window.print(); else setPreparePrint(true); }}>
+          <Printer size={16} /> {preparePrint && printQuery.isFetching ? "جارٍ إعداد جميع الحركات…" : "طباعة كشف الحساب"}
+        </Button>}
       />
       <Card>
         <div className="table-filters">
@@ -1673,6 +1711,10 @@ function LedgerContent({ context }: { context: CompanyContext }) {
         {!accountId && <Notice>اختر حسابًا لعرض حركاته ورصيده.</Notice>}
         {result.error && (
           <Notice tone="error">{errorMessage(result.error)}</Notice>
+        )}
+        {printQuery.error && <Notice tone="error">{errorMessage(printQuery.error)}</Notice>}
+        {result.data && !result.isFetching && result.data.total === 0 && (
+          <Notice>لا توجد حركات مالية مرحلة لهذا الحساب خلال الفترة المحددة. إنشاء الرهن وحده لا ينشئ قيدًا ماليًا.</Notice>
         )}
         {result.data && (
           <div className="financial-totals">
@@ -1715,6 +1757,26 @@ function LedgerContent({ context }: { context: CompanyContext }) {
           />
         )}
       </Card>
+      {preparePrint && printQuery.data && (
+        <div className="ledger-print-all" aria-label="كشف الحساب الكامل للطباعة">
+          <table dir="rtl">
+            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>البيان</th><th>النوع</th><th>التاريخ</th><th>المستند</th><th>العملة</th></tr></thead>
+            <tbody>{printQuery.data.map((line, index) => (
+              <tr key={`${line.documentId}-${line.id}-${index}`}>
+                <td>{balanceText(line.runningBalance)}</td>
+                <td>{formatMoney(line.baseDebit)}</td>
+                <td>{formatMoney(line.baseCredit)}</td>
+                <td>{line.description}</td>
+                <td>{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}</td>
+                <td>{line.documentDate}</td>
+                <td>{line.documentNumber}</td>
+                <td>{line.currencyCode}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {!printQuery.data.length && <p>لا توجد حركات مالية مرحلة للحساب.</p>}
+        </div>
+      )}
       <Dialog
         open={choosing}
         title="اختيار حساب للكشف"
@@ -1735,6 +1797,6 @@ function LedgerContent({ context }: { context: CompanyContext }) {
           }}
         />
       </Dialog>
-    </>
+    </div>
   );
 }
