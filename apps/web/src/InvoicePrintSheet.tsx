@@ -26,7 +26,7 @@ export function InvoicePrintSheet({
   const kindLabel = purchase ? "فاتورة مشتريات" : "فاتورة مبيعات";
   const columns = printedInvoiceColumns(invoice.kind);
   return (
-    <section className="invoice-print-sheet" dir="rtl" aria-label="نسخة طباعة الفاتورة">
+    <section className={`invoice-print-sheet invoice-print-sheet--${invoice.kind}`} dir="rtl" aria-label="نسخة طباعة الفاتورة">
       <CompanyPrintHeader context={context} />
       <div className="invoice-print-caption">
         <h2>{returning ? "مردود " : ""}{kindLabel}</h2>
