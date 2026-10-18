@@ -16,6 +16,7 @@ import { audit } from "./services/audit.ts";
 import { conflict, masterPage, mutateMaster } from "./services/masters.ts";
 import {
   checkQuantum,
+  convertedUnits,
   moneyString,
   moneyUnits,
   quantum,
@@ -450,6 +451,30 @@ export function inventoryRoutes(pool: Pool): Router {
             conflict("الصنف لا يتتبع تاريخ انتهاء");
           if (input.nearestExpiryDate !== undefined && !item.hasExpiry && input.nearestExpiryDate !== null)
             conflict("لا يمكن تعيين تاريخ انتهاء لصنف لا يتتبع الانتهاء");
+          // The shelf is company scoped, and never accepts a made-up label.
+          // Retain an existing archived shelf, but do not assign it anew.
+          let shelfName: string | undefined;
+          if (input.shelfId !== undefined) {
+            if (input.shelfId === null) {
+              shelfName = "";
+            } else {
+              const shelf = await client.query(
+                "SELECT name,archived FROM item_shelves WHERE company_id=$1 AND id=$2 FOR SHARE",
+                [companyId,input.shelfId],
+              );
+              if (!shelf.rows[0])
+                conflict("الرف المحدد غير موجود في هذه الشركة");
+              if (shelf.rows[0].archived) {
+                const old = await client.query(
+                  "SELECT shelf_id FROM items WHERE company_id=$1 AND id=$2",
+                  [companyId,input.itemId],
+                );
+                if (old.rows[0]?.shelf_id !== input.shelfId)
+                  conflict("لا يمكن تعيين رف مؤرشف للصنف");
+              }
+              shelfName = shelf.rows[0].name;
+            }
+          }
           const multiplier = stockUnitMultiplier(item, input.unit);
           let counted: bigint;
           if (input.countedUnits) {
@@ -473,7 +498,32 @@ export function inventoryRoutes(pool: Pool): Router {
               "تغير رصيد الدفعة أثناء الجرد؛ أعد تحميل الرصيد وراجع الكمية المعدودة قبل الحفظ",
             );
           const delta = counted - current;
-          checkQuantum(input.unitCostBase, settings.baseDecimalPlaces);
+          // When the UI omits the cost, derive it from the item's own purchase
+          // price, converted at the effective exchange rate on document date.
+          // Legacy requests with an explicit cost remain backward compatible.
+          let unitCostBase = input.unitCostBase ?? "0";
+          if (delta > 0n && input.unitCostBase === undefined) {
+            const purchase = await client.query(
+              "SELECT purchase_price,currency_id FROM items WHERE company_id=$1 AND id=$2 FOR SHARE",
+              [companyId,input.itemId],
+            );
+            let rate = "1";
+            if (purchase.rows[0].currency_id !== settings.baseCurrencyId) {
+              const rates = await client.query(
+                `SELECT rate FROM exchange_rates
+                 WHERE company_id=$1 AND currency_id=$2 AND base_currency_id=$3
+                 AND active AND effective_at < (($4::date+1)::timestamp AT TIME ZONE 'UTC')
+                 ORDER BY effective_at DESC,id DESC LIMIT 1`,
+                [companyId,purchase.rows[0].currency_id,settings.baseCurrencyId,input.documentDate],
+              );
+              if (!rates.rows[0]) conflict("عرّف سعر صرف عملة الصنف قبل تسوية زيادة المخزون");
+              rate = rates.rows[0].rate;
+            }
+            unitCostBase = moneyString(convertedUnits(
+              purchase.rows[0].purchase_price,rate,settings.baseDecimalPlaces,
+            ));
+          }
+          checkQuantum(unitCostBase, settings.baseDecimalPlaces);
           const operationId = await createStockOperation(
             client,
             companyId,
@@ -485,7 +535,7 @@ export function inventoryRoutes(pool: Pool): Router {
             let cost: bigint | undefined;
             if (delta > 0n) {
               const divisor = multiplier * quantum(settings.baseDecimalPlaces),
-                numerator = moneyUnits(input.unitCostBase) * delta;
+                numerator = moneyUnits(unitCostBase) * delta;
               cost =
                 (numerator / divisor +
                   ((numerator % divisor) * 2n >= divisor ? 1n : 0n)) *
@@ -549,11 +599,27 @@ export function inventoryRoutes(pool: Pool): Router {
               );
             }
           }
-          // Persist card-level nearest expiry atomically with the stock adjustment.
-          if (input.nearestExpiryDate !== undefined) {
+          // Persist shelf and nearest expiry in the SAME transaction as the
+          // inventory movement/journal. Never update the card on failed posting.
+          if (input.nearestExpiryDate !== undefined || shelfName !== undefined) {
+            const sets: string[] = [];
+            const values: unknown[] = [];
+            if (input.nearestExpiryDate !== undefined) {
+              values.push(input.nearestExpiryDate);
+              sets.push(`nearest_expiry_date=${values.length}`);
+            }
+            if (shelfName !== undefined) {
+              values.push(shelfName);
+              sets.push(`shelf=${values.length}`);
+              values.push(input.shelfId);
+              sets.push(`shelf_id=${values.length}`);
+            }
+            values.push(companyId,input.itemId);
             await client.query(
-              "UPDATE items SET nearest_expiry_date=$1,revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$2 AND id=$3",
-              [input.nearestExpiryDate, companyId, input.itemId],
+              `UPDATE items SET ${sets.join(",")},revision=revision+1,
+                 updated_at=clock_timestamp()
+               WHERE company_id=${values.length-1} AND id=${values.length}`,
+              values,
             );
           }
           return {
@@ -568,6 +634,7 @@ export function inventoryRoutes(pool: Pool): Router {
                 locationId: input.locationId,
                 expiryDate: input.expiryDate,
                 nearestExpiryDate: input.nearestExpiryDate,
+                shelfId: input.shelfId,
                 quantitySmallest: current.toString(),
               },
             ),
