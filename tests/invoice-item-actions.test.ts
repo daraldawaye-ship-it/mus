@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
 import { memoCreateSchema } from "../packages/contracts/src/index.ts";
 import {
   InvoiceItemActionsDropdown,
@@ -14,8 +15,10 @@ test("sales and purchases share one item action dropdown with three commands", (
     "إرسال تقرير مرتبط بالصنف",
   ]);
   const html=renderToStaticMarkup(
-    <InvoiceItemActionsDropdown itemName="محلول ملح 500 مل"
-      disabled={false} canEdit canAdjust canReport onAction={()=>{}}/>,
+    createElement(InvoiceItemActionsDropdown, {
+      itemName:"محلول ملح 500 مل",disabled:false,
+      canEdit:true,canAdjust:true,canReport:true,onAction:()=>{},
+    }),
   );
   assert.match(html,/aria-haspopup="menu"/);
   assert.match(html,/خيارات الصنف/);
