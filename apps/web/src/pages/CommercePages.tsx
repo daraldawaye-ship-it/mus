@@ -20,9 +20,11 @@ import {
 } from "react-router-dom";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { InvoicePrintSheet } from "../InvoicePrintSheet";
+import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
+import { InvoiceItemAdjustmentSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
   invoiceSchema,
@@ -1115,6 +1117,17 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     lineKey: string;
   } | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
+  const [adjustingItem, setAdjustingItem] = useState<number|null>(null);
+  const [reportingItem, setReportingItem] = useState<{itemId:number;itemName:string}|null>(null);
+  const [reportSentId, setReportSentId] = useState<number|null>(null);
+  const stockPage = directory.data?.find(entry=>entry.key==="company.stock-adjustments");
+  const canAdjustItem =
+    !!stockPage?.enabled && !!stockPage.actionAccess.view && !!stockPage.actionAccess.create &&
+    (context.general || context.permissions.includes("inventory.post")) &&
+    (context.general || context.permissions.includes("finance.post"));
+  const memoPage = directory.data?.find(entry=>entry.key==="company.memos");
+  const canReportItem = !!memoPage?.enabled && !!memoPage.actionAccess.view &&
+    !!memoPage.actionAccess.create;
   const [itemNotice, setItemNotice] = useState("");
   const [memoBlocked,setMemoBlocked]=useState(false);
   const [resetConfirmOpen,setResetConfirmOpen]=useState(false);
@@ -2604,28 +2617,25 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                         )}
                         <td>
                           <div className="commerce-line-actions">
-                            <Button
-                              variant="ghost"
-                              size="compact"
-                              aria-label={`تعديل كرت ${line.itemName || "الصنف"}`}
-                              title={
-                                !line.itemId
-                                  ? "اختر الصنف أولًا"
-                                  : canEditItem
-                                    ? "تعديل كرت الصنف"
-                                    : "تعديل كرت الصنف يحتاج صلاحية تعديل الأصناف"
-                              }
-                              disabled={!line.itemId || !canEditItem || locked}
-                              onClick={() => {
-                                setEditingBusy(false);
-                                setEditingItem({
-                                  itemId: line.itemId,
-                                  lineKey: line.key,
-                                });
+                            <InvoiceItemActionsDropdown
+                              itemName={line.itemName || "الصنف"}
+                              disabled={!line.itemId || locked}
+                              canEdit={canEditItem}
+                              canAdjust={canAdjustItem}
+                              canReport={canReportItem}
+                              onAction={(action: InvoiceItemAction) => {
+                                if (!line.itemId || locked) return;
+                                if (action === "edit" && canEditItem) {
+                                  setEditingBusy(false);
+                                  setEditingItem({itemId:line.itemId,lineKey:line.key});
+                                } else if(action === "adjust" && canAdjustItem) {
+                                  setAdjustingItem(line.itemId);
+                                } else if(action === "report" && canReportItem) {
+                                  setReportSentId(null);
+                                  setReportingItem({itemId:line.itemId,itemName:line.itemName});
+                                }
                               }}
-                            >
-                              <Pencil size={15} />
-                            </Button>
+                            />
                             <Button
                               variant="ghost"
                               size="compact"
@@ -2899,6 +2909,31 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           </div>
         </div>
       </Dialog>
+      {adjustingItem!==null && (
+        <InvoiceItemAdjustmentSheet context={context} itemId={adjustingItem}
+          onClose={()=>setAdjustingItem(null)}
+          onSaved={(itemId,date)=>{
+            setLines(current=>current.map(line=>
+              line.itemId===itemId&&line.sourceItem
+                ? {...line,sourceItem:{...line.sourceItem,nearestExpiryDate:date}}
+                : line,
+            ));
+            void client.invalidateQueries({queryKey:["sale-stock-preview",user?.id,companyId]});
+          }}/>
+      )}
+      {reportingItem && (
+        <InvoiceItemReportSheet key={`${companyId}:${reportingItem.itemId}`}
+          context={context} itemId={reportingItem.itemId} itemName={reportingItem.itemName}
+          onClose={()=>setReportingItem(null)}
+          onCreated={memoId=>{
+            setReportingItem(null);
+            setReportSentId(memoId);
+          }}/>
+      )}
+      {reportSentId!==null && <Notice tone="success">
+        تم إرسال التقرير المرتبط بالصنف.{" "}
+        <Link to={`/companies/${companyId}/memos/${reportSentId}`}>فتح التقرير</Link>
+      </Notice>}
       <Dialog
         open={editingItem !== null}
         className="invoice-item-sheet"
