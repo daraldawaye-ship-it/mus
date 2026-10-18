@@ -6,7 +6,7 @@ import { normalizeDigits } from "../../../../packages/contracts/src/index.ts";
 import { ApiFailure, api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatWholeMoney } from "../format-money";
-import { Button, Card, Dialog, Field, Notice, PageHeader } from "../ui";
+import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
 type Status="pending"|"received"|"all";
 type Movement={
@@ -14,11 +14,16 @@ type Movement={
   notes:string;createdAt:string;sourceDocumentId:number;pouchName?:string;walletName?:string;
   receiptId:number|null;receiptMode:"exact"|"difference"|null;
   receivedAmount:string|null;differenceAmount:string|null;
-  receiverName:string|null;receiptDocumentId:number|null;
+  receiverName:string|null;receiptDocumentId:number|null;voucherDocumentId:number|null;
   receiptNotes:string|null;receivedAt:string|null;
 };
 type Response={items:Movement[];total:number;page:number;pageSize:number};
 type Draft={movement:Movement;amount:string;notes:string;key:string};
+type VoucherDraft={
+  movement:Movement;key:string;notes:string;receiptNumber:string;
+  accountId:string;search:string;attempt:"voucher"|"transfer"|null;
+};
+type Counterparty={id:number;code:string;name:string};
 
 /** Right-to-left order shared by cash pouches and electronic wallets. */
 export const receiptTableColumns=(sourceName:string)=>[
@@ -51,14 +56,21 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const [status,setStatus]=useState<Status>("pending");
   const [page,setPage]=useState(1);
   const [draft,setDraft]=useState<Draft|null>(null);
+  const [voucherDraft,setVoucherDraft]=useState<VoucherDraft|null>(null);
   const [inspected,setInspected]=useState<Movement|null>(null);
   const [pending,setPending]=useState(false);
   const [error,setError]=useState("");
-  const [notice,setNotice]=useState<{documentId:number;difference:string}|null>(null);
+  const [notice,setNotice]=useState<{documentId:number;voucherDocumentId:number|null;difference:string}|null>(null);
   const [uncertain,setUncertain]=useState(false);
   const [exactKeys,setExactKeys]=useState<Record<number,string>>({});
   const canPost=context.general||context.permissions.includes("finance.post");
   const queryKey=[endpoint,user?.id,companyId,status,page] as const;
+  const counterpart=useQuery<{items:Counterparty[]}>({
+    queryKey:["receipt-counterpart-accounts",user?.id,companyId,voucherDraft?.search??""],
+    queryFn:({signal})=>api<{items:Counterparty[]}>(
+      `/companies/${companyId}/receipt-counterpart-accounts?q=${encodeURIComponent(voucherDraft?.search??"")}`,{signal}),
+    enabled:!!user && !!voucherDraft,
+  });
   const list=useQuery<Response>({
     queryKey,
     queryFn:({signal})=>api<Response>(
@@ -70,23 +82,25 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   });
   async function postReceipt(
     item:Movement,mode:"exact"|"difference",amount:string,notes:string,key:string,
+    voucher?:{counterpartyAccountId:number;notes:string;receiptNumber:string},
   ) {
     if(pending || !canPost)return;
     setError("");setNotice(null);setPending(true);
     try {
       const body=mode==="exact"
-        ? {sourceOperationId:item.id,mode,notes,idempotencyKey:key}
+        ? {sourceOperationId:item.id,mode,notes,idempotencyKey:key,...(voucher?{voucher}:{})}
         : {sourceOperationId:item.id,mode,receivedAmount:normalizeDigits(amount).replace(/,/g,""),
            notes,idempotencyKey:key};
       const result=await api<{
-        receipt:{id:number;documentId:number;expected:string;
+        receipt:{id:number;documentId:number;voucherDocumentId:number|null;expected:string;
           received:string;difference:string};
       }>(`/companies/${companyId}/${endpoint}`,{
         method:"POST",body,
       });
       setNotice({documentId:result.receipt.documentId,
+        voucherDocumentId:result.receipt.voucherDocumentId,
         difference:result.receipt.difference});
-      setDraft(null);setUncertain(false);
+      setDraft(null);setVoucherDraft(null);setUncertain(false);
       setExactKeys(prev=>{const next={...prev};delete next[item.id];return next;});
       await client.invalidateQueries({predicate:query=>
         query.queryKey.includes(companyId) &&
@@ -98,15 +112,38 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     }catch(e){
       const networkUncertain=!(e instanceof ApiFailure)||e.status>=500;
       setUncertain(networkUncertain);
+      if(!networkUncertain) setVoucherDraft(prev=>prev?{...prev,attempt:null}:prev);
       setError(networkUncertain
         ? "قد تكون العملية قد تمت. أعد تأكيد الطلب نفسه دون تغيير البيانات حتى لا يتكرر الاستلام. "+errorMessage(e)
         : errorMessage(e));
     }finally{setPending(false);}
   }
   function exact(item:Movement) {
+    if(item.kind!=="close"){
+      setUncertain(false);setError("");
+      setVoucherDraft({movement:item,key:crypto.randomUUID(),notes:item.notes||"",
+        receiptNumber:"",accountId:"",search:"",attempt:null});
+      return;
+    }
     const key=exactKeys[item.id]??crypto.randomUUID();
     setExactKeys(prev=>({...prev,[item.id]:key}));
     void postReceipt(item,"exact","", "",key);
+  }
+  function confirmTransfer(withVoucher:boolean) {
+    if(!voucherDraft || pending)return;
+    const selection=withVoucher?"voucher":"transfer";
+    if(voucherDraft.attempt && voucherDraft.attempt!==selection)return;
+    if(withVoucher && (!voucherDraft.accountId || !Number.isSafeInteger(Number(voucherDraft.accountId)))) {
+      setError("اختر الحساب المقابل للسند قبل الحفظ");
+      return;
+    }
+    setVoucherDraft(prev=>prev?{...prev,attempt:selection}:prev);
+    void postReceipt(voucherDraft.movement,"exact","",voucherDraft.notes,voucherDraft.key,
+      withVoucher?{
+        counterpartyAccountId:Number(voucherDraft.accountId),
+        notes:voucherDraft.notes,
+        receiptNumber:voucherDraft.receiptNumber,
+      }:undefined);
   }
   function partial(item:Movement) {
     setUncertain(false);setError("");
@@ -140,12 +177,15 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         actions={<Button variant="secondary" onClick={()=>void list.refetch()}
           disabled={list.isFetching||pending}>تحديث</Button>}/>
       {notice&&<Notice tone="success">
-        تم الاستلام وتسجيل القيد #{notice.documentId}.
+        تم الاستلام وتسجيل قيد التحويل #{notice.documentId}.
+        {notice.voucherDocumentId!==null && <>
+          {" "}وإنشاء <Link to={`/companies/${companyId}/financial-documents/${notice.voucherDocumentId}`}>السند المرافق</Link>.
+        </>}
         {Number(notice.difference)===0
           ? " المبلغ مطابق."
           : <> الفرق: <ReceiptAmount value={notice.difference}/> ريال في حساب العجز والزيادة.</>}
       </Notice>}
-      {error&&!draft&&<Notice tone="error">{error}</Notice>}
+      {error&&!draft&&!voucherDraft&&<Notice tone="error">{error}</Notice>}
       <div className="form-actions" role="group" aria-label={`حالة استلام ${sourceName}`}>
         {(["pending","received","all"] as const).map(value=>
           <Button key={value} variant={status===value?"primary":"secondary"}
@@ -217,7 +257,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                           : "—"}
                     </td>
                     <td>
-                      {item.receiptId===null && canPost
+                      {item.receiptId===null && item.kind==="close" && canPost
                         ? <Button size="compact" variant="secondary"
                             title="استلام جزء أو مبلغ غير مطابق"
                             disabled={pending} onClick={()=>partial(item)}>
@@ -274,6 +314,9 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                 <p><strong>المبلغ المستلم:</strong> <ReceiptAmount value={inspected.receivedAmount}/> ريال</p>
                 <p><strong>العجز أو الزيادة:</strong> <ReceiptAmount value={inspected.differenceAmount}/> ريال</p>
                 <p><strong>ملاحظات الاستلام:</strong> {inspected.receiptNotes||"—"}</p>
+                {inspected.voucherDocumentId!==null && <Link
+                  to={`/companies/${companyId}/financial-documents/${inspected.voucherDocumentId}`}
+                  onClick={()=>setInspected(null)}>فتح السند المرافق</Link>}
                 {inspected.receiptDocumentId!==null && <Link
                   to={`/companies/${companyId}/financial-documents/${inspected.receiptDocumentId}`}
                   onClick={()=>setInspected(null)}>فتح قيد الاستلام</Link>}
@@ -284,6 +327,56 @@ export function PouchReceiptsPage({context,source="pouch"}:{
             </div>
           </div>
         )}
+      </Dialog>
+      <Dialog open={!!voucherDraft}
+        title={voucherDraft && Number(voucherDraft.movement.amount)<0
+          ? "استلام التحويل وإضافة سند قبض اختياري"
+          : "استلام التحويل وإضافة سند صرف اختياري"}
+        className="receipt-voucher-dialog"
+        onClose={()=>{if(!pending&&!uncertain){setVoucherDraft(null);setError("");}}}>
+        {voucherDraft && <div className="form-stack">
+          <Notice>
+            سيتم ترحيل الحركة إلى صندوقك كما هو معتاد، سواء أضفت السند أم لا.
+            السند اختياري ومستقل عن قيد التحويل.
+          </Notice>
+          <p><strong>المبلغ:</strong> <ReceiptAmount value={voucherDraft.movement.amount}/> ريال
+            {" — "}<strong>الصندوق:</strong> صندوقي
+          </p>
+          <Field label="الملاحظات" value={voucherDraft.notes}
+            maxLength={1000} disabled={pending||uncertain}
+            onChange={e=>setVoucherDraft(prev=>prev?{...prev,notes:e.target.value}:prev)}/>
+          <Field label="رقم الوصل (اختياري)" value={voucherDraft.receiptNumber}
+            maxLength={100} disabled={pending||uncertain}
+            onChange={e=>setVoucherDraft(prev=>prev?{...prev,receiptNumber:e.target.value}:prev)}/>
+          <Field label="البحث عن الحساب المقابل" type="search"
+            placeholder="اسم الحساب أو رقمه"
+            value={voucherDraft.search} disabled={pending||uncertain}
+            onChange={e=>setVoucherDraft(prev=>prev?{...prev,search:e.target.value,accountId:""}:prev)}/>
+          <Select label="الحساب المقابل" value={voucherDraft.accountId}
+            disabled={pending||uncertain} onChange={e=>setVoucherDraft(prev=>prev?{
+              ...prev,accountId:e.target.value}:prev)}>
+            <option value="">اختر الحساب</option>
+            {counterpart.data?.items.map(account=>
+              <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
+          </Select>
+          {counterpart.isFetching && <small className="muted">جارٍ البحث عن الحسابات…</small>}
+          {counterpart.error && <Notice tone="error">{errorMessage(counterpart.error)}</Notice>}
+          {error && <Notice tone="error">{error}</Notice>}
+          <div className="form-actions receipt-voucher-dialog-actions">
+            <Button disabled={pending || counterpart.isFetching ||
+                (!!voucherDraft.attempt && voucherDraft.attempt!=="voucher")}
+              onClick={()=>confirmTransfer(true)}>
+              {pending?"جارٍ الحفظ…":"حفظ السند مع ترحيل المبلغ"}
+            </Button>
+            <Button variant="secondary"
+              disabled={pending||voucherDraft.attempt==="voucher"}
+              onClick={()=>confirmTransfer(false)}>
+              ترحيل المبلغ دون سند
+            </Button>
+            <Button variant="ghost" disabled={pending||uncertain}
+              onClick={()=>{setVoucherDraft(null);setError("");}}>إلغاء</Button>
+          </div>
+        </div>}
       </Dialog>
       <Dialog open={!!draft} title="استلام غير مطابق / جزء"
         onClose={()=>{if(!pending&&!uncertain){setDraft(null);setError("");}}}>

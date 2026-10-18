@@ -6,6 +6,7 @@ import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { audit } from "./audit.ts";
+import { receiptExtraVoucherSchema, postReceiptExtraVoucher } from "./receipt-extra-voucher.ts";
 
 const signedAmount = z.string().trim()
   .regex(/^-?(?:0|[1-9][0-9]{0,19})(?:\\.[0-9]{1,2})?$/,
@@ -16,7 +17,7 @@ const common = {
   idempotencyKey: z.string().uuid(),
 };
 export const electronicReceiptSchema = z.discriminatedUnion("mode", [
-  z.object({ ...common, mode: z.literal("exact") }).strict(),
+  z.object({ ...common, mode: z.literal("exact"),voucher:receiptExtraVoucherSchema.optional() }).strict(),
   z.object({ ...common, mode: z.literal("difference"),
     receivedAmount: signedAmount }).strict(),
 ]);
@@ -52,6 +53,7 @@ export async function listElectronicReceipts(
        o.financial_document_id AS "sourceDocumentId",
        a.name AS "walletName",
        r.id AS "receiptId",r.mode AS "receiptMode",
+       r.voucher_document_id AS "voucherDocumentId",
        r.received_amount::text AS "receivedAmount",
        r.difference_amount::text AS "differenceAmount",
        r.receiver_employee_name AS "receiverName",
@@ -73,6 +75,7 @@ export async function receiveElectronicMovement(
   const payload=JSON.stringify(input);
   const retry=await client.query(
     `SELECT id,source_operation_id AS "sourceId",financial_document_id AS "documentId",
+        voucher_document_id AS "voucherDocumentId",
         expected_amount::text AS expected,received_amount::text AS received,
         difference_amount::text AS difference,request_payload=$3::jsonb AS same
       FROM employee_electronic_receipts
@@ -84,6 +87,7 @@ export async function receiveElectronicMovement(
       "المفتاح مستخدم لاستلام مختلف؛ افتح قائمة الترحيلات وحدّثها");
     const row=retry.rows[0];
     return {id:row.id,sourceId:row.sourceId,documentId:row.documentId,
+      voucherDocumentId:row.voucherDocumentId,
       expected:moneyString(moneyUnits(row.expected)),
       received:moneyString(moneyUnits(row.received)),
       difference:moneyString(moneyUnits(row.difference))};
@@ -178,18 +182,25 @@ export async function receiveElectronicMovement(
     documentDate:date,branchId:null,currencyId:currency.id,
     description:memo.slice(0,1000),idempotencyKey:randomUUID(),lines,
   });
+  const voucherDocumentId=input.mode==="exact" && input.voucher
+    ? await postReceiptExtraVoucher(client,companyId,user,{
+        sourceId:origin.id,sourceKind:"electronic",actualAmount:actual,
+        cashAccountId:receiver.cash_id,currencyId:currency.id,documentDate:date,
+        voucher:input.voucher,
+      })
+    : null;
   const saved=await client.query(
     `INSERT INTO employee_electronic_receipts(
        company_id,source_operation_id,source_employee_id,
        receiver_employee_id,receiver_employee_name,mode,
        expected_amount,received_amount,difference_amount,
        cash_account_id,wallet_account_id,variance_account_id,
-       financial_document_id,notes,idempotency_key,request_payload,created_by)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       financial_document_id,voucher_document_id,notes,idempotency_key,request_payload,created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING id`,
     [companyId,origin.id,origin.employee_id,receiver.id,receiver.name,input.mode,
       moneyString(original),moneyString(actual),moneyString(difference),
-      receiver.cash_id,wallet.id,varianceAccount,documentId,input.notes,
+      receiver.cash_id,wallet.id,varianceAccount,documentId,voucherDocumentId,input.notes,
       input.idempotencyKey,payload,user.id],
   );
   const receiptId=saved.rows[0].id as number;
@@ -198,8 +209,8 @@ export async function receiveElectronicMovement(
       employeeId:receiver.id,mode:input.mode,
       expected:moneyString(original),received:moneyString(actual),
       difference:moneyString(difference),
-      receiptDocumentId:documentId,notes:input.notes},companyId);
-  return {id:receiptId,sourceId:origin.id,documentId,
+      receiptDocumentId:documentId,voucherDocumentId,notes:input.notes},companyId);
+  return {id:receiptId,sourceId:origin.id,documentId,voucherDocumentId,
     expected:moneyString(original),received:moneyString(actual),
     difference:moneyString(difference)};
 }
