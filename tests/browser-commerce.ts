@@ -952,6 +952,16 @@ try {
           fullPage: true,
         });
         await page.emulateMedia({ media: "print" });
+        assert.deepEqual(
+          await page.locator(".invoice-print-matrix thead th").allTextContents(),
+          ["اسم الصنف", "الكمية", "الوحدة", "السعر", "القيمة"],
+        );
+        assert.equal(await page.locator(".invoice-print-matrix tbody tr").count(),
+          savedSale.lines.length);
+        assert(await page.locator(".invoice-print-sheet .company-print-letterhead").isVisible(),
+          "Company letterhead must appear above the print matrix");
+        assert.equal(await page.locator(".commerce-lines-scroll").isVisible(),false,
+          "Interactive invoice table must not appear a second time on print");
         assert.equal(
           await page
             .getByRole("button", { name: "طباعة", exact: true })
@@ -1054,6 +1064,21 @@ try {
         assert.equal(zero.financialDocumentId, null);
         assert.equal(zero.returning, false);
         await page.goto(base + "/invoices/" + zero.id);
+        await page.locator(".invoice-print-sheet").waitFor({state:"attached"});
+        await page.emulateMedia({ media:"print" });
+        assert.deepEqual(
+          await page.locator(".invoice-print-matrix thead th").allTextContents(),
+          ["اسم الصنف", "الكمية", "الوحدة", "البونص", "السعر", "تاريخ الانتهاء", "القيمة"],
+        );
+        assert.equal(
+          await page.locator(".invoice-print-matrix tbody tr:first-child td:nth-child(4)").textContent(),
+          "—", "Bonus is reserved in print, never manufactured in accounting",
+        );
+        assert.equal(
+          await page.locator(".invoice-print-matrix tbody tr:first-child td:nth-child(6)").textContent(),
+          "2027-01",
+        );
+        await page.emulateMedia({ media:"screen" });
         await page
           .getByText(
             "صافي المستند صفر؛ لا يوجد مبلغ مستحق أو مردود على الحساب المقابل.",

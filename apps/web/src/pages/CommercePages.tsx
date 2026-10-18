@@ -19,6 +19,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
+import { InvoicePrintSheet } from "../InvoicePrintSheet";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
@@ -3018,6 +3019,7 @@ function InvoiceViewer({
         />
       </div>
       <Card className="commerce-print-document">
+        <InvoicePrintSheet context={context} invoice={invoice} returning={returning} />
         <div className="commerce-print-heading">
           <CompanyPrintHeader context={context} />
           <h2>
