@@ -102,6 +102,9 @@ export async function receivePouchMovement(
   if (!origin || !["pouch","close"].includes(origin.kind) ||
     origin.amount==="0.000000" || origin.amount==="0")
     conflict("pouch_movement_missing","حركة الحافظة غير موجودة أو لا تحتوي على مبلغ قابل للاستلام");
+  if(input.mode==="exact" && input.voucher && origin.kind==="close")
+    throw new HttpError(400,"close_voucher_not_allowed",
+      "إغلاق الصندوق يُستلم كما هو دون سند مرافق");
   const already=await client.query(
     `SELECT id FROM employee_pouch_receipts
        WHERE company_id=$1 AND source_operation_id=$2`,
@@ -189,9 +192,6 @@ export async function receivePouchMovement(
         voucher:input.voucher,
       })
     : null;
-  if(input.mode==="exact" && input.voucher && origin.kind==="close")
-    throw new HttpError(400,"close_voucher_not_allowed",
-      "إغلاق الصندوق يُستلم كالسابق دون سند مرافق");
   const saved=await client.query(
     `INSERT INTO employee_pouch_receipts(
        company_id,source_operation_id,source_employee_id,
