@@ -318,6 +318,80 @@ function assertNoSecrets(value: unknown) {
   assert.equal(JSON.stringify(value).includes(password), false);
 }
 
+test("company print letterheads are durable, owner-only and isolated by company", async (t) => {
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const first=await company(platform.client,"Print company one");
+  const second=await company(platform.client,"Print company two");
+  const path1=`/companies/${first.id}/letterhead`;
+  const path2=`/companies/${second.id}/letterhead`;
+  const initial=await platform.client.ok<{mediaId:string|null}>("GET",path1);
+  assert.equal(initial.mediaId,null);
+
+  const sample="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aZkAAAAASUVORK5CYII=";
+  async function upload(companyId:number) {
+    return platform.client.ok<{id:string;fullUrl:string}>(
+      "POST","/media",
+      {purpose:"letterhead",companyId,original:sample,thumbnail:sample},
+      201,
+    );
+  }
+  const firstImage=await upload(first.id);
+  const secondImage=await upload(second.id);
+  const saved=await platform.client.ok<{imageUrl:string;mediaId:string}>(
+    "PUT",path1,{mediaId:firstImage.id},
+  );
+  assert.equal(saved.mediaId,firstImage.id);
+  assert.equal(saved.imageUrl,firstImage.fullUrl);
+  await platform.client.ok("PUT",path2,{mediaId:secondImage.id});
+  assert.equal(
+    (await platform.client.ok<{mediaId:string}>("GET",path2)).mediaId,
+    secondImage.id,
+  );
+  assert.equal(
+    (await platform.client.ok<{mediaId:string}>("GET",path1)).mediaId,
+    firstImage.id,
+  );
+  assert.equal(
+    (await platform.client.request("PUT",path1,{mediaId:secondImage.id})).status,
+    400,
+  );
+
+  const outsider=await register(f,"masthead-outsider@example.test");
+  assert.equal((await outsider.client.request("GET",path1)).status,403);
+  const staff=await register(f,"masthead-staff@example.test");
+  await employee(platform.client,first.id,staff.user.id,["company.edit"]);
+  assert.equal(
+    (await staff.client.ok<{mediaId:string}>("GET",path1)).mediaId,
+    firstImage.id,
+  );
+  assert.equal((await staff.client.request("GET",path2)).status,403);
+  assert.equal((await staff.client.request("GET",firstImage.fullUrl)).status,200);
+  assert.equal((await staff.client.request("GET",secondImage.fullUrl)).status,403);
+  assert.equal((await staff.client.request("PUT",path1,{mediaId:null})).status,403);
+  assert.equal(
+    (await staff.client.request("POST","/media",{
+      purpose:"letterhead",companyId:first.id,original:sample,thumbnail:sample,
+    })).status,403,
+  );
+
+  await platform.client.ok("PUT",path1,{mediaId:null});
+  assert.equal((await platform.client.ok<{mediaId:null}>("GET",path1)).mediaId,null);
+  assert.equal(
+    (await platform.client.ok<{mediaId:string}>("GET",path2)).mediaId,
+    secondImage.id,
+  );
+  // The shared, persistent PostgreSQL asset is available after application restart.
+  await f.restart();
+  const fresh= f.client();
+  await fresh.ok("POST","/auth/login",{
+    email:platform.user.email,password,
+  });
+  assert.equal(
+    (await fresh.ok<{mediaId:string}>("GET",path2)).mediaId,secondImage.id,
+  );
+});
+
 test("registration creates an ordinary public identity and sessions enforce CSRF and origin", async (t) => {
   const f = await fixture(t);
   const anonymous = f.client();
