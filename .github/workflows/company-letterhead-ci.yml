@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - 'apps/api/migrations/093_company_letterheads.sql'
+      - 'apps/api/migrations/094_company_letterhead_page.sql'
+      - 'packages/contracts/src/pages.ts'
+      - 'apps/api/src/services/pages.ts'
+      - 'apps/api/src/services/permission-rules.ts'
+      - 'apps/web/src/pages/CompanyLetterheadPage.tsx'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/src/routes-companies.ts'
       - 'apps/web/src/CompanyPrintHeader.tsx'
@@ -13,6 +18,7 @@ on:
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/styles.css'
       - 'tests/api.test.ts'
+      - 'tests/pages.test.ts'
       - '.github/workflows/company-letterhead-ci.yml'
   workflow_dispatch:
 permissions:
@@ -47,3 +53,5 @@ jobs:
       - run: npm run build
       - name: Owner-only letterhead persistence and company isolation
         run: node --import tsx --test --test-name-pattern="company print letterheads are durable" tests/api.test.ts
+      - name: Independent letterhead navigation and owner permissions
+        run: node --import tsx --test --test-name-pattern="letterhead is a dedicated company page" tests/pages.test.ts
