@@ -59,6 +59,7 @@ import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
+import { CompanyLetterheadPage } from "./pages/CompanyLetterheadPage";
 import { useCompanyIdleLogout } from "./idle-logout";
 import { Button, Card, Dialog, Notice } from "./ui";
 import {
@@ -288,6 +289,7 @@ const companySections = [
   "overview",
   "employees",
   "settings",
+  "letterhead",
   "audit",
   "accounts",
   "account-statistics",
@@ -366,6 +368,7 @@ function Navigation({
     "company.notification-templates": <Settings2 size={17} />,
     "company.memos": <FileText size={17} />,
     "company.settings": <Settings2 size={17} />,
+    "company.letterhead": <FileText size={17} />,
     "company.accounts": <BookOpen size={17} />,
     "company.account-statistics": <TrendingUp size={17} />,
     "company.doctors": <Users size={17} />,
@@ -608,6 +611,8 @@ function CompanyContent({
       return <EmployeesPage key={context.company.id} context={context} />;
     case "settings":
       return <CompanySettingsPage key={context.company.id} context={context} />;
+    case "letterhead":
+      return <CompanyLetterheadPage key={context.company.id} context={context} />;
     case "audit":
       return <CompanyAuditPage key={context.company.id} context={context} />;
     case "doctors":
