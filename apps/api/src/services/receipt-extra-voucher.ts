@@ -6,7 +6,7 @@ import { HttpError } from "../errors.ts";
 import { insertDraft, postDraft } from "../routes-finance.ts";
 import { audit } from "./audit.ts";
 import {
-  assertBalanced, loadDocument, moneyString, nextDocumentNumber,
+  assertBalanced, loadDocument, moneyString,
   type DocumentFields,
 } from "./finance.ts";
 
