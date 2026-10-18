@@ -18,7 +18,7 @@ export function InvoiceItemAdjustmentSheet({
 }: {
   context:CompanyContext;itemId:number;
   onClose:()=>void;
-  onSaved:(itemId:number,expiry:string|null)=>void;
+  onSaved:(itemId:number,expiry:string|null,shelf:{shelfId:number|null;shelf:string})=>void;
 }) {
   const {user}=useSession();
   const companyId=context.company.id;
@@ -29,7 +29,7 @@ export function InvoiceItemAdjustmentSheet({
   });
   if(item.data?.item) {
     return <InventoryAdjustmentSheet context={context} item={item.data.item}
-      onClose={onClose} onSaved={date=>onSaved(itemId,date)}/>;
+      onClose={onClose} onSaved={(date,shelf)=>onSaved(itemId,date,shelf)}/>;
   }
   return createPortal(
     <>
