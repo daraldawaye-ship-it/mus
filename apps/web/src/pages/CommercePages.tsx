@@ -18,6 +18,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
@@ -3018,7 +3019,7 @@ function InvoiceViewer({
       </div>
       <Card className="commerce-print-document">
         <div className="commerce-print-heading">
-          <strong>{context.company.name}</strong>
+          <CompanyPrintHeader context={context} />
           <h2>
             {returning ? "مردود " : ""}
             {title(invoice.kind)}
