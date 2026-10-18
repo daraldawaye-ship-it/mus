@@ -2734,13 +2734,15 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
         </footer>
         {savedInvoice && (
-          <Notice tone="success" className="commerce-saved-confirmation">
+          <div className="commerce-saved-confirmation">
+            <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
             <Link to={invoicePath(companyId, savedInvoice.id)}>
               عرض الفاتورة المحفوظة
             </Link>
             . يمكنك إدخال الفاتورة التالية مباشرة.
-          </Notice>
+            </Notice>
+          </div>
         )}
       </form>
       {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
