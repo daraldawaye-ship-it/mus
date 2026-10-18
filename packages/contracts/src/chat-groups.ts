@@ -32,10 +32,10 @@ export type ChatGroupSendInput = z.infer<typeof chatGroupSendSchema>;
 
 export interface ChatGroupMember extends ChatUser { joinedAt: string; available: boolean; }
 export interface ChatGroupReceipt {
-  userId: number; name: string; deliveredAt: string | null; readAt: string | null;
+  userId: number; name: string; avatarUrl: string | null; deliveredAt: string | null; readAt: string | null;
 }
 export interface ChatGroupMessage {
-  id: number; groupId: number; clientMessageId: string; senderId: number; senderName: string;
+  id: number; groupId: number; clientMessageId: string; senderId: number; senderName: string; senderAvatarUrl: string | null;
   text: string; createdAt: string; membershipRevision: number;
   recipientCount: number; deliveredCount: number; readCount: number;
   deliveredAt: string | null; readAt: string | null;

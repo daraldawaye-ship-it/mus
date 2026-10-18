@@ -14,6 +14,8 @@ on:
       - "tests/chat-groups.test.ts"
       - "tests/browser-chat.ts"
       - "tests/browser-chat-groups.ts"
+      - "tests/chat-avatar-fixture.ts"
+      - "tests/chat-browser-controls.ts"
       - "tests/helpers.ts"
       - "docs/CHAT.md"
       - "package*.json"

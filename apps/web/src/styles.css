@@ -3452,6 +3452,9 @@ ul {
 .chat-conversation-selected:hover { background: var(--nav-active); }
 .chat-avatar { display: inline-flex; flex: 0 0 40px; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 13px; background: var(--soft); color: var(--on-soft); font-size: 14px; font-weight: 700; user-select: none; }
 .chat-avatar-small { flex-basis: 36px; width: 36px; height: 36px; border-radius: 11px; font-size: 12px; }
+.chat-avatar[data-chat-avatar] { overflow: hidden; }
+.chat-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.chat-avatar-tiny { flex-basis: 25px; width: 25px; height: 25px; border-radius: 8px; font-size: 9px; }
 .chat-conversation-copy { flex: 1; min-width: 0; }
 .chat-conversation-title { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; }
 .chat-conversation-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
@@ -3561,7 +3564,8 @@ ul {
 .chat-group-avatar { border-radius: 50%; }
 .chat-group-details-button { margin-inline-start: auto; }
 .chat-group-message { min-width: 170px; }
-.chat-group-sender { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 10px; color: var(--primary); }
+.chat-group-sender,
+.chat-message-sender { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 10px; color: var(--primary); }
 .chat-group-sender .chat-avatar { width: 25px; height: 25px; flex-basis: 25px; border-radius: 8px; font-size: 9px; }
 .chat-group-receipt-button { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; padding: 6px 0 0; margin-top: 4px; color: var(--muted); background: transparent; border: 0; border-top: 1px solid var(--border); text-align: start; font-size: 9px; line-height: 1.7; }
 .chat-group-receipt-button:hover { text-decoration: underline; }
@@ -3579,6 +3583,7 @@ ul {
 .chat-member-option:hover { background: var(--hover); }
 .chat-member-option input { flex-shrink: 0; accent-color: var(--primary); }
 .chat-member-option span { flex: 1; overflow-wrap: anywhere; }
+.chat-member-option .chat-avatar { flex: 0 0 36px; }
 .chat-group-selection-count { color: var(--muted); font-size: 11px; }
 .chat-group-section { display: grid; gap: 10px; min-width: 0; padding-top: 15px; margin-top: 15px; border-top: 1px solid var(--border); }
 .chat-group-members { display: grid; gap: 5px; list-style: none; padding: 0; margin: 0; }
@@ -3596,12 +3601,25 @@ ul {
 .chat-group-audience-list { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; padding: 0; margin-block: 15px; }
 .chat-group-audience-list li { padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--soft); color: var(--on-soft); font-size: 12px; }
 .chat-composer > .notice { margin-bottom: 9px; font-size: 11px; }
+.chat-emoji-picker { position: relative; flex: 0 0 auto; align-self: flex-end; margin-bottom: 1px; }
+.chat-emoji-trigger { display: inline-flex; align-items: center; justify-content: center; width: 36px; min-height: 40px; padding: 0; color: var(--muted); }
+.chat-emoji-trigger[aria-expanded="true"] { color: var(--on-soft); background: var(--soft); }
+.chat-emoji-popover { position: absolute; z-index: 12; inset-inline-end: 0; bottom: calc(100% + 10px); width: min(294px, calc(100vw - 70px)); max-height: min(370px, calc(100dvh - 150px)); overflow-y: auto; padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 30px var(--shadow); }
+.chat-emoji-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding-inline: 3px; font-size: 12px; }
+.chat-emoji-header .button { min-height: 26px; padding: 3px; }
+.chat-emoji-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.chat-emoji-option { display: flex; align-items: center; justify-content: center; width: 100%; height: 36px; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--text); background: transparent; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 23px; line-height: 1; }
+.chat-emoji-option:hover { background: var(--soft); border-color: var(--border); }
+.chat-emoji-option:focus-visible { background: var(--soft); outline: 2px solid var(--focus); outline-offset: 0; }
+.chat-emoji-note { margin: 9px 3px 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
 @media (max-width: 680px) {
   .chat-sidebar-actions .button { min-height: 36px; font-size: 12px; }
   .chat-member-option { min-height: 40px; }
   .chat-group-receipt-row { flex-wrap: wrap; }
   .chat-group-receipt-row > div { flex: 1 0 100%; padding-inline-start: 45px; }
   .chat-group-dialog .dialog-footer { flex-wrap: wrap; }
+  .chat-composer-row { gap: 7px; }
+  .chat-emoji-trigger { width: 30px; }
 }
 
 

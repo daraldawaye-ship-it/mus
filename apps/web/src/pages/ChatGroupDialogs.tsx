@@ -6,6 +6,7 @@ import type { ChatPage, ChatScope, ChatUser } from "../../../../packages/contrac
 import type { ChatGroup, ChatGroupDetail, ChatGroupUpdateInput } from "../../../../packages/contracts/src/chat-groups";
 import { api, ApiFailure, useScopeGuard } from "../api";
 import { Button, Dialog, Field, Notice, Select } from "../ui";
+import { ChatAvatar } from "./ChatAvatar";
 
 interface GroupContext {
   user: User;
@@ -58,7 +59,8 @@ function readCreationDraft(key: string, userId: number): CreationDraft {
     const value = parsed as Partial<CreationDraft>;
     const members = (Array.isArray(value.members) ? value.members : []).filter(
       (member): member is ChatUser => !!member && validId(member.id) && member.id !== userId && typeof member.name === "string",
-    ).filter((member, index, all) => all.findIndex(other => other.id === member.id) === index).slice(0, 49);
+    ).filter((member, index, all) => all.findIndex(other => other.id === member.id) === index).slice(0, 49)
+      .map(member => ({ id: member.id, name: member.name, avatarUrl: null }));
     const candidate = value.frozen;
     const frozen = candidate && typeof candidate === "object" &&
       typeof candidate.clientGroupId === "string" && /^[a-f0-9-]{36}$/i.test(candidate.clientGroupId) &&
@@ -71,7 +73,7 @@ function readCreationDraft(key: string, userId: number): CreationDraft {
     // A submitted payload is authoritative; display its members even if local labels were lost.
     return {
       name: frozen?.name ?? (typeof value.name === "string" ? value.name.slice(0, 120) : ""),
-      members: frozen ? frozen.memberIds.map(id => members.find(member => member.id === id) ?? { id, name: `مستخدم ${id}` }) : members,
+      members: frozen ? frozen.memberIds.map(id => members.find(member => member.id === id) ?? { id, name: `مستخدم ${id}`, avatarUrl: null }) : members,
       frozen,
       rejected: !!frozen && value.uncertain === false && value.rejected === true,
       // Older persisted frozen requests may already have committed.
@@ -106,6 +108,7 @@ function MemberPicker({ user, scope, companyId, selected, onChange, excludeIds =
   return <div className="chat-member-picker">
     <div className="chat-member-chips" aria-label="الأعضاء المحددون">
       {selected.map(member => <span className="chat-member-chip" key={member.id}>
+        <ChatAvatar name={member.name} avatarUrl={member.avatarUrl} size="tiny" />
         <span>{member.name}</span>
         <Button variant="ghost" size="compact" disabled={disabled} aria-label={`إلغاء اختيار ${member.name}`}
           onClick={() => onChange(selected.filter(other => other.id !== member.id))}><X size={13} /></Button>
@@ -121,6 +124,7 @@ function MemberPicker({ user, scope, companyId, selected, onChange, excludeIds =
           return <label key={member.id} className="chat-member-option">
             <input type="checkbox" checked={checked} disabled={!checked && selected.length >= max}
               onChange={() => onChange(checked ? selected.filter(other => other.id !== member.id) : [...selected, member])} />
+            <ChatAvatar name={member.name} avatarUrl={member.avatarUrl} size="small" />
             <span>{member.name}</span>{checked && <Check size={14} aria-hidden="true" />}
           </label>;
         })}
@@ -152,7 +156,8 @@ function GroupCreateDialog({ user, scope, companyId, open, onClose, onCreated }:
     draftRef.current = next;
     setDraft(next);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
+      // Persist creation identity and labels, without retaining scoped photo URLs.
+      localStorage.setItem(storageKey, JSON.stringify({ ...next, members: next.members.map(({ id, name }) => ({ id, name })) }));
       setStorageFailed(false);
       return true;
     } catch { setStorageFailed(true); return false; }
@@ -340,6 +345,7 @@ function GroupDetailsDialog({ user, scope, companyId, groupId, open, onClose, on
             <h3>أعضاء المجموعة</h3>
             <ul className="chat-group-members">
               {current.members.map(member => <li className="chat-group-member" key={member.id}>
+                <ChatAvatar name={member.name} avatarUrl={member.avatarUrl} size="small" />
                 <div className="chat-group-member-info"><strong>{member.name}{member.id === user.id ? " (أنت)" : ""}</strong>
                   {member.id === current.group.managerId && <span className="muted"><Crown size={13} aria-hidden="true" /> مدير المجموعة</span>}
                   {member.available === false && <small className="text-error">غير متاح للمراسلة</small>}

@@ -43,6 +43,8 @@ import { api, ApiFailure, useScopeGuard } from "../api";
 import { Button, Dialog, Field, Notice, PageHeader } from "../ui";
 import { ChatGroupCreateDialog } from "./ChatGroupDialogs";
 import { GroupChatPanel } from "./GroupChatPanel";
+import { ChatAvatar, ownChatAvatarUrl } from "./ChatAvatar";
+import { ChatEmojiPicker } from "./ChatEmojiPicker";
 
 interface ChatProps {
   scope: ChatScope;
@@ -114,10 +116,6 @@ function queryString(scope: ChatScope, companyId?: number, values: Record<string
     if (value) params.set(key, value);
   });
   return params.toString();
-}
-function Avatar({ peer, small = false }: { peer: ChatUser; small?: boolean }) {
-  const initials = peer.name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("");
-  return <span className={`chat-avatar ${small ? "chat-avatar-small" : ""}`} aria-hidden="true">{initials || "؟"}</span>;
 }
 function Receipt({ message }: { message: ChatMessage }) {
   return (
@@ -260,6 +258,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
     setDirectorySearch("");
     setDirectoryOpen(true);
   };
+  const selectedPeer = peer ? rows.find(row => row.peer.id === peer.id)?.peer ?? peer : null;
   return (
     <div className="chat-page" dir="rtl" data-chat-scope={scope}>
       <PageHeader
@@ -287,7 +286,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
             <h3 className="chat-list-section-title">الرسائل الخاصة</h3>
             {rows.map(row => (
               <button className={`chat-conversation ${peer?.id === row.peer.id ? "chat-conversation-selected" : ""}`} key={row.peer.id} onClick={() => { setPeer(row.peer); setGroup(null); }} aria-label={`فتح محادثة ${row.peer.name}`} aria-current={peer?.id === row.peer.id ? "true" : undefined}>
-                <Avatar peer={row.peer} />
+                <ChatAvatar name={row.peer.name} avatarUrl={row.peer.avatarUrl} />
                 <span className="chat-conversation-copy"><span className="chat-conversation-title"><strong>{row.peer.name}</strong><time dateTime={row.lastMessage?.createdAt ?? row.pending?.createdAt}>{row.lastMessage ? timeFormat.format(new Date(row.lastMessage.createdAt)) : ""}</time></span><span className="chat-conversation-preview">{row.lastMessage?.senderId === user.id && <Check size={12} />}{row.lastMessage?.text ?? row.pending?.text}</span></span>
                 {row.unreadCount > 0 && <span className="chat-unread" aria-label={`${row.unreadCount} رسائل غير مقروءة`}>{row.unreadCount > 99 ? "+99" : row.unreadCount.toLocaleString("ar")}</span>}
               </button>
@@ -297,7 +296,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
           </div>
           <div className="chat-sidebar-footer"><ShieldCheck size={14} /><span>المحادثات خاصة بالمشاركين فيها</span></div>
         </aside>
-        {group ? <GroupChatPanel key={group.id} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : peer ? <ConversationPanel key={peer.id} user={user} scope={scope} companyId={companyId} peer={peer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
+        {group ? <GroupChatPanel key={group.id} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : selectedPeer ? <ConversationPanel key={selectedPeer.id} user={user} scope={scope} companyId={companyId} peer={selectedPeer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
           <section className="chat-welcome" aria-label="اختر محادثة">
             <span className="chat-welcome-icon"><MessageCircle size={38} strokeWidth={1.5} /></span>
             <span className="chat-eyebrow">تواصل أوضح، وعمل أقرب</span>
@@ -313,7 +312,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
         <Field autoFocus label="البحث عن مستخدم" placeholder="اكتب الاسم…" maxLength={100} value={directorySearch} onChange={event => setDirectorySearch(event.target.value)} />
         {directory.error && <Notice tone="error">{errorText(directory.error)}<Button variant="ghost" size="compact" onClick={() => void directory.refetch()}>إعادة المحاولة</Button></Notice>}
         <div className="chat-directory-list" aria-busy={directory.isFetching}>
-          {!directory.error && directory.data?.pages.flatMap(page => page.items).map(person => <button key={person.id} className="chat-directory-user" aria-label={`بدء محادثة مع ${person.name}`} onClick={() => { setPeer(person); setGroup(null); setDirectoryOpen(false); }}><Avatar peer={person} /><strong>{person.name}</strong><MessageCircle size={17} /></button>)}
+          {!directory.error && directory.data?.pages.flatMap(page => page.items).map(person => <button key={person.id} className="chat-directory-user" aria-label={`بدء محادثة مع ${person.name}`} onClick={() => { setPeer(person); setGroup(null); setDirectoryOpen(false); }}><ChatAvatar name={person.name} avatarUrl={person.avatarUrl} /><strong>{person.name}</strong><MessageCircle size={17} /></button>)}
           {!directory.error && !(directory.data?.pages.some(page => page.items.length)) && <div className="chat-sidebar-empty">{directory.isPending ? "جارٍ البحث…" : "لا يوجد مستخدم يطابق البحث"}</div>}
           {directory.hasNextPage && <Button variant="ghost" disabled={directory.isFetchingNextPage} onClick={() => void directory.fetchNextPage()}>عرض المزيد</Button>}
         </div>
@@ -341,6 +340,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
   const firstScroll = useRef(true);
   const olderScroll = useRef<{ height: number; top: number } | null>(null);
   const [newMessages, setNewMessages] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [sendingIds, setSendingIds] = useState<Set<string>>(() => new Set());
   const sendingRef = useRef(new Set<string>());
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({});
@@ -366,6 +366,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
   }, [messages.data, denied]);
   const pending = saved.pending.filter(message => message.peer.id === peer.id && !items.some(item => item.clientMessageId === message.clientMessageId));
   const draft = saved.drafts[String(peer.id)] ?? "";
+  const ownAvatarUrl = ownChatAvatarUrl(user, scope, companyId);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const latestId = items.at(-1)?.id;
@@ -431,7 +432,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
   }, [items, messages.dataUpdatedAt, messages.error, denied, flushReceipts, user.id]);
   useEffect(() => {
     const element = feed.current;
-    if (!element || !active || obscured || messages.error || denied || !window.IntersectionObserver) return;
+    if (!element || !active || obscured || emojiOpen || messages.error || denied || !window.IntersectionObserver) return;
     const observer = new IntersectionObserver(entries => {
       if (document.visibilityState !== "visible" || !document.hasFocus()) return;
       entries.forEach(entry => {
@@ -448,7 +449,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
     }, { root: element, threshold: [0, 0.5, 1] });
     element.querySelectorAll('[data-chat-unread="true"]').forEach(node => observer.observe(node));
     return () => observer.disconnect();
-  }, [items, active, obscured, messages.error, denied, flushReceipts]);
+  }, [items, active, obscured, emojiOpen, messages.error, denied, flushReceipts]);
 
   const sendPending = async (message: PendingMessage) => {
     if (sendingRef.current.has(message.clientMessageId) || denied) return;
@@ -493,7 +494,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
     <section className="chat-thread" aria-label={`المحادثة مع ${peer.name}`}>
       <header className="chat-thread-heading">
         <Button variant="ghost" className="chat-mobile-back" size="compact" onClick={onBack} aria-label="العودة إلى المحادثات"><ArrowRight size={20} /></Button>
-        <Avatar peer={peer} small />
+        <ChatAvatar name={peer.name} avatarUrl={peer.avatarUrl} size="small" />
         <div className="chat-peer-heading"><h2>{peer.name}</h2><small>{scope === "global" ? "محادثة خاصة · مستخدم تجارة" : "محادثة خاصة · داخل الشركة"}</small></div>
         <ShieldCheck size={17} className="chat-thread-shield" aria-label="محادثة خاصة بين الطرفين" />
       </header>
@@ -518,7 +519,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
             const showDay = day !== previousDay;
             previousDay = day;
             const own = message.senderId === user.id;
-            return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-message-id={message.id} data-chat-unread={!own && !message.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : peer.name}: ${message.text}`}><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <Receipt message={message} />}</div></article></div>;
+            return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-message-id={message.id} data-chat-unread={!own && !message.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : peer.name}: ${message.text}`}><div className="chat-message-sender"><ChatAvatar name={own ? user.displayName || user.name : peer.name} avatarUrl={own ? ownAvatarUrl : peer.avatarUrl} size="tiny" /><strong>{own ? "أنت" : peer.name}</strong></div><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <Receipt message={message} />}</div></article></div>;
           })}
           {!denied && pending.map(message => <article key={message.clientMessageId} className="chat-message chat-message-own chat-message-pending" data-chat-pending-id={message.clientMessageId}><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time><span className="chat-receipt">{sendingIds.has(message.clientMessageId) ? <><Clock3 size={13} />جارٍ الإرسال…</> : <><CircleAlert size={13} />لم يتأكد الإرسال</>}</span></div>{!sendingIds.has(message.clientMessageId) && <div className="chat-send-error"><span>{sendErrors[message.clientMessageId] || "يمكنك إعادة المحاولة بنفس الرسالة."}</span><Button variant="ghost" size="compact" aria-label="إعادة إرسال الرسالة" onClick={() => void sendPending(message)}><RefreshCw size={13} />إعادة الإرسال</Button></div>}</article>)}
         </div>
@@ -531,6 +532,9 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
           updateSaved(previous => ({ ...previous, drafts: { ...previous.drafts, [peer.id]: value } }));
         }} onKeyDown={event => {
           if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); }
+        }} /><ChatEmojiPicker textareaRef={composer} value={draft} disabled={denied} obscured={obscured} onOpenChange={setEmojiOpen} onChange={text => {
+          draftRef.current = text;
+          updateSaved(previous => ({ ...previous, drafts: { ...previous.drafts, [peer.id]: text } }));
         }} /><Button type="submit" className="chat-send-button" disabled={!draft.trim() || denied || messages.isPending} aria-label="إرسال الرسالة" title="إرسال الرسالة"><Send size={19} /></Button></div>
         <div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span>{draft.length > 3_500 && <span>{draft.length.toLocaleString("ar")} / ٤٬٠٠٠</span>}</div>
       </form>

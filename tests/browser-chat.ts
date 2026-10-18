@@ -11,6 +11,8 @@ import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import type { Company, SessionResponse, User } from "../packages/contracts/src/index.ts";
 import type { ChatMessage, ChatPage } from "../packages/contracts/src/chat.ts";
+import { CHAT_AVATAR_DATA_URL } from "./chat-avatar-fixture.ts";
+import { assertChatAvatarFallback, assertLoadedChatAvatar, composeChatEmoji } from "./chat-browser-controls.ts";
 
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const schema = `chat_browser_${randomUUID().replaceAll("-", "")}`;
@@ -53,9 +55,9 @@ async function beginConversation(page: Page, name: string) {
   await dialog.getByRole("button", { name: `بدء محادثة مع ${name}`, exact: true }).click();
   await page.getByRole("textbox", { name: "نص الرسالة", exact: true }).waitFor();
 }
-async function typeAndSend(page: Page, text: string) {
+async function typeAndSend(page: Page, text: string, composed = false) {
   const composer = page.getByRole("textbox", { name: "نص الرسالة", exact: true });
-  await composer.fill(text);
+  if (composed) assert.equal(await composer.inputValue(), text); else await composer.fill(text);
   await page.getByRole("button", { name: "إرسال الرسالة", exact: true }).click();
   const message = page.locator("[data-chat-message-id]").filter({ hasText: text });
   await message.waitFor({ state: "visible" });
@@ -96,6 +98,10 @@ try {
   }
   const alice = await register(aliceContext, "سارة الاختبار", "alice@chat-browser.test");
   const bob = await register(bobContext, "خالد الاختبار", "bob@chat-browser.test");
+  const photo = await call<{ fullUrl: string }>(alice, "/media", "POST", { purpose: "avatar", companyId: null, original: CHAT_AVATAR_DATA_URL, thumbnail: CHAT_AVATAR_DATA_URL });
+  alice.user = (await call<{ user: User }>(alice, "/profile", "PATCH", {
+    name: alice.user.name, displayName: alice.user.displayName, email: alice.user.email, phone: alice.user.phone, image: photo.fullUrl,
+  })).user;
   await provisionOwner(runtime.pool, { name: "مالك الاختبار", displayName: "مالك الاختبار", email: "owner@chat-browser.test", password });
   ownerContext = await request.newContext({ baseURL: origin });
   const owner: Actor = { context: ownerContext, session: { user: null, csrf: null } };
@@ -112,8 +118,10 @@ try {
   await alicePage.getByRole("heading", { name: "دردشة تجارة", exact: true }).waitFor();
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   await beginConversation(alicePage, bob.user.name);
-  const personalText = "رسالة شخصية للتأكد من الاستلام والعرض";
-  const personalMessage = await typeAndSend(alicePage, personalText);
+  await assertChatAvatarFallback(alicePage.locator(".chat-thread-heading"));
+  const personalText = await composeChatEmoji(alicePage, "نص الرسالة", "رسالة شخصية للتأكد من الاستلام والعرض", true, `${evidence}/emoji-picker-desktop-direct.png`);
+  const personalMessage = await typeAndSend(alicePage, personalText, true);
+  await assertLoadedChatAvatar(personalMessage, alice.user.id);
   // Fetching messages alone does not acknowledge delivery or reading.
   const received = await call<ChatPage<ChatMessage>>(bob, `/chat/conversations/${alice.user.id}/messages?scope=global`);
   const receivedMessage = received.items.find(message => message.text === personalText);
@@ -124,6 +132,8 @@ try {
     response.status() === 200 && response.request().postDataJSON()?.deliveredMessageIds?.includes(receivedMessage.id));
   await bobPage.goto("/chat");
   await deliveryResponse;
+  const aliceConversation = bobPage.getByRole("button", { name: `فتح محادثة ${alice.user.name}`, exact: true });
+  await assertLoadedChatAvatar(aliceConversation, alice.user.id);
   await alicePage.bringToFront();
   await personalMessage.getByText("تم الاستلام", { exact: true }).waitFor({ state: "visible" });
   assert.equal(await personalMessage.getByText("تم العرض", { exact: true }).count(), 0);
@@ -136,6 +146,8 @@ try {
   await bobPage.getByRole("button", { name: `فتح محادثة ${alice.user.name}`, exact: true }).click();
   await bobPage.locator(`[data-chat-message-id="${receivedMessage.id}"]`).waitFor({ state: "visible" });
   await readResponse;
+  await assertLoadedChatAvatar(bobPage.locator(".chat-thread-heading"), alice.user.id);
+  await assertLoadedChatAvatar(bobPage.locator(`[data-chat-message-id="${receivedMessage.id}"]`), alice.user.id);
   await alicePage.bringToFront();
   await personalMessage.getByText("تم العرض", { exact: true }).waitFor({ state: "visible" });
   const readback = await call<ChatPage<ChatMessage>>(alice, `/chat/conversations/${bob.user.id}/messages?scope=global`);
@@ -153,8 +165,8 @@ try {
   await alicePage.locator('html[data-theme="light"]').waitFor();
   assert.equal(await alicePage.getByText(personalText, { exact: true }).count(), 0, "Personal messages must not appear in the company scope");
   await beginConversation(alicePage, bob.user.name);
-  const internalText = "رسالة خاصة بالشركة فقط";
-  await typeAndSend(alicePage, internalText);
+  const internalText = await composeChatEmoji(alicePage, "نص الرسالة", "رسالة خاصة بالشركة فقط", false, `${evidence}/emoji-picker-mobile-direct.png`);
+  await typeAndSend(alicePage, internalText, true);
   await assertFitsMobile(alicePage);
   await alicePage.screenshot({ path: `${evidence}/mobile-light-company.png`, fullPage: true });
   await alicePage.goto("/chat");
@@ -163,6 +175,12 @@ try {
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   await alicePage.locator(`[data-chat-message-id="${receivedMessage.id}"]`).waitFor({ state: "visible" });
   assert.equal(await alicePage.getByText(internalText, { exact: true }).count(), 0, "Company messages must not bleed into personal chat after navigation");
+  // A valid scoped photo URL whose image request fails must also fall back.
+  await bobPage.route(`**/api/chat/avatars/${alice.user.id}?*`, route => route.fulfill({ status: 404, body: "" }));
+  await bobPage.reload();
+  await bobPage.getByRole("button", { name: `فتح محادثة ${alice.user.name}`, exact: true }).click();
+  await assertChatAvatarFallback(bobPage.locator(".chat-thread-heading"));
+  await bobPage.screenshot({ path: `${evidence}/avatar-fallback.png`, fullPage: true });
   assert.deepEqual(pageErrors, []);
   console.log("PASS mobile composer, conversation navigation, isolated company scope and per-scope light/dark theme");
 } catch (error) {

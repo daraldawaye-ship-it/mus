@@ -6,7 +6,7 @@ import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import {
   acknowledgeChatMessages, chatConversations, chatDirectory, chatMessages,
-  sendChatMessage,
+  sendChatMessage, readChatAvatar,
 } from "./services/chat.ts";
 
 const numericQuery = z.string().regex(/^[1-9]\d*$/).transform(Number)
@@ -21,9 +21,26 @@ const listSchema = z.object({
 }).strict().refine(value => value.scope === "company"
   ? value.companyId !== undefined : value.companyId === undefined,
 "حدد الشركة لدردشة الشركة فقط");
+const avatarQuerySchema = z.object({
+  scope: z.enum(["global", "company"]), companyId: numericQuery.optional(),
+  v: z.uuid().transform(value => value.toLowerCase()),
+}).strict().refine(value => value.scope === "company"
+  ? value.companyId !== undefined : value.companyId === undefined,
+"حدد الشركة لدردشة الشركة فقط");
 
 export function chatRoutes(pool: Pool): Router {
   const router = Router();
+  router.get("/chat/avatars/:userId", handler(async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const query = parse(avatarQuerySchema, req.query), userId = id(req.params.userId);
+    const asset = await transaction(pool, async client => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      return readChatAvatar(client, actor(req), query, userId, query.v);
+    });
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    res.type(asset.thumbnail_mime).send(asset.thumbnail_bytes);
+  }));
   router.get("/chat/directory", handler(async (req, res) => {
     const query = parse(listSchema, req.query);
     const result = await transaction(pool, async client => {

@@ -14,6 +14,7 @@ import { pagePermissionAliases, permissionRuleEffects } from "./permission-rules
 import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import type { ChatListQuery } from "./chat.ts";
+import { chatAvatarUrls } from "./chat-avatars.ts";
 
 interface Access { user: User; companyId: number | null; scopeId: number; }
 async function access(client: PoolClient, actor: User, context: ChatContext,
@@ -83,10 +84,12 @@ async function messageDTOs(client: PoolClient, rows: QueryResultRow[]): Promise<
   const snapshots = (await client.query(
     `SELECT * FROM chat_group_receipts WHERE message_id=ANY($1::integer[]) ORDER BY message_id,user_id`, [rows.map(row => row.id)],
   )).rows;
+  const avatars = await chatAvatarUrls(client, rows[0]!.scope_id === 0 ? null : rows[0]!.scope_id,
+    [...rows.map(row => row.sender_id), ...snapshots.map(row => row.user_id)]);
   const byMessage = new Map<number, ChatGroupReceipt[]>();
   for (const row of snapshots) {
     const values = byMessage.get(row.message_id) ?? [];
-    values.push({ userId: row.user_id, name: row.recipient_name, deliveredAt: iso(row.delivered_at), readAt: iso(row.read_at) });
+    values.push({ userId: row.user_id, name: row.recipient_name, avatarUrl: avatars.get(row.user_id) ?? null, deliveredAt: iso(row.delivered_at), readAt: iso(row.read_at) });
     byMessage.set(row.message_id, values);
   }
   return rows.map(row => {
@@ -97,7 +100,7 @@ async function messageDTOs(client: PoolClient, rows: QueryResultRow[]): Promise<
     const latest = (values: string[]) => values.reduce((last, value) => value > last ? value : last);
     return {
       id: row.id, groupId: row.group_id, clientMessageId: row.client_message_id,
-      senderId: row.sender_id, senderName: row.sender_name, text: row.text,
+      senderId: row.sender_id, senderName: row.sender_name, senderAvatarUrl: avatars.get(row.sender_id) ?? null, text: row.text,
       createdAt: row.created_at.toISOString(), membershipRevision: row.membership_revision,
       recipientCount, deliveredCount: delivered.length, readCount: read.length,
       deliveredAt: recipientCount > 0 && delivered.length === recipientCount ? latest(delivered.map(receipt => receipt.deliveredAt!)) : null,
@@ -134,9 +137,11 @@ async function groupDTOs(client: PoolClient, rows: QueryResultRow[]): Promise<Ch
   }));
 }
 async function detail(client: PoolClient, row: QueryResultRow): Promise<ChatGroupDetail> {
+  const members = await currentMembers(client, row.id);
+  const avatars = await chatAvatarUrls(client, row.company_id, members.map(member => member.user_id));
   return {
     group: (await groupDTOs(client, [row]))[0]!,
-    members: (await currentMembers(client, row.id)).map(member => ({ id: member.user_id, name: member.display_name, joinedAt: member.joined_at.toISOString(), available: member.available })),
+    members: members.map(member => ({ id: member.user_id, name: member.display_name, avatarUrl: avatars.get(member.user_id) ?? null, joinedAt: member.joined_at.toISOString(), available: member.available })),
   };
 }
 async function creationConfirmation(client: PoolClient, row: QueryResultRow): Promise<ChatGroupDetail> {
