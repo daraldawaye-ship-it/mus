@@ -3561,3 +3561,112 @@ test("electronic wallet receipt register posts exact, partial, zero and negative
   assert.equal(recorded.rows[0].n,5);
   await assertBalanced(f,s.company.id);
 });
+
+
+test("cashier optional receipt voucher remains atomic, signed, scoped and idempotent", async t => {
+  const f=await fixture(t),s=await setup(f,"Cashier modal companion vouchers");
+  const seller=await f.member(s.company.id,
+    ["commerce.manage","commerce.view","finance.view","finance.post"],1121);
+  const cashier=await f.member(s.company.id,
+    ["finance.view","finance.post"],1122);
+  for(const member of [seller,cashier]) {
+    await f.owner.ok("POST",`${s.path}/employees/${member.employee.id}/accounts`,
+      {createSalesCashbox:true});
+  }
+  const accounts=async(employeeId:number)=>(await f.owner.ok<{
+    accounts:{links:{kind:string;accountId:number}[]}
+  }>("GET",`${s.path}/employees/${employeeId}/accounts`)).accounts.links;
+  const cashierCash=(await accounts(cashier.employee.id))
+    .find(link=>link.kind==="sales_cash")!.accountId;
+  const account=(await f.owner.ok<{account:Account}>(
+    "POST",`${s.path}/accounts`,{
+      code:"1120009911",name:"Counterparty from cashier popup",
+      parentId:null,kind:"posting",category:"asset",
+      normalSide:"debit",cashOrBank:false,
+    },201)).account;
+  const rows=await cashier.client.ok<{items:{id:number;name:string}[]}>(
+    "GET",`${s.path}/receipt-counterpart-accounts?q=Counterparty`);
+  assert(rows.items.some(x=>x.id===account.id));
+  const transfer=async(kind:"pouch"|"electronic"|"close",amount:string)=>{
+    const saved=await seller.client.ok<{operationId:number}>(
+      "POST",`${s.path}/sales/cashbox-operations`,{
+        kind,amount,notes:"مبلغ أعطي للجهة",idempotencyKey:randomUUID(),
+      },201);
+    return saved.operationId;
+  };
+  const endpoint=`${s.path}/pouch-receipts`;
+  const voucher=(accountId=account.id)=>({
+    counterpartyAccountId:accountId,
+    notes:"تسليم المبلغ للحساب المقابل",
+    receiptNumber:"REC-321",
+  });
+  const receive=async(id:number,key:string,v:{counterpartyAccountId:number;notes:string;receiptNumber:string}|undefined,
+    path=endpoint)=>{
+    const payload={sourceOperationId:id,mode:"exact",notes:"تسوية التحويل",
+      idempotencyKey:key,...(v?{voucher:v}:{})};
+    return cashier.client.ok<{receipt:{documentId:number;
+      voucherDocumentId:number|null;received:string}}>(
+      "POST",path,payload,201);
+  };
+  const positive=await transfer("pouch","250");
+  const saved=await receive(positive,randomUUID(),voucher());
+  const savedVoucher=await f.pool.query(
+    "SELECT kind,status,cash_account_id,supplier_receipt_number FROM financial_documents WHERE company_id=$1 AND id=$2",
+    [s.company.id,saved.receipt.voucherDocumentId],
+  );
+  assert.equal(savedVoucher.rows[0].kind,"payment");
+  assert.equal(savedVoucher.rows[0].status,"posted");
+  assert.equal(savedVoucher.rows[0].cash_account_id,cashierCash);
+  assert.equal(savedVoucher.rows[0].supplier_receipt_number,"REC-321");
+  const originals=await f.pool.query(
+    "SELECT kind,status FROM financial_documents WHERE company_id=$1 AND id=$2",
+    [s.company.id,saved.receipt.documentId],
+  );
+  assert.equal(originals.rows[0].kind,"journal");
+  assert.equal(originals.rows[0].status,"posted");
+  const signed=await transfer("pouch","-80");
+  const key=randomUUID();
+  const negative=await receive(signed,key,voucher());
+  assert.deepEqual(await receive(signed,key,voucher()),negative);
+  const negativeVoucher=await f.pool.query(
+    "SELECT kind,status,description FROM financial_documents WHERE company_id=$1 AND id=$2",
+    [s.company.id,negative.receipt.voucherDocumentId],
+  );
+  assert.equal(negativeVoucher.rows[0].kind,"receipt");
+  assert.match(negativeVoucher.rows[0].description,/REC-321/);
+  const noVoucherId=await transfer("pouch","75");
+  const noVoucher=await receive(noVoucherId,randomUUID(),undefined);
+  assert.equal(noVoucher.receipt.voucherDocumentId,null);
+  // An invalid company-scoped account must roll back BOTH the voucher and
+  // the receipt journal, leaving the original operation pending.
+  const invalidId=await transfer("pouch","16");
+  assert.equal((await cashier.client.request("POST",endpoint,{
+    sourceOperationId:invalidId,mode:"exact",notes:"rollback",
+    idempotencyKey:randomUUID(),voucher:voucher(999999999),
+  })).status,400);
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::int AS n FROM employee_pouch_receipts WHERE company_id=$1 AND source_operation_id=$2",
+    [s.company.id,invalidId],
+  )).rows[0].n,0);
+  const repaired=await receive(invalidId,randomUUID(),voucher());
+  assert(repaired.receipt.voucherDocumentId);
+  const wallet=(await f.owner.ok<{account:Account}>(
+    "POST",`${s.path}/accounts`,{
+      code:"1112999178",name:"Receipt companion wallet",
+      parentId:null,kind:"posting",category:"asset",
+      normalSide:"debit",cashOrBank:false,
+    },201)).account;
+  await f.owner.ok("PUT",`${s.path}/account-links/electronicWallet`,{
+    accountId:wallet.id,
+  });
+  const electronic=await transfer("electronic","-44");
+  const digital=await receive(electronic,randomUUID(),voucher(),
+    `${s.path}/electronic-receipts`);
+  const digitalDocument=await f.pool.query(
+    "SELECT kind,status FROM financial_documents WHERE company_id=$1 AND id=$2",
+    [s.company.id,digital.receipt.voucherDocumentId],
+  );
+  assert.deepEqual(digitalDocument.rows.map(x=>x.kind),["receipt"]);
+  assert.equal(digitalDocument.rows[0].status,"posted");
+  await assertBalanced(f,s.company.id);
+});
