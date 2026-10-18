@@ -19,10 +19,18 @@ type MyCashboxLedger = Page<AccountLedgerLine> & {
   totals: AccountLedgerTotals | null;
 };
 
+const todayInAden = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (key: string) => parts.find(value => value.type === key)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
 const balanceText = (amount: string) =>
   amount.startsWith("-")
-    ? `${formatMoney(amount.slice(1))} دائن`
-    : `${formatMoney(amount)} مدين`;
+    ? <><bdi>{formatMoney(amount.slice(1))}</bdi>{" "}<span className="text-error">دائن</span></>
+    : amount === "0" ? <bdi>0</bdi>
+      : <><bdi>{formatMoney(amount)}</bdi>{" "}مدين</>;
 
 export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
@@ -31,13 +39,16 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
     context.general ||
     context.permissions.includes("finance.own-cashbox.view");
   const [params, setParams] = useSearchParams();
+  const today = todayInAden();
+  const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
+  const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize"))
-    : 20;
+    : 50;
   const query = new URLSearchParams();
-  for (const field of ["dateFrom", "dateTo"])
-    if (params.get(field)) query.set(field, params.get(field)!);
+  query.set("dateFrom", dateFrom);
+  query.set("dateTo", dateTo);
   query.set("page", String(page));
   query.set("pageSize", String(pageSize));
 
@@ -50,46 +61,39 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
       ),
     enabled: Boolean(user && allowed),
   });
-  const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(
-    () => [
-      { accessorKey: "documentDate", header: "التاريخ", enableSorting: false },
-      { accessorKey: "documentNumber", header: "المستند", enableSorting: false },
-      {
-        accessorKey: "kind",
-        header: "النوع",
-        enableSorting: false,
-        cell: ({ row }) =>
-          row.original.reversesDocumentId
-            ? "قيد عكسي"
-            : documentKindLabels[row.original.kind],
-      },
-      { accessorKey: "description", header: "البيان", enableSorting: false },
-      { accessorKey: "currencyCode", header: "عملة المستند", enableSorting: false },
-      {
-        accessorKey: "baseDebit",
-        header: "مدين",
-        enableSorting: false,
-        cell: ({ row }) => formatMoney(row.original.baseDebit),
-      },
-      {
-        accessorKey: "baseCredit",
-        header: "دائن",
-        enableSorting: false,
-        cell: ({ row }) => formatMoney(row.original.baseCredit),
-      },
-      {
-        accessorKey: "runningBalance",
-        header: "الرصيد الجاري",
-        enableSorting: false,
-        cell: ({ row }) => <bdi>{balanceText(row.original.runningBalance)}</bdi>,
-      },
-    ],
-    [],
-  );
+  const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(() => [
+    {
+      accessorKey: "runningBalance", header: "الرصيد", enableSorting: false,
+      cell: ({ row }) => <span>{balanceText(row.original.runningBalance)}</span>,
+    },
+    {
+      accessorKey: "baseDebit", header: "مدين", enableSorting: false,
+      cell: ({ row }) => <bdi>{formatMoney(row.original.baseDebit)}</bdi>,
+    },
+    {
+      accessorKey: "baseCredit", header: "دائن", enableSorting: false,
+      cell: ({ row }) => <bdi>{formatMoney(row.original.baseCredit)}</bdi>,
+    },
+    {
+      accessorKey: "counterpartAccounts", header: "الحساب المقابل", enableSorting: false,
+      cell: ({ row }) => <span>{row.original.counterpartAccounts || "—"}</span>,
+    },
+    { accessorKey: "description", header: "البيان", enableSorting: false },
+    {
+      accessorKey: "kind", header: "النوع", enableSorting: false,
+      cell: ({ row }) => row.original.reversesDocumentId
+        ? "قيد عكسي" : documentKindLabels[row.original.kind],
+    },
+    { accessorKey: "documentDate", header: "التاريخ", enableSorting: false },
+    { accessorKey: "documentNumber", header: "المستند", enableSorting: false },
+    { accessorKey: "currencyCode", header: "العملة", enableSorting: false },
+  ], []);
   const update = (field: string, value: string | null) =>
     setParams((current) => {
       const next = new URLSearchParams(current);
-      if (value) next.set(field, value);
+      // Clearing a date explicitly means no bound, not a reset to today.
+      if (field === "dateFrom" || field === "dateTo") next.set(field, value ?? "");
+      else if (value) next.set(field, value);
       else next.delete(field);
       if (field !== "page") next.delete("page");
       return next;
@@ -108,13 +112,13 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           <Field
             label="من تاريخ"
             type="date"
-            value={params.get("dateFrom") ?? ""}
+            value={dateFrom}
             onChange={(event) => update("dateFrom", event.target.value)}
           />
           <Field
             label="إلى تاريخ"
             type="date"
-            value={params.get("dateTo") ?? ""}
+            value={dateTo}
             onChange={(event) => update("dateTo", event.target.value)}
           />
         </div>
