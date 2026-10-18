@@ -69,11 +69,15 @@ export function pledgeRoutes(pool: Pool): Router {
         [companyId,input.idempotencyKey]
       );
       if (existing.rows[0]) {
-        if (JSON.stringify(existing.rows[0].request_payload) !== JSON.stringify(payload))
+        if (Object.entries(payload).some(([key,value]) => String(existing.rows[0].request_payload[key]) !== String(value)))
           throw new HttpError(409,"idempotency_conflict","مفتاح الطلب مستخدم لبيانات مختلفة");
         const account = await client.query(`${accountSelect} WHERE a.company_id=$1 AND a.id=$2`,
           [companyId,existing.rows[0].account_id]);
-        return {account:accountDTO(account.rows[0]),awardedPoints:50,replayed:true};
+        const reward = await client.query(
+          "SELECT 1 FROM employee_wallet_entries WHERE company_id=$1 AND pledge_account_id=$2 LIMIT 1",
+          [companyId,existing.rows[0].account_id]
+        );
+        return {account:accountDTO(account.rows[0]),awardedPoints:reward.rowCount?50:0,replayed:true};
       }
       const parent = await client.query(
         "SELECT id FROM accounts WHERE company_id=$1 AND code='1120000000' AND kind='group' AND category='asset' AND active=true",
