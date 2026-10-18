@@ -340,6 +340,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       </div>
       <Card title="إدارة الشركة">
         <div className="form-actions">
+          <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
           {moduleAccess(context, "accounts") && <Link className="button button-secondary" to={`/companies/${company.id}/accounts`}>دليل الحسابات</Link>}
           {moduleAccess(context, "currencies") && <>
             <Link className="button button-secondary" to={`/companies/${company.id}/currencies`}>العملات</Link>
@@ -1639,6 +1640,9 @@ export function CompanySettingsPage({ context }: { context: CompanyContext }) {
         title="بيانات الشركة"
         description="تعديل الاسم ومعلومات التواصل والعنوان."
       />
+      <div className="form-actions">
+        <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>فتح صفحة ترويسة الشركة للطباعة</Link>
+      </div>
       <Card title="المعلومات الأساسية">
         <form onSubmit={submit} className="form-stack">
           {error && <Notice tone="error">{error}</Notice>}
