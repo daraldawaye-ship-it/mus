@@ -138,7 +138,7 @@ export function pledgeRoutes(pool: Pool): Router {
       const account = await client.query(
         `${accountSelect} WHERE a.company_id=$1 AND a.id=$2`,[companyId,accountId]
       );
-      await audit(client,user,"pledge.create","account",accountId,null,
+      await audit(client,user,"account.create","pledge-account",accountId,null,
         {account:accountDTO(account.rows[0]),pledge:payload,awardedPoints},companyId);
       return {account:accountDTO(account.rows[0]),awardedPoints,replayed:false};
     });
