@@ -40,7 +40,7 @@ export type ChatSendInput = z.infer<typeof chatSendSchema>;
 export type ChatReceiptInput = z.infer<typeof chatReceiptSchema>;
 
 /** Deliberately excludes private contact and administration fields. */
-export interface ChatUser { id: number; name: string; }
+export interface ChatUser { id: number; name: string; avatarUrl: string | null; }
 export interface ChatMessage {
   id: number;
   clientMessageId: string;

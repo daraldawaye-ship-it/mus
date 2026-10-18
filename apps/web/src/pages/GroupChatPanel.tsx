@@ -7,6 +7,8 @@ import type { ChatGroup, ChatGroupMember, ChatGroupMessage } from "../../../../p
 import { api, ApiFailure, useScopeGuard } from "../api";
 import { Button, Dialog, Notice } from "../ui";
 import { ChatGroupDetailsDialog } from "./ChatGroupDialogs";
+import { ChatAvatar } from "./ChatAvatar";
+import { ChatEmojiPicker } from "./ChatEmojiPicker";
 
 interface GroupProps { user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
 interface GroupDetail { group: ChatGroup; members: ChatGroupMember[]; }
@@ -47,9 +49,6 @@ function readLocal(key: string): GroupLocalState {
       ),
     };
   } catch { return emptyLocal(); }
-}
-function PersonAvatar({ name }: { name: string }) {
-  return <span className="chat-avatar chat-avatar-small" aria-hidden="true">{name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("") || "؟"}</span>;
 }
 
 export function GroupChatPanel(props: GroupProps) {
@@ -94,6 +93,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
   const firstScroll = useRef(true);
   const olderScroll = useRef<{ height: number; top: number } | null>(null);
   const [newMessages, setNewMessages] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [receiptMessageId, setReceiptMessageId] = useState<number | null>(null);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [restorePending, setRestorePending] = useState<PendingGroupMessage | null>(null);
@@ -155,7 +155,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
   }, [items, messages.dataUpdatedAt, messages.error, inaccessible, flushReceipts, user.id]);
   useEffect(() => {
     const element = feed.current;
-    if (!element || !active || obscured || selectedReceipt || audienceOpen || restorePending || messages.error || inaccessible || !window.IntersectionObserver) return;
+    if (!element || !active || obscured || emojiOpen || selectedReceipt || audienceOpen || restorePending || messages.error || inaccessible || !window.IntersectionObserver) return;
     const observer = new IntersectionObserver(entries => {
       if (document.visibilityState !== "visible" || !document.hasFocus()) return;
       entries.forEach(entry => {
@@ -169,7 +169,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
     }, { root: element, threshold: [0, 0.5, 1] });
     element.querySelectorAll('[data-chat-group-unread="true"]').forEach(node => observer.observe(node));
     return () => observer.disconnect();
-  }, [items, active, obscured, selectedReceipt, audienceOpen, restorePending, messages.error, inaccessible, flushReceipts]);
+  }, [items, active, obscured, emojiOpen, selectedReceipt, audienceOpen, restorePending, messages.error, inaccessible, flushReceipts]);
   const sendPending = async (message: PendingGroupMessage) => {
     if (sendingRef.current.has(message.clientMessageId) || inaccessible) return;
     try { localStorage.setItem(storageKey, JSON.stringify(localRef.current)); }
@@ -224,7 +224,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
         const day = dayFormat.format(new Date(message.createdAt)); const showDay = day !== previousDay; previousDay = day;
         const own = message.senderId === user.id; const ownReceipt = message.receipts.find(row => row.userId === user.id);
         return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message chat-group-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-group-message-id={message.id} data-chat-group-unread={ownReceipt && !ownReceipt.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : message.senderName}: ${message.text}`}>
-          {!own && <div className="chat-group-sender"><PersonAvatar name={message.senderName} /><strong>{message.senderName}</strong></div>}
+          <div className="chat-group-sender"><ChatAvatar name={message.senderName} avatarUrl={message.senderAvatarUrl} size="tiny" /><strong>{own ? "أنت" : message.senderName}</strong></div>
           <p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <span className="chat-receipt">تم الإرسال</span>}</div>
           {own && <button className={`chat-group-receipt-button ${message.recipientCount > 0 && message.readCount === message.recipientCount ? "chat-receipt-read" : ""}`} aria-label="تفاصيل استلام الرسالة وعرضها" onClick={() => setReceiptMessageId(message.id)}><CheckCheck size={14} /><span>تم الاستلام {message.deliveredCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span><span>تم العرض {message.readCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span></button>}
         </article></div>;
@@ -237,11 +237,11 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
         ...previous,
         draft: {
           text,
-          membershipRevision: text ? previous.draft.membershipRevision ?? group.membershipRevision : null,
+          membershipRevision: text ? previous.draft.text ? previous.draft.membershipRevision : group.membershipRevision : null,
         },
       }));
-    }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }} /><Button type="submit" className="chat-send-button" disabled={!local.draft.text.trim() || inaccessible || messages.isPending} aria-label="إرسال رسالة المجموعة" title="إرسال رسالة المجموعة"><Send size={19} /></Button></div><div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span><span>إلى أعضاء المجموعة الحاليين</span></div></form>
-    <Dialog open={!!selectedReceipt} onClose={() => setReceiptMessageId(null)} title="تفاصيل استلام الرسالة وعرضها" className="chat-group-dialog"><p className="muted chat-group-receipt-hint">المستلمون المثبتون عند إرسال هذه الرسالة؛ مغادرة المجموعة لا تغيّر عددهم.</p><div className="chat-group-receipt-list">{selectedReceipt?.receipts.map(receipt => <div key={receipt.userId} className="chat-group-receipt-row"><PersonAvatar name={receipt.name} /><strong>{receipt.name}</strong><div><span>{receipt.deliveredAt ? `تم الاستلام · ${timeFormat.format(new Date(receipt.deliveredAt))}` : "لم يُؤكد الاستلام"}</span><span className={receipt.readAt ? "chat-receipt-read" : "muted"}>{receipt.readAt ? `تم العرض · ${timeFormat.format(new Date(receipt.readAt))}` : "لم يُؤكد العرض"}</span></div></div>)}{selectedReceipt?.recipientCount === 0 && <p className="muted">لا يوجد مستلم آخر لهذه الرسالة.</p>}</div></Dialog>
+    }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }} /><ChatEmojiPicker textareaRef={composer} value={local.draft.text} disabled={inaccessible} obscured={obscured || !!selectedReceipt || audienceOpen || !!restorePending} onOpenChange={setEmojiOpen} onChange={text => updateLocal(previous => ({ ...previous, draft: { text, membershipRevision: text ? previous.draft.text ? previous.draft.membershipRevision : group.membershipRevision : null } }))} /><Button type="submit" className="chat-send-button" disabled={!local.draft.text.trim() || inaccessible || messages.isPending} aria-label="إرسال رسالة المجموعة" title="إرسال رسالة المجموعة"><Send size={19} /></Button></div><div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span><span>إلى أعضاء المجموعة الحاليين</span></div></form>
+    <Dialog open={!!selectedReceipt} onClose={() => setReceiptMessageId(null)} title="تفاصيل استلام الرسالة وعرضها" className="chat-group-dialog"><p className="muted chat-group-receipt-hint">المستلمون المثبتون عند إرسال هذه الرسالة؛ مغادرة المجموعة لا تغيّر عددهم.</p><div className="chat-group-receipt-list">{selectedReceipt?.receipts.map(receipt => <div key={receipt.userId} className="chat-group-receipt-row"><ChatAvatar name={receipt.name} avatarUrl={receipt.avatarUrl} size="small" /><strong>{receipt.name}</strong><div><span>{receipt.deliveredAt ? `تم الاستلام · ${timeFormat.format(new Date(receipt.deliveredAt))}` : "لم يُؤكد الاستلام"}</span><span className={receipt.readAt ? "chat-receipt-read" : "muted"}>{receipt.readAt ? `تم العرض · ${timeFormat.format(new Date(receipt.readAt))}` : "لم يُؤكد العرض"}</span></div></div>)}{selectedReceipt?.recipientCount === 0 && <p className="muted">لا يوجد مستلم آخر لهذه الرسالة.</p>}</div></Dialog>
     <Dialog open={audienceOpen} onClose={() => setAudienceOpen(false)} title="مراجعة أعضاء الرسالة" footer={<><Button variant="secondary" onClick={() => setAudienceOpen(false)}>رجوع</Button><Button onClick={() => { updateLocal(previous => ({ ...previous, draft: { ...previous.draft, membershipRevision: group.membershipRevision } })); setAudienceOpen(false); }}>اعتماد الأعضاء الحاليين</Button></>}><p className="muted">ستُرسل المسودة عند تأكيد الإرسال إلى الأعضاء الحاليين:</p><ul className="chat-group-audience-list">{members.filter(member => member.id !== user.id).map(member => <li key={member.id}>{member.name}</li>)}</ul></Dialog>
     <Dialog open={!!restorePending} onClose={() => setRestorePending(null)} title="نقل النص إلى المسودة" footer={<><Button variant="secondary" onClick={() => setRestorePending(null)}>رجوع</Button><Button disabled={restoredText.length > 4_000} onClick={() => { if (!restorePending || restoredText.length > 4_000) return; const frozen = restorePending; updateLocal(previous => ({ draft: { text: [previous.draft.text, frozen.text].filter(Boolean).join("\n"), membershipRevision: null }, pending: previous.pending.filter(message => message.clientMessageId !== frozen.clientMessageId) })); setRestorePending(null); setAudienceOpen(true); }}>نقل النص ومراجعة الأعضاء</Button></>}><p>رفض الخادم هذه المحاولة. سيُنقل النص إلى مسودة جديدة لمراجعة الأعضاء قبل الإرسال.</p>{local.draft.text && <Notice tone={restoredText.length > 4_000 ? "error" : "warning"}>{restoredText.length > 4_000 ? "تتجاوز المسودة مع الرسالة حد ٤٬٠٠٠ محرف. احتفظ بمسودتك أو أرسلها أولًا قبل نقل الرسالة." : "توجد مسودة حالية؛ سيُضاف نص الرسالة إليها."}</Notice>}</Dialog>
   </section>;

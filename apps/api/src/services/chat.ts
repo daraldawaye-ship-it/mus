@@ -11,6 +11,7 @@ import { assertDirectoryAccess, directoryEntries } from "./pages.ts";
 import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import { pagePermissionAliases, permissionRuleEffects } from "./permission-rules.ts";
+import { chatAvatarUrls } from "./chat-avatars.ts";
 
 export interface ChatListQuery extends ChatContext {
   search: string;
@@ -32,9 +33,10 @@ const messageDTO = (row: QueryResultRow): ChatMessage => ({
   deliveredAt: row.delivered_at?.toISOString() ?? null,
   readAt: row.read_at?.toISOString() ?? null,
 });
-const peerDTO = (row: QueryResultRow): ChatUser => ({
+const peerDTO = (row: QueryResultRow, avatars: Map<number, string> = new Map()): ChatUser => ({
   id: row.peer_id ?? row.id,
   name: row.peer_name ?? row.display_name,
+  avatarUrl: avatars.get(row.peer_id ?? row.id) ?? null,
 });
 const receiptDTO = (row: QueryResultRow) => ({
   id: row.id,
@@ -162,7 +164,9 @@ export async function chatDirectory(
     [current.user.id, current.companyId, query.search, searchPattern(query.search),
       after?.id ?? null, query.limit + 1],
   )).rows;
-  const items = rows.slice(0, query.limit).map(peerDTO);
+  const page = rows.slice(0, query.limit);
+  const avatars = await chatAvatarUrls(client, current.companyId, page.map(row => row.id));
+  const items = page.map(row => peerDTO(row, avatars));
   return { items, nextCursor: rows.length > query.limit
     ? nextCursor("directory", current, query, items.at(-1)!.id) : null };
 }
@@ -187,11 +191,28 @@ export async function chatConversations(
       searchPattern(query.search), after?.at ?? null, after?.id ?? null, query.limit + 1],
   )).rows;
   const page = rows.slice(0, query.limit);
+  const avatars = await chatAvatarUrls(client, current.companyId, page.map(row => row.peer_id));
   return {
-    items: page.map(row => ({ peer: peerDTO(row), lastMessage: messageDTO(row), unreadCount: row.unread_count })),
+    items: page.map(row => ({ peer: peerDTO(row, avatars), lastMessage: messageDTO(row), unreadCount: row.unread_count })),
     nextCursor: rows.length > query.limit ? nextCursor("conversations", current, query,
       page.at(-1)!.conversation_id, page.at(-1)!.updated_at.toISOString()) : null,
   };
+}
+
+export async function readChatAvatar(
+  client: PoolClient, actor: User, context: ChatContext, userId: number, assetId: string,
+) {
+  const current = await access(client, actor, context);
+  // Self is intentionally allowed, unlike starting a direct conversation.
+  const asset = (await client.query(
+    `SELECT asset.thumbnail_mime,asset.thumbnail_bytes FROM users u JOIN media_assets asset
+       ON asset.uploaded_by=u.id AND asset.purpose='avatar' AND asset.company_id IS NULL
+       AND u.image='/api/media/'||asset.id::text||'/full'
+     WHERE u.id=$1 AND ${eligiblePeer("u")} AND asset.id=$3::uuid`,
+    [userId, current.companyId, assetId],
+  )).rows[0];
+  if (!asset) missing("الصورة غير متاحة في هذا النطاق");
+  return asset;
 }
 
 export async function chatMessages(

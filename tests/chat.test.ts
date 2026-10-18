@@ -8,6 +8,8 @@ import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import type { Company, Employee, SessionResponse, User } from "../packages/contracts/src/index.ts";
 import type { ChatContext, ChatConversation, ChatMessage, ChatPage, ChatUser } from "../packages/contracts/src/chat.ts";
+import type { ChatGroupDetail, ChatGroupMessage } from "../packages/contracts/src/chat-groups.ts";
+import { CHAT_AVATAR_DATA_URL } from "./chat-avatar-fixture.ts";
 
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const origin = "http://localhost";
@@ -18,6 +20,12 @@ class Client {
   private cookie = "";
   private csrf: string | null = null;
   constructor(private readonly baseUrl: () => string) {}
+  async image(path: string) {
+    const response = await fetch(`${this.baseUrl()}/api${path.replace(/^\/api/, "")}`, {
+      headers: this.cookie ? { cookie: this.cookie } : {},
+    });
+    return { status: response.status, headers: response.headers, bytes: Buffer.from(await response.arrayBuffer()) };
+  }
   async request<T>(method: string, path: string, body?: unknown) {
     const headers = new Headers({ accept: "application/json" });
     if (this.cookie) headers.set("cookie", this.cookie);
@@ -85,7 +93,7 @@ async function fixture(t: TestContext) {
   const owner = { client: new Client(() => baseUrl), user: ownerUser };
   await owner.client.ok("POST", "/auth/login", { email: ownerUser.email, password });
   return {
-    owner, actor,
+    owner, actor, client: () => new Client(() => baseUrl),
     get pool() { return runtime.pool; },
     async restart() { await stop(); runtime = await createApp(options); await start(); },
   };
@@ -186,7 +194,7 @@ test("company chat rechecks current memberships and keeps company and global mes
   const directory = await alice.client.ok<ChatPage<ChatUser>>("GET", `/chat/directory?${query(context)}`);
   assert(directory.items.some(user => user.id === bob.user.id));
   assert(!directory.items.some(user => user.id === outsider.user.id));
-  for (const user of directory.items) assert.deepEqual(Object.keys(user).sort(), ["id", "name"]);
+  for (const user of directory.items) assert.deepEqual(Object.keys(user).sort(), ["avatarUrl", "id", "name"]);
   await denied(outsider.client, "GET", `/chat/directory?${query(context)}`);
   await denied(alice.client, "POST", messagesPath(outsider.user.id), { ...context, clientMessageId: randomUUID(), text: "غير مسموحة" });
   await denied(bob.client, "POST", receiptPath(alice.user.id), { ...globalChat, readMessageIds: [internal.id] });
@@ -224,4 +232,95 @@ test("company chat rechecks current memberships and keeps company and global mes
   await denied(alice.client, "GET", `/chat/conversations?${query(context)}`);
   await f.pool.query("UPDATE users SET suspended=true WHERE id=$1", [alice.user.id]);
   await denied(alice.client, "POST", messagesPath(bob.user.id), { ...globalChat, clientMessageId: randomUUID(), text: "موقوف عن المشاركة" });
+});
+
+test("chat avatars serve only current owned profile thumbnails with current page and company access", async t => {
+  const f = await fixture(t);
+  const alice = await f.actor("alice"), bob = await f.actor("bob"), outsider = await f.actor("outsider");
+  interface Asset { id: string; fullUrl: string; thumbnailUrl: string; }
+  const upload = async (actor: Actor, companyId: number | null = null) => actor.client.ok<Asset>("POST", "/media", {
+    purpose: companyId === null ? "avatar" : "item", companyId,
+    original: CHAT_AVATAR_DATA_URL, thumbnail: CHAT_AVATAR_DATA_URL,
+  }, 201);
+  const setImage = async (actor: Actor, image: string) => actor.client.ok("PATCH", "/profile", {
+    name: actor.user.name, displayName: actor.user.displayName, email: actor.user.email, phone: actor.user.phone, image,
+  });
+  const peer = async (context = globalChat) => {
+    const directory = await alice.client.ok<ChatPage<ChatUser>>("GET", `/chat/directory?${query(context)}`);
+    const result = directory.items.find(user => user.id === bob.user.id); assert(result); return result;
+  };
+  const avatar = await upload(bob), unlinked = await upload(bob), aliceAvatar = await upload(alice);
+  await setImage(bob, avatar.fullUrl); await setImage(alice, aliceAvatar.fullUrl);
+  const initial = await peer(); assert(initial.avatarUrl);
+  assert.deepEqual(Object.keys(initial).sort(), ["avatarUrl", "id", "name"]);
+  const avatarUrl = new URL(initial.avatarUrl, "http://localhost");
+  assert.equal(avatarUrl.pathname, `/api/chat/avatars/${bob.user.id}`);
+  assert.equal(avatarUrl.searchParams.get("scope"), "global"); assert.equal(avatarUrl.searchParams.get("v"), avatar.id);
+  const rendered = await alice.client.image(initial.avatarUrl);
+  assert.equal(rendered.status, 200); assert.equal(rendered.headers.get("content-type"), "image/png");
+  assert.match(rendered.headers.get("cache-control") ?? "", /no-store/); assert(rendered.bytes.length > 8);
+  assert.equal((await bob.client.image(avatar.thumbnailUrl)).status, 200);
+  assert.equal((await alice.client.image(avatar.thumbnailUrl)).status, 404, "Generic media access remains owner-only");
+  assert.equal((await f.client().image(initial.avatarUrl)).status, 401);
+  const guess = (assetId: string) => `/chat/avatars/${bob.user.id}?scope=global&v=${assetId}`;
+  assert.equal((await alice.client.image(guess(unlinked.id))).status, 404, "An unlinked private upload is never a chat avatar");
+  assert.equal((await alice.client.image(guess(randomUUID()))).status, 404);
+  const replacement = await upload(bob); await setImage(bob, replacement.fullUrl);
+  const current = await peer(); assert(current.avatarUrl);
+  assert.notEqual(current.avatarUrl, initial.avatarUrl); assert.equal((await alice.client.image(initial.avatarUrl)).status, 404);
+  assert.equal((await alice.client.image(current.avatarUrl)).status, 200);
+  await setImage(bob, ""); assert.equal((await peer()).avatarUrl, null);
+  assert.equal((await alice.client.image(current.avatarUrl)).status, 404, "Removing the current profile image immediately invalidates its old URL");
+  await setImage(bob, "https://example.invalid/avatar.png"); assert.equal((await peer()).avatarUrl, null);
+  assert.equal((await alice.client.image(guess(replacement.id))).status, 404);
+  assert.equal((await bob.client.request("PATCH", "/profile", {
+    name: bob.user.name, displayName: bob.user.displayName, email: bob.user.email, phone: bob.user.phone, image: aliceAvatar.fullUrl,
+  })).status, 403);
+  // Isolated legacy-row fixtures verify that forged references are also
+  // rejected when projecting and serving, independently of profile writes.
+  await f.pool.query("UPDATE users SET image=$1 WHERE id=$2", [aliceAvatar.fullUrl, bob.user.id]);
+  assert.equal((await peer()).avatarUrl, null); assert.equal((await alice.client.image(guess(aliceAvatar.id))).status, 404);
+  const company = (await f.owner.client.ok<{ company: Company }>("POST", "/companies", { name: "شركة صور الدردشة", phone: "", address: "" }, 201)).company;
+  const staff: Employee[] = [];
+  for (const user of [alice.user, bob.user]) staff.push((await f.owner.client.ok<{ employee: Employee }>("POST", `/companies/${company.id}/employees`, {
+    userId: user.id, name: user.name, phone: "", role: "employee", active: true, permissions: [],
+  }, 201)).employee);
+  const itemImage = await upload(f.owner, company.id);
+  await f.pool.query("UPDATE users SET image=$1 WHERE id=$2", [itemImage.fullUrl, bob.user.id]);
+  assert.equal((await peer()).avatarUrl, null); assert.equal((await alice.client.image(guess(itemImage.id))).status, 404);
+  await setImage(bob, replacement.fullUrl);
+  const group = await alice.client.ok<ChatGroupDetail>("POST", "/chat/groups", { scope: "global", clientGroupId: randomUUID(), name: "صور أعضاء المجموعة", memberIds: [bob.user.id, outsider.user.id] });
+  assert.equal(group.members.find(user => user.id === bob.user.id)?.avatarUrl, (await peer()).avatarUrl);
+  const groupMessage = (await alice.client.ok<{ message: ChatGroupMessage }>("POST", `/chat/groups/${group.group.id}/messages`, {
+    scope: "global", membershipRevision: group.group.membershipRevision, clientMessageId: randomUUID(), text: "الصور تبقى مراجع مخولة فقط",
+  })).message;
+  assert(groupMessage.senderAvatarUrl); assert.equal((await alice.client.image(groupMessage.senderAvatarUrl)).status, 200);
+  assert.equal(groupMessage.receipts.find(receipt => receipt.userId === bob.user.id)?.avatarUrl, (await peer()).avatarUrl);
+  const context: ChatContext = { scope: "company", companyId: company.id };
+  const companyPeer = await peer(context); assert(companyPeer.avatarUrl);
+  assert.equal(new URL(companyPeer.avatarUrl, "http://localhost").searchParams.get("companyId"), String(company.id));
+  assert.equal((await alice.client.image(companyPeer.avatarUrl)).status, 200);
+  assert.equal((await outsider.client.image(companyPeer.avatarUrl)).status, 403);
+  const rulesPath = `/companies/${company.id}/configuration/employee-rules`;
+  const deny = await f.owner.client.ok<{ rule: { revision: number } }>("PUT", rulesPath, { employeeId: staff[0]!.id, permissionKey: "company.chat:view", effect: "deny", revision: null });
+  assert.equal((await alice.client.image(companyPeer.avatarUrl)).status, 403);
+  await f.owner.client.ok("PUT", rulesPath, { employeeId: staff[0]!.id, permissionKey: "company.chat:view", effect: null, revision: deny.rule.revision });
+  const settings = { companyId: company.id, visible: true, enabled: false, order: 100, revision: null };
+  const disabled = await f.owner.client.ok<{ page: { revision: number } }>("PUT", "/page-catalog/company.chat/settings", settings);
+  const blockedPhoto = await alice.client.image(companyPeer.avatarUrl);
+  assert.equal(blockedPhoto.status, 403); assert.match(blockedPhoto.headers.get("cache-control") ?? "", /no-store/);
+  await f.owner.client.ok("PUT", "/page-catalog/company.chat/settings", { ...settings, enabled: true, revision: disabled.page.revision });
+  await f.owner.client.ok("PATCH", `/companies/${company.id}/employees/${staff[1]!.id}`, { active: false });
+  assert.equal((await alice.client.image(companyPeer.avatarUrl)).status, 404);
+  assert.equal((await alice.client.image((await peer()).avatarUrl!)).status, 200, "Company departure does not leak or revoke the separate public-profile photo");
+  await f.owner.client.ok("PATCH", `/companies/${company.id}/employees/${staff[0]!.id}`, { active: false });
+  assert.equal((await alice.client.image(companyPeer.avatarUrl)).status, 403);
+  const publicPhoto = (await peer()).avatarUrl!;
+  await f.pool.query("UPDATE users SET suspended=true WHERE id=$1", [bob.user.id]);
+  assert.equal((await alice.client.image(publicPhoto)).status, 404);
+  await f.pool.query("UPDATE users SET suspended=false,archived=true WHERE id=$1", [bob.user.id]);
+  assert.equal((await alice.client.image(publicPhoto)).status, 404);
+  await f.pool.query("UPDATE users SET archived=false WHERE id=$1", [bob.user.id]);
+  await f.pool.query("UPDATE users SET suspended=true WHERE id=$1", [alice.user.id]);
+  assert.equal((await alice.client.image(publicPhoto)).status, 403);
 });

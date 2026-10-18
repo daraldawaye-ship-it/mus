@@ -12,6 +12,8 @@ import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import type { Company, SessionResponse, User } from "../packages/contracts/src/index.ts";
 import type { ChatPage } from "../packages/contracts/src/chat.ts";
 import type { ChatGroupDetail, ChatGroupMessage } from "../packages/contracts/src/chat-groups.ts";
+import { CHAT_AVATAR_DATA_URL } from "./chat-avatar-fixture.ts";
+import { assertChatAvatarFallback, assertLoadedChatAvatar, composeChatEmoji } from "./chat-browser-controls.ts";
 
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const schema = `chat_groups_browser_${randomUUID().replaceAll("-", "")}`;
@@ -45,15 +47,19 @@ async function createGroup(page: Page, name: string, members: User[]) {
   await page.getByRole("button", { name: "إنشاء مجموعة", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "إنشاء مجموعة دردشة", exact: true });
   await dialog.getByRole("textbox", { name: "اسم المجموعة", exact: true }).fill(name);
-  for (const member of members) await dialog.getByRole("checkbox", { name: member.name, exact: true }).check();
+  for (const member of members) {
+    const option = dialog.locator(".chat-member-option").filter({ hasText: member.name });
+    if (member.image) await assertLoadedChatAvatar(option, member.id); else await assertChatAvatarFallback(option);
+    await dialog.getByRole("checkbox", { name: member.name, exact: true }).check();
+  }
   await dialog.getByRole("button", { name: "إنشاء المجموعة", exact: true }).click();
   await page.getByRole("textbox", { name: "نص رسالة المجموعة", exact: true }).waitFor();
   const id = Number(await page.locator("[data-chat-group-id]").getAttribute("data-chat-group-id")); assert(id > 0);
   return id;
 }
-async function sendMessage(page: Page, text: string) {
+async function sendMessage(page: Page, text: string, composed = false) {
   const composer = page.getByRole("textbox", { name: "نص رسالة المجموعة", exact: true });
-  await composer.fill(text);
+  if (composed) assert.equal(await composer.inputValue(), text); else await composer.fill(text);
   await page.getByRole("button", { name: "إرسال رسالة المجموعة", exact: true }).click();
   const message = page.locator("[data-chat-group-message-id]").filter({ hasText: text });
   await message.waitFor({ state: "visible" }); assert.equal(await composer.inputValue(), "");
@@ -94,6 +100,10 @@ try {
   const alice = await register(contexts[0]!, "سارة المجموعات", "alice@chat-groups-browser.test");
   const bob = await register(contexts[1]!, "خالد المجموعات", "bob@chat-groups-browser.test");
   const carol = await register(contexts[2]!, "ليلى المجموعات", "carol@chat-groups-browser.test");
+  for (const actor of [alice, bob]) {
+    const photo = await call<{ fullUrl: string }>(actor, "/media", "POST", { purpose: "avatar", companyId: null, original: CHAT_AVATAR_DATA_URL, thumbnail: CHAT_AVATAR_DATA_URL });
+    actor.user = (await call<{ user: User }>(actor, "/profile", "PATCH", { name: actor.user.name, displayName: actor.user.displayName, email: actor.user.email, phone: actor.user.phone, image: photo.fullUrl })).user;
+  }
   await provisionOwner(runtime.pool, { name: "مالك الاختبار", displayName: "مالك الاختبار", email: "owner@chat-groups-browser.test", password });
   ownerContext = await request.newContext({ baseURL: origin });
   const owner: Actor = { context: ownerContext, session: { user: null, csrf: null } };
@@ -108,8 +118,9 @@ try {
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   const groupName = "فريق تجارة الاختباري";
   const groupId = await createGroup(alicePage, groupName, [bob.user, carol.user]);
-  const text = "رسالة الفريق مع تأكيدات حقيقية لكل عضو";
-  const message = await sendMessage(alicePage, text);
+  const text = await composeChatEmoji(alicePage, "نص رسالة المجموعة", "رسالة الفريق مع تأكيدات حقيقية لكل عضو", true, `${evidence}/emoji-picker-desktop-group.png`);
+  const message = await sendMessage(alicePage, text, true);
+  await assertLoadedChatAvatar(message, alice.user.id);
   const messageId = Number(await message.getAttribute("data-chat-group-message-id")); assert(messageId > 0);
   await counts(message, 0, 0, 2);
   const bobDelivery = receiptResponse(bobPage, groupId, messageId, "delivered");
@@ -123,6 +134,7 @@ try {
   const bobRead = receiptResponse(bobPage, groupId, messageId, "read");
   await bobPage.bringToFront(); await bobPage.getByRole("button", { name: `فتح مجموعة ${groupName}`, exact: true }).click();
   await bobPage.locator(`[data-chat-group-message-id="${messageId}"]`).waitFor({ state: "visible" }); await bobRead;
+  await assertLoadedChatAvatar(bobPage.locator(`[data-chat-group-message-id="${messageId}"]`), alice.user.id);
   await alicePage.bringToFront(); await counts(message, 2, 1, 2);
   persisted = (await call<ChatPage<ChatGroupMessage>>(alice, `/chat/groups/${groupId}/messages?scope=global`)).items.find(item => item.id === messageId)!;
   assert(persisted.deliveredAt); assert.equal(persisted.readAt, null, "One reader never produces an all-viewed timestamp");
@@ -136,6 +148,7 @@ try {
   const receipts = alicePage.getByRole("dialog", { name: "تفاصيل استلام الرسالة وعرضها", exact: true });
   for (const member of [bob.user, carol.user]) {
     const row = receipts.locator(".chat-group-receipt-row").filter({ hasText: member.name });
+    if (member.image) await assertLoadedChatAvatar(row, member.id); else await assertChatAvatarFallback(row);
     await row.getByText(/^تم الاستلام ·/).waitFor(); await row.getByText(/^تم العرض ·/).waitFor();
   }
   await alicePage.screenshot({ path: `${evidence}/desktop-dark-group-receipts.png`, fullPage: true });
@@ -143,8 +156,12 @@ try {
   console.log("PASS group creation and real delivered/read acknowledgments from all intended recipients");
 
   await alicePage.setViewportSize({ width: 390, height: 844 }); await assertMobile(alicePage);
+  const brokenPhoto = `**/api/chat/avatars/${bob.user.id}?*`;
+  await alicePage.route(brokenPhoto, route => route.fulfill({ status: 404, body: "" }));
   await alicePage.getByRole("button", { name: "تفاصيل المجموعة", exact: true }).click();
   const details = alicePage.getByRole("dialog", { name: "تفاصيل المجموعة", exact: true });
+  await assertChatAvatarFallback(details.locator(".chat-group-member").filter({ hasText: bob.user.name }));
+  await alicePage.unroute(brokenPhoto);
   const renamed = "فريق تجارة المحدّث";
   await details.getByRole("textbox", { name: "اسم المجموعة", exact: true }).fill(renamed);
   const renameResponse = alicePage.waitForResponse(response => response.url().endsWith(`/chat/groups/${groupId}`) && response.request().method() === "PATCH" && response.status() === 200);
@@ -157,7 +174,8 @@ try {
   assert.equal(await alicePage.getByRole("button", { name: `فتح مجموعة ${renamed}`, exact: true }).count(), 0);
   assert.equal(await alicePage.getByText(text, { exact: true }).count(), 0);
   const companyGroupId = await createGroup(alicePage, "فريق الشركة المستقل", [bob.user, carol.user]); assert.notEqual(companyGroupId, groupId);
-  const companyText = "رسالة مجموعة الشركة فقط"; await sendMessage(alicePage, companyText); await assertMobile(alicePage);
+  const companyText = await composeChatEmoji(alicePage, "نص رسالة المجموعة", "رسالة مجموعة الشركة فقط", false, `${evidence}/emoji-picker-mobile-group.png`);
+  await sendMessage(alicePage, companyText, true); await assertMobile(alicePage);
   await alicePage.screenshot({ path: `${evidence}/mobile-light-company-group.png`, fullPage: true });
   await alicePage.goto("/chat"); await alicePage.locator('html[data-theme="dark"]').waitFor();
   await alicePage.getByRole("button", { name: `فتح مجموعة ${renamed}`, exact: true }).click();
