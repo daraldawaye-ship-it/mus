@@ -51,6 +51,8 @@ jobs:
         run: node --import tsx --test tests/lookup-option-label.test.ts tests/invoice-account-default.test.ts
       - name: Build web application
         run: npm run build
+      - name: Verify own-cashbox statement permissions and isolation
+        run: node --import tsx --test --test-name-pattern="my cashbox ledger requires" tests/finance.test.ts
       - name: Test multi-unit physical counts and nearest expiry validation
         run: node --import tsx --test tests/stock-adjustment-count.test.ts
       - name: Test latest physical count including matching counts

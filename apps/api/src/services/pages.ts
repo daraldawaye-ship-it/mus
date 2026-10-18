@@ -445,6 +445,7 @@ export async function requestPageKeys(
     "inventory-settings": "inventory-settings",
     "account-balances": "account-balances",
     "account-ledger": "account-ledger",
+    "my-cashbox-ledger": "my-cashbox-ledger",
     audit: "audit",
     "financial-options": "financial-documents",
     "purchase-history": "purchases",

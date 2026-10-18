@@ -222,6 +222,109 @@ function dateFilters(req: Request): { from: string | null; to: string | null } {
     throw new HttpError(400, "invalid_query", "بداية الفترة تتجاوز نهايتها");
   return { from, to };
 }
+
+/** Shared immutable ledger computation for either permitted account. */
+async function readAccountLedger(
+  client: PoolClient,
+  companyId: number,
+  accountId: number,
+  req: Request,
+) {
+  const account = await client.query(
+    "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting'",
+    [companyId, accountId],
+  );
+  if (!account.rowCount)
+    missing("الحساب الحركي غير موجود في هذه الشركة");
+  const dates = dateFilters(req);
+  const query = listQuery(
+    req.query,
+    {
+      id: "f.id",
+      documentId: "f.document_id",
+      lineNumber: "f.line_number",
+      documentDate: "f.document_date",
+      documentNumber: "f.number",
+      kind: "f.kind",
+      debit: "f.debit",
+      credit: "f.credit",
+      baseDebit: "f.base_debit",
+      baseCredit: "f.base_credit",
+      runningBalance: "f.running_balance",
+    },
+    "documentDate:asc,documentId:asc,lineNumber:asc",
+  );
+  const params = [
+    companyId,
+    accountId,
+    dates.from,
+    dates.to,
+    searchPattern(query.q),
+  ];
+  const from =
+    "FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'";
+  const opening = await client.query(
+    `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS balance ${from} AND $3::date IS NOT NULL AND d.document_date < $3::date`,
+    [companyId, accountId, dates.from],
+  );
+  const totals = await client.query(
+    `SELECT COALESCE(sum(l.base_debit),0)::text AS debit,COALESCE(sum(l.base_credit),0)::text AS credit ${from} AND ($3::date IS NULL OR d.document_date >= $3::date) AND ($4::date IS NULL OR d.document_date <= $4::date)`,
+    [companyId, accountId, dates.from, dates.to],
+  );
+  // Compute cumulative balance before filtering/search/paging, so each row retains its true chronological balance.
+  const cte = `WITH full_ledger AS (SELECT l.*,d.number,d.document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY d.document_date,d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${from})`;
+  const filter =
+    "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.description ILIKE $5 OR f.document_description ILIKE $5)";
+  const count = await client.query(
+    `${cte} SELECT count(*)::integer AS total FROM full_ledger f WHERE ${filter}`,
+    params,
+  );
+  const rows = await client.query(
+    `${cte} SELECT f.*,f.document_date::text AS date_text FROM full_ledger f WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+    [...params, query.pageSize, query.offset],
+  );
+  const items: AccountLedgerLine[] = rows.rows.map((row) => ({
+    id: row.id,
+    documentId: row.document_id,
+    documentNumber: row.number,
+    documentDate: row.date_text,
+    kind: row.kind,
+    status: row.status,
+    description: row.description || row.document_description,
+    currencyId: row.currency_id,
+    currencyCode: row.currency_code,
+    debit: normalizeRate(row.debit),
+    credit: normalizeRate(row.credit),
+    baseDebit: normalizeRate(row.base_debit),
+    baseCredit: normalizeRate(row.base_credit),
+    runningBalance: moneyString(moneyUnits(row.running_balance)),
+    reversesDocumentId: row.reverses_document_id,
+  }));
+  const settings = await client.query(
+    "SELECT c.code FROM finance_settings s JOIN company_currencies c ON c.company_id=s.company_id AND c.id=s.base_currency_id WHERE s.company_id=$1",
+    [companyId],
+  );
+  const openingUnits = moneyUnits(opening.rows[0].balance),
+    debitUnits = moneyUnits(totals.rows[0].debit),
+    creditUnits = moneyUnits(totals.rows[0].credit);
+  return {
+    items,
+    total: count.rows[0].total,
+    page: query.page,
+    pageSize: query.pageSize,
+    account: account.rows[0],
+    totals: {
+      openingBalance: moneyString(openingUnits),
+      debit: moneyString(debitUnits),
+      credit: moneyString(creditUnits),
+      closingBalance: moneyString(
+        openingUnits + debitUnits - creditUnits,
+      ),
+      baseCurrencyCode: settings.rows[0]?.code ?? null,
+    },
+  };
+}
+
 export function financeRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
@@ -745,109 +848,57 @@ export function financeRoutes(pool: Pool): Router {
     }),
   );
   router.get(
+    `${base}/my-cashbox-ledger`,
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const companyId = id(req.params.companyId);
+        const user = await currentActor(client, actor(req), false);
+        // This action is independent of finance.view and cashbox ownership.
+        const context = await companyAccess(
+          client, user, companyId, "finance.own-cashbox.view",
+        );
+        // Never trust accountId or employeeId supplied by the caller.
+        const linked = context.employee
+          ? await client.query(
+              `SELECT a.id
+               FROM employee_account_links l
+               JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
+               WHERE l.company_id=$1 AND l.employee_id=$2
+                 AND l.account_kind='sales_cash'
+                 AND a.active=true AND a.kind='posting' AND a.cash_or_bank=true
+               LIMIT 1`,
+              [companyId, context.employee.id],
+            )
+          : null;
+        if (!linked?.rows[0]) {
+          const paging = listQuery(req.query, { id: "id" });
+          return {
+            account: null,
+            items: [],
+            total: 0,
+            page: paging.page,
+            pageSize: paging.pageSize,
+            totals: null,
+          };
+        }
+        return readAccountLedger(client, companyId, linked.rows[0].id, req);
+      });
+      res.json(result);
+    }),
+  );
+  router.get(
     `${base}/account-ledger`,
     handler(async (req, res) => {
       res.json(
-        await readFinance(pool, req, async (client, companyId) => {
-          const accountId = id(
-            typeof req.query.accountId === "string"
-              ? req.query.accountId
-              : undefined,
-          );
-          const account = await client.query(
-            "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting'",
-            [companyId, accountId],
-          );
-          if (!account.rowCount)
-            missing("الحساب الحركي غير موجود في هذه الشركة");
-          const dates = dateFilters(req);
-          const query = listQuery(
-            req.query,
-            {
-              id: "f.id",
-              documentId: "f.document_id",
-              lineNumber: "f.line_number",
-              documentDate: "f.document_date",
-              documentNumber: "f.number",
-              kind: "f.kind",
-              debit: "f.debit",
-              credit: "f.credit",
-              baseDebit: "f.base_debit",
-              baseCredit: "f.base_credit",
-              runningBalance: "f.running_balance",
-            },
-            "documentDate:asc,documentId:asc,lineNumber:asc",
-          );
-          const params = [
+        await readFinance(pool, req, (client, companyId) =>
+          readAccountLedger(
+            client,
             companyId,
-            accountId,
-            dates.from,
-            dates.to,
-            searchPattern(query.q),
-          ];
-          const from =
-            "FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'";
-          const opening = await client.query(
-            `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS balance ${from} AND $3::date IS NOT NULL AND d.document_date < $3::date`,
-            [companyId, accountId, dates.from],
-          );
-          const totals = await client.query(
-            `SELECT COALESCE(sum(l.base_debit),0)::text AS debit,COALESCE(sum(l.base_credit),0)::text AS credit ${from} AND ($3::date IS NULL OR d.document_date >= $3::date) AND ($4::date IS NULL OR d.document_date <= $4::date)`,
-            [companyId, accountId, dates.from, dates.to],
-          );
-          // Compute cumulative balance before filtering/search/paging, so each row retains its true chronological balance.
-          const cte = `WITH full_ledger AS (SELECT l.*,d.number,d.document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY d.document_date,d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${from})`;
-          const filter =
-            "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.description ILIKE $5 OR f.document_description ILIKE $5)";
-          const count = await client.query(
-            `${cte} SELECT count(*)::integer AS total FROM full_ledger f WHERE ${filter}`,
-            params,
-          );
-          const rows = await client.query(
-            `${cte} SELECT f.*,f.document_date::text AS date_text FROM full_ledger f WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
-            [...params, query.pageSize, query.offset],
-          );
-          const items: AccountLedgerLine[] = rows.rows.map((row) => ({
-            id: row.id,
-            documentId: row.document_id,
-            documentNumber: row.number,
-            documentDate: row.date_text,
-            kind: row.kind,
-            status: row.status,
-            description: row.description || row.document_description,
-            currencyId: row.currency_id,
-            currencyCode: row.currency_code,
-            debit: normalizeRate(row.debit),
-            credit: normalizeRate(row.credit),
-            baseDebit: normalizeRate(row.base_debit),
-            baseCredit: normalizeRate(row.base_credit),
-            runningBalance: moneyString(moneyUnits(row.running_balance)),
-            reversesDocumentId: row.reverses_document_id,
-          }));
-          const settings = await client.query(
-            "SELECT c.code FROM finance_settings s JOIN company_currencies c ON c.company_id=s.company_id AND c.id=s.base_currency_id WHERE s.company_id=$1",
-            [companyId],
-          );
-          const openingUnits = moneyUnits(opening.rows[0].balance),
-            debitUnits = moneyUnits(totals.rows[0].debit),
-            creditUnits = moneyUnits(totals.rows[0].credit);
-          return {
-            items,
-            total: count.rows[0].total,
-            page: query.page,
-            pageSize: query.pageSize,
-            account: account.rows[0],
-            totals: {
-              openingBalance: moneyString(openingUnits),
-              debit: moneyString(debitUnits),
-              credit: moneyString(creditUnits),
-              closingBalance: moneyString(
-                openingUnits + debitUnits - creditUnits,
-              ),
-              baseCurrencyCode: settings.rows[0]?.code ?? null,
-            },
-          };
-        }),
+            id(typeof req.query.accountId === "string" ? req.query.accountId : undefined),
+            req,
+          ),
+        ),
       );
     }),
   );
