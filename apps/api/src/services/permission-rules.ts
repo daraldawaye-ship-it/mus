@@ -69,6 +69,38 @@ export async function requestPermissionTargets(
         ? "create"
         : "edit";
   if (!resource) return action === "view" ? [] : [["company.settings:edit"]];
+  if (resource === "account-statistics-report")
+    return [
+      pagePermissionAliases("company.accounts", "view"),
+      pagePermissionAliases("company.account-ledger", "view"),
+      pagePermissionAliases("company.account-statistics", "view"),
+    ];
+  if (
+    resource === "accounts" &&
+    detail &&
+    /^[1-9]\d*$/.test(detail) &&
+    segments.length === 3 &&
+    ((["GET", "HEAD"].includes(verb) && segments[2] === "statistics") ||
+      (verb === "POST" &&
+        ["balance-followups", "balance-approvals"].includes(segments[2]!)))
+  ) {
+    // These are actions on an existing balance, never account creation. Their
+    // exact grants are checked independently by assertAccountBalanceAccess;
+    // returning each view/action separately also preserves explicit deny checks.
+    return [
+      pagePermissionAliases("company.accounts", "view"),
+      pagePermissionAliases("company.account-ledger", "view"),
+      pagePermissionAliases("company.account-statistics", "view"),
+      ...(verb === "POST"
+        ? [
+            pagePermissionAliases(
+              "company.account-statistics",
+              segments[2] === "balance-followups" ? "create" : "post",
+            ),
+          ]
+        : []),
+    ];
+  }
   const direct: Record<string, string> = {
     accounts: "company.accounts",
     "account-links": "company.accounts",
@@ -126,10 +158,13 @@ export async function requestPermissionTargets(
         : [pagePermissionAliases("company.attendance", action)]),
     ];
   }
-  if(resource==="memo-feature-rules")
-    return [pagePermissionAliases("company.memo-feature-rules","view"),
-      ...(["POST","PUT","PATCH"].includes(verb)
-        ? [pagePermissionAliases("company.memo-feature-rules","edit")]:[])];
+  if (resource === "memo-feature-rules")
+    return [
+      pagePermissionAliases("company.memo-feature-rules", "view"),
+      ...(["POST", "PUT", "PATCH"].includes(verb)
+        ? [pagePermissionAliases("company.memo-feature-rules", "edit")]
+        : []),
+    ];
   if (resource === "memos") {
     const memoDetail = !!detail && /^[1-9]\d*$/.test(detail);
     return [

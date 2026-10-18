@@ -6,6 +6,9 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { transaction } from "../apps/api/src/db.ts";
+import { HttpError } from "../apps/api/src/errors.ts";
+import { deleteCompanyTransactions } from "../apps/api/src/services/transaction-reset.ts";
 import type {
   Account,
   Branch,
@@ -25,9 +28,29 @@ import type {
 } from "../packages/contracts/src/index.ts";
 import type { Invoice } from "../packages/contracts/src/commerce.ts";
 
-// Intentionally ignore DATABASE_URL: these destructive checks only use the
-// local PostgreSQL socket and disposable, randomly named schemas.
-const databaseUrl = DEFAULT_DATABASE_URL;
+// Intentionally ignore DATABASE_URL: these destructive checks use only an
+// explicitly local PostgreSQL target and disposable, randomly named schemas.
+const databaseUrl =
+  process.env.TRANSACTION_RESET_TEST_DATABASE_URL ?? DEFAULT_DATABASE_URL;
+const target = new URL(databaseUrl);
+const localHosts = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "[::1]",
+  "/workspace/.tools/postgresql/socket",
+]);
+const configuredHosts = [
+  target.hostname,
+  ...target.searchParams.getAll("host"),
+  ...target.searchParams.getAll("hostaddr"),
+].filter(Boolean);
+assert(
+  ["postgres:", "postgresql:"].includes(target.protocol) &&
+    configuredHosts.length > 0 &&
+    configuredHosts.every((host) => localHosts.has(host)),
+  "Transaction-reset tests require an explicitly local PostgreSQL target",
+);
 const origin = "http://localhost";
 const password = "Transaction-reset-disposable-test-passphrase-2026";
 
@@ -938,4 +961,262 @@ test("transaction reset refuses posted wallet conversions and preserves money an
     409,
   );
   assert.deepEqual(await stored(f, s.company.id, tables), before);
+});
+
+const protectedOperationalTables = [
+  "employee_clearance_earnings",
+  "employee_clearance_return_reviews",
+  "employee_cashbox_operations",
+  "employee_pouch_receipts",
+  "employee_electronic_receipts",
+  "employee_wallet_entries",
+  "employee_wallets",
+  "account_statistics",
+  "company_transaction_resets",
+  "audit_events",
+] as const;
+
+async function assertProtectedReset(f: Fixture, s: Setup, preview: Preview) {
+  const tables = [...historyTables, ...protectedOperationalTables];
+  const before = await stored(f, s.company.id, tables);
+  assert(preview.blockers.length > 0);
+  const denied = await f.owner.request<{ error: { message: string } }>(
+    "POST",
+    s.base + "/transaction-reset",
+    payload(preview),
+  );
+  assert.equal(denied.status, 409, JSON.stringify(denied.body));
+  // The execution service independently rechecks, rather than depending on a
+  // particular HTTP caller having read the preview's blockers correctly.
+  await assert.rejects(
+    transaction(f.pool, async (client) => {
+      await client.query("SELECT id FROM companies WHERE id=$1 FOR UPDATE", [
+        s.company.id,
+      ]);
+      await deleteCompanyTransactions(client, s.company.id);
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.status === 409 &&
+      error.code === "transaction_reset_blocked",
+  );
+  assert.deepEqual(await stored(f, s.company.id, tables), before);
+}
+
+test("transaction reset blocks immutable cashbox and receipt history and confirms accepted UUIDs safely", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f, "Protected till operation history");
+  const employee = await ownEmployee(f, s);
+  await f.owner.ok("POST", `${s.base}/employees/${employee.id}/accounts`, {
+    createSalesCashbox: true,
+  });
+  const original = payload(await s.preview());
+  await f.owner.ok<ResetResult>(
+    "POST",
+    s.base + "/transaction-reset",
+    original,
+  );
+
+  const pouch = await f.owner.ok<{ operationId: number }>(
+    "POST",
+    s.base + "/sales/cashbox-operations",
+    {
+      kind: "pouch",
+      amount: "10",
+      notes: "Real till transfer",
+      idempotencyKey: randomUUID(),
+    },
+    201,
+  );
+  const afterTransfer = await s.preview();
+  assert.equal(afterTransfer.counts.cashboxOperations, 1);
+  assert.equal(afterTransfer.counts.pouchReceipts, 0);
+  assert.equal(afterTransfer.counts.electronicReceipts, 0);
+  assert.equal(afterTransfer.blockers.length, 1);
+  await assertProtectedReset(f, s, afterTransfer);
+
+  await f.owner.ok(
+    "POST",
+    s.base + "/pouch-receipts",
+    {
+      mode: "exact",
+      sourceOperationId: pouch.operationId,
+      notes: "Receive actual pouch source",
+      idempotencyKey: randomUUID(),
+    },
+    201,
+  );
+  await f.owner.ok("PUT", s.base + "/account-links/electronicWallet", {
+    accountId: s.counterparty.id,
+  });
+  const electronic = await f.owner.ok<{ operationId: number }>(
+    "POST",
+    s.base + "/sales/cashbox-operations",
+    {
+      kind: "electronic",
+      amount: "5",
+      notes: "Real wallet transfer",
+      idempotencyKey: randomUUID(),
+    },
+    201,
+  );
+  await f.owner.ok(
+    "POST",
+    s.base + "/electronic-receipts",
+    {
+      mode: "exact",
+      sourceOperationId: electronic.operationId,
+      notes: "Receive actual electronic source",
+      idempotencyKey: randomUUID(),
+    },
+    201,
+  );
+  const received = await s.preview();
+  assert.equal(received.counts.cashboxOperations, 2);
+  assert.equal(received.counts.pouchReceipts, 1);
+  assert.equal(received.counts.electronicReceipts, 1);
+  assert.equal(received.blockers.length, 3);
+  assert.notEqual(received.snapshotHash, afterTransfer.snapshotHash);
+  await assertProtectedReset(f, s, received);
+
+  const preserved = await stored(f, s.company.id, [
+    ...historyTables,
+    ...protectedOperationalTables,
+  ]);
+  const retry = await f.owner.ok<ResetResult>(
+    "POST",
+    s.base + "/transaction-reset",
+    original,
+  );
+  assert.equal(
+    retry.replayed,
+    true,
+    "An accepted old reset confirms its receipt before considering later blockers",
+  );
+  assert.deepEqual(
+    await stored(f, s.company.id, [
+      ...historyTables,
+      ...protectedOperationalTables,
+    ]),
+    preserved,
+  );
+
+  const other = await setup(f, "Independent company reset remains allowed");
+  await other.document();
+  const otherPreview = await other.preview();
+  assert.deepEqual(
+    otherPreview.blockers,
+    [],
+    "Protected rows never block another company",
+  );
+  await f.owner.ok(
+    "POST",
+    other.base + "/transaction-reset",
+    payload(otherPreview),
+  );
+  assert.deepEqual(
+    await stored(f, s.company.id, [
+      ...historyTables,
+      ...protectedOperationalTables,
+    ]),
+    preserved,
+  );
+});
+
+async function enableClearance(f: Fixture, s: Setup) {
+  await f.owner.ok("PATCH", `${s.base}/items/${s.item.id}`, {
+    name: s.item.name,
+    currencyId: s.currency.id,
+    revision: s.item.revision,
+    unit1Name: "باكت",
+    salePrice1: "20",
+    salePrice2: "20",
+    salePrice3: "20",
+    purchasePrice: "10",
+    hasExpiry: false,
+    commissionRate: "10",
+    clearanceFrom: "2026-10-01",
+    clearanceTo: "2026-10-31",
+  });
+}
+
+test("transaction reset blocks clearance earnings and review-only history without changing wallet credits", async (t) => {
+  const f = await fixture(t),
+    earnings = await setup(f, "Protected clearance earnings");
+  await ownEmployee(f, earnings);
+  await enableClearance(f, earnings);
+  await earnings.invoice();
+  await earnings.invoice("sale", "2");
+  const earningPreview = await earnings.preview();
+  assert.equal(earningPreview.counts.clearanceEarnings, 1);
+  assert.equal(earningPreview.counts.clearanceReturnReviews, 0);
+  assert.equal(earningPreview.blockers.length, 1);
+  const credits = (
+    await f.pool.query(
+      "SELECT points::text FROM employee_wallet_entries WHERE company_id=$1 AND kind='clearance'",
+      [earnings.company.id],
+    )
+  ).rows;
+  assert.equal(credits.length, 1);
+  assert(BigInt(credits[0]!.points) > 0n);
+  assert.deepEqual(
+    earningPreview.walletAdjustments,
+    [],
+    "Clearance credits are never reinterpreted as removable automatic rewards",
+  );
+  await assertProtectedReset(f, earnings, earningPreview);
+
+  const reviews = await setup(f, "Protected clearance return review only");
+  await enableClearance(f, reviews);
+  await reviews.invoice();
+  // The original saver has no employee record, so no earning or wallet credit
+  // exists. A linked return still creates an independently protected review.
+  const original = await reviews.invoice("sale", "2");
+  await ownEmployee(f, reviews);
+  await f.owner.ok(
+    "POST",
+    reviews.base + "/invoices",
+    {
+      idempotencyKey: randomUUID(),
+      kind: "sale",
+      documentDate: "2026-10-12",
+      currencyId: reviews.currency.id,
+      branchId: reviews.branch.id,
+      locationId: reviews.location.id,
+      counterpartyAccountId: reviews.counterparty.id,
+      lines: [
+        {
+          itemId: reviews.item.id,
+          unit: 1,
+          quantity: "-1",
+          originalLineId: original.lines[0]!.id,
+        },
+      ],
+    },
+    201,
+  );
+  const beforeReview = await reviews.preview();
+  assert.equal(beforeReview.counts.clearanceEarnings, 0);
+  assert.equal(beforeReview.counts.clearanceReturnReviews, 1);
+  assert.equal(beforeReview.blockers.length, 1);
+  await assertProtectedReset(f, reviews, beforeReview);
+  const reviewId = (
+    await f.pool.query(
+      "SELECT id FROM employee_clearance_return_reviews WHERE company_id=$1",
+      [reviews.company.id],
+    )
+  ).rows[0]!.id;
+  await f.owner.ok(
+    "POST",
+    `${reviews.base}/wallet/clearance-returns/${reviewId}/review`,
+    { note: "Reviewed without deleting entitlement or history" },
+  );
+  const afterReview = await reviews.preview();
+  assert.deepEqual(afterReview.counts, beforeReview.counts);
+  assert.notEqual(
+    afterReview.snapshotHash,
+    beforeReview.snapshotHash,
+    "A review content change invalidates the fingerprint even with unchanged row counts and journals",
+  );
+  await assertProtectedReset(f, reviews, afterReview);
 });

@@ -21,6 +21,8 @@ export const permissionKeys = [
   "audit.view",
   "accounts.view",
   "accounts.manage",
+  "accounts.balance-followup",
+  "accounts.balance-approve",
   "currencies.view",
   "currencies.manage",
   "locations.view",
@@ -58,6 +60,8 @@ export const permissionLabels: Record<Permission, string> = {
   "audit.view": "عرض سجل الشركة",
   "accounts.view": "عرض دليل الحسابات",
   "accounts.manage": "إدارة دليل الحسابات",
+  "accounts.balance-followup": "تسجيل متابعة رصيد الحساب",
+  "accounts.balance-approve": "اعتماد رصيد الحساب",
   "currencies.view": "عرض العملات وأسعار الصرف",
   "currencies.manage": "إدارة العملات وأسعار الصرف",
   "locations.view": "عرض الفروع والمواقع",
@@ -120,6 +124,8 @@ export const auditActionLabels = {
   "manager.userArchived": "أرشفة حساب مدير عام من المالك",
   "account.create": "إنشاء حساب",
   "account.update": "تعديل حساب",
+  "accountBalance.followup": "تسجيل متابعة رصيد الحساب",
+  "accountBalance.approve": "اعتماد رصيد الحساب",
   "accounts.initialize": "تهيئة دليل الحسابات",
   "accountLink.update": "تعديل ربط حساب نظامي",
   "currency.create": "إنشاء عملة",
@@ -298,6 +304,8 @@ export const companyAuditActions: AuditAction[] = [
   "financialDocument.reverse",
   "account.create",
   "account.update",
+  "accountBalance.followup",
+  "accountBalance.approve",
   "accounts.initialize",
   "accountLink.update",
   "currency.create",
@@ -588,6 +596,8 @@ export type EmployeeInput = z.input<typeof employeeSchema>;
 export * from "./masters.ts";
 export * from "./general-table.ts";
 export * from "./finance.ts";
+export * from "./account-statistics.ts";
+export * from "./account-statistics-report.ts";
 export * from "./items.ts";
 export * from "./commerce.ts";
 export * from "./doctors.ts";

@@ -655,6 +655,24 @@ page(
   { type: "report", keywords: ["تقارير", "حركة الحساب"] },
 );
 page(
+  "company.account-statistics",
+  "إحصاءات الحسابات",
+  "التقارير",
+  "/companies/:companyId/account-statistics",
+  {
+    view: permission("accounts.view", "finance.view"),
+    create: permission("accounts.balance-followup"),
+    post: permission("accounts.balance-approve"),
+  },
+  "الأرصدة التاريخية ومتابعة الحساب واعتماد الرصيد.",
+  {
+    type: "report",
+    parentKey: "company.accounts",
+    navigation: true,
+    visible: true,
+  },
+);
+page(
   "company.audit",
   "سجل الشركة",
   "التدقيق",
