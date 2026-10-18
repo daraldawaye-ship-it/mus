@@ -211,11 +211,11 @@ export async function postDraft(
 
 function dateFilters(req: Request): { from: string | null; to: string | null } {
   const from =
-    req.query.dateFrom === undefined
+    req.query.dateFrom === undefined || req.query.dateFrom === ""
       ? null
       : parse(documentDateSchema, req.query.dateFrom);
   const to =
-    req.query.dateTo === undefined
+    req.query.dateTo === undefined || req.query.dateTo === ""
       ? null
       : parse(documentDateSchema, req.query.dateTo);
   if (from && to && from > to)
@@ -229,6 +229,7 @@ async function readAccountLedger(
   companyId: number,
   accountId: number,
   req: Request,
+  ownCashbox = false,
 ) {
   const account = await client.query(
     "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting'",
@@ -237,8 +238,17 @@ async function readAccountLedger(
   if (!account.rowCount)
     missing("الحساب الحركي غير موجود في هذه الشركة");
   const dates = dateFilters(req);
+  if (ownCashbox) {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const date = (key: string) => parts.find(part => part.type === key)?.value ?? "";
+    const today = `${date("year")}-${date("month")}-${date("day")}`;
+    if (req.query.dateFrom === undefined) dates.from = today;
+    if (req.query.dateTo === undefined) dates.to = today;
+  }
+  if (dates.from && dates.to && dates.from > dates.to)
+    throw new HttpError(400, "invalid_query", "بداية الفترة تتجاوز نهايتها");
   const query = listQuery(
-    req.query,
+    ownCashbox ? { ...req.query, pageSize: req.query.pageSize ?? "50" } : req.query,
     {
       id: "f.id",
       documentId: "f.document_id",
@@ -279,8 +289,20 @@ async function readAccountLedger(
     `${cte} SELECT count(*)::integer AS total FROM full_ledger f WHERE ${filter}`,
     params,
   );
+  const counterpartJoin = ownCashbox ? `LEFT JOIN LATERAL (
+    SELECT string_agg(c.account_name, '، ' ORDER BY c.first_line) AS counterparts
+    FROM (
+      SELECT l2.account_id, min(l2.line_number) AS first_line,
+        COALESCE(max(l2.account_name),max(a2.name)) AS account_name
+      FROM financial_document_lines l2
+      JOIN accounts a2 ON a2.company_id=l2.company_id AND a2.id=l2.account_id
+      WHERE l2.company_id=f.company_id AND l2.document_id=f.document_id AND l2.account_id<>$2
+      GROUP BY l2.account_id
+    ) c
+  ) counterpart ON true` : "";
+  const counterpartSelect = ownCashbox ? "COALESCE(counterpart.counterparts, '')" : "''::text";
   const rows = await client.query(
-    `${cte} SELECT f.*,f.document_date::text AS date_text FROM full_ledger f WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+    `${cte} SELECT f.*,f.document_date::text AS date_text,${counterpartSelect} AS counterpart_accounts FROM full_ledger f ${counterpartJoin} WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
     [...params, query.pageSize, query.offset],
   );
   const items: AccountLedgerLine[] = rows.rows.map((row) => ({
@@ -298,6 +320,7 @@ async function readAccountLedger(
     baseDebit: normalizeRate(row.base_debit),
     baseCredit: normalizeRate(row.base_credit),
     runningBalance: moneyString(moneyUnits(row.running_balance)),
+    counterpartAccounts: row.counterpart_accounts,
     reversesDocumentId: row.reverses_document_id,
   }));
   const settings = await client.query(
@@ -872,7 +895,7 @@ export function financeRoutes(pool: Pool): Router {
             )
           : null;
         if (!linked?.rows[0]) {
-          const paging = listQuery(req.query, { id: "id" });
+          const paging = listQuery({ ...req.query, pageSize: req.query.pageSize ?? "50" }, { id: "id" });
           return {
             account: null,
             items: [],
@@ -882,7 +905,7 @@ export function financeRoutes(pool: Pool): Router {
             totals: null,
           };
         }
-        return readAccountLedger(client, companyId, linked.rows[0].id, req);
+        return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
       });
       res.json(result);
     }),
