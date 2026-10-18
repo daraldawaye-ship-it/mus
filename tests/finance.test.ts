@@ -406,6 +406,52 @@ async function blockedOperations<T>(
   });
 }
 
+test("my cashbox ledger requires explicit permission and is limited to the employee-linked cashbox", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const denied = await f.member(s.company.id, [], 21);
+  const mine = await f.member(s.company.id, ["finance.own-cashbox.view"], 22);
+  const colleague = await f.member(s.company.id, ["finance.own-cashbox.view"], 23);
+  const route = `${s.path}/my-cashbox-ledger`;
+
+  // A grant without an assigned sales cashbox returns no unrelated account.
+  const unlinked = await mine.client.ok<{ account: null }>("GET", route);
+  assert.equal(unlinked.account, null);
+
+  for (const [employee, account] of [
+    [denied.employee, s.cash],
+    [mine.employee, s.cash],
+    [colleague.employee, s.bank],
+  ] as const) {
+    await f.pool.query(
+      "INSERT INTO employee_account_links(company_id,employee_id,account_kind,account_id) VALUES($1,$2,'sales_cash',$3)",
+      [s.company.id, employee.id, account.id],
+    );
+  }
+  await s.post(await s.draft());
+
+  // Merely assigning a cashbox is not a report permission.
+  assert.equal((await denied.client.request("GET", route)).status, 403);
+  // The special grant cannot open the general ledger.
+  assert.equal(
+    (await mine.client.request("GET", `${s.path}/account-ledger?accountId=${s.bank.id}`)).status,
+    403,
+  );
+
+  const own = await mine.client.ok<
+    LedgerResponse & { account: { id: number } | null }
+  >("GET", `${route}?accountId=${s.bank.id}`);
+  assert.equal(own.account?.id, s.cash.id);
+  assert.equal(own.total, 1);
+  assert.equal(own.items[0]?.baseDebit, "100.25");
+
+  const other = await colleague.client.ok<
+    LedgerResponse & { account: { id: number } | null }
+  >("GET", `${route}?accountId=${s.cash.id}`);
+  assert.equal(other.account?.id, s.bank.id);
+  assert.equal(other.total, 0);
+});
+ 
 test("finance permissions separate drafting, posting and reading, with scoped selectors and no unrelated master access", async (t) => {
   const f = await fixture(t),
     s = await setup(f),
