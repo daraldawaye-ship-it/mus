@@ -366,8 +366,8 @@ test("company print letterheads are durable, owner-only and isolated by company"
     firstImage.id,
   );
   assert.equal((await staff.client.request("GET",path2)).status,403);
-  assert.equal((await staff.client.request("GET",firstImage.fullUrl)).status,200);
-  assert.equal((await staff.client.request("GET",secondImage.fullUrl)).status,403);
+  assert.equal((await staff.client.request("GET",firstImage.fullUrl.slice(4))).status,200);
+  assert.equal((await staff.client.request("GET",secondImage.fullUrl.slice(4))).status,403);
   assert.equal((await staff.client.request("PUT",path1,{mediaId:null})).status,403);
   assert.equal(
     (await staff.client.request("POST","/media",{
