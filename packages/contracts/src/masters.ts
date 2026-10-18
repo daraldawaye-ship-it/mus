@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const id = z.number().int().positive().max(2_147_483_647);
 const name = z.string().trim().min(1, "الاسم مطلوب").max(120);
-const accountName = z.string().trim().min(1, "الاسم مطلوب").max(240);
+const accountName = z.string().trim().min(1, "الاسم مطلوب").max(500);
 export function normalizeDigits(value: string): string {
   return value
     .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
