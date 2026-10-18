@@ -55,6 +55,7 @@ import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
+import { SalesHeaderActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
@@ -1988,6 +1989,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   value={account}
                   pageSize={100}
                   sort="name:asc"
+                  singleInput
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
                     setAccount(value);
@@ -2008,6 +2010,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     display={itemLabel}
                     pageSize={100}
                     sort="name:asc"
+                    singleInput
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
                 )}
@@ -2021,27 +2024,24 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
                 )}
-                {kind==="sale" && (
-                  <div className="cashbox-shortcuts">
-                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
-                      onClick={()=>openCashboxAction("pouch")}>ترحيل إلى الحافظة</Button>
-                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
-                      onClick={()=>openCashboxAction("electronic")}>ترحيل إلى المحفظة الإلكترونية</Button>
-                    <Button variant="secondary" disabled={!defaultCashbox || !canPost(context) || cashboxBusy}
-                      onClick={()=>openCashboxAction("close")}>إغلاق الصندوق</Button>
-                  </div>
-                )}
-                <Link
-                  className="button button-secondary commerce-list-link"
-                  to={listPath(companyId, kind)}
-                >
-                  قائمة الفواتير
-                </Link>
-                {kind === "sale" && commerceAccess(context,true) && (
-                  <>
-                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("add")}>إضافة رهن</Button>
-                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("list")}>عرض الرهونات</Button>
-                  </>
+                {kind === "sale" ? (
+                  <SalesHeaderActionsDropdown
+                    listUrl={listPath(companyId, kind)}
+                    canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
+                    canManagePledges={!locked && commerceAccess(context, true)}
+                    canEdit={!locked}
+                    originalVisible={showOriginalPicker}
+                    onAction={action => {
+                      if(action === "pouch" || action === "electronic" || action === "close")
+                        openCashboxAction(action);
+                      else if(action === "addPledge") setPledgeMode("add");
+                      else if(action === "listPledges") setPledgeMode("list");
+                      else setShowOriginalPicker(shown => !shown);
+                    }}
+                  />
+                ) : (
+                  <Link className="button button-secondary commerce-list-link"
+                    to={listPath(companyId, kind)}>قائمة الفواتير</Link>
                 )}
                 <Field
                   label="تاريخ الفاتورة"
@@ -2051,13 +2051,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   disabled={locked || !allowDateEdit}
                   onChange={(event) => setDocumentDate(event.target.value)}
                 />
-                <Button
+                {kind !== "sale" && <Button
                   variant="secondary"
                   disabled={locked}
-                  onClick={() => setShowOriginalPicker((shown) => !shown)}
+                  onClick={() => setShowOriginalPicker(shown => !shown)}
                 >
                   {showOriginalPicker ? "إخفاء ربط الأصل" : "ربط مردود بأصل"}
-                </Button>
+                </Button>}
                 {showCurrency && <ServerLookup<CompanyCurrency>
                   companyId={companyId}
                   resource={`/companies/${companyId}/commerce-options?type=currencies`}
@@ -2232,6 +2232,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               <div className="commerce-header-blank" aria-hidden="true" />
             </div>
           </fieldset>
+          {kind === "sale" && locked && <Link
+            className="button button-secondary commerce-list-link"
+            to={listPath(companyId, kind)}>
+            قائمة الفواتير
+          </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>

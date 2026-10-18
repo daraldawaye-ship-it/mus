@@ -454,6 +454,12 @@ try {
       });
     },
   );
+  async function chooseInvoiceAccount(label: string, code: string) {
+    const field = page.getByLabel(label, { exact: true });
+    await field.fill(code);
+    await page.getByRole("listbox", { name: label })
+      .getByRole("option", { name: new RegExp(code) }).first().click();
+  }
   if (process.env.COMMERCE_BROWSER_INVENTORY_ONLY !== "1") {
     let savedSale: Invoice | undefined;
     await scenario(
@@ -524,9 +530,7 @@ try {
         await page
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
-        await page
-          .getByLabel("حساب السداد / الذمة", { exact: true })
-          .selectOption(String(accounts.supplier!.id));
+        await chooseInvoiceAccount("حساب السداد / الذمة", accounts.supplier!.code);
         await page
           .getByLabel("الفرع", { exact: true })
           .selectOption(String(branch.id));
@@ -607,10 +611,10 @@ try {
         for (const kind of ["purchase", "sale"] as const) {
           await page.goto(base + "/invoices/new?kind=" + kind);
           await page.locator("form.commerce-editor").waitFor();
-          await page.getByLabel(
+          await chooseInvoiceAccount(
             kind === "sale" ? "حساب العميل / النقد" : "حساب السداد / الذمة",
-            { exact: true },
-          ).selectOption(String(kind === "sale" ? accounts.customer!.id : accounts.supplier!.id));
+            kind === "sale" ? accounts.customer!.code : accounts.supplier!.code,
+          );
           await page.getByLabel("تاريخ الفاتورة", { exact: true }).fill("2026-01-01");
           await page.getByLabel("ملاحظات الفاتورة", { exact: true }).fill("ملاحظة للتصفير");
           await page.locator('[id^="invoice-item-search-"]').first().fill(item.barcode);
@@ -656,9 +660,7 @@ try {
       await page
         .getByLabel("عملة الفاتورة", { exact: true })
         .selectOption(String(currency.id));
-      await page
-        .getByLabel("حساب العميل / النقد", { exact: true })
-        .selectOption(String(accounts.customer!.id));
+      await chooseInvoiceAccount("حساب العميل / النقد", accounts.customer!.code);
       await page
         .getByLabel("الفرع", { exact: true })
         .selectOption(String(branch.id));
@@ -863,9 +865,9 @@ try {
         assert.equal(savedSale.lines[0]!.unitPrice, "5");
         assert(savedSale.costDocumentId);
         await page.goto(base + "/invoices/new?kind=sale");
-        await page
-          .getByRole("button", { name: "ربط مردود بأصل", exact: true })
-          .click();
+        await page.getByRole("button", { name: "الإجراءات" }).click();
+        await page.getByRole("menu", { name: "إجراءات فاتورة المبيعات" })
+          .getByRole("menuitem", { name: "ربط مردود بأصل", exact: true }).click();
         await page
           .getByLabel("الفاتورة الأصلية", { exact: true })
           .selectOption(String(savedSale.id));
@@ -1002,9 +1004,7 @@ try {
         await page
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
-        await page
-          .getByLabel("حساب السداد / الذمة", { exact: true })
-          .selectOption(String(accounts.supplier!.id));
+        await chooseInvoiceAccount("حساب السداد / الذمة", accounts.supplier!.code);
         await page
           .getByLabel("الفرع", { exact: true })
           .selectOption(String(branch.id));
@@ -1319,9 +1319,7 @@ try {
         await page
           .getByLabel("عملة الفاتورة", { exact: true })
           .selectOption(String(currency.id));
-        await page
-          .getByLabel("حساب السداد / الذمة", { exact: true })
-          .selectOption(String(accounts.supplier!.id));
+        await chooseInvoiceAccount("حساب السداد / الذمة", accounts.supplier!.code);
         await page
           .getByLabel("الفرع", { exact: true })
           .selectOption(String(branch.id));

@@ -951,18 +951,32 @@ function DocumentEditor({
           </div>
           {kind !== "journal" && (
             <div className="financial-voucher-grid">
-              {pickerButton(
-                "حساب الصندوق أو البنك",
-                cash ? accountLabel(cash) : "",
-                { type: "cash" },
-              )}
-              {pickerButton(
-                kind === "receipt"
-                  ? "الحساب المقبوض منه"
-                  : "الحساب المصروف إليه",
-                counterparty ? accountLabel(counterparty) : "",
-                { type: "counterparty" },
-              )}
+              <ServerLookup<Account>
+                companyId={companyId}
+                resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true&cashOrBank=true`}
+                label="حساب الصندوق أو البنك"
+                singleInput
+                pageSize={50}
+                sort="name:asc"
+                value={cash as Account | null}
+                display={accountLabel}
+                disabled={pickerDisabled}
+                required
+                onChange={(item) => { touch(); cashManuallyChosen.current=true; setCash(item); }}
+              />
+              <ServerLookup<Account>
+                companyId={companyId}
+                resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true`}
+                label={kind === "receipt" ? "الحساب المقبوض منه" : "الحساب المصروف إليه"}
+                singleInput
+                pageSize={50}
+                sort="name:asc"
+                value={counterparty as Account | null}
+                display={accountLabel}
+                disabled={pickerDisabled}
+                required
+                onChange={(item) => { touch(); setCounterparty(item); }}
+              />
               <Field
                 label={`المبلغ${showCurrency && currency ? ` (${currency.code})` : ""}`}
                 money
@@ -1011,19 +1025,19 @@ function DocumentEditor({
                   {lines.map((line, index) => (
                     <tr key={line.key}>
                       <td>
-                        <Button
-                          variant="secondary"
-                          className="financial-picker"
-                          aria-label={`اختيار حساب السطر ${index + 1}`}
+                        <ServerLookup<Account>
+                          companyId={companyId}
+                          resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true`}
+                          label={`حساب السطر ${index + 1}`}
+                          singleInput
+                          pageSize={50}
+                          sort="name:asc"
+                          value={line.account as Account | null}
                           disabled={pickerDisabled}
-                          onClick={() =>
-                            setPicker({ type: "account", row: index })
-                          }
-                        >
-                          {line.account
-                            ? accountLabel(line.account)
-                            : "اختر الحساب"}
-                        </Button>
+                          required
+                          display={accountLabel}
+                          onChange={item=>editLine(index, {account:item})}
+                        />
                       </td>
                       <td>
                         <Field

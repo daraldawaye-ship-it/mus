@@ -175,6 +175,12 @@ async function selectLookup(
     .waitFor({ state: "attached" });
   await select.selectOption(String(accountId));
 }
+async function selectInlineAccount(page: Page, label: string, code: string) {
+  const field = page.getByLabel(label, { exact: true });
+  await field.fill(code);
+  await page.getByRole("listbox", { name: label })
+    .getByRole("option", { name: new RegExp(code) }).first().click();
+}
 async function pick(
   page: Page,
   button: Locator,
@@ -428,20 +434,8 @@ try {
         "HQ",
         mainBranch.id,
       );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 1", exact: true }),
-        "الحساب",
-        cash.code,
-        cash.id,
-      );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 2", exact: true }),
-        "الحساب",
-        revenue.code,
-        revenue.id,
-      );
+      await selectInlineAccount(page, "حساب السطر 1", cash.code);
+      await selectInlineAccount(page, "حساب السطر 2", revenue.code);
       await page.getByLabel("مدين السطر 1", { exact: true }).fill("100.25");
       await page.getByLabel("دائن السطر 2", { exact: true }).fill("100.25");
       await page
@@ -504,37 +498,16 @@ try {
         "YER",
         currency.id,
       );
-      await pickerButton(page, "حساب الصندوق أو البنك").click();
-      const dialog = page.getByRole("dialog");
+      // Only active cash/bank accounts should appear for the first account.
+      await page.getByLabel("حساب الصندوق أو البنك", { exact: true }).fill(revenue.code);
+      const options = page.getByRole("listbox", { name: "حساب الصندوق أو البنك" });
       await eventually(
-        () =>
-          dialog.getByLabel("الصندوق أو البنك", { exact: true }).isDisabled(),
-        (disabled) => assert.equal(disabled, false),
+        () => options.getByRole("option", { name: new RegExp(revenue.code) }).count(),
+        n => assert.equal(n,0,"Noncash accounts must not appear as cashbox choices"),
       );
-      const cashOptions = await dialog
-        .getByLabel("الصندوق أو البنك", { exact: true })
-        .locator("option")
-        .evaluateAll((options) =>
-          options.map((option) => (option as HTMLOptionElement).value),
-        );
-      assert(cashOptions.includes(String(cash.id)));
-      assert(
-        !cashOptions.includes(String(revenue.id)),
-        "Revenue must not appear among cash accounts",
-      );
-      assert(
-        !cashOptions.includes(String(expense.id)),
-        "Expense must not appear among cash accounts",
-      );
-      await selectLookup(page, dialog, "الصندوق أو البنك", cash.code, cash.id);
-      await dialog.waitFor({ state: "hidden" });
-      await pick(
-        page,
-        pickerButton(page, "الحساب المقبوض منه"),
-        "الحساب",
-        revenue.code,
-        revenue.id,
-      );
+      await selectInlineAccount(page,"حساب الصندوق أو البنك",cash.code);
+      await selectInlineAccount(page,"الحساب المقبوض منه",revenue.code);
+
       await page.getByLabel("المبلغ (YER)", { exact: true }).fill("10.25");
       await page
         .getByLabel("البيان العام", { exact: true })
@@ -578,20 +551,8 @@ try {
         "YER",
         currency.id,
       );
-      await pick(
-        page,
-        pickerButton(page, "حساب الصندوق أو البنك"),
-        "الصندوق أو البنك",
-        cash.code,
-        cash.id,
-      );
-      await pick(
-        page,
-        pickerButton(page, "الحساب المصروف إليه"),
-        "الحساب",
-        expense.code,
-        expense.id,
-      );
+      await selectInlineAccount(page,"حساب الصندوق أو البنك",cash.code);
+      await selectInlineAccount(page,"الحساب المصروف إليه",expense.code);
       await page.getByLabel("المبلغ (YER)", { exact: true }).fill("7.10");
       await page
         .getByLabel("البيان العام", { exact: true })
@@ -714,20 +675,8 @@ try {
         "YER",
         currency.id,
       );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 1", exact: true }),
-        "الحساب",
-        cash.code,
-        cash.id,
-      );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 2", exact: true }),
-        "الحساب",
-        revenue.code,
-        revenue.id,
-      );
+      await selectInlineAccount(page, "حساب السطر 1", cash.code);
+      await selectInlineAccount(page, "حساب السطر 2", revenue.code);
       await page.getByLabel("مدين السطر 1", { exact: true }).fill("12.50");
       await page.getByLabel("دائن السطر 2", { exact: true }).fill("12.49");
       await page
@@ -860,20 +809,8 @@ try {
         "YER",
         currency.id,
       );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 1", exact: true }),
-        "الحساب",
-        cash.code,
-        cash.id,
-      );
-      await pick(
-        page,
-        page.getByRole("button", { name: "اختيار حساب السطر 2", exact: true }),
-        "الحساب",
-        revenue.code,
-        revenue.id,
-      );
+      await selectInlineAccount(page, "حساب السطر 1", cash.code);
+      await selectInlineAccount(page, "حساب السطر 2", revenue.code);
       await page.getByLabel("مدين السطر 1", { exact: true }).fill("33.25");
       await page.getByLabel("دائن السطر 2", { exact: true }).fill("33.25");
       await page

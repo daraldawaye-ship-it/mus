@@ -4335,3 +4335,86 @@ ul {
 .ledger-print-heading, .ledger-print-all { display: none; }
 .pledge-list-table-scroll table { min-width: 750px; }
 .pledge-list-table-scroll td:last-child { text-align: start; overflow: visible; }
+
+
+/* Invoice/voucher/journal accounts: type and select in the same control.
+   Menus render through a portal to escape short and scrollable headers. */
+.server-lookup.server-lookup-single {
+  display: block;
+  min-width: 0;
+  margin-block: 0;
+}
+.server-lookup-single > .field {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.server-lookup-single > .field > input {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.account-lookup-popup,
+.sales-header-actions-dropdown {
+  direction: rtl;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 26px var(--shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+.account-lookup-options { display: grid; min-width: 0; }
+.account-lookup-option,
+.sales-header-actions-dropdown > button,
+.sales-header-actions-dropdown > a {
+  width: 100%;
+  display: block;
+  padding: 8px;
+  border: 0;
+  border-radius: 5px;
+  text-align: start;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  cursor: pointer;
+}
+.account-lookup-option:hover,
+.account-lookup-option.active,
+.sales-header-actions-dropdown > :is(a,button):hover:not(:disabled),
+.sales-header-actions-dropdown > :is(a,button):focus-visible {
+  background: var(--hover);
+}
+.account-lookup-option[aria-selected="true"] { font-weight: 700; }
+.sales-header-actions-dropdown > button:disabled { opacity: .45; cursor: not-allowed; }
+.account-lookup-status { padding: 7px; font-size: 11px; color: var(--muted); }
+.account-lookup-pages {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding: 5px;
+  font-size: 11px;
+}
+.account-lookup-pages > button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+}
+.account-lookup-pages > button:disabled { opacity: .5; cursor: not-allowed; }
+.sales-header-actions-trigger { display: inline-flex; align-items: center; gap: 5px; width: max-content; max-width: 100%; white-space: nowrap; }
+.financial-lines .server-lookup-single .field { margin: 0; }
+.financial-lines .server-lookup-single label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.financial-lines .server-lookup-single input { min-height: 32px; padding: 3px 6px; }
