@@ -20,6 +20,12 @@ type Movement={
 type Response={items:Movement[];total:number;page:number;pageSize:number};
 type Draft={movement:Movement;amount:string;notes:string;key:string};
 
+/** Right-to-left order shared by cash pouches and electronic wallets. */
+export const receiptTableColumns=(sourceName:string)=>[
+  "الموظف","المبلغ","ملاحظات","استلام","جزء",
+  "التاريخ",sourceName,"نوع الحركة","الحالة",
+] as const;
+
 /** The register is whole-rial display only; preserve the original amount in API/DB. */
 function ReceiptAmount({value}:{value:string|null|undefined}) {
   return <bdi className={value?.startsWith("-") ? "receipt-negative-amount" : undefined}>
@@ -27,9 +33,10 @@ function ReceiptAmount({value}:{value:string|null|undefined}) {
   </bdi>;
 }
 
-const dateTime=(value:string)=>new Intl.DateTimeFormat("ar-YE",{
-  dateStyle:"short",timeStyle:"short",timeZone:"Asia/Aden",
-}).format(new Date(value));
+const dateTime=(value:string)=>new Intl.DateTimeFormat("en-GB",{
+  day:"2-digit",month:"2-digit",year:"2-digit",
+  hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Aden",
+}).format(new Date(value)).replace(",","");
 
 export function PouchReceiptsPage({context,source="pouch"}:{
   context:CompanyContext;source?:"pouch"|"electronic";
@@ -44,6 +51,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const [status,setStatus]=useState<Status>("pending");
   const [page,setPage]=useState(1);
   const [draft,setDraft]=useState<Draft|null>(null);
+  const [inspected,setInspected]=useState<Movement|null>(null);
   const [pending,setPending]=useState(false);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState<{documentId:number;difference:string}|null>(null);
@@ -155,41 +163,89 @@ export function PouchReceiptsPage({context,source="pouch"}:{
           <div className="pouch-receipts-table-wrap" role="region"
             aria-label={`جدول حركات ${sourceName} — مرّر أفقيًا لعرض بقية الأعمدة`} tabIndex={0}>
             <table className="pouch-receipts-table">
-              <thead><tr>
-                <th>التاريخ</th><th>الموظف</th><th>{sourceName}</th>
-                <th>نوع الحركة</th><th>المبلغ</th><th>ملاحظات</th>
-                <th>الحالة</th><th>الاستلام / القيد</th>
-              </tr></thead>
-              <tbody>{list.data.items.map(item=>(
-                <tr key={item.id}>
-                  <td>{dateTime(item.createdAt)}</td>
-                  <td>{item.employeeName}</td>
-                  <td>{electronic?item.walletName:item.pouchName}</td>
-                  <td>{item.kind==="close"?"إغلاق صندوق":
-                    electronic?"ترحيل إلكتروني":"ترحيل حافظة"}</td>
-                  <td><ReceiptAmount value={item.amount}/> ر.ي</td>
-                  <td>{item.notes||"—"}</td>
-                  <td>{item.receiptId===null?"بانتظار الاستلام":
-                    <><strong>تم الاستلام</strong>
-                      <div className="muted">{item.receiverName}</div>
-                      <div className="muted">فعلي: <ReceiptAmount value={item.receivedAmount}/></div>
-                      {Number(item.differenceAmount)!==0&&
-                        <div>الفرق: <ReceiptAmount value={item.differenceAmount}/></div>}
-                    </>}</td>
-                  <td>{item.receiptId!==null
-                    ? <Link to={`/companies/${companyId}/financial-documents/${item.receiptDocumentId}`}>قيد الاستلام</Link>
-                    : canPost
-                      ? <div className="form-actions pouch-receipts-actions">
-                          <Button size="compact" disabled={pending} onClick={()=>exact(item)}>
-                            استلام مطابق
+              <colgroup>
+                <col className="receipt-col-employee" />
+                <col className="receipt-col-amount" />
+                <col className="receipt-col-notes" />
+                <col className="receipt-col-exact" />
+                <col className="receipt-col-partial" />
+                <col className="receipt-col-date" />
+                <col className="receipt-col-source" />
+                <col className="receipt-col-kind" />
+                <col className="receipt-col-status" />
+              </colgroup>
+              <thead>
+                <tr>{receiptTableColumns(sourceName).map(label=>
+                  <th key={label} scope="col">{label}</th>
+                )}</tr>
+              </thead>
+              <tbody>{list.data.items.map(item=>{
+                const statusDetails = item.receiptId === null
+                  ? "بانتظار الاستلام"
+                  : `تم الاستلام بواسطة ${item.receiverName??"—"}؛ فعلي: ${formatWholeMoney(item.receivedAmount)}؛ الفرق: ${formatWholeMoney(item.differenceAmount)}`;
+                const movementKind = item.kind==="close"
+                  ? "إغلاق صندوق"
+                  : electronic ? "ترحيل إلكتروني" : "ترحيل حافظة";
+                return (
+                  <tr key={item.id}>
+                    <td title={item.employeeName}>
+                      <span className="receipt-cell-ellipsis">{item.employeeName}</span>
+                    </td>
+                    <td className="receipt-cell-amount">
+                      <ReceiptAmount value={item.amount}/>
+                    </td>
+                    <td>
+                      {item.notes
+                        ? <button type="button" className="receipt-cell-trigger"
+                            title={item.notes} onClick={()=>setInspected(item)}
+                            aria-label={`عرض ملاحظات حركة ${item.id}`}>
+                            {item.notes}
+                          </button>
+                        : "—"}
+                    </td>
+                    <td>
+                      {item.receiptId !== null
+                        ? <Link className="receipt-entry-link"
+                            title="فتح قيد الاستلام"
+                            to={`/companies/${companyId}/financial-documents/${item.receiptDocumentId}`}>
+                            القيد
+                          </Link>
+                        : canPost
+                          ? <Button size="compact" disabled={pending}
+                              title="استلام المبلغ مطابقًا"
+                              onClick={()=>exact(item)}>مطابق</Button>
+                          : "—"}
+                    </td>
+                    <td>
+                      {item.receiptId===null && canPost
+                        ? <Button size="compact" variant="secondary"
+                            title="استلام جزء أو مبلغ غير مطابق"
+                            disabled={pending} onClick={()=>partial(item)}>
+                            جزء
                           </Button>
-                          <Button size="compact" variant="secondary" disabled={pending}
-                            onClick={()=>partial(item)}>استلام غير مطابق / جزء</Button>
-                        </div>
-                      : "يلزم صلاحية الترحيل"}
-                  </td>
-                </tr>
-              ))}</tbody>
+                        : "—"}
+                    </td>
+                    <td className="receipt-cell-date">
+                      <bdi dir="ltr">{dateTime(item.createdAt)}</bdi>
+                    </td>
+                    <td title={electronic?item.walletName:item.pouchName}>
+                      <span className="receipt-cell-ellipsis">
+                        {electronic?item.walletName:item.pouchName}
+                      </span>
+                    </td>
+                    <td title={movementKind}>
+                      <span className="receipt-cell-ellipsis">{movementKind}</span>
+                    </td>
+                    <td>
+                      {item.receiptId===null
+                        ? <span className="receipt-status-pending" title="بانتظار الاستلام">بانتظار</span>
+                        : <button type="button" className="receipt-status-button"
+                            title={statusDetails} onClick={()=>setInspected(item)}
+                            aria-label={`تفاصيل استلام حركة ${item.id}`}>مستلم</button>}
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         )}
@@ -202,6 +258,33 @@ export function PouchReceiptsPage({context,source="pouch"}:{
             onClick={()=>setPage(p=>p+1)}>التالي</Button>
         </div>
       </Card>
+      <Dialog open={!!inspected} title="تفاصيل حركة الاستلام"
+        onClose={()=>setInspected(null)}>
+        {inspected && (
+          <div className="form-stack">
+            <p><strong>الموظف:</strong> {inspected.employeeName}</p>
+            <p><strong>{sourceName}:</strong> {electronic?inspected.walletName:inspected.pouchName}</p>
+            <p><strong>التاريخ:</strong> <bdi dir="ltr">{dateTime(inspected.createdAt)}</bdi></p>
+            <p><strong>المبلغ:</strong> <ReceiptAmount value={inspected.amount}/> ريال</p>
+            <p><strong>ملاحظات الحركة:</strong> {inspected.notes||"—"}</p>
+            <p><strong>الحالة:</strong> {inspected.receiptId===null?"بانتظار الاستلام":"تم الاستلام"}</p>
+            {inspected.receiptId!==null && (
+              <>
+                <p><strong>المستلم:</strong> {inspected.receiverName||"—"}</p>
+                <p><strong>المبلغ المستلم:</strong> <ReceiptAmount value={inspected.receivedAmount}/> ريال</p>
+                <p><strong>العجز أو الزيادة:</strong> <ReceiptAmount value={inspected.differenceAmount}/> ريال</p>
+                <p><strong>ملاحظات الاستلام:</strong> {inspected.receiptNotes||"—"}</p>
+                {inspected.receiptDocumentId!==null && <Link
+                  to={`/companies/${companyId}/financial-documents/${inspected.receiptDocumentId}`}
+                  onClick={()=>setInspected(null)}>فتح قيد الاستلام</Link>}
+              </>
+            )}
+            <div className="form-actions">
+              <Button variant="secondary" onClick={()=>setInspected(null)}>إغلاق</Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
       <Dialog open={!!draft} title="استلام غير مطابق / جزء"
         onClose={()=>{if(!pending&&!uncertain){setDraft(null);setError("");}}}>
         {draft&&<form className="form-stack" onSubmit={submit}>

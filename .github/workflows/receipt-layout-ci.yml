@@ -1,0 +1,28 @@
+name: Cashbox receipt layout checks
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/PouchReceiptsPage.tsx'
+      - 'apps/web/src/styles.css'
+      - 'tests/receipt-columns.test.ts'
+      - '.github/workflows/receipt-layout-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  receipt-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify TypeScript
+        run: npm run check
+      - name: Build web app
+        run: npm run build
+      - name: Check identical RTL ordering
+        run: node --import tsx --test tests/receipt-columns.test.ts
