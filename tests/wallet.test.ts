@@ -754,7 +754,7 @@ test("pledge creation uses account 1120, persists limit, and awards staff only o
   const company=await f.company("Pledge test company");
   const employee=await f.staff(company.id,"Pledge cashier");
   const base=`/companies/${company.id}`;
-  await f.pool.query("UPDATE employees SET permissions=ARRAY['commerce.view','commerce.manage','accounts.view']::text[] WHERE company_id=$1 AND id=$2",[company.id,employee.employee.id]);
+  await f.pool.query("UPDATE employees SET permissions=ARRAY['commerce.view','commerce.manage','accounts.view','accounts.manage']::text[] WHERE company_id=$1 AND id=$2",[company.id,employee.employee.id]);
   const input={
     idempotencyKey:randomUUID(), customerName:"محمد محمد صلاح قاسم",
     phone:"770731624", collateral:"خاتم ذهب", durationDays:2, limit:"12000",
