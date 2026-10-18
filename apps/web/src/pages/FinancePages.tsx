@@ -1605,6 +1605,7 @@ function LedgerContent({ context }: { context: CompanyContext }) {
       <PageHeader
         title="كشف حساب"
         description="الحركات مرتبة حسب التاريخ والمستند والسطر؛ الإجماليات لكامل الفترة، والرصيد الجاري بالعملة الأساسية."
+        actions={<Button variant="secondary" onClick={() => window.print()}><Printer size={16} /> طباعة كشف الحساب</Button>}
       />
       <Card>
         <div className="table-filters">
