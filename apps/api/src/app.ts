@@ -14,6 +14,7 @@ import { socialAuthRoutes } from "./routes-social-auth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { businessRoutes } from "./business-routes.ts";
 import { mediaRoutes } from "./routes-media.ts";
+import { chatRoutes } from "./routes-chat.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -52,6 +53,7 @@ export async function createApp(options: AppOptions = {}) {
     "/api",
     authRoutes(pool, config.production),
     mediaRoutes(pool),
+    chatRoutes(pool),
     business,
   );
   app.use("/api", (_req, res) =>

@@ -27,6 +27,7 @@ import {
   ListTree,
   LogIn,
   Menu,
+  MessageSquare,
   MapPin,
   Package,
   Settings2,
@@ -127,6 +128,9 @@ const NotificationsPage = lazy(() =>
   import("./pages/NotificationsPage").then((module) => ({
     default: module.NotificationsPage,
   })),
+);
+const ChatPage = lazy(() =>
+  import("./pages/ChatPage").then((module) => ({ default: module.ChatPage })),
 );
 const NotificationTemplatesPage = lazy(() =>
   import("./pages/NotificationsPage").then((module) => ({
@@ -259,6 +263,7 @@ const InvoicePage = lazy(() =>
   })),
 );
 const companySections = [
+  "chat",
   "notifications",
   "notification-templates",
   "memos",
@@ -337,6 +342,7 @@ function Navigation({
     "public.general-table": <TableProperties size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
+    "public.chat": <MessageSquare size={17} />,
     "public.notification-templates": <Settings2 size={17} />,
     "company.overview": <LayoutDashboard size={17} />,
     "company.configuration": <ShieldCheck size={17} />,
@@ -348,6 +354,7 @@ function Navigation({
     "company.wallet-settings": <Wallet size={17} />,
     "company.wallet-conversions": <Wallet size={17} />,
     "company.notifications": <Bell size={17} />,
+    "company.chat": <MessageSquare size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
     "company.memos": <FileText size={17} />,
     "company.settings": <Settings2 size={17} />,
@@ -483,7 +490,14 @@ function CompanyContent({
   context: CompanyContext;
   section: CompanySection;
 }) {
+  const { user } = useSession();
   switch (section) {
+    case "chat":
+      return user ? (
+        <Suspense fallback={<Notice>جارٍ تحميل الدردشة…</Notice>}>
+          <ChatPage key={`${user.id}:company:${context.company.id}`} scope="company" companyId={context.company.id} user={user} />
+        </Suspense>
+      ) : null;
     case "memos":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل المذكرات…</Notice>}>
@@ -978,6 +992,18 @@ function Workspace() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
+              <Route
+                path="/chat"
+                element={
+                  <Protected>
+                    <PageRouteGuard pageKey="public.chat">
+                      <Suspense fallback={<Notice>جارٍ تحميل الدردشة…</Notice>}>
+                        {user && <ChatPage key={`${user.id}:global`} scope="global" user={user} />}
+                      </Suspense>
+                    </PageRouteGuard>
+                  </Protected>
+                }
+              />
               <Route
                 path="/notifications"
                 element={
