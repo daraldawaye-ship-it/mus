@@ -640,6 +640,43 @@ function AccountEditor({
     account?.accountChoice ?? "administrative",
   );
   const [cashOrBank, setCashOrBank] = useState(account?.cashOrBank ?? false);
+  const [extra, setExtra] = useState({
+    accountLimit: account?.accountLimit ?? "",
+    dailyLimit: account?.dailyLimit ?? "",
+    weeklyLimit: account?.weeklyLimit ?? "",
+    monthlyLimit: account?.monthlyLimit ?? "",
+    privacyLevel: String(account?.privacyLevel ?? 1),
+    lastApprovalDate: account?.lastApprovalDate ?? "",
+    ownerPhone: account?.ownerPhone ?? "",
+    dailyDefault: account?.dailyDefault ?? "",
+    weeklyDefault: account?.weeklyDefault ?? "",
+    monthlyDefault: account?.monthlyDefault ?? "",
+  });
+  const [goodsTouched, setGoodsTouched] = useState(false);
+  const [goodsSelected, setGoodsSelected] = useState<Account | null>(null);
+  const goodsValue = useQuery({
+    queryKey: ["account-goods-value", companyId, account?.goodsValueAccountId],
+    enabled: !!account?.goodsValueAccountId,
+    queryFn: ({ signal }) => api<{account: Account}>(
+      `/companies/${companyId}/accounts/${account!.goodsValueAccountId}`, { signal }
+    ),
+  });
+  function changeExtra(key: keyof typeof extra, value: string) {
+    setExtra(previous => ({...previous, [key]: value}));
+  }
+  const extras = {
+    accountLimit: extra.accountLimit.trim() || null,
+    dailyLimit: extra.dailyLimit.trim() || null,
+    weeklyLimit: extra.weeklyLimit.trim() || null,
+    monthlyLimit: extra.monthlyLimit.trim() || null,
+    privacyLevel: Number(extra.privacyLevel),
+    lastApprovalDate: extra.lastApprovalDate || null,
+    ownerPhone: extra.ownerPhone,
+    dailyDefault: extra.dailyDefault.trim() || null,
+    weeklyDefault: extra.weeklyDefault.trim() || null,
+    monthlyDefault: extra.monthlyDefault.trim() || null,
+    goodsValueAccountId: goodsTouched ? goodsSelected?.id ?? null : account?.goodsValueAccountId ?? null,
+  };
   const [parent, setParent] = useState<Account | null>(null);
   const [kind, setKind] = useState<AccountKind>("posting");
   const [category, setCategory] = useState<AccountCategory>("asset");
@@ -656,6 +693,7 @@ function AccountEditor({
       active,
       cashOrBank,
       accountChoice: accountChoice || null,
+      ...extras,
     };
     if (!account) {
       const parsed = accountSchema.safeParse({
@@ -664,6 +702,7 @@ function AccountEditor({
         kind,
         category,
         accountChoice: accountChoice || null,
+        ...extras,
         cashOrBank: kind === "posting" && category === "asset" && cashOrBank,
         parentId: parent?.id ?? null,
         rangeStart: kind === "group" && rangeStart ? rangeStart : null,
@@ -732,7 +771,7 @@ function AccountEditor({
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
-          maxLength={240}
+          maxLength={500}
           disabled={saving}
           autoFocus
         />
@@ -854,6 +893,34 @@ function AccountEditor({
             حساب نقدي أو بنكي — متاح لسندات القبض والصرف
           </label>
         )}
+        <fieldset disabled={saving}>
+          <legend>السقوف والبيانات الإضافية</legend>
+          <div className="form-grid">
+          <Field label="سقف الحساب" money inputMode="decimal" value={extra.accountLimit} onChange={event => changeExtra("accountLimit",event.target.value)} disabled={saving} />
+          <Field label="سقف يومي" money inputMode="decimal" value={extra.dailyLimit} onChange={event => changeExtra("dailyLimit",event.target.value)} disabled={saving} />
+          <Field label="سقف أسبوعي" money inputMode="decimal" value={extra.weeklyLimit} onChange={event => changeExtra("weeklyLimit",event.target.value)} disabled={saving} />
+          <Field label="سقف شهري" money inputMode="decimal" value={extra.monthlyLimit} onChange={event => changeExtra("monthlyLimit",event.target.value)} disabled={saving} />
+          <Field label="افتراضي يومي" money inputMode="decimal" value={extra.dailyDefault} onChange={event => changeExtra("dailyDefault",event.target.value)} disabled={saving} />
+          <Field label="افتراضي أسبوعي" money inputMode="decimal" value={extra.weeklyDefault} onChange={event => changeExtra("weeklyDefault",event.target.value)} disabled={saving} />
+          <Field label="افتراضي شهري" money inputMode="decimal" value={extra.monthlyDefault} onChange={event => changeExtra("monthlyDefault",event.target.value)} disabled={saving} />
+          <Select label="خصوصية الحساب" value={extra.privacyLevel} onChange={event => changeExtra("privacyLevel",event.target.value)}>
+            {[1,2,3,4,5].map(level => <option key={level} value={level}>{level}</option>)}
+          </Select>
+          <Field label="آخر مصادقة للحساب" type="date" value={extra.lastApprovalDate} onChange={event => changeExtra("lastApprovalDate",event.target.value)} />
+          <Field label="رقم هاتف صاحب الحساب" inputMode="tel" value={extra.ownerPhone} onChange={event => changeExtra("ownerPhone",event.target.value)} />
+          </div>
+          <ServerLookup<Account>
+            companyId={companyId}
+            resource={`/companies/${companyId}/commerce-options?type=accounts`}
+            label="قيمة البضاعة تحسب لـ"
+            value={goodsTouched ? goodsSelected : goodsValue.data?.account ?? null}
+            onChange={next => {setGoodsTouched(true);setGoodsSelected(next);}}
+            display={value => `${value.code} — ${value.name}`}
+            emptyLabel="دون حساب"
+            disabled={saving}
+          />
+          <small className="muted">حقل ربط فقط؛ لا ينفذ احتسابًا حتى تحديد قواعده.</small>
+        </fieldset>
         <label className="check-label">
           <input
             type="checkbox"
