@@ -311,6 +311,26 @@ export function commerceRoutes(pool: Pool): Router {
     });
     res.json({matches});
   }));
+  // Cashier-only counterparty lookup for the optional receipt companion voucher.
+  // It does not allow selecting a cashbox, amount, date, or currency.
+  router.get(`${base}/receipt-counterpart-accounts`,handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const q=typeof req.query.q==="string"?req.query.q.trim():"";
+    if(q.length>100)throw new HttpError(400,"invalid_query","عبارة البحث طويلة");
+    const result=await transaction(pool,async(client)=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      await companyAccess(client,user,companyId,"finance.view");
+      const rows=await client.query(
+        `SELECT id,code,name FROM accounts
+         WHERE company_id=$1 AND active AND kind='posting'
+           AND ($2='' OR code ILIKE '%'||$2||'%' OR name ILIKE '%'||$2||'%')
+         ORDER BY name,id LIMIT 50`,[companyId,q],
+      );
+      return {items:rows.rows};
+    });
+    res.json(result);
+  }));
   router.get(
     `${base}/pouch-receipts`,
     handler(async (req,res) => {
