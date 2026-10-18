@@ -11,7 +11,7 @@ import { audit } from "./services/audit.ts";
 // JSON image uploads intentionally contain small browser-resized raster files.
 // Keeping originals and thumbnails in PostgreSQL makes them survive Railway redeploys.
 const uploadSchema = z.object({
-  purpose: z.enum(["avatar", "item"]),
+  purpose: z.enum(["avatar", "item", "letterhead"]),
   companyId: z.number().int().positive().nullable(),
   original: z.string().max(3_100_000),
   thumbnail: z.string().max(300_000),
@@ -37,7 +37,7 @@ export function mediaRoutes(pool: Pool): Router {
   const router = Router();
   router.post("/media",handler(async(req,res) => {
     const input = parse(uploadSchema,req.body);
-    if ((input.purpose==="item") !== (input.companyId !== null))
+    if ((input.purpose!=="avatar") !== (input.companyId !== null))
       throw new HttpError(400,"invalid_scope","تحديد نطاق الصورة غير صالح");
     const original = readRaster(input.original,2_000_000);
     const thumbnail = readRaster(input.thumbnail,150_000);
@@ -45,6 +45,11 @@ export function mediaRoutes(pool: Pool): Router {
     await transaction(pool,async(client)=>{
       const user=await currentActor(client,actor(req));
       if(input.purpose==="item") await companyAccess(client,user,input.companyId!,"items.manage");
+      if(input.purpose==="letterhead") {
+        const access=await companyAccess(client,user,input.companyId!,undefined,true);
+        if(!user.owner && access.company.createdBy!==user.id)
+          throw new HttpError(403,"forbidden","تغيير ترويسة الشركة متاح للمالك فقط");
+      }
       await client.query(
         `INSERT INTO media_assets(id,purpose,company_id,uploaded_by,original_mime,thumbnail_mime,original_bytes,thumbnail_bytes)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -74,7 +79,10 @@ export function mediaRoutes(pool: Pool): Router {
       if(record.purpose==="avatar"){
         if(record.uploaded_by!==user.id)missing();
       }else{
-        await companyAccess(client,user,record.company_id,"items.view");
+        await companyAccess(
+          client,user,record.company_id,
+          record.purpose==="item"?"items.view":undefined,
+        );
       }
       return record;
     });

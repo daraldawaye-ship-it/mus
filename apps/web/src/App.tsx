@@ -44,6 +44,7 @@ import { api, SessionProvider, useSession } from "./api";
 import {
   pageKeyForLocation,
   pageDefinitions,
+  pageByKey,
   pageHref,
   pageRuleAllows,
 } from "../../../packages/contracts/src/index";
@@ -57,6 +58,7 @@ import { UserMenu } from "./UserMenu";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { WalletIndicator } from "./WalletIndicator";
+import { CompanyPrintHeader } from "./CompanyPrintHeader";
 import { useCompanyIdleLogout } from "./idle-logout";
 import { Button, Card, Dialog, Notice } from "./ui";
 import {
@@ -486,7 +488,19 @@ function CompanyView({
       pageKey={pageKey}
       companyId={context.company.id}
     >
-      <CompanyContent context={context} section={section} />
+      {pageKey && pageByKey(pageKey)?.type === "report" ? (
+        <div className="company-report-printable">
+          <CompanyPrintHeader context={context} />
+          <div className="company-report-print-toolbar">
+            <Button variant="secondary" onClick={() => window.print()}>
+              طباعة التقرير
+            </Button>
+          </div>
+          <CompanyContent context={context} section={section} />
+        </div>
+      ) : (
+        <CompanyContent context={context} section={section} />
+      )}
     </PageRouteGuard>
   );
 }

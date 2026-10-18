@@ -236,6 +236,67 @@ export function companyRoutes(pool: Pool): Router {
       res.json(context);
     }),
   );
+
+  // Company masthead is a separate setting, never included in accounting records.
+  // Employees may view it for printing, but only the creator or platform owner
+  // may replace or clear the artwork.
+  router.get("/companies/:companyId/letterhead", handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const user=await currentActor(pool,actor(req),false);
+    await companyAccess(pool,user,companyId);
+    const result=await pool.query(
+      "SELECT media_id,updated_at FROM company_letterheads WHERE company_id=$1",
+      [companyId],
+    );
+    const row=result.rows[0];
+    res.json({
+      mediaId:row?.media_id??null,
+      imageUrl:row?.media_id?`/api/media/${row.media_id}/full`:null,
+      updatedAt:row?.updated_at?.toISOString()??null,
+    });
+  }));
+  router.put("/companies/:companyId/letterhead",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const {mediaId}=parse(
+      z.object({mediaId:z.uuid().nullable()}).strict(),req.body,
+    );
+    const result=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req));
+      const access=await companyAccess(client,user,companyId,undefined,true);
+      if(!user.owner && access.company.createdBy!==user.id)
+        throw new HttpError(403,"forbidden","تعديل الترويسة متاح لمالك الشركة فقط");
+      const previous=await client.query(
+        "SELECT media_id FROM company_letterheads WHERE company_id=$1",
+        [companyId],
+      );
+      if(mediaId!==null){
+        const asset=await client.query(
+          "SELECT id FROM media_assets WHERE id=$1 AND company_id=$2 AND purpose='letterhead'",
+          [mediaId,companyId],
+        );
+        if(!asset.rowCount) throw new HttpError(400,"invalid_image","الصورة غير مخصصة لهذه الشركة أو ليست ترويسة");
+        await client.query(
+          `INSERT INTO company_letterheads(company_id,media_id,updated_by)
+           VALUES($1,$2,$3)
+           ON CONFLICT(company_id) DO UPDATE SET
+             media_id=EXCLUDED.media_id,updated_by=EXCLUDED.updated_by,updated_at=now()`,
+          [companyId,mediaId,user.id],
+        );
+      }else{
+        await client.query("DELETE FROM company_letterheads WHERE company_id=$1",[companyId]);
+      }
+      await audit(
+        client,user,"company.letterhead.update","company",companyId,
+        {mediaId:previous.rows[0]?.media_id??null},{mediaId},companyId,
+      );
+      return {
+        mediaId,
+        imageUrl:mediaId?`/api/media/${mediaId}/full`:null,
+      };
+    });
+    res.json(result);
+  }));
+
   router.post(
     "/companies/:companyId/activate",
     handler(async (req, res) => {

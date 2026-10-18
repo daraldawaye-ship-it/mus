@@ -26,7 +26,7 @@ export function thumbnailUrl(full:string):string{
 export function ImageUpload({
   purpose,companyId,preview,onUploaded,onClear,disabled=false,
 }:{
-  purpose:"avatar"|"item";companyId?:number;preview?:string|null;
+  purpose:"avatar"|"item"|"letterhead";companyId?:number;preview?:string|null;
   onUploaded:(asset:UploadedImage)=>void;onClear?:()=>void;disabled?:boolean;
 }){
   const [busy,setBusy]=useState(false);
@@ -45,9 +45,9 @@ export function ImageUpload({
       const result=await api<UploadedImage>("/media",{
         method:"POST",
         body:{
-          purpose,companyId:purpose==="item"?(companyId??null):null,
-          original:raster(bitmap,1440,0.82),
-          thumbnail:raster(bitmap,160,0.76),
+          purpose,companyId:purpose==="avatar"?null:(companyId??null),
+          original:raster(bitmap,purpose==="letterhead"?2400:1440,0.86),
+          thumbnail:raster(bitmap,purpose==="letterhead"?480:160,0.78),
         }
       });
       onUploaded(result);
@@ -56,14 +56,16 @@ export function ImageUpload({
     }finally{bitmap?.close();setBusy(false);}
   }
   return <div className="field image-upload">
-    <label>{purpose==="avatar"?"صورة المستخدم":"صورة الصنف"}</label>
+    <label>{purpose==="avatar"?"صورة المستخدم":purpose==="letterhead"?"صورة ترويسة الشركة":"صورة الصنف"}</label>
     <div className="image-upload-controls">
-      {preview && <img className="image-upload-preview" src={preview} alt="معاينة الصورة" />}
+      {preview && <img className={purpose==="letterhead"?"image-upload-preview letterhead-upload-preview":"image-upload-preview"} src={preview} alt="معاينة الصورة" />}
       <input type="file" accept="image/png,image/jpeg,image/webp,image/*" aria-label="اختر صورة من جهازك"
         disabled={disabled||busy} onChange={(event)=>void upload(event)} />
       {preview && onClear && <button type="button" disabled={disabled||busy} onClick={onClear}>إزالة الصورة</button>}
     </div>
-    <small className="muted">تُنشأ نسخة مصغرة تلقائيًا للعرض السريع في القوائم.</small>
+    <small className="muted">{purpose==="letterhead"
+      ? "يفضّل رفع صورة أفقية عريضة واضحة (مثل 1600×200). تحفظ الصورة الكاملة للطباعة."
+      : "تُنشأ نسخة مصغرة تلقائيًا للعرض السريع في القوائم."}</small>
     {busy && <small aria-live="polite">جارٍ تجهيز الصورة ورفعها…</small>}
     {error && <small className="image-upload-error" role="alert">{error}</small>}
   </div>;

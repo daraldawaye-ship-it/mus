@@ -39,6 +39,7 @@ import {
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useControls } from "../control";
 import { formatMoney } from "../format-money";
+import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import {
   Button,
@@ -852,9 +853,7 @@ function DocumentEditor({
       </div>
       <Card className="financial-document">
         <div className="financial-print-heading">
-          <strong>{context.company.name}</strong>
-          <span>{context.company.phone}</span>
-          <span>{context.company.address}</span>
+          <CompanyPrintHeader context={context} />
           <h2>
             {documentKindLabels[kind]} {document?.number ?? "مسودة جديدة"}
           </h2>

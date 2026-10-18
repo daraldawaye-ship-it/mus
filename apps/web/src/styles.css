@@ -3751,3 +3751,88 @@ ul {
   .pouch-receipts-table th,
   .pouch-receipts-table td { padding: 4px 6px; }
 }
+
+
+/* The print image stays at its actual aspect ratio (typically ~9:1).
+   It is not stretched into a logo square or a fixed-height banner. */
+.letterhead-upload-preview {
+  width: min(100%, 700px);
+  max-width: 100%;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 4px;
+}
+.company-print-letterhead { display: none; }
+.company-report-printable { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
+.company-report-print-toolbar { display: flex; justify-content: flex-end; }
+@media print {
+  .company-print-letterhead {
+    display: block !important;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 0 5mm;
+    padding: 0 0 3mm;
+    border-bottom: 1px solid #bbb;
+    break-inside: avoid;
+  }
+  .company-print-letterhead-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 38mm;
+    object-fit: contain;
+    object-position: center;
+  }
+  .company-print-letterhead-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    color: #111;
+    text-align: center;
+  }
+  .company-print-letterhead-fallback > strong { font-size: 18px; }
+  .company-report-print-toolbar,
+  .company-report-printable .table-filters,
+  .company-report-printable .filter-bar,
+  .company-report-printable .pagination,
+  .company-report-printable .page-actions,
+  .company-report-printable .table-tools,
+  .company-report-printable .page-heading .button,
+  .company-report-printable button,
+  .company-report-printable input,
+  .company-report-printable select {
+    display: none !important;
+  }
+  .company-report-printable {
+    display: block;
+    width: 100%;
+    background: #fff;
+    color: #111;
+  }
+  .company-report-printable .card {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .company-report-printable .table-scroll,
+  .company-report-printable .pouch-receipts-table-wrap {
+    overflow: visible;
+    max-height: none;
+    border-color: #bbb;
+  }
+  .company-report-printable table {
+    width: 100%;
+    min-width: 0;
+  }
+  .company-report-printable thead { display: table-header-group; }
+  .company-report-printable tr { break-inside: avoid; }
+  .company-report-printable th,
+  .company-report-printable td {
+    color: #111;
+    background: #fff;
+    border-color: #ccc;
+  }
+}
