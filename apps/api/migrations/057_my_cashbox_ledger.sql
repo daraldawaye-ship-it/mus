@@ -9,8 +9,8 @@ ALTER TABLE employees ADD CONSTRAINT employees_permissions_check
     'finance.manage','finance.post','items.view','items.manage',
     'commerce.view','commerce.manage','inventory.view','inventory.manage','inventory.post'
   ]::text[]);
-ALTER TABLE permission_definitions DROP CONSTRAINT permission_definitions_required_permissions_check;
-ALTER TABLE permission_definitions ADD CONSTRAINT permission_definitions_required_permissions_check
+ALTER TABLE permission_definitions DROP CONSTRAINT permission_definitions_required_permissions_check1;
+ALTER TABLE permission_definitions ADD CONSTRAINT permission_definitions_allowed_permissions_check
   CHECK (required_permissions <@ ARRAY[
     'pages.manage','company.edit','employees.view','audit.view',
     'accounts.view','accounts.manage','currencies.view','currencies.manage',
