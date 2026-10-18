@@ -606,19 +606,19 @@ export function inventoryRoutes(pool: Pool): Router {
             const values: unknown[] = [];
             if (input.nearestExpiryDate !== undefined) {
               values.push(input.nearestExpiryDate);
-              sets.push(`nearest_expiry_date=${values.length}`);
+              sets.push("nearest_expiry_date=$"+values.length);
             }
             if (shelfName !== undefined) {
               values.push(shelfName);
-              sets.push(`shelf=${values.length}`);
+              sets.push("shelf=$"+values.length);
               values.push(input.shelfId);
-              sets.push(`shelf_id=${values.length}`);
+              sets.push("shelf_id=$"+values.length);
             }
             values.push(companyId,input.itemId);
             await client.query(
-              `UPDATE items SET ${sets.join(",")},revision=revision+1,
-                 updated_at=clock_timestamp()
-               WHERE company_id=${values.length-1} AND id=${values.length}`,
+              "UPDATE items SET "+sets.join(",")+
+              ",revision=revision+1,updated_at=clock_timestamp()"+
+              " WHERE company_id=$"+(values.length-1)+" AND id=$"+values.length,
               values,
             );
           }
