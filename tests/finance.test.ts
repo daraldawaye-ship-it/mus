@@ -418,8 +418,25 @@ test("my cashbox ledger requires explicit permission and is limited to the emplo
   const unlinked = await mine.client.ok<{ account: null }>("GET", route);
   assert.equal(unlinked.account, null);
 
+  // The link table correctly prohibits two employees from owning one account.
+  const deniedCash = (
+    await f.owner.ok<{ account: Account }>(
+      "POST",
+      `${s.path}/accounts`,
+      {
+        code: "8810000099",
+        name: "Denied cash",
+        parentId: null,
+        kind: "posting",
+        category: "asset",
+        normalSide: "debit",
+        cashOrBank: true,
+      },
+      201,
+    )
+  ).account;
   for (const [employee, account] of [
-    [denied.employee, s.cash],
+    [denied.employee, deniedCash],
     [mine.employee, s.cash],
     [colleague.employee, s.bank],
   ] as const) {
