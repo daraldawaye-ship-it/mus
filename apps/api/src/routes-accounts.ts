@@ -313,7 +313,7 @@ export async function initializeCompanyAccounts(
     const parentId = seed.parentCode
       ? created.find((account) => account.code === seed.parentCode)!.id
       : null;
-    const next = await insertAccount(client, user, companyId, {
+    const next = await insertAccount(client, user, companyId, accountSchema.parse({
       code: seed.code,
       name: seed.name,
       parentId,
@@ -325,7 +325,7 @@ export async function initializeCompanyAccounts(
       cashOrBank: false,
       rangeStart: seed.rangeStart ?? null,
       rangeEnd: seed.rangeEnd ?? null,
-    });
+    }));
     created.push(next);
     if (seed.purpose)
       await client.query(
