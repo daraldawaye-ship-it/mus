@@ -2232,6 +2232,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               <div className="commerce-header-blank" aria-hidden="true" />
             </div>
           </fieldset>
+          {kind === "sale" && locked && <Link
+            className="button button-secondary commerce-list-link"
+            to={listPath(companyId, kind)}>
+            قائمة الفواتير
+          </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
