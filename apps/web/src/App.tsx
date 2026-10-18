@@ -488,7 +488,7 @@ function CompanyView({
       pageKey={pageKey}
       companyId={context.company.id}
     >
-      {pageByKey(pageKey)?.type === "report" ? (
+      {pageKey && pageByKey(pageKey)?.type === "report" ? (
         <div className="company-report-printable">
           <CompanyPrintHeader context={context} />
           <div className="company-report-print-toolbar">
