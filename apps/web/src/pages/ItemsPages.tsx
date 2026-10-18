@@ -1974,6 +1974,13 @@ function ItemEditor({
               nearestExpiryDate: date ?? "",
               shelf:shelf.shelf,shelfId:shelf.shelfId,
             }));
+            // A posted adjustment also increments the item's revision.
+            // Keep this open card in sync so its next save does not conflict.
+            savedRevision.current += 1;
+            setVisibleRevision(savedRevision.current);
+            void itemQueryClient.invalidateQueries({
+              queryKey: ["items", user?.id, companyId, "detail", item.id],
+            });
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "statistics", item.id],
             });
