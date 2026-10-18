@@ -99,6 +99,8 @@ export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   purchases: [],
 };
 export const auditActionLabels = {
+  "chat.send": "إرسال رسالة دردشة خاصة",
+  "chat.receipt": "تأكيد استلام أو عرض رسالة دردشة",
   "owner.create": "إنشاء مالك المنصة",
   "user.register": "إنشاء حساب عام",
   "auth.login": "تسجيل الدخول",
@@ -221,6 +223,8 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "chat.send",
+  "chat.receipt",
   "notification.create",
   "notification.follow",
   "notification.assign",
@@ -244,6 +248,8 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "chat.send",
+  "chat.receipt",
   "company.transactions.reset",
   "company.transactions.import",
   "wallet.award",
@@ -611,3 +617,4 @@ export * from "./notifications.ts";
 export * from "./memos.ts";
 
 export * from "./wallet.ts";
+export * from "./chat.ts";

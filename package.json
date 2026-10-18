@@ -20,7 +20,8 @@
     "test:browser:items": "npm run build && tsx tests/browser-items.ts",
     "test:browser:commerce": "npm run build && tsx tests/browser-commerce.ts",
     "test:browser:pages": "npm run build && tsx tests/browser-pages.ts",
-    "test:browser:defaults": "npm run build && tsx tests/browser-defaults.ts"
+    "test:browser:defaults": "npm run build && tsx tests/browser-defaults.ts",
+    "test:browser:chat": "npm run build && tsx tests/browser-chat.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",

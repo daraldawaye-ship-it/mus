@@ -680,6 +680,24 @@ page(
   { view: permission("audit.view") },
   "تدقيق العمليات داخل الشركة والفاعل والوقت والقيم قبل وبعد.",
 );
+page(
+  "public.chat",
+  "دردشة تجارة",
+  "الموقع العام",
+  "/chat",
+  { view: signed, create: signed },
+  "محادثات خاصة بين مستخدمي تجارة مع تأكيد الاستلام والعرض.",
+  { order: 45, keywords: ["دردشة", "محادثات", "رسائل", "استلام", "عرض"] },
+);
+page(
+  "company.chat",
+  "دردشة الشركة",
+  "التواصل",
+  "/companies/:companyId/chat",
+  { view: member, create: member },
+  "محادثات خاصة بين الأعضاء الفعالين في الشركة؛ مستقلة عن دردشة الموقع العام.",
+  { order: 275, keywords: ["دردشة", "محادثات", "رسائل", "موظفين"] },
+);
 export const pageDefinitions: readonly PageDefinition[] = entries;
 export const pageByKey = (key: string) =>
   pageDefinitions.find((entry) => entry.key === key);

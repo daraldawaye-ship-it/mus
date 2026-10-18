@@ -1,0 +1,69 @@
+name: Chat validation
+
+on:
+  push:
+    branches:
+      - "codex/chat-*"
+      - "feat/tijara-chat-*"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "packages/contracts/**"
+      - "tests/chat.test.ts"
+      - "tests/browser-chat.ts"
+      - "tests/helpers.ts"
+      - "package*.json"
+      - "tsconfig.json"
+      - ".github/workflows/chat-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tijara_chat_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tijara_chat_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tijara_chat_ci
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Focused chat API checks
+        run: npx tsx --test tests/chat.test.ts
+      - run: npx playwright install --with-deps chromium
+      - name: Focused chat browser checks
+        run: npx tsx tests/browser-chat.ts
+      - name: Browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-browser-evidence
+          path: /tmp/tijara-chat-browser
+          if-no-files-found: ignore
