@@ -1,0 +1,28 @@
+name: Invoice item action dropdown checks
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/InvoiceItemActionsDropdown.tsx'
+      - 'apps/web/src/InvoiceItemActionSheets.tsx'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'tests/invoice-item-actions.test.ts'
+      - '.github/workflows/invoice-item-action-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  invoice-item-actions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Verify invoice row commands and item report links
+        run: node --import tsx --test tests/invoice-item-actions.test.ts

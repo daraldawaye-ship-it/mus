@@ -4110,3 +4110,56 @@ ul {
     padding: 3px 4px;
   }
 }
+
+
+/* Invoice item row menu: portal escapes the clipped/scrollable item matrix.
+   Keep the row dense and all menu choices reachable by touch or keyboard. */
+.invoice-item-actions-trigger {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+}
+.invoice-item-actions-dropdown {
+  position: fixed;
+  z-index: 1205;
+  width: min(270px, calc(100vw - 16px));
+  direction: rtl;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px var(--shadow);
+  padding: 3px;
+}
+.invoice-item-actions-dropdown > button {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 10px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+.invoice-item-actions-dropdown > button:hover:not(:disabled),
+.invoice-item-actions-dropdown > button:focus-visible {
+  background: var(--hover);
+}
+.invoice-item-actions-dropdown > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.invoice-item-report-sheet > form {
+  width: 100%;
+  max-width: 850px;
+}
+.invoice-item-report-sheet .memo-textarea {
+  width: 100%;
+  min-height: 90px;
+}
