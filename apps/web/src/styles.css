@@ -3603,3 +3603,151 @@ ul {
   .chat-group-receipt-row > div { flex: 1 0 100%; padding-inline-start: 45px; }
   .chat-group-dialog .dialog-footer { flex-wrap: wrap; }
 }
+
+
+/*
+ * Practical density, October 2026
+ * Recover unused spacing across data-heavy company screens without reducing
+ * text size or control/touch target height. Print keeps its original layout.
+ */
+@media screen {
+  :root {
+    --card-padding: 12px;
+  }
+  .main-content {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .workspace-footer { padding-block: 6px; }
+  .page-heading { gap: 8px; margin-bottom: 0; }
+  .page-heading p { margin-top: 2px; line-height: 1.45; }
+  .card-heading { margin-bottom: 7px; }
+  .card-heading p { margin-top: 2px; line-height: 1.5; }
+  .card p + .actions { margin-top: 8px; }
+  .card-grid { gap: 10px; }
+  .field { gap: 3px; }
+  .form-grid { gap: 9px 11px; }
+  .form-stack { gap: 9px; }
+  .form-stack + .form-stack { margin-top: 11px; padding-top: 11px; }
+  .filter-bar { gap: 8px; margin-bottom: 8px; }
+  .table-filters { gap: 7px; margin-bottom: 7px; }
+  .table-tools { gap: 6px; margin-block: 5px; }
+  .table-scroll { padding: 0; }
+  .table-scroll th,
+  .table-scroll td { padding-inline: 5px; }
+  .table-empty { padding-block: 18px; }
+  .pagination { gap: 7px; padding-top: 7px; }
+  .financial-totals { gap: 5px 10px; padding: 5px 7px; }
+  .financial-document-meta { margin-block: 5px; gap: 4px 9px; }
+  .financial-header-grid,
+  .financial-voucher-grid { gap: 7px; }
+  .commerce-header-grid,
+  .commerce-header-content { gap: 5px; }
+  .commerce-header-card,
+  .commerce-matrix-card { padding: 5px; }
+  .commerce-header-content { padding-inline-end: 2px; }
+  .commerce-original-picker { gap: 5px; margin-top: 4px; }
+  .commerce-document-meta { margin-block: 5px; gap: 4px 9px; }
+  .commerce-lines-scroll { margin-top: 5px; }
+  .commerce-matrix-card .commerce-lines-scroll { margin-top: 0; }
+  .commerce-matrix-actions { margin-top: 3px; }
+  .commerce-save-footer { padding: 5px 7px; }
+  .commerce-footer-grid { gap: 5px; }
+  .invoice-workspace { gap: 8px; }
+  .invoice-side-space { gap: 7px; }
+
+  /* Both receipt registers share the same table: horizontal scrolling keeps
+     full values available while text no longer stretches each row vertically. */
+  .pouch-receipts-page { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .pouch-receipts-page .page-heading { align-items: center; flex-wrap: nowrap; }
+  .pouch-receipts-page .page-heading > :first-child { flex: 1; min-width: 0; }
+  .pouch-receipts-page .page-heading .page-actions { flex: 0 0 auto; }
+  .pouch-receipts-page .card-heading { margin-bottom: 5px; }
+  .pouch-receipts-page > .form-actions { gap: 5px; }
+  .pouch-receipts-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  .pouch-receipts-table {
+    border-collapse: collapse;
+    min-width: 960px;
+    width: 100%;
+    table-layout: auto;
+    font-size: 14px;
+  }
+  .pouch-receipts-table th,
+  .pouch-receipts-table td {
+    padding: 5px 7px;
+    vertical-align: middle;
+    text-align: start;
+    white-space: nowrap;
+    line-height: 1.4;
+    border-bottom: 1px solid var(--border);
+  }
+  .pouch-receipts-table thead th {
+    background: var(--table-head);
+    color: var(--on-soft);
+    font-weight: 600;
+  }
+  .pouch-receipts-table tbody tr:last-child td { border-bottom: 0; }
+  .pouch-receipts-table tbody tr:hover { background: var(--hover); }
+  .pouch-receipts-table td .muted { line-height: 1.35; }
+  .pouch-receipts-actions { min-width: 210px; gap: 4px; }
+  .pouch-receipts-actions .button {
+    height: auto;
+    min-height: var(--control-height);
+    white-space: normal;
+    line-height: 1.25;
+    padding-block: 5px;
+  }
+}
+@media screen and (min-width: 681px) and (max-width: 900px) {
+  .main-content { padding: 10px 12px; }
+}
+@media screen and (max-width: 680px) {
+  :root { --card-padding: 9px; }
+  .main-content { padding: 8px; gap: 8px; }
+  .workspace-footer { padding: 5px 8px; }
+  .page-heading { gap: 5px; }
+  .page-heading p { line-height: 1.4; }
+  .card-heading { margin-bottom: 6px; }
+  .card-heading p { line-height: 1.4; }
+  .form-grid { gap: 8px; }
+  .filter-bar { gap: 6px; margin-bottom: 6px; }
+  .table-filters { gap: 6px; margin-bottom: 6px; }
+  .table-tools { margin-block: 4px; }
+  .financial-totals { gap: 4px 8px; padding: 5px; }
+  .commerce-header-card,
+  .commerce-matrix-card { padding: 4px; }
+  .commerce-save-footer { padding: 5px; }
+  .table-filters.invoice-kind-sale,
+  .table-filters.invoice-kind-purchase { padding: 5px; margin-block-end: 6px; }
+  .invoice-workspace {
+    grid-template-rows: minmax(0, 1fr) 20dvh;
+    gap: 6px;
+  }
+  .invoice-side-space { gap: 5px; }
+  .pouch-receipts-page { gap: 6px; }
+  .pouch-receipts-page > .form-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .pouch-receipts-page > .form-actions > .button {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: var(--control-height);
+    padding: 5px 3px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .pouch-receipts-table { min-width: 960px; }
+  .pouch-receipts-table th,
+  .pouch-receipts-table td { padding: 4px 6px; }
+}
