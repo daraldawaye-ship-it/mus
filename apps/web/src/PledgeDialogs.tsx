@@ -8,7 +8,7 @@ import { formatMoney } from "./format-money";
 import { Button, Dialog, Field, Notice } from "./ui";
 
 type Pledge = {
- accountId:number; code:string; name:string; limit:string; customerName:string;
+ accountId:number; code:string; name:string; limit:string; balance:string; customerName:string;
  phone:string; collateral:string; durationDays:number; receivedBy:string; createdAt:string;
 };
 export function PledgeDialogs({
@@ -76,18 +76,19 @@ export function PledgeDialogs({
    <Field label="البحث بالاسم أو الهاتف أو وصف الرهن أو رقم الحساب" value={q} onChange={e=>setQ(e.target.value)} />
    {pledges.error && <Notice tone="error">{errorMessage(pledges.error)}</Notice>}
    {pledges.isFetching && <p>جارٍ تحميل الرهونات…</p>}
-   <div className="table-scroll">
+   <div className="table-scroll pledge-list-table-scroll">
     <table>
-     <thead><tr><th>الحساب</th><th>الرهن</th><th>الهاتف</th><th>السقف</th><th>الإجراءات</th></tr></thead>
+     <thead><tr><th>الرصيد</th><th>الحساب</th><th>الرهن</th><th>الهاتف</th><th>السقف</th><th>الإجراءات</th></tr></thead>
      <tbody>
       {(pledges.data?.items??[]).map(item=><tr key={item.accountId}>
+       <td><bdi className={item.balance.startsWith("-") ? "receipt-negative-amount" : undefined}>{formatMoney(item.balance.startsWith("-") ? item.balance.slice(1) : item.balance)}{Number(item.balance) < 0 ? " دائن" : Number(item.balance) > 0 ? " مدين" : ""}</bdi></td>
        <td><bdi>{item.code}</bdi> — {item.customerName}</td>
        <td>{item.collateral} ({item.durationDays} يوم)</td>
        <td><bdi>{item.phone}</bdi></td>
        <td><bdi>{formatMoney(item.limit)}</bdi></td>
        <td>
-        <Button variant="secondary" onClick={()=>{onSelect(item.accountId);onClose();}}>اختيار</Button>{" "}
-        <Link to={`/companies/${companyId}/account-ledger?accountId=${item.accountId}`} target="_blank" rel="noopener noreferrer">كشف الحساب / طباعة</Link>
+        <Link className="button button-secondary" to={`/companies/${companyId}/account-ledger?accountId=${item.accountId}&pledge=1`} target="_blank" rel="noopener noreferrer">كشف الحساب / طباعة</Link>{" "}
+        <Button variant="secondary" onClick={()=>{onSelect(item.accountId);onClose();}}>اختيار</Button>
        </td>
       </tr>)}
      </tbody>

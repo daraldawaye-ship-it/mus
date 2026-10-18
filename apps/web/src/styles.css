@@ -3693,11 +3693,29 @@ ul {
   }
   .pouch-receipts-table {
     border-collapse: collapse;
-    min-width: 960px;
-    width: 100%;
-    table-layout: auto;
-    font-size: 14px;
+    width: max(100%, 850px);
+    min-width: 850px;
+    table-layout: fixed;
+    font-size: 13px;
   }
+  .pouch-receipts-table .receipt-col-employee { width: 88px; }
+  .pouch-receipts-table .receipt-col-amount { width: 84px; }
+  .pouch-receipts-table .receipt-col-notes { width: 142px; }
+  .pouch-receipts-table .receipt-col-exact { width: 74px; }
+  .pouch-receipts-table .receipt-col-partial { width: 58px; }
+  .pouch-receipts-table .receipt-col-date { width: 116px; }
+  .pouch-receipts-table .receipt-col-source { width: 106px; }
+  .pouch-receipts-table .receipt-col-kind { width: 99px; }
+  .pouch-receipts-table .receipt-col-status { width: 83px; }
+  .pouch-receipts-table .receipt-cell-ellipsis,
+  .pouch-receipts-table .receipt-cell-trigger {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pouch-receipts-table .receipt-cell-amount { font-variant-numeric: tabular-nums; }
   .pouch-receipts-table th,
   .pouch-receipts-table td {
     padding: 5px 7px;
@@ -3765,9 +3783,9 @@ ul {
     white-space: normal;
     line-height: 1.25;
   }
-  .pouch-receipts-table { min-width: 960px; }
+  .pouch-receipts-table { min-width: 850px; }
   .pouch-receipts-table th,
-  .pouch-receipts-table td { padding: 4px 6px; }
+  .pouch-receipts-table td { padding: 4px 3px; }
 }
 
 
@@ -4248,3 +4266,72 @@ ul {
 .commerce-saved-confirmation {
   margin-top: 4px;
 }
+
+/* Pledge statements: make the movement grid printable rather than clipped by the
+   on-screen virtual-height/scroll wrapper. */
+@media print {
+  .ledger-page .table-scroll,
+  .ledger-page .data-table,
+  .ledger-page .card {
+    overflow: visible !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+  .ledger-page .table-scroll table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    font-size: 10px;
+  }
+  .ledger-page .table-scroll th {
+    position: static !important;
+    z-index: auto !important;
+  }
+  .ledger-page .table-scroll td,
+  .ledger-page .table-scroll th {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+    color: #111 !important;
+    background: #fff !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 3px !important;
+    border: 1px solid #888 !important;
+  }
+  .ledger-page .table-filters,
+  .ledger-page .pagination,
+  .ledger-page .table-tools,
+  .ledger-page .page-heading,
+  .ledger-page .ledger-screen-only {
+    display: none !important;
+  }
+  .ledger-page .ledger-print-heading {
+    display: block !important;
+    color: #111 !important;
+    margin-bottom: 12px;
+  }
+  .ledger-page .ledger-print-all {
+    display: block !important;
+  }
+  .ledger-page .ledger-print-all table {
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  .ledger-page .ledger-print-all td,
+  .ledger-page .ledger-print-all th {
+    border: 1px solid #888;
+    padding: 3px;
+    text-align: start;
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .ledger-page .ledger-print-all tr { break-inside: avoid; }
+  .ledger-page:has(.ledger-print-all) .data-table { display: none !important; }
+}
+.ledger-print-heading, .ledger-print-all { display: none; }
+.pledge-list-table-scroll table { min-width: 750px; }
+.pledge-list-table-scroll td:last-child { text-align: start; overflow: visible; }

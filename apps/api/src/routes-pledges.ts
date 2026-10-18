@@ -10,6 +10,7 @@ import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { normalizeDigits } from "../../../packages/contracts/src/masters.ts";
 import { searchPattern } from "./services/lists.ts";
+import { readAccountLedger } from "./routes-finance.ts";
 
 const pledgeSchema = z.object({
   idempotencyKey: z.uuid(),
@@ -34,9 +35,16 @@ export function pledgeRoutes(pool: Pool): Router {
       const q = searchPattern(typeof req.query.q === "string" ? req.query.q.slice(0,120) : "");
       const list = await client.query(
         `SELECT p.account_id,a.code,a.name,a.account_limit::text AS account_limit,
-         p.customer_name,p.phone,p.collateral,p.duration_days,p.received_by_name,p.created_at
+         p.customer_name,p.phone,p.collateral,p.duration_days,p.received_by_name,p.created_at,
+         COALESCE(ledger.balance,0)::text AS balance
          FROM account_pledges p
          JOIN accounts a ON a.company_id=p.company_id AND a.id=p.account_id
+         LEFT JOIN LATERAL (
+           SELECT sum(l.base_debit-l.base_credit) AS balance
+           FROM financial_document_lines l
+           JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id
+           WHERE l.company_id=p.company_id AND l.account_id=p.account_id AND d.status<>'draft'
+         ) ledger ON true
          WHERE p.company_id=$1 AND
          (p.customer_name ILIKE $2 OR p.phone ILIKE $2 OR p.collateral ILIKE $2 OR a.name ILIKE $2 OR a.code ILIKE $2)
          ORDER BY p.created_at DESC,p.account_id DESC LIMIT 100`,
@@ -44,13 +52,30 @@ export function pledgeRoutes(pool: Pool): Router {
       );
       return list.rows.map(row => ({
         accountId: row.account_id, code: row.code, name: row.name,
-        limit: row.account_limit, customerName: row.customer_name,
+        limit: row.account_limit, balance: row.balance, customerName: row.customer_name,
         phone: row.phone, collateral: row.collateral,
         durationDays: row.duration_days, receivedBy: row.received_by_name,
         createdAt: row.created_at,
       }));
     });
     res.json({items:result});
+  }));
+
+  // A pledge holder may inspect ONLY this pledged account, not the general ledger.
+  router.get(base + "/:accountId/ledger", handler(async (req, res) => {
+    const companyId = id(req.params.companyId), accountId = id(req.params.accountId);
+    const result = await transaction(pool, async (client) => {
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user = await currentActor(client, actor(req), false);
+      await companyAccess(client, user, companyId, "commerce.view");
+      const owned = await client.query(
+        "SELECT 1 FROM account_pledges WHERE company_id=$1 AND account_id=$2",
+        [companyId, accountId]
+      );
+      if (!owned.rowCount) missing("حساب الرهن غير موجود");
+      return readAccountLedger(client, companyId, accountId, req);
+    });
+    res.json(result);
   }));
 
   router.post(base, handler(async (req, res) => {

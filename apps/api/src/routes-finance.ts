@@ -224,7 +224,7 @@ function dateFilters(req: Request): { from: string | null; to: string | null } {
 }
 
 /** Shared immutable ledger computation for either permitted account. */
-async function readAccountLedger(
+export async function readAccountLedger(
   client: PoolClient,
   companyId: number,
   accountId: number,
