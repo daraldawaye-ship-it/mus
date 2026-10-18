@@ -24,6 +24,8 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { moduleAccess } from "../phase2";
+import { ImageUpload } from "../ImageUpload";
+import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
 import {
   Button,
@@ -1555,6 +1557,44 @@ export function CompanySettingsPage({ context }: { context: CompanyContext }) {
   const queryClient = useQueryClient();
   const company = context.company;
   const guard = useScopeGuard(`company:${company.id}:settings`);
+  const canManageLetterhead = !!user && (user.owner || company.createdBy === user.id);
+  const letterhead = useCompanyLetterhead(company.id);
+  const [pendingMediaId, setPendingMediaId] = useState<string | null | undefined>(undefined);
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
+  const [savingHeader, setSavingHeader] = useState(false);
+  const [headerError, setHeaderError] = useState("");
+  const [headerSuccess, setHeaderSuccess] = useState("");
+  const selectedMediaId = pendingMediaId === undefined
+    ? (letterhead.data?.mediaId ?? null)
+    : pendingMediaId;
+  const headerPreview = pendingMediaId === undefined
+    ? letterhead.data?.imageUrl
+    : pendingMediaId === null ? null : pendingImageUrl;
+  async function saveLetterhead() {
+    if (savingHeader || !canManageLetterhead) return;
+    setSavingHeader(true);
+    setHeaderError("");
+    setHeaderSuccess("");
+    try {
+      await api(`/companies/${company.id}/letterhead`, {
+        method: "PUT",
+        body: { mediaId: selectedMediaId },
+        signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      await queryClient.invalidateQueries({
+        queryKey: ["company-letterhead", user?.id, company.id],
+      });
+      if (!guard.isCurrent()) return;
+      setPendingMediaId(undefined);
+      setPendingImageUrl(null);
+      setHeaderSuccess("تم حفظ ترويسة الشركة، وستظهر في الطباعة.");
+    } catch (reason) {
+      if (guard.isCurrent()) setHeaderError(errorMessage(reason));
+    } finally {
+      if (guard.isCurrent()) setSavingHeader(false);
+    }
+  }
   const [name, setName] = useState(company.name);
   const [phone, setPhone] = useState(company.phone);
   const [address, setAddress] = useState(company.address);
@@ -1643,6 +1683,44 @@ export function CompanySettingsPage({ context }: { context: CompanyContext }) {
           </div>
         </form>
       </Card>
+      {canManageLetterhead && (
+        <Card title="ترويسة الشركة للطباعة">
+          <p className="muted">
+            يحدد المالك ترويسة مستقلة لهذه الشركة، وتظهر في فواتيرها وسنداتها والتقارير عند الطباعة.
+            ارفع صورة أفقية عريضة مثل المثال، ثم احفظ الاختيار.
+          </p>
+          {letterhead.isLoading && <Notice>جارٍ تحميل الترويسة…</Notice>}
+          {letterhead.error && <Notice tone="error">{errorMessage(letterhead.error)}</Notice>}
+          {headerError && <Notice tone="error">{headerError}</Notice>}
+          {headerSuccess && <Notice tone="success">{headerSuccess}</Notice>}
+          <ImageUpload
+            purpose="letterhead"
+            companyId={company.id}
+            preview={headerPreview}
+            disabled={savingHeader}
+            onUploaded={(asset) => {
+              setPendingMediaId(asset.id);
+              setPendingImageUrl(asset.fullUrl);
+              setHeaderError("");
+              setHeaderSuccess("");
+            }}
+            onClear={() => {
+              setPendingMediaId(null);
+              setPendingImageUrl(null);
+              setHeaderSuccess("");
+            }}
+          />
+          <div className="form-actions">
+            <Button
+              type="button"
+              disabled={savingHeader || letterhead.isLoading || pendingMediaId === undefined}
+              onClick={() => void saveLetterhead()}
+            >
+              {savingHeader ? "جارٍ حفظ الترويسة…" : "حفظ الترويسة"}
+            </Button>
+          </div>
+        </Card>
+      )}
     </>
   );
 }
