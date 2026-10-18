@@ -3552,3 +3552,54 @@ ul {
   .chat-thread-alert { padding: 6px 8px 0; }
   .chat-thread-alert .notice { flex-wrap: wrap; font-size: 11px; }
 }
+
+/* Group controls use the same private-chat surfaces, with explicit membership. */
+.chat-sidebar-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px 12px; }
+.chat-sidebar-actions .button { min-width: 0; padding-inline: 6px; gap: 5px; font-size: 11px; white-space: nowrap; }
+.chat-list-section-title { margin: 12px 7px 4px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0; }
+.chat-groups-empty { padding: 10px 12px; color: var(--muted); font-size: 11px; line-height: 1.9; }
+.chat-group-avatar { border-radius: 50%; }
+.chat-group-details-button { margin-inline-start: auto; }
+.chat-group-message { min-width: 170px; }
+.chat-group-sender { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 10px; color: var(--primary); }
+.chat-group-sender .chat-avatar { width: 25px; height: 25px; flex-basis: 25px; border-radius: 8px; font-size: 9px; }
+.chat-group-receipt-button { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; padding: 6px 0 0; margin-top: 4px; color: var(--muted); background: transparent; border: 0; border-top: 1px solid var(--border); text-align: start; font-size: 9px; line-height: 1.7; }
+.chat-group-receipt-button:hover { text-decoration: underline; }
+.chat-group-receipt-button.chat-receipt-read { color: var(--primary); }
+.chat-group-dialog { width: min(640px, calc(100vw - 24px)); }
+.chat-group-form { display: grid; gap: 15px; min-width: 0; }
+.chat-group-summary { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.chat-group-summary h3 { overflow-wrap: anywhere; }
+.chat-member-picker { display: grid; gap: 10px; min-width: 0; }
+.chat-member-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-member-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 7px 3px 4px; color: var(--on-soft); background: var(--soft); border: 1px solid var(--border); border-radius: 20px; font-size: 11px; overflow-wrap: anywhere; }
+.chat-member-chip .button { min-height: 22px; height: 22px; padding: 0 3px; color: inherit; }
+.chat-member-search-results { display: grid; align-content: start; gap: 3px; max-height: 220px; overflow-y: auto; overscroll-behavior: contain; }
+.chat-member-option { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 12px; }
+.chat-member-option:hover { background: var(--hover); }
+.chat-member-option input { flex-shrink: 0; accent-color: var(--primary); }
+.chat-member-option span { flex: 1; overflow-wrap: anywhere; }
+.chat-group-selection-count { color: var(--muted); font-size: 11px; }
+.chat-group-section { display: grid; gap: 10px; min-width: 0; padding-top: 15px; margin-top: 15px; border-top: 1px solid var(--border); }
+.chat-group-members { display: grid; gap: 5px; list-style: none; padding: 0; margin: 0; }
+.chat-group-member { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 7px; }
+.chat-group-member-info { display: grid; flex: 1; gap: 3px; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.chat-group-member-info small { color: var(--muted); font-size: 10px; }
+.chat-group-member-info .text-error { color: var(--error-text); }
+.chat-group-member-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.chat-dialog-empty { padding: 18px 10px; text-align: center; color: var(--muted); font-size: 12px; }
+.chat-group-receipt-hint { margin-bottom: 12px; font-size: 12px; }
+.chat-group-receipt-list { display: grid; gap: 7px; max-height: min(55dvh, 420px); overflow-y: auto; }
+.chat-group-receipt-row { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--border); border-radius: 7px; }
+.chat-group-receipt-row > strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.chat-group-receipt-row > div { display: grid; gap: 4px; font-size: 10px; }
+.chat-group-audience-list { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; padding: 0; margin-block: 15px; }
+.chat-group-audience-list li { padding: 5px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--soft); color: var(--on-soft); font-size: 12px; }
+.chat-composer > .notice { margin-bottom: 9px; font-size: 11px; }
+@media (max-width: 680px) {
+  .chat-sidebar-actions .button { min-height: 36px; font-size: 12px; }
+  .chat-member-option { min-height: 40px; }
+  .chat-group-receipt-row { flex-wrap: wrap; }
+  .chat-group-receipt-row > div { flex: 1 0 100%; padding-inline-start: 45px; }
+  .chat-group-dialog .dialog-footer { flex-wrap: wrap; }
+}
