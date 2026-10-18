@@ -8,7 +8,7 @@ on:
       - 'apps/api/src/services/electronic-receipts.ts'
       - 'apps/api/src/routes-commerce.ts'
       - 'apps/web/src/pages/PouchReceiptsPage.tsx'
-      - 'tests/receipt-voucher.test.ts'
+      - 'tests/commerce.test.ts'
       - '.github/workflows/receipt-companion-ci.yml'
   workflow_dispatch:
 permissions:
@@ -42,4 +42,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: Transfer-plus-voucher integration
-        run: node --import tsx --test tests/receipt-voucher.test.ts
+        run: node --import tsx --test --test-name-pattern="cashier optional receipt voucher remains" tests/commerce.test.ts
