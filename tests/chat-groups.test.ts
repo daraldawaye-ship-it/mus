@@ -282,9 +282,20 @@ test("queued group sends and receipts recheck membership after a concurrent remo
     let blocked = 0;
     do {
       const activity = await f.pool.query<{ count: number }>(
-        `SELECT count(*)::integer AS count FROM pg_stat_activity a
-         WHERE a.wait_event_type='Lock' AND a.query LIKE '%FROM chat_groups%'
-           AND $1=ANY(pg_blocking_pids(a.pid))`, [blockerId]);
+        // PostgreSQL may queue the second row-lock waiter behind the first
+        // waiter. Follow that blocking chain instead of counting direct
+        // blockers only; both HTTP mutations must still reach the group lock.
+        `WITH RECURSIVE waiting_chain(pid) AS (
+           SELECT $1::integer
+           UNION
+           SELECT a.pid FROM pg_stat_activity a JOIN waiting_chain parent
+             ON parent.pid=ANY(pg_blocking_pids(a.pid))
+           WHERE a.wait_event_type='Lock'
+         )
+         SELECT count(*)::integer AS count FROM waiting_chain chain
+         JOIN pg_stat_activity a ON a.pid=chain.pid
+         WHERE a.pid<>$1 AND a.wait_event_type='Lock'
+           AND a.query LIKE '%FROM chat_groups%'`, [blockerId]);
       blocked = activity.rows[0]!.count;
       if (blocked >= 2) break;
       await delay(10);
