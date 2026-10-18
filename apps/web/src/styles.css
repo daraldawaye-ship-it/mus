@@ -4181,3 +4181,70 @@ ul {
   width: 100%;
   min-height: 90px;
 }
+
+
+/* October 2026 – receipt cells remain compact when horizontally scrolled on a phone.
+   Eliminate the blank strips around separate Exact and Partial action buttons. */
+@media screen {
+  .pouch-receipts-page .pouch-receipts-table {
+    width: 825px;
+    min-width: 825px;
+    max-width: 825px;
+    table-layout: fixed;
+  }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-employee { width: 12%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-amount { width: 11%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-notes { width: 18%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-exact { width: 8%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-partial { width: 6%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-date { width: 14%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-source { width: 14%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-kind { width: 11%; }
+  .pouch-receipts-page .pouch-receipts-table .receipt-col-status { width: 6%; }
+  .pouch-receipts-page .pouch-receipts-table td,
+  .pouch-receipts-page .pouch-receipts-table th {
+    padding-inline: 2px;
+  }
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(4),
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(5) {
+    padding-inline: 1px;
+  }
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(4) .button,
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(5) .button,
+  .pouch-receipts-page .pouch-receipts-table td:nth-child(4) .receipt-entry-link {
+    width: 100%;
+    box-sizing: border-box;
+    padding-inline: 1px;
+  }
+  .pouch-receipts-page .pouch-receipts-table th { overflow: hidden; text-overflow: clip; }
+}
+/* One-line invoice footer on laptop and desktop, including workspace split views.
+   Mobile retains its own stacking/layout and usable touch controls. */
+@media screen and (min-width: 900px) {
+  @container invoice-main (min-width: 630px) {
+    .invoice-workspace-main .commerce-save-footer .commerce-footer-grid {
+      grid-template-columns: minmax(120px, 1.6fr) minmax(88px, .7fr)
+        minmax(160px, 1.25fr) minmax(208px, 1.5fr);
+      align-items: center;
+      gap: 5px;
+    }
+    .invoice-workspace-main .commerce-save-footer .commerce-save-actions {
+      width: 100%;
+      gap: 4px;
+    }
+    .invoice-workspace-main .commerce-save-footer .commerce-totals {
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      white-space: nowrap;
+      gap: 5px;
+    }
+    .invoice-workspace-main .commerce-save-footer .commerce-save-actions .button {
+      min-width: 0;
+      white-space: nowrap;
+      padding-inline: 5px;
+    }
+  }
+}
+.commerce-saved-confirmation {
+  margin-top: 4px;
+}
