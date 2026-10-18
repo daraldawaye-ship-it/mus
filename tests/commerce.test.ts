@@ -1388,6 +1388,61 @@ test("audit failure rolls back invoice, stock, costing, generated finance and op
   }
 });
 
+test("adjustment auto-prices from the item card and atomically changes its shelf and nearest expiry", async (t) => {
+  const f=await fixture(t),s=await setup(f);
+  const shelfRows=await f.pool.query(
+    "SELECT id,name FROM item_shelves WHERE company_id=$1 AND NOT archived ORDER BY id LIMIT 2",
+    [s.company.id],
+  );
+  assert(shelfRows.rows.length>=2,"company seeded shelves");
+  const firstShelf=shelfRows.rows[0],secondShelf=shelfRows.rows[1];
+  const item=await s.item({
+    factor2:1,factor3:1,hasExpiry:true,purchasePrice:"25",nearestExpiryDate:null,
+  });
+  const base={
+    documentDate:"2026-10-12",itemId:item.id,locationId:s.showroom.id,
+    unit:1 as const,expiryDate:"2027-03-01",
+    countedUnits:{unit1:"3"},expectedQuantitySmallest:"0",
+    nearestExpiryDate:"2027-01-01",shelfId:firstShelf.id,
+    description:"جرد تلقائي",idempotencyKey:randomUUID(),
+  };
+  const response=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,base,201,
+  );
+  assert.equal(response.operation.movements[0]?.costBase,"75",
+    "cost should be three first units × the item card purchase price");
+  let updated=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item;
+  assert.equal(updated.shelfId,firstShelf.id);
+  assert.equal(updated.shelf,firstShelf.name);
+  assert.equal(updated.nearestExpiryDate,"2027-01-01");
+  const repeated=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,base,200);
+  assert.equal(repeated.operation.id,response.operation.id);
+  const unchanged=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item;
+  assert.equal(unchanged.revision,updated.revision);
+
+  const next={
+    ...base,expectedQuantitySmallest:"3",countedUnits:{unit1:"3"},
+    nearestExpiryDate:"2027-02-01",shelfId:secondShelf.id,idempotencyKey:randomUUID(),
+  };
+  const noMovement=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,next,201);
+  assert.equal(noMovement.operation.movements.length,0);
+  updated=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item;
+  assert.equal(updated.shelfId,secondShelf.id);
+  assert.equal(updated.nearestExpiryDate,"2027-02-01");
+  const beforeRevision=updated.revision;
+  assert.equal((await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+    ...next,shelfId:99999999,idempotencyKey:randomUUID(),
+  })).status,409);
+  assert.equal((await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item.revision,beforeRevision);
+  await assertBalanced(f,s.company.id);
+});
+
 test("inventory slice counts establish exact opening stock, transfer units conserve value and shortage/surplus counts balance the ledger", async (t) => {
   const f = await fixture(t),
     s = await setup(f),
