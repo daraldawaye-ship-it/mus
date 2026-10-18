@@ -130,6 +130,7 @@ export async function requestPermissionTargets(
     "account-balances": "company.account-balances",
     "account-ledger": "company.account-ledger",
     "my-cashbox-ledger": "company.my-cashbox-ledger",
+    "letterhead": "company.letterhead",
     audit: "company.audit",
     configuration: "company.configuration",
     control: "company.control",
