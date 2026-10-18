@@ -27,6 +27,7 @@ import { inventoryRoutes } from "./routes-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
+import { pledgeRoutes } from "./routes-pledges.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
@@ -93,6 +94,7 @@ export async function createApp(options: AppOptions = {}) {
     inventoryRoutes(pool),
     commerceOptionRoutes(pool),
     commerceRoutes(pool),
+    pledgeRoutes(pool),
   );
   app.use("/api", (_req, res) =>
     res
