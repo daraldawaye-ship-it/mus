@@ -1,4 +1,6 @@
 -- Pledged goods define a customer ledger account; creation is not a financial posting.
+ALTER TABLE accounts DROP CONSTRAINT accounts_name_check;
+ALTER TABLE accounts ADD CONSTRAINT accounts_name_check CHECK(length(name) BETWEEN 1 AND 500);
 CREATE TABLE account_pledges (
  company_id integer NOT NULL REFERENCES companies(id),
  account_id integer NOT NULL,
