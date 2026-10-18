@@ -34,7 +34,7 @@ export function accountDTO(row: Row): Account {
     weeklyLimit: row.weekly_limit === null ? null : String(row.weekly_limit),
     monthlyLimit: row.monthly_limit === null ? null : String(row.monthly_limit),
     privacyLevel: row.privacy_level,
-    lastApprovalDate: row.last_approval_date ? String(row.last_approval_date).slice(0,10) : null,
+    lastApprovalDate: row.last_approval_date ? new Date(row.last_approval_date).toISOString().slice(0,10) : null,
     goodsValueAccountId: row.goods_value_account_id ?? null,
     ownerPhone: row.owner_phone ?? "",
     dailyDefault: row.daily_default === null ? null : String(row.daily_default),
