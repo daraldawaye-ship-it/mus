@@ -808,9 +808,21 @@ test("pledge creation uses account 1120, persists limit, and awards staff only o
   );
   assert.equal(repeated.account.id,first.account.id);
   assert.equal(repeated.awardedPoints,50);
-  const list=await employee.client.ok<{items:{accountId:number;phone:string}[]}>("GET",base+"/pledges?q=خاتم");
+  const list=await employee.client.ok<{items:{accountId:number;phone:string;balance:string}[]}>("GET",base+"/pledges?q=خاتم");
   assert.equal(list.items.length,1);
   assert.equal(list.items[0]?.phone,input.phone);
+  assert.equal(Number(list.items[0]?.balance),0);
+  // Read-only commerce permission may see this specific pledge statement,
+  // but must not gain unrestricted access to the entire financial ledger.
+  const ownStatement=await employee.client.ok<{
+    account:{id:number};total:number;items:{documentId:number}[]
+  }>("GET",base+"/pledges/"+first.account.id+"/ledger");
+  assert.equal(ownStatement.account.id,first.account.id);
+  assert.equal(ownStatement.total,0,"A newly created pledge has no posted transactions");
+  assert.equal((await employee.client.request("GET",
+    base+"/pledges/"+(first.account.id+100)+"/ledger")).status,404);
+  assert.equal((await employee.client.request("GET",
+    base+"/account-ledger?accountId="+first.account.id)).status,403);
   const wallet=await f.owner.ok<WalletDirectory>("GET",base+"/wallet?employeeId="+employee.employee.id);
   assert.equal(wallet.wallet?.points,"50");
   await employee.client.ok<{account:{accountLimit:string}}>("PATCH",base+"/accounts/"+first.account.id,{accountLimit:"15000"});
