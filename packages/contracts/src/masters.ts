@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const id = z.number().int().positive().max(2_147_483_647);
 const name = z.string().trim().min(1, "الاسم مطلوب").max(120);
-const accountName = z.string().trim().min(1, "الاسم مطلوب").max(240);
+const accountName = z.string().trim().min(1, "الاسم مطلوب").max(500);
 export function normalizeDigits(value: string): string {
   return value
     .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
@@ -142,6 +142,17 @@ export const accountLinkCategories: Record<
 };
 
 export interface Account {
+  accountLimit?: string | null;
+  dailyLimit?: string | null;
+  weeklyLimit?: string | null;
+  monthlyLimit?: string | null;
+  privacyLevel?: number;
+  lastApprovalDate?: string | null;
+  goodsValueAccountId?: number | null;
+  ownerPhone?: string;
+  dailyDefault?: string | null;
+  weeklyDefault?: string | null;
+  monthlyDefault?: string | null;
   id: number;
   companyId: number;
   code: string;
@@ -234,6 +245,7 @@ export interface Location {
   createdAt: string;
 }
 
+const accountMoney = z.string().trim().transform(normalizeDigits).pipe(z.string().regex(/^\d{1,22}(?:\.\d{1,6})?$/, "المبلغ غير صالح")).nullable();
 export const accountSchema = z
   .object({
     code: code.optional(),
@@ -242,6 +254,17 @@ export const accountSchema = z
     kind: z.enum(accountKinds),
     category: z.enum(accountCategories),
     accountChoice: z.enum(accountChoices).nullable().default("administrative"),
+    accountLimit: accountMoney.default(null),
+    dailyLimit: accountMoney.default(null),
+    weeklyLimit: accountMoney.default(null),
+    monthlyLimit: accountMoney.default(null),
+    dailyDefault: accountMoney.default(null),
+    weeklyDefault: accountMoney.default(null),
+    monthlyDefault: accountMoney.default(null),
+    privacyLevel: z.number().int().min(1).max(5).default(1),
+    lastApprovalDate: z.iso.date().nullable().default(null),
+    goodsValueAccountId: id.nullable().default(null),
+    ownerPhone: phone.default(""),
     // Accepted for compatibility with existing integrations; the server sets
     // the accounting classification automatically from the account category.
     normalSide: z.enum(normalSides).optional(),
@@ -286,6 +309,17 @@ export const accountPatchSchema = z
     active: z.boolean().optional(),
     cashOrBank: z.boolean().optional(),
     accountChoice: z.enum(accountChoices).nullable().optional(),
+    accountLimit: accountMoney.optional(),
+    dailyLimit: accountMoney.optional(),
+    weeklyLimit: accountMoney.optional(),
+    monthlyLimit: accountMoney.optional(),
+    dailyDefault: accountMoney.optional(),
+    weeklyDefault: accountMoney.optional(),
+    monthlyDefault: accountMoney.optional(),
+    privacyLevel: z.number().int().min(1).max(5).optional(),
+    lastApprovalDate: z.iso.date().nullable().optional(),
+    goodsValueAccountId: id.nullable().optional(),
+    ownerPhone: phone.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");

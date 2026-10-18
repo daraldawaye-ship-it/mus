@@ -618,7 +618,7 @@ export function walletRoutes(pool: Pool) {
         const { companyId, user, context } = await scope(client, req);
         manageEmployees(user, context);
         const tasks = (
-          await client.query(rewardTaskQuery + " ORDER BY d.code", [companyId])
+          await client.query(rewardTaskQuery + " WHERE d.code <> 'PLEDGE_CREATED' ORDER BY d.code", [companyId])
         ).rows.map(rewardTaskDTO);
         const roles = (
           await client.query(

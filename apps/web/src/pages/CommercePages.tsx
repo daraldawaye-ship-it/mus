@@ -47,6 +47,7 @@ import {
 import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { initialInvoiceAccount } from "../invoice-account-default";
+import { PledgeDialogs } from "../PledgeDialogs";
 import { saleStockQuantity } from "../sale-stock-quantity";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
@@ -886,6 +887,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const [pledgeMode, setPledgeMode] = useState<"add"|"list"|null>(null);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
     !account.cashOrBank;
@@ -1566,6 +1568,12 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                 >
                   قائمة الفواتير
                 </Link>
+                {kind === "sale" && commerceAccess(context,true) && (
+                  <>
+                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("add")}>إضافة رهن</Button>
+                    <Button type="button" variant="secondary" disabled={locked} onClick={() => setPledgeMode("list")}>عرض الرهونات</Button>
+                  </>
+                )}
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
@@ -2268,6 +2276,28 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
           )}
         </footer>
       </form>
+      {kind === "sale" && <PledgeDialogs
+        companyId={companyId}
+        mode={pledgeMode}
+        onClose={() => setPledgeMode(null)}
+        onCreated={(newAccount, points) => {
+          accountManuallyChosen.current = true;
+          setAccount(newAccount);
+          setError("");
+          setItemNotice(points ? `تم إنشاء الرهن ومنح ${points} نقطة.` : "تم إنشاء حساب الرهن.");
+          void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
+        }}
+        onSelect={accountId => {
+          void api<Page<Account>>(`/companies/${companyId}/commerce-options?type=accounts&id=${accountId}&pageSize=1`)
+            .then(result => {
+              const selected = result.items.find(value => value.id === accountId);
+              if (!selected) throw new Error("حساب الرهن غير متاح.");
+              accountManuallyChosen.current = true;
+              setAccount(selected);
+            })
+            .catch(reason => setError(errorMessage(reason)));
+        }}
+      />}
       <Dialog
         open={editingItem !== null}
         className="invoice-item-sheet"
