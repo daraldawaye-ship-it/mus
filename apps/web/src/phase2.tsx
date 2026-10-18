@@ -191,6 +191,7 @@ export function ServerLookup<T extends { id: number }>({
         required={required}
         placeholder="ابحث باسم الحساب أو رقمه"
         onFocus={(event) => { setLookupOpen(true); setHighlight(0); placePopup(); event.currentTarget.select(); }}
+        onBlur={() => { setLookupOpen(false); if (!value) { setQuery(""); setPage(1); } }}
         onChange={(event) => {
           const text=event.target.value;
           setEntry(text); setQuery(text); setPage(1); setHighlight(0); setLookupOpen(true); placePopup();
