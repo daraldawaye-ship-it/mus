@@ -32,11 +32,8 @@ export function InvoiceSaleAlerts({
   if(!hasNotes && !data.alternatives.length)return null;
   return (
     <section className="invoice-sale-alerts" aria-label="تنبيهات الصنف عند البيع">
-      {data.saleNotes && <p className="invoice-sale-alert-note"><strong>ملاحظات الصنف عند البيع</strong>
-        <span>{data.saleNotes}</span></p>}
-      {data.compositionSaleNotes && <p className="invoice-sale-alert-note">
-        <strong>ملاحظات التركيب عند البيع{data.compositionName?" — "+data.compositionName:""}</strong>
-        <span>{data.compositionSaleNotes}</span>
+      {(data.saleNotes || data.compositionSaleNotes) && <p className="invoice-sale-alert-note">
+        {[data.saleNotes,data.compositionSaleNotes].filter(Boolean).join(" — ")}
       </p>}
       {data.alternatives.length>0 && <>
         <div className="invoice-sale-alert-peers">
