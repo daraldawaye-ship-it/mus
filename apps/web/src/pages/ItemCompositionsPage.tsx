@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -32,6 +32,26 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
+  const editId=params.get("edit");
+  useEffect(()=>{
+    if(!editId || !/^[1-9]\\d*$/.test(editId))return;
+    let cancelled=false;
+    void api<{composition:ItemComposition}>(
+      `/companies/${companyId}/item-compositions/${editId}`,
+    ).then(result=>{
+      if(!cancelled){
+        setEditing(result.composition);
+        setParams(previous=>{
+          const next=new URLSearchParams(previous);
+          next.delete("edit");
+          return next;
+        },{replace:true});
+      }
+    }).catch(cause=>{
+      if(!cancelled)setError(errorMessage(cause));
+    });
+    return ()=>{cancelled=true;};
+  },[companyId,editId,setParams]);
   const columns=useMemo<ColumnDef<ItemComposition,unknown>[]>(()=>[
     {accessorKey:"arabicName",header:"الاسم العربي",size:210,
       cell:({row})=><ValueCell>{row.original.arabicName}</ValueCell>},
