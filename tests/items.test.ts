@@ -1500,6 +1500,7 @@ test("composition price threshold groups linked items and stores only a valid or
   const high=await item(f,c.id,curr.id,{name:"الدواء الأصلي",salePrice1:"250",compositionId:created.id});
   const equal=await item(f,c.id,curr.id,{name:"السعر يساوي الحد",salePrice1:"150",compositionId:created.id});
   const low=await item(f,c.id,curr.id,{name:"السعر منخفض",salePrice1:"90",compositionId:created.id});
+  const unpriced=await item(f,c.id,curr.id,{name:"بدون سعر",salePrice1:"0",compositionId:created.id});
   await f.owner.ok("PATCH",`/companies/${c.id}/items/${low.id}`,
     patchItem(low,{active:false}));
   const foreign=await item(f,c.id,curr.id,{name:"غير مرتبط",salePrice1:"1000",compositionId:other.id});
@@ -1508,9 +1509,36 @@ test("composition price threshold groups linked items and stores only a valid or
       "GET",`${base}/${created.id}/linked-items?group=${g}`);
   assert.deepEqual((await group("higher")).items.map(i=>i.id),[high.id]);
   assert.deepEqual(new Set((await group("lower")).items.map(i=>i.id)),
-    new Set([equal.id,low.id]));
-  assert.equal((await group("all")).total,3);
+    new Set([equal.id,low.id,unpriced.id]));
+  assert.equal((await group("all")).total,4);
   assert.equal((await group("lower")).items.find(i=>i.id===low.id)?.active,false);
+  const readStats=async()=> (await f.owner.ok<{statistics:{
+    groups:Array<{key:string;linkedItems:number;availableAlternatives:number;
+      availableUnit1:string;topSellingItem:{id:number;times:string}|null;
+      periods:{oneMonth:{saleTimes:string;saleUnit1:string;purchaseUnit1:string}}}>
+  }}>("GET",`${base}/${created.id}/statistics`)).statistics;
+  let statistics=await readStats();
+  assert.deepEqual(statistics.groups.map(g=>[g.key,g.linkedItems]),[
+    ["higher",1],["lower",3],
+  ]);
+  await f.pool.query(
+    "UPDATE item_statistics SET stock_total=24,stock_showroom=24 WHERE company_id=$1 AND item_id=$2",
+    [c.id,high.id],
+  );
+  await f.pool.query(
+    `INSERT INTO item_daily_activity(
+      company_id,item_id,document_date,sale_invoices,sale_return_invoices,
+      sale_quantity,sale_return_quantity,purchase_quantity
+    ) VALUES($1,$2,(clock_timestamp() AT TIME ZONE 'Asia/Aden')::date,9,2,240,24,48)`,
+    [c.id,high.id],
+  );
+  statistics=await readStats();
+  assert.equal(statistics.groups[0]?.availableAlternatives,1);
+  assert.equal(Number(statistics.groups[0]?.availableUnit1),1);
+  assert.equal(statistics.groups[0]?.periods.oneMonth.saleTimes,"7");
+  assert.equal(Number(statistics.groups[0]?.periods.oneMonth.saleUnit1),9);
+  assert.equal(Number(statistics.groups[0]?.periods.oneMonth.purchaseUnit1),2);
+  assert.equal(statistics.groups[0]?.topSellingItem?.id,high.id);
   assert.equal((await f.owner.request("PATCH",`${base}/${created.id}`,{
     ...body,revision:created.revision,originalItemId:foreign.id,
   })).status,409,"foreign composition item cannot become original");
@@ -1529,9 +1557,22 @@ test("composition price threshold groups linked items and stores only a valid or
     })).composition;
   assert.equal(noSplit.priceSplitThreshold,null);
   assert.equal(noSplit.originalItemId,null);
-  assert.equal((await group("all")).total,3);
+  assert.equal((await group("all")).total,4);
+  const zero=(await f.owner.ok<{composition:ItemComposition}>(
+    "PATCH",`${base}/${created.id}`,{
+      ...body,revision:noSplit.revision,priceSplitThreshold:"0",originalItemId:null,
+    })).composition;
+  assert.equal(zero.priceSplitThreshold,"0.000000");
+  assert.equal((await group("higher")).total,4,
+    "a zero threshold puts EVERY item, including zero-priced, in the higher group");
+  assert.equal((await group("lower")).total,0);
+  const zeroStats=await readStats();
+  assert.deepEqual(zeroStats.groups.map(g=>[g.key,g.linkedItems]),[
+    ["higher",4],["lower",0],
+  ]);
+  assert.equal(zeroStats.groups[0]?.periods.oneMonth.saleTimes,"7");
   assert.equal((await f.owner.request("PATCH",`${base}/${created.id}`,{
-    ...body,revision:noSplit.revision,priceSplitThreshold:"-1",
+    ...body,revision:zero.revision,priceSplitThreshold:"-1",
   })).status,400);
 });
 
