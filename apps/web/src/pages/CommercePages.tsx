@@ -2237,13 +2237,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               </div>
               <div className="commerce-header-blank commerce-sale-info-panel">
                 {kind==="sale"&&<>
-                  {headerItem&&<div className="commerce-sale-info-title">
-                    {Number(saleClearanceRate(headerItem,documentDate)??0)>0&&<span className="commerce-search-clearance-label">
-                      تصريف {saleClearanceRate(headerItem,documentDate)}%
-                    </span>}
-                  </div>}
                   <InvoiceSaleAlerts companyId={companyId} userId={user?.id}
-                    itemId={headerItem?.id??null}/>
+                    itemId={headerItem?.id??null}
+                    currentClearanceRate={headerItem?saleClearanceRate(headerItem,documentDate):null}/>
                 </>}
               </div>
             </div>
