@@ -446,6 +446,7 @@ export interface ItemStatistics {
     total: string;
     showroom: string;
     warehouse: string;
+    returns: string;
     unitName: string;
   } | null;
   lastMovement: {
