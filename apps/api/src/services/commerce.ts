@@ -853,30 +853,33 @@ export async function createInvoice(
       [moneyString(cost), companyId, lineId],
     );
   }
-  // The ITEM CARD is the sole source of its nearest-expiry field.
-  // On saving a purchase, consider only incoming (positive) purchase lines,
-  // and move that one card date earlier when needed. Return lines, stock
-  // allocations and history never overwrite it. This runs inside the same
-  // transaction as the invoice, so a failed post cannot change the card.
-  if (input.kind === "purchase") {
-    const earliestByItem = new Map<number, string>();
-    for (const line of prepared) {
-      if (line.quantity <= 0n || !line.item.has_expiry || !line.expiryDate)
-        continue;
-      const previous = earliestByItem.get(line.item.id);
-      if (!previous || line.expiryDate < previous)
-        earliestByItem.set(line.item.id, line.expiryDate);
-    }
-    for (const [itemId, nearest] of earliestByItem) {
-      await client.query(
-        `UPDATE items
-         SET nearest_expiry_date=$3::date,
-             revision=revision+1,updated_at=clock_timestamp()
-         WHERE company_id=$1 AND id=$2 AND has_expiry
-           AND (nearest_expiry_date IS NULL OR nearest_expiry_date>$3::date)`,
-        [companyId, itemId, nearest],
-      );
-    }
+  // The item card is the authoritative nearest-expiry value.
+  // Only physical stock ENTERING via purchases and customer sales returns
+  // proposes an earlier card date. Read the ACTUALLY SUBMITTED date rather
+  // than the inferred original invoice batch for linked returns.
+  // Normal sales and supplier purchase returns cannot shorten the card date.
+  // A reconciliation is the only operation allowed to override it later.
+  // The updates commit atomically with this invoice and are idempotent.
+  const earliestByItem = new Map<number, string>();
+  for (const [index, line] of prepared.entries()) {
+    const enteredExpiry = input.lines[index]?.expiryDate;
+    if (!line.item.has_expiry || !enteredExpiry) continue;
+    const purchaseReceipt = input.kind === "purchase" && line.quantity > 0n;
+    const customerReturn = input.kind === "sale" && line.quantity < 0n;
+    if (!purchaseReceipt && !customerReturn) continue;
+    const previous = earliestByItem.get(line.item.id);
+    if (!previous || enteredExpiry < previous)
+      earliestByItem.set(line.item.id, enteredExpiry);
+  }
+  for (const [itemId, nearest] of earliestByItem) {
+    await client.query(
+      `UPDATE items
+       SET nearest_expiry_date=$3::date,
+           revision=revision+1,updated_at=clock_timestamp()
+       WHERE company_id=$1 AND id=$2 AND has_expiry
+         AND (nearest_expiry_date IS NULL OR nearest_expiry_date>$3::date)`,
+      [companyId, itemId, nearest],
+    );
   }
   let discountAccountId: number | null = null;
   if (input.kind === "sale" && discount !== 0n) {
