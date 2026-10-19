@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { employeePositionListSchema, type EmployeePosition } from "./employee-positions.ts";
+export * from "./employee-positions.ts";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
 import { itemCatalog } from "./items.ts";
@@ -420,6 +422,7 @@ export interface Employee {
   name: string;
   phone: string;
   role: EmployeeRole;
+  positions: EmployeePosition[];
   active: boolean;
   isGeneralManager: boolean;
   permissions: Permission[];
@@ -571,6 +574,7 @@ const employeeFieldsSchema = z
     name,
     phone,
     role: z.enum(employeeRoles),
+    positions: employeePositionListSchema.optional(),
     active: z.boolean().default(true),
     createSalesCashbox: z.boolean().default(false),
     permissions: z
