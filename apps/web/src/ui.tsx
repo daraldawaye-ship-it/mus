@@ -1,4 +1,6 @@
 import {
+  Fragment,
+  isValidElement,
   useEffect,
   useId,
   useRef,
@@ -18,6 +20,8 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { actionColumnsFirst } from "./table-column-order";
+import { Link } from "react-router-dom";
+import { HeaderActionsOverflow } from "./SalesHeaderActionsDropdown";
 import { formatMoney } from "./format-money";
 
 export function Button({
@@ -61,6 +65,20 @@ export function Card({
     </section>
   );
 }
+/** Only plain action links/buttons are grouped. Search fields, filters,
+ * forms and specialized toolbars retain their own original layout. */
+function flattenHeaderActionNodes(nodes: ReactNode): ReactNode[] {
+  if (nodes === null || nodes === undefined || typeof nodes === "boolean") return [];
+  if (Array.isArray(nodes)) return nodes.flatMap(flattenHeaderActionNodes);
+  if (isValidElement<{children?:ReactNode}>(nodes) && nodes.type === Fragment)
+    return flattenHeaderActionNodes(nodes.props.children);
+  return [nodes];
+}
+function isSimpleHeaderAction(value: ReactNode): boolean {
+  return isValidElement(value) &&
+    (value.type === Button || value.type === Link ||
+      value.type === "a" || value.type === "button");
+}
 export function PageHeader({
   title,
   description,
@@ -70,13 +88,17 @@ export function PageHeader({
   description?: string;
   actions?: ReactNode;
 }) {
+  const actionNodes=flattenHeaderActionNodes(actions);
+  const useActionsMenu=actionNodes.length>1 && actionNodes.every(isSimpleHeaderAction);
   return (
     <div className="page-heading">
       <div>
         <h1>{title}</h1>
         {description && <p>{description}</p>}
       </div>
-      {actions && <div className="page-actions">{actions}</div>}
+      {actions && <div className="page-actions">
+        {useActionsMenu?<HeaderActionsOverflow actions={actionNodes}/>:actions}
+      </div>}
     </div>
   );
 }
