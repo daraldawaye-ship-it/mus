@@ -9,6 +9,7 @@ import {
   type Item,
   type ItemComposition,
   type Location,
+  type MemoList,
   type Page,
 } from "../../../../packages/contracts/src/index";
 import {
@@ -36,6 +37,7 @@ import {
 import { errorMessage, ServerLookup } from "../phase2";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { formatMoney } from "../format-money";
+import { usePageDirectory } from "../page-directory";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import {
   Button,
@@ -994,6 +996,14 @@ function SettingsEditor({
 }
 
 type OperationMode = "transfer" | "adjustment";
+type ReturnsReminderContext = {
+  itemId: number;
+  itemName: string;
+  operationId: number;
+  fromName: string;
+  toName: string;
+  documentDate: string;
+};
 interface OperationFields {
   documentDate: string;
   quantity: string;
@@ -1018,6 +1028,109 @@ const initialOperationFields = (): OperationFields => ({
   unitCostBase: "0",
   description: "",
 });
+
+
+/** Post-transfer reminder only; deliberately does not mutate any memo/notification. */
+function ReturnsTransferReminder({
+  context, transfer, onIgnore, onNext,
+}: {
+  context: CompanyContext;
+  transfer: ReturnsReminderContext;
+  onIgnore: () => void;
+  onNext: () => void;
+}) {
+  const companyId = context.company.id;
+  const { user } = useSession();
+  const directory = usePageDirectory(companyId);
+  const parent = directory.data?.find(entry => entry.key === "company.memos");
+  const details = directory.data?.find(entry => entry.key === "company.memo-detail");
+  const canRead = Boolean(parent?.enabled && parent.actionAccess.view);
+  const canCreate = Boolean(canRead && parent?.actionAccess.create);
+  const canOpen = Boolean(canRead && details?.enabled && details.actionAccess.view);
+  const [page, setPage] = useState(1);
+  const box = context.general ? "all" : "following";
+  const base = `/companies/${companyId}`;
+  const query = useQuery({
+    queryKey: ["returns-memos", user?.id, companyId, transfer.itemId, box, page],
+    enabled: Boolean(user && canRead),
+    queryFn: ({ signal }) => api<MemoList>(
+      `${base}/memos?${new URLSearchParams({
+        itemId: String(transfer.itemId), box,
+        page: String(page), pageSize: "20", sort: "createdAt:desc,id:desc",
+      })}`, { signal },
+    ),
+  });
+  const followupParams = new URLSearchParams({
+    transferId: String(transfer.operationId),
+    fromName: transfer.fromName,
+    toName: transfer.toName,
+    itemName: transfer.itemName,
+    transferDate: transfer.documentDate,
+  });
+  const newMemoParams = new URLSearchParams({
+    new: "1", itemId: String(transfer.itemId),
+    ...Object.fromEntries(followupParams.entries()),
+  });
+  return (
+    <section className="form-stack" aria-label="متابعة مناقلة المرتجعات">
+      <PageHeader
+        title="متابعة مناقلة المرتجعات"
+        description="تذكير اختياري لمراجعة التقارير والمذكرات المرتبطة بالصنف بعد إتمام المناقلة."
+      />
+      <Card title={`تم ترحيل المناقلة رقم ${transfer.operationId}`}>
+        <p>الصنف: <strong>{transfer.itemName}</strong></p>
+        <p>من: <strong>{transfer.fromName}</strong> — إلى: <strong>{transfer.toName}</strong></p>
+        <p>تاريخ المناقلة: <bdi>{transfer.documentDate}</bdi></p>
+        <Notice>المناقلة محفوظة بالفعل. الرد أو إنشاء تقرير جديد أو تجاهل التذكير كلها خيارات؛ لن يُرسل شيء ولن تُنجز أي مذكرة أو إشعار تلقائيًا.</Notice>
+      </Card>
+      <Card title="التقارير والمذكرات المرتبطة بهذا الصنف">
+        {!canRead && directory.isLoading && <p>جارٍ التحقق من صلاحية عرض المذكرات…</p>}
+        {!canRead && !directory.isLoading && <Notice tone="warning">
+          ليست لديك صلاحية عرض المذكرات المرتبطة بالصنف. يمكنك متابعة العمل دون تقرير.
+        </Notice>}
+        {canRead && query.isLoading && <p>جارٍ تحميل المذكرات المرتبطة بالصنف…</p>}
+        {query.error && <Notice tone="error">{errorMessage(query.error)}{" "}
+          <Button variant="secondary" onClick={() => void query.refetch()}>إعادة المحاولة</Button>
+        </Notice>}
+        {canRead && query.data?.items.length === 0 && <p className="muted">
+          لا توجد مذكرات مرتبطة بهذا الصنف ومتاح لك الاطلاع عليها.
+        </p>}
+        {(query.data?.items ?? []).map(memo => (
+          <div key={memo.id} className="inventory-returns-memo-row">
+            <div className="form-stack">
+              <strong>{memo.title}</strong>
+              <span className="muted">
+                {memo.status === "completed" ? "منجزة" :
+                  memo.status === "awaiting_approval" ? "بانتظار الاعتماد" : "معلقة"}
+                {" · "}المرسل: {memo.senderName} · المسؤول: {memo.currentName}
+              </span>
+            </div>
+            {canOpen && <Link className="button button-secondary button-compact"
+              to={`${base}/memos/${memo.id}?${followupParams}`}>
+              فتح والرد مع ذكر المناقلة
+            </Link>}
+          </div>
+        ))}
+        {query.data && query.data.total > 20 && (
+          <div className="form-actions">
+            <Button variant="secondary" disabled={page <= 1 || query.isFetching}
+              onClick={() => setPage(value => Math.max(1, value - 1))}>السابق</Button>
+            <span>الصفحة {page} من {Math.ceil(query.data.total / 20)}</span>
+            <Button variant="secondary"
+              disabled={page * 20 >= query.data.total || query.isFetching}
+              onClick={() => setPage(value => value + 1)}>التالي</Button>
+          </div>
+        )}
+      </Card>
+      <div className="form-actions">
+        {canCreate && <Link className="button button-primary"
+          to={`${base}/memos?${newMemoParams}`}>إضافة تقرير / مذكرة جديدة للصنف</Link>}
+        <Button variant="secondary" onClick={onIgnore}>متابعة دون رد أو تقرير</Button>
+        <Button variant="secondary" onClick={onNext}>مناقلة جديدة</Button>
+      </div>
+    </section>
+  );
+}
 
 export function InventoryOperationsPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
@@ -1083,6 +1196,7 @@ function OperationEditor({
   const [unknown, setUnknown] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<StockOperation | null>(null);
+  const [returnsReminder, setReturnsReminder] = useState<ReturnsReminderContext | null>(null);
   const submitted = useRef<{
     mode: OperationMode;
     body: StockTransferInput | StockAdjustmentInput;
@@ -1269,6 +1383,15 @@ function OperationEditor({
       setUnknown(false);
       setDirty(false);
       setResult(response.operation);
+      if (action === "transfer" && item && fromLocation && toLocation &&
+          (fromLocation.kind === "returns" || toLocation.kind === "returns")) {
+        // Only after confirmed posting: reminder is optional, not a second posting.
+        setReturnsReminder({
+          itemId: item.id, itemName: item.name, operationId: response.operation.id,
+          fromName: fromLocation.name, toName: toLocation.name,
+          documentDate: response.operation.documentDate,
+        });
+      }
       if (action === "adjustment") {
         const wasZeroed = "zeroLocation" in body && body.zeroLocation === true;
         onSaved?.(
@@ -1297,6 +1420,7 @@ function OperationEditor({
   }
   function newOperation() {
     if (saving || unknown) return;
+    setReturnsReminder(null);
     setResult(null);
     setError("");
     setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
@@ -1310,6 +1434,13 @@ function OperationEditor({
     submitted.current = null;
     setDirty(false);
   }
+  if (returnsReminder) return <ReturnsTransferReminder
+    key={returnsReminder.operationId}
+    context={context}
+    transfer={returnsReminder}
+    onIgnore={() => setReturnsReminder(null)}
+    onNext={newOperation}
+  />;
   return (
     <>
       {onClose && <div className="inventory-sheet-backdrop" onClick={closeSheet} aria-hidden="true" />}
