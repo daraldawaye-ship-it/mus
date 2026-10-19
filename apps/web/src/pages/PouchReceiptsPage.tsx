@@ -51,6 +51,10 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const endpoint=electronic?"electronic-receipts":"pouch-receipts";
   const sourceName=electronic?"المحفظة الإلكترونية":"الحافظة";
   const heading=electronic?"استلام المحفظة الإلكترونية":"استلام الترحيلات";
+  // Explain the difference without relying solely on the table's type column.
+  const movementLabel=(kind:Movement["kind"])=>kind==="close"
+    ?"إغلاق صندوق":kind==="pouch"?"ترحيل عادي":"ترحيل إلكتروني";
+
   const {user}=useSession();
   const client=useQueryClient();
   const [status,setStatus]=useState<Status>("pending");
@@ -178,6 +182,11 @@ export function PouchReceiptsPage({context,source="pouch"}:{
           : "حركات الحوافظ وإغلاق الصناديق للاستلام في صندوقك؛ ويُرحّل الفرق إلى العجز والزيادة."}
         actions={<Button variant="secondary" onClick={()=>void list.refetch()}
           disabled={list.isFetching||pending}>تحديث</Button>}/>
+      {!electronic && <p className="receipt-kind-help">
+        <strong>إغلاق صندوق:</strong> جرد النقد الفعلي عند إغلاق الوردية وترحيله للحافظة مع تسجيل أي فرق.
+        {" — "}
+        <strong>ترحيل عادي:</strong> تحويل مبلغ من صندوق الموظف إلى الحافظة دون إغلاق الصندوق.
+      </p>}
       {notice&&<Notice tone="success">
         تم الاستلام وتسجيل قيد التحويل #{notice.documentId}.
         {notice.voucherDocumentId!==null && <>
@@ -211,6 +220,10 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                     " — "+(electronic?item.walletName??"":item.pouchName??"")}>
                     {item.employeeName}
                   </strong>
+                  {!electronic&&<span className={`receipt-kind-marker ${item.kind==="close"?"receipt-kind-close":"receipt-kind-transfer"}`}
+                    title={item.kind==="close"?"جرد وإغلاق الصندوق في نهاية الوردية":"ترحيل عادي دون إغلاق الصندوق"}>
+                    {movementLabel(item.kind)}
+                  </span>}
                   <strong className="receipt-mobile-amount">
                     <ReceiptAmount value={item.amount}/>
                   </strong>
@@ -269,9 +282,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                 const statusDetails = item.receiptId === null
                   ? "بانتظار الاستلام"
                   : `تم الاستلام بواسطة ${item.receiverName??"—"}؛ فعلي: ${formatWholeMoney(item.receivedAmount)}؛ الفرق: ${formatWholeMoney(item.differenceAmount)}`;
-                const movementKind = item.kind==="close"
-                  ? "إغلاق صندوق"
-                  : electronic ? "ترحيل إلكتروني" : "ترحيل حافظة";
+                const movementKind=movementLabel(item.kind);
                 return (
                   <tr key={item.id}>
                     <td title={item.employeeName}>
@@ -319,8 +330,13 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                         {electronic?item.walletName:item.pouchName}
                       </span>
                     </td>
-                    <td title={movementKind}>
-                      <span className="receipt-cell-ellipsis">{movementKind}</span>
+                    <td title={item.kind==="close"
+                      ? "إغلاق الوردية وجرد النقد الفعلي وترحيله للحافظة"
+                      : "ترحيل عادي من صندوق الموظف إلى الحافظة"}>
+                      <span className={`receipt-kind-marker ${item.kind==="close"
+                        ?"receipt-kind-close":"receipt-kind-transfer"}`}>
+                        {movementKind}
+                      </span>
                     </td>
                     <td>
                       {item.receiptId===null
@@ -352,6 +368,13 @@ export function PouchReceiptsPage({context,source="pouch"}:{
             <p><strong>{sourceName}:</strong> {electronic?inspected.walletName:inspected.pouchName}</p>
             <p><strong>التاريخ:</strong> <bdi dir="ltr">{dateTime(inspected.createdAt)}</bdi></p>
             <p><strong>المبلغ:</strong> <ReceiptAmount value={inspected.amount}/> ريال</p>
+            <p><strong>نوع الحركة:</strong> {movementLabel(inspected.kind)}
+              {inspected.kind==="close"
+                ?" — جرد وإغلاق الصندوق وترحيل النقد إلى الحافظة."
+                : inspected.kind==="pouch"
+                  ?" — ترحيل مبلغ عادي من الصندوق دون إغلاقه."
+                  :" — ترحيل إلى المحفظة الإلكترونية."}
+            </p>
             <p><strong>ملاحظات الحركة:</strong> {inspected.notes||"—"}</p>
             <p><strong>الحالة:</strong> {inspected.receiptId===null?"بانتظار الاستلام":"تم الاستلام"}</p>
             {inspected.receiptId!==null && (
