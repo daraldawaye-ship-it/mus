@@ -27,6 +27,7 @@ import {
   directoryEntries,
 } from "./services/pages.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { walletTaskReport } from "./services/wallet-task-report.ts";
 import {
   walletPolicy,
   walletBaseCurrency,
@@ -371,6 +372,53 @@ export function walletRoutes(pool: Pool) {
     }),
   );
   router.get(
+    base + "/wallet/task-report",
+    handler(async (req, res) => {
+      const response = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const { companyId, context, ownId } = await scope(client, req);
+        const selected = req.query.employeeId === undefined
+          ? ownId
+          : id(typeof req.query.employeeId === "string" ? req.query.employeeId : undefined);
+        if (!context.general && selected !== ownId)
+          deny("يمكنك عرض تقرير محفظتك فقط");
+        const fromDate = req.query.fromDate;
+        const toDate = req.query.toDate;
+        const isDay = (value: unknown): value is string =>
+          typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+          !Number.isNaN(Date.parse(value + "T00:00:00Z")) &&
+          new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
+        if (!isDay(fromDate) || !isDay(toDate) || fromDate > toDate)
+          throw new HttpError(400, "invalid_date", "اختر فترة صحيحة من تاريخ إلى تاريخ");
+        const posting = req.query.posting ?? "all";
+        if (posting !== "all" && posting !== "posted" && posting !== "unposted")
+          throw new HttpError(400, "invalid_status", "حالة الترحيل غير صالحة");
+        const taskKey = req.query.taskKey;
+        if (taskKey !== undefined &&
+          (typeof taskKey !== "string" || !/^(task|kind):[A-Za-z0-9_-]{1,100}$/.test(taskKey)))
+          throw new HttpError(400, "invalid_task", "اختيار المهمة غير صالح");
+        const page = req.query.page === undefined ? 1 : Number(req.query.page);
+        const pageSize = req.query.pageSize === undefined ? 50 : Number(req.query.pageSize);
+        if (!Number.isSafeInteger(page) || page < 1 || page > 1000000 ||
+          !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100)
+          throw new HttpError(400, "invalid_query", "طلب تصفح غير صالح");
+        if (selected === null) return {
+          tasks: [], totalPoints: "0", totalCount: 0, details: [],
+          detailTotal: 0, detailPage: page, detailPageSize: pageSize,
+        };
+        if (!(await client.query(
+          "SELECT 1 FROM employees WHERE company_id=$1 AND id=$2",
+          [companyId, selected],
+        )).rowCount) missing();
+        return walletTaskReport(
+          client, companyId, selected, fromDate, toDate, posting,
+          typeof taskKey === "string" ? taskKey : null, page, pageSize,
+        );
+      });
+      res.json(response);
+    }),
+  );
+  router.get(
     base + "/wallet",
     handler(async (req, res) => {
       const result = await transaction(pool, async (client) => {
@@ -417,8 +465,21 @@ export function walletRoutes(pool: Pool) {
           kind: "l.kind",
         };
         const query = listQuery(req.query, columns, "createdAt:desc,id:desc");
-        const args = [companyId, selected, searchPattern(query.q)];
-        const filter = ` WHERE l.company_id=$1 AND l.employee_id=$2 AND (l.reason ILIKE $3 ESCAPE '\\' OR l.employee_name ILIKE $3 ESCAPE '\\' OR l.created_by_name ILIKE $3 ESCAPE '\\')`;
+        const fromDate = req.query.fromDate;
+        const toDate = req.query.toDate;
+        const validDay = (value: unknown) =>
+          typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+          !Number.isNaN(Date.parse(value + "T00:00:00Z")) &&
+          new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
+        if ((fromDate !== undefined || toDate !== undefined) &&
+          (!validDay(fromDate) || !validDay(toDate) || (fromDate as string) > (toDate as string)))
+          throw new HttpError(400, "invalid_date", "اختر فترة صحيحة من تاريخ إلى تاريخ");
+        const args = [companyId, selected, searchPattern(query.q),
+          fromDate ?? null, toDate ?? null];
+        const filter = ` WHERE l.company_id=$1 AND l.employee_id=$2
+          AND ($4::date IS NULL OR (l.created_at AT TIME ZONE 'Asia/Aden')::date >= $4::date)
+          AND ($5::date IS NULL OR (l.created_at AT TIME ZONE 'Asia/Aden')::date <= $5::date)
+          AND (l.reason ILIKE $3 ESCAPE '\\' OR l.employee_name ILIKE $3 ESCAPE '\\' OR l.created_by_name ILIKE $3 ESCAPE '\\')`;
         const total = Number(
           (
             await client.query(
@@ -430,7 +491,7 @@ export function walletRoutes(pool: Pool) {
         const rows = await client.query(
           walletEntryQuery +
             filter +
-            ` ORDER BY ${query.order} LIMIT $4 OFFSET $5`,
+            ` ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
           [...args, query.pageSize, query.offset],
         );
         return {
