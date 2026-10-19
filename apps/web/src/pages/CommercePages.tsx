@@ -1286,6 +1286,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }, [showroomQuery.data, branch, location]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
+  // Track the actual invoice row because identical items may appear in several rows.
+  const activeLineKey = useRef<string | null>(null);
+  const [replacingClearance, setReplacingClearance] = useState(false);
   const selectedLines = lines.filter((line) => line.itemId > 0);
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
@@ -1447,7 +1450,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     (!!currency &&
       (currencyManuallyChosen.current ||
         currency.id !== automaticCurrencyId.current));
-  const locked = saving || unknown;
+  const locked = saving || unknown || replacingClearance;
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       !allowNavigation.current &&
@@ -1540,7 +1543,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     );
   }
-  function chooseItem(line: DraftLine, selected: Item) {
+  function chooseItem(line: DraftLine, selected: Item, preserveQuantity = false) {
+    activeLineKey.current=line.key;
     setHeaderItem(selected);
     onChooseItem({id:selected.id,name:selected.name});
     setError("");
@@ -1553,7 +1557,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       sourceItem: selected,
       unit: selectedUnit,
       unitName: unitName(selected, selectedUnit),
-      quantity: "1",
+      quantity: preserveQuantity ? line.quantity : "1",
       unitPrice:
         kind === "sale"
           ? salePrice(selected, selectedUnit)
@@ -1568,6 +1572,49 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     });
     // Select count first, then price, then expiry date (purchase workflow).
     focus(lineInputId(line, "quantity"), kind === "purchase");
+  }
+  async function replaceWithClearance(itemId: number) {
+    if (kind!=="sale" || locked) return;
+    const target = lines.find(line => line.key===activeLineKey.current);
+    if (!target || !target.itemId || target.originalLineId ||
+        target.itemId!==headerItem?.id) {
+      setError("اختر سطر مبيعات عاديًا أولًا، ثم اضغط صنف التصريف لاستبداله.");
+      return;
+    }
+    if (target.itemId===itemId) {
+      focus(lineInputId(target,"quantity"),true);
+      return;
+    }
+    setReplacingClearance(true);
+    setError("");
+    try {
+      // Fetch the full active item card: clearance alerts contain only short
+      // peer details and not its sale unit, conversion factors or unit prices.
+      const result=await api<Page<Item>>(
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({
+          type:"items",id:String(itemId),pageSize:"1",
+        })}`,
+        {signal:guard.signal},
+      );
+      if (!guard.isCurrent()) return;
+      const selected=result.items.find(row=>row.id===itemId&&row.active);
+      if (!selected) {
+        setError("صنف التصريف غير متاح أو مؤرشف، ولا يمكن إضافته إلى الفاتورة.");
+        return;
+      }
+      if(activeLineKey.current!==target.key ||
+        !lines.some(line=>line.key===target.key && line.itemId===target.itemId)) {
+        setError("تغيّر سطر الفاتورة؛ اختر السطر المطلوب وحاول مجددًا.");
+        return;
+      }
+      // Preserve the entered count while replacing item, default unit and price.
+      chooseItem(target,selected,true);
+      focus(lineInputId(target,"quantity"),true);
+    }catch(error){
+      if (guard.isCurrent())setError(errorMessage(error));
+    }finally{
+      if(guard.isCurrent())setReplacingClearance(false);
+    }
   }
   function closeItemEditor() {
     if (!editingBusy) setEditingItem(null);
@@ -2288,7 +2335,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 {kind==="sale"&&<>
                   <InvoiceSaleAlerts companyId={companyId} userId={user?.id}
                     itemId={headerItem?.id??null}
-                    currentClearanceRate={headerItem?saleClearanceRate(headerItem,documentDate):null}/>
+                    currentClearanceRate={headerItem?saleClearanceRate(headerItem,documentDate):null}
+                    onChooseClearance={replaceWithClearance}
+                    disableSelection={locked || !activeLineKey.current}/>
                 </>}
               </div>
             </div>
@@ -2375,11 +2424,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                         data-line-key={line.key}
                         data-selected={!!line.itemId}
                         onFocusCapture={() => {
+                          activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
                           onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
                         onClickCapture={() => {
+                          activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
                           onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
