@@ -808,8 +808,8 @@ function SettingsEditor({
   const manage = inventoryAccess(context, "manage");
   const disabled = !manage || saving || unknown;
   const navigation = useInventoryNavigation(dirty, saving, unknown);
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  async function save(event: FormEvent | null, zeroLocation = false) {
+    event?.preventDefault();
     if (!manage || saving || unknown) return;
     setError("");
     const parsed = inventorySettingsSchema.safeParse({
@@ -1192,10 +1192,15 @@ function OperationEditor({
         setError("اختر الصنف والمواقع المطلوبة.");
         return;
       }
-      if (mode === "adjustment" && item.hasExpiry &&
-          batchQuantity === "0" && !fields.nearestExpiryDate && !item.nearestExpiryDate) {
-        setError("حدد أقرب تاريخ انتهاء للصنف لبدء جرد رصيده.");
-        return;
+      if (mode === "adjustment" && !zeroLocation) {
+        if (!selectedShelf) {
+          setError("اختر رف الصنف قبل ترحيل تسوية الجرد.");
+          return;
+        }
+        if (item.hasExpiry && !fields.nearestExpiryDate) {
+          setError("أدخل أقرب تاريخ انتهاء للصنف قبل ترحيل التسوية.");
+          return;
+        }
       }
       if (
         mode === "adjustment" &&
@@ -1224,13 +1229,17 @@ function OperationEditor({
               ...common,
               locationId: fromLocation.id,
               unit: 1,
-              countedUnits: {
-                unit1: fields.countUnit1 || "0",
-                ...(item.factor2 > 1 ? { unit2: fields.countUnit2 || "0" } : {}),
-                ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
-              },
-              nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
-              shelfId: selectedShelf?.id ?? null,
+              countedUnits: zeroLocation
+                ? { unit1: "0" }
+                : {
+                    unit1: fields.countUnit1 || "0",
+                    ...(item.factor2 > 1 ? { unit2: fields.countUnit2 || "0" } : {}),
+                    ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
+                  },
+              ...(zeroLocation ? { zeroLocation: true } : {
+                nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
+                shelfId: selectedShelf?.id ?? null,
+              }),
               expectedQuantitySmallest: batchQuantity,
             });
       if (!parsed.success) {
@@ -1251,9 +1260,16 @@ function OperationEditor({
       setUnknown(false);
       setDirty(false);
       setResult(response.operation);
-      if (action === "adjustment")
-        onSaved?.(item?.hasExpiry ? (fields.nearestExpiryDate || null) : null,
-          {shelfId:selectedShelf?.id??null,shelf:selectedShelf?.name??""});
+      if (action === "adjustment") {
+        const wasZeroed = "zeroLocation" in body && body.zeroLocation === true;
+        onSaved?.(
+          wasZeroed ? (item?.nearestExpiryDate ?? null)
+            : item?.hasExpiry ? (fields.nearestExpiryDate || null) : null,
+          wasZeroed
+            ? {shelfId:item?.shelfId??null,shelf:item?.shelf??""}
+            : {shelfId:selectedShelf?.id??null,shelf:selectedShelf?.name??""},
+        );
+      }
       void changed();
     } catch (reason) {
       if (guard.isCurrent()) {
@@ -1559,6 +1575,20 @@ function OperationEditor({
           </div>
           {!result && (
             <div className="form-actions">
+              {mode === "adjustment" && (
+                <Button type="button" variant="secondary"
+                  disabled={saving || unknown || !allowed || !settings.data?.settings ||
+                    !targetReady || batch.isFetching || !!batch.error || batchQuantity === null}
+                  onClick={() => {
+                    if (!item || !fromLocation) return;
+                    if (!window.confirm(
+                      `تصفير رصيد "${item.name}" في موقع "${fromLocation.name}"؟ سيتم حفظ حركة تسوية الجرد دون تعديل الرف أو أقرب تاريخ انتهاء في كرت الصنف.`,
+                    )) return;
+                    void save(null, true);
+                  }}>
+                  تصفير الموقع المحدد
+                </Button>
+              )}
               <Button
                 type="submit"
                 disabled={
