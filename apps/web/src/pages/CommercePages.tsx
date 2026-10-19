@@ -1063,7 +1063,6 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
     <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
       <div className="invoice-workspace-main">{children}</div>
       {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
-        {kind === "sale" && <InvoiceSaleAlerts companyId={companyId} userId={user?.id} itemId={selectedItemId} />}
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
           context={context} kind={kind} selectedItemId={selectedItemId}
           selectedItemName={selectedItemName} userId={user?.id} />
@@ -1116,6 +1115,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       const page = directory.data?.find((entry) => entry.key === key);
       return page?.enabled && page.actionAccess.view && page.actionAccess.edit;
     });
+  const [headerItem,setHeaderItem]=useState<Item|null>(null);
   const [editingItem, setEditingItem] = useState<{
     itemId: number;
     lineKey: string;
@@ -1512,6 +1512,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item) {
+    setHeaderItem(selected);
     onChooseItem({id:selected.id,name:selected.name});
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
@@ -1544,6 +1545,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   function itemSaved(item: Item) {
     if (!guard.isCurrent() || item.companyId !== companyId) return;
+    setHeaderItem(item);
     onChooseItem({id:item.id,name:item.name});
     setLines((current) =>
       current.map((line) => {
@@ -1803,6 +1805,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
+    setHeaderItem(null);
     onChooseItem(null);
     setLines([first]);
     setAccount(initialInvoiceAccount(kind, defaultCashbox));
@@ -1908,6 +1911,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (!guard.isCurrent()) return;
       const next = emptyLine();
       pending.current = null;
+      setHeaderItem(null);
       onChooseItem(null);
       setLines([next]);
       setAccount(initialInvoiceAccount(kind, defaultCashbox));
@@ -2231,7 +2235,18 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               </>
               )}
               </div>
-              <div className="commerce-header-blank" aria-hidden="true" />
+              <div className="commerce-header-blank commerce-sale-info-panel">
+                {kind==="sale"&&<>
+                  {headerItem&&<div className="commerce-sale-info-title">
+                    <strong>{headerItem.name}</strong>
+                    {saleClearanceRate(headerItem,documentDate)>0&&<span className="commerce-search-clearance-label">
+                      تصريف {saleClearanceRate(headerItem,documentDate)}%
+                    </span>}
+                  </div>}
+                  <InvoiceSaleAlerts companyId={companyId} userId={user?.id}
+                    itemId={headerItem?.id??null}/>
+                </>}
+              </div>
             </div>
           </fieldset>
           {kind === "sale" && locked && <Link
