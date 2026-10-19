@@ -56,6 +56,7 @@ const compositionFields = z.object({
   arabicName: compositionName,
   englishName: compositionName,
   description: z.string().trim().max(2000).default(""),
+  saleNotes: z.string().trim().max(1000).default(""),
   active: z.boolean().default(true),
   identicalAlternative: z.boolean().default(false),
   nonInterchangeable: z.boolean().default(false),
@@ -78,6 +79,7 @@ export interface ItemComposition {
   arabicName: string;
   englishName: string;
   description: string;
+  saleNotes: string;
   active: boolean;
   identicalAlternative: boolean;
   nonInterchangeable: boolean;
@@ -149,6 +151,7 @@ const itemFields = z
     reserveQuantity: itemWholeQuantitySchema.default("0"),
     searchKeys: z.string().trim().max(1000).default(""),
     purchaseNotes: z.string().trim().max(1000).default(""),
+    saleNotes: z.string().trim().max(1000).default(""),
     orderStoppedUntil: documentDateSchema.nullable().default(null),
     hasExpiry: z.boolean().default(true),
     nearestExpiryDate: documentDateSchema.nullable().optional(),
@@ -287,6 +290,7 @@ export interface Item extends ItemIdentity {
   coverageAfterReserveDays?: string | null;
   searchKeys: string;
   purchaseNotes: string;
+  saleNotes: string;
   orderStoppedUntil: string | null;
   hasExpiry: boolean;
   nearestExpiryDate: string | null;
@@ -392,6 +396,7 @@ export const itemCatalog = {
     salePrice2: "0",
     salePrice3: "0",
     purchasePrice: "0",
+    saleNotes: "",
     commissionRate: "0",
     clearanceFrom: null,
     clearanceTo: null,
