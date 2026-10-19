@@ -1388,6 +1388,55 @@ test("audit failure rolls back invoice, stock, costing, generated finance and op
   }
 });
 
+test("purchase saving changes only the item card's nearest expiry, while reconciliation overrides it", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Card nearest expiry save precedence");
+  const item = await s.item({
+    hasExpiry: true, factor2: 1, factor3: 1, purchasePrice: "20",
+    nearestExpiryDate: null,
+  });
+  const card = async () => (await f.owner.ok<{item:Item}>(
+    "GET", `${s.path}/items/${item.id}`,
+  )).item;
+  const purchase = async (dates: string[]) => invoice(f, s, invoiceBody(s, item.id, {
+    lines: dates.map(expiryDate => ({
+      itemId: item.id, unit: 1 as const, quantity: "1",
+      unitPrice: "20", expiryDate,
+    })),
+  }));
+  const first = await purchase(["2027-09-01", "2027-07-01"]);
+  assert.equal((await card()).nearestExpiryDate, "2027-07-01",
+    "the earliest purchase line becomes the single card date");
+  const savedRevision = (await card()).revision;
+  await invoice(f, s, invoiceBody(s, item.id, {
+    ...{idempotencyKey: randomUUID()},
+    lines: [{itemId: item.id,unit:1,quantity:"1",unitPrice:"20",expiryDate:"2027-12-01"}],
+  }));
+  assert.equal((await card()).nearestExpiryDate, "2027-07-01");
+  assert.equal((await card()).revision, savedRevision,
+    "later purchases must not needlessly update item card revision");
+  await purchase(["2027-04-01"]);
+  assert.equal((await card()).nearestExpiryDate, "2027-04-01");
+  const preview = await f.owner.ok<{quantitySmallest:string}>("GET",
+    `${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`);
+  const settled = await f.owner.ok<{operation:StockOperation}>(
+    "POST", `${s.path}/stock-adjustments`,{
+      documentDate:"2026-10-12",itemId:item.id,locationId:s.showroom.id,
+      countedQuantity:preview.quantitySmallest,
+      expectedQuantitySmallest:preview.quantitySmallest,
+      unit:1,nearestExpiryDate:"2028-08-01",idempotencyKey:randomUUID(),
+    },201);
+  assert.equal(settled.operation.movements.length,0);
+  assert.equal((await card()).nearestExpiryDate,"2028-08-01",
+    "reconciliation overrides the item card even with a later date and no stock movement");
+  await purchase(["2028-10-01"]);
+  assert.equal((await card()).nearestExpiryDate,"2028-08-01");
+  await purchase(["2028-03-01"]);
+  assert.equal((await card()).nearestExpiryDate,"2028-03-01");
+  assert.equal(first.lines.length,2);
+  await assertBalanced(f,s.company.id);
+});
+
 test("adjustment auto-prices from the item card and atomically changes its shelf and nearest expiry", async (t) => {
   const f=await fixture(t),s=await setup(f);
   const shelfRows=await f.pool.query(
