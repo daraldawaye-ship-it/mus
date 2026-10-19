@@ -1388,6 +1388,63 @@ test("audit failure rolls back invoice, stock, costing, generated finance and op
   }
 });
 
+test("sales return entered expiry updates item card only when earlier, including linked returns", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f,"Sales return nearest expiry precedence");
+  const item = await s.item({
+    hasExpiry:true,factor2:1,factor3:1,
+    purchasePrice:"20",salePrice1:"30",nearestExpiryDate:"2028-01-01",
+  });
+  const card = async () => (await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`,
+  )).item;
+  await invoice(f,s,invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"5",unitPrice:"20",expiryDate:"2027-09-01"}],
+  }));
+  assert.equal((await card()).nearestExpiryDate,"2027-09-01");
+  const sale = await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"2"}],
+  }));
+  const afterSale = (await card()).revision;
+  const noDate = await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sale.lines[0]!.id,expiryDate:null}],
+  }));
+  assert.equal(noDate.lines[0]!.expiryDate,"2027-09-01",
+    "linked return inherits its original batch for stock accounting");
+  assert.equal((await card()).revision,afterSale,
+    "inherited original batch without a date entered must not rewrite item card");
+
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"-1",expiryDate:"2027-05-01"}],
+  }));
+  assert.equal((await card()).nearestExpiryDate,"2027-05-01");
+  const afterEarly = (await card()).revision;
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"-1",expiryDate:"2027-12-01"}],
+  }));
+  assert.equal((await card()).nearestExpiryDate,"2027-05-01");
+  assert.equal((await card()).revision,afterEarly,
+    "later direct sales return must not overwrite nearest item expiry");
+
+  const linkedPayload = invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sale.lines[0]!.id,expiryDate:"2027-03-01"}],
+  });
+  const linked = await invoice(f,s,linkedPayload);
+  assert.equal(linked.lines[0]!.expiryDate,"2027-03-01");
+  assert.equal((await card()).nearestExpiryDate,"2027-03-01");
+  const afterLinked = (await card()).revision;
+  const replay = await invoice(f,s,linkedPayload);
+  assert.equal(replay.id,linked.id);
+  assert.equal((await card()).revision,afterLinked,
+    "idempotent invoice replay must not modify the card");
+  await assertBalanced(f,s.company.id);
+});
+
 test("purchase saving changes only the item card's nearest expiry, while reconciliation overrides it", async (t) => {
   const f = await fixture(t);
   const s = await setup(f, "Card nearest expiry save precedence");
