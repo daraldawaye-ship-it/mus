@@ -7,6 +7,7 @@ import {
   type Account,
   type CompanyContext,
   type Item,
+  type ItemComposition,
   type Location,
   type Page,
 } from "../../../../packages/contracts/src/index";
@@ -1040,7 +1041,8 @@ export function InventoryAdjustmentSheet({
   context: CompanyContext;
   item: Item;
   onClose: () => void;
-  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string}) => void;
+  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string},
+    metadata: {compositionId:number|null;cardUpdated:boolean}) => void;
 }) {
   const { user } = useSession();
   if (!adjustmentAccess(context))
@@ -1058,7 +1060,8 @@ function OperationEditor({
   lockedMode?: boolean;
   preselectedItem?: Item | null;
   onClose?: () => void;
-  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string}) => void;
+  onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string},
+    metadata: {compositionId:number|null;cardUpdated:boolean}) => void;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -1072,6 +1075,7 @@ function OperationEditor({
   const [item, setItem] = useState<Item | null>(preselectedItem);
   // Require an intentional shelf choice for each standard count.
   const [selectedShelf, setSelectedShelf] = useState<{id:number;name:string}|null>(null);
+  const [selectedComposition, setSelectedComposition] = useState<ItemComposition|null>(null);
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
   const locationManuallyChosen = useRef(false);
   const [toLocation, setToLocation] = useState<Location | null>(null);
@@ -1148,6 +1152,7 @@ function OperationEditor({
   function selectItem(value: Item | null) {
     setItem(value);
     setSelectedShelf(null);
+    setSelectedComposition(null);
     setFields((current) => ({
       ...current, unit: 1,
       countUnit1: "0", countUnit2: "0", countUnit3: "0",
@@ -1193,6 +1198,10 @@ function OperationEditor({
         return;
       }
       if (mode === "adjustment" && !zeroLocation) {
+        if (!item.compositionId && !selectedComposition) {
+          setError("هذا الصنف بدون تركيب؛ اختر التركيب قبل حفظ التسوية.");
+          return;
+        }
         if (!selectedShelf) {
           setError("اختر رف الصنف قبل ترحيل تسوية الجرد.");
           return;
@@ -1239,6 +1248,8 @@ function OperationEditor({
               ...(zeroLocation ? { zeroLocation: true } : {
                 nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
                 shelfId: selectedShelf?.id ?? null,
+                ...(!item.compositionId && selectedComposition
+                  ? { compositionId: selectedComposition.id } : {}),
               }),
               expectedQuantitySmallest: batchQuantity,
             });
@@ -1268,7 +1279,12 @@ function OperationEditor({
           wasZeroed
             ? {shelfId:item?.shelfId??null,shelf:item?.shelf??""}
             : {shelfId:selectedShelf?.id??null,shelf:selectedShelf?.name??""},
+          {compositionId: item?.compositionId ?? (wasZeroed ? null : selectedComposition?.id) ?? null,
+            cardUpdated: !wasZeroed},
         );
+        // Close only after a confirmed posting; the standalone page keeps
+        // its operation receipt.
+        if (onClose) onClose();
       }
       void changed();
     } catch (reason) {
@@ -1288,6 +1304,7 @@ function OperationEditor({
     setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
     setItem(preselectedItem);
     setSelectedShelf(null);
+    setSelectedComposition(null);
     locationManuallyChosen.current = false;
     setFromLocation(defaultShowroom ?? null);
     setToLocation(null);
@@ -1417,6 +1434,23 @@ function OperationEditor({
                 setDirty(true);
               }}
             />
+            {mode === "adjustment" && item && !item.compositionId && (
+              <ServerLookup<ItemComposition>
+                companyId={companyId}
+                resource={`/companies/${companyId}/item-compositions?active=true`}
+                label="تركيب الصنف (إلزامي)"
+                value={selectedComposition}
+                disabled={disabled}
+                required
+                sort="arabicName:asc"
+                onChange={option => {
+                  setSelectedComposition(option);
+                  setDirty(true);
+                }}
+                display={option => option.arabicName + (option.englishName ? ` — ${option.englishName}` : "")}
+                emptyLabel="ابحث عن التركيب واختره"
+              />
+            )}
             {mode === "transfer" && (
               <ReferenceField<Location>
                 companyId={companyId}
