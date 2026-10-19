@@ -39,8 +39,6 @@ export function InvoiceSaleAlerts({
         <span>{data.compositionSaleNotes}</span>
       </p>}
       {data.alternatives.length>0 && <>
-        <strong className="invoice-sale-alert-heading">{data.identicalAlternative ? "بدائل تستحق الانتباه" : "أصناف بنفس التركيب تستحق الانتباه"}</strong>
-        {!data.identicalAlternative && <small>الاشتراك في التركيب لا يعني إمكانية استبدال الصنف دون مراجعة.</small>}
         <div className="invoice-sale-alert-peers">
           {data.alternatives.map(row=><div key={row.id} className="invoice-sale-alert-peer">
             <span className="invoice-sale-alert-item-name" title={row.name}>{row.name}</span>
