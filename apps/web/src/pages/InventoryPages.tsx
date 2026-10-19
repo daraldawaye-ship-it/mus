@@ -23,6 +23,7 @@ import {
   type InventorySettingsInput,
   type StockAdjustmentInput,
   type StockBalance,
+  type ItemLocationBalances,
   type StockMovement,
   type StockOperation,
   type StockTransferInput,
@@ -1146,6 +1147,24 @@ export function InventoryAdjustmentsPage({ context }: { context: CompanyContext 
   return <OperationEditor key={`${user?.id}:${context.company.id}:adjustment`}
     context={context} initialMode="adjustment" lockedMode />;
 }
+export function InventoryTransferSheet({
+  context, item, onClose, onPosted,
+}: {
+  context: CompanyContext;
+  item: Item;
+  onClose: () => void;
+  onPosted?: () => void;
+}) {
+  const { user } = useSession();
+  if (!inventoryAccess(context, "post"))
+    return <Notice tone="warning">ليس لديك صلاحية ترحيل المناقلات.</Notice>;
+  return <OperationEditor
+    key={`${user?.id}:${context.company.id}:transfer:${item.id}`}
+    context={context} initialMode="transfer" lockedMode preselectedItem={item}
+    onClose={onClose} onTransferPosted={onPosted}
+  />;
+}
+
 export function InventoryAdjustmentSheet({
   context, item, onClose, onSaved,
 }: {
@@ -1164,7 +1183,7 @@ export function InventoryAdjustmentSheet({
 }
 function OperationEditor({
   context, initialMode = "transfer", lockedMode = false,
-  preselectedItem = null, onClose, onSaved,
+  preselectedItem = null, onClose, onSaved, onTransferPosted,
 }: {
   context: CompanyContext;
   initialMode?: OperationMode;
@@ -1173,10 +1192,12 @@ function OperationEditor({
   onClose?: () => void;
   onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string},
     metadata: {compositionId:number|null;cardUpdated:boolean}) => void;
+  onTransferPosted?: () => void;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const guard = useScopeGuard(`company:${companyId}:stock-operation`);
+  const queryClient = useQueryClient();
   const changed = useInventoryChanges(companyId);
   const [mode, setMode] = useState<OperationMode>(initialMode);
   const [fields, setFields] = useState(() => ({
@@ -1252,6 +1273,15 @@ function OperationEditor({
     enabled: mode === "adjustment" && targetReady && !unknown && !result,
     refetchOnWindowFocus: false,
     staleTime: Infinity,
+  });
+  const locationBalances = useQuery({
+    queryKey: ["inventory", user?.id, companyId, "item-location-balances", item?.id],
+    queryFn: ({ signal }) => api<ItemLocationBalances>(
+      `/companies/${companyId}/item-location-balances?itemId=${item!.id}`,
+      { signal },
+    ),
+    enabled: mode === "transfer" && !!user && !!item,
+    staleTime: 10_000,
   });
   const batchQuantity = batch.data?.quantitySmallest ?? null;
   function edit<K extends keyof OperationFields>(
@@ -1383,6 +1413,12 @@ function OperationEditor({
       setUnknown(false);
       setDirty(false);
       setResult(response.operation);
+      if (action === "transfer") {
+        onTransferPosted?.();
+        void queryClient.invalidateQueries({
+          queryKey: ["inventory", user?.id, companyId, "item-location-balances", item?.id],
+        });
+      }
       if (action === "transfer" && item && fromLocation && toLocation &&
           (fromLocation.kind === "returns" || toLocation.kind === "returns")) {
         // Only after confirmed posting: reminder is optional, not a second posting.
@@ -1433,23 +1469,38 @@ function OperationEditor({
     setCreateKey(crypto.randomUUID());
     submitted.current = null;
     setDirty(false);
+    if (mode === "transfer") void locationBalances.refetch();
   }
-  if (returnsReminder) return <ReturnsTransferReminder
-    key={returnsReminder.operationId}
-    context={context}
-    transfer={returnsReminder}
-    onIgnore={() => setReturnsReminder(null)}
-    onNext={newOperation}
-  />;
+  if (returnsReminder) {
+    const reminder = <ReturnsTransferReminder
+      key={returnsReminder.operationId}
+      context={context}
+      transfer={returnsReminder}
+      onIgnore={() => setReturnsReminder(null)}
+      onNext={newOperation}
+    />;
+    if (!onClose) return reminder;
+    return <>
+      <div className="inventory-sheet-backdrop" aria-hidden="true" />
+      <section className="inventory-sheet-panel" role="dialog" aria-modal="true"
+        aria-label="متابعة مناقلة المرتجعات">
+        <div className="inventory-sheet-header">
+          <strong>متابعة مناقلة المرتجعات</strong>
+          <Button variant="secondary" onClick={closeSheet}>إغلاق</Button>
+        </div>
+        {reminder}
+      </section>
+    </>;
+  }
   return (
     <>
       {onClose && <div className="inventory-sheet-backdrop" onClick={closeSheet} aria-hidden="true" />}
       <section className={onClose ? "inventory-sheet-panel" : undefined}
         role={onClose ? "dialog" : undefined} aria-modal={onClose ? true : undefined}
-        aria-label={onClose ? `جرد الصنف ${preselectedItem?.name ?? ""}` : undefined}>
+        aria-label={onClose ? (mode==="transfer" ? `مناقلة الصنف ${preselectedItem?.name ?? ""}` : `جرد الصنف ${preselectedItem?.name ?? ""}`) : undefined}>
       {onClose ? (
         <div className="inventory-sheet-header">
-          <strong>جرد وتسوية الصنف: {preselectedItem?.name}</strong>
+          <strong>{mode === "transfer" ? "مناقلة الصنف" : "جرد وتسوية الصنف"}: {preselectedItem?.name}</strong>
           <Button variant="secondary" disabled={saving || unknown} onClick={closeSheet}>إغلاق</Button>
         </div>
       ) : <PageHeader
@@ -1550,6 +1601,57 @@ function OperationEditor({
               nullable={false}
               onChange={selectItem}
             />
+            {mode === "transfer" && item && (
+              <div className="form-full inventory-location-balances">
+                <div className="inventory-location-balances-heading">
+                  <strong>رصيد الصنف في جميع المواقع — {item.unit1Name}</strong>
+                  <Button variant="secondary" size="compact"
+                    disabled={locationBalances.isFetching}
+                    onClick={() => void locationBalances.refetch()}>تحديث الأرصدة</Button>
+                </div>
+                {locationBalances.isLoading && <p className="muted">جارٍ تحميل أرصدة المواقع…</p>}
+                {locationBalances.error && <Notice tone="error">
+                  {errorMessage(locationBalances.error)}
+                  <Button variant="secondary" size="compact"
+                    onClick={() => void locationBalances.refetch()}>إعادة المحاولة</Button>
+                </Notice>}
+                {locationBalances.data && locationBalances.data.items.length===0 &&
+                  <p className="muted">لا توجد مواقع معرفة لهذه الشركة.</p>}
+                {locationBalances.data?.items.map(({location,quantityUnit1}) => (
+                  <div className="inventory-location-balance-row" key={location.id}>
+                    <div className="inventory-location-balance-name">
+                      <strong>{location.name}</strong>
+                      <small className="muted">{location.branchName} · {
+                        location.kind==="returns" ? "مرتجعات" :
+                          location.kind==="showroom" ? "معرض" : "مخزن"
+                      }{!location.effectiveActive && " · غير فعال"}</small>
+                    </div>
+                    <div className="inventory-location-balance-quantity">
+                      <bdi>{quantityText(quantityUnit1)}</bdi>
+                      <small className="muted">{item.unit1Name}</small>
+                    </div>
+                    <div className="inventory-location-balance-actions">
+                      <Button variant={fromLocation?.id===location.id?"primary":"secondary"}
+                        size="compact" disabled={disabled || !location.effectiveActive}
+                        onClick={()=>{
+                          setFromLocation(location);
+                          if (toLocation?.id===location.id) setToLocation(null);
+                          locationManuallyChosen.current=true;
+                          setDirty(true);
+                        }}>إرسال</Button>
+                      <Button variant={toLocation?.id===location.id?"primary":"secondary"}
+                        size="compact" disabled={disabled || !location.effectiveActive}
+                        onClick={()=>{
+                          setToLocation(location);
+                          if (fromLocation?.id===location.id) setFromLocation(null);
+                          setDirty(true);
+                        }}>استلام</Button>
+                    </div>
+                  </div>
+                ))}
+                <small className="muted">الكمية تشمل أرصدة جميع الدفعات في كل موقع، حتى لو كان رصيده صفرًا. اختر «إرسال» أو «استلام» لتحديد الموقع في المناقلة.</small>
+              </div>
+            )}
             <ReferenceField<Location>
               companyId={companyId}
               type="locations"
