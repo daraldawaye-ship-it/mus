@@ -113,6 +113,7 @@ function CompositionEditor({
     arabicName:record?.arabicName??"",
     englishName:record?.englishName??"",
     description:record?.description??"",
+    saleNotes:record?.saleNotes??"",
     active:record?.active??true,
     identicalAlternative:record?.identicalAlternative??false,
     nonInterchangeable:record?.nonInterchangeable??false,
@@ -146,7 +147,7 @@ function CompositionEditor({
       const result=response.composition;
       setForm({
         arabicName:result.arabicName,englishName:result.englishName,
-        description:result.description,active:result.active,
+        description:result.description,saleNotes:result.saleNotes,active:result.active,
         identicalAlternative:result.identicalAlternative,
         nonInterchangeable:result.nonInterchangeable,
       });
@@ -196,6 +197,12 @@ function CompositionEditor({
           <textarea id="composition-description" value={form.description}
             maxLength={2000} rows={3} disabled={disabled}
             onChange={e=>set("description",e.target.value)}/>
+        </div>
+        <div className="field form-full">
+          <label htmlFor="composition-sale-notes">ملاحظات عند البيع</label>
+          <textarea id="composition-sale-notes" value={form.saleNotes}
+            maxLength={1000} rows={2} disabled={disabled}
+            onChange={e=>set("saleNotes",e.target.value)}/>
         </div>
         <label className="check-label"><input type="checkbox" disabled={disabled}
           checked={!form.active} onChange={e=>set("active",!e.target.checked)}/>مؤرشف</label>
