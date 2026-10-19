@@ -103,7 +103,9 @@ export const stockAdjustmentSchema = z
     }).strict().optional(),
     nearestExpiryDate: documentDateSchema.nullable().optional(),
     shelfId: id.nullable().optional(),
-    /** Zero the selected location without changing shelf or item-card expiry. */
+    /** Selected composition to attach when the item card has no composition. */
+    compositionId: id.optional(),
+    /** Zero the selected location without changing shelf, expiry or composition. */
     zeroLocation: z.boolean().optional(),
     expectedQuantitySmallest: stockExpectedQuantitySchema,
     unit,
