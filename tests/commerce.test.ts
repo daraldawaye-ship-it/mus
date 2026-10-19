@@ -3928,3 +3928,46 @@ test("central employee positions and per-company view/edit rules preserve old ac
     "GET",`${s.path}/central-access`);
   assert.equal(reset.resources.find(r=>r.key==="field:items.purchase-price")?.policy,null);
 });
+
+test("form differences sorts all matching rows before paginating for each column",async(t)=>{
+  const f=await fixture(t),s=await setup(f,"Sorted form differences");
+  const definitions=[
+    {composition:"Zeta composition",item:"Alpha item",form:"شراب",itemForm:"عام"},
+    {composition:"Alpha composition",item:"Charlie item",form:"عام",itemForm:"كبسول"},
+    {composition:"Beta composition",item:"Bravo item",form:"اقراص",itemForm:"مرهم"},
+  ] as const;
+  for(const row of definitions){
+    const composition=(await f.owner.ok<{composition:{id:number}}>(
+      "POST",`${s.path}/item-compositions`,{
+        arabicName:row.composition,englishName:row.composition,
+        description:"",saleNotes:"",active:true,identicalAlternative:false,
+        nonInterchangeable:false,productForm:row.form,idempotencyKey:randomUUID(),
+      },201)).composition;
+    await s.item({
+      name:row.item,compositionId:composition.id,productForm:row.itemForm,
+    });
+  }
+  type Result={items:{itemId:number;itemName:string;itemForm:string;
+    compositionName:string;compositionForm:string}[];total:number};
+  const base=`${s.path}/item-form-differences?status=all&pageSize=1`;
+  for(const field of ["itemName","itemForm","compositionName","compositionForm"] as const){
+    const collect=async(direction:"asc"|"desc")=>{
+      const result=[] as Result["items"];
+      for(let page=1;page<=3;page++){
+        const url=`${base}&sort=${field}&direction=${direction}&page=${page}`;
+        const response=await f.owner.ok<Result>("GET",url);
+        assert.equal(response.total,3);
+        assert.equal(response.items.length,1);
+        result.push(...response.items);
+      }
+      assert.equal(new Set(result.map(x=>x.itemId)).size,3,"No row may repeat between pages");
+      return result.map(x=>x.itemId);
+    };
+    const asc=await collect("asc");
+    const desc=await collect("desc");
+    assert.deepEqual(asc,[...desc].reverse(),
+      `Sort on ${field} must reverse the entire result set, not only one page`);
+  }
+  const wrong=await f.owner.request("GET",`${base}&sort=i.id;DROP TABLE items`);
+  assert.equal(wrong.status,400,"Untrusted SQL sorting inputs must be rejected");
+});
