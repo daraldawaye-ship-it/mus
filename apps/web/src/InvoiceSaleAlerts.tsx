@@ -21,9 +21,12 @@ export type SaleAlerts = {
 /** Asynchronous sidebar only: never intercept invoice keyboard navigation,
  * price calculations, onChange, or save. Cached per selected company/item. */
 export function InvoiceSaleAlerts({
-  companyId,userId,itemId,currentClearanceRate,
+  companyId,userId,itemId,currentClearanceRate,onChooseClearance,disableSelection=false,
 }: {
   companyId:number; userId:number|undefined; itemId:number|null; currentClearanceRate?:string|null;
+  /** Replaces only the currently selected, unlinked sales invoice row. */
+  onChooseClearance?: (itemId:number)=>void;
+  disableSelection?:boolean;
 }) {
   const { data, isError }=useQuery<SaleAlerts>({
     queryKey:["sales-item-alerts",userId,companyId,itemId],
@@ -43,13 +46,22 @@ export function InvoiceSaleAlerts({
         ...[data.saleNotes,data.compositionSaleNotes].filter(Boolean).map((note,index)=>(
           <span key={`note-${index}`} className={index===0&&data.saleNotes?"invoice-sale-inline-note invoice-sale-item-note":"invoice-sale-inline-note"}>{note}</span>
         )),
-        ...data.alternatives.map(row=>(
-          <span key={`peer-${row.id}`} className={row.clearance?"invoice-sale-inline-clearance":"invoice-sale-inline-peer"}
-            title={row.name}>
+        ...data.alternatives.map(row=>{
+          const caption=<>
             {row.name}{row.clearance?` (تصريف ${wholePercent(row.clearanceRate)}%)`:""}
             {row.nearExpiry?` (انتهاء ${row.nearestExpiryDate?.slice(0,7)??"قريب"})`:""}
-          </span>
-        )),
+          </>;
+          return row.clearance && onChooseClearance
+            ? <button key={`peer-${row.id}`} type="button"
+                className="invoice-sale-inline-clearance invoice-sale-inline-clearance-button"
+                title={`استبدال الصنف الحالي بـ ${row.name} وتعيين وحدة بيعه الافتراضية`}
+                aria-label={`استبدال الصنف الحالي بـ ${row.name}`}
+                disabled={disableSelection}
+                onClick={()=>onChooseClearance(row.id)}>{caption}</button>
+            : <span key={`peer-${row.id}`}
+                className={row.clearance?"invoice-sale-inline-clearance":"invoice-sale-inline-peer"}
+                title={row.name}>{caption}</span>;
+        }),
       ].map((segment,index)=><span key={index} className="invoice-sale-inline-segment">
         {index>0&&<span className="invoice-sale-inline-separator"> — </span>}{segment}
       </span>)}
