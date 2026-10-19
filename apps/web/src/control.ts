@@ -1,6 +1,7 @@
+import type { AccountChoice } from "../../../packages/contracts/src/masters";
 import { useQuery } from "@tanstack/react-query";
 import { api, useSession } from "./api";
-type ControlResponse = { options: { key: string; value: boolean | number }[] };
+type ControlResponse = { options: { key: string; value: boolean | number | AccountChoice[] }[] };
 /** UI hint only. API handlers remain authoritative. */
 export function useControls(companyId: number, employeeId: number | null = null) {
   const { user } = useSession();
@@ -12,7 +13,7 @@ export function useControls(companyId: number, employeeId: number | null = null)
     ),
     enabled: !!user && companyId > 0,
   });
-  const value = (key: string): boolean | number | undefined =>
+  const value = (key: string): boolean | number | AccountChoice[] | undefined =>
     query.data?.options.find(row => row.key === key)?.value;
   return { ...query, value };
 }
