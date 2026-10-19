@@ -2329,6 +2329,16 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                         key={line.key}
                         data-line-key={line.key}
                         data-selected={!!line.itemId}
+                        onFocusCapture={() => {
+                          if (!line.sourceItem) return;
+                          setHeaderItem(line.sourceItem);
+                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                        }}
+                        onClickCapture={() => {
+                          if (!line.sourceItem) return;
+                          setHeaderItem(line.sourceItem);
+                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                        }}
                         onKeyDownCapture={(event) => {
                           // RTL invoice matrix: right returns to the preceding
                           // control, left advances to the following control.
