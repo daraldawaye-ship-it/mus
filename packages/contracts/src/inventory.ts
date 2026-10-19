@@ -144,6 +144,17 @@ export const stockMovementKindLabels: Record<StockMovementKind, string> = {
   adjustment_shortage: "عجز جرد",
   reversal: "عكس حركة",
 };
+/** Full location snapshot for the chosen item; includes empty locations. */
+export interface ItemLocationBalance {
+  location: import("./masters.ts").Location;
+  quantitySmallest: string;
+  quantityUnit1: StockBalance["quantityUnit1"];
+  unit1Name: string;
+}
+export interface ItemLocationBalances {
+  itemId: number;
+  items: ItemLocationBalance[];
+}
 export interface StockBalance {
   id: number;
   companyId: number;
