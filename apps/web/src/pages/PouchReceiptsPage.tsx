@@ -200,8 +200,52 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
         {list.data?.items.length===0&&<p className="muted">لا توجد حركات مطابقة لهذه الحالة.</p>}
         {!!list.data?.items.length&&(
+          <div className="pouch-receipts-mobile-list" role="list"
+            aria-label={`حركات ${sourceName} للهاتف`}>
+            {list.data.items.map(item=>(
+              <article key={item.id} className="receipt-mobile-entry" role="listitem">
+                <div className="receipt-mobile-primary">
+                  <strong className="receipt-mobile-employee" title={item.employeeName+
+                    " — "+(electronic?item.walletName??"":item.pouchName??"")}>
+                    {item.employeeName}
+                  </strong>
+                  <strong className="receipt-mobile-amount">
+                    <ReceiptAmount value={item.amount}/>
+                  </strong>
+                </div>
+                <div className="receipt-mobile-secondary">
+                  <div className="receipt-mobile-description">
+                    <bdi dir="ltr" className="receipt-mobile-date">{dateTime(item.createdAt)}</bdi>
+                    <button type="button" className="receipt-mobile-note"
+                      title={item.notes||`تفاصيل الحركة ${item.id}`}
+                      onClick={()=>setInspected(item)}>
+                      {item.notes||"التفاصيل"}
+                    </button>
+                  </div>
+                  <div className="receipt-mobile-buttons">
+                    {item.receiptId!==null
+                      ? <Link className="button button-secondary button-compact"
+                          to={`/companies/${companyId}/financial-documents/${item.receiptDocumentId}`}>القيد</Link>
+                      : canPost
+                        ? <>
+                            <Button size="compact" disabled={pending}
+                              onClick={()=>exact(item)}>مطابق</Button>
+                            {item.kind==="close"&&
+                              <Button size="compact" variant="secondary"
+                                disabled={pending} onClick={()=>partial(item)}>
+                                جزء
+                              </Button>}
+                          </>
+                        : <span className="receipt-status-pending">بانتظار</span>}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+        {!!list.data?.items.length&&(
           <div className="pouch-receipts-table-wrap" role="region"
-            aria-label={`جدول حركات ${sourceName} — مرّر أفقيًا لعرض بقية الأعمدة`} tabIndex={0}>
+            aria-label={`جدول حركات ${sourceName}`} tabIndex={0}>
             <table className="pouch-receipts-table">
               <colgroup>
                 <col className="receipt-col-employee" />
