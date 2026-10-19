@@ -2349,6 +2349,37 @@ test("sales returns restore archived items into their original batch at historic
   await assertBalanced(f, s.company.id);
 });
 
+test("configured purchase receipt requirement applies only to matching header account choice",async t=>{
+  const f=await fixture(t),s=await setup(f,"Required receipt by header account");
+  const item=await s.item({hasExpiry:false,factor2:1,factor3:1});
+  await f.owner.ok("PATCH",`${s.path}/accounts/${s.supplier.id}`,{accountChoice:"wholesale"});
+  const initial=invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"1",unitPrice:"12",expiryDate:null}],
+  });
+  // The default is opt-in. Before enabling any requirement the blank receipt is valid.
+  const unregulated=await invoice(f,s,initial);
+  assert.equal(unregulated.supplierReceiptNumber,"");
+  await f.owner.ok("PUT",`${s.path}/control/purchase_receipt_required_choices`,{
+    value:["wholesale","pharmacy","company"],employeeId:null,revision:null,
+  });
+  const missing=await f.owner.request("POST",`${s.path}/invoices`,{
+    ...initial,idempotencyKey:randomUUID(),
+  });
+  assert.equal(missing.status,409);
+  const withReceipt=await invoice(f,s,{
+    ...initial,idempotencyKey:randomUUID(),supplierReceiptNumber:"INV-2026-17",
+  });
+  assert.equal(withReceipt.supplierReceiptNumber,"INV-2026-17");
+  // An asset/cash header account is not classified wholesale. The choice of
+  // supplier must not mistakenly trigger the requirement for the header.
+  const cashPurchase=await invoice(f,s,{
+    ...initial,idempotencyKey:randomUUID(),
+    counterpartyAccountId:s.cash.id,supplierAccountId:s.supplier.id,
+  });
+  assert.equal(cashPurchase.supplierReceiptNumber,"");
+  await assertBalanced(f,s.company.id);
+});
+
 test("linked sales returns keep original valuation while recording an edited expiry batch", async (t) => {
   const f = await fixture(t);
   const s = await setup(f);
