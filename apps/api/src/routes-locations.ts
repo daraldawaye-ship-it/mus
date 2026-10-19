@@ -15,6 +15,7 @@ import {
   locationSelect,
 } from "./repositories/masters.ts";
 import { audit } from "./services/audit.ts";
+import { nextCardCode } from "./services/card-codes.ts";
 import {
   conflict,
   masterPage,
@@ -81,11 +82,12 @@ export function locationRoutes(pool: Pool): Router {
         req,
         "locations.manage",
         async (client, user, companyId) => {
+          const code = await nextCardCode(client, { card: "branch", companyId });
           const result = await client.query(
             "INSERT INTO branches(company_id,code,name,phone,address,active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",
             [
               companyId,
-              input.code,
+              code,
               input.name,
               input.phone,
               input.address,
@@ -245,12 +247,15 @@ export function locationRoutes(pool: Pool): Router {
             );
             if (showroom.rowCount) conflict("يوجد معرض لهذا الفرع بالفعل");
           }
+          const code = await nextCardCode(client, {
+            card: "warehouse", companyId, branchId: input.branchId,
+          });
           const result = await client.query(
             "INSERT INTO locations(company_id,branch_id,code,name,kind,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",
             [
               companyId,
               input.branchId,
-              input.code,
+              code,
               input.name,
               input.kind,
               user.id,
