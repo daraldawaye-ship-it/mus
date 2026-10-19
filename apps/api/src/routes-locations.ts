@@ -248,7 +248,8 @@ export function locationRoutes(pool: Pool): Router {
             if (showroom.rowCount) conflict("يوجد معرض لهذا الفرع بالفعل");
           }
           const code = input.code ?? await nextCardCode(client, {
-            card: "warehouse", companyId, branchId: input.branchId,
+            card: input.kind === "returns" ? "returns" : "warehouse",
+            companyId, branchId: input.branchId,
           });
           const result = await client.query(
             "INSERT INTO locations(company_id,branch_id,code,name,kind,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",
