@@ -2239,7 +2239,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 {kind==="sale"&&<>
                   {headerItem&&<div className="commerce-sale-info-title">
                     <strong>{headerItem.name}</strong>
-                    {saleClearanceRate(headerItem,documentDate)>0&&<span className="commerce-search-clearance-label">
+                    {Number(saleClearanceRate(headerItem,documentDate)??0)>0&&<span className="commerce-search-clearance-label">
                       تصريف {saleClearanceRate(headerItem,documentDate)}%
                     </span>}
                   </div>}
