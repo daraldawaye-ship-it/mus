@@ -126,6 +126,13 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
       }}/>}
   </>;
 }
+/** Create a composition from an item card without navigating away. */
+export function CompositionCreatePopup({context,onClose,onSaved}:{
+  context:CompanyContext;onClose:()=>void;onSaved:(composition:ItemComposition)=>void;
+}){
+  return <CompositionEditor companyId={context.company.id} record={null}
+    canManage={itemsAccess(context,true)} onClose={onClose} onSaved={onSaved}/>;
+}
 /** Reuse the existing composition card as a bottom sheet in reports. */
 export function CompositionEditorSheet({
   context,compositionId,onClose,onSaved,
