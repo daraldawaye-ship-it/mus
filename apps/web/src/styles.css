@@ -4970,3 +4970,21 @@ a.notification-quick-title:hover { text-decoration: underline; }
   gap: 10px;
 }
 .wallet-task-pager { justify-content: flex-end; }
+
+/* Optional post-transfer memo reminder for returns locations. */
+.inventory-returns-memo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.inventory-returns-memo-row > .form-stack { min-width: 0; flex: 1; gap: 4px; }
+.inventory-returns-memo-row strong { overflow-wrap: anywhere; }
+.inventory-returns-memo-row > a { flex-shrink: 0; }
+@media (max-width: 680px) {
+  .inventory-returns-memo-row { align-items: stretch; flex-direction: column; }
+  .inventory-returns-memo-row > a { align-self: flex-start; }
+}
