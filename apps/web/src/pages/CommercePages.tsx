@@ -1152,6 +1152,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     params.get("kind") === "purchase" ? "purchase" : "sale";
   const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
   const showCurrency = controls.value("show_currency") !== false;
+  const receiptRequiredChoices = controls.value("purchase_receipt_required_choices");
+  const configuredPurchaseAccountId = controls.value("purchase_default_account");
+  const purchaseDefaultId = typeof configuredPurchaseAccountId === "number" ? configuredPurchaseAccountId : 0;
   const guard = useScopeGuard(`company:${companyId}:invoice-editor:${kind}`);
   const memoImpact=useQuery({
     queryKey:["memo-feature-impact",user?.id,companyId,kind],
@@ -1203,6 +1206,19 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       ),
   });
   const [account, setAccount] = useState<Account | null>(null);
+  const configuredPurchaseAccountQuery = useQuery({
+    queryKey: ["invoice-purchase-default-account",user?.id,companyId,purchaseDefaultId],
+    queryFn:({signal})=>api<Page<Account>>(
+      `/companies/${companyId}/commerce-options?type=accounts&id=${purchaseDefaultId}&pageSize=1`,
+      {signal},
+    ),
+    enabled:kind==="purchase" && purchaseDefaultId>0 && !!user,
+  });
+  const configuredPurchaseAccount = configuredPurchaseAccountQuery.data?.items.find(entry=>
+    entry.id===purchaseDefaultId && entry.active && entry.kind==="posting" &&
+    (entry.category==="asset" || entry.category==="liability"))??null;
+  const receiptRequired = kind==="purchase" && !!account?.accountChoice &&
+    Array.isArray(receiptRequiredChoices) && receiptRequiredChoices.includes(account.accountChoice);
   const [pledgeMode, setPledgeMode] = useState<"add"|"list"|null>(null);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
@@ -1274,15 +1290,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
-  // Sales start from the employee's cashbox. Purchases intentionally require
-  // choosing the settlement/liability account on every new invoice.
+  // Purchase header account comes ONLY from the company control, not the
+  // supplier lookup and never from the salesperson's cashbox.
   useEffect(() => {
-    if (
-      kind !== "sale" || !defaultCashbox || accountManuallyChosen.current ||
-      account || original || hasLinkedLines
-    ) return;
-    setAccount(defaultCashbox);
-  }, [kind, defaultCashbox, account, original, hasLinkedLines]);
+    const defaultAccount = initialInvoiceAccount(kind, defaultCashbox, configuredPurchaseAccount);
+    if (!defaultAccount || accountManuallyChosen.current || account ||
+      original || hasLinkedLines) return;
+    setAccount(defaultAccount);
+  }, [kind, defaultCashbox, configuredPurchaseAccount, account, original, hasLinkedLines]);
   const hasPositiveLines = selectedLines.some(
     (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
   );
@@ -1547,9 +1562,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       originalSelection: false,
       originalSource: undefined,
     });
-    // After selecting a purchase item, overwrite its suggested price directly.
-    // Sale invoices keep their existing quantity-first workflow.
-    focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase");
+    // Select count first, then price, then expiry date (purchase workflow).
+    focus(lineInputId(line, "quantity"), kind === "purchase");
   }
   function closeItemEditor() {
     if (!editingBusy) setEditingItem(null);
@@ -1830,7 +1844,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setHeaderItem(null);
     onChooseItem(null);
     setLines([first]);
-    setAccount(initialInvoiceAccount(kind, defaultCashbox));
+    setAccount(initialInvoiceAccount(kind, defaultCashbox, configuredPurchaseAccount));
     setSupplier(null);
     setSupplierReceiptNumber("");
     accountManuallyChosen.current = false;
@@ -1877,6 +1891,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if (unfinished) {
         setError("اختر الصنف الجاري من نتائج البحث أو امسح البحث قبل الحفظ.");
         focus(lineInputId(unfinished, "item-search"));
+        return;
+      }
+      if (kind === "purchase" && receiptRequired && !supplierReceiptNumber.trim()) {
+        setError("رقم الوصل إلزامي لنوع الحساب المحدد في الكنترول.");
+        focus("purchase-supplier-receipt");
         return;
       }
       if (selectedLines.some((line) => !validateLine(line))) return;
@@ -1936,7 +1955,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setHeaderItem(null);
       onChooseItem(null);
       setLines([next]);
-      setAccount(initialInvoiceAccount(kind, defaultCashbox));
+      setAccount(initialInvoiceAccount(kind, defaultCashbox, configuredPurchaseAccount));
       setSupplier(null);
       setSupplierReceiptNumber("");
       accountManuallyChosen.current = false;
@@ -2044,7 +2063,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 )}
                 {kind === "purchase" && (
                   <Field
-                    label="رقم الوصل"
+                    id="purchase-supplier-receipt"
+                    label={receiptRequired ? "رقم الوصل (إلزامي)" : "رقم الوصل"}
+                    required={receiptRequired}
                     placeholder="رقم فاتورة المورد"
                     maxLength={100}
                     value={supplierReceiptNumber}
@@ -2443,7 +2464,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                 chooseItem(line, selected)
                               }
                               onConfirmSelected={() =>
-                                focus(lineInputId(line, kind === "purchase" ? "price" : "quantity"), kind === "purchase")
+                                focus(lineInputId(line, "quantity"), kind === "purchase")
                               }
                               onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
