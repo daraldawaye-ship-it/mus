@@ -491,7 +491,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           <Button variant="ghost" onClick={() => void taskReport.refetch()}>إعادة المحاولة</Button>
         </Notice>}
         {taskReport.isLoading && <p className="muted">جارٍ حساب إجماليات المهام…</p>}
-        <div className="table-scroll">
+        <div className="table-scroll wallet-task-table-wrap">
           <table className="wallet-task-table" aria-label="إجماليات مهام النقاط">
             <thead><tr><th>الإجمالي</th><th>اسم المهمة</th><th>العدد</th></tr></thead>
             <tbody>
