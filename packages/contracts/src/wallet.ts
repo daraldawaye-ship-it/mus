@@ -258,6 +258,28 @@ export interface ClearanceReturnReview {
   candidateAmount: string;
   originalEmployeeName: string | null;
 }
+export type WalletTaskPostingStatus = "all" | "posted" | "unposted";
+export interface WalletTaskAggregate {
+  key: string;
+  name: string;
+  count: number;
+  points: string;
+}
+export interface WalletTaskDetail {
+  entry: WalletEntry;
+  countedPoints: string;
+  status: "posted" | "unposted" | "mixed";
+}
+export interface WalletTaskReport {
+  tasks: WalletTaskAggregate[];
+  totalPoints: string;
+  totalCount: number;
+  details: WalletTaskDetail[];
+  detailTotal: number;
+  detailPage: number;
+  detailPageSize: number;
+}
+
 export interface WalletDirectory extends Page<WalletEntry> {
   wallet: WalletSummary | null;
   employees: { id: number; name: string }[];
