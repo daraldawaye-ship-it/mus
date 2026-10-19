@@ -1538,6 +1538,57 @@ test("zero selected stock location bypasses shelf/expiry requirements and preser
   await assertBalanced(f,s.company.id);
 });
 
+test("physical reconciliation accepts a previously negative balance and counts packs plus loose ampoules", async t => {
+  const f=await fixture(t),s=await setup(f,"Negative stock physical count");
+  const updated=await f.owner.ok<{settings:InventorySettings}>(
+    "PUT",`${s.path}/inventory-settings`,{
+      inventoryAccountId:s.accounts.inventory!.id,
+      salesAccountId:s.accounts.salesRevenue!.id,
+      cogsAccountId:s.accounts.costOfGoodsSold!.id,
+      surplusAccountId:s.accounts.stockSurplus!.id,
+      shortageAccountId:s.accounts.stockShortage!.id,
+      costingMethod:"weighted_average",allowNegative:true,
+      revision:s.settings.revision,
+    },
+  );
+  assert.equal(updated.settings.allowNegative,true);
+  const item=await s.item({
+    factor2:3,factor3:1,
+    unit1Name:"باكت",unit2Name:"أمبولة",unit3Name:"—",
+    purchasePrice:"30",salePrice1:"40",hasExpiry:false,
+  });
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"1"}],
+  }));
+  const snapshot=await f.owner.ok<{quantitySmallest:string}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  );
+  assert.equal(snapshot.quantitySmallest,"-3");
+  const shelves=(await f.pool.query<{id:number}>(
+    "SELECT id FROM item_shelves WHERE company_id=$1 AND NOT archived ORDER BY id LIMIT 1",
+    [s.company.id],
+  )).rows;
+  assert(shelves.length>0);
+  const counted=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,{
+      idempotencyKey:randomUUID(),documentDate:"2026-10-19",
+      itemId:item.id,locationId:s.showroom.id,
+      countedUnits:{unit1:"2",unit2:"2"},
+      expectedQuantitySmallest:"-3",
+      shelfId:shelves[0]!.id,unit:1,
+    },201,
+  );
+  assert.equal(counted.operation.movements.reduce(
+    (sum,movement)=>sum+BigInt(movement.quantitySmallest),0n),11n,
+    "moving from minus three to eight pieces needs a +11 adjustment");
+  const after=await f.owner.ok<{quantitySmallest:string}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  );
+  assert.equal(after.quantitySmallest,"8");
+  await assertBalanced(f,s.company.id);
+});
+
 test("adjustment auto-prices from the item card and atomically changes its shelf and nearest expiry", async (t) => {
   const f=await fixture(t),s=await setup(f);
   const shelfRows=await f.pool.query(
