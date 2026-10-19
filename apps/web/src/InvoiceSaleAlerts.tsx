@@ -15,9 +15,9 @@ export type SaleAlerts = {
 /** Asynchronous sidebar only: never intercept invoice keyboard navigation,
  * price calculations, onChange, or save. Cached per selected company/item. */
 export function InvoiceSaleAlerts({
-  companyId,userId,itemId,
+  companyId,userId,itemId,currentClearanceRate,
 }: {
-  companyId:number; userId:number|undefined; itemId:number|null;
+  companyId:number; userId:number|undefined; itemId:number|null; currentClearanceRate?:string|null;
 }) {
   const { data, isError }=useQuery<SaleAlerts>({
     queryKey:["sales-item-alerts",userId,companyId,itemId],
@@ -29,10 +29,11 @@ export function InvoiceSaleAlerts({
   if(isError)return null; // Informative-only: sale entry must not be blocked.
   if(!data)return null;
   const hasNotes=!!data.saleNotes||!!data.compositionSaleNotes;
-  if(!hasNotes && !data.alternatives.length)return null;
+  if(!hasNotes && !data.alternatives.length && !currentClearanceRate)return null;
   return (
     <section className="invoice-sale-alerts invoice-sale-alerts-inline" aria-label="تنبيهات الصنف عند البيع">
       {[
+        ...(currentClearanceRate?[<span key="current-clearance" className="invoice-sale-inline-clearance">تصريف {currentClearanceRate}%</span>]:[]),
         ...[data.saleNotes,data.compositionSaleNotes].filter(Boolean).map((note,index)=>(
           <span key={`note-${index}`} className="invoice-sale-inline-note">{note}</span>
         )),
