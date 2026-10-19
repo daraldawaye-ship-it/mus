@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ChevronDown, ListFilter } from "lucide-react";
@@ -157,6 +157,75 @@ export function PageActionsDropdown({
               disabled={entry.disabled} onClick={()=>{close();entry.onClick?.();}}>
               {entry.label}
             </button>)}
+      </div>,document.body)}
+  </>;
+}
+
+/** Preserves existing header Link/Button handlers while merging simple
+ * multi-button page toolbars into the same familiar actions popup. */
+export function HeaderActionsOverflow({
+  actions,
+}: {
+  actions:readonly ReactNode[];
+}) {
+  const trigger=useRef<HTMLButtonElement>(null);
+  const menu=useRef<HTMLDivElement>(null);
+  const [coords,setCoords]=useState<{top:number;left:number;maxHeight:number}|null>(null);
+  const close=()=>setCoords(null);
+  function toggle(){
+    if(coords){close();return;}
+    const rect=trigger.current?.getBoundingClientRect();
+    if(!rect)return;
+    const width=Math.min(260,window.innerWidth-16);
+    const below=window.innerHeight-rect.bottom-8;
+    const above=below<245&&rect.top>below;
+    const maxHeight=Math.max(110,Math.min(350,above?rect.top-12:below));
+    setCoords({top:above?Math.max(8,rect.top-maxHeight-4):rect.bottom+4,
+      left:Math.max(8,Math.min(rect.right-width,window.innerWidth-width-8)),
+      maxHeight});
+  }
+  useEffect(()=>{
+    if(!coords)return;
+    const onPointer=(event:PointerEvent)=>{
+      const target=event.target as Node;
+      if(!trigger.current?.contains(target)&&!menu.current?.contains(target))close();
+    };
+    const onKey=(event:KeyboardEvent)=>{
+      if(event.key==="Escape"){close();trigger.current?.focus();}
+    };
+    const onScroll=(event:Event)=>{if(!menu.current?.contains(event.target as Node))close();};
+    document.addEventListener("pointerdown",onPointer);
+    document.addEventListener("keydown",onKey);
+    window.addEventListener("scroll",onScroll,true);
+    window.addEventListener("resize",onScroll);
+    return ()=>{
+      document.removeEventListener("pointerdown",onPointer);
+      document.removeEventListener("keydown",onKey);
+      window.removeEventListener("scroll",onScroll,true);
+      window.removeEventListener("resize",onScroll);
+    };
+  },[coords]);
+  return <>
+    <button type="button" ref={trigger}
+      className="button button-secondary button-compact sales-header-actions-trigger"
+      aria-haspopup="menu" aria-expanded={!!coords}
+      onClick={toggle}>
+      <ListFilter size={15} aria-hidden="true"/> الإجراءات
+      <ChevronDown size={14} aria-hidden="true"/>
+    </button>
+    {coords&&createPortal(
+      <div ref={menu} role="menu" aria-label="إجراءات الصفحة"
+        className="sales-header-actions-dropdown sales-header-actions-dropdown--raw"
+        onClickCapture={event=>{
+          const target=event.target as HTMLElement;
+          const clickable=target.closest("a,button");
+          if(clickable && !clickable.hasAttribute("disabled") &&
+            clickable.getAttribute("aria-disabled")!=="true")close();
+        }}
+        style={{position:"fixed",zIndex:10030,top:coords.top,left:coords.left,
+          width:Math.min(260,window.innerWidth-16),maxHeight:coords.maxHeight}}>
+        {actions.map((action,index)=>
+          cloneElement(action as ReactElement<{role?:string}>,{key:index,role:"menuitem"}))}
       </div>,document.body)}
   </>;
 }
