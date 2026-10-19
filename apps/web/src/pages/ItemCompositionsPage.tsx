@@ -34,7 +34,7 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const [message,setMessage]=useState("");
   const editId=params.get("edit");
   useEffect(()=>{
-    if(!editId || !/^[1-9]\\d*$/.test(editId))return;
+    if(!editId || !/^[1-9][0-9]*$/.test(editId))return;
     let cancelled=false;
     void api<{composition:ItemComposition}>(
       `/companies/${companyId}/item-compositions/${editId}`,
