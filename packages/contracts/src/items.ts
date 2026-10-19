@@ -69,6 +69,11 @@ const compositionFields = z.object({
   description: z.string().trim().max(2000).default(""),
   saleNotes: z.string().trim().max(1000).default(""),
   productForm: productFormSchema.default("عام"),
+  // An unset threshold means a single group of all linked items.
+  priceSplitThreshold: z.string().trim()
+    .regex(/^\\d{1,22}(?:\\.\\d{1,6})?$/, "أدخل سعرًا موجبًا أو صفرًا حتى 6 منازل عشرية")
+    .nullable().default(null),
+  originalItemId: z.number().int().positive().nullable().default(null),
   active: z.boolean().default(true),
   identicalAlternative: z.boolean().default(false),
   nonInterchangeable: z.boolean().default(false),
@@ -93,6 +98,8 @@ export interface ItemComposition {
   description: string;
   saleNotes: string;
   productForm: ProductForm;
+  priceSplitThreshold: string | null;
+  originalItemId: number | null;
   active: boolean;
   identicalAlternative: boolean;
   nonInterchangeable: boolean;
