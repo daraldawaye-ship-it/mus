@@ -418,7 +418,7 @@ export function companyRoutes(pool: Pool): Router {
         if(typeof position!=="string"||!(employeePositionKeys as readonly string[]).includes(position))
           throw new HttpError(400,"invalid_query","صفة الموظف غير معرّفة");
         parameters.push(position);
-        filter += ` AND ${parameters.length}=ANY(e.position_keys)`;
+        filter += " AND $"+parameters.length+"=ANY(e.position_keys)";
       }
       if (req.query.active !== undefined) {
         if (!["true", "false"].includes(String(req.query.active)))
