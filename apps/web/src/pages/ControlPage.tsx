@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CompanyContext } from "../../../../packages/contracts/src/index";
+import { accountChoices, accountChoiceLabels, type Account, type AccountChoice, type CompanyContext, type Page } from "../../../../packages/contracts/src/index";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
+import { ServerLookup } from "../phase2";
 
 type ControlPolicy = { accountantAllowed: boolean; employeeIds: number[]; revision: number | null };
 type ControlOption = {
@@ -10,9 +11,9 @@ type ControlOption = {
   label: string;
   category: string;
   scope: "company" | "employee";
-  type: "boolean" | "hours" | "number";
-  defaultValue: boolean | number;
-  value: boolean | number;
+  type: "boolean" | "hours" | "number" | "multi_choice" | "account";
+  defaultValue: boolean | number | AccountChoice[];
+  value: boolean | number | AccountChoice[];
   min?: number;
   max?: number;
   revision: number | null;
@@ -38,7 +39,13 @@ function ControlRow({
   employees: Employee[];
   refresh: () => Promise<unknown>;
 }) {
-  const [value, setValue] = useState<boolean | number>(option.value);
+  const [value, setValue] = useState<boolean | number | AccountChoice[]>(option.value);
+  const accountId = option.type === "account" && typeof value === "number" ? value : 0;
+  const accountQuery = useQuery({
+    queryKey:["control-default-purchase-account",companyId,accountId],
+    queryFn:({signal})=>api<Page<Account>>(`/companies/${companyId}/commerce-options?type=accounts&id=${accountId}&pageSize=1`,{signal}),
+    enabled:option.type === "account" && accountId > 0,
+  });
   const [accountantAllowed, setAccountantAllowed] = useState(option.policy?.accountantAllowed ?? false);
   const [delegated, setDelegated] = useState(option.policy?.employeeIds ?? []);
   const [busy, setBusy] = useState(false);
@@ -52,6 +59,7 @@ function ControlRow({
     setError("");
   }, [option.value, option.revision, option.policy?.revision, option.key, selectedEmployeeId]);
   const key = encodeURIComponent(option.key);
+  const sameValue = JSON.stringify(value) === JSON.stringify(option.value);
   const save = async () => {
     setError("");
     setMessage("");
@@ -119,7 +127,9 @@ function ControlRow({
           <strong>{option.label}</strong>
           <small className="control-option-help">القيمة الافتراضية: {option.type === "boolean"
             ? (option.defaultValue ? "مفعّل" : "معطّل")
-            : `${option.defaultValue}${option.type==="hours"?" ساعة":" ريال"}`}</small>
+            : option.type === "multi_choice" ? "لا توجد أنواع ملزمة"
+              : option.type === "account" ? "بدون حساب افتراضي"
+              : `${option.defaultValue}${option.type==="hours"?" ساعة":" ريال"}`}</small>
         </div>
         <div className="control-option-input">
           {option.type === "boolean" ? (
@@ -130,6 +140,41 @@ function ControlRow({
                 aria-label={option.label} />
               <span>{value ? "إظهار / سماح" : "إخفاء / منع"}</span>
             </label>
+          ) : option.type === "multi_choice" ? (
+            <div className="control-editors" role="group" aria-label={option.label}>
+              {accountChoices.map(choice => (
+                <label className="control-toggle" key={choice}>
+                  <input type="checkbox"
+                    checked={Array.isArray(value) && value.includes(choice)}
+                    disabled={!option.canEdit || busy || noEmployee}
+                    onChange={event=>setValue(previous=>{
+                      const chosen=Array.isArray(previous)?previous:[];
+                      return event.target.checked
+                        ? [...chosen,choice]
+                        : chosen.filter(entry=>entry!==choice);
+                    })}/>
+                  {accountChoiceLabels[choice]}
+                </label>
+              ))}
+            </div>
+          ) : option.type === "account" ? (
+            <div className="control-purchase-default-account">
+              <ServerLookup<Account>
+                companyId={companyId}
+                resource={`/companies/${companyId}/commerce-options?type=accounts`}
+                label="حساب المشتريات الافتراضي (غير المورد)"
+                value={accountQuery.data?.items.find(entry=>entry.id===accountId)??null}
+                singleInput pageSize={100} sort="name:asc"
+                disabled={!option.canEdit || busy || noEmployee}
+                accept={entry=>entry.active && entry.kind==="posting" && ["asset","liability"].includes(entry.category)}
+                display={entry=>`${entry.code} — ${entry.name}`}
+                onChange={entry=>setValue(entry?.id??0)}
+              />
+              {accountId>0&&<Button variant="ghost" size="compact"
+                disabled={!option.canEdit || busy || noEmployee}
+                onClick={()=>setValue(0)}>إلغاء الحساب الافتراضي</Button>}
+              {accountQuery.error&&<small className="text-error">تعذر تحميل الحساب المحدد.</small>}
+            </div>
           ) : (
             <Field label={option.type==="hours"?"عدد الساعات":"قيمة الحد بالريال"} type="number"
               min={option.min ?? 0} max={option.max ?? (option.type==="hours"?72:999999999)} step={1}
@@ -137,7 +182,7 @@ function ControlRow({
               disabled={!option.canEdit || busy || noEmployee} />
           )}
           <Button size="compact" disabled={!option.canEdit || busy || noEmployee ||
-            value === option.value || (option.type !== "boolean" && (
+            sameValue || ((option.type === "hours" || option.type === "number" || option.type === "account") && (
               !Number.isSafeInteger(value) || Number(value) < (option.min ?? 0) ||
               Number(value) > (option.max ?? (option.type==="hours"?72:999999999))))}
             onClick={() => void save()}>حفظ</Button>
