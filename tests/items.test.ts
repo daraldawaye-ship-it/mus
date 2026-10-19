@@ -1481,6 +1481,60 @@ test("item compositions support multilingual cards, strict flags, archived links
     [created.id]));
 });
 
+test("composition price threshold groups linked items and stores only a valid original",async(t)=>{
+  const f=await fixture(t), c=await f.company("Composition prices"),
+    curr=await currency(f,c.id,2,"ITM");
+  const base=`/companies/${c.id}/item-compositions`;
+  const body={
+    arabicName:"تركيب حد السعر",englishName:"Original group",
+    productForm:"عام",description:"",saleNotes:"",
+    active:true,identicalAlternative:false,nonInterchangeable:false,
+    priceSplitThreshold:"150",originalItemId:null,
+  };
+  const created=(await f.owner.ok<{composition:ItemComposition}>("POST",base,{
+    ...body,idempotencyKey:randomUUID(),
+  },201)).composition;
+  const other=(await f.owner.ok<{composition:ItemComposition}>("POST",base,{
+    ...body,arabicName:"تركيب آخر",idempotencyKey:randomUUID(),
+  },201)).composition;
+  const high=await item(f,c.id,curr.id,{name:"الدواء الأصلي",salePrice1:"250",compositionId:created.id});
+  const equal=await item(f,c.id,curr.id,{name:"السعر يساوي الحد",salePrice1:"150",compositionId:created.id});
+  const low=await item(f,c.id,curr.id,{name:"السعر منخفض",salePrice1:"90",compositionId:created.id});
+  await f.owner.ok("PATCH",`/companies/${c.id}/items/${low.id}`,
+    patchItem(low,{active:false}));
+  const foreign=await item(f,c.id,curr.id,{name:"غير مرتبط",salePrice1:"1000",compositionId:other.id});
+  const group=async(g:"all"|"higher"|"lower")=>
+    f.owner.ok<{total:number;items:Item[]}>(
+      "GET",`${base}/${created.id}/linked-items?group=${g}`);
+  assert.deepEqual((await group("higher")).items.map(i=>i.id),[high.id]);
+  assert.deepEqual(new Set((await group("lower")).items.map(i=>i.id)),
+    new Set([equal.id,low.id]));
+  assert.equal((await group("all")).total,3);
+  assert.equal((await group("lower")).items.find(i=>i.id===low.id)?.active,false);
+  assert.equal((await f.owner.request("PATCH",`${base}/${created.id}`,{
+    ...body,revision:created.revision,originalItemId:foreign.id,
+  })).status,409,"foreign composition item cannot become original");
+  const updated=(await f.owner.ok<{composition:ItemComposition}>(
+    "PATCH",`${base}/${created.id}`,{
+      ...body,revision:created.revision,originalItemId:high.id,
+    })).composition;
+  assert.equal(updated.originalItemId,high.id);
+  assert.equal(updated.priceSplitThreshold,"150.000000");
+  assert.equal((await f.owner.request("PATCH",`/companies/${c.id}/items/${high.id}`,
+    patchItem(high,{compositionId:other.id}))).status,409,
+    "original cannot be unlinked until designation is removed");
+  const noSplit=(await f.owner.ok<{composition:ItemComposition}>(
+    "PATCH",`${base}/${created.id}`,{
+      ...body,revision:updated.revision,priceSplitThreshold:null,originalItemId:null,
+    })).composition;
+  assert.equal(noSplit.priceSplitThreshold,null);
+  assert.equal(noSplit.originalItemId,null);
+  assert.equal((await group("all")).total,3);
+  assert.equal((await f.owner.request("PATCH",`${base}/${created.id}`,{
+    ...body,revision:noSplit.revision,priceSplitThreshold:"-1",
+  })).status,400);
+});
+
 test("composition bulk import duplicates a single source name into both fields without overwriting", async (t) => {
   const f = await fixture(t);
   const c = await f.company("مستورد التراكيب");
