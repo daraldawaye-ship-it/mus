@@ -310,6 +310,68 @@ test("coverage uses monthly net sales from two upward, four months below two, an
   assert.deepEqual(days, [...days].sort((a, b) => b - a));
 });
 
+test("returns location stock remains in inventory but never inflates item coverage", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company();
+  const currency = await f.currency(company.id);
+  const branches = await f.owner.ok<Page<Branch>>("GET", `/companies/${company.id}/branches`);
+  const branch = branches.items[0]!;
+  const locations = await f.owner.ok<Page<Location>>("GET", `/companies/${company.id}/locations?branchId=${branch.id}`);
+  const showroom = locations.items.find(row => row.kind === "showroom")!;
+  const warehouse = (await f.owner.ok<{ location: Location }>(
+    "POST", `/companies/${company.id}/locations`,
+    { branchId: branch.id, name: "المخزن العادي", kind: "warehouse" }, 201,
+  )).location;
+  const returns = (await f.owner.ok<{ location: Location }>(
+    "POST", `/companies/${company.id}/locations`,
+    { branchId: branch.id, name: "مرتجعات العملاء", kind: "returns" }, 201,
+  )).location;
+  const saved = await item(f, company.id, currency.id, { reserveQuantity: "5" });
+  for (const [location, quantity] of [[showroom, "30"], [warehouse, "20"], [returns, "40"]] as const) {
+    await f.pool.query(
+      "INSERT INTO stock_balances(company_id,item_id,location_id,quantity_smallest) VALUES($1,$2,$3,$4)",
+      [company.id, saved.id, location.id, quantity],
+    );
+  }
+  await f.pool.query(
+    `INSERT INTO item_daily_activity(company_id,item_id,document_date,sale_quantity)
+     VALUES($1,$2,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date,20)`,
+    [company.id, saved.id],
+  );
+  const aggregate = (await f.pool.query(
+    "SELECT stock_total::text,stock_showroom::text,stock_warehouse::text,stock_returns::text FROM item_statistics WHERE company_id=$1 AND item_id=$2",
+    [company.id, saved.id],
+  )).rows[0]!;
+  assert.deepEqual(aggregate, {
+    stock_total: "90", stock_showroom: "30", stock_warehouse: "20", stock_returns: "40",
+  });
+  const stats = await coverage(f.owner, company.id, saved.id);
+  assert.equal(stats.approximateCoverageDays, "75"); // 50 sellable * 30 / 20
+  assert.equal(stats.coverageAfterReserveDays, "67.5"); // (50 - 5) * 30 / 20
+  const list = await f.owner.ok<Page<CoverageItem>>("GET", `/companies/${company.id}/items`);
+  const row = list.items.find(value => value.id === saved.id)!;
+  assert.equal(row.availableSmallest, "90", "Physical stock remains the pooled total");
+  assert.equal(row.approximateCoverageDays, stats.approximateCoverageDays);
+  assert.equal(row.coverageAfterReserveDays, stats.coverageAfterReserveDays);
+  const sorted = await f.owner.ok<Page<CoverageItem>>(
+    "GET", `/companies/${company.id}/items?sort=approximateCoverageDays:asc`,
+  );
+  assert.equal(sorted.items.find(value => value.id === saved.id)?.approximateCoverageDays, "75");
+  const report = (await f.owner.ok<{ report: ItemActivityReport }>(
+    "GET", `/companies/${company.id}/item-statistics-report?sortBy=approximateCoverageDays&sortDir=desc`,
+  )).report;
+  assert.equal(report.rows.find(value => value.itemId === saved.id)?.approximateCoverageDays, "75");
+  await f.pool.query(
+    "UPDATE stock_balances SET quantity_smallest=70 WHERE company_id=$1 AND item_id=$2 AND location_id=$3",
+    [company.id, saved.id, returns.id],
+  );
+  assert.equal((await coverage(f.owner, company.id, saved.id)).approximateCoverageDays, "75");
+  assert.equal((await f.pool.query(
+    "SELECT stock_total::text,stock_returns::text FROM item_statistics WHERE company_id=$1 AND item_id=$2",
+    [company.id, saved.id],
+  )).rows[0].stock_total, "120");
+});
+
 test("coverage is company scoped and redacted by inventory, commerce, explicit denies and page availability", async (t) => {
   const f = await fixture(t), company = await f.company(), other = await f.company("Other company");
   const saved = await item(f, company.id, (await f.currency(company.id)).id, { reserveQuantity: "2" });
