@@ -172,6 +172,115 @@ export function CompositionEditorSheet({
     sheet onClose={onClose} onSaved={onSaved}/>;
 }
 
+type CompositionStatGroup={
+  key:"all"|"higher"|"lower";
+  linkedItems:number;
+  availableAlternatives:number|null;
+  availableUnit1:string|null;
+  minimumSalePrice:string|null;
+  maximumSalePrice:string|null;
+  minimumPurchasePrice:string|null;
+  maximumPurchasePrice:string|null;
+  topSellingItem:{id:number;name:string;times:string}|null;
+  periods:Record<"oneMonth"|"fourMonths"|"twelveMonths",{
+    saleTimes:string;saleUnit1:string;purchaseTimes:string;purchaseUnit1:string;
+  }>|null;
+};
+type CompositionStatisticsResult={
+  asOf:string;
+  priceSplitThreshold:string|null;
+  canViewStock:boolean;
+  canViewCommerce:boolean;
+  groups:CompositionStatGroup[];
+};
+function CompositionStatisticsTable({
+  companyId,compositionId,userId,version,onOpenItem,
+}:{
+  companyId:number;compositionId:number;userId:number|undefined;version:number;
+  onOpenItem:(id:number)=>void;
+}){
+  const stats=useQuery({
+    queryKey:["composition-statistics",userId,companyId,compositionId,version],
+    queryFn:({signal})=>api<{statistics:CompositionStatisticsResult}>(
+      `/companies/${companyId}/item-compositions/${compositionId}/statistics`,
+      {signal}),
+    enabled:!!userId,
+    staleTime:0,
+  });
+  const value=stats.data?.statistics;
+  const numeric=(raw:string|null|undefined,fractionDigits=2)=>raw==null?"—":
+    Number(raw).toLocaleString("en-US",{maximumFractionDigits:fractionDigits});
+  const title=(row:CompositionStatGroup)=>row.key==="all"
+    ?"جميع الأصناف":row.key==="higher"
+      ?"أعلى من الحد":"الحد وأقل";
+  const columns=value?.groups??[];
+  const cell=(key:string,read:(row:CompositionStatGroup)=>string|null|undefined,
+    digits=2)=><tr key={key}>
+    <th scope="row">{key}</th>
+    {columns.map(group=><td key={group.key} dir="ltr">
+      <bdi>{numeric(read(group),digits)}</bdi>
+    </td>)}
+  </tr>;
+  const periodRows=(heading:string,metric:"saleTimes"|"saleUnit1"|"purchaseUnit1")=>
+    (["oneMonth","fourMonths","twelveMonths"] as const).map((period,index)=>
+      cell(`${heading} — ${["شهر","4 أشهر","سنة"][index]}`,
+        row=>row.periods?.[period]?.[metric]??null,
+        metric==="saleTimes"?0:3));
+  return <section className="composition-stats-panel">
+    <div className="composition-stats-heading">
+      <h4>إحصائيات التركيب</h4>
+      <Button type="button" variant="secondary" size="compact"
+        disabled={stats.isFetching} onClick={()=>void stats.refetch()}>تحديث</Button>
+    </div>
+    {stats.isPending&&<p>جارٍ تحميل إحصائيات التركيب…</p>}
+    {stats.error&&<Notice tone="error">
+      {errorMessage(stats.error)}{" "}
+      <Button type="button" variant="secondary" size="compact"
+        onClick={()=>void stats.refetch()}>إعادة المحاولة</Button>
+    </Notice>}
+    {value&&<div className="table-scroll" role="region" aria-label="جدول إحصائيات التركيب حسب فئات السعر">
+      <table className="data-table composition-stats-table">
+        <thead><tr>
+          <th>المؤشر</th>
+          {columns.map(group=><th key={group.key}>{title(group)}</th>)}
+        </tr></thead>
+        <tbody>
+          {cell("عدد الأصناف المرتبطة",group=>String(group.linkedItems),0)}
+          {cell("عدد البدائل المتوفرة",group=>group.availableAlternatives==null?
+            null:String(group.availableAlternatives),0)}
+          {cell("الكمية المتوفرة — مجموع الوحدة الأولى",group=>group.availableUnit1,3)}
+          {periodRows("مرات المبيعات الصافية","saleTimes")}
+          {periodRows("الكمية المباعة الصافية — الوحدة الأولى","saleUnit1")}
+          {periodRows("الكمية المشتراة الصافية — الوحدة الأولى","purchaseUnit1")}
+          {cell("أعلى سعر بيع",group=>group.maximumSalePrice)}
+          {cell("أقل سعر بيع",group=>group.minimumSalePrice)}
+          {cell("أعلى سعر شراء",group=>group.maximumPurchasePrice)}
+          {cell("أقل سعر شراء",group=>group.minimumPurchasePrice)}
+          <tr><th scope="row">الأكثر مبيعًا خلال سنة (مرات)</th>
+            {columns.map(group=><td key={group.key}>
+              {group.topSellingItem?
+                <button className="composition-stats-top-item" type="button"
+                  onClick={()=>onOpenItem(group.topSellingItem!.id)}
+                  title={group.topSellingItem.name}>
+                  {group.topSellingItem.name}
+                  {" — "}{numeric(group.topSellingItem.times,0)}
+                </button>:"—"}
+            </td>)}
+          </tr>
+        </tbody>
+      </table>
+    </div>}
+    {value&&<small className="muted">
+      حتى {value.asOf} بتوقيت عدن. المبيعات تُحسب بعد طرح المرتجعات.
+      الكميات مجموع ما يعادل الوحدة الأولى لكل صنف؛ قد تختلف أحجام الوحدات بين الأصناف.
+      الأسعار الصفرية وغير المسجلة لا تدخل في الحد الأدنى أو الأعلى للأسعار.
+      {value.priceSplitThreshold!==null &&
+        " عندما يكون الفارق بالسعر صفرًا تُدرج جميع الأصناف ضمن قسم الأعلى."}
+      {" "}هذه الإحصائيات محفوظة في جداول مستقلة وتُحدَّث عند حفظ الحركات.
+    </small>}
+  </section>;
+}
+
 type LinkedGroupPage = {items:Item[];total:number;page:number;pageSize:number};
 function LinkedCompositionGroup({
   title,companyId,compositionId,group,userId,originalItemId,onOpenItem,version,
@@ -392,6 +501,11 @@ function CompositionEditor({
         <label className="check-label"><input type="checkbox" disabled={disabled}
           checked={form.nonInterchangeable} onChange={e=>set("nonInterchangeable",e.target.checked)}/>
           غير قابل للتبديل</label>
+        {record&&<div className="form-full">
+          <CompositionStatisticsTable companyId={companyId}
+            compositionId={record.id} userId={user?.id} version={linkedVersion}
+            onOpenItem={setLinkedItemId}/>
+        </div>}
         {record&&<div className="form-full">
           <h4>الأصناف المرتبطة بهذا التركيب</h4>
           {record.priceSplitThreshold!==null&&
