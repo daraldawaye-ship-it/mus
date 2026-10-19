@@ -186,7 +186,7 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
              void query.refetch();
              if(employeeId)void bindingQuery.refetch();
            }},
-        ]}/>
+        ]}/>}
       />
       <Notice>
         رصيد واحد: كل نقطة تساوي ريالًا يمنيًا واحدًا. تضيف المحفظة تلقائيًا نقاط
