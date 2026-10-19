@@ -4614,3 +4614,24 @@ ul {
 .inventory-adjustment-actions {
   justify-content: space-between;
 }
+
+/* Company purchase controls: readable categories and a full search/choose field. */
+.control-option-input:has(.control-purchase-default-account),
+.control-option-input:has([role="group"][aria-label*="أنواع الحسابات"]) {
+  flex: 1 1 460px;
+  justify-content: flex-start;
+}
+.control-option-input .control-purchase-default-account {
+  flex: 1 1 300px;
+  min-width: min(100%,300px);
+}
+.control-purchase-default-account .field,
+.control-purchase-default-account .single-input-lookup {
+  min-width: 0;
+  width: 100%;
+}
+.control-option-input > .control-editors {
+  flex: 1 1 400px;
+  max-width: 700px;
+  margin: 5px 0;
+}
