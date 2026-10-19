@@ -513,6 +513,25 @@ export function memoRoutes(pool: Pool) {
             values.push(status);
             filter = `(${filter}) AND m.status=$${values.length}`;
           }
+          // Reports opened from a returns transfer are scoped to the same item.
+          // Keep the existing inbox/participant filter in force: an item link
+          // never grants access to a memo by itself.
+          if (req.query.itemId !== undefined) {
+            if (typeof req.query.itemId !== "string")
+              throw new HttpError(400, "invalid_item", "رقم الصنف غير صالح");
+            const itemId = id(req.query.itemId);
+            const itemExists = await client.query(
+              "SELECT 1 FROM items WHERE company_id=$1 AND id=$2",
+              [current.companyId, itemId],
+            );
+            if (!itemExists.rowCount)
+              throw new HttpError(404, "not_found", "الصنف غير موجود");
+            values.push(itemId);
+            filter = `(${filter}) AND EXISTS (
+              SELECT 1 FROM memo_links ml
+              WHERE ml.company_id=m.company_id AND ml.memo_id=m.id
+                AND ml.item_id=${values.length})`;
+          }
           const optionKey=req.query.optionKey, optionValue=req.query.optionValue;
           if(optionKey !== undefined || optionValue !== undefined) {
             if(typeof optionKey!=="string" || typeof optionValue!=="string")
