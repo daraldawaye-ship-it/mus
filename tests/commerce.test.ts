@@ -3790,12 +3790,39 @@ test("reconciliation uses nearest expiry only and preserves the existing batch d
   await invoice(f,s,invoiceBody(s,item.id,{
     lines:[{itemId:item.id,unit:1,quantity:"2",unitPrice:"15",expiryDate:"2027-03-01"}],
   }));
-  const response=await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+  const countPreview=await f.owner.ok<{quantitySmallest:string;batchCount:number}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  );
+  assert.equal(countPreview.quantitySmallest,"6");
+  assert.equal(countPreview.batchCount,2);
+  const stale=await f.owner.request("POST",`${s.path}/stock-adjustments`,{
     itemId:item.id,locationId:s.showroom.id,documentDate:"2026-10-12",
-    countedQuantity:"6",expectedQuantitySmallest:"4",unit:1,
+    countedQuantity:"5",expectedQuantitySmallest:"4",unit:1,
     nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
   });
-  assert.equal(response.status,409,"Multiple inventory batches cannot be silently combined");
+  assert.equal(stale.status,409,"Stale total is rejected even with multiple batches");
+  const shortage=await f.owner.ok<{operation:StockOperation}>("POST",
+    `${s.path}/stock-adjustments`,{
+      itemId:item.id,locationId:s.showroom.id,documentDate:"2026-10-12",
+      countedQuantity:"5",expectedQuantitySmallest:"6",unit:1,
+      nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
+    },201);
+  assert.equal(shortage.operation.movements[0]?.expiryDate,"2027-02-01");
+  assert.equal(shortage.operation.movements[0]?.quantitySmallest,"-1");
+  const afterShortage=await balances(f,s,item.id);
+  assert.equal(afterShortage.find(x=>x.expiryDate==="2027-02-01")?.quantitySmallest,"3");
+  assert.equal(afterShortage.find(x=>x.expiryDate==="2027-03-01")?.quantitySmallest,"2");
+  const surplus=await f.owner.ok<{operation:StockOperation}>("POST",
+    `${s.path}/stock-adjustments`,{
+      itemId:item.id,locationId:s.showroom.id,documentDate:"2026-10-12",
+      countedQuantity:"7",expectedQuantitySmallest:"5",unit:1,
+      nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
+    },201);
+  assert.equal(surplus.operation.movements[0]?.expiryDate,"2027-02-01");
+  assert.equal(surplus.operation.movements[0]?.quantitySmallest,"2");
+  const afterSurplus=await balances(f,s,item.id);
+  assert.equal(afterSurplus.find(x=>x.expiryDate==="2027-02-01")?.quantitySmallest,"5");
+  assert.equal(afterSurplus.find(x=>x.expiryDate==="2027-03-01")?.quantitySmallest,"2");
   assert.equal((await f.owner.ok<{item:Item}>(
     "GET",`${s.path}/items/${item.id}`)).item.nearestExpiryDate,"2027-04-01");
   await assertBalanced(f,s.company.id);
