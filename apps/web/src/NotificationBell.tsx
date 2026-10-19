@@ -51,7 +51,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
     queryKey: ["notifications", user?.id, scope, "bell"],
     queryFn: ({ signal }) =>
       api<NotificationDirectory>(
-        `${base}/notifications?state=active&page=1&pageSize=5&sort=createdAt:desc,id:desc`,
+        `${base}/notifications?state=active&grouped=1&page=1&pageSize=5&sort=createdAt:desc,id:desc`,
         { signal },
       ),
     enabled: allowed,
@@ -213,7 +213,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
           ref={panel}
           className="notification-quick-popover"
           role="dialog"
-          aria-label="آخر خمسة إشعارات"
+          aria-label="آخر خمس مجموعات من الإشعارات"
           dir="rtl"
           style={{
             position: "fixed", top: position.top, left: position.left,
@@ -222,7 +222,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
           }}
         >
           <div className="notification-quick-heading">
-            <strong>آخر الإشعارات</strong>
+            <strong>آخر الإشعارات مجمّعة</strong>
             <span>{unread.toLocaleString("ar")} غير مقروء</span>
           </div>
 
@@ -250,7 +250,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
             {items.map((record) => (
               <article
                 key={record.id}
-                className={`notification-quick-item${!record.readAt ? " is-unread" : ""}`}
+                className={`notification-quick-item${record.groupUnread>0 ? " is-unread" : ""}`}
               >
                 <div className="notification-quick-item-top">
                   {record.href ? (
@@ -260,11 +260,15 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
                   ) : (
                     <strong className="notification-quick-title">{record.title}</strong>
                   )}
+                  {record.groupCount>1&&<span className="notification-group-count"
+                    title={`عدد التنبيهات من هذا النوع: ${record.groupCount}`}>
+                    {record.groupCount.toLocaleString("ar")} إشعار
+                  </span>}
                   <button
                     type="button"
                     className="notification-quick-menu-trigger"
                     aria-expanded={actionMenu === record.id}
-                    aria-label={`إجراءات: ${record.title}`}
+                    aria-label={`إجراءات آخر إشعار: ${record.title}`}
                     disabled={busy !== null}
                     onClick={() => {
                       setError(""); setNotice("");
@@ -275,10 +279,21 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
                     الإجراءات <ChevronDown size={12} />
                   </button>
                 </div>
-                <p className="notification-quick-message">{record.message}</p>
+                <p className="notification-quick-message">
+                  {record.groupCount>1&&<strong>آخر إشعار: </strong>}
+                  {record.message}
+                </p>
+                {record.groupCount>1&&<Link
+                  className="notification-quick-link"
+                  to={`${base}/notifications?grouped=0&code=${encodeURIComponent(record.code)}&state=active`}
+                  onClick={close}>
+                  عرض جميع إشعارات هذا النوع
+                </Link>}
                 <div className="notification-quick-meta">
                   <time dateTime={record.createdAt}>{adenTime(record.createdAt)}</time>
-                  {!record.readAt && <span className="notification-quick-new">جديد</span>}
+                  {record.groupUnread>0&&<span className="notification-quick-new">
+                    {record.groupUnread.toLocaleString("ar")} غير مقروء
+                  </span>}
                 </div>
                 {actionMenu === record.id && (
                   <div className="notification-quick-action-list">
