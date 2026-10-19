@@ -1070,12 +1070,10 @@ function OperationEditor({
     nearestExpiryDate: preselectedItem?.nearestExpiryDate ?? "",
   }));
   const [item, setItem] = useState<Item | null>(preselectedItem);
-  const [selectedShelf, setSelectedShelf] = useState<{id:number;name:string}|null>(
-    () => preselectedItem?.shelfId
-      ? {id:preselectedItem.shelfId,name:preselectedItem.shelf}
-      : null,
-  );
+  // Require an intentional shelf choice for each standard count.
+  const [selectedShelf, setSelectedShelf] = useState<{id:number;name:string}|null>(null);
   const [fromLocation, setFromLocation] = useState<Location | null>(null);
+  const locationManuallyChosen = useRef(false);
   const [toLocation, setToLocation] = useState<Location | null>(null);
   const [createKey, setCreateKey] = useState(() => crypto.randomUUID());
   const [dirty, setDirty] = useState(false);
@@ -1101,6 +1099,26 @@ function OperationEditor({
         { signal },
       ),
   });
+  const showroomQuery = useQuery({
+    queryKey: ["inventory", user?.id, companyId, "default-showroom"],
+    queryFn: ({signal}) => api<Page<Location>>(
+      `/companies/${companyId}/commerce-options?type=locations&pageSize=100&sort=code:asc`,
+      {signal},
+    ),
+    enabled: mode === "adjustment" && !!user,
+    staleTime: 60_000,
+  });
+  const defaultShowroom = showroomQuery.data?.items.find(location =>
+    location.kind === "showroom" && location.code === "SHOWROOM" &&
+    location.active && location.effectiveActive,
+  ) ?? showroomQuery.data?.items.find(location =>
+    location.kind === "showroom" && location.active && location.effectiveActive,
+  );
+  useEffect(() => {
+    if (mode !== "adjustment" || fromLocation || locationManuallyChosen.current ||
+        !defaultShowroom) return;
+    setFromLocation(defaultShowroom);
+  }, [mode,fromLocation,defaultShowroom]);
   const targetReady = !!item && !!fromLocation;
   const batch = useQuery({
     queryKey: [
@@ -1129,7 +1147,7 @@ function OperationEditor({
   }
   function selectItem(value: Item | null) {
     setItem(value);
-    setSelectedShelf(value?.shelfId ? {id:value.shelfId,name:value.shelf} : null);
+    setSelectedShelf(null);
     setFields((current) => ({
       ...current, unit: 1,
       countUnit1: "0", countUnit2: "0", countUnit3: "0",
@@ -1253,9 +1271,9 @@ function OperationEditor({
     setError("");
     setFields({ ...initialOperationFields(), nearestExpiryDate: preselectedItem ? fields.nearestExpiryDate : "" });
     setItem(preselectedItem);
-    setSelectedShelf(preselectedItem?.shelfId
-      ? {id:preselectedItem.shelfId,name:preselectedItem.shelf} : null);
-    setFromLocation(null);
+    setSelectedShelf(null);
+    locationManuallyChosen.current = false;
+    setFromLocation(defaultShowroom ?? null);
     setToLocation(null);
     setCreateKey(crypto.randomUUID());
     submitted.current = null;
@@ -1378,6 +1396,7 @@ function OperationEditor({
               disabled={disabled}
               nullable={false}
               onChange={(value) => {
+                locationManuallyChosen.current = true;
                 setFromLocation(value);
                 setDirty(true);
               }}
@@ -1460,7 +1479,7 @@ function OperationEditor({
               <ServerLookup<{id:number;name:string}>
                 companyId={companyId}
                 resource={`/companies/${companyId}/item-options?type=shelves&archived=false`}
-                label="رف الصنف في الكرت"
+                label="رف الصنف (إلزامي)"
                 value={selectedShelf}
                 disabled={disabled || !item}
                 onChange={option=>{
@@ -1468,12 +1487,13 @@ function OperationEditor({
                   setDirty(true);
                 }}
                 display={option=>option.name}
-                emptyLabel="اختر الرف أو اتركه دون رف"
+                emptyLabel="اختر الرف"
               />
             )}
             {mode === "adjustment" && item?.hasExpiry && (
               <ExpiryMonthField
-                label="شهر وسنة أقرب انتهاء في كرت الصنف"
+                label="شهر وسنة أقرب انتهاء في كرت الصنف (إلزامي)"
+                required
                 value={fields.nearestExpiryDate}
                 disabled={disabled}
                 onChange={(date) => edit("nearestExpiryDate", date ?? "")}
