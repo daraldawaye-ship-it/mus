@@ -218,6 +218,8 @@ export function inventoryRoutes(pool: Pool): Router {
   router.get(
     `${base}/stock-count-snapshot`,
     handler(async (req, res) => {
+      if (typeof req.query.itemId !== "string" || typeof req.query.locationId !== "string")
+        throw new HttpError(400,"invalid_query","اختر الصنف وموقع الجرد.");
       const itemId = id(req.query.itemId);
       const locationId = id(req.query.locationId);
       res.json(await readInventory(pool, req, async (client, companyId) => {
