@@ -4418,3 +4418,56 @@ ul {
 .financial-lines .server-lookup-single .field { margin: 0; }
 .financial-lines .server-lookup-single label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .financial-lines .server-lookup-single input { min-height: 32px; padding: 3px 6px; }
+
+
+/* Informational sales guidance uses the existing left sidebar, never the
+   invoice matrix or keyboard focus cycle. Items/alternatives stay concise. */
+.invoice-sale-alerts {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  max-height: min(46dvh, 340px);
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.invoice-sale-alert-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.invoice-sale-alert-note strong, .invoice-sale-alert-heading {
+  font-size: 12px;
+  font-weight: 700;
+}
+.invoice-sale-alert-heading { margin-top: 3px; }
+.invoice-sale-alert-peers { display: flex; flex-direction: column; gap: 3px; }
+.invoice-sale-alert-peer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.invoice-sale-alert-item-name { min-width: 0; overflow-wrap: anywhere; }
+.invoice-sale-alert-indicators { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.invoice-sale-clearance, .invoice-sale-expiry {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.invoice-sale-clearance { color: var(--warning-text, var(--text)); }
+.invoice-sale-expiry { color: var(--error-text, var(--text)); }
