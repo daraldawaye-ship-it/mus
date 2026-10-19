@@ -79,6 +79,8 @@ export function ServerLookup<T extends { id: number }>({
   pageSize = 20,
   sort = "code:asc",
   singleInput = false,
+  searchPlaceholder = "ابحث باسم الحساب أو رقمه",
+  noResultsLabel = "لا توجد حسابات مطابقة.",
 }: {
   companyId: number;
   resource: string;
@@ -94,6 +96,8 @@ export function ServerLookup<T extends { id: number }>({
   sort?: "code:asc" | "name:asc" | "arabicName:asc";
   /** In invoice/voucher heads search and select in the same field. */
   singleInput?: boolean;
+  searchPlaceholder?: string;
+  noResultsLabel?: string;
 }) {
   const { user } = useSession();
   const [query, setQuery] = useState("");
@@ -189,7 +193,7 @@ export function ServerLookup<T extends { id: number }>({
         value={entry}
         disabled={disabled}
         required={required}
-        placeholder="ابحث باسم الحساب أو رقمه"
+        placeholder={searchPlaceholder}
         onFocus={(event) => { setLookupOpen(true); setHighlight(0); placePopup(); event.currentTarget.select(); }}
         onBlur={() => { setLookupOpen(false); if (!value) { setQuery(""); setPage(1); } }}
         onChange={(event) => {
@@ -215,7 +219,7 @@ export function ServerLookup<T extends { id: number }>({
           aria-label={label}
           style={{position:"fixed",zIndex:10020,top:bounds.top,left:bounds.left,width:bounds.width,maxHeight:bounds.maxHeight}}>
           {result.error && <div className="account-lookup-status text-error">{errorMessage(result.error)}</div>}
-          {!result.isFetching && options.length===0 && <div className="account-lookup-status">لا توجد حسابات مطابقة.</div>}
+          {!result.isFetching && options.length===0 && <div className="account-lookup-status">{noResultsLabel}</div>}
           {result.isFetching && <div className="account-lookup-status">جارٍ البحث…</div>}
           <div className="account-lookup-options">
             {options.map((item,index) => (
