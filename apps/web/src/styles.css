@@ -3011,6 +3011,124 @@ ul {
   pointer-events: none;
   opacity: 0.55;
 }
+
+/* Five most recent active notifications in the top-bar bell. */
+.notification-quick-popover {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  text-align: right;
+  font-size: 13px;
+}
+.notification-quick-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+}
+.notification-quick-heading strong { font-size: 14px; }
+.notification-quick-heading span { color: var(--muted); font-size: 12px; }
+.notification-quick-items { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.notification-quick-item {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  border-inline-start: 3px solid transparent;
+}
+.notification-quick-item.is-unread { border-inline-start-color: var(--primary); }
+.notification-quick-item-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.notification-quick-title {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+a.notification-quick-title:hover { text-decoration: underline; }
+.notification-quick-message {
+  margin: 5px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.notification-quick-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.notification-quick-new { color: var(--primary); font-weight: 700; }
+.notification-quick-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+.notification-quick-menu-trigger:hover, .notification-quick-menu-trigger:focus-visible { background: var(--hover); }
+.notification-quick-menu-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.notification-quick-action-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.notification-quick-action-list > :is(button, a) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.notification-quick-action-list > :is(button, a):hover:not(:disabled) { background: var(--hover); }
+.notification-quick-action-list > button:disabled { opacity: .55; cursor: not-allowed; }
+.notification-quick-snooze { margin-top: 9px; display: grid; gap: 7px; }
+.notification-quick-snooze label { font-size: 12px; }
+.notification-quick-snooze input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px;
+  direction: ltr;
+}
+.notification-quick-snooze > div { display: flex; gap: 7px; flex-wrap: wrap; }
+.notification-quick-placeholder { padding: 22px 14px; margin: 0; text-align: center; color: var(--muted); }
+.notification-quick-error { padding: 7px 12px; background: var(--error-bg); color: var(--error-text); }
+.notification-quick-success { padding: 7px 12px; color: var(--success-text); }
+.notification-quick-link { border: 0; background: transparent; color: var(--primary); text-decoration: underline; cursor: pointer; }
+.notification-quick-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px;
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: 650;
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.notification-quick-footer:hover, .notification-quick-footer:focus-visible { background: var(--hover); }
+
 /* Automatic notifications use the shared compact controls and theme colors. */
 .notification-bell {
   position: relative;
