@@ -10,6 +10,8 @@ import {
   type CompanyContext,
   type WalletDirectory,
   type WalletEntry,
+  type WalletTaskReport,
+  type WalletTaskPostingStatus,
   type RewardTask,
   type RewardTaskDirectory,
   type RewardRepeatRule,
@@ -47,6 +49,7 @@ const time = (value: string) =>
     timeZone: "Asia/Aden",
   }).format(new Date(value));
 const pointValue = (value: string) => BigInt(value).toLocaleString("ar-YE");
+const adenToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
 const normalizePoints = (value: string) =>
   value.replace(/[٠-٩۰-۹]/g, (digit) =>
     String(
@@ -97,7 +100,17 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     client = useQueryClient(),
     guard = useScopeGuard(scope);
   const [params, setParams] = useSearchParams();
+  const [fromDate, setFromDate] = useState(adenToday);
+  const [toDate, setToDate] = useState(adenToday);
+  const [posting, setPosting] = useState<WalletTaskPostingStatus>("all");
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [taskPage, setTaskPage] = useState(1);
+  const dateRangeValid = Boolean(fromDate && toDate && fromDate <= toDate);
   const filters = new URLSearchParams();
+  if (dateRangeValid) {
+    filters.set("fromDate", fromDate);
+    filters.set("toDate", toDate);
+  }
   if (params.get("employeeId"))
     filters.set("employeeId", params.get("employeeId")!);
   const list = usePagedQuery<WalletEntry, WalletDirectory>(
@@ -105,6 +118,19 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     scope,
     "createdAt:desc,id:desc",
   );
+  const taskReport = useQuery({
+    queryKey: ["wallet-task-report", user?.id, companyId, list.data?.wallet?.employeeId ?? null,
+      fromDate, toDate, posting, selectedTask, taskPage],
+    enabled: Boolean(user && list.data?.wallet?.employeeId && dateRangeValid),
+    queryFn: ({signal}) => {
+      const query = new URLSearchParams({
+        employeeId: String(list.data!.wallet!.employeeId),
+        fromDate, toDate, posting, page: String(taskPage), pageSize: "50",
+      });
+      if (selectedTask) query.set("taskKey", selectedTask);
+      return api<WalletTaskReport>(`${base}/wallet/task-report?${query}`, {signal});
+    },
+  });
   const directory = usePageDirectory(companyId);
   const walletPage = directory.data?.find(
     (entry) => entry.key === "company.wallet",
@@ -143,6 +169,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       client.invalidateQueries({
         queryKey: ["wallet-summary", user?.id, companyId],
       }),
+      client.invalidateQueries({ queryKey: ["wallet-task-report", user?.id, companyId] }),
     ]);
   }
   async function confirmReturnReview() {
@@ -167,6 +194,8 @@ export function WalletPage({ context }: { context: CompanyContext }) {
     }
   }
   function changeEmployee(value: string) {
+    setSelectedTask(null);
+    setTaskPage(1);
     setParams((previous) => {
       const next = new URLSearchParams(previous);
       value ? next.set("employeeId", value) : next.delete("employeeId");
@@ -423,7 +452,104 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           <Button variant="secondary" disabled={pending} onClick={() => setReturnToReview(null)}>إلغاء</Button>
         </div>
       </Dialog>
-      <Card title="سجل جميع حركات المحفظة"
+
+      <Card title="ملخص المهام والنقاط حسب الفترة"
+        description="يُحسب عدد مرات كل مهمة وإجمالي نقاطها ضمن التاريخ المحدد بتوقيت عدن. تُوزّع النقاط المحوّلة للحساب المحاسبي على المكافآت الأقدم أولًا لأغراض هذا التقرير؛ ولا تغيّر هذه الطريقة القيود المحاسبية.">
+        <div className="wallet-filters wallet-task-filter-bar">
+          {list.data?.canManage && (
+            <Select label="الموظف" value={params.get("employeeId") ?? wallet?.employeeId ?? ""}
+              onChange={event => changeEmployee(event.target.value)}>
+              <option value="">اختر الموظف</option>
+              {list.data.employees.map(employee =>
+                <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+            </Select>
+          )}
+          <Field label="من تاريخ" type="date" value={fromDate}
+            onChange={event => { setFromDate(event.target.value); setSelectedTask(null); setTaskPage(1); }}/>
+          <Field label="إلى تاريخ" type="date" value={toDate}
+            onChange={event => { setToDate(event.target.value); setSelectedTask(null); setTaskPage(1); }}/>
+          <Select label="حالة النقاط" value={posting}
+            onChange={event => {
+              setPosting(event.target.value as WalletTaskPostingStatus);
+              setSelectedTask(null); setTaskPage(1);
+            }}>
+            <option value="all">الكل — المرحّلة وغير المرحّلة</option>
+            <option value="posted">المرحّلة</option>
+            <option value="unposted">غير المرحّلة</option>
+          </Select>
+        </div>
+        {!dateRangeValid && <Notice tone="warning">حدد تاريخ بداية لا يتجاوز تاريخ النهاية.</Notice>}
+        {taskReport.error && <Notice tone="error">
+          {errorMessage(taskReport.error)}{" "}
+          <Button variant="ghost" onClick={() => void taskReport.refetch()}>إعادة المحاولة</Button>
+        </Notice>}
+        {taskReport.isLoading && <p className="muted">جارٍ حساب إجماليات المهام…</p>}
+        <div className="table-scroll">
+          <table className="wallet-task-table" aria-label="إجماليات مهام النقاط">
+            <thead><tr><th>الإجمالي</th><th>اسم المهمة</th><th>العدد</th></tr></thead>
+            <tbody>
+              {(taskReport.data?.tasks ?? []).map(task =>
+                <tr key={task.key} className={selectedTask === task.key ? "wallet-task-selected" : undefined}>
+                  <td><bdi>{pointValue(task.points)}</bdi></td>
+                  <td><button type="button" className="wallet-task-name"
+                    aria-expanded={selectedTask === task.key}
+                    onClick={() => {
+                      setTaskPage(1);
+                      setSelectedTask(current => current === task.key ? null : task.key);
+                    }}>{task.name}</button></td>
+                  <td><bdi>{task.count.toLocaleString("ar-YE")}</bdi></td>
+                </tr>)}
+              {taskReport.data && taskReport.data.tasks.length > 0 &&
+                <tr className="wallet-task-grand-total">
+                  <th><bdi>{pointValue(taskReport.data.totalPoints)}</bdi></th>
+                  <th>الإجمالي</th>
+                  <th>{taskReport.data.totalCount.toLocaleString("ar-YE")}</th>
+                </tr>}
+            </tbody>
+          </table>
+        </div>
+        {taskReport.data && !taskReport.data.tasks.length &&
+          <p className="muted">لا توجد حركات نقاط ضمن الفترة والحالة المحددتين.</p>}
+        {selectedTask && dateRangeValid && (
+          <section className="wallet-task-inline-details" aria-label="تفاصيل المهمة المحددة">
+            <div className="wallet-task-details-head">
+              <strong>تفاصيل: {taskReport.data?.tasks.find(item => item.key === selectedTask)?.name ?? "المهمة"}</strong>
+              <Button variant="secondary" size="compact" onClick={() => setSelectedTask(null)}>إغلاق التفاصيل</Button>
+            </div>
+            {taskReport.isFetching && <p className="muted">جارٍ تحميل تفاصيل المهمة…</p>}
+            <div className="table-scroll">
+              <table aria-label="حركات المهمة للفترة المحددة">
+                <thead><tr><th>النقاط المحتسبة</th><th>التاريخ</th><th>السبب</th><th>المرجع</th><th>بواسطة</th></tr></thead>
+                <tbody>{(taskReport.data?.details ?? []).map(row =>
+                  <tr key={row.entry.id}>
+                    <td><bdi>{pointValue(row.countedPoints)}</bdi></td>
+                    <td>{time(row.entry.createdAt)}</td>
+                    <td>{row.entry.reason}</td>
+                    <td>{row.entry.financialDocumentId !== null && canViewVoucher
+                      ? <Link to={`${base}/financial-documents/${row.entry.financialDocumentId}`}>سند #{row.entry.financialDocumentId}</Link>
+                      : row.entry.invoiceId !== null && canViewInvoice
+                        ? <Link to={`${base}/invoices/${row.entry.invoiceId}`}>فاتورة #{row.entry.invoiceId}</Link>
+                        : `#${row.entry.id}`}</td>
+                    <td>{row.entry.createdByName}</td>
+                  </tr>)}</tbody>
+              </table>
+            </div>
+            {taskReport.data && taskReport.data.detailTotal === 0 &&
+              <p className="muted">لا توجد تفاصيل مطابقة.</p>}
+            {taskReport.data && taskReport.data.detailTotal > 50 && (
+              <div className="wallet-task-pager">
+                <span>الصفحة {taskPage.toLocaleString("ar")} من {Math.ceil(taskReport.data.detailTotal/50).toLocaleString("ar")}</span>
+                <Button variant="secondary" size="compact" disabled={taskPage <= 1 || taskReport.isFetching}
+                  onClick={() => setTaskPage(page => page - 1)}>السابق</Button>
+                <Button variant="secondary" size="compact"
+                  disabled={taskPage * 50 >= taskReport.data.detailTotal || taskReport.isFetching}
+                  onClick={() => setTaskPage(page => page + 1)}>التالي</Button>
+              </div>
+            )}
+          </section>
+        )}
+      </Card>
+      <Card title="سجل حركات المحفظة خلال الفترة"
         description="يشمل نقاط الحضور والمكافآت وعمولات التصريف؛ تُضاف كلها إلى الرصيد نفسه. 1 نقطة = 1 ريال يمني.">
         <div className="wallet-filters">
           {list.data?.canManage && (
