@@ -343,6 +343,34 @@ function CompositionEditor({
           disabled={disabled} onChange={e=>set("productForm",e.target.value as ProductForm)}>
           {productForms.map(value=><option key={value} value={value}>{value}</option>)}
         </Select>
+        <Field label="الفارق بالسعر — سعر بيع الوحدة الأولى" type="number"
+          min="0" step="0.000001" inputMode="decimal"
+          placeholder="اختياري — فارغ يعني مجموعة واحدة"
+          value={form.priceSplitThreshold??""} disabled={disabled}
+          onChange={e=>set("priceSplitThreshold",e.target.value.trim()===""?null:e.target.value)}/>
+        <div className="field">
+          {record&&<ServerLookup<Item>
+            companyId={companyId}
+            resource={`/companies/${companyId}/items?compositionId=${record.id}`}
+            label="الصنف الأورجنال (اختياري)"
+            value={originalItem}
+            onChange={item=>{
+              setSelectedOriginalItem(item);
+              set("originalItemId",item?.id??null);
+            }}
+            display={item=>`${item.code} — ${item.name}`}
+            disabled={disabled} pageSize={50} sort="name:asc"
+            singleInput
+          />}
+          {!record&&<small className="muted">
+            اختر الصنف الأورجنال بعد حفظ التركيب وربط الأصناف به.
+          </small>}
+          {record&&form.originalItemId!==null&&<Button type="button"
+            variant="secondary" size="compact" disabled={disabled}
+            onClick={()=>{setSelectedOriginalItem(null);set("originalItemId",null);}}>
+            إلغاء تعيين الأورجنال
+          </Button>}
+        </div>
         <div className="field form-full">
           <label htmlFor="composition-description">الشرح</label>
           <textarea id="composition-description" value={form.description}
@@ -364,38 +392,27 @@ function CompositionEditor({
           checked={form.nonInterchangeable} onChange={e=>set("nonInterchangeable",e.target.checked)}/>
           غير قابل للتبديل</label>
         {record&&<div className="form-full">
-          <h4>الأصناف المرتبطة بهذا التركيب {linked.data
-            ? `(${linked.data.total})`
-            : linked.isError ? "(تعذر التحميل)" : "(جارٍ التحميل…)"}</h4>
-          {linked.isPending&&<p>جارٍ تحميل الأصناف…</p>}
-          {linked.error&&<Notice tone="error">
-            {errorMessage(linked.error)}
-            {" "}<Button type="button" variant="secondary" size="compact"
-              onClick={()=>void linked.refetch()}>إعادة المحاولة</Button>
-          </Notice>}
-          <div className="table-scroll">
-            <table className="data-table"><thead><tr>
-              <th>رمز الصنف</th><th>اسم الصنف</th><th>شكل الصنف</th><th>الحالة</th><th>الكرت</th>
-            </tr></thead><tbody>
-              {(linked.data?.items??[]).map(item=><tr key={item.id}>
-                <td>{item.code}</td><td>{item.name}</td><td>{item.productForm}</td>
-                <td>{item.active?"فعال":"مؤرشف"}</td>
-                <td><Button type="button" variant="secondary" size="compact"
-                  onClick={()=>setLinkedItemId(item.id)}>كرت الصنف</Button></td>
-              </tr>)}
-              {linked.isSuccess && !linked.data.items.length && <tr>
-                <td colSpan={5}>لا توجد أصناف مرتبطة بهذا التركيب.</td>
-              </tr>}
-            </tbody></table>
-          </div>
-          <div className="form-actions">
-            <Button type="button" variant="secondary" disabled={linkedPage===1}
-              onClick={()=>setLinkedPage(n=>n-1)}>السابق</Button>
-            <span>صفحة {linkedPage} من {Math.max(1,Math.ceil((linked.data?.total??0)/20))}</span>
-            <Button type="button" variant="secondary"
-              disabled={linkedPage*20>=(linked.data?.total??0)}
-              onClick={()=>setLinkedPage(n=>n+1)}>التالي</Button>
-          </div>
+          <h4>الأصناف المرتبطة بهذا التركيب</h4>
+          {record.priceSplitThreshold!==null&&
+            form.priceSplitThreshold!==record.priceSplitThreshold&&
+            <small className="muted">سيُعاد تقسيم الأصناف بحسب السعر الجديد بعد حفظ التركيب.</small>}
+          {record.priceSplitThreshold===null?
+            <LinkedCompositionGroup title="جميع الأصناف" companyId={companyId}
+              compositionId={record.id} group="all" userId={user?.id}
+              originalItemId={form.originalItemId} version={linkedVersion}
+              onOpenItem={setLinkedItemId}/>
+            :<>
+              <LinkedCompositionGroup
+                title={`سعر بيع الوحدة الأولى أكبر من ${record.priceSplitThreshold}`}
+                companyId={companyId} compositionId={record.id} group="higher"
+                userId={user?.id} originalItemId={form.originalItemId}
+                version={linkedVersion} onOpenItem={setLinkedItemId}/>
+              <LinkedCompositionGroup
+                title={`سعر بيع الوحدة الأولى أقل من أو يساوي ${record.priceSplitThreshold}`}
+                companyId={companyId} compositionId={record.id} group="lower"
+                userId={user?.id} originalItemId={form.originalItemId}
+                version={linkedVersion} onOpenItem={setLinkedItemId}/>
+            </>}
         </div>}
         {record&&<p className="muted form-full">الإصدار {revision} — لا تُحذف الكروت؛ يمكن أرشفتها.</p>}
         <div className="form-actions form-full">
@@ -412,7 +429,7 @@ function CompositionEditor({
         <LinkedItemEditor context={context} itemId={linkedItemId}
           onSavingChange={setLinkedBusy}
           onClose={()=>setLinkedItemId(null)}
-          onSaved={()=>{setLinkedItemId(null);void linked.refetch();}}/>
+          onSaved={()=>{setLinkedItemId(null);setLinkedVersion(v=>v+1);}}/>
       </Suspense>
     </Dialog>}
     <Dialog open={confirmClose} title="إغلاق كرت التركيب"
