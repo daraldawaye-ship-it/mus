@@ -96,8 +96,8 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
     <Card title="الفحص والمقارنة">
       <div className="table-filters">
         <form onSubmit={event=>{event.preventDefault();update("q",search.trim());}}>
-          <Field label="بحث باسم الصنف أو التركيب" value={search}
-            placeholder="اسم الصنف أو التركيب بالعربي أو الإنجليزي"
+          <Field label="بحث بالاسم أو شكل الصنف أو شكل التركيب" value={search}
+            placeholder="اسم الصنف أو التركيب أو شكل أحدهما"
             onChange={event=>setSearch(event.target.value)} />
           <Button type="submit" variant="secondary">بحث</Button>
         </form>
