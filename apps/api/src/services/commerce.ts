@@ -242,7 +242,7 @@ export async function createInvoice(
   if (location.branchId !== input.branchId)
     conflict("الموقع لا يتبع فرع الفاتورة");
   const refs = await client.query(
-    "SELECT c.*,b.name AS branch_name,l.name AS location_name,l.kind AS location_kind,a.code AS account_code,a.name AS account_name,a.category AS account_category,a.cash_or_bank AS account_cash_or_bank FROM company_currencies c JOIN branches b ON b.company_id=c.company_id AND b.id=$3 JOIN locations l ON l.company_id=c.company_id AND l.id=$4 JOIN accounts a ON a.company_id=c.company_id AND a.id=$5 WHERE c.company_id=$1 AND c.id=$2 AND c.active AND a.active AND a.kind='posting' FOR SHARE OF c,b,l,a",
+    "SELECT c.*,b.name AS branch_name,l.name AS location_name,l.kind AS location_kind,a.code AS account_code,a.name AS account_name,a.category AS account_category,a.account_choice AS account_choice,a.cash_or_bank AS account_cash_or_bank FROM company_currencies c JOIN branches b ON b.company_id=c.company_id AND b.id=$3 JOIN locations l ON l.company_id=c.company_id AND l.id=$4 JOIN accounts a ON a.company_id=c.company_id AND a.id=$5 WHERE c.company_id=$1 AND c.id=$2 AND c.active AND a.active AND a.kind='posting' FOR SHARE OF c,b,l,a",
     [
       companyId,
       input.currencyId,
@@ -254,6 +254,12 @@ export async function createInvoice(
   const currency = refs.rows[0];
   if (!currency)
     conflict("العملة والحساب المقابل يجب أن يكونا فعالين من الشركة");
+  if (input.kind === "purchase" && !importContext) {
+    const required = await controlValue(client,companyId,"purchase_receipt_required_choices");
+    if (Array.isArray(required) && required.includes(currency.account_choice) &&
+        !input.supplierReceiptNumber.trim())
+      conflict("رقم الوصل إلزامي لنوع حساب رأس فاتورة المشتريات المحدد في الكنترول.");
+  }
   if (input.kind === "sale" && currency.location_kind !== "showroom")
     conflict("المبيعات ومردوداتها ترحل من معرض الفرع فقط");
   if (
