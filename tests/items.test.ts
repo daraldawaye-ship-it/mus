@@ -1392,6 +1392,19 @@ test("item compositions support multilingual cards, strict flags, archived links
   });
   await f.owner.ok("PATCH",`/companies/${companyA.id}/items/${removedPeer.id}`,
     patchItem(removedPeer,{active:false}));
+  // The composition card linked-items table must list BOTH active and archived
+  // products. An invalid active=all query used to show "الحالة غير صالحة"
+  // and misleadingly claimed zero associated items.
+  const linkedCard=await f.owner.ok<Page<Item>>("GET",
+    `/companies/${companyA.id}/items?compositionId=${created.id}&page=1&pageSize=20&sort=name:asc`);
+  assert.equal(linkedCard.total,3);
+  assert.deepEqual(new Set(linkedCard.items.map(x=>x.id)),
+    new Set([itemA.id,related.id,removedPeer.id]));
+  assert.equal(linkedCard.items.find(x=>x.id===removedPeer.id)?.active,false);
+  const invalidAll=await f.owner.request("GET",
+    `/companies/${companyA.id}/items?compositionId=${created.id}&active=all`);
+  assert.equal(invalidAll.status,400,
+    "The composition UI must omit active=all rather than sending an invalid boolean");
   const withoutArchived=(await f.owner.ok<{peers:ItemCompositionPeers}>("GET",peersPath)).peers;
   assert.equal(withoutArchived.total,1,
     "Archived items do not count towards alternative pagination");
