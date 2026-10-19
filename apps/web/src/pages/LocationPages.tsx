@@ -251,7 +251,7 @@ function BranchEditor({
   const guard = useScopeGuard(
     `company:${companyId}:branch:${branch?.id ?? "new"}`,
   );
-  const [code, setCode] = useState(branch?.code ?? "");
+
   const [name, setName] = useState(branch?.name ?? "");
   const [phone, setPhone] = useState(branch?.phone ?? "");
   const [address, setAddress] = useState(branch?.address ?? "");
@@ -269,12 +269,11 @@ function BranchEditor({
         `/companies/${companyId}/branches${branch ? `/${branch.id}` : ""}`,
         {
           method: branch ? "PATCH" : "POST",
-          body: { name, phone, address, active, ...(branch ? {} : { code }) },
+          body: { name, phone, address, active },
           signal: guard.signal,
         },
       );
       if (!guard.isCurrent()) return;
-      setCode(result.branch.code);
       setName(result.branch.name);
       setPhone(result.branch.phone);
       setAddress(result.branch.address);
@@ -303,22 +302,12 @@ function BranchEditor({
             مخازنه من شاشة المعارض والمخازن.
           </Notice>
         )}
-        <Field
-          label="كود الفرع"
-          value={code}
-          onChange={(event) => setCode(event.target.value.toUpperCase())}
-          dir="ltr"
-          required
-          maxLength={20}
-          readOnly={Boolean(branch)}
-          disabled={saving}
-          autoFocus={!branch}
-          hint={
-            branch
-              ? "الكود ثابت بعد الإنشاء."
-              : "من 1 إلى 20 حرفًا أو رقمًا لاتينيًا، مع السماح بـ _ و -."
-          }
-        />
+        {branch ? (
+          <Field label="كود الفرع" value={branch.code} dir="ltr"
+            readOnly disabled={saving} hint="الكود ثابت بعد الإنشاء." />
+        ) : (
+          <Notice>يُنشئ النظام كود الفرع تلقائيًا عند الحفظ؛ لا يلزم إدخاله.</Notice>
+        )}
         <Field
           label="اسم الفرع"
           value={name}
@@ -326,7 +315,7 @@ function BranchEditor({
           required
           maxLength={120}
           disabled={saving}
-          autoFocus={Boolean(branch)}
+          autoFocus
         />
         <Field
           label="هاتف الفرع"
@@ -665,7 +654,7 @@ function LocationEditor({
     `company:${companyId}:location:${location?.id ?? "new"}`,
   );
   const [branch, setBranch] = useState<Branch | null>(null);
-  const [code, setCode] = useState(location?.code ?? "");
+
   const [name, setName] = useState(location?.name ?? "");
   const [kind, setKind] = useState<LocationKind>(location?.kind ?? "warehouse");
   const [active, setActive] = useState(location?.active ?? true);
@@ -680,7 +669,7 @@ function LocationEditor({
     try {
       const body = location
         ? { name, ...(active !== location.active ? { active } : {}) }
-        : { branchId: branch?.id, code, name, kind };
+        : { branchId: branch?.id, name, kind };
       const result = await api<{ location: Location }>(
         `/companies/${companyId}/locations${location ? `/${location.id}` : ""}`,
         {
@@ -690,7 +679,6 @@ function LocationEditor({
         },
       );
       if (!guard.isCurrent()) return;
-      setCode(result.location.code);
       setName(result.location.name);
       setKind(result.location.kind);
       setActive(result.location.active);
@@ -733,21 +721,12 @@ function LocationEditor({
             disabled={saving}
           />
         )}
-        <Field
-          label="كود الموقع"
-          value={code}
-          onChange={(event) => setCode(event.target.value.toUpperCase())}
-          dir="ltr"
-          required
-          maxLength={20}
-          readOnly={Boolean(location)}
-          disabled={saving}
-          hint={
-            location
-              ? "الكود ثابت بعد الإنشاء."
-              : "كود فريد داخل الفرع، من 1 إلى 20 حرفًا أو رقمًا لاتينيًا أو _ أو -."
-          }
-        />
+        {location ? (
+          <Field label="كود الموقع" value={location.code} dir="ltr"
+            readOnly disabled={saving} hint="الكود ثابت بعد الإنشاء." />
+        ) : (
+          <Notice>يُنشئ النظام كود الموقع تلقائيًا بعد اختيار الفرع وحفظ الكرت.</Notice>
+        )}
         <Field
           label="اسم الموقع"
           value={name}
@@ -755,7 +734,7 @@ function LocationEditor({
           required
           maxLength={120}
           disabled={saving}
-          autoFocus={Boolean(location)}
+          autoFocus
         />
         <Select
           label="نوع الموقع"
