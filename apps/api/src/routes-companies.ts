@@ -472,7 +472,7 @@ export function companyRoutes(pool: Pool): Router {
           if (target.rows[0].archived) deny("لا يمكن ربط حساب مؤرشف");
         }
         const created = await client.query(
-          "INSERT INTO employees(company_id,user_id,name,phone,role,active,permissions,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+          "INSERT INTO employees(company_id,user_id,name,phone,role,active,permissions,position_keys,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
           [
             companyId,
             targetUserId,
@@ -481,6 +481,7 @@ export function companyRoutes(pool: Pool): Router {
             input.role,
             input.active,
             input.permissions,
+            input.positions ?? [],
             user.id,
           ],
         );
@@ -572,13 +573,14 @@ export function companyRoutes(pool: Pool): Router {
           deny("لا يمكن تفعيل موظف مرتبط بحساب مؤرشف");
         const after = { ...before, ...input };
         await client.query(
-          "UPDATE employees SET name=$1,phone=$2,role=$3,active=$4,permissions=$5 WHERE company_id=$6 AND id=$7",
+          "UPDATE employees SET name=$1,phone=$2,role=$3,active=$4,permissions=$5,position_keys=$6 WHERE company_id=$7 AND id=$8",
           [
             after.name,
             after.phone,
             after.role,
             after.active,
             after.permissions,
+            after.positions,
             companyId,
             employeeId,
           ],
