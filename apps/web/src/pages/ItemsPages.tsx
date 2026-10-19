@@ -914,7 +914,8 @@ function ItemStatisticsCard({
               <>
                 الإجمالي <bdi>{statistics.stock.total}</bdi> · المعارض{" "}
                 <bdi>{statistics.stock.showroom}</bdi> · المخازن{" "}
-                <bdi>{statistics.stock.warehouse}</bdi> · الوحدة:{" "}
+                <bdi>{statistics.stock.warehouse}</bdi> · المرتجعات{" "}
+                <bdi>{statistics.stock.returns}</bdi> · الوحدة:{" "}
                 {statistics.stock.unitName}
               </>
             ) : statistics.canViewStock ? (
