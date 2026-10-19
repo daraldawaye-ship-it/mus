@@ -1437,6 +1437,50 @@ test("purchase saving changes only the item card's nearest expiry, while reconci
   await assertBalanced(f,s.company.id);
 });
 
+test("zero selected stock location bypasses shelf/expiry requirements and preserves item card", async t => {
+  const f=await fixture(t), s=await setup(f,"Zero location physical count");
+  const item=await s.item({
+    factor2:1,factor3:1,hasExpiry:true,purchasePrice:"20",
+    nearestExpiryDate:"2027-05-01",
+  });
+  await invoice(f,s,invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"5",unitPrice:"20",expiryDate:"2027-09-01"}],
+  }));
+  const card=()=>f.owner.ok<{item:Item}>("GET",`${s.path}/items/${item.id}`);
+  const before=(await card()).item;
+  const basic={
+    documentDate:"2026-10-12",itemId:item.id,locationId:s.showroom.id,
+    countedUnits:{unit1:"0"},expectedQuantitySmallest:"5",unit:1,
+  };
+  assert.equal((await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+    ...basic,nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
+  })).status,409,"normal counting must require a shelf");
+  const shelf=(await f.pool.query(
+    "SELECT id FROM item_shelves WHERE company_id=$1 AND NOT archived LIMIT 1",
+    [s.company.id],
+  )).rows[0]!.id as number;
+  assert.equal((await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+    ...basic,shelfId:shelf,idempotencyKey:randomUUID(),
+  })).status,409,"normal counting must require an expiry for expiring items");
+  const body={...basic,zeroLocation:true,idempotencyKey:randomUUID()};
+  const zero=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,body,201);
+  assert.equal(zero.operation.movements.reduce(
+    (sum,move)=>sum+BigInt(move.quantitySmallest),0n),-5n);
+  assert.equal((await f.owner.ok<{quantitySmallest:string}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  )).quantitySmallest,"0");
+  const after=(await card()).item;
+  assert.equal(after.nearestExpiryDate,before.nearestExpiryDate);
+  assert.equal(after.shelfId,before.shelfId);
+  assert.equal(after.revision,before.revision,
+    "zeroing must not write shelf or expiry into the item card");
+  const repeated=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,body,200);
+  assert.equal(repeated.operation.id,zero.operation.id);
+  await assertBalanced(f,s.company.id);
+});
+
 test("adjustment auto-prices from the item card and atomically changes its shelf and nearest expiry", async (t) => {
   const f=await fixture(t),s=await setup(f);
   const shelfRows=await f.pool.query(
