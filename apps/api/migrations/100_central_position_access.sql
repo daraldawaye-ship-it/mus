@@ -40,3 +40,10 @@ CREATE TABLE central_access_policies (
          array_position(edit_positions,NULL) IS NULL)
 );
 CREATE INDEX central_access_policies_editor_idx ON central_access_policies(company_id,updated_at DESC);
+INSERT INTO page_registry(key) VALUES('company.central-access') ON CONFLICT DO NOTHING;
+INSERT INTO permission_definitions(
+ key,page_key,action,name,rule_role,required_permissions
+) VALUES
+ ('company.central-access:view','company.central-access','view','مركز الصلاحيات — عرض','company-general',ARRAY[]::text[]),
+ ('company.central-access:edit','company.central-access','edit','مركز الصلاحيات — تعديل','company-general',ARRAY[]::text[])
+ON CONFLICT(key) DO NOTHING;
