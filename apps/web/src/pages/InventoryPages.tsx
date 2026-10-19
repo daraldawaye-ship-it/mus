@@ -808,8 +808,8 @@ function SettingsEditor({
   const manage = inventoryAccess(context, "manage");
   const disabled = !manage || saving || unknown;
   const navigation = useInventoryNavigation(dirty, saving, unknown);
-  async function save(event: FormEvent | null, zeroLocation = false) {
-    event?.preventDefault();
+  async function save(event: FormEvent) {
+    event.preventDefault();
     if (!manage || saving || unknown) return;
     setError("");
     const parsed = inventorySettingsSchema.safeParse({
@@ -1178,8 +1178,8 @@ function OperationEditor({
       /* Keep the user's incomplete input intact. */
     }
   }
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  async function save(event: FormEvent | null, zeroLocation = false) {
+    event?.preventDefault();
     if (!allowed || saving || result) return;
     setError("");
     let body: StockTransferInput | StockAdjustmentInput;
