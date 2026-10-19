@@ -111,8 +111,10 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
   )
     ? params.get("state")!
     : "active";
+  const grouped=params.get("grouped")!=="0";
+  const notificationCode=params.get("code");
   const list = usePagedQuery<NotificationRecord, NotificationDirectory>(
-    `${base}/notifications?state=${state}`,
+    `${base}/notifications?state=${state}&grouped=${grouped?"1":"0"}${notificationCode?`&code=${encodeURIComponent(notificationCode)}`:""}`,
     `${scope}:notifications`,
     "createdAt:desc,id:desc",
   );
@@ -296,6 +298,14 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             <option value="done">منجز</option>
             <option value="all">الكل</option>
           </Select>
+          <Select label="طريقة العرض" value={grouped?"1":"0"}
+            onChange={event=>filter("grouped",event.target.value==="1"?"":"0")}>
+            <option value="1">تجميع حسب نوع الإشعار</option>
+            <option value="0">إظهار كل إشعار منفردًا</option>
+          </Select>
+          {notificationCode&&<button type="button"
+            className="button button-secondary button-compact"
+            onClick={()=>filter("code","")}>كل أنواع الإشعارات</button>}
           <Select
             label="الترتيب"
             value={params.get("sort") ?? "createdAt:desc,id:desc"}
@@ -309,7 +319,8 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
           </Select>
         </div>
         <div className="notification-list-meta">
-          <span>{(list.data?.total ?? 0).toLocaleString("ar")} تنبيه</span>
+          <span>{(list.data?.total ?? 0).toLocaleString("ar")} {grouped?"نوع إشعار":"إشعار"}</span>
+          {grouped&&<span>تُعرض آخر رسالة لكل نوع والعدد الإجمالي</span>}
           <span>{(list.data?.unread ?? 0).toLocaleString("ar")} غير مقروء</span>
         </div>
       </Card>
@@ -327,18 +338,30 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
         {list.data?.items.map((record) => (
           <article
             key={record.id}
-            className={`card notification-record${record.readAt ? "" : " is-unread"}`}
+            className={`card notification-record${record.groupUnread>0 ? " is-unread" : ""}`}
             data-notification-id={record.id}
           >
             <div className="notification-heading">
               <h2>{record.title}</h2>
+              {grouped&&record.groupCount>1&&<span className="notification-group-count">
+                {record.groupCount.toLocaleString("ar")} إشعار
+              </span>}
               <span
                 className={`notification-importance importance-${record.importance}`}
               >
                 {importanceLabels[record.importance]}
               </span>
             </div>
-            <p className="notification-message">{record.message}</p>
+            <p className="notification-message">
+              {grouped&&record.groupCount>1&&<strong>آخر إشعار: </strong>}
+              {record.message}
+            </p>
+            {grouped&&record.groupCount>1&&<div className="notification-details">
+              <span>{record.groupUnread.toLocaleString("ar")} غير مقروءة من هذا النوع</span>
+              <Link to={`${base}/notifications?state=${state}&grouped=0&code=${encodeURIComponent(record.code)}`}>
+                عرض جميع إشعارات هذا النوع
+              </Link>
+            </div>}
             <div className="notification-details">
               <span>{record.companyId ? context?.company.name : "عام"}</span>
               <time dateTime={record.createdAt}>{time(record.createdAt)}</time>
@@ -369,6 +392,9 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
                 </span>
               )}
             </div>
+            {grouped&&record.groupCount>1&&<small className="muted">
+              الإجراءات التالية تخص آخر إشعار فقط. لإدارة البقية افتح جميع إشعارات هذا النوع.
+            </small>}
             <div className="notification-actions">
               {record.href && (
                 <Link to={record.href} className="button button-secondary">
