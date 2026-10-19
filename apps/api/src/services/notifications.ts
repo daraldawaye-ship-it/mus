@@ -90,6 +90,8 @@ export const notificationDTO = (
   reminderCount: r.reminder_count,
   revision: r.revision,
   subjectEmployeeId: r.subject_employee_id ?? null,
+  groupCount: Number(r.group_count ?? 1),
+  groupUnread: Number(r.group_unread ?? (r.read_at ? 0 : 1)),
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
