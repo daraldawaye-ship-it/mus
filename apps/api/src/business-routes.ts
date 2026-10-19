@@ -26,6 +26,7 @@ import { commerceRoutes } from "./routes-commerce.ts";
 import { doctorRoutes } from "./routes-doctors.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { controlRoutes } from "./routes-control.ts";
+import { centralAccessRoutes } from "./routes-central-access.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { transactionResetRoutes } from "./routes-transaction-reset.ts";
 import { transactionImportRoutes } from "./routes-transaction-import.ts";
@@ -50,6 +51,7 @@ export function businessRoutes(pool: Pool): Router {
     walletRoutes(pool),
     configurationRoutes(pool),
     controlRoutes(pool),
+    centralAccessRoutes(pool),
     configurationAdministrationRoutes(pool),
     accountRoutes(pool),
     accountStatisticsRoutes(pool),
