@@ -3857,7 +3857,7 @@ test("product form choices are independent and discrepancy report separates mism
     "GET",`${s.path}/items/${mismatch.id}`)).item;
   assert.equal(detail.productForm,"اقراص");
   await f.pool.query(
-    "UPDATE items SET product_form='شراب' WHERE company_id=$1 AND id=$2",
+    "UPDATE items SET product_form='شراب',revision=revision+1 WHERE company_id=$1 AND id=$2",
     [s.company.id,mismatch.id],
   );
   const after=await f.owner.ok<{items:{itemId:number}[]}>("GET",url+"?status=different");
