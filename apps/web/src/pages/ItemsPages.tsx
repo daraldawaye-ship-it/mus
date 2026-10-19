@@ -1583,9 +1583,9 @@ function ItemEditor({
                 ? "مورد مقترح تلقائيًا من آخر فاتورة مشتريات، وقد يحتاج إلى تصحيح. اختر المورد لتأكيده يدويًا."
                 : "يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق."}</small>
             </div>
-            <div className="field item-floating-picker">
+            <div className="field item-floating-picker item-composition-picker">
               <label htmlFor="item-composition-search">التركيب</label>
-              <div className="item-reference-field">
+              <div className="item-composition-controls">
                 <input id="item-composition-search" type="search" autoComplete="off"
                   disabled={disabled} aria-label="بحث واختيار التركيب"
                   aria-expanded={compositionFocused}
@@ -1605,13 +1605,17 @@ function ItemEditor({
                       setCompositionFocused(false);
                     }}}
                 />
-                {fields.compositionId&&<Button variant="secondary" size="compact" type="button"
-                  onClick={()=>{setCompositionFocused(false);setCompositionPopup("view");}}>الانتقال إلى التركيب</Button>}
-                {!disabled&&<Button variant="secondary" size="compact" type="button"
-                  onClick={()=>{setCompositionFocused(false);setCompositionPopup("create");}}>إضافة تركيب</Button>}
-                {fields.compositionId&&<Button variant="ghost" disabled={disabled}
-                  aria-label="إزالة تركيب الصنف"
-                  onClick={()=>{edit("compositionId",null);setCompositionSearch("");setCompositionFocused(false);}}>×</Button>}
+                <div className="item-composition-actions">
+                  {fields.compositionId&&<Button variant="secondary" size="compact" type="button"
+                    title="فتح كرت التركيب المرتبط بهذا الصنف"
+                    onClick={()=>{setCompositionFocused(false);setCompositionPopup("view");}}>عرض التركيب</Button>}
+                  {!disabled&&<Button variant="secondary" size="compact" type="button"
+                    title="إنشاء تركيب جديد وربطه بالصنف"
+                    onClick={()=>{setCompositionFocused(false);setCompositionPopup("create");}}>إضافة تركيب</Button>}
+                  {fields.compositionId&&<Button variant="ghost" size="compact" disabled={disabled}
+                    title="إزالة ارتباط الصنف بالتركيب" aria-label="إزالة تركيب الصنف"
+                    onClick={()=>{edit("compositionId",null);setCompositionSearch("");setCompositionFocused(false);}}>×</Button>}
+                </div>
               </div>
               {compositionFocused&&!disabled&&<div className="item-inline-composition-options"
                 role="listbox" aria-label="نتائج البحث عن التركيب">
