@@ -71,7 +71,7 @@ const compositionFields = z.object({
   productForm: productFormSchema.default("عام"),
   // An unset threshold means a single group of all linked items.
   priceSplitThreshold: z.string().trim()
-    .regex(/^\\d{1,22}(?:\\.\\d{1,6})?$/, "أدخل سعرًا موجبًا أو صفرًا حتى 6 منازل عشرية")
+    .regex(/^\d{1,22}(?:\.\d{1,6})?$/, "أدخل سعرًا موجبًا أو صفرًا حتى 6 منازل عشرية")
     .nullable().default(null),
   originalItemId: z.number().int().positive().nullable().default(null),
   active: z.boolean().default(true),
