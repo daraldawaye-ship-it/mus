@@ -32,6 +32,7 @@ import {
   createStockOperation,
   findStockOperation,
   getInventorySettings,
+  fractionQuantity,
   itemStockSnapshot,
   loadStockOperation,
   requireInventorySettings,
@@ -215,6 +216,57 @@ export function inventoryRoutes(pool: Pool): Router {
     }),
   );
   // Exact physical-count preview, summed across every batch for the item/location.
+  /** All company locations, including empty sites and the returns type,
+   * aggregated across batches for the selected item. No expiry controls here. */
+  router.get(
+    `${base}/item-location-balances`,
+    handler(async (req, res) => {
+      if (typeof req.query.itemId !== "string")
+        throw new HttpError(400, "invalid_query", "اختر الصنف المطلوب");
+      const itemId = id(req.query.itemId);
+      res.json(await readInventory(pool, req, async (client, companyId) => {
+        const item = (await client.query(
+          "SELECT factor2,factor3,unit1_name FROM items WHERE company_id=$1 AND id=$2",
+          [companyId,itemId],
+        )).rows[0];
+        if (!item) throw new HttpError(404,"not_found","الصنف غير موجود");
+        const balances = await client.query(
+          `SELECT l.id,l.company_id,l.branch_id,l.code,l.name,l.kind,l.active,
+                  l.created_by,l.created_at,
+                  b.name AS branch_name,b.active AS branch_active,
+                  COALESCE(sb.quantity_smallest,0)::text AS quantity_smallest
+           FROM locations l
+           JOIN branches b ON b.company_id=l.company_id AND b.id=l.branch_id
+           LEFT JOIN (
+             SELECT location_id,SUM(quantity_smallest) AS quantity_smallest
+             FROM stock_balances WHERE company_id=$1 AND item_id=$2
+             GROUP BY location_id
+           ) sb ON sb.location_id=l.id
+           WHERE l.company_id=$1
+           ORDER BY b.name,
+             CASE l.kind WHEN 'showroom' THEN 1 WHEN 'warehouse' THEN 2 ELSE 3 END,
+             l.name,l.id`,
+          [companyId,itemId],
+        );
+        const multiplier=BigInt(item.factor2)*BigInt(item.factor3);
+        return {
+          itemId,
+          items:balances.rows.map(row=>({
+            location:{
+              id:row.id,companyId:row.company_id,branchId:row.branch_id,
+              code:row.code,name:row.name,kind:row.kind,active:row.active,
+              branchName:row.branch_name,branchActive:row.branch_active,
+              effectiveActive:row.active && row.branch_active,
+              createdBy:row.created_by,createdAt:new Date(row.created_at).toISOString(),
+            },
+            quantitySmallest:row.quantity_smallest,
+            quantityUnit1:fractionQuantity(BigInt(row.quantity_smallest),multiplier),
+            unit1Name:item.unit1_name,
+          })),
+        };
+      }));
+    }),
+  );
   router.get(
     `${base}/stock-count-snapshot`,
     handler(async (req, res) => {
