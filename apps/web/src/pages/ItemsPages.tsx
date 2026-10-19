@@ -1,4 +1,4 @@
-import {
+import { lazy, Suspense,
   useEffect,
   useId,
   useMemo,
@@ -76,6 +76,9 @@ import {
   Select,
   ValueCell,
 } from "../ui";
+
+const CompositionPopup=lazy(()=>import("./ItemCompositionsPage").then(m=>({default:m.CompositionEditorSheet})));
+const CompositionCreatePopup=lazy(()=>import("./ItemCompositionsPage").then(m=>({default:m.CompositionCreatePopup})));
 
 export function itemsAccess(context: CompanyContext, manage = false) {
   return (
@@ -213,6 +216,8 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   );
   const canManage = itemsAccess(context, true);
   const [importOpen, setImportOpen] = useState(false);
+  const [sheetItemId,setSheetItemId]=useState<number|null>(null);
+  const [sheetBusy,setSheetBusy]=useState(false);
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -348,16 +353,14 @@ function ItemsManager({ context }: { context: CompanyContext }) {
             variant="ghost"
             size="compact"
             aria-label={`${canManage ? "تعديل" : "عرض"} الصنف ${row.original.code}`}
-            onClick={() =>
-              navigate(`/companies/${companyId}/items/${row.original.id}`)
-            }
+            onClick={() => setSheetItemId(row.original.id)}
           >
             {canManage ? "تعديل" : "عرض"}
           </Button>
         ),
       },
     ],
-    [companyId, canManage, navigate, list.data?.optionDefinitions],
+    [companyId, canManage, list.data?.optionDefinitions],
   );
   return (
     <>
@@ -427,6 +430,13 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           ariaLabel="جدول الأصناف"
         />
       </Card>
+      <Dialog open={sheetItemId!==null} title="كرت الصنف" className="invoice-item-sheet"
+        onClose={()=>{if(!sheetBusy)setSheetItemId(null);}}>
+        {sheetItemId!==null&&<InvoiceItemEditor key={`${companyId}:${sheetItemId}`}
+          context={context} itemId={sheetItemId} onSavingChange={setSheetBusy}
+          onClose={()=>setSheetItemId(null)}
+          onSaved={()=>{setSheetItemId(null);void list.refetch();}} />}
+      </Dialog>
       {canManage && importOpen && (
         <ItemImportDialog
           context={context}
@@ -1186,6 +1196,7 @@ function ItemEditor({
   });
   const [compositionSearch,setCompositionSearch]=useState("");
   const [compositionFocused,setCompositionFocused]=useState(false);
+  const [compositionPopup,setCompositionPopup]=useState<"view"|"create"|null>(null);
   const compositionOptions=useQuery({
     queryKey:["company",user?.id,companyId,"composition-inline-search",compositionSearch],
     queryFn:({signal})=>api<{items:ItemComposition[]}>(`/companies/${companyId}/item-options?`+
@@ -1594,6 +1605,10 @@ function ItemEditor({
                       setCompositionFocused(false);
                     }}}
                 />
+                {fields.compositionId&&<Button variant="secondary" size="compact" type="button"
+                  onClick={()=>{setCompositionFocused(false);setCompositionPopup("view");}}>الانتقال إلى التركيب</Button>}
+                {!disabled&&<Button variant="secondary" size="compact" type="button"
+                  onClick={()=>{setCompositionFocused(false);setCompositionPopup("create");}}>إضافة تركيب</Button>}
                 {fields.compositionId&&<Button variant="ghost" disabled={disabled}
                   aria-label="إزالة تركيب الصنف"
                   onClick={()=>{edit("compositionId",null);setCompositionSearch("");setCompositionFocused(false);}}>×</Button>}
@@ -2058,6 +2073,16 @@ function ItemEditor({
           )}
         </>
       )}
+      {compositionPopup==="view"&&fields.compositionId&&<Suspense fallback={<Notice>جارٍ تحميل التركيب…</Notice>}>
+        <CompositionPopup context={context} compositionId={fields.compositionId}
+          onClose={()=>setCompositionPopup(null)}
+          onSaved={()=>{setCompositionPopup(null);void compositionDetail.refetch();}} />
+      </Suspense>}
+      {compositionPopup==="create"&&<Suspense fallback={<Notice>جارٍ تحميل كرت التركيب…</Notice>}>
+        <CompositionCreatePopup context={context}
+          onClose={()=>setCompositionPopup(null)}
+          onSaved={composition=>{edit("compositionId",composition.id);setCompositionPopup(null);}} />
+      </Suspense>}
       <Dialog
         open={picker !== null}
         title={
