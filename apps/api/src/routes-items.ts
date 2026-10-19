@@ -190,6 +190,49 @@ export function itemRoutes(pool: Pool): Router {
     createdAt: "f.created_at",
     updatedAt: "f.updated_at",
   };
+  // Independent, paginated follow-up report. No auto-correction is applied
+  // to mismatches: a medicinal product and its composition can legitimately
+  // have different forms, and any inferred value can be edited manually.
+  router.get(
+    `${base}/item-form-differences`,
+    handler(async (req,res)=>{
+      const query=parse(z.object({
+        page:z.coerce.number().int().min(1).max(100000).default(1),
+        pageSize:z.coerce.number().int().min(1).max(100).default(50),
+        status:z.enum(["needs-review","different","unclassified","all"]).default("needs-review"),
+        q:z.string().trim().max(100).default(""),
+      }).strict(),req.query);
+      const result=await readItems(pool,req,async(client,companyId)=>{
+        const filter=query.status==="different"
+          ? "AND i.product_form<>'عام' AND f.product_form<>'عام' AND i.product_form<>f.product_form"
+          : query.status==="unclassified"
+            ? "AND (i.product_form='عام' OR f.product_form='عام')"
+            : query.status==="needs-review"
+              ? "AND (i.product_form<>f.product_form OR i.product_form='عام' OR f.product_form='عام')"
+              : "";
+        const where=`FROM items i
+          JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id
+          WHERE i.company_id=$1
+          AND ($2='' OR i.name ILIKE '%'||$2||'%' OR i.english_name ILIKE '%'||$2||'%'
+             OR f.arabic_name ILIKE '%'||$2||'%' OR f.english_name ILIKE '%'||$2||'%')
+          ${filter}`;
+        const binds=[companyId,query.q];
+        const total=await client.query(`SELECT count(*)::integer AS total ${where}`,binds);
+        const rows=await client.query(
+          `SELECT i.id AS "itemId",i.name AS "itemName",
+             i.product_form AS "itemForm",i.active AS "itemActive",
+             f.id AS "compositionId",f.arabic_name AS "compositionName",
+             f.product_form AS "compositionForm",f.active AS "compositionActive"
+           ${where}
+           ORDER BY i.id DESC LIMIT $3 OFFSET $4`,
+          [...binds,query.pageSize,(query.page-1)*query.pageSize],
+        );
+        return {items:rows.rows,total:total.rows[0].total as number,
+          page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     `${base}/item-compositions`,
     handler(async (req, res) => {
