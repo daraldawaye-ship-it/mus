@@ -91,7 +91,15 @@ export function UserShortcutFlyout({
      catalog.isLoading,shortcutQuery.isError]);
   if(settings.value("show_shortcuts_menu")===false)return null;
   return <div className="user-shortcut-root" ref={root}
-    onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}
+    // Touch devices synthesize mouseenter before click. The old mouseenter
+    // opened the flyout, then the same tap's click toggled it closed.
+    // Only real mouse pointer movement triggers hover; touch uses click once.
+    onPointerEnter={event=>{
+      if(event.pointerType==="mouse")setOpen(true);
+    }}
+    onPointerLeave={event=>{
+      if(event.pointerType==="mouse")setOpen(false);
+    }}
     onKeyDown={event=>{
       if(event.key==="Escape" && open){
         event.stopPropagation();
