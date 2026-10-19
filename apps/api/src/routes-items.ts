@@ -201,8 +201,19 @@ export function itemRoutes(pool: Pool): Router {
         pageSize:z.coerce.number().int().min(1).max(100).default(50),
         status:z.enum(["needs-review","different","unclassified","all"]).default("needs-review"),
         q:z.string().trim().max(100).default(""),
+        sort:z.enum(["itemName","itemForm","compositionName","compositionForm"]).optional(),
+        direction:z.enum(["asc","desc"]).default("asc"),
       }).strict(),req.query);
       const result=await readItems(pool,req,async(client,companyId)=>{
+        // The mapping is hard-coded: no sort expression comes from the client.
+        // Sorting occurs before pagination to keep row order stable across pages.
+        const sortColumns={
+          itemName:"i.name",itemForm:"i.product_form",
+          compositionName:"f.arabic_name",compositionForm:"f.product_form",
+        } as const;
+        const order=query.sort
+          ? `${sortColumns[query.sort]} ${query.direction.toUpperCase()}, i.id DESC`
+          : "i.id DESC";
         const filter=query.status==="different"
           ? "AND i.product_form<>'عام' AND f.product_form<>'عام' AND i.product_form<>f.product_form"
           : query.status==="unclassified"
@@ -224,7 +235,7 @@ export function itemRoutes(pool: Pool): Router {
              f.id AS "compositionId",f.arabic_name AS "compositionName",
              f.product_form AS "compositionForm",f.active AS "compositionActive"
            ${where}
-           ORDER BY i.id DESC LIMIT $3 OFFSET $4`,
+           ORDER BY ${order} LIMIT $3 OFFSET $4`,
           [...binds,query.pageSize,(query.page-1)*query.pageSize],
         );
         return {items:rows.rows,total:total.rows[0].total as number,
