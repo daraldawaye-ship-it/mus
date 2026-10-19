@@ -1588,6 +1588,39 @@ test("branch creation yields one showroom and branch activation controls effecti
   );
 });
 
+test("returns location is a valid third type and gets distinct automatic codes", async (t) => {
+  const f = await fixture(t),
+    c = await f.company(),
+    b = await branch(f, c.id, "RETURNS_TEST");
+  const create = (name: string) =>
+    f.owner.ok<{ location: Location }>(
+      "POST",
+      `/companies/${c.id}/locations`,
+      { branchId: b.id, name, kind: "returns" },
+      201,
+    );
+  const first = (await create("مرتجعات العملاء")).location;
+  const second = (await create("مرتجعات الموردين")).location;
+  assert.equal(first.kind, "returns");
+  assert.equal(first.active, true);
+  assert.equal(first.effectiveActive, true);
+  assert.match(first.code, /^RT[0-9]{8}$/);
+  assert.equal(second.kind, "returns");
+  assert.match(second.code, /^RT[0-9]{8}$/);
+  assert.notEqual(first.code, second.code);
+  const returns = (await f.owner.ok<Page<Location>>(
+    "GET",
+    `/companies/${c.id}/locations?branchId=${b.id}&kind=returns`,
+  )).items;
+  assert.equal(returns.length, 2);
+  assert(returns.every(item => item.kind === "returns"));
+  const all = (await f.owner.ok<Page<Location>>(
+    "GET",
+    `/companies/${c.id}/locations?branchId=${b.id}`,
+  )).items;
+  assert.equal(all.filter(item => item.kind === "showroom").length, 1);
+});
+
 test("branch and location codes normalize uppercase digits and archived codes remain reserved", async (t) => {
   const f = await fixture(t),
     c = await f.company();
