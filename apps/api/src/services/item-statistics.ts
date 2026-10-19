@@ -124,6 +124,7 @@ export async function readItemStatistics(
           total: row.stock_total,
           showroom: row.stock_showroom,
           warehouse: row.stock_warehouse,
+          returns: row.stock_returns,
           unitName:
             item.factor3 > 1
               ? item.unit3_name
