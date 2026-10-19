@@ -188,7 +188,7 @@ function CompositionEditor({
     queryKey:["composition-linked-items",user?.id,companyId,record?.id,linkedPage],
     queryFn:({signal})=>api<{items:Item[];total:number}>(
       `/companies/${companyId}/items?`+new URLSearchParams({
-        compositionId:String(record!.id),active:"all",page:String(linkedPage),pageSize:"20",sort:"name:asc",
+        compositionId:String(record!.id),page:String(linkedPage),pageSize:"20",sort:"name:asc",
       }),{signal}),
     enabled:!!user&&!!record,
   });
@@ -303,9 +303,15 @@ function CompositionEditor({
           checked={form.nonInterchangeable} onChange={e=>set("nonInterchangeable",e.target.checked)}/>
           غير قابل للتبديل</label>
         {record&&<div className="form-full">
-          <h4>الأصناف المرتبطة بهذا التركيب ({linked.data?.total??0})</h4>
+          <h4>الأصناف المرتبطة بهذا التركيب {linked.data
+            ? `(${linked.data.total})`
+            : linked.isError ? "(تعذر التحميل)" : "(جارٍ التحميل…)"}</h4>
           {linked.isPending&&<p>جارٍ تحميل الأصناف…</p>}
-          {linked.error&&<Notice tone="error">{errorMessage(linked.error)}</Notice>}
+          {linked.error&&<Notice tone="error">
+            {errorMessage(linked.error)}
+            {" "}<Button type="button" variant="secondary" size="compact"
+              onClick={()=>void linked.refetch()}>إعادة المحاولة</Button>
+          </Notice>
           <div className="table-scroll">
             <table className="data-table"><thead><tr>
               <th>رمز الصنف</th><th>اسم الصنف</th><th>شكل الصنف</th><th>الحالة</th><th>الكرت</th>
@@ -316,7 +322,9 @@ function CompositionEditor({
                 <td><Button type="button" variant="secondary" size="compact"
                   onClick={()=>setLinkedItemId(item.id)}>كرت الصنف</Button></td>
               </tr>)}
-              {!linked.isPending&&!linked.data?.items.length&&<tr><td colSpan={5}>لا توجد أصناف مرتبطة.</td></tr>}
+              {linked.isSuccess && !linked.data.items.length && <tr>
+                <td colSpan={5}>لا توجد أصناف مرتبطة بهذا التركيب.</td>
+              </tr>}
             </tbody></table>
           </div>
           <div className="form-actions">
