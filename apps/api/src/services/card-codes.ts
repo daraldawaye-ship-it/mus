@@ -11,7 +11,7 @@ import { conflict } from "./masters.ts";
  */
 type CardCodeScope =
   | { card: "branch"; companyId: number }
-  | { card: "warehouse"; companyId: number; branchId: number };
+  | { card: "warehouse" | "returns"; companyId: number; branchId: number };
 
 export async function nextCardCode(
   client: PoolClient,
@@ -20,7 +20,7 @@ export async function nextCardCode(
   const { companyId } = scope;
   const isBranch = scope.card === "branch";
   const branchId = isBranch ? null : scope.branchId;
-  const prefix = isBranch ? "BR" : "WH";
+  const prefix = isBranch ? "BR" : scope.card === "returns" ? "RT" : "WH";
   const digits = 8;
   const lockName = isBranch
     ? `card-code:branches:${companyId}`
