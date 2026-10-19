@@ -98,7 +98,7 @@ export function UserShortcutFlyout({
       if(shortcutUsesHover(event.pointerType))setOpen(true);
     }}
     onPointerLeave={event=>{
-      if(event.pointerType==="mouse")setOpen(false);
+      if(shortcutUsesHover(event.pointerType))setOpen(false);
     }}
     onKeyDown={event=>{
       if(event.key==="Escape" && open){
