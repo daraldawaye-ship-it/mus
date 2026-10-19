@@ -1762,8 +1762,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           : {}),
       });
     } else {
-      const wasNegative = /^-\\d+$/.test(normalizeDigits(line.quantity.trim()));
-      const nowNegative = /^-\\d+$/.test(normalizeDigits(value.trim()));
+      const wasNegative = /^-\d+$/.test(normalizeDigits(line.quantity.trim()));
+      const nowNegative = /^-\d+$/.test(normalizeDigits(value.trim()));
       updateLine(line.key, {
         quantity: value,
         ...(kind === "sale" && positive
