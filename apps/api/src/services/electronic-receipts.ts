@@ -6,7 +6,6 @@ import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { audit } from "./audit.ts";
-import { receiptExtraVoucherSchema, postReceiptExtraVoucher } from "./receipt-extra-voucher.ts";
 
 const signedAmount = z.string().trim()
   .regex(/^-?(?:0|[1-9][0-9]{0,19})(?:\\.[0-9]{1,2})?$/,
@@ -17,7 +16,7 @@ const common = {
   idempotencyKey: z.string().uuid(),
 };
 export const electronicReceiptSchema = z.discriminatedUnion("mode", [
-  z.object({ ...common, mode: z.literal("exact"),voucher:receiptExtraVoucherSchema.optional() }).strict(),
+  z.object({ ...common, mode: z.literal("exact") }).strict(),
   z.object({ ...common, mode: z.literal("difference"),
     receivedAmount: signedAmount }).strict(),
 ]);
@@ -182,13 +181,8 @@ export async function receiveElectronicMovement(
     documentDate:date,branchId:null,currencyId:currency.id,
     description:memo.slice(0,1000),idempotencyKey:randomUUID(),lines,
   });
-  const voucherDocumentId=input.mode==="exact" && input.voucher
-    ? await postReceiptExtraVoucher(client,companyId,user,{
-        sourceId:origin.id,sourceKind:"electronic",actualAmount:actual,
-        cashAccountId:receiver.cash_id,currencyId:currency.id,documentDate:date,
-        voucher:input.voucher,
-      })
-    : null;
+  // Electronic receipts only produce the transfer journal, never a companion voucher.
+  const voucherDocumentId: null = null;
   const saved=await client.query(
     `INSERT INTO employee_electronic_receipts(
        company_id,source_operation_id,source_employee_id,
