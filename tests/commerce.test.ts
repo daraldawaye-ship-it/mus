@@ -3866,3 +3866,65 @@ test("product form choices are independent and discrepancy report separates mism
   assert.equal((await f.owner.ok<{items:unknown[]}>("GET",
     `${other.path}/item-form-differences`)).items.length,0);
 });
+
+test("central employee positions and per-company view/edit rules preserve old access",async(t)=>{
+  const f=await fixture(t),s=await setup(f,"Central permission test company");
+  const staff=await f.member(s.company.id,["items.view"],888);
+  // The old role is a migration detail, not a single-select job title anymore.
+  const before=staff.employee;
+  const patch=await f.owner.ok<{employee:Employee}>("PATCH",
+    `${s.path}/employees/${before.id}`,{
+      positions:["sales","cashier","memo-followup"],
+    });
+  assert.deepEqual(patch.employee.positions,["sales","cashier","memo-followup"]);
+  assert.equal(patch.employee.role,before.role);
+  assert.deepEqual(patch.employee.permissions,before.permissions);
+  const employees=await f.owner.ok<{items:Employee[]}>("GET",
+    `${s.path}/employees?position=cashier`);
+  assert(employees.items.some(e=>e.id===before.id));
+  const noPage=await staff.client.request("GET",`${s.path}/central-access`);
+  assert.equal(noPage.status,403,"non-general staff cannot edit central grants");
+  const catalog=await f.owner.ok<{
+    positions:{key:string}[];
+    resources:{key:string;policy:unknown}[];
+  }>("GET",`${s.path}/central-access`);
+  assert(catalog.positions.some(r=>r.key==="sales"));
+  assert(catalog.resources.some(r=>r.key==="field:items.purchase-price"));
+  assert(catalog.resources.some(r=>r.key==="button:sales.post"));
+  assert(catalog.resources.some(r=>r.key==="page:company.items"));
+  const path=`${s.path}/central-access/field%3Aitems.purchase-price`;
+  const created=await f.owner.ok<{
+    policy:{revision:number;viewPositions:string[];editPositions:string[]}
+  }>("PUT",path,{
+    viewPositions:["accountant","purchase-entry"],
+    editPositions:["purchase-entry"],revision:null,
+  });
+  assert.equal(created.policy.revision,1);
+  assert.deepEqual(created.policy.editPositions,["purchase-entry"]);
+  assert.equal((await staff.client.request("PUT",path,{
+    viewPositions:["sales"],editPositions:["sales"],revision:1,
+  })).status,403);
+  assert.equal((await f.owner.request("PUT",path,{
+    viewPositions:["sales"],editPositions:["accountant"],revision:1,
+  })).status,400,"edit position must also be able to view");
+  assert.equal((await f.owner.request("PUT",path,{
+    viewPositions:["sales"],editPositions:["sales"],revision:null,
+  })).status,409,"stale revision must not silently overwrite");
+  const next=await f.owner.ok<{policy:{revision:number}}>("PUT",path,{
+    viewPositions:["sales","cashier"],editPositions:["sales"],revision:1,
+  });
+  assert.equal(next.policy.revision,2);
+  // Policies are stored without granting/denying legacy operations yet.
+  const profile=await f.owner.ok<{employee:Employee}>("PATCH",
+    `${s.path}/employees/${before.id}`,{positions:["sales"]});
+  assert(profile.employee.permissions.includes("items.view"));
+  const another=await setup(f,"Second company, separate policies");
+  const other=await f.owner.ok<{
+    resources:{key:string;policy:unknown}[]
+  }>("GET",`${another.path}/central-access`);
+  assert.equal(other.resources.find(r=>r.key==="field:items.purchase-price")?.policy,null);
+  await f.owner.ok("DELETE",path,{revision:2});
+  const reset=await f.owner.ok<{resources:{key:string;policy:unknown}[]}>(
+    "GET",`${s.path}/central-access`);
+  assert.equal(reset.resources.find(r=>r.key==="field:items.purchase-price")?.policy,null);
+});

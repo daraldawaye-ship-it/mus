@@ -131,6 +131,7 @@ async function fixture(t: TestContext) {
   // The historic accounting fixture runs modern item readers without later migrations.
   await scoped.query("ALTER TABLE items ADD COLUMN product_form text NOT NULL DEFAULT 'عام'");
   await scoped.query("ALTER TABLE item_compositions ADD COLUMN product_form text NOT NULL DEFAULT 'عام'");
+  await scoped.query("ALTER TABLE employees ADD COLUMN position_keys text[] NOT NULL DEFAULT '{}'::text[]");
 
   // Only the test's HTTP authentication transport is stubbed. All company,
   // master and invoice writes use the existing business routes, authorization,

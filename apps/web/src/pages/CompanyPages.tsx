@@ -8,16 +8,16 @@ import {
   auditActionLabels,
   companyAuditActions,
   auditTargetLabels,
-  employeeRoles,
+  employeePositions,
+  employeePositionLabels,
   permissionKeys,
   permissionLabels,
-  rolePermissionTemplates,
   type AuditEvent,
   type Company,
   type CompanyContext,
   type CompanyPage,
   type Employee,
-  type EmployeeRole,
+  type EmployeePosition,
   type EmployeeAttendanceSettings,
   type Permission,
   type User,
@@ -25,6 +25,7 @@ import {
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { moduleAccess } from "../phase2";
 import { ImageUpload } from "../ImageUpload";
+import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
 import {
@@ -78,7 +79,7 @@ function PermissionFields({
         </label>
       ))}
       <p className="muted">
-        اختيار الدور يطبق القالب، ويمكن تعديل الصلاحيات قبل الحفظ.
+        صلاحيات النظام السابقة محفوظة حتى اكتمال الربط التدريجي بمركز الصلاحيات.
       </p>
     </fieldset>
   );
@@ -390,7 +391,7 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
   const scope = `company:${companyId}:employees`;
   const guard = useScopeGuard(scope);
   const [urlParams, setUrlParams] = useSearchParams();
-  const roleFilter = urlParams.get("role") ?? "";
+  const positionFilter = urlParams.get("position") ?? "";
   const activeFilter = urlParams.get("active") ?? "";
   function setFilter(key: string, value: string) {
     setUrlParams((previous) => {
@@ -401,7 +402,7 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
     });
   }
   const filters = new URLSearchParams();
-  if (roleFilter) filters.set("role", roleFilter);
+  if (positionFilter) filters.set("position", positionFilter);
   if (activeFilter) filters.set("active", activeFilter);
   const list = usePagedQuery<Employee>(
     `/companies/${companyId}/employees?${filters}`,
@@ -442,9 +443,9 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
         ),
       },
       {
-        accessorKey: "role",
-        header: "الدور",
-        cell: ({ row }) => employeeRoleLabels[row.original.role],
+        accessorKey: "positions",
+        header: "صفات الموظف",
+        cell: ({ row }) => row.original.positions.map(key=>employeePositionLabels[key]).join("، ")||"غير محدد",
       },
       {
         accessorKey: "active",
@@ -556,17 +557,12 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
             onChange={(event) => list.setQuery(event.target.value)}
             placeholder="الاسم أو البريد أو الهاتف"
           />
-          <Select
-            label="الدور"
-            value={roleFilter}
-            onChange={(event) => setFilter("role", event.target.value)}
-          >
-            <option value="">كل الأدوار</option>
-            {employeeRoles.map((role) => (
-              <option key={role} value={role}>
-                {employeeRoleLabels[role]}
-              </option>
-            ))}
+          <Select label="صفة الموظف" value={positionFilter}
+            onChange={event=>setFilter("position",event.target.value)}>
+            <option value="">كل الصفات</option>
+            {employeePositions.map(position=>
+              <option key={position.key} value={position.key}>{position.label}</option>
+            )}
           </Select>
           <Select
             label="الحالة"
@@ -865,7 +861,9 @@ function EmployeeEditor({
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [name, setName] = useState(employee?.name ?? "");
   const [phone, setPhone] = useState(employee?.phone ?? "");
-  const [role, setRole] = useState<EmployeeRole>(employee?.role ?? "employee");
+  // Legacy role is retained invisibly for backwards-compatible server modules.
+  const role = employee?.role ?? "employee";
+  const [positions,setPositions]=useState<EmployeePosition[]>(employee?.positions??[]);
   const [active, setActive] = useState(employee?.active ?? true);
   const [createSalesCashbox, setCreateSalesCashbox] = useState(false);
   const [permissions, setPermissions] = useState<Permission[]>(
@@ -988,6 +986,7 @@ function EmployeeEditor({
           phone,
           role,
           active,
+          positions,
           permissions,
           ...(employee
             ? {}
@@ -1282,27 +1281,13 @@ function EmployeeEditor({
             </label>
           </>
         )}
-        <Select
-          label="الدور"
-          value={role}
-          disabled={baseLocked}
-          onChange={(event) => {
-            const next = event.target.value as EmployeeRole;
-            setRole(next);
-            setPermissions([...rolePermissionTemplates[next]]);
-          }}
-        >
-          {employeeRoles.map((item) => (
-            <option key={item} value={item}>
-              {employeeRoleLabels[item]}
-            </option>
-          ))}
-        </Select>
-        <PermissionFields
-          value={permissions}
-          onChange={setPermissions}
-          disabled={baseLocked}
-        />
+        <EmployeePositionPicker value={positions} onChange={setPositions}
+          disabled={baseLocked}/>
+        <details className="employee-legacy-permissions">
+          <summary>الصلاحيات المباشرة القديمة (للتوافق مع النظام الحالي)</summary>
+          <PermissionFields value={permissions} onChange={setPermissions}
+            disabled={baseLocked}/>
+        </details>
         <label className="check-label">
           <input
             type="checkbox"

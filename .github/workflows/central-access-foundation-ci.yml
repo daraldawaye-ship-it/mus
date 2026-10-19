@@ -1,0 +1,51 @@
+name: Central employee positions and permissions catalog
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/100_central_position_access.sql'
+      - 'apps/api/src/services/central-access-catalog.ts'
+      - 'apps/api/src/routes-central-access.ts'
+      - 'apps/api/src/routes-companies.ts'
+      - 'apps/api/src/business-routes.ts'
+      - 'apps/api/src/repositories/models.ts'
+      - 'apps/web/src/EmployeePositionPicker.tsx'
+      - 'apps/web/src/pages/CentralAccessPage.tsx'
+      - 'apps/web/src/pages/CompanyPages.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'packages/contracts/src/employee-positions.ts'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/commerce.test.ts'
+      - '.github/workflows/central-access-foundation-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  central-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Company-isolated view/edit position policies and old access
+        run: node --import tsx --test --test-name-pattern="central employee positions and per-company" tests/commerce.test.ts

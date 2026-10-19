@@ -42,6 +42,7 @@ export function employeeDTO(row: Row): Employee {
     name: row.name,
     phone: row.phone,
     role: row.role,
+    positions: row.position_keys ?? [],
     active: row.active,
     isGeneralManager: row.is_general_manager,
     permissions: row.permissions,

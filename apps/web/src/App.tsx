@@ -77,6 +77,9 @@ import {
   EmployeesPage,
 } from "./pages/CompanyPages";
 
+const CentralAccessPage = lazy(() =>
+  import("./pages/CentralAccessPage").then(m=>({default:m.CentralAccessPage})),
+);
 const PageDirectoryPage = lazy(() =>
   import("./pages/PageDirectoryPage").then((module) => ({
     default: module.PageDirectoryPage,
@@ -311,6 +314,7 @@ const companySections = [
   "my-cashbox-ledger",
   "items",
   "item-statistics-report",
+  "central-access",
   "item",
   "item-agents",
   "item-compositions",
@@ -377,6 +381,7 @@ function Navigation({
     "company.account-statistics": <TrendingUp size={17} />,
     "company.doctors": <Users size={17} />,
     "company.items": <Package size={17} />,
+    "company.central-access": <Settings2 size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
@@ -642,6 +647,10 @@ function CompanyContent({
     case "item-statistics-report":
       return <Suspense fallback={<Notice>جارٍ تحميل تقرير إحصائيات الأصناف…</Notice>}>
         <ItemStatisticsReportPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "central-access":
+      return <Suspense fallback={<Notice>جارٍ تحميل مركز الصلاحيات…</Notice>}>
+        <CentralAccessPage key={context.company.id} context={context}/>
       </Suspense>;
     case "items":
       return (

@@ -223,6 +223,15 @@ page(
   { critical: true },
 );
 page(
+  "company.central-access",
+  "مركز الصلاحيات وخيارات النظام",
+  "الإدارة والصلاحيات",
+  "/companies/:companyId/central-access",
+  { view: general,edit: general },
+  "دليل برمجي لجميع الصفحات والحقول والأزرار مع تحديد صفات الاطلاع والتعديل.",
+  { keywords:["موظفين","صفات","صلاحيات","حقول","أزرار","صلاحيات الاطلاع","التعديل"] },
+);
+page(
   "company.employees",
   "الموظفون",
   "الشركة",
