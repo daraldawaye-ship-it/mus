@@ -98,7 +98,10 @@ export async function postEmployeeCashboxOperation(
   const amount=moneyUnits(input.amount);
   if (input.kind!=="close" && amount===0n)
     error("invalid_cashbox_amount","أدخل مبلغًا غير صفري");
-  // Transfers are signed in both directions; a physical cash count cannot
+  if (input.kind==="electronic" && amount<0n)
+    error("electronic_negative_transfer_forbidden","لا يمكن ترحيل مبلغ سالب إلى المحفظة الإلكترونية؛ استخدم استلام المحفظة الإلكترونية.");
+  // Pouch transfers remain signed. Electronic transfers are positive only;
+  // a physical cash count cannot
   // be negative because closure records the actual cash in the till.
   if (input.kind==="close" && amount<0n)
     error("invalid_cashbox_amount","المبلغ النقدي الفعلي عند إغلاق الصندوق لا يمكن أن يكون سالبًا");
@@ -108,8 +111,7 @@ export async function postEmployeeCashboxOperation(
   const description = input.kind==="pouch"
     ? (amount<0n?"استلام مبلغ من الحافظة إلى صندوق البائع":"ترحيل مبلغ من صندوق البائع إلى حافظته")
     : input.kind==="electronic"
-      ? (amount<0n?"استلام مبلغ من محفظة الشركة الإلكترونية إلى صندوق البائع"
-        :"ترحيل مبلغ من صندوق البائع إلى محفظة الشركة الإلكترونية")
+      ? "ترحيل مبلغ من صندوق البائع إلى محفظة الشركة الإلكترونية"
       : "إغلاق صندوق المبيعات وجرد النقد الفعلي";
   const memo=`${description} — ${employee.name}${input.notes?" — "+input.notes:""}`;
   const lines: ReturnType<typeof journalLine>[]=[];
