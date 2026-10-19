@@ -22,7 +22,7 @@ import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { InvoicePrintSheet } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
-import { InvoiceItemAdjustmentSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
+import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Printer, Trash2 } from "lucide-react";
@@ -1133,6 +1133,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   } | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<number|null>(null);
+  const [transferringItem, setTransferringItem] = useState<number|null>(null);
   const [reportingItem, setReportingItem] = useState<{itemId:number;itemName:string}|null>(null);
   const [reportSentId, setReportSentId] = useState<number|null>(null);
   const stockPage = directory.data?.find(entry=>entry.key==="company.stock-adjustments");
@@ -1140,6 +1141,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     !!stockPage?.enabled && !!stockPage.actionAccess.view && !!stockPage.actionAccess.create &&
     (context.general || context.permissions.includes("inventory.post")) &&
     (context.general || context.permissions.includes("finance.post"));
+  const transferPage = directory.data?.find(entry=>entry.key==="company.stock-operations");
+  const canTransferItem =
+    !!transferPage?.enabled && !!transferPage.actionAccess.view &&
+    (context.general || context.permissions.includes("inventory.post"));
   const memoPage = directory.data?.find(entry=>entry.key==="company.memos");
   const canReportItem = !!memoPage?.enabled && !!memoPage.actionAccess.view &&
     !!memoPage.actionAccess.create;
@@ -2752,6 +2757,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                               disabled={!line.itemId || locked}
                               canEdit={canEditItem}
                               canAdjust={canAdjustItem}
+                              canTransfer={canTransferItem}
                               canReport={canReportItem}
                               onAction={(action: InvoiceItemAction) => {
                                 if (!line.itemId || locked) return;
@@ -2760,6 +2766,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                   setEditingItem({itemId:line.itemId,lineKey:line.key});
                                 } else if(action === "adjust" && canAdjustItem) {
                                   setAdjustingItem(line.itemId);
+                                } else if(action === "transfer" && canTransferItem) {
+                                  setTransferringItem(line.itemId);
                                 } else if(action === "report" && canReportItem) {
                                   setReportSentId(null);
                                   setReportingItem({itemId:line.itemId,itemName:line.itemName});
@@ -3060,6 +3068,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 : line,
             ));
             void client.invalidateQueries({queryKey:["sale-stock-preview",user?.id,companyId]});
+          }}/>
+      )}
+      {transferringItem!==null && (
+        <InvoiceItemTransferSheet context={context} itemId={transferringItem}
+          onClose={()=>setTransferringItem(null)}
+          onPosted={()=>{
+            void client.invalidateQueries({queryKey:["sale-stock-preview",user?.id,companyId]});
+            void client.invalidateQueries({queryKey:["inventory",user?.id,companyId]});
           }}/>
       )}
       {reportingItem && (
