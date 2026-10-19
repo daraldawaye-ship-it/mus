@@ -203,6 +203,9 @@ const AccountLedgerPage = lazy(() =>
     default: module.AccountLedgerPage,
   })),
 );
+const ItemFormDifferencesPage = lazy(() =>
+  import("./pages/ItemFormDifferencesPage").then(m=>({default:m.ItemFormDifferencesPage})),
+);
 const ItemStatisticsReportPage = lazy(() =>
   import("./pages/ItemStatisticsReportPage").then(m=>({default:m.ItemStatisticsReportPage})),
 );
@@ -311,6 +314,7 @@ const companySections = [
   "item",
   "item-agents",
   "item-compositions",
+  "item-form-differences",
   "item-shelves",
   "stock-balances",
   "stock-movements",
@@ -376,6 +380,7 @@ function Navigation({
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
+    "company.item-form-differences": <FileText size={17} />,
     "company.item-shelves": <Package size={17} />,
     "company.stock-balances": <Warehouse size={17} />,
     "company.stock-movements": <FileText size={17} />,
@@ -662,6 +667,10 @@ function CompanyContent({
           <ItemCompositionsPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "item-form-differences":
+      return <Suspense fallback={<Notice>جارٍ تحميل تقرير مقارنة أشكال الأصناف…</Notice>}>
+        <ItemFormDifferencesPage key={context.company.id} context={context}/>
+      </Suspense>;
     case "item-agents":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل الوكلاء…</Notice>}>

@@ -29,6 +29,8 @@ import {
   type Item,
   type ItemAgent,
   type ItemComposition,
+  type ProductForm,
+  productForms,
   type ItemShelf,
   type ItemInput,
   type ItemAgentInput,
@@ -1053,6 +1055,7 @@ type ItemFields = {
   searchKeys: string;
   purchaseNotes: string;
   saleNotes: string;
+  productForm: ProductForm;
   orderStoppedUntil: string;
   hasExpiry: boolean;
   nearestExpiryDate: string;
@@ -1090,6 +1093,7 @@ function initialItemFields(item: Item | null): ItemFields {
     searchKeys: item?.searchKeys ?? "",
     purchaseNotes: item?.purchaseNotes ?? "",
     saleNotes: item?.saleNotes ?? "",
+    productForm: item?.productForm ?? "عام",
     orderStoppedUntil: item?.orderStoppedUntil ?? "",
     hasExpiry: item?.hasExpiry ?? true,
     nearestExpiryDate: item?.nearestExpiryDate ?? "",
@@ -1477,6 +1481,10 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("name", event.target.value)}
             />
+            <Select label="شكل الصنف" value={fields.productForm}
+              disabled={disabled} onChange={event=>edit("productForm",event.target.value as ProductForm)}>
+              {productForms.map(form=><option key={form} value={form}>{form}</option>)}
+            </Select>
             <Field
               label="الاسم بالإنجليزية"
               maxLength={120}

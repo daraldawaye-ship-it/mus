@@ -120,6 +120,7 @@ export async function requestPermissionTargets(
     "notification-templates": "company.notification-templates",
     users: "company.employees",
     "item-agents": "company.item-agents",
+    "item-form-differences": "company.item-form-differences",
     "item-options": "company.items",
     "inventory-settings": "company.inventory-settings",
     "stock-balances": "company.stock-balances",

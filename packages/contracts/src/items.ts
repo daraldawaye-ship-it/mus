@@ -49,6 +49,17 @@ export const itemAgentSchema = agentFields
   .strict();
 export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 
+/** Shape/category for both the item and its composition. "عام" means unknown. */
+export const productForms = [
+  "اقراص","كبسول","شراب","امبول","فيال","محلول وريدي","محلول خارجي",
+  "قطر عين/اذن","قطر شرب","فبال شراب","تحاميل","قطعه","بخاخ",
+  "مرهم","كريم","جل","جل فم","دش مهبلي","سائل","فوار","مصوص",
+  "مضمضه","بودر","شرائح","صابون","شامبو","حليب بودر","زيت",
+  "تيوب","غذاء اكفال","حزام/رباط","قطعة","عام",
+] as const;
+export type ProductForm = typeof productForms[number];
+export const productFormSchema = z.enum(productForms);
+
 // Composition is a reusable company-scoped item classification. Its
 // substitution flags are descriptive; they never auto-replace stock lines.
 const compositionName = z.string().trim().min(1, "الاسم مطلوب").max(240);
@@ -57,6 +68,7 @@ const compositionFields = z.object({
   englishName: compositionName,
   description: z.string().trim().max(2000).default(""),
   saleNotes: z.string().trim().max(1000).default(""),
+  productForm: productFormSchema.default("عام"),
   active: z.boolean().default(true),
   identicalAlternative: z.boolean().default(false),
   nonInterchangeable: z.boolean().default(false),
@@ -80,6 +92,7 @@ export interface ItemComposition {
   englishName: string;
   description: string;
   saleNotes: string;
+  productForm: ProductForm;
   active: boolean;
   identicalAlternative: boolean;
   nonInterchangeable: boolean;
@@ -152,6 +165,7 @@ const itemFields = z
     searchKeys: z.string().trim().max(1000).default(""),
     purchaseNotes: z.string().trim().max(1000).default(""),
     saleNotes: z.string().trim().max(1000).default(""),
+    productForm: productFormSchema.default("عام"),
     orderStoppedUntil: documentDateSchema.nullable().default(null),
     hasExpiry: z.boolean().default(true),
     nearestExpiryDate: documentDateSchema.nullable().optional(),
@@ -291,6 +305,7 @@ export interface Item extends ItemIdentity {
   searchKeys: string;
   purchaseNotes: string;
   saleNotes: string;
+  productForm: ProductForm;
   orderStoppedUntil: string | null;
   hasExpiry: boolean;
   nearestExpiryDate: string | null;
@@ -397,6 +412,7 @@ export const itemCatalog = {
     salePrice3: "0",
     purchasePrice: "0",
     saleNotes: "",
+    productForm: "عام",
     commissionRate: "0",
     clearanceFrom: null,
     clearanceTo: null,

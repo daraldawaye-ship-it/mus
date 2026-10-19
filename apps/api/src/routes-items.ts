@@ -72,6 +72,7 @@ const itemColumns = {
   code: "i.code",
   name: "i.name",
   englishName: "i.english_name",
+  productForm: "i.product_form",
   barcode: "i.barcode",
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
@@ -182,12 +183,56 @@ export function itemRoutes(pool: Pool): Router {
     id: "f.id",
     arabicName: "f.arabic_name",
     englishName: "f.english_name",
+    productForm: "f.product_form",
     active: "f.active",
     identicalAlternative: "f.identical_alternative",
     nonInterchangeable: "f.non_interchangeable",
     createdAt: "f.created_at",
     updatedAt: "f.updated_at",
   };
+  // Independent, paginated follow-up report. No auto-correction is applied
+  // to mismatches: a medicinal product and its composition can legitimately
+  // have different forms, and any inferred value can be edited manually.
+  router.get(
+    `${base}/item-form-differences`,
+    handler(async (req,res)=>{
+      const query=parse(z.object({
+        page:z.coerce.number().int().min(1).max(100000).default(1),
+        pageSize:z.coerce.number().int().min(1).max(100).default(50),
+        status:z.enum(["needs-review","different","unclassified","all"]).default("needs-review"),
+        q:z.string().trim().max(100).default(""),
+      }).strict(),req.query);
+      const result=await readItems(pool,req,async(client,companyId)=>{
+        const filter=query.status==="different"
+          ? "AND i.product_form<>'عام' AND f.product_form<>'عام' AND i.product_form<>f.product_form"
+          : query.status==="unclassified"
+            ? "AND (i.product_form='عام' OR f.product_form='عام')"
+            : query.status==="needs-review"
+              ? "AND (i.product_form<>f.product_form OR i.product_form='عام' OR f.product_form='عام')"
+              : "";
+        const where=`FROM items i
+          JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id
+          WHERE i.company_id=$1
+          AND ($2='' OR i.name ILIKE '%'||$2||'%' OR i.english_name ILIKE '%'||$2||'%'
+             OR f.arabic_name ILIKE '%'||$2||'%' OR f.english_name ILIKE '%'||$2||'%')
+          ${filter}`;
+        const binds=[companyId,query.q];
+        const total=await client.query(`SELECT count(*)::integer AS total ${where}`,binds);
+        const rows=await client.query(
+          `SELECT i.id AS "itemId",i.name AS "itemName",
+             i.product_form AS "itemForm",i.active AS "itemActive",
+             f.id AS "compositionId",f.arabic_name AS "compositionName",
+             f.product_form AS "compositionForm",f.active AS "compositionActive"
+           ${where}
+           ORDER BY i.id DESC LIMIT $3 OFFSET $4`,
+          [...binds,query.pageSize,(query.page-1)*query.pageSize],
+        );
+        return {items:rows.rows,total:total.rows[0].total as number,
+          page:query.page,pageSize:query.pageSize};
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     `${base}/item-compositions`,
     handler(async (req, res) => {
@@ -280,10 +325,10 @@ export function itemRoutes(pool: Pool): Router {
         };
         const added = await client.query(
           `INSERT INTO item_compositions
-          (company_id,arabic_name,english_name,description,sale_notes,active,
+          (company_id,arabic_name,english_name,description,sale_notes,product_form,active,
            identical_alternative,non_interchangeable,created_by,idempotency_key,creation_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-          [companyId,input.arabicName,input.englishName,input.description,input.saleNotes,input.active,
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+          [companyId,input.arabicName,input.englishName,input.description,input.saleNotes,input.productForm,input.active,
            input.identicalAlternative,input.nonInterchangeable,user.id,input.idempotencyKey,
            JSON.stringify(input)],
         );
@@ -321,11 +366,11 @@ export function itemRoutes(pool: Pool): Router {
           conflict("تم تعديل التركيب بواسطة مستخدم آخر؛ حمّل النسخة الحالية قبل الحفظ");
         await client.query(
           `UPDATE item_compositions
-          SET arabic_name=$1,english_name=$2,description=$3,sale_notes=$4,active=$5,
-              identical_alternative=$6,non_interchangeable=$7,
+          SET arabic_name=$1,english_name=$2,description=$3,sale_notes=$4,product_form=$5,active=$6,
+              identical_alternative=$7,non_interchangeable=$8,
               revision=revision+1,updated_at=clock_timestamp()
-          WHERE company_id=$8 AND id=$9`,
-          [input.arabicName,input.englishName,input.description,input.saleNotes,input.active,
+          WHERE company_id=$9 AND id=$10`,
+          [input.arabicName,input.englishName,input.description,input.saleNotes,input.productForm,input.active,
             input.identicalAlternative,input.nonInterchangeable,companyId,compositionId],
         );
         const next = itemCompositionDTO(await masterRow(
