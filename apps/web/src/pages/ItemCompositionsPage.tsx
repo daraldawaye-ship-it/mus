@@ -7,6 +7,8 @@ import {
   type CompanyContext,
   type ItemComposition,
   type ItemCompositionInput,
+  type ProductForm,
+  productForms,
 } from "../../../../packages/contracts/src/index";
 import { api, ApiFailure, usePagedQuery, useScopeGuard } from "../api";
 import { errorMessage } from "../phase2";
@@ -33,6 +35,7 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const columns=useMemo<ColumnDef<ItemComposition,unknown>[]>(()=>[
     {accessorKey:"arabicName",header:"الاسم العربي",size:210,
       cell:({row})=><ValueCell>{row.original.arabicName}</ValueCell>},
+    {accessorKey:"productForm",header:"الشكل",size:100},
     {accessorKey:"englishName",header:"الاسم الإنجليزي",size:210,
       cell:({row})=><ValueCell>{row.original.englishName}</ValueCell>},
     {accessorKey:"description",header:"الشرح",size:260,
@@ -114,6 +117,7 @@ function CompositionEditor({
     englishName:record?.englishName??"",
     description:record?.description??"",
     saleNotes:record?.saleNotes??"",
+    productForm:record?.productForm??"عام" as ProductForm,
     active:record?.active??true,
     identicalAlternative:record?.identicalAlternative??false,
     nonInterchangeable:record?.nonInterchangeable??false,
@@ -147,7 +151,8 @@ function CompositionEditor({
       const result=response.composition;
       setForm({
         arabicName:result.arabicName,englishName:result.englishName,
-        description:result.description,saleNotes:result.saleNotes,active:result.active,
+        description:result.description,saleNotes:result.saleNotes,
+        productForm:result.productForm,active:result.active,
         identicalAlternative:result.identicalAlternative,
         nonInterchangeable:result.nonInterchangeable,
       });
@@ -192,6 +197,10 @@ function CompositionEditor({
           disabled={disabled} onChange={e=>set("arabicName",e.target.value)}/>
         <Field label="الاسم بالإنجليزي" value={form.englishName} required maxLength={240}
           disabled={disabled} dir="ltr" onChange={e=>set("englishName",e.target.value)}/>
+        <Select label="شكل التركيب" value={form.productForm}
+          disabled={disabled} onChange={e=>set("productForm",e.target.value as ProductForm)}>
+          {productForms.map(value=><option key={value} value={value}>{value}</option>)}
+        </Select>
         <div className="field form-full">
           <label htmlFor="composition-description">الشرح</label>
           <textarea id="composition-description" value={form.description}
