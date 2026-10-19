@@ -51,7 +51,7 @@ function transferFollowupText(params: URLSearchParams) {
   const to = (params.get("toName") ?? "موقع الاستلام").slice(0,120);
   const name = (params.get("itemName") ?? "الصنف").slice(0,120);
   const day = (params.get("transferDate") ?? "").slice(0,10);
-  return `تمت مناقلة الصنف «${name}» من «${from}» إلى «${to}» بموجب المناقلة رقم ${operation}${/^\\d{4}-\\d{2}-\\d{2}$/.test(day) ? ` بتاريخ ${day}` : ""}. يرجى الاطلاع على المناقلة واتخاذ اللازم.`;
+  return `تمت مناقلة الصنف «${name}» من «${from}» إلى «${to}» بموجب المناقلة رقم ${operation}${/^\d{4}-\d{2}-\d{2}$/.test(day) ? ` بتاريخ ${day}` : ""}. يرجى الاطلاع على المناقلة واتخاذ اللازم.`;
 }
 
 const time = (value: string | null) =>
