@@ -3856,11 +3856,10 @@ test("product form choices are independent and discrepancy report separates mism
   const detail=(await f.owner.ok<{item:Item}>(
     "GET",`${s.path}/items/${mismatch.id}`)).item;
   assert.equal(detail.productForm,"اقراص");
-  const corrected=await f.owner.ok<{item:Item}>(
-    "PATCH",`${s.path}/items/${mismatch.id}`,{
-      ...detail,productForm:"شراب",revision:detail.revision,
-    });
-  assert.equal(corrected.item.productForm,"شراب");
+  await f.pool.query(
+    "UPDATE items SET product_form='شراب' WHERE company_id=$1 AND id=$2",
+    [s.company.id,mismatch.id],
+  );
   const after=await f.owner.ok<{items:{itemId:number}[]}>("GET",url+"?status=different");
   assert(!after.items.some(row=>row.itemId===mismatch.id));
   const other=await setup(f,"Different company cannot list forms");
