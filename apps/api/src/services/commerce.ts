@@ -389,9 +389,18 @@ export async function createInvoice(
       price = normalizeRate(original.unit_price);
       if (line.unitPrice !== undefined && line.unitPrice !== price)
         conflict("سعر المردود محفوظ من الأصل ولا يعدل");
-      if (line.expiryDate !== null && line.expiryDate !== original.expiry_text)
-        conflict("دفعة المردود تحفظ من الأصل ولا تعدل");
-      expiryDate = original.expiry_text;
+      if (input.kind === "purchase" &&
+          line.expiryDate !== null && line.expiryDate !== original.expiry_text)
+        conflict("دفعة مردود المشتريات يجب أن تطابق دفعة الأصل");
+      if (input.kind === "sale" && !item.has_expiry && line.expiryDate !== null)
+        conflict("الصنف لا يتتبع تاريخ الانتهاء.");
+      // A customer can physically return a different expiry batch. Keep the
+      // original sale price, cost and movement references, but honour the
+      // actual expiry entered on the sales return. Null retains the legacy
+      // original batch for historical returns that do not specify a date.
+      expiryDate = input.kind === "sale"
+        ? line.expiryDate ?? original.expiry_text
+        : original.expiry_text;
       const remainingDiscount =
         moneyUnits(original.discount) - moneyUnits(previous.rows[0].discount);
       discount = -(returned + requested === originalQuantity
@@ -405,14 +414,7 @@ export async function createInvoice(
             );
             return prorata > remainingDiscount ? remainingDiscount : prorata;
           })());
-      if (input.kind === "purchase") {
-        if (
-          line.expiryDate !== null &&
-          line.expiryDate !== original.expiry_text
-        )
-          conflict("دفعة مردود المشتريات يجب أن تطابق دفعة الأصل");
-        expiryDate = original.expiry_text;
-      }
+
     } else {
       if (input.kind === "sale") {
         if (quantity < 0n) {
@@ -765,7 +767,7 @@ export async function createInvoice(
           quantitySmallest: taken,
           kind: "sales_return",
           documentDate: input.documentDate,
-          expiryDate: move.batch_key || null,
+          expiryDate: line.expiryDate,
           costBase: restoredCost,
           invoiceId,
           invoiceLineId: lineId,
