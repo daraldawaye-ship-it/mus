@@ -95,7 +95,7 @@ export function UserShortcutFlyout({
     // opened the flyout, then the same tap's click toggled it closed.
     // Only real mouse pointer movement triggers hover; touch uses click once.
     onPointerEnter={event=>{
-      if(event.pointerType==="mouse")setOpen(true);
+      if(shortcutUsesHover(event.pointerType))setOpen(true);
     }}
     onPointerLeave={event=>{
       if(event.pointerType==="mouse")setOpen(false);
