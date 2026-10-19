@@ -1,11 +1,12 @@
 import type { Database } from "../db.ts";
+import type { AccountChoice } from "../../../../packages/contracts/src/masters.ts";
 import { HttpError } from "../errors.ts";
 import { controlByKey } from "./control-catalog.ts";
 
 /** Effective server-side value. There is no write-through to the catalog. */
 export async function controlValue(
   db: Database, companyId: number, key: string, employeeId: number | null = null,
-): Promise<boolean | number> {
+): Promise<boolean | number | AccountChoice[]> {
   const option = controlByKey(key);
   if (!option) throw new Error("Unknown control: " + key);
   const subject = option.scope === "company" ? null : employeeId;
