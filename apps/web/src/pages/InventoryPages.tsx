@@ -1003,7 +1003,6 @@ interface OperationFields {
   countUnit3: string;
   nearestExpiryDate: string;
   unit: 1 | 2 | 3;
-  expiryDate: string;
   unitCostBase: string;
   description: string;
 }
@@ -1016,7 +1015,6 @@ const initialOperationFields = (): OperationFields => ({
   countUnit3: "0",
   nearestExpiryDate: "",
   unit: 1,
-  expiryDate: "",
   unitCostBase: "0",
   description: "",
 });
@@ -1222,7 +1220,7 @@ function OperationEditor({
         documentDate: mode === "adjustment" ? today() : fields.documentDate,
         itemId: item.id,
         unit: fields.unit,
-        expiryDate: mode === "adjustment" ? null : item.hasExpiry ? fields.expiryDate || null : null,
+        expiryDate: null, // Transfer source lots are selected automatically (FEFO).
         description: fields.description,
         idempotencyKey: createKey,
       };
@@ -1327,7 +1325,7 @@ function OperationEditor({
         title={mode === "adjustment" ? "تسوية الأصناف" : "المناقلات"}
         description={mode === "adjustment"
           ? "جرد الصنف بجميع وحداته مع حفظ أقرب تاريخ انتهاء في كرت الصنف."
-          : "ترحيل مناقلة المخزون بين موقعين."}
+          : "ترحيل المناقلة دون إدخال تاريخ انتهاء؛ تُختار دفعات المصدر تلقائيًا مع حفظ تواريخها الموجودة."}
         actions={<InventoryLinks companyId={companyId} />}
       />}
       {error && <Notice tone="error">{error}</Notice>}
@@ -1515,15 +1513,6 @@ function OperationEditor({
                     hint="عدد الوحدات الثالثة الإضافية" />
                 )}
               </>
-            )}
-            {mode === "transfer" && item?.hasExpiry && (
-              <ExpiryMonthField
-                label="شهر وسنة انتهاء الدفعة"
-                required
-                value={fields.expiryDate}
-                disabled={disabled}
-                onChange={(date) => edit("expiryDate", date ?? "")}
-              />
             )}
             {mode === "adjustment" && (
               <ServerLookup<{id:number;name:string}>
