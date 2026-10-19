@@ -119,7 +119,9 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     }finally{setPending(false);}
   }
   function exact(item:Movement) {
-    if(item.kind!=="close"){
+    // Electronic wallet receipts post the accounting transfer immediately.
+    // Only cash pouches offer the optional companion voucher dialogue.
+    if(!electronic && item.kind!=="close"){
       setUncertain(false);setError("");
       setVoucherDraft({movement:item,key:crypto.randomUUID(),notes:item.notes||"",
         receiptNumber:"",accountId:"",search:"",attempt:null});
