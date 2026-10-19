@@ -1020,6 +1020,42 @@ test("batch FEFO and per-location availability prevent expiry bypass and take lo
   await assertBalanced(f, s.company.id);
 });
 
+test("stock transfers without expiry entry move existing dated source batches in FEFO order", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({ factor2: 1, factor3: 1, hasExpiry: true });
+  for (const expiryDate of ["2027-03-01", "2027-01-01"]) {
+    await invoice(f, s, invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "4", unitPrice: "10", expiryDate }],
+    }));
+  }
+  const before = (await f.owner.ok<{item:Item}>("GET", `${s.path}/items/${item.id}`)).item.nearestExpiryDate;
+  const response = await f.owner.ok<{operation:StockOperation}>(
+    "POST", `${s.path}/stock-transfers`, {
+      documentDate: "2026-10-12",
+      itemId: item.id,
+      fromLocationId: s.showroom.id,
+      toLocationId: s.warehouse.id,
+      unit: 1, quantity: "6",
+      description: "مناقلة دون إدخال تاريخ انتهاء",
+      idempotencyKey: randomUUID(),
+    }, 201,
+  );
+  const moved = response.operation.movements;
+  assert.equal(moved.length, 4);
+  for (const [expiryDate, quantity] of [["2027-01-01", "4"], ["2027-03-01", "2"]] as const) {
+    const inbound = moved.find(value => value.kind === "transfer_in" && value.expiryDate === expiryDate);
+    const outbound = moved.find(value => value.kind === "transfer_out" && value.expiryDate === expiryDate);
+    assert.equal(inbound?.quantitySmallest, quantity);
+    assert.equal(outbound?.quantitySmallest, "-"+quantity);
+  }
+  const after = await balances(f, s, item.id);
+  assert.equal(after.find(v => v.locationId === s.warehouse.id && v.expiryDate === "2027-01-01")?.quantitySmallest, "4");
+  assert.equal(after.find(v => v.locationId === s.warehouse.id && v.expiryDate === "2027-03-01")?.quantitySmallest, "2");
+  assert.equal((await f.owner.ok<{item:Item}>("GET", `${s.path}/items/${item.id}`)).item.nearestExpiryDate, before);
+  await assertBalanced(f, s.company.id);
+});
+
 test("transfers conserve company quantity/value and counted adjustments reconcile exact valuation with ledger", async (t) => {
   const f = await fixture(t),
     s = await setup(f),
