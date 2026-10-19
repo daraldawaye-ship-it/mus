@@ -11,7 +11,7 @@ import { controlByKey, controlCatalog, validControlValue } from "./services/cont
 
 const valueInput = z.object({
   employeeId: z.number().int().positive().nullable().default(null),
-  value: z.union([z.boolean(), z.number().int(), z.null()]),
+  value: z.union([z.boolean(), z.number().int(), z.array(z.string()).max(30), z.null()]),
   revision: z.number().int().positive().nullable(),
 }).strict();
 const policyInput = z.object({
@@ -98,6 +98,14 @@ export function controlRoutes(pool: Pool): Router {
     const result = await transaction(pool, async client => {
       const user = await currentActor(client, actor(req));
       const context = await companyAccess(client, user, companyId, undefined, true);
+      if (key === "purchase_default_account" && input.value !== null && input.value !== 0) {
+        const chosen = await client.query(
+          "SELECT 1 FROM accounts WHERE company_id=$1 AND id=$2 AND active AND kind='posting' AND category IN ('asset','liability')",
+          [companyId,input.value],
+        );
+        if (!chosen.rowCount)
+          fail(400,"invalid_purchase_default_account","اختر حسابًا حركيًا فعالًا من الأصول أو الالتزامات في نفس الشركة.");
+      }
       await assertRequestPagesEnabled(client, req, true);
       if (input.employeeId) await employeeAt(client, companyId, input.employeeId);
       const policy = await client.query(
