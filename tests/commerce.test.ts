@@ -24,6 +24,7 @@ import type {
 } from "../packages/contracts/src/index.ts";
 import type {
   InventorySettings,
+  ItemLocationBalances,
   StockAdjustmentInput,
   StockBalance,
   StockMovement,
@@ -1054,6 +1055,39 @@ test("stock transfers without expiry entry move existing dated source batches in
   assert.equal(after.find(v => v.locationId === s.warehouse.id && v.expiryDate === "2027-03-01")?.quantitySmallest, "2");
   assert.equal((await f.owner.ok<{item:Item}>("GET", `${s.path}/items/${item.id}`)).item.nearestExpiryDate, before);
   await assertBalanced(f, s.company.id);
+});
+
+test("transfer location balances show all sites including zero and returns in first unit", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({ factor2: 2, factor3: 3, hasExpiry: true });
+  const returns = (await f.owner.ok<{location:Location}>(
+    "POST", `${s.path}/locations`,
+    {branchId:s.branch.id,name:"موقع المرتجعات",kind:"returns"},201,
+  )).location;
+  for(const [quantity,expiryDate] of [["5","2027-01-01"],["3","2027-03-01"]] as const) {
+    await invoice(f,s,invoiceBody(s,item.id,{
+      lines:[{itemId:item.id,unit:1,quantity,unitPrice:"10",expiryDate}],
+    }));
+  }
+  const snap = async () => f.owner.ok<ItemLocationBalances>(
+    "GET",`${s.path}/item-location-balances?itemId=${item.id}`,
+  );
+  const first = await snap();
+  const showroom = first.items.find(v=>v.location.id===s.showroom.id);
+  const warehouse = first.items.find(v=>v.location.id===s.warehouse.id);
+  const returnSite = first.items.find(v=>v.location.id===returns.id);
+  assert.equal(showroom?.quantityUnit1.decimal,"8");
+  assert.equal(showroom?.quantitySmallest,"48");
+  assert.equal(warehouse?.quantityUnit1.decimal,"0","Show empty warehouses");
+  assert.equal(returnSite?.quantityUnit1.decimal,"0","Show empty returns");
+  assert.equal(returnSite?.location.kind,"returns");
+  assert(first.items.length>=3);
+  await transfer(f,s,item.id,{toLocationId:returns.id,quantity:"2",unit:1});
+  const after = await snap();
+  assert.equal(after.items.find(v=>v.location.id===s.showroom.id)?.quantityUnit1.decimal,"6");
+  assert.equal(after.items.find(v=>v.location.id===returns.id)?.quantityUnit1.decimal,"2");
+  assert.equal(after.items.find(v=>v.location.id===s.warehouse.id)?.quantityUnit1.decimal,"0");
 });
 
 test("transfers conserve company quantity/value and counted adjustments reconcile exact valuation with ledger", async (t) => {
