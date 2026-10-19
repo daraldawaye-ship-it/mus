@@ -5,6 +5,7 @@ export type SaleAlerts = {
   saleNotes: string;
   compositionSaleNotes: string;
   compositionName: string;
+  identicalAlternative: boolean;
   alternatives: {
     id: number; name: string; nearestExpiryDate: string | null;
     clearance: boolean; nearExpiry: boolean;
@@ -18,9 +19,9 @@ export function InvoiceSaleAlerts({
 }: {
   companyId:number; userId:number|undefined; itemId:number|null;
 }) {
-  const { data, isError }=useQuery<{saleNotes:string;compositionSaleNotes:string;compositionName:string;alternatives:SaleAlerts["alternatives"]}>({
+  const { data, isError }=useQuery<SaleAlerts>({
     queryKey:["sales-item-alerts",userId,companyId,itemId],
-    queryFn:({signal})=>api(`/companies/${companyId}/sales-item-alerts/${itemId}`,{signal}),
+    queryFn:({signal})=>api<SaleAlerts>(`/companies/${companyId}/sales-item-alerts/${itemId}`,{signal}),
     enabled:!!userId && itemId!==null,
     staleTime:60_000,refetchOnWindowFocus:false,
   });
@@ -38,7 +39,8 @@ export function InvoiceSaleAlerts({
         <span>{data.compositionSaleNotes}</span>
       </p>}
       {data.alternatives.length>0 && <>
-        <strong className="invoice-sale-alert-heading">بدائل تستحق الانتباه</strong>
+        <strong className="invoice-sale-alert-heading">{data.identicalAlternative ? "بدائل تستحق الانتباه" : "أصناف بنفس التركيب تستحق الانتباه"}</strong>
+        {!data.identicalAlternative && <small>الاشتراك في التركيب لا يعني إمكانية استبدال الصنف دون مراجعة.</small>}
         <div className="invoice-sale-alert-peers">
           {data.alternatives.map(row=><div key={row.id} className="invoice-sale-alert-peer">
             <span className="invoice-sale-alert-item-name" title={row.name}>{row.name}</span>
