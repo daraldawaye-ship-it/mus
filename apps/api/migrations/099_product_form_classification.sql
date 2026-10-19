@@ -64,16 +64,31 @@ RETURNS text LANGUAGE sql IMMUTABLE AS $$
 $$;
 
 -- A named product often includes a dosage form; composition names may not.
-UPDATE items
-SET product_form=_initial_product_form_from_name(
-  concat_ws(' ',name,english_name,unit1_name,unit2_name)
-)
-WHERE product_form='عام';
-UPDATE item_compositions
-SET product_form=_initial_product_form_from_name(
-  concat_ws(' ',arabic_name,english_name)
-)
-WHERE product_form='عام';
+-- Respect item-master optimistic locking: only update classified records,
+-- with a revision bump so future manual edits remain concurrency-safe.
+UPDATE items i
+SET product_form=classified.form,revision=i.revision+1,
+    updated_at=clock_timestamp()
+FROM (
+  SELECT company_id,id,
+    _initial_product_form_from_name(
+      concat_ws(' ',name,english_name,unit1_name,unit2_name)
+    ) AS form
+  FROM items WHERE product_form='عام'
+) AS classified
+WHERE i.company_id=classified.company_id AND i.id=classified.id
+  AND i.product_form='عام' AND classified.form<>'عام';
+
+UPDATE item_compositions f
+SET product_form=classified.form,revision=f.revision+1,
+    updated_at=clock_timestamp()
+FROM (
+  SELECT company_id,id,
+    _initial_product_form_from_name(concat_ws(' ',arabic_name,english_name)) AS form
+  FROM item_compositions WHERE product_form='عام'
+) AS classified
+WHERE f.company_id=classified.company_id AND f.id=classified.id
+  AND f.product_form='عام' AND classified.form<>'عام';
 DROP FUNCTION _initial_product_form_from_name(text);
 
 -- Comparison is read-only and tenant scoped; no backfill changes accounting.
