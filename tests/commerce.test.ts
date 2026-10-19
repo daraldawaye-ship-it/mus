@@ -1494,6 +1494,14 @@ test("purchase saving changes only the item card's nearest expiry, while reconci
   await assertBalanced(f,s.company.id);
 });
 
+async function createTestComposition(f:Fixture,s:Setup,name="Count test composition") {
+  return (await f.owner.ok<{composition:{id:number}}>("POST",
+    `${s.path}/item-compositions`,{
+      idempotencyKey:randomUUID(),arabicName:name,englishName:name,
+      active:true,
+    },201)).composition;
+}
+
 test("zero selected stock location bypasses shelf/expiry requirements and preserves item card", async t => {
   const f=await fixture(t), s=await setup(f,"Zero location physical count");
   const item=await s.item({
@@ -1531,10 +1539,29 @@ test("zero selected stock location bypasses shelf/expiry requirements and preser
   assert.equal(after.nearestExpiryDate,before.nearestExpiryDate);
   assert.equal(after.shelfId,before.shelfId);
   assert.equal(after.revision,before.revision,
-    "zeroing must not write shelf or expiry into the item card");
+    "zeroing must not write shelf, composition or expiry into the item card");
+  assert.equal(after.compositionId,null,
+    "zeroing must never require or set a composition");
   const repeated=await f.owner.ok<{operation:StockOperation}>(
     "POST",`${s.path}/stock-adjustments`,body,200);
   assert.equal(repeated.operation.id,zero.operation.id);
+  // Ordinary count cannot proceed without choosing composition, even when
+  // shelf and date are provided. Linking a valid active composition is atomic.
+  const withoutComposition=await f.owner.request("POST",`${s.path}/stock-adjustments`,{
+    ...basic,countedUnits:{unit1:"1"},expectedQuantitySmallest:"0",
+    shelfId:shelf,nearestExpiryDate:"2027-04-01",idempotencyKey:randomUUID(),
+  });
+  assert.equal(withoutComposition.status,409);
+  const composition=await createTestComposition(f,s,"Zero test follow-up composition");
+  const regular=await f.owner.ok<{operation:StockOperation}>("POST",
+    `${s.path}/stock-adjustments`,{
+      ...basic,countedUnits:{unit1:"1"},expectedQuantitySmallest:"0",
+      shelfId:shelf,nearestExpiryDate:"2027-04-01",
+      compositionId:composition.id,idempotencyKey:randomUUID(),
+    },201);
+  assert.equal(regular.operation.movements[0]?.quantitySmallest,"1");
+  assert.equal((await card()).item.compositionId,composition.id,
+    "ordinary counted stock must persist selected composition to item card");
   await assertBalanced(f,s.company.id);
 });
 
@@ -1552,6 +1579,7 @@ test("physical reconciliation accepts a previously negative balance and counts p
     },
   );
   assert.equal(updated.settings.allowNegative,true);
+  const composition=await createTestComposition(f,s,"Ampoules count composition");
   const item=await s.item({
     factor2:3,factor3:1,
     unit1Name:"باكت",unit2Name:"أمبولة",unit3Name:"—",
@@ -1576,7 +1604,7 @@ test("physical reconciliation accepts a previously negative balance and counts p
       itemId:item.id,locationId:s.showroom.id,
       countedUnits:{unit1:"2",unit2:"2"},
       expectedQuantitySmallest:"-3",
-      shelfId:shelves[0]!.id,unit:1,
+      shelfId:shelves[0]!.id,compositionId:composition.id,unit:1,
     },201,
   );
   assert.equal(counted.operation.movements.reduce(
@@ -1586,11 +1614,14 @@ test("physical reconciliation accepts a previously negative balance and counts p
     "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
   );
   assert.equal(after.quantitySmallest,"8");
+  assert.equal((await f.owner.ok<{item:Item}>("GET",
+    `${s.path}/items/${item.id}`)).item.compositionId,composition.id);
   await assertBalanced(f,s.company.id);
 });
 
 test("adjustment auto-prices from the item card and atomically changes its shelf and nearest expiry", async (t) => {
   const f=await fixture(t),s=await setup(f);
+  const composition=await createTestComposition(f,s,"Auto priced count composition");
   const shelfRows=await f.pool.query(
     "SELECT id,name FROM item_shelves WHERE company_id=$1 AND NOT archived ORDER BY id LIMIT 2",
     [s.company.id],
@@ -1605,6 +1636,7 @@ test("adjustment auto-prices from the item card and atomically changes its shelf
     unit:1 as const,expiryDate:"2027-03-01",
     countedUnits:{unit1:"3"},expectedQuantitySmallest:"0",
     nearestExpiryDate:"2027-01-01",shelfId:firstShelf.id,
+    compositionId:composition.id,
     description:"جرد تلقائي",idempotencyKey:randomUUID(),
   };
   const response=await f.owner.ok<{operation:StockOperation}>(
@@ -1616,6 +1648,7 @@ test("adjustment auto-prices from the item card and atomically changes its shelf
     "GET",`${s.path}/items/${item.id}`)).item;
   assert.equal(updated.shelfId,firstShelf.id);
   assert.equal(updated.shelf,firstShelf.name);
+  assert.equal(updated.compositionId,composition.id);
   assert.equal(updated.nearestExpiryDate,"2027-01-01");
   const repeated=await f.owner.ok<{operation:StockOperation}>(
     "POST",`${s.path}/stock-adjustments`,base,200);
