@@ -4608,3 +4608,9 @@ ul {
 .invoice-sale-inline-clearance { color: var(--error-text, #e85b5b); font-weight: 600; }
 .invoice-sale-inline-peer { color: var(--text); }
 .invoice-sale-inline-separator { color: var(--muted); white-space: pre; }
+
+/* A normal count saves on the right; destructive location zeroing stays
+   visually separate at the opposite edge of the action row. */
+.inventory-adjustment-actions {
+  justify-content: space-between;
+}
