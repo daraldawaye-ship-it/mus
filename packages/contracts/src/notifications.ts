@@ -101,6 +101,10 @@ export interface NotificationRecord {
   reminderCount: number;
   revision: number;
   subjectEmployeeId: number | null;
+  /** Number of matching notifications in this visible group (never across companies). */
+  groupCount: number;
+  /** Unread notifications in the current visible group. */
+  groupUnread: number;
   canSnooze: boolean;
   canAssign: boolean;
   canRepeat: boolean;
@@ -108,5 +112,7 @@ export interface NotificationRecord {
 }
 export interface NotificationDirectory extends Page<NotificationRecord> {
   unread: number;
+  /** Count of distinct groups with an unread notification in the active inbox. */
+  unreadGroups: number;
   employees: { id: number; name: string }[];
 }
