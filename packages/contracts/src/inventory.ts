@@ -22,6 +22,21 @@ export const stockSmallestQuantitySchema = z
       ),
   )
   .transform((value) => BigInt(value).toString());
+/** A physical count can reconcile a previously negative on-hand balance.
+ * This is the CURRENT saved stock, not the new physical count, so signed
+ * whole smallest-unit quantities must be accepted.
+ */
+export const stockExpectedQuantitySchema = z
+  .string()
+  .trim()
+  .transform(normalizeDigits)
+  .pipe(
+    z.string().regex(
+      /^-?\d{1,40}$/,
+      "الرصيد السابق للأجزاء الأصغر يجب أن يكون عددًا صحيحًا حتى 40 رقمًا، ويجوز أن يكون سالبًا",
+    ),
+  )
+  .transform((value) => BigInt(value).toString());
 export const inventorySettingsSchema = z
   .object({
     inventoryAccountId: id,
@@ -90,7 +105,7 @@ export const stockAdjustmentSchema = z
     shelfId: id.nullable().optional(),
     /** Zero the selected location without changing shelf or item-card expiry. */
     zeroLocation: z.boolean().optional(),
-    expectedQuantitySmallest: stockSmallestQuantitySchema,
+    expectedQuantitySmallest: stockExpectedQuantitySchema,
     unit,
     expiryDate: documentDateSchema.nullable().default(null),
     unitCostBase: amountSchema.optional(),
