@@ -225,7 +225,8 @@ export function itemRoutes(pool: Pool): Router {
           JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id
           WHERE i.company_id=$1
           AND ($2='' OR i.name ILIKE '%'||$2||'%' OR i.english_name ILIKE '%'||$2||'%'
-             OR f.arabic_name ILIKE '%'||$2||'%' OR f.english_name ILIKE '%'||$2||'%')
+             OR f.arabic_name ILIKE '%'||$2||'%' OR f.english_name ILIKE '%'||$2||'%'
+              OR i.product_form ILIKE '%'||$2||'%' OR f.product_form ILIKE '%'||$2||'%')
           ${filter}`;
         const binds=[companyId,query.q];
         const total=await client.query(`SELECT count(*)::integer AS total ${where}`,binds);
