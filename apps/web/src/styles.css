@@ -4988,3 +4988,49 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .inventory-returns-memo-row { align-items: stretch; flex-direction: column; }
   .inventory-returns-memo-row > a { align-self: flex-start; }
 }
+
+
+/* Per-location stock snapshot in stock transfers and invoice item sheet. */
+.inventory-location-balances {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-block: 8px;
+  border-block: 1px solid var(--border);
+}
+.inventory-location-balances-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.inventory-location-balance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(65px, .8fr) minmax(150px, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.inventory-location-balance-name,
+.inventory-location-balance-quantity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.inventory-location-balance-name strong { overflow-wrap: anywhere; }
+.inventory-location-balance-quantity bdi { font-variant-numeric: tabular-nums; }
+.inventory-location-balance-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.inventory-location-balance-row small { font-size: 11px; }
+@media (max-width: 600px) {
+  .inventory-location-balance-row {
+    grid-template-columns: minmax(0,1fr) minmax(72px,auto);
+    gap: 7px;
+  }
+  .inventory-location-balance-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .inventory-location-balance-actions button { flex: 1; }
+}
