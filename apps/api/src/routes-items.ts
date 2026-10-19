@@ -16,6 +16,7 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
+import { readCompositionStatistics } from "./services/composition-statistics.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
@@ -356,6 +357,16 @@ export function itemRoutes(pool: Pool): Router {
       res.status(result.created ? 201 : 200).json({ composition: result.composition });
     }),
   );
+  router.get(
+    `${base}/item-compositions/:id/statistics`,
+    handler(async (req,res) => {
+      const compositionId=id(req.params.id);
+      res.json({statistics:await readItems(pool,req,
+        (client,companyId)=>readCompositionStatistics(
+          client,actor(req),companyId,compositionId,
+        ))});
+    }),
+  );
   // Separate pages for either side of the threshold. Counts and grouping
   // are computed in SQL across ALL linked items, not just the visible page.
   router.get(
@@ -376,8 +387,8 @@ export function itemRoutes(pool: Pool): Router {
           ? null : String(composition.price_split_threshold);
         const expression=threshold===null||group==="all"
           ? "" : group==="higher"
-            ? " AND i.sale_price1>f.price_split_threshold"
-            : " AND i.sale_price1<=f.price_split_threshold";
+            ? " AND composition_price_group(f.price_split_threshold,i.sale_price1)='higher'"
+            : " AND composition_price_group(f.price_split_threshold,i.sale_price1)='lower'";
         const condition=" WHERE i.company_id=$1 AND i.composition_id=$2"+expression;
         const params=[companyId,compositionId];
         const count=await client.query(
