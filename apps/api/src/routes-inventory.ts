@@ -523,17 +523,37 @@ export function inventoryRoutes(pool: Pool): Router {
           } else {
             counted = BigInt(input.countedQuantity!) * multiplier;
           }
+          let compositionNeedsLink = false;
           if (input.zeroLocation) {
             if (counted !== 0n || input.nearestExpiryDate !== undefined ||
-                input.shelfId !== undefined || input.expiryDate !== null)
-              conflict("تصفير الموقع يحدد كمية صفر فقط ولا يعدل الرف أو أقرب تاريخ انتهاء في كرت الصنف.");
+                input.shelfId !== undefined || input.compositionId !== undefined ||
+                input.expiryDate !== null)
+              conflict("تصفير الموقع لا يغير الرف أو التركيب أو أقرب تاريخ انتهاء في كرت الصنف.");
           } else if (input.countedUnits) {
-            // All-unit reconciliation is the standard new UI workflow.
-            // Retain compatibility with historic single-quantity imports.
+            // New all-unit reconciliations require classification and shelf.
+            // Legacy single-quantity count requests remain compatible.
             if (input.shelfId == null)
               conflict("اختيار رف الصنف إلزامي عند تسوية الجرد.");
             if (item.hasExpiry && !input.nearestExpiryDate)
               conflict("أدخل أقرب تاريخ انتهاء للصنف قبل ترحيل التسوية.");
+            const card = await client.query(
+              "SELECT composition_id FROM items WHERE company_id=$1 AND id=$2 FOR SHARE",
+              [companyId, input.itemId],
+            );
+            const linkedId: number | null = card.rows[0]?.composition_id ?? null;
+            if (linkedId === null) {
+              if (input.compositionId === undefined)
+                conflict("هذا الصنف بدون تركيب. اختر التركيب قبل حفظ التسوية.");
+              const composition = await client.query(
+                "SELECT active FROM item_compositions WHERE company_id=$1 AND id=$2 FOR SHARE",
+                [companyId, input.compositionId],
+              );
+              if (!composition.rows[0]?.active)
+                conflict("اختر تركيبًا فعالًا من تراكيب الشركة.");
+              compositionNeedsLink = true;
+            } else if (input.compositionId !== undefined && input.compositionId !== linkedId) {
+              conflict("تم تغيير تركيب الصنف؛ أعد تحميل كرت الصنف قبل التسوية.");
+            }
           }
           const delta = counted - current;
           // Surplus joins an existing batch (the earliest available expiry),
@@ -659,7 +679,7 @@ export function inventoryRoutes(pool: Pool): Router {
           }
           // Persist shelf and nearest expiry in the SAME transaction as the
           // inventory movement/journal. Never update the card on failed posting.
-          if (input.nearestExpiryDate !== undefined || shelfName !== undefined) {
+          if (input.nearestExpiryDate !== undefined || shelfName !== undefined || compositionNeedsLink) {
             const sets: string[] = [];
             const values: unknown[] = [];
             if (input.nearestExpiryDate !== undefined) {
@@ -671,6 +691,10 @@ export function inventoryRoutes(pool: Pool): Router {
               sets.push("shelf=$"+values.length);
               values.push(input.shelfId);
               sets.push("shelf_id=$"+values.length);
+            }
+            if (compositionNeedsLink && input.compositionId !== undefined) {
+              values.push(input.compositionId);
+              sets.push("composition_id=$"+values.length);
             }
             values.push(companyId,input.itemId);
             await client.query(
