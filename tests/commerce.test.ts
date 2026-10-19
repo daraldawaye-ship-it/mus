@@ -3630,29 +3630,23 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   await seller.client.ok("POST",endpoint,send("electronic","3000","دفع عبر الهاتف"),201);
   assert.equal(await cashBalance(cash.accountId),"45000.000000");
   assert.equal(await cashBalance(ewallet.id),"3000.000000");
-  // Negative digital-wallet transfers are receipts INTO the seller's till.
-  const electronicReceipt=send("electronic","-1000","استلام نقد من المحفظة الإلكترونية");
-  const received=await seller.client.ok<{operationId:number;documentId:number}>(
-    "POST",endpoint,electronicReceipt,201);
-  assert.deepEqual(await seller.client.ok("POST",endpoint,electronicReceipt,201),received,
-    "Replaying a negative electronic transfer must never duplicate the receipt");
-  assert.equal(await cashBalance(cash.accountId),"46000.000000");
-  assert.equal(await cashBalance(ewallet.id),"2000.000000");
-  // A receipt bigger than the destination's book funds now succeeds and
-  // leaves the company's e-wallet account in debit/credit overdraft.
-  // The broader overdraft and negative-till close case is tested below.
-  await seller.client.ok("POST",endpoint,
-    send("electronic","1000","إعادة مبلغ المحفظة بعد التجربة"),201);
+  // Electronic transfers now only move positive amounts into the company wallet.
+  const electronicReceipt=send("electronic","-1000","محاولة ممنوعة");
+  assert.equal((await seller.client.request("POST",endpoint,electronicReceipt)).status,409);
   assert.equal(await cashBalance(cash.accountId),"45000.000000");
   assert.equal(await cashBalance(ewallet.id),"3000.000000");
+  await seller.client.ok("POST",endpoint,
+    send("electronic","1000","مبلغ إضافي للمحفظة"),201);
+  assert.equal(await cashBalance(cash.accountId),"44000.000000");
+  assert.equal(await cashBalance(ewallet.id),"4000.000000");
   assert.equal((await seller.client.request("POST",endpoint,
     send("close","-1","لا يمكن إدخال جرد نقدي فعلي بالسالب"))).status,409);
   const shortage=await seller.client.ok<{difference:string;bookBalance:string}>(
-    "POST",endpoint,send("close","44000","إغلاق الوردية"),201);
-  assert.equal(shortage.bookBalance,"45000");
+    "POST",endpoint,send("close","43000","إغلاق الوردية"),201);
+  assert.equal(shortage.bookBalance,"44000");
   assert.equal(shortage.difference,"1000");
   assert.equal(await cashBalance(cash.accountId),"0.000000");
-  assert.equal(await cashBalance(pouch.accountId),"47000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"46000.000000");
   assert.equal(await cashBalance(variance.accountId!),"1000.000000");
   // New positive sales repopulate the same till after the completed closure.
   await invoice(f,s,invoiceBody(s,product.id,{
@@ -3664,29 +3658,24 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   assert.equal(surplus.difference,"-1000");
   assert.equal(await cashBalance(cash.accountId),"0.000000");
   assert.equal(await cashBalance(variance.accountId!),"0.000000");
-  assert.equal(await cashBalance(pouch.accountId),"97000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"96000.000000");
 
-  // Book balances may be negative: an electronic receipt can exceed the
-  // wallet's balance, and a pouch transfer can exceed cash on hand.
-  const overdrawnWallet=send("electronic","-4000","استلام مع رصيد المحفظة غير كاف");
-  const walletResult=await seller.client.ok<{operationId:number;documentId:number}>(
-    "POST",endpoint,overdrawnWallet,201);
-  assert.deepEqual(
-    await seller.client.ok("POST",endpoint,overdrawnWallet,201),
-    walletResult, "Retrying an overdrawn transfer must not double-post",
-  );
-  assert.equal(await cashBalance(ewallet.id),"-1000.000000");
-  assert.equal(await cashBalance(cash.accountId),"4000.000000");
+  // Receiving from the electronic wallet must use the dedicated receipt
+  // workflow. Neither a negative nor an overdrawn electronic transfer posts.
+  assert.equal((await seller.client.request("POST",endpoint,
+    send("electronic","-4000","لا ترحيل بالسالب"))).status,409);
+  assert.equal(await cashBalance(ewallet.id),"4000.000000");
+  assert.equal(await cashBalance(cash.accountId),"0.000000");
 
   await seller.client.ok("POST",endpoint,
     send("pouch","-98000","استلام أكبر من رصيد الحافظة"),201);
-  assert.equal(await cashBalance(pouch.accountId),"-1000.000000");
-  assert.equal(await cashBalance(cash.accountId),"102000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"-2000.000000");
+  assert.equal(await cashBalance(cash.accountId),"98000.000000");
 
   await seller.client.ok("POST",endpoint,
     send("pouch","103000","ترحيل أكبر من رصيد الصندوق"),201);
-  assert.equal(await cashBalance(cash.accountId),"-1000.000000");
-  assert.equal(await cashBalance(pouch.accountId),"102000.000000");
+  assert.equal(await cashBalance(cash.accountId),"-5000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"101000.000000");
 
   // Closing with a negative book balance must zero the till. Counted cash
   // remains nonnegative, and the offset is recorded as a credit overage.
@@ -3694,25 +3683,25 @@ test("sales header cashbox shortcuts post pouch transfers, phone-wallet payments
   const closed=await seller.client.ok<{
     operationId:number;documentId:number;bookBalance:string;difference:string
   }>("POST",endpoint,negativeClose,201);
-  assert.equal(closed.bookBalance,"-1000");
-  assert.equal(closed.difference,"-1005");
+  assert.equal(closed.bookBalance,"-5000");
+  assert.equal(closed.difference,"-5005");
   assert.deepEqual(await seller.client.ok("POST",endpoint,negativeClose,201),closed);
   assert.equal(await cashBalance(cash.accountId),"0.000000");
-  assert.equal(await cashBalance(pouch.accountId),"102005.000000");
-  assert.equal(await cashBalance(variance.accountId!),"-1005.000000");
-  assert.equal(await cashBalance(ewallet.id),"-1000.000000");
+  assert.equal(await cashBalance(pouch.accountId),"101005.000000");
+  assert.equal(await cashBalance(variance.accountId!),"-5005.000000");
+  assert.equal(await cashBalance(ewallet.id),"4000.000000");
   const history=await f.pool.query(
     "SELECT book_balance::text AS book, variance_amount::text AS diff FROM employee_cashbox_operations WHERE company_id=$1 AND id=$2",
     [s.company.id,closed.operationId],
   );
-  assert.equal(history.rows[0].book,"-1000.000000");
-  assert.equal(history.rows[0].diff,"-1005.000000");
+  assert.equal(history.rows[0].book,"-5000.000000");
+  assert.equal(history.rows[0].diff,"-5005.000000");
 
   const audits=await f.pool.query(
     "SELECT count(*)::integer AS n FROM employee_cashbox_operations WHERE company_id=$1",
     [s.company.id],
   );
-  assert.equal(audits.rows[0].n,11);
+  assert.equal(audits.rows[0].n,9);
   await assertBalanced(f,s.company.id);
 });
 
@@ -3795,8 +3784,8 @@ test("pouch receipt register posts exactly once, supports zero/full shortage and
   const signedPartial=await receipt(negativeExtra.operationId,"difference","-300");
   assert.equal(signedPartial.receipt.difference,"100");
   assert.equal((await list("pending")).total,0);
-  assert.equal((await list("received")).total,5);
-  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,5);
+  assert.equal((await list("received")).total,3);
+  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,3);
   assert.equal(await cashBalance(receivedCash),"1000.000000");
   // The signed partials cancel in the receiving till: +300 and -300.
   assert.equal(await cashBalance(pouch),"0.000000");
@@ -3858,10 +3847,11 @@ test("electronic wallet receipt register posts exact, partial, zero and negative
   const exact=await transfer("electronic","1000");
   const fullShortage=await transfer("electronic","2000");
   const partial=await transfer("electronic","500");
-  const negative=await transfer("electronic","-400");
-  const negativePart=await transfer("electronic","-200");
+  assert.equal((await seller.client.request("POST",`${s.path}/sales/cashbox-operations`,{
+    kind:"electronic",amount:"-400",notes:"لا للسالب",idempotencyKey:randomUUID(),
+  })).status,409);
   const unrelatedPouch=await transfer("pouch","50");
-  assert.equal(await book(wallet.id),"2900.000000");
+  assert.equal(await book(wallet.id),"3500.000000");
   const endpoint=`${s.path}/electronic-receipts`;
   const list=async(status:"pending"|"received"|"all")=>
     cashier.client.ok<{
@@ -3869,7 +3859,7 @@ test("electronic wallet receipt register posts exact, partial, zero and negative
         receiptId:number|null;receivedAmount:string|null}[]
     }>("GET",`${endpoint}?status=${status}&page=1&pageSize=50`);
   const before=await list("pending");
-  assert.equal(before.total,5,"The unrelated pouch movement is excluded");
+  assert.equal(before.total,3,"The unrelated pouch movement is excluded");
   assert(before.items.every(x=>x.kind==="electronic"&&x.walletName===wallet.name));
   const settle=async(id:number,mode:"exact"|"difference",amount?:string,key=randomUUID())=>{
     const body=mode==="exact"
@@ -3896,20 +3886,18 @@ test("electronic wallet receipt register posts exact, partial, zero and negative
   })).status,409,"Each electronic receipt may only be settled once");
   assert.equal((await settle(fullShortage.operationId,"difference","0")).receipt.difference,"2000");
   assert.equal((await settle(partial.operationId,"difference","300")).receipt.difference,"200");
-  assert.equal((await settle(negative.operationId,"difference","0")).receipt.difference,"-400");
-  assert.equal((await settle(negativePart.operationId,"difference","-300")).receipt.difference,"100");
   assert.equal((await list("pending")).total,0);
   assert.equal((await list("received")).total,5);
   assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,5);
-  assert.equal(await book(cashierCash),"1000.000000");
+  assert.equal(await book(cashierCash),"1300.000000");
   assert.equal(await book(wallet.id),"0.000000");
-  assert.equal(await book(variance),"1900.000000");
-  assert.equal(await book(sellerCash),"-2950.000000");
+  assert.equal(await book(variance),"2200.000000");
+  assert.equal(await book(sellerCash),"-3550.000000");
   const recorded=await f.pool.query(
     "SELECT count(*)::int AS n FROM employee_electronic_receipts WHERE company_id=$1",
     [s.company.id],
   );
-  assert.equal(recorded.rows[0].n,5);
+  assert.equal(recorded.rows[0].n,3);
   await assertBalanced(f,s.company.id);
 });
 
@@ -4010,14 +3998,19 @@ test("cashier optional receipt voucher remains atomic, signed, scoped and idempo
   await f.owner.ok("PUT",`${s.path}/account-links/electronicWallet`,{
     accountId:wallet.id,
   });
-  const electronic=await transfer("electronic","-44");
-  const digital=await receive(electronic,randomUUID(),voucher(),
-    `${s.path}/electronic-receipts`);
+  const electronic=await transfer("electronic","44");
+  const electronicPath=`${s.path}/electronic-receipts`;
+  assert.equal((await cashier.client.request("POST",electronicPath,{
+    sourceOperationId:electronic,mode:"exact",notes:"لا سند إلكتروني",
+    idempotencyKey:randomUUID(),voucher:voucher(),
+  })).status,400,"Electronic receipts must reject optional vouchers");
+  const digital=await receive(electronic,randomUUID(),undefined,electronicPath);
+  assert.equal(digital.receipt.voucherDocumentId,null);
   const digitalDocument=await f.pool.query(
     "SELECT kind,status FROM financial_documents WHERE company_id=$1 AND id=$2",
-    [s.company.id,digital.receipt.voucherDocumentId],
+    [s.company.id,digital.receipt.documentId],
   );
-  assert.deepEqual(digitalDocument.rows.map(x=>x.kind),["receipt"]);
+  assert.deepEqual(digitalDocument.rows.map(x=>x.kind),["journal"]);
   assert.equal(digitalDocument.rows[0].status,"posted");
   await assertBalanced(f,s.company.id);
 });
