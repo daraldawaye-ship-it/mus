@@ -4888,8 +4888,56 @@ a.notification-quick-title:hover { text-decoration: underline; }
   width: 100%;
   min-width: 0;
 }
-.wallet-task-table { width: 100%; }
-.wallet-task-table th, .wallet-task-table td { padding: 9px; }
+/* The global .table-scroll table has a 760px minimum for wide registers.
+   This is a three-column summary and must always fit the phone viewport. */
+.table-scroll table.wallet-task-table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+.table-scroll .wallet-task-table :is(th, td) {
+  height: auto;
+  max-height: none;
+  padding: 9px 6px;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+.table-scroll .wallet-task-table :is(th, td):nth-child(1) { width: 28%; }
+.table-scroll .wallet-task-table :is(th, td):nth-child(2) { width: 54%; }
+.table-scroll .wallet-task-table :is(th, td):nth-child(3) { width: 18%; }
+.table-scroll .wallet-task-table :is(th, td):nth-child(2) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.table-scroll .wallet-task-table :is(th, td):nth-child(1),
+.table-scroll .wallet-task-table :is(th, td):nth-child(3) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.table-scroll .wallet-task-table td bdi,
+.table-scroll .wallet-task-table th bdi {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .wallet-task-table-wrap { overflow-x: hidden; }
+  .table-scroll .wallet-task-table :is(th, td) {
+    padding: 8px 3px;
+    font-size: 12px;
+  }
+  .table-scroll .wallet-task-table :is(th, td):nth-child(1) { width: 28%; }
+  .table-scroll .wallet-task-table :is(th, td):nth-child(2) { width: 54%; }
+  .table-scroll .wallet-task-table :is(th, td):nth-child(3) { width: 18%; }
+  .table-scroll .wallet-task-table .wallet-task-name {
+    font-size: 12px;
+    line-height: 1.45;
+    text-align: start;
+    white-space: normal;
+  }
+}
 .wallet-task-name {
   background: transparent;
   color: var(--primary);
