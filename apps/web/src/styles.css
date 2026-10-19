@@ -5034,3 +5034,32 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .inventory-location-balance-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .inventory-location-balance-actions button { flex: 1; }
 }
+
+/* Collapsed notification type: keep its repeat count visible beside the latest
+   message without creating multiple stacked cards in the bell or inbox. */
+.notification-group-count {
+  display:inline-flex;
+  align-items:center;
+  flex:0 0 auto;
+  font-size:12px;
+  font-weight:650;
+  line-height:1.3;
+  white-space:nowrap;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  color:var(--text);
+  background:var(--surface-raised,var(--surface));
+}
+.notification-quick-item-top {
+  flex-wrap:wrap;
+  gap:5px;
+}
+.notification-quick-item .notification-quick-link {
+  display:inline-block;
+  margin:0 0 5px;
+  font-size:12px;
+}
+.notification-record .notification-group-count {
+  margin-inline:8px;
+}
