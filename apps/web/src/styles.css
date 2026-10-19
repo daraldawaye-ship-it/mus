@@ -4606,6 +4606,32 @@ ul {
   box-decoration-break: clone;
 }
 .invoice-sale-inline-clearance { color: var(--error-text, #e85b5b); font-weight: 600; }
+/* Clickable clearance items retain the single flowing text layout. */
+.invoice-sale-alerts-inline .invoice-sale-inline-clearance-button {
+  display:inline;
+  background:transparent;
+  border:0;
+  border-radius:2px;
+  margin:0;
+  padding:0;
+  color:var(--error-text,#e85b5b);
+  font:inherit;
+  font-weight:700;
+  line-height:inherit;
+  text-align:inherit;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  cursor:pointer;
+}
+.invoice-sale-alerts-inline .invoice-sale-inline-clearance-button:not(:disabled):is(:hover,:focus-visible) {
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+.invoice-sale-alerts-inline .invoice-sale-inline-clearance-button:disabled {
+  opacity:.66;
+  cursor:not-allowed;
+}
+
 .invoice-sale-inline-peer { color: var(--text); }
 .invoice-sale-inline-separator { color: var(--muted); white-space: pre; }
 
