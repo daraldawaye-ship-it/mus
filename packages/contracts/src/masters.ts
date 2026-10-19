@@ -449,7 +449,8 @@ export const exchangeRatePatchSchema = z
   .strict();
 export const branchSchema = z
   .object({
-    code: siteCode,
+    // Backward compatible with clients that used to submit a code; the server allocates it.
+    code: siteCode.optional(),
     name,
     phone: phone.default(""),
     address: z.string().trim().max(500).default(""),
@@ -466,7 +467,7 @@ export const branchPatchSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
 export const locationSchema = z
-  .object({ branchId: id, code: siteCode, name, kind: z.enum(locationKinds) })
+  .object({ branchId: id, code: siteCode.optional(), name, kind: z.enum(locationKinds) })
   .strict();
 export const locationPatchSchema = currencyPatchSchema;
 export const emptyInitializeSchema = z.object({}).strict();
