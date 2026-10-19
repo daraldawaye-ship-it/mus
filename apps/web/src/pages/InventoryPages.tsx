@@ -1104,34 +1104,22 @@ function OperationEditor({
   const targetReady = !!item && !!fromLocation;
   const batch = useQuery({
     queryKey: [
-      "inventory",
-      user?.id,
-      companyId,
-      "count-batch",
-      item?.id,
-      fromLocation?.id,
+      "inventory", user?.id, companyId, "count-batch",
+      item?.id, fromLocation?.id,
     ],
-    queryFn: ({ signal }) => {
-      const filters = new URLSearchParams({
-        itemId: String(item!.id),
-        locationId: String(fromLocation!.id),
-        page: "1",
-        pageSize: "20",
-        sort: "id:asc",
-      });
-      return api<Page<StockBalance>>(
-        `/companies/${companyId}/stock-balances?${filters}`,
+    queryFn: ({ signal }) =>
+      api<{ quantitySmallest: string; batchCount: number }>(
+        `/companies/${companyId}/stock-count-snapshot?${new URLSearchParams({
+          itemId: String(item!.id),
+          locationId: String(fromLocation!.id),
+        })}`,
         { signal },
-      );
-    },
+      ),
     enabled: mode === "adjustment" && targetReady && !unknown && !result,
     refetchOnWindowFocus: false,
     staleTime: Infinity,
   });
-  const batchQuantity =
-    batch.data && batch.data.total <= 1
-      ? (batch.data.items[0]?.quantitySmallest ?? "0")
-      : null;
+  const batchQuantity = batch.data?.quantitySmallest ?? null;
   function edit<K extends keyof OperationFields>(
     key: K,
     value: OperationFields[K],
@@ -1516,11 +1504,14 @@ function OperationEditor({
                   ) : batch.error ? (
                     errorMessage(batch.error)
                   ) : batchQuantity === null ? (
-                    "توجد أكثر من دفعة لهذا الصنف في الموقع. راجع الدفعات من حركة المخزون قبل تسوية الرصيد."
+                    "تعذر تحميل إجمالي رصيد الصنف. أعد تحميل الرصيد قبل الترحيل."
                   ) : (
                     <>
-                      الرصيد المحمل قبل الجرد: {exact(batchQuantity)} من أصغر
-                      جزء. يتوقف الترحيل إذا تغير هذا الرصيد في الخادم.
+                      إجمالي الرصيد قبل الجرد: {exact(batchQuantity)} من أصغر جزء.
+                      {batch.data && batch.data.batchCount > 1
+                        ? ` الرصيد موزع على ${batch.data.batchCount} دفعات؛ سيتم خصم أي عجز من أقرب انتهاء دون دمج تواريخ الدفعات.`
+                        : ""}
+                      {" "}يتوقف الترحيل إذا تغير هذا الرصيد في الخادم.
                     </>
                   )}
                   <Button
