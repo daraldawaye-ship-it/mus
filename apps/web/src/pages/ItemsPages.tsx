@@ -1184,6 +1184,15 @@ function ItemEditor({
       `/companies/${companyId}/item-compositions/${fields.compositionId}`,{signal}),
     enabled: !!user && !!fields.compositionId,
   });
+  const [compositionSearch,setCompositionSearch]=useState("");
+  const [compositionFocused,setCompositionFocused]=useState(false);
+  const compositionOptions=useQuery({
+    queryKey:["company",user?.id,companyId,"composition-inline-search",compositionSearch],
+    queryFn:({signal})=>api<{items:ItemComposition[]}>(`/companies/${companyId}/item-options?`+
+      new URLSearchParams({type:"compositions",active:"true",q:compositionSearch.trim(),pageSize:"30"}),{signal}),
+    enabled:!!user && compositionFocused,
+    staleTime:15000,
+  });
   const [picker, setPicker] = useState<"currency" | "agent" | "composition" | "shelf" | "supplier" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1564,26 +1573,47 @@ function ItemEditor({
                 : "يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق."}</small>
             </div>
             <div className="field item-floating-picker">
-              <label id="item-composition-label">التركيب</label>
+              <label htmlFor="item-composition-search">التركيب</label>
               <div className="item-reference-field">
-                <Button variant="secondary" disabled={disabled}
-                  aria-labelledby="item-composition-label item-composition-choice"
-                  onClick={() => setPicker("composition")}>
-                  <span id="item-composition-choice">
-                    {fields.compositionId
+                <input id="item-composition-search" type="search" autoComplete="off"
+                  disabled={disabled} aria-label="بحث واختيار التركيب"
+                  aria-expanded={compositionFocused}
+                  placeholder="ابحث باسم التركيب العربي أو الإنجليزي"
+                  value={compositionFocused ? compositionSearch :
+                    (fields.compositionId
                       ? compositionDetail.data?.composition.arabicName ??
-                        (fields.compositionId === item?.compositionId
-                          ? item?.compositionArabicName : null) ?? "جارٍ تحميل التركيب…"
-                      : "اختيار تركيب من كرت التركيب"}
-                  </span>
-                </Button>
-                {fields.compositionId && (
-                  <Button variant="ghost" disabled={disabled}
-                    aria-label="إزالة تركيب الصنف"
-                    onClick={() => edit("compositionId", null)}>×</Button>
-                )}
+                        (fields.compositionId===item?.compositionId
+                          ? item?.compositionArabicName : "") ?? ""
+                      : "")}
+                  onFocus={()=>{setCompositionSearch("");setCompositionFocused(true);}}
+                  onChange={event=>{setCompositionSearch(event.target.value);setCompositionFocused(true);}}
+                  onKeyDown={event=>{if(event.key==="Escape")setCompositionFocused(false);
+                    if(event.key==="Enter"&&compositionFocused&&compositionOptions.data?.items.length===1){
+                      event.preventDefault();
+                      edit("compositionId",compositionOptions.data.items[0].id);
+                      setCompositionFocused(false);
+                    }}}
+                />
+                {fields.compositionId&&<Button variant="ghost" disabled={disabled}
+                  aria-label="إزالة تركيب الصنف"
+                  onClick={()=>{edit("compositionId",null);setCompositionSearch("");setCompositionFocused(false);}}>×</Button>}
               </div>
-              {fields.compositionId && compositionDetail.data?.composition.active === false &&
+              {compositionFocused&&!disabled&&<div className="item-inline-composition-options"
+                role="listbox" aria-label="نتائج البحث عن التركيب">
+                {compositionOptions.isFetching&&<small>جارٍ البحث…</small>}
+                {compositionOptions.error&&<Notice tone="error">{errorMessage(compositionOptions.error)}</Notice>}
+                {(compositionOptions.data?.items??[]).map(option=><button
+                  type="button" role="option" aria-selected={fields.compositionId===option.id}
+                  key={option.id} onClick={()=>{
+                    edit("compositionId",option.id);
+                    setCompositionSearch("");
+                    setCompositionFocused(false);
+                  }}>{option.arabicName} — {option.englishName}</button>)}
+                {!compositionOptions.isFetching&&!compositionOptions.error&&
+                  !compositionOptions.data?.items.length&&<small>لا توجد تراكيب مطابقة.</small>}
+                <button type="button" onClick={()=>setCompositionFocused(false)}>إغلاق النتائج</button>
+              </div>}
+              {fields.compositionId&&compositionDetail.data?.composition.active===false&&
                 <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
             <div className="field item-floating-picker">
