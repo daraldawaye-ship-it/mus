@@ -878,6 +878,16 @@ export function itemRoutes(pool: Pool): Router {
             supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
             nearestExpiryDate: input.nearestExpiryDate === undefined ? before.nearestExpiryDate : input.nearestExpiryDate,
           };
+          // Do not leave an original-item reference pointing to a different
+          // composition if its item card is reassigned or unlinked later.
+          if (before.compositionId && fields.compositionId !== before.compositionId) {
+            const pinned = await client.query(
+              "SELECT 1 FROM item_compositions WHERE company_id=$1 AND id=$2 AND original_item_id=$3",
+              [companyId,before.compositionId,rowId],
+            );
+            if (pinned.rowCount)
+              conflict("هذا الصنف محدد أورجنال في كرت التركيب؛ ألغِ تعيين الأورجنال قبل نقل الصنف أو فك ارتباطه.");
+          }
           await checkItemReferences(client, companyId, fields, before);
           const values: unknown[] = itemFieldColumns.map(
             ([field]) => fields[field],
