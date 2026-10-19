@@ -523,6 +523,18 @@ export function inventoryRoutes(pool: Pool): Router {
           } else {
             counted = BigInt(input.countedQuantity!) * multiplier;
           }
+          if (input.zeroLocation) {
+            if (counted !== 0n || input.nearestExpiryDate !== undefined ||
+                input.shelfId !== undefined || input.expiryDate !== null)
+              conflict("تصفير الموقع يحدد كمية صفر فقط ولا يعدل الرف أو أقرب تاريخ انتهاء في كرت الصنف.");
+          } else if (input.countedUnits) {
+            // All-unit reconciliation is the standard new UI workflow.
+            // Retain compatibility with historic single-quantity imports.
+            if (input.shelfId == null)
+              conflict("اختيار رف الصنف إلزامي عند تسوية الجرد.");
+            if (item.hasExpiry && !input.nearestExpiryDate)
+              conflict("أدخل أقرب تاريخ انتهاء للصنف قبل ترحيل التسوية.");
+          }
           const delta = counted - current;
           // Surplus joins an existing batch (the earliest available expiry),
           // while shortage consumes all available batches FEFO without
