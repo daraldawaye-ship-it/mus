@@ -49,7 +49,14 @@ const time = (value: string) =>
     timeZone: "Asia/Aden",
   }).format(new Date(value));
 const pointValue = (value: string) => BigInt(value).toLocaleString("ar-YE");
-const adenToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
+const adenToday = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: "year" | "month" | "day") =>
+    parts.find(part => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+};
 const normalizePoints = (value: string) =>
   value.replace(/[٠-٩۰-۹]/g, (digit) =>
     String(
