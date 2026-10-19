@@ -6,6 +6,8 @@ import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
 import type {
+  Branch,
+  Location,
   Company,
   CompanyCurrency,
   Employee,
