@@ -205,6 +205,12 @@ export function notificationRoutes(pool: Pool) {
             !["active", "snoozed", "done", "all"].includes(state)
           )
             throw new HttpError(400, "invalid_query", "حالة التنبيه غير صالحة");
+          const grouped=req.query.grouped==="1";
+          if(req.query.grouped!==undefined && req.query.grouped!=="1" && req.query.grouped!=="0")
+            throw new HttpError(400,"invalid_grouping","طريقة تجميع التنبيهات غير صالحة");
+          const code=req.query.code;
+          if(code!==undefined && (typeof code!=="string" || !/^[A-Z0-9_]{1,100}$/.test(code)))
+            throw new HttpError(400,"invalid_notification_type","نوع التنبيه غير صالح");
           const query = listQuery(
             req.query,
             {
@@ -233,15 +239,18 @@ export function notificationRoutes(pool: Pool) {
             ownId,
             general,
             searchPattern(query.q),
+            code??null,
           ];
           const filter =
             inboxFilter +
-            ` AND ${stateFilter} AND (n.title ILIKE $5 OR n.message ILIKE $5 OR n.code ILIKE $5)`;
+            ` AND ${stateFilter} AND (n.title ILIKE $5 OR n.message ILIKE $5 OR n.code ILIKE $5) AND ($6::text IS NULL OR n.code=$6)`;
           const from =
             " FROM notifications n JOIN notification_templates t ON t.code=n.code LEFT JOIN notification_settings s ON s.company_id IS NOT DISTINCT FROM n.company_id AND s.code=n.code";
           const total = (
             await client.query(
-              "SELECT count(*)::integer AS total" + from + " WHERE " + filter,
+              grouped
+                ? "SELECT count(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code" + from + " WHERE " + filter + ") grouped_count"
+                : "SELECT count(*)::integer AS total" + from + " WHERE " + filter,
               args,
             )
           ).rows[0].total;
@@ -255,10 +264,37 @@ export function notificationRoutes(pool: Pool) {
               args.slice(0, 4),
             )
           ).rows[0].total;
+          const unreadGroups = (
+            await client.query(
+              "SELECT COUNT(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code" +
+                from + " WHERE " + inboxFilter +
+                " AND n.read_at IS NULL AND n.completed_at IS NULL" +
+                " AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp())) unread_groups",
+              args.slice(0,4),
+            )
+          ).rows[0].total;
+          // Filter visibility before aggregation to keep permission boundaries.
+          const groupedSelect=notificationSelect.replace(
+            "t.implemented\n  FROM notifications n",
+            "t.implemented,v.group_count,v.group_unread\n  FROM notifications n",
+          );
           const rows = (
             await client.query(
-              notificationSelect +
-                ` WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+              grouped
+                ? `WITH visible_notifications AS (
+                    SELECT n.id,
+                      COUNT(*) OVER (PARTITION BY n.company_id,n.code)::integer AS group_count,
+                      COUNT(*) FILTER (WHERE n.read_at IS NULL)
+                        OVER (PARTITION BY n.company_id,n.code)::integer AS group_unread,
+                      ROW_NUMBER() OVER (PARTITION BY n.company_id,n.code
+                        ORDER BY n.created_at DESC,n.id DESC) AS position
+                    ${from} WHERE ${filter}
+                  )
+                  ${groupedSelect}
+                  JOIN visible_notifications v ON v.id=n.id
+                  WHERE v.position=1 ORDER BY ${query.order} LIMIT $7 OFFSET $8`
+                : notificationSelect +
+                    ` WHERE ${filter} ORDER BY ${query.order} LIMIT $7 OFFSET $8`,
               [...args, query.pageSize, query.offset],
             )
           ).rows;
@@ -275,6 +311,7 @@ export function notificationRoutes(pool: Pool) {
             items: rows.map((r) => notificationDTO(r, general)),
             total,
             unread,
+            unreadGroups,
             page: query.page,
             pageSize: query.pageSize,
             employees,
