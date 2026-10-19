@@ -107,7 +107,7 @@ export const accountLinkPurposes = [
   "operatingMaintenanceExpense",
   "operatingCommunicationsExpense",
 ] as const;
-export const locationKinds = ["showroom", "warehouse"] as const;
+export const locationKinds = ["showroom", "warehouse", "returns"] as const;
 export type AccountKind = (typeof accountKinds)[number];
 export type AccountCategory = (typeof accountCategories)[number];
 export type NormalSide = (typeof normalSides)[number];
@@ -131,6 +131,7 @@ export const normalSideLabels: Record<NormalSide, string> = {
 export const locationKindLabels: Record<LocationKind, string> = {
   showroom: "معرض",
   warehouse: "مخزن",
+  returns: "مرتجعات",
 };
 export const accountLinkLabels: Record<AccountLinkPurpose, string> = {
   salesRevenue: "إيراد المبيعات",
