@@ -456,7 +456,7 @@ function Navigation({
       )}
       {context && (
         <>
-          <div className="nav-label nav-heading company-nav-label">
+          <div className="nav-label nav-heading company-nav-label" title={context.company.name}>
             {context.company.name}
           </div>
           {links("company")}
