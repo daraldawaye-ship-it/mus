@@ -9,7 +9,7 @@ import { usePageDirectory } from "./page-directory";
 import { useControls } from "./control";
 import { errorMessage } from "./phase2";
 import { Button, Dialog, Field, Notice } from "./ui";
-import { positionShortcutFlyout, type ShortcutPlacement } from "./shortcut-position";
+import { positionShortcutFlyout, shortcutUsesHover, type ShortcutPlacement } from "./shortcut-position";
 
 type Shortcuts = {pageKeys:string[]};
 type ShortcutsProps = {
