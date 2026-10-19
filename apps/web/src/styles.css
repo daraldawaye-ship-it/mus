@@ -4703,3 +4703,29 @@ ul {
 .sales-header-actions-dropdown--raw > :is(button,a):is(:hover,:focus-visible):not(:disabled) {
   background:var(--hover);
 }
+
+/* Mark closing a cashbox distinctly from an ordinary employee transfer. */
+.receipt-kind-help {
+  margin:4px 0 12px; color:var(--muted);
+  font-size:12px; line-height:1.7;
+}
+.receipt-kind-help strong { color:var(--text); }
+.receipt-kind-marker {
+  display:inline-block; box-sizing:border-box;
+  padding:3px 7px; border-radius:5px; line-height:1.4;
+  font-size:11px; font-weight:750; white-space:nowrap;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis;
+  border:1px solid currentColor;
+}
+.receipt-kind-close {
+  color:#ffc477; background:rgba(234,148,37,.13);
+}
+.receipt-kind-transfer {
+  color:#90dce8; background:rgba(30,175,199,.12);
+}
+@media(max-width:680px) {
+  .receipt-mobile-primary .receipt-kind-marker {
+    flex:0 0 auto; padding:2px 4px; font-size:10px;
+  }
+  .receipt-kind-help { font-size:11px; margin-bottom:8px; }
+}
