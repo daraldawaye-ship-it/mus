@@ -2115,6 +2115,37 @@ test("sales returns restore archived items into their original batch at historic
   await assertBalanced(f, s.company.id);
 });
 
+test("linked sales returns keep original valuation while recording an edited expiry batch", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f);
+  const item = await s.item({ factor2: 1, factor3: 1, salePrice1: "20" });
+  await invoice(f, s, invoiceBody(s, item.id, {
+    lines: [{ itemId: item.id, unit: 1, quantity: "2", unitPrice: "10", expiryDate: "2027-01-01" }],
+  }));
+  const sale = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale",
+    counterpartyAccountId: s.customer.id,
+    lines: [{ itemId: item.id, unit: 1, quantity: "1" }],
+  }));
+  const returned = await invoice(f, s, invoiceBody(s, item.id, {
+    kind: "sale",
+    counterpartyAccountId: s.customer.id,
+    lines: [{
+      itemId: item.id, unit: 1, quantity: "-1",
+      originalLineId: sale.lines[0]!.id, expiryDate: "2027-06-01",
+    }],
+  }));
+  assert.equal(returned.lines[0]!.expiryDate, "2027-06-01");
+  assert.equal(returned.lines[0]!.costBase, "-10");
+  const restored = (await movements(f, s, item.id)).find(
+    movement => movement.invoiceId === returned.id,
+  )!;
+  assert.equal(restored.expiryDate, "2027-06-01");
+  assert.equal(restored.costBase, "10");
+  assert.notEqual(restored.originalMovementId, null);
+  await assertBalanced(f, s.company.id);
+});
+
 test("zero-net sales and their returns keep stock, cost and discount journals without charging the counterparty", async (t) => {
   const f = await fixture(t),
     s = await setup(f),
