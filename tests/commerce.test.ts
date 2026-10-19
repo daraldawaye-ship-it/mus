@@ -3817,3 +3817,53 @@ test("sale alerts include item and composition notes, clearance alternatives and
   assert.equal((await f.owner.request("GET",
     `${s2.path}/sales-item-alerts/${product.id}`)).status,404);
 });
+
+test("product form choices are independent and discrepancy report separates mismatch from general",async(t)=>{
+  const f=await fixture(t),s=await setup(f,"Form mismatch monitor company");
+  const comp=(await f.owner.ok<{composition:{id:number;productForm:string;revision:number}}>(
+    "POST",`${s.path}/item-compositions`,{
+      arabicName:"تركيب للمقارنة",englishName:"Form compare",
+      description:"",saleNotes:"",active:true,identicalAlternative:false,
+      nonInterchangeable:false,productForm:"شراب",idempotencyKey:randomUUID(),
+    },201)).composition;
+  assert.equal(comp.productForm,"شراب");
+  const mismatch=await s.item({
+    name:"صنف اقراص غير مطابق",compositionId:comp.id,productForm:"اقراص",
+  });
+  const unclassified=await s.item({
+    name:"صنف عام",compositionId:comp.id,productForm:"عام",
+  });
+  const match=await s.item({
+    name:"صنف شراب",compositionId:comp.id,productForm:"شراب",
+  });
+  const url=`${s.path}/item-form-differences`;
+  const review=await f.owner.ok<{items:{itemId:number;itemForm:string;compositionForm:string}[];total:number}>(
+    "GET",url);
+  assert(review.items.some(row=>row.itemId===mismatch.id && row.itemForm==="اقراص" && row.compositionForm==="شراب"));
+  assert(review.items.some(row=>row.itemId===unclassified.id));
+  assert(!review.items.some(row=>row.itemId===match.id));
+  const differences=await f.owner.ok<{items:{itemId:number}[]}>(
+    "GET",url+"?status=different");
+  assert(differences.items.some(row=>row.itemId===mismatch.id));
+  assert(!differences.items.some(row=>row.itemId===unclassified.id));
+  const unknown=await f.owner.ok<{items:{itemId:number}[]}>(
+    "GET",url+"?status=unclassified");
+  assert(unknown.items.some(row=>row.itemId===unclassified.id));
+  assert(!unknown.items.some(row=>row.itemId===mismatch.id));
+  const listed=await f.owner.ok<{items:{itemId:number}[]}>(
+    "GET",url+"?status=all");
+  assert(listed.items.some(row=>row.itemId===match.id));
+  const detail=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${mismatch.id}`)).item;
+  assert.equal(detail.productForm,"اقراص");
+  const corrected=await f.owner.ok<{item:Item}>(
+    "PATCH",`${s.path}/items/${mismatch.id}`,{
+      ...detail,productForm:"شراب",revision:detail.revision,
+    });
+  assert.equal(corrected.item.productForm,"شراب");
+  const after=await f.owner.ok<{items:{itemId:number}[]}>("GET",url+"?status=different");
+  assert(!after.items.some(row=>row.itemId===mismatch.id));
+  const other=await setup(f,"Different company cannot list forms");
+  assert.equal((await f.owner.ok<{items:unknown[]}>("GET",
+    `${other.path}/item-form-differences`)).items.length,0);
+});
