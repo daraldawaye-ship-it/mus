@@ -6,9 +6,11 @@ import { ChevronDown, ListFilter } from "lucide-react";
 type Action = "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "original";
 
 export function SalesHeaderActionsDropdown({
-  listUrl, canTransfer, canManagePledges, canEdit, originalVisible, onAction,
+  listUrl, purchaseUrl, canOpenPurchase, canTransfer, canManagePledges, canEdit, originalVisible, onAction,
 }: {
   listUrl: string;
+  purchaseUrl: string;
+  canOpenPurchase: boolean;
   canTransfer: boolean;
   canManagePledges: boolean;
   canEdit: boolean;
@@ -70,6 +72,7 @@ export function SalesHeaderActionsDropdown({
         style={{position:"fixed",zIndex:10030,top:coords.top,left:coords.left,
           width:Math.min(width,window.innerWidth-16),maxHeight:coords.maxHeight}}>
         <Link role="menuitem" to={listUrl} onClick={close}>قائمة الفواتير</Link>
+        {canOpenPurchase&&<Link role="menuitem" to={purchaseUrl} onClick={close}>فتح فاتورة مشتريات</Link>}
         {options.map(item=><button type="button" role="menuitem" key={item.action}
           disabled={item.disabled} onClick={()=>{close();onAction(item.action);}}>
           {item.label}
