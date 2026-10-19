@@ -360,7 +360,8 @@ function CompositionEditor({
             }}
             display={item=>`${item.code} — ${item.name}`}
             disabled={disabled} pageSize={50} sort="name:asc"
-            singleInput
+            singleInput searchPlaceholder="ابحث باسم الصنف أو رمزه"
+            noResultsLabel="لا توجد أصناف مرتبطة مطابقة للبحث."
           />}
           {!record&&<small className="muted">
             اختر الصنف الأورجنال بعد حفظ التركيب وربط الأصناف به.
