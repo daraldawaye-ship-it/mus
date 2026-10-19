@@ -385,7 +385,7 @@ export function walletRoutes(pool: Pool) {
         const fromDate = req.query.fromDate;
         const toDate = req.query.toDate;
         const isDay = (value: unknown): value is string =>
-          typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+          typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
           !Number.isNaN(Date.parse(value + "T00:00:00Z")) &&
           new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
         if (!isDay(fromDate) || !isDay(toDate) || fromDate > toDate)
@@ -468,7 +468,7 @@ export function walletRoutes(pool: Pool) {
         const fromDate = req.query.fromDate;
         const toDate = req.query.toDate;
         const validDay = (value: unknown) =>
-          typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+          typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
           !Number.isNaN(Date.parse(value + "T00:00:00Z")) &&
           new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
         if ((fromDate !== undefined || toDate !== undefined) &&
