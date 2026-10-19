@@ -370,6 +370,31 @@ try {
       assert(directory.summary.total >= 35);
     },
   );
+  await scenario(
+    "one phone tap opens shortcuts, a second closes them, and desktop hover still works",
+    async () => {
+      const phone=await pageFor(true);
+      await phone.goto("/");
+      await phone.getByRole("button",{name:"قائمة المستخدم"}).tap();
+      const shortcuts=phone.locator(".user-shortcut-root > button");
+      await shortcuts.waitFor({state:"visible"});
+      assert.equal(await shortcuts.getAttribute("aria-expanded"),"false");
+      await shortcuts.tap();
+      assert.equal(await shortcuts.getAttribute("aria-expanded"),"true",
+        "First touch must open the menu, not merely highlight its trigger");
+      await phone.locator(".user-shortcut-flyout").waitFor({state:"visible"});
+      assert.equal(await phone.locator(".user-shortcut-flyout").count(),1);
+      await shortcuts.tap();
+      assert.equal(await shortcuts.getAttribute("aria-expanded"),"false");
+      const desktop=await pageFor();
+      await desktop.goto("/");
+      await desktop.getByRole("button",{name:"قائمة المستخدم"}).click();
+      const desktopShortcut=desktop.locator(".user-shortcut-root > button");
+      await desktopShortcut.hover();
+      assert.equal(await desktopShortcut.getAttribute("aria-expanded"),"true",
+        "The mouse hover behavior must remain available on desktop");
+    },
+  );
   assert.equal(errors.length, 0, errors.join("; "));
 } finally {
   for (const context of contexts) await context.close();
