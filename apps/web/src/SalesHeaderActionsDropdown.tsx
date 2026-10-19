@@ -77,3 +77,86 @@ export function SalesHeaderActionsDropdown({
       </div>, document.body)}
   </>;
 }
+
+/** Reusable, permission-aware toolbar for pages with multiple header actions.
+ * Uses a viewport-positioned menu, so long labels cannot overflow the screen.
+ */
+export type PageAction = {
+  label:string;
+  to?:string;
+  onClick?:()=>void;
+  disabled?:boolean;
+};
+export function PageActionsDropdown({
+  actions,label="الإجراءات",
+}: {
+  actions:readonly PageAction[];
+  label?:string;
+}) {
+  const trigger=useRef<HTMLButtonElement>(null);
+  const menu=useRef<HTMLDivElement>(null);
+  const [coords,setCoords]=useState<{top:number;left:number;maxHeight:number}|null>(null);
+  const close=()=>setCoords(null);
+  function toggle(){
+    if(coords){close();return;}
+    const rect=trigger.current?.getBoundingClientRect();
+    if(!rect)return;
+    const viewWidth=window.innerWidth;
+    const width=Math.min(260,viewWidth-16);
+    const below=window.innerHeight-rect.bottom-8;
+    const above=below<245&&rect.top>below;
+    const maxHeight=Math.max(110,Math.min(360,above?rect.top-12:below));
+    setCoords({top:above?Math.max(8,rect.top-maxHeight-4):rect.bottom+4,
+      left:Math.max(8,Math.min(rect.right-width,viewWidth-width-8)),maxHeight});
+  }
+  useEffect(()=>{
+    if(!coords)return;
+    const onPointer=(event:PointerEvent)=>{
+      const target=event.target as Node;
+      if(!trigger.current?.contains(target)&&!menu.current?.contains(target))close();
+    };
+    const onKey=(event:KeyboardEvent)=>{
+      if(event.key==="Escape"){close();trigger.current?.focus();}
+    };
+    const onScroll=(event:Event)=>{if(!menu.current?.contains(event.target as Node))close();};
+    document.addEventListener("pointerdown",onPointer);
+    document.addEventListener("keydown",onKey);
+    window.addEventListener("scroll",onScroll,true);
+    window.addEventListener("resize",onScroll);
+    return ()=>{
+      document.removeEventListener("pointerdown",onPointer);
+      document.removeEventListener("keydown",onKey);
+      window.removeEventListener("scroll",onScroll,true);
+      window.removeEventListener("resize",onScroll);
+    };
+  },[coords]);
+  if(actions.length===0)return null;
+  return <>
+    <button ref={trigger} type="button"
+      className="button button-secondary button-compact sales-header-actions-trigger"
+      aria-haspopup="menu" aria-expanded={!!coords}
+      onClick={toggle}>
+      <ListFilter size={15} aria-hidden="true" />
+      {label}
+      <ChevronDown size={14} aria-hidden="true" />
+    </button>
+    {coords&&createPortal(
+      <div ref={menu} className="sales-header-actions-dropdown"
+        role="menu" aria-label={label}
+        style={{position:"fixed",zIndex:10030,top:coords.top,left:coords.left,
+          width:Math.min(260,window.innerWidth-16),maxHeight:coords.maxHeight}}>
+        {actions.map((entry,index)=>entry.to
+          ? <Link key={index} role="menuitem"
+              aria-disabled={entry.disabled||undefined}
+              tabIndex={entry.disabled?-1:undefined}
+              to={entry.disabled?"#":entry.to} onClick={event=>{
+                if(entry.disabled){event.preventDefault();return;}
+                close();
+              }}>{entry.label}</Link>
+          : <button key={index} role="menuitem" type="button"
+              disabled={entry.disabled} onClick={()=>{close();entry.onClick?.();}}>
+              {entry.label}
+            </button>)}
+      </div>,document.body)}
+  </>;
+}
