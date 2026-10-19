@@ -91,7 +91,7 @@ export function ServerLookup<T extends { id: number }>({
   accept?: (value: T) => boolean;
   emptyLabel?: string;
   pageSize?: 20 | 50 | 100;
-  sort?: "code:asc" | "name:asc";
+  sort?: "code:asc" | "name:asc" | "arabicName:asc";
   /** In invoice/voucher heads search and select in the same field. */
   singleInput?: boolean;
 }) {
