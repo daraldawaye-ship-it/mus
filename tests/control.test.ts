@@ -41,7 +41,7 @@ class Client {
   }
 }
 type Option = {
-  key:string; value:boolean|number; revision:number|null; canEdit:boolean;
+  key:string; value:boolean|number|string[]; revision:number|null; canEdit:boolean;
   policy:{accountantAllowed:boolean;employeeIds:number[];revision:number|null}|null
 };
 type Directory = {employeeId:number|null;owner:boolean;options:Option[]};
@@ -147,6 +147,39 @@ test("control center isolates companies/employees, audits optimistic writes and 
   const bothDisabled=await owner.ok<Directory>("GET",prefix+`?employeeId=${salesperson.employee.id}`);
   assert.equal(option(bothDisabled,purchaseOptionsKey).value,false);
   assert.equal(option(bothDisabled,salesOptionsKey).value,false);
+
+  // Receipt requirements are a multi-select over known account classifications.
+  const emptyPurchaseControls=await owner.ok<Directory>("GET",prefix);
+  assert.deepEqual(option(emptyPurchaseControls,"purchase_receipt_required_choices").value,[]);
+  assert.equal(option(emptyPurchaseControls,"purchase_default_account").value,0);
+  assert.equal((await owner.request("PUT",prefix+"/purchase_receipt_required_choices",{
+    value:["wholesale","wholesale"],employeeId:null,revision:null,
+  })).status,400);
+  assert.equal((await owner.request("PUT",prefix+"/purchase_receipt_required_choices",{
+    value:["unknown_choice"],employeeId:null,revision:null,
+  })).status,400);
+  await owner.ok("PUT",prefix+"/purchase_receipt_required_choices",{
+    value:["wholesale","company","pharmacy"],employeeId:null,revision:null,
+  });
+  assert.deepEqual(option(await owner.ok<Directory>("GET",prefix),
+    "purchase_receipt_required_choices").value,["wholesale","company","pharmacy"]);
+  assert.deepEqual(option(await owner.ok<Directory>("GET",
+    `/companies/${second.id}/control`),"purchase_receipt_required_choices").value,[]);
+  assert.equal((await owner.request("PUT",prefix+"/purchase_default_account",{
+    value:999999999,employeeId:null,revision:null,
+  })).status,400,"unknown default account must be rejected");
+  const purchaseAccount=(await runtime.pool.query(
+    "SELECT id FROM accounts WHERE company_id=$1 AND kind='posting' AND category='asset' AND active ORDER BY id LIMIT 1",
+    [first.id],
+  )).rows[0]?.id as number;
+  assert(purchaseAccount>0);
+  await owner.ok("PUT",prefix+"/purchase_default_account",{
+    value:purchaseAccount,employeeId:null,revision:null,
+  });
+  assert.equal(option(await owner.ok<Directory>("GET",prefix),
+    "purchase_default_account").value,purchaseAccount);
+  assert.equal(option(await owner.ok<Directory>("GET",
+    `/companies/${second.id}/control`),"purchase_default_account").value,0);
 
   // Personal shortcuts are isolated by user and active company. A remembered
   // key never becomes a grant: server accepts only currently viewable pages.
