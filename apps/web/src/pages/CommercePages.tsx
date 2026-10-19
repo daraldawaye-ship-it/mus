@@ -128,6 +128,11 @@ function useCommerceChanges(companyId: number) {
         ((queryKey[0] === "commerce" && queryKey[2] === companyId) ||
           (queryKey[0] === "inventory" && queryKey[2] === companyId) ||
           (queryKey[0] === "finance" && queryKey[2] === companyId) ||
+          // Purchase receipts and sales returns can advance nearest expiry on
+          // the item card: refresh cached cards and sale alerts after posting.
+          (queryKey[0] === "items" && queryKey[2] === companyId) ||
+          (queryKey[0] === "master" && queryKey[2] === companyId) ||
+          (queryKey[0] === "invoice-sale-alerts" && queryKey[2] === companyId) ||
           (queryKey[0] === "wallet-summary" && queryKey[2] === companyId) ||
           (queryKey[0] === "list" &&
             String(queryKey[2]).startsWith(`company:${companyId}:`))),
