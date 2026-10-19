@@ -11,7 +11,7 @@ import {
 import { api, ApiFailure, useScopeGuard, useSession } from "./api";
 import { errorMessage, ServerLookup } from "./phase2";
 import { Button, Field, Notice } from "./ui";
-import { InventoryAdjustmentSheet } from "./pages/InventoryPages";
+import { InventoryAdjustmentSheet, InventoryTransferSheet } from "./pages/InventoryPages";
 
 export function InvoiceItemAdjustmentSheet({
   context,itemId,onClose,onSaved,
@@ -38,6 +38,40 @@ export function InvoiceItemAdjustmentSheet({
         aria-label="تحميل تسوية الصنف">
         <div className="inventory-sheet-header">
           <strong>تسوية الصنف</strong>
+          <Button variant="secondary" onClick={onClose}>إغلاق</Button>
+        </div>
+        {item.isLoading && <p>جارٍ تحميل بيانات الصنف…</p>}
+        {item.error && <Notice tone="error">{errorMessage(item.error)}</Notice>}
+      </section>
+    </>,document.body,
+  );
+}
+
+/** Transfer an invoice item without modifying its unsaved invoice line. */
+export function InvoiceItemTransferSheet({
+  context,itemId,onClose,onPosted,
+}: {
+  context:CompanyContext;itemId:number;
+  onClose:()=>void;onPosted:()=>void;
+}) {
+  const {user}=useSession();
+  const companyId=context.company.id;
+  const item=useQuery({
+    queryKey:["invoice-item-transfer",user?.id,companyId,itemId],
+    queryFn:({signal})=>api<{item:Item}>(`/companies/${companyId}/items/${itemId}`,{signal}),
+    enabled:!!user&&itemId>0,
+  });
+  if(item.data?.item) {
+    return <InventoryTransferSheet context={context} item={item.data.item}
+      onClose={onClose} onPosted={onPosted}/>;
+  }
+  return createPortal(
+    <>
+      <div className="inventory-sheet-backdrop" aria-hidden="true"/>
+      <section className="inventory-sheet-panel" role="dialog" aria-modal="true"
+        aria-label="تحميل مناقلة الصنف">
+        <div className="inventory-sheet-header">
+          <strong>مناقلة الصنف</strong>
           <Button variant="secondary" onClick={onClose}>إغلاق</Button>
         </div>
         {item.isLoading && <p>جارٍ تحميل بيانات الصنف…</p>}
