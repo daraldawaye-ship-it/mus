@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { positionShortcutFlyout } from "../apps/web/src/shortcut-position.ts";
+import { positionShortcutFlyout, shortcutUsesHover } from "../apps/web/src/shortcut-position.ts";
+
+test("mobile touch or pen pointerenter cannot pre-open the shortcuts before the first tap",()=>{
+  assert.equal(shortcutUsesHover("touch"),false);
+  assert.equal(shortcutUsesHover("pen"),false);
+  assert.equal(shortcutUsesHover(""),false);
+  assert.equal(shortcutUsesHover("mouse"),true,
+    "Desktop mouse hover still opens the flyout");
+});
 
 test("profile shortcuts on a narrow screen open inside menu rather than off the left edge",()=>{
   // Reproduces the screenshot: avatar menu occupies x≈35..458 in a 584px viewport.
