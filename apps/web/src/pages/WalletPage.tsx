@@ -27,6 +27,7 @@ import {
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
+import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { refreshWalletConversions } from "./WalletConversionsPage";
 import {
   Button,
@@ -332,54 +333,17 @@ export function WalletPage({ context }: { context: CompanyContext }) {
       <PageHeader
         title="النقاط والمحفظة"
         description="رصيد موحد بالريال اليمني: مكافآت وحضور وعمولات تصريف، بسجل واحد. الترحيل للحساب المحاسبي بطلب الموظف فقط."
-        actions={
-          <>
-            {conversionsPage?.enabled && conversionsPage.actionAccess.view && (
-              <Link
-                to={`${base}/wallet-conversions`}
-                className="button button-secondary"
-              >
-                <Coins size={15} />
-                تحويلات النقاط
-              </Link>
-            )}
-            {settingsPage?.enabled && settingsPage.actionAccess.view && (
-              <Link
-                to={`${base}/wallet-settings`}
-                className="button button-secondary"
-              >
-                <Settings2 size={15} />
-                إعدادات المحفظة
-              </Link>
-            )}
-            {tasksPage?.enabled && tasksPage.actionAccess.view && (
-              <Link
-                to={`${base}/reward-tasks`}
-                className="button button-secondary"
-              >
-                <Settings2 size={15} />
-                مهام المكافآت
-              </Link>
-            )}
-            {canAward && (
-              <Button
-                onClick={openAward}
-                disabled={pending || !list.data?.employees.length}
-              >
-                <Plus size={15} />
-                إضافة نقاط
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              onClick={() => void refresh()}
-              disabled={list.loading}
-            >
-              <RefreshCw size={15} />
-              تحديث
-            </Button>
-          </>
-        }
+        actions={<PageActionsDropdown actions={[
+          ...(conversionsPage?.enabled && conversionsPage.actionAccess.view
+            ? [{label:"تحويلات النقاط",to:`${base}/wallet-conversions`}] : []),
+          ...(settingsPage?.enabled && settingsPage.actionAccess.view
+            ? [{label:"إعدادات المحفظة",to:`${base}/wallet-settings`}] : []),
+          ...(tasksPage?.enabled && tasksPage.actionAccess.view
+            ? [{label:"مهام المكافآت",to:`${base}/reward-tasks`}] : []),
+          ...(canAward ? [{label:"إضافة نقاط",onClick:openAward,
+            disabled:pending || !list.data?.employees.length}] : []),
+          {label:"تحديث",onClick:()=>{void refresh();},disabled:list.loading},
+        ]}/>
       />
       {notice && <Notice tone="success">{notice}</Notice>}
       {list.error && (
