@@ -4144,7 +4144,7 @@ test("product form choices are independent and discrepancy report separates mism
     },201)).composition;
   assert.equal(comp.productForm,"شراب");
   const mismatch=await s.item({
-    name:"صنف اقراص غير مطابق",compositionId:comp.id,productForm:"اقراص",
+    name:"صنف للمراجعة رقم واحد",compositionId:comp.id,productForm:"اقراص",
   });
   const unclassified=await s.item({
     name:"صنف عام",compositionId:comp.id,productForm:"عام",
@@ -4158,6 +4158,13 @@ test("product form choices are independent and discrepancy report separates mism
   assert(review.items.some(row=>row.itemId===mismatch.id && row.itemForm==="اقراص" && row.compositionForm==="شراب"));
   assert(review.items.some(row=>row.itemId===unclassified.id));
   assert(!review.items.some(row=>row.itemId===match.id));
+  // Both stored product-form fields are searchable, not only product names.
+  const itemFormMatches=await f.owner.ok<{items:{itemId:number}[]}>(
+    "GET",url+"?status=all&q="+encodeURIComponent("اقراص"));
+  assert(itemFormMatches.items.some(row=>row.itemId===mismatch.id));
+  const compositionFormMatches=await f.owner.ok<{items:{itemId:number}[]}>(
+    "GET",url+"?status=different&q="+encodeURIComponent("شراب"));
+  assert(compositionFormMatches.items.some(row=>row.itemId===mismatch.id));
   const differences=await f.owner.ok<{items:{itemId:number}[]}>(
     "GET",url+"?status=different");
   assert(differences.items.some(row=>row.itemId===mismatch.id));
