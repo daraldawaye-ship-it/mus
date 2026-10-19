@@ -1608,21 +1608,7 @@ function OperationEditor({
             )}
           </div>
           {!result && (
-            <div className="form-actions">
-              {mode === "adjustment" && (
-                <Button type="button" variant="secondary"
-                  disabled={saving || unknown || !allowed || !settings.data?.settings ||
-                    !targetReady || batch.isFetching || !!batch.error || batchQuantity === null}
-                  onClick={() => {
-                    if (!item || !fromLocation) return;
-                    if (!window.confirm(
-                      `تصفير رصيد "${item.name}" في موقع "${fromLocation.name}"؟ سيتم حفظ حركة تسوية الجرد دون تعديل الرف أو أقرب تاريخ انتهاء في كرت الصنف.`,
-                    )) return;
-                    void save(null, true);
-                  }}>
-                  تصفير الموقع المحدد
-                </Button>
-              )}
+            <div className={mode === "adjustment" ? "form-actions inventory-adjustment-actions" : "form-actions"}>
               <Button
                 type="submit"
                 disabled={
@@ -1645,6 +1631,20 @@ function OperationEditor({
                       ? "ترحيل المناقلة"
                       : "ترحيل تسوية الجرد"}
               </Button>
+              {mode === "adjustment" && (
+                <Button type="button" variant="secondary"
+                  disabled={saving || unknown || !allowed || !settings.data?.settings ||
+                    !targetReady || batch.isFetching || !!batch.error || batchQuantity === null}
+                  onClick={() => {
+                    if (!item || !fromLocation) return;
+                    if (!window.confirm(
+                      `تصفير رصيد "${item.name}" في موقع "${fromLocation.name}"؟ سيتم حفظ حركة تسوية الجرد دون تعديل الرف أو أقرب تاريخ انتهاء في كرت الصنف.`,
+                    )) return;
+                    void save(null, true);
+                  }}>
+                  تصفير الموقع المحدد
+                </Button>
+              )}
             </div>
           )}
         </Card>
