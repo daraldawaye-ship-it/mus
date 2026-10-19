@@ -68,6 +68,7 @@ export function commerceRoutes(pool: Pool): Router {
         const limit=typeof threshold==="number"?threshold:3;
         const rows=await client.query(
           `SELECT i.id,i.name,
+             i.commission_rate::text AS "clearanceRate",
              i.nearest_expiry_date::text AS "nearestExpiryDate",
              (i.commission_rate>0 AND i.clearance_from<=
                (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date
