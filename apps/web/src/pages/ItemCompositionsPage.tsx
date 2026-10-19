@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
+import { useQuery } from "@tanstack/react-query";
 import {
   itemCompositionSchema,
   itemCompositionPatchSchema,
@@ -10,7 +11,7 @@ import {
   type ProductForm,
   productForms,
 } from "../../../../packages/contracts/src/index";
-import { api, ApiFailure, usePagedQuery, useScopeGuard } from "../api";
+import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { itemsAccess } from "./ItemsPages";
 import { CompositionImportDialog } from "../CompositionImportDialog";
@@ -125,11 +126,48 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
       }}/>}
   </>;
 }
+/** Reuse the existing composition card as a bottom sheet in reports. */
+export function CompositionEditorSheet({
+  context,compositionId,onClose,onSaved,
+}:{
+  context:CompanyContext;compositionId:number;
+  onClose:()=>void;onSaved:(composition:ItemComposition)=>void;
+}){
+  const {user}=useSession();
+  const companyId=context.company.id;
+  const canView=itemsAccess(context),canManage=itemsAccess(context,true);
+  const query=useQuery({
+    queryKey:["composition-sheet",user?.id,companyId,compositionId],
+    queryFn:({signal})=>api<{composition:ItemComposition}>(
+      `/companies/${companyId}/item-compositions/${compositionId}`,{signal}),
+    enabled:!!user && canView,
+    staleTime:0,
+  });
+  if(!canView)return <Dialog open title="كرت التركيب"
+    className="invoice-item-sheet" onClose={onClose}>
+    <Notice tone="warning">ليس لديك صلاحية عرض كرت التركيب.</Notice>
+    <Button variant="secondary" onClick={onClose}>إغلاق</Button>
+  </Dialog>;
+  if(!query.data)return <Dialog open title="كرت التركيب"
+    className="invoice-item-sheet" onClose={onClose}>
+    {query.isPending?<Notice>جارٍ تحميل كرت التركيب…</Notice>
+      :<Notice tone="error">{errorMessage(query.error)}</Notice>}
+    <div className="form-actions">
+      {query.error&&<Button variant="secondary" onClick={()=>void query.refetch()}>إعادة المحاولة</Button>}
+      <Button variant="secondary" onClick={onClose}>إغلاق</Button>
+    </div>
+  </Dialog>;
+  return <CompositionEditor key={`${companyId}:${compositionId}`}
+    companyId={companyId} record={query.data.composition} canManage={canManage}
+    sheet onClose={onClose} onSaved={onSaved}/>;
+}
+
 function CompositionEditor({
-  companyId,record,canManage,onClose,onSaved,
+  companyId,record,canManage,onClose,onSaved,sheet=false,
 }:{
   companyId:number;record:ItemComposition|null;canManage:boolean;
   onClose:()=>void;onSaved:(value:ItemComposition)=>void;
+  sheet?:boolean;
 }){
   const guard=useScopeGuard(`company:${companyId}:item-composition:${record?.id??"new"}`);
   const [form,setForm]=useState({
@@ -207,6 +245,7 @@ function CompositionEditor({
   }
   return <>
     <Dialog open title={record?"كرت التركيب — تعديل":"كرت تركيب جديد"}
+      className={sheet?"invoice-item-sheet":""}
       onClose={()=>dirty||unknown?setConfirmClose(true):onClose()}>
       <form className="form-grid" onSubmit={e=>void save(e)}>
         {error&&<Notice tone="error">{error}</Notice>}
