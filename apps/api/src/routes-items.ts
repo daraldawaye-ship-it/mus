@@ -356,6 +356,42 @@ export function itemRoutes(pool: Pool): Router {
       res.status(result.created ? 201 : 200).json({ composition: result.composition });
     }),
   );
+  // Separate pages for either side of the threshold. Counts and grouping
+  // are computed in SQL across ALL linked items, not just the visible page.
+  router.get(
+    `${base}/item-compositions/:id/linked-items`,
+    handler(async (req,res) => {
+      const compositionId=id(req.params.id);
+      const rawPage=req.query.page;
+      const page=rawPage===undefined?1:
+        typeof rawPage==="string"&&/^[1-9][0-9]{0,5}$/.test(rawPage)?Number(rawPage):0;
+      if(page<1||page>100000)
+        throw new HttpError(400,"invalid_page","رقم صفحة الأصناف المرتبطة غير صالح");
+      const group=req.query.group??"all";
+      if(group!=="all"&&group!=="higher"&&group!=="lower")
+        throw new HttpError(400,"invalid_group","مجموعة السعر غير صالحة");
+      res.json(await readItems(pool,req,async(client,companyId)=>{
+        const composition=await masterRow(client,itemCompositionSelect,"f",companyId,compositionId);
+        const threshold: string|null=composition.price_split_threshold===null
+          ? null : String(composition.price_split_threshold);
+        const expression=threshold===null||group==="all"
+          ? "" : group==="higher"
+            ? " AND i.sale_price1>f.price_split_threshold"
+            : " AND i.sale_price1<=f.price_split_threshold";
+        const condition=" WHERE i.company_id=$1 AND i.composition_id=$2"+expression;
+        const params=[companyId,compositionId];
+        const count=await client.query(
+          "SELECT COUNT(*)::integer AS total "+itemFrom+condition,params,
+        );
+        const rows=await client.query(
+          itemSelect+condition+" ORDER BY i.sale_price1 DESC,i.name ASC,i.id ASC LIMIT $3 OFFSET $4",
+          [...params,20,(page-1)*20],
+        );
+        return {items:rows.rows.map(itemDTO),total:count.rows[0].total,
+          page,pageSize:20,priceSplitThreshold:threshold};
+      }));
+    }),
+  );
   router.get(
     `${base}/item-compositions/:id`,
     handler(async (req, res) => {
