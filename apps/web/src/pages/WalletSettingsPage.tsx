@@ -13,6 +13,7 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, useScopeGuard, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
+import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { errorMessage, ServerLookup } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -177,27 +178,15 @@ function WalletSettingsContent({ context }: { context: CompanyContext }) {
       <PageHeader
         title="إعدادات المحفظة"
         description="قيمة النقطة، سياسة الاعتماد، وحساب الموظف داخل الشركة."
-        actions={
-          <>
-            {walletPage?.enabled && walletPage.actionAccess.view && (
-              <Link to={`${base}/wallet`} className="button button-secondary">
-                <Coins size={15} />
-                النقاط والمحفظة
-              </Link>
-            )}
-            <Button
-              variant="ghost"
-              disabled={saving || bindingSaving || query.isFetching}
-              onClick={() => {
-                void query.refetch();
-                if (employeeId) void bindingQuery.refetch();
-              }}
-            >
-              <RefreshCw size={15} />
-              تحديث
-            </Button>
-          </>
-        }
+        actions={<PageActionsDropdown actions={[
+          ...(walletPage?.enabled && walletPage.actionAccess.view
+            ? [{label:"النقاط والمحفظة",to:`${base}/wallet`}] : []),
+          {label:"تحديث",disabled:saving || bindingSaving || query.isFetching,
+           onClick:()=>{
+             void query.refetch();
+             if(employeeId)void bindingQuery.refetch();
+           }},
+        ]}/>
       />
       <Notice>
         رصيد واحد: كل نقطة تساوي ريالًا يمنيًا واحدًا. تضيف المحفظة تلقائيًا نقاط
