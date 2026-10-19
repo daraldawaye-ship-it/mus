@@ -13,7 +13,7 @@ import {
   productForms,
 } from "../../../../packages/contracts/src/index";
 import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../api";
-import { errorMessage } from "../phase2";
+import { errorMessage, ServerLookup } from "../phase2";
 import { itemsAccess } from "./ItemsPages";
 import { CompositionImportDialog } from "../CompositionImportDialog";
 import {
@@ -172,6 +172,62 @@ export function CompositionEditorSheet({
     sheet onClose={onClose} onSaved={onSaved}/>;
 }
 
+type LinkedGroupPage = {items:Item[];total:number;page:number;pageSize:number};
+function LinkedCompositionGroup({
+  title,companyId,compositionId,group,userId,originalItemId,onOpenItem,version,
+}:{
+  title:string;companyId:number;compositionId:number;group:"all"|"higher"|"lower";
+  userId:number|undefined;originalItemId:number|null;onOpenItem:(id:number)=>void;
+  version:number;
+}){
+  const [page,setPage]=useState(1);
+  const linked=useQuery({
+    queryKey:["composition-linked-items",userId,companyId,compositionId,group,page,version],
+    queryFn:({signal})=>api<LinkedGroupPage>(
+      `/companies/${companyId}/item-compositions/${compositionId}/linked-items?${new URLSearchParams({
+        group,page:String(page),
+      })}`,{signal}),
+    enabled:!!userId,
+  });
+  return <div className="composition-price-group">
+    <h5>{title} {linked.data?`(${linked.data.total})`:
+      linked.error?"(تعذر التحميل)":"(جارٍ التحميل…)"}</h5>
+    {linked.isPending&&<p>جارٍ تحميل الأصناف…</p>}
+    {linked.error&&<Notice tone="error">
+      {errorMessage(linked.error)}
+      {" "}<Button type="button" variant="secondary" size="compact"
+        onClick={()=>void linked.refetch()}>إعادة المحاولة</Button>
+    </Notice>}
+    <div className="table-scroll">
+      <table className="data-table"><thead><tr>
+        <th>رمز الصنف</th><th>اسم الصنف</th><th>سعر بيع 1</th>
+        <th>شكل الصنف</th><th>الحالة</th><th>الكرت</th>
+      </tr></thead><tbody>
+        {(linked.data?.items??[]).map(item=><tr key={item.id}>
+          <td>{item.code}</td>
+          <td>{item.name} {originalItemId===item.id&&
+            <strong className="composition-original-label">أورجنال</strong>}</td>
+          <td>{Number(item.salePrice1).toLocaleString("en-US",{maximumFractionDigits:6})}</td>
+          <td>{item.productForm}</td>
+          <td>{item.active?"فعال":"مؤرشف"}</td>
+          <td><Button type="button" variant="secondary" size="compact"
+            onClick={()=>onOpenItem(item.id)}>كرت الصنف</Button></td>
+        </tr>)}
+        {linked.isSuccess&&!linked.data.items.length&&
+          <tr><td colSpan={6}>لا توجد أصناف في هذه المجموعة.</td></tr>}
+      </tbody></table>
+    </div>
+    {linked.data&&linked.data.total>20&&<div className="form-actions">
+      <Button type="button" variant="secondary" disabled={page===1}
+        onClick={()=>setPage(n=>n-1)}>السابق</Button>
+      <span>صفحة {page} من {Math.max(1,Math.ceil(linked.data.total/20))}</span>
+      <Button type="button" variant="secondary"
+        disabled={page*20>=linked.data.total}
+        onClick={()=>setPage(n=>n+1)}>التالي</Button>
+    </div>}
+  </div>;
+}
+
 function CompositionEditor({
   context,companyId,record,canManage,onClose,onSaved,sheet=false,
 }:{
@@ -181,27 +237,30 @@ function CompositionEditor({
 }){
   const guard=useScopeGuard(`company:${companyId}:item-composition:${record?.id??"new"}`);
   const {user}=useSession();
-  const [linkedPage,setLinkedPage]=useState(1);
   const [linkedItemId,setLinkedItemId]=useState<number|null>(null);
   const [linkedBusy,setLinkedBusy]=useState(false);
-  const linked=useQuery({
-    queryKey:["composition-linked-items",user?.id,companyId,record?.id,linkedPage],
-    queryFn:({signal})=>api<{items:Item[];total:number}>(
-      `/companies/${companyId}/items?`+new URLSearchParams({
-        compositionId:String(record!.id),page:String(linkedPage),pageSize:"20",sort:"name:asc",
-      }),{signal}),
-    enabled:!!user&&!!record,
-  });
+  const [linkedVersion,setLinkedVersion]=useState(0);
+  const [selectedOriginalItem,setSelectedOriginalItem]=useState<Item|null>(null);
   const [form,setForm]=useState({
     arabicName:record?.arabicName??"",
     englishName:record?.englishName??"",
     description:record?.description??"",
     saleNotes:record?.saleNotes??"",
     productForm:record?.productForm??"عام" as ProductForm,
+    priceSplitThreshold:record?.priceSplitThreshold??null,
+    originalItemId:record?.originalItemId??null,
     active:record?.active??true,
     identicalAlternative:record?.identicalAlternative??false,
     nonInterchangeable:record?.nonInterchangeable??false,
   });
+  const originalItemQuery=useQuery({
+    queryKey:["composition-original-item",user?.id,companyId,form.originalItemId],
+    queryFn:({signal})=>api<{item:Item}>(
+      `/companies/${companyId}/items/${form.originalItemId}`,{signal}),
+    enabled:!!user&&!!record&&!!form.originalItemId,
+  });
+  const originalItem=selectedOriginalItem?.id===form.originalItemId
+    ? selectedOriginalItem : originalItemQuery.data?.item??null;
   const [revision,setRevision]=useState(record?.revision??0);
   const [dirty,setDirty]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -233,9 +292,11 @@ function CompositionEditor({
         arabicName:result.arabicName,englishName:result.englishName,
         description:result.description,saleNotes:result.saleNotes,
         productForm:result.productForm,active:result.active,
+        priceSplitThreshold:result.priceSplitThreshold,originalItemId:result.originalItemId,
         identicalAlternative:result.identicalAlternative,
         nonInterchangeable:result.nonInterchangeable,
       });
+      setSelectedOriginalItem(null);
       setRevision(result.revision);setDirty(false);setConflict(false);
     }catch(e){if(guard.isCurrent())setError(errorMessage(e))}
     finally{if(guard.isCurrent())setSaving(false)}
