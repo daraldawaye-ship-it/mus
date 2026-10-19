@@ -1219,7 +1219,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     (entry.category==="asset" || entry.category==="liability"))??null;
   const receiptRequired = kind==="purchase" && !!account?.accountChoice &&
     Array.isArray(receiptRequiredChoices) && receiptRequiredChoices.includes(account.accountChoice);
-  const [pledgeMode, setPledgeMode] = useState<"add"|"list"|null>(null);
+  const [pledgeMode, setPledgeMode] = useState<"add"|"list"|"pay"|"receive"|null>(null);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
@@ -2131,6 +2131,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                     canOpenPurchase={commerceAccess(context)}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
                     canManagePledges={!locked && commerceAccess(context, true)}
+                    canOperatePledges={!locked && !!defaultCashbox && canPost(context) && (context.general || context.permissions.includes("finance.manage")) && !cashboxBusy}
                     canEdit={!locked}
                     originalVisible={showOriginalPicker}
                     onAction={action => {
@@ -2138,6 +2139,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                         openCashboxAction(action);
                       else if(action === "addPledge") setPledgeMode("add");
                       else if(action === "listPledges") setPledgeMode("list");
+                      else if(action === "payPledge") setPledgeMode("pay");
+                      else if(action === "receivePledge") setPledgeMode("receive");
                       else setShowOriginalPicker(shown => !shown);
                     }}
                   />
@@ -3075,6 +3078,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       {kind === "sale" && <PledgeDialogs
         companyId={companyId}
         mode={pledgeMode}
+        cashbox={defaultCashbox}
+        yerCurrencyId={defaultYer?.id ?? null}
         onClose={() => setPledgeMode(null)}
         onCreated={(newAccount, points) => {
           accountManuallyChosen.current = true;
