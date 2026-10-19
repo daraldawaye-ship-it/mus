@@ -1789,6 +1789,45 @@ ul {
   flex: 1;
   min-width: 0;
 }
+/* Keep the composition search field full-width and action buttons readable.
+   They must not shrink into vertical Arabic letter fragments on a four-column card. */
+.item-editor .item-composition-picker .item-composition-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+}
+.item-editor .item-composition-picker #item-composition-search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding-block-start: 12px;
+  padding-block-end: 1px;
+}
+.item-editor .item-composition-picker .item-composition-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.item-editor .item-composition-picker .item-composition-actions .button {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+  min-width: max-content;
+  height: 30px;
+  min-height: 30px;
+  padding: 2px 8px;
+  justify-content: center;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: visible;
+}
+.item-editor .item-composition-picker .item-composition-actions .button-ghost {
+  min-width: 28px;
+}
 .item-fields-grid .field > .button,
 .item-reference-field .button {
   height: var(--control-height);
