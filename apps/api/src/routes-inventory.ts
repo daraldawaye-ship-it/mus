@@ -214,6 +214,24 @@ export function inventoryRoutes(pool: Pool): Router {
       res.json({ settings });
     }),
   );
+  // Exact physical-count preview, summed across every batch for the item/location.
+  router.get(
+    `${base}/stock-count-snapshot`,
+    handler(async (req, res) => {
+      const itemId = id(req.query.itemId);
+      const locationId = id(req.query.locationId);
+      res.json(await readInventory(pool, req, async (client, companyId) => {
+        const result = await client.query(
+          `SELECT COALESCE(SUM(quantity_smallest),0)::text AS "quantitySmallest",
+             COUNT(*) FILTER (WHERE quantity_smallest<>0)::integer AS "batchCount"
+           FROM stock_balances
+           WHERE company_id=$1 AND item_id=$2 AND location_id=$3`,
+          [companyId,itemId,locationId],
+        );
+        return result.rows[0];
+      }));
+    }),
+  );
   router.get(
     `${base}/stock-balances`,
     handler(async (req, res) => {
@@ -445,31 +463,25 @@ export function inventoryRoutes(pool: Pool): Router {
             input.itemId,
             input.documentDate,
           );
-          // The reconciliation form only asks for the item's nearest expiry.
-          // Preserve existing batch bookkeeping without exposing a second date:
-          // use the single stocked batch when unambiguous; for a newly counted
-          // item, use the entered nearest expiry as the opening batch date.
-          let movementExpiryDate = input.expiryDate;
-          if (item.hasExpiry && movementExpiryDate === null) {
-            const existingBatches = await client.query(
-              `SELECT batch_key FROM stock_balances
-               WHERE company_id=$1 AND item_id=$2 AND location_id=$3
-                 AND quantity_smallest<>0
-               ORDER BY batch_key LIMIT 2 FOR UPDATE`,
-              [companyId,input.itemId,input.locationId],
-            );
-            if (existingBatches.rows.length > 1)
-              conflict("يوجد أكثر من تاريخ دفعة لهذا الصنف في موقع الجرد؛ لا يمكن تسوية إجماليها كتاريخ واحد. راجع الدفعات أولًا.");
-            movementExpiryDate = existingBatches.rows[0]?.batch_key
-              || input.nearestExpiryDate
-              || (await client.query(
-                "SELECT nearest_expiry_date::text AS expiry FROM items WHERE company_id=$1 AND id=$2",
-                [companyId,input.itemId],
-              )).rows[0]?.expiry
-              || null;
-            if (!movementExpiryDate)
-              conflict("حدد أقرب تاريخ انتهاء للصنف لبدء تسوية رصيده.");
-          }
+          // Reconcile the physical TOTAL while retaining each expiry batch.
+          // The nearest-expiry field updates the item card, never rebatches stock.
+          const existingBatches = await client.query(
+            `SELECT batch_key,quantity_smallest::text AS quantity_smallest
+             FROM stock_balances
+             WHERE company_id=$1 AND item_id=$2 AND location_id=$3
+             ORDER BY batch_key ASC FOR UPDATE`,
+            [companyId,input.itemId,input.locationId],
+          );
+          const allBatches = existingBatches.rows as {
+            batch_key: string; quantity_smallest: string;
+          }[];
+          const aggregateCount = input.expiryDate === null;
+          const current = allBatches.reduce((total,row) =>
+            total + (aggregateCount || row.batch_key === input.expiryDate
+              ? BigInt(row.quantity_smallest) : 0n),0n);
+          if (current !== BigInt(input.expectedQuantitySmallest))
+            conflict("تغير إجمالي رصيد الصنف أثناء الجرد؛ أعد تحميل الرصيد وراجع الكمية المعدودة.");
+          let movementExpiryDate: string | null = input.expiryDate;
           if (!item.hasExpiry && movementExpiryDate !== null)
             conflict("الصنف لا يتتبع تاريخ انتهاء");
           if (input.nearestExpiryDate !== undefined && !item.hasExpiry && input.nearestExpiryDate !== null)
@@ -509,18 +521,27 @@ export function inventoryRoutes(pool: Pool): Router {
           } else {
             counted = BigInt(input.countedQuantity!) * multiplier;
           }
-          const existing = await client.query(
-            "SELECT quantity_smallest FROM stock_balances WHERE company_id=$1 AND item_id=$2 AND location_id=$3 AND batch_key=$4 FOR UPDATE",
-            [companyId, input.itemId, input.locationId, movementExpiryDate ?? ""],
-          );
-          const current = existing.rows[0]
-            ? BigInt(existing.rows[0].quantity_smallest)
-            : 0n;
-          if (current !== BigInt(input.expectedQuantitySmallest))
-            conflict(
-              "تغير رصيد الدفعة أثناء الجرد؛ أعد تحميل الرصيد وراجع الكمية المعدودة قبل الحفظ",
-            );
           const delta = counted - current;
+          // Surplus joins an existing batch (the earliest available expiry),
+          // while shortage consumes all available batches FEFO without
+          // inventing or changing their expiration dates.
+          if (aggregateCount) {
+            if (delta > 0n && item.hasExpiry) {
+              movementExpiryDate =
+                allBatches.find(row => BigInt(row.quantity_smallest)>0n && row.batch_key)?.batch_key
+                || input.nearestExpiryDate
+                || (await client.query(
+                  "SELECT nearest_expiry_date::text AS expiry FROM items WHERE company_id=$1 AND id=$2",
+                  [companyId,input.itemId],
+                )).rows[0]?.expiry
+                || null;
+              if (!movementExpiryDate)
+                conflict("حدد أقرب تاريخ انتهاء للصنف لبدء تسوية زيادة المخزون.");
+            } else {
+              movementExpiryDate = null;
+            }
+          }
+
           // When the UI omits the cost, derive it from the item's own purchase
           // price, converted at the effective exchange rate on document date.
           // Legacy requests with an explicit cost remain backward compatible.
