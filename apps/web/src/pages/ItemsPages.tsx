@@ -1052,6 +1052,7 @@ type ItemFields = {
   reserveQuantity: string;
   searchKeys: string;
   purchaseNotes: string;
+  saleNotes: string;
   orderStoppedUntil: string;
   hasExpiry: boolean;
   nearestExpiryDate: string;
@@ -1088,6 +1089,7 @@ function initialItemFields(item: Item | null): ItemFields {
     reserveQuantity: item?.reserveQuantity ?? "0",
     searchKeys: item?.searchKeys ?? "",
     purchaseNotes: item?.purchaseNotes ?? "",
+    saleNotes: item?.saleNotes ?? "",
     orderStoppedUntil: item?.orderStoppedUntil ?? "",
     hasExpiry: item?.hasExpiry ?? true,
     nearestExpiryDate: item?.nearestExpiryDate ?? "",
@@ -1928,6 +1930,14 @@ function ItemEditor({
               value={fields.purchaseNotes}
               disabled={disabled}
               onChange={(event) => edit("purchaseNotes", event.target.value)}
+            />
+            <Field
+              label="ملاحظات عند البيع"
+              className="item-span-three"
+              maxLength={1000}
+              value={fields.saleNotes}
+              disabled={disabled}
+              onChange={(event) => edit("saleNotes", event.target.value)}
             />
           </div>
         </Card>
