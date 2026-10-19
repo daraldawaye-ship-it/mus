@@ -230,6 +230,8 @@ export const auditActionLabels = {
   "configuration.permissions.employee": "استثناء صلاحية موظف",
   "control.value": "تعديل قيمة خيار الكنترول",
   "control.policy": "تعديل مفوضي خيار الكنترول",
+  "centralAccess.update": "تحديد صفات الاطلاع والتعديل للعنصر",
+  "centralAccess.reset": "إعادة صلاحية العنصر إلى الافتراضي",
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
@@ -298,6 +300,8 @@ export const companyAuditActions: AuditAction[] = [
   "configuration.permissions.employee",
   "control.value",
   "control.policy",
+  "centralAccess.update",
+  "centralAccess.reset",
   "page.settings",
   "invoice.post",
   "inventory.settings",
