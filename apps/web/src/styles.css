@@ -4873,3 +4873,52 @@ a.notification-quick-title:hover { text-decoration: underline; }
   }
   .receipt-kind-help { font-size:11px; margin-bottom:8px; }
 }
+
+
+/* Wallet rewards: date range and task totals with in-page drilldown. */
+.wallet-task-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.wallet-task-filter-bar .field { min-width: 0; }
+.wallet-task-filter-bar input, .wallet-task-filter-bar select {
+  width: 100%;
+  min-width: 0;
+}
+.wallet-task-table { width: 100%; }
+.wallet-task-table th, .wallet-task-table td { padding: 9px; }
+.wallet-task-name {
+  background: transparent;
+  color: var(--primary);
+  padding: 3px 0;
+  text-align: right;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.wallet-task-name:hover, .wallet-task-name:focus-visible { text-decoration: underline; }
+.wallet-task-selected { background: var(--hover); }
+.wallet-task-grand-total { background: var(--surface-raised, var(--surface)); }
+.wallet-task-inline-details {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.wallet-task-details-head, .wallet-task-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.wallet-task-pager { justify-content: flex-end; }
