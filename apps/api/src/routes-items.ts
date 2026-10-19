@@ -280,10 +280,10 @@ export function itemRoutes(pool: Pool): Router {
         };
         const added = await client.query(
           `INSERT INTO item_compositions
-          (company_id,arabic_name,english_name,description,active,
+          (company_id,arabic_name,english_name,description,sale_notes,active,
            identical_alternative,non_interchangeable,created_by,idempotency_key,creation_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-          [companyId,input.arabicName,input.englishName,input.description,input.active,
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+          [companyId,input.arabicName,input.englishName,input.description,input.saleNotes,input.active,
            input.identicalAlternative,input.nonInterchangeable,user.id,input.idempotencyKey,
            JSON.stringify(input)],
         );
@@ -321,11 +321,11 @@ export function itemRoutes(pool: Pool): Router {
           conflict("تم تعديل التركيب بواسطة مستخدم آخر؛ حمّل النسخة الحالية قبل الحفظ");
         await client.query(
           `UPDATE item_compositions
-          SET arabic_name=$1,english_name=$2,description=$3,active=$4,
-              identical_alternative=$5,non_interchangeable=$6,
+          SET arabic_name=$1,english_name=$2,description=$3,sale_notes=$4,active=$5,
+              identical_alternative=$6,non_interchangeable=$7,
               revision=revision+1,updated_at=clock_timestamp()
-          WHERE company_id=$7 AND id=$8`,
-          [input.arabicName,input.englishName,input.description,input.active,
+          WHERE company_id=$8 AND id=$9`,
+          [input.arabicName,input.englishName,input.description,input.saleNotes,input.active,
             input.identicalAlternative,input.nonInterchangeable,companyId,compositionId],
         );
         const next = itemCompositionDTO(await masterRow(
