@@ -43,6 +43,17 @@ import {
   Select,
 } from "../ui";
 
+/** A suggested editable message, never proof of posting by itself. */
+function transferFollowupText(params: URLSearchParams) {
+  const operation = params.get("transferId") ?? "";
+  if (!/^[1-9][0-9]{0,9}$/.test(operation)) return "";
+  const from = (params.get("fromName") ?? "موقع الإرسال").slice(0,120);
+  const to = (params.get("toName") ?? "موقع الاستلام").slice(0,120);
+  const name = (params.get("itemName") ?? "الصنف").slice(0,120);
+  const day = (params.get("transferDate") ?? "").slice(0,10);
+  return `تمت مناقلة الصنف «${name}» من «${from}» إلى «${to}» بموجب المناقلة رقم ${operation}${/^\\d{4}-\\d{2}-\\d{2}$/.test(day) ? ` بتاريخ ${day}` : ""}. يرجى الاطلاع على المناقلة واتخاذ اللازم.`;
+}
+
 const time = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("ar-YE", {
@@ -194,6 +205,20 @@ function MemosContent({ context }: { context: CompanyContext }) {
   const [open, setOpen] = useState(!!restored);
   const [title, setTitle] = useState(restored?.payload.title ?? "");
   const [body, setBody] = useState(restored?.payload.body ?? "");
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || params.get("new") !== "1" || !canCreate ||
+        !!restored) return;
+    const rawItem = params.get("itemId") ?? "";
+    if (!/^[1-9][0-9]{0,9}$/.test(rawItem) ||
+        Number(rawItem) > 2147483647) return;
+    autoOpened.current = true;
+    setLinks({ ...emptyMemoLinks(), itemId: Number(rawItem) });
+    setTitle(`متابعة مناقلة المرتجعات للصنف #${rawItem}`);
+    setBody(transferFollowupText(params));
+    setType("review");
+    setOpen(true);
+  }, [params, canCreate, restored]);
   const [type, setType] = useState<MemoType>(restored?.payload.type ?? "task");
   const [recipient, setRecipient] = useState<MemoRecipient | null>(
     restored?.recipient ?? null,
@@ -639,6 +664,7 @@ function MemoDetailContent({
 }) {
   const companyId = context.company.id,
     base = `/companies/${companyId}`;
+  const [urlParams] = useSearchParams();
   const { user } = useSession(),
     client = useQueryClient(),
     guard = useScopeGuard(`company:${companyId}:memo:${memoId}`);
@@ -694,7 +720,9 @@ function MemoDetailContent({
   const [action, setAction] = useState<MemoActionInput["action"]>(
     restored?.payload.action ?? "reply",
   );
-  const [body, setBody] = useState(restored?.payload.body ?? "");
+  const [body, setBody] = useState(
+    restored?.payload.body ?? transferFollowupText(urlParams),
+  );
   const [recipient, setRecipient] = useState<MemoRecipient | null>(
     restored?.recipient ?? null,
   );
