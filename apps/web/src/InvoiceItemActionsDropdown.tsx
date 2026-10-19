@@ -2,22 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Pencil } from "lucide-react";
 
-export type InvoiceItemAction = "edit" | "adjust" | "report";
+export type InvoiceItemAction = "edit" | "adjust" | "transfer" | "report";
 
 export const invoiceItemActionLabels: Record<InvoiceItemAction, string> = {
   edit: "تعديل كرت الصنف",
   adjust: "تسوية الصنف",
+  transfer: "مناقلة صنف",
   report: "إرسال تقرير مرتبط بالصنف",
 };
 
 /** Portal-based dropdown escapes the horizontally scrolling invoice matrix. */
 export function InvoiceItemActionsDropdown({
-  itemName, disabled, canEdit, canAdjust, canReport, onAction,
+  itemName, disabled, canEdit, canAdjust, canTransfer, canReport, onAction,
 }: {
   itemName: string;
   disabled: boolean;
   canEdit: boolean;
   canAdjust: boolean;
+  canTransfer: boolean;
   canReport: boolean;
   onAction: (action: InvoiceItemAction) => void;
 }) {
@@ -67,11 +69,12 @@ export function InvoiceItemActionsDropdown({
     {position && createPortal(
       <div ref={menu} role="menu" aria-label={`خيارات الصنف ${itemName}`}
         className="invoice-item-actions-dropdown" style={{top:position.top,left:position.left}}>
-        {(["edit","adjust","report"] as const).map(action=>
+        {(["edit","adjust","transfer","report"] as const).map(action=>
           <button key={action} type="button" role="menuitem"
-            disabled={action==="edit"?!canEdit:action==="adjust"?!canAdjust:!canReport}
+            disabled={action==="edit"?!canEdit:action==="adjust"?!canAdjust:action==="transfer"?!canTransfer:!canReport}
             title={action==="edit"&&!canEdit?"تعديل الأصناف غير مسموح":
               action==="adjust"&&!canAdjust?"تسوية الصنف تحتاج صلاحيات المخزون والمالية":
+              action==="transfer"&&!canTransfer?"مناقلة الصنف تحتاج صلاحية ترحيل المخزون":
               action==="report"&&!canReport?"إرسال تقرير يحتاج صلاحية إنشاء المذكرات":undefined}
             onClick={()=>{close();onAction(action);}}>
             {invoiceItemActionLabels[action]}
