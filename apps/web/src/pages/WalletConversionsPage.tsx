@@ -314,7 +314,7 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
             ? [{label:"النقاط والمحفظة",to:`${base}/wallet`}] : []),
           {label:"تحديث",disabled:list.loading || saving,
            onClick:()=>{void refreshWalletConversions(client,user?.id,companyId);}},
-        ]}/>
+        ]}/>}
       />
       <Notice>
         اعتماد التحويل يثبت مستحقًا في حساب الموظف ولا يعني صرف مبلغ نقدي.
