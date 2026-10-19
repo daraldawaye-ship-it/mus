@@ -3,6 +3,13 @@
  * A CSS logical "inline-start" offset is not sufficient: the avatar
  * dropdown may be near either screen edge regardless of RTL direction.
  */
+/** Only a real mouse should reveal the flyout by hovering.
+ * Touch pointerenter arrives before the click: opening there would make
+ * the click immediately close the menu on the user's first tap. */
+export function shortcutUsesHover(pointerType: string): boolean {
+  return pointerType === "mouse";
+}
+
 export type ShortcutAnchor = {left:number;right:number;top:number};
 export type ShortcutViewport = {width:number;height:number};
 export type ShortcutPlacement =

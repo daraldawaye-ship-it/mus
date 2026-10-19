@@ -9,7 +9,7 @@ import { usePageDirectory } from "./page-directory";
 import { useControls } from "./control";
 import { errorMessage } from "./phase2";
 import { Button, Dialog, Field, Notice } from "./ui";
-import { positionShortcutFlyout, type ShortcutPlacement } from "./shortcut-position";
+import { positionShortcutFlyout, shortcutUsesHover, type ShortcutPlacement } from "./shortcut-position";
 
 type Shortcuts = {pageKeys:string[]};
 type ShortcutsProps = {
@@ -91,7 +91,15 @@ export function UserShortcutFlyout({
      catalog.isLoading,shortcutQuery.isError]);
   if(settings.value("show_shortcuts_menu")===false)return null;
   return <div className="user-shortcut-root" ref={root}
-    onMouseEnter={()=>setOpen(true)} onMouseLeave={()=>setOpen(false)}
+    // Touch devices synthesize mouseenter before click. The old mouseenter
+    // opened the flyout, then the same tap's click toggled it closed.
+    // Only real mouse pointer movement triggers hover; touch uses click once.
+    onPointerEnter={event=>{
+      if(shortcutUsesHover(event.pointerType))setOpen(true);
+    }}
+    onPointerLeave={event=>{
+      if(shortcutUsesHover(event.pointerType))setOpen(false);
+    }}
     onKeyDown={event=>{
       if(event.key==="Escape" && open){
         event.stopPropagation();
