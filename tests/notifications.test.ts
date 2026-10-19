@@ -510,6 +510,31 @@ test("automatic notifications separate reading from completion, validate follow-
     renewed.items.filter((row) => row.completedAt === null).length,
     1,
   );
+  // Group repeated types on the server, after checking the recipient and
+  // company permissions. Only the most recent message is displayed; the
+  // previous completed record remains accessible in individual view.
+  const grouped=await subject.client.ok<NotificationDirectory>(
+    "GET",base+"/notifications?state=all&grouped=1",
+  );
+  assert.equal(grouped.total,1);
+  assert.equal(grouped.items.length,1);
+  assert.equal(grouped.items[0]?.groupCount,2);
+  assert.equal(grouped.items[0]?.groupUnread,1);
+  assert.equal(grouped.unreadGroups,1);
+  assert.equal(grouped.items[0]?.id,renewed.items[0]?.id);
+  const individual=await subject.client.ok<NotificationDirectory>(
+    "GET",base+"/notifications?state=all&grouped=0&code=ATTENDANCE_LATE",
+  );
+  assert.equal(individual.total,2);
+  assert.equal(individual.items[0]?.groupCount,1);
+  assert.equal(individual.items[0]?.groupUnread,1);
+  assert.equal((await subject.client.request(
+    "GET",base+"/notifications?state=all&grouped=1&code=INVALID-TYPE",
+  )).status,400);
+  assert.equal((await peer.client.ok<NotificationDirectory>(
+    "GET",base+"/notifications?state=all&grouped=1",
+  )).total,1,"Only a permitted recipient's notifications are grouped");
+
 
   await subject.client.ok("POST", "/auth/password", {
     currentPassword: password,
