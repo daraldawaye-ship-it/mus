@@ -126,9 +126,29 @@ try {
   const secondQuantity = rows.nth(1).locator('[id^="invoice-quantity-"]');
   await focused((await secondQuantity.getAttribute("id"))!);
   assert.equal(await secondQuantity.inputValue(), "1");
+
+  // Purchase flow is distinct from sales: item -> quantity -> price -> expiry.
+  await page.goto(base + "/invoices/new?kind=purchase");
+  const purchaseRows = page.locator(".commerce-matrix tbody tr");
+  const purchaseSearch = purchaseRows.first().locator('input[type="search"]');
+  await purchaseSearch.fill("Focus item");
+  await page
+    .getByRole("listbox", { name: "نتائج الأصناف" })
+    .getByRole("button", { name: /Focus item/ })
+    .click();
+  const purchaseQuantity = purchaseRows.first().locator('[id^="invoice-quantity-"]');
+  await focused((await purchaseQuantity.getAttribute("id"))!);
+  await purchaseQuantity.fill("3");
+  await purchaseQuantity.press("Enter");
+  const purchasePrice = purchaseRows.first().locator('[id^="invoice-price-"]');
+  await focused((await purchasePrice.getAttribute("id"))!);
+  await purchasePrice.fill("11");
+  await purchasePrice.press("Enter");
+  const purchaseExpiry = purchaseRows.first().locator('input[id^="invoice-expiry-"]:not([id$="-year"])');
+  await focused((await purchaseExpiry.getAttribute("id"))!);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: mouse selection, Enter on selected item, next row and delayed barcode selection all focus quantity",
+    "PASS: sales selection focus and purchase item -> quantity -> price -> expiry",
   );
   await context.close();
 } finally {
