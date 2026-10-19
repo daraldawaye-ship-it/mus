@@ -335,13 +335,15 @@ export function itemRoutes(pool: Pool): Router {
           )),
           created: false,
         };
+        if (input.originalItemId !== null)
+          conflict("احفظ التركيب واربط أصنافًا به، ثم اختر الصنف الأورجنال.");
         const added = await client.query(
           `INSERT INTO item_compositions
           (company_id,arabic_name,english_name,description,sale_notes,product_form,active,
-           identical_alternative,non_interchangeable,created_by,idempotency_key,creation_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+           identical_alternative,non_interchangeable,price_split_threshold,created_by,idempotency_key,creation_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
           [companyId,input.arabicName,input.englishName,input.description,input.saleNotes,input.productForm,input.active,
-           input.identicalAlternative,input.nonInterchangeable,user.id,input.idempotencyKey,
+           input.identicalAlternative,input.nonInterchangeable,input.priceSplitThreshold,user.id,input.idempotencyKey,
            JSON.stringify(input)],
         );
         const composition = itemCompositionDTO(await masterRow(
@@ -376,14 +378,23 @@ export function itemRoutes(pool: Pool): Router {
         ));
         if (before.revision !== input.revision)
           conflict("تم تعديل التركيب بواسطة مستخدم آخر؛ حمّل النسخة الحالية قبل الحفظ");
+        if (input.originalItemId !== null) {
+          const linked = await client.query(
+            "SELECT id FROM items WHERE company_id=$1 AND id=$2 AND composition_id=$3",
+            [companyId,input.originalItemId,compositionId],
+          );
+          if (!linked.rowCount)
+            conflict("يجب أن يكون الصنف الأورجنال مرتبطًا بهذا التركيب وفي الشركة نفسها.");
+        }
         await client.query(
           `UPDATE item_compositions
           SET arabic_name=$1,english_name=$2,description=$3,sale_notes=$4,product_form=$5,active=$6,
               identical_alternative=$7,non_interchangeable=$8,
+              price_split_threshold=$9,original_item_id=$10,
               revision=revision+1,updated_at=clock_timestamp()
-          WHERE company_id=$9 AND id=$10`,
+          WHERE company_id=$11 AND id=$12`,
           [input.arabicName,input.englishName,input.description,input.saleNotes,input.productForm,input.active,
-            input.identicalAlternative,input.nonInterchangeable,companyId,compositionId],
+            input.identicalAlternative,input.nonInterchangeable,input.priceSplitThreshold,input.originalItemId,companyId,compositionId],
         );
         const next = itemCompositionDTO(await masterRow(
           client,itemCompositionSelect,"f",companyId,compositionId,
