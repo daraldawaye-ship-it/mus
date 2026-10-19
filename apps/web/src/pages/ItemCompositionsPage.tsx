@@ -311,7 +311,7 @@ function CompositionEditor({
             {errorMessage(linked.error)}
             {" "}<Button type="button" variant="secondary" size="compact"
               onClick={()=>void linked.refetch()}>إعادة المحاولة</Button>
-          </Notice>
+          </Notice>}
           <div className="table-scroll">
             <table className="data-table"><thead><tr>
               <th>رمز الصنف</th><th>اسم الصنف</th><th>شكل الصنف</th><th>الحالة</th><th>الكرت</th>
