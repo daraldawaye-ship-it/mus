@@ -433,6 +433,7 @@ export async function requestPageKeys(
     locations: "locations",
     items: "items",
     "item-statistics-report": "item-statistics-report",
+    "central-access": "central-access",
     "item-form-differences": "item-form-differences",
     "account-statistics-report": "account-statistics",
     "item-options": "items",
