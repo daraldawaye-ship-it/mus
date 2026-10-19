@@ -189,9 +189,12 @@ legend {
 }
 .sidebar nav {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
   padding: 3px;
@@ -216,6 +219,8 @@ legend {
 .nav-link {
   display: flex;
   align-items: center;
+  min-width: 0;
+  width: 100%;
   gap: 10px;
   height: 36px;
   padding: 0 10px;
@@ -231,10 +236,15 @@ legend {
   color: var(--on-nav-active);
   font-weight: 700;
 }
-.nav-link span {
+.nav-link .nav-text {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.nav-link > svg {
+  flex-shrink: 0;
 }
 .nav-chevron {
   margin-inline-start: auto;
