@@ -3,16 +3,17 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ChevronDown, ListFilter } from "lucide-react";
 
-type Action = "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "original";
+type Action = "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "payPledge" | "receivePledge" | "original";
 
 export function SalesHeaderActionsDropdown({
-  listUrl, purchaseUrl, canOpenPurchase, canTransfer, canManagePledges, canEdit, originalVisible, onAction,
+  listUrl, purchaseUrl, canOpenPurchase, canTransfer, canManagePledges, canOperatePledges, canEdit, originalVisible, onAction,
 }: {
   listUrl: string;
   purchaseUrl: string;
   canOpenPurchase: boolean;
   canTransfer: boolean;
   canManagePledges: boolean;
+  canOperatePledges: boolean;
   canEdit: boolean;
   originalVisible: boolean;
   onAction: (action: Action) => void;
@@ -59,6 +60,8 @@ export function SalesHeaderActionsDropdown({
     {action:"close",label:"إغلاق الصندوق",disabled:!canTransfer},
     {action:"addPledge",label:"إضافة رهن",disabled:!canManagePledges},
     {action:"listPledges",label:"عرض الرهونات",disabled:!canManagePledges},
+    {action:"payPledge",label:"صرف مبلغ لرهن",disabled:!canOperatePledges},
+    {action:"receivePledge",label:"استلام مبلغ من رهن",disabled:!canOperatePledges},
     {action:"original",label:originalVisible?"إخفاء ربط مردود بأصل":"ربط مردود بأصل",disabled:!canEdit},
   ];
   return <>
