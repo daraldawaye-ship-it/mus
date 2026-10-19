@@ -3,11 +3,19 @@
 ALTER TABLE items DROP CONSTRAINT IF EXISTS item_product_form_valid;
 ALTER TABLE item_compositions DROP CONSTRAINT IF EXISTS composition_product_form_valid;
 
--- One-time label correction: master-identity guards must not reject the migration.
-ALTER TABLE items DISABLE TRIGGER USER;
-UPDATE items SET product_form='فيال شراب' WHERE product_form='فبال شراب';
-ALTER TABLE items ENABLE TRIGGER USER;
-UPDATE item_compositions SET product_form='فيال شراب' WHERE product_form='فبال شراب';
+-- Preserve immutable master identity and revision guards during the correction.
+-- Updating a master requires revision+1 and a nondecreasing updated_at.
+UPDATE items
+SET product_form='فيال شراب',
+    revision=revision+1,
+    updated_at=GREATEST(updated_at, clock_timestamp())
+WHERE product_form='فبال شراب';
+
+UPDATE item_compositions
+SET product_form='فيال شراب',
+    revision=revision+1,
+    updated_at=GREATEST(updated_at, clock_timestamp())
+WHERE product_form='فبال شراب';
 
 ALTER TABLE items ADD CONSTRAINT item_product_form_valid CHECK (
   product_form IN (
