@@ -4528,3 +4528,11 @@ ul {
   border-radius:3px;
 }
 .form-differences-sort>span {font-size:11px;opacity:.75}
+
+/* Sale-item information belongs to the blank center area of the invoice header. */
+.commerce-header-blank.commerce-sale-info-panel { height:clamp(75px,9dvh,88px); overflow:auto; padding:6px 9px; }
+.commerce-sale-info-title { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; margin-bottom:3px; }
+.commerce-sale-info-panel .invoice-sale-alerts { border:0; background:transparent; padding:0; margin:0; font-size:11px; }
+.commerce-sale-info-panel .invoice-sale-alert-note { margin:2px 0; }
+.commerce-sale-info-panel .invoice-sale-alert-peers { display:flex; flex-wrap:wrap; gap:4px 8px; }
+.commerce-sale-info-panel .invoice-sale-alert-peer { width:auto; }
