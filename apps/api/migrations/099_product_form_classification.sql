@@ -80,3 +80,15 @@ DROP FUNCTION _initial_product_form_from_name(text);
 CREATE INDEX IF NOT EXISTS items_form_composition_idx
   ON items(company_id,composition_id,product_form)
   WHERE composition_id IS NOT NULL;
+
+-- Track this read-only comparison as a first-class company page.
+INSERT INTO page_registry(key) VALUES ('company.item-form-differences')
+ON CONFLICT DO NOTHING;
+INSERT INTO permission_definitions(
+  key,page_key,action,name,rule_role,required_permissions
+) VALUES(
+  'company.item-form-differences:view',
+  'company.item-form-differences','view',
+  'متابعة اختلاف شكل الصنف والتركيب — عرض',
+  'permissions',ARRAY['items.view']::text[]
+) ON CONFLICT(key) DO NOTHING;
