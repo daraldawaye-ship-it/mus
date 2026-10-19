@@ -24,7 +24,7 @@ import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
-import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
+import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -44,6 +44,65 @@ async function readCommerce<T>(
 export function commerceRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  // Small, read-only and indexed lookup, only when the cashier selects
+  // a sale item. No synchronous work in invoice line typing/focus transitions.
+  router.get(
+    `${base}/sales-item-alerts/:itemId`,
+    handler(async(req,res)=>{
+      const itemId=id(req.params.itemId);
+      const result=await readCommerce(pool,req,async(client,companyId)=>{
+        const item=(await client.query(
+          `SELECT i.id,i.sale_notes AS "saleNotes",i.composition_id AS "compositionId",
+             COALESCE(c.sale_notes,'') AS "compositionSaleNotes",
+             COALESCE(c.arabic_name,'') AS "compositionName"
+           FROM items i LEFT JOIN item_compositions c
+             ON c.company_id=i.company_id AND c.id=i.composition_id
+           WHERE i.company_id=$1 AND i.id=$2`,
+          [companyId,itemId],
+        )).rows[0];
+        if(!item)throw new HttpError(404,"not_found","الصنف غير موجود في هذه الشركة");
+        if(!item.compositionId)return {saleNotes:item.saleNotes,
+          compositionSaleNotes:"",compositionName:"",alternatives:[]};
+        const threshold=await controlValue(client,companyId,"sales_near_expiry_months");
+        const limit=typeof threshold==="number"?threshold:3;
+        const rows=await client.query(
+          `SELECT i.id,i.name,
+             i.nearest_expiry_date::text AS "nearestExpiryDate",
+             (i.commission_rate>0 AND i.clearance_from<=
+               (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date
+               AND i.clearance_to>=
+               (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date)
+               AS clearance,
+             (i.has_expiry AND $4::integer>0 AND
+               i.nearest_expiry_date IS NOT NULL AND
+               i.nearest_expiry_date <=
+               ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date +
+                 make_interval(months=>$4::integer))::date)
+               AS "nearExpiry"
+           FROM items i
+           WHERE i.company_id=$1 AND i.composition_id=$2
+             AND i.id<>$3 AND i.active=true AND
+             ((i.commission_rate>0 AND i.clearance_from<=
+                 (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date
+                 AND i.clearance_to>=
+                 (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date)
+              OR ($4::integer>0 AND i.has_expiry AND
+                  i.nearest_expiry_date IS NOT NULL AND
+                  i.nearest_expiry_date<=
+                   ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date+
+                    make_interval(months=>$4::integer))::date))
+           ORDER BY i.nearest_expiry_date ASC NULLS LAST,i.id
+           LIMIT 15`,
+          [companyId,item.compositionId,itemId,limit],
+        );
+        return {saleNotes:item.saleNotes,
+          compositionSaleNotes:item.compositionSaleNotes,
+          compositionName:item.compositionName,
+          alternatives:rows.rows};
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     `${base}/purchase-history/:itemId`,
     handler(async (req, res) => {
