@@ -1,3 +1,4 @@
+import { accountChoices, type AccountChoice } from "../../../../packages/contracts/src/masters.ts";
 /** Server-owned control catalog. Add keys here; never let clients invent keys or values. */
 export type ControlScope = "company" | "employee";
 export type ControlOption = {
@@ -5,8 +6,9 @@ export type ControlOption = {
   label: string;
   category: string;
   scope: ControlScope;
-  type: "boolean" | "hours" | "number";
-  defaultValue: boolean | number;
+  type: "boolean" | "hours" | "number" | "multi_choice" | "account";
+  defaultValue: boolean | number | AccountChoice[];
+  choices?: readonly AccountChoice[];
   min?: number;
   max?: number;
   accountantDefault?: boolean;
@@ -15,6 +17,8 @@ export type ControlOption = {
   integrated: boolean;
 };
 export const controlCatalog: readonly ControlOption[] = [
+  { key:"purchase_receipt_required_choices", label:"أنواع الحسابات التي يلزم معها رقم الوصل في المشتريات", category:"المشتريات", scope:"company", type:"multi_choice", defaultValue:[], choices:accountChoices, accountantDefault:true, integrated:true, description:"اختر أنواع الحسابات مثل جملة، شركة، صيدلية. تُطبّق الإلزامية على حساب رأس الفاتورة، وليس المورد الفعلي." },
+  { key:"purchase_default_account", label:"الحساب الافتراضي لرأس فاتورة المشتريات", category:"المشتريات", scope:"company", type:"account", defaultValue:0, min:0, accountantDefault:true, integrated:true, description:"حساب السداد أو الذمة في رأس الفاتورة، وليس المورد الفعلي. صفر يعني بدون حساب افتراضي." },
   { key: "show_currency", label: "إظهار العملة في الفواتير والسندات", category: "الفواتير والسندات", scope: "company", type: "boolean", defaultValue: true, accountantDefault: true, integrated: true },
   { key: "edit_sales_date", label: "السماح بتعديل تاريخ فاتورة المبيعات", category: "التواريخ", scope: "company", type: "boolean", defaultValue: true, accountantDefault: true, integrated: true },
   { key: "edit_purchases_date", label: "السماح بتعديل تاريخ فاتورة المشتريات", category: "التواريخ", scope: "company", type: "boolean", defaultValue: true, accountantDefault: true, integrated: true },
@@ -35,8 +39,9 @@ export const controlCatalog: readonly ControlOption[] = [
 export function controlByKey(key: string): ControlOption | undefined {
   return controlCatalog.find((option) => option.key === key);
 }
-export function validControlValue(option: ControlOption, value: unknown): value is boolean | number {
+export function validControlValue(option: ControlOption, value: unknown): value is boolean | number | AccountChoice[] {
   if (option.type === "boolean") return typeof value === "boolean";
+  if (option.type === "multi_choice") return Array.isArray(value) && value.length <= accountChoices.length && new Set(value).size === value.length && value.every(v => typeof v === "string" && accountChoices.includes(v as AccountChoice));
   return typeof value === "number" && Number.isSafeInteger(value) &&
     value >= (option.min ?? 0) && value <= (option.max ?? (option.type === "hours" ? 72 : 999999999));
 }
