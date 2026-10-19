@@ -17,6 +17,7 @@ import {
   useSession,
 } from "../api";
 import { usePageDirectory } from "../page-directory";
+import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import {
@@ -308,26 +309,12 @@ function WalletConversionsContent({ context }: { context: CompanyContext }) {
       <PageHeader
         title="تحويلات النقاط"
         description="طلبات تحويل النقاط وسجل اعتمادها وترحيلها إلى الحسابات."
-        actions={
-          <>
-            {walletPage?.enabled && walletPage.actionAccess.view && (
-              <Link to={`${base}/wallet`} className="button button-secondary">
-                <Coins size={15} />
-                النقاط والمحفظة
-              </Link>
-            )}
-            <Button
-              variant="ghost"
-              disabled={list.loading || saving}
-              onClick={() =>
-                void refreshWalletConversions(client, user?.id, companyId)
-              }
-            >
-              <RefreshCw size={15} />
-              تحديث
-            </Button>
-          </>
-        }
+        actions={<PageActionsDropdown actions={[
+          ...(walletPage?.enabled && walletPage.actionAccess.view
+            ? [{label:"النقاط والمحفظة",to:`${base}/wallet`}] : []),
+          {label:"تحديث",disabled:list.loading || saving,
+           onClick:()=>{void refreshWalletConversions(client,user?.id,companyId);}},
+        ]}/>
       />
       <Notice>
         اعتماد التحويل يثبت مستحقًا في حساب الموظف ولا يعني صرف مبلغ نقدي.
