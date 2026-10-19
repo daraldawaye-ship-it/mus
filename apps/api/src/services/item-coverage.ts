@@ -50,8 +50,12 @@ export const itemCoverageJoin = `
    SELECT CASE WHEN coverage_sales.month_sales < 2
        THEN coverage_sales.four_month_sales ELSE coverage_sales.month_sales END AS sales,
      CASE WHEN coverage_sales.month_sales < 2 THEN 120 ELSE 30 END AS days,
-     coalesce(coverage_stock.stock_total,0) AS quantity,
-     greatest(coalesce(coverage_stock.stock_total,0)-i.reserve_quantity,0) AS after_reserve
+     -- Returns locations remain included in physical stock but are not
+     -- available for sufficiency. Both coverage fields use the same scope.
+     (coalesce(coverage_stock.stock_showroom,0)+
+      coalesce(coverage_stock.stock_warehouse,0)) AS quantity,
+     greatest(coalesce(coverage_stock.stock_showroom,0)+
+       coalesce(coverage_stock.stock_warehouse,0)-i.reserve_quantity,0) AS after_reserve
  ) coverage_rate
  CROSS JOIN LATERAL (
    SELECT CASE WHEN coverage_rate.sales <= 0 THEN 9999::numeric
