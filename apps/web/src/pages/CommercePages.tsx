@@ -376,6 +376,7 @@ interface DraftLine {
   quantity: string;
   unitPrice: string;
   expiryDate: string | null;
+  expiryManuallyEdited: boolean;
   originalLineId: number | null;
   originalSelection: boolean;
   originalSource?: InvoiceLine;
@@ -394,11 +395,16 @@ function emptyLine(returning = false): DraftLine {
     quantity: returning ? "-1" : "1",
     unitPrice: "0",
     expiryDate: null,
+    expiryManuallyEdited: false,
     originalLineId: null,
     originalSelection: returning,
     originalSource: undefined,
     sourceItem: undefined,
   };
+}
+/** Suggest a physical return batch from the item's card, never from a previous invoice's batch. */
+function suggestedReturnExpiry(item: Item | undefined): string | null {
+  return item?.hasExpiry ? item.nearestExpiryDate ?? null : null;
 }
 const lineInputId = (line: DraftLine, field: string) =>
   `invoice-${field}-${line.key}`;
@@ -1280,8 +1286,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     selectedLines.some(
       (line) =>
         normalizeDigits(line.quantity.trim()).startsWith("-") &&
-        !line.originalLineId &&
-        line.sourceItem?.hasExpiry,
+        (line.originalLineId !== null || line.sourceItem?.hasExpiry),
     );
   const stockItemIds = [...new Set(selectedLines.map((line) => line.itemId))]
     .sort((a, b) => a - b)
@@ -1532,6 +1537,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             ? selected.purchasePrice
             : "0",
       expiryDate: null,
+      expiryManuallyEdited: false,
       originalLineId: null,
       originalSelection: false,
       originalSource: undefined,
@@ -1646,7 +1652,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   async function loadOriginalItem(lineKey: string, source: InvoiceLine) {
     try {
       const response = await api<Page<Item>>(
-        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: source.itemCode, pageSize: "20" })}`,
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", id: String(source.itemId), pageSize: "1" })}`,
         { signal: guard.signal },
       );
       const currentItem = response.items.find(
@@ -1664,6 +1670,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           return {
             ...line,
             sourceItem: currentItem,
+            ...(kind === "sale" && line.originalLineId && !line.expiryManuallyEdited
+              ? { expiryDate: suggestedReturnExpiry(currentItem) }
+              : {}),
             ...(!line.originalLineId
               ? {
                   unit: 1 as const,
@@ -1694,7 +1703,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             unitName: source.unitName,
             quantity: "-1",
             unitPrice: source.unitPrice,
-            expiryDate: source.expiryDate,
+            expiryDate: kind === "sale" ? null : source.expiryDate,
+            expiryManuallyEdited: false,
             originalLineId: source.id,
             originalSelection: true,
             originalSource: source,
@@ -1748,14 +1758,21 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         unit: 1,
         unitName: line.sourceItem.unit1Name,
         ...(kind === "sale"
-          ? { unitPrice: line.sourceItem.salePrice1, expiryDate: null }
+          ? { unitPrice: line.sourceItem.salePrice1, expiryDate: null, expiryManuallyEdited: false }
           : {}),
       });
-    } else
+    } else {
+      const wasNegative = /^-\\d+$/.test(normalizeDigits(line.quantity.trim()));
+      const nowNegative = /^-\\d+$/.test(normalizeDigits(value.trim()));
       updateLine(line.key, {
         quantity: value,
-        ...(positive && kind === "sale" ? { expiryDate: null } : {}),
+        ...(kind === "sale" && positive
+          ? { expiryDate: null, expiryManuallyEdited: false }
+          : kind === "sale" && nowNegative && !wasNegative && !line.expiryManuallyEdited
+            ? { expiryDate: suggestedReturnExpiry(line.sourceItem) }
+            : {}),
       });
+    }
   }
   function nextLine(line?: DraftLine) {
     if (locked) return;
@@ -2569,13 +2586,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                         </td>
                         {showExpiry && (
                           <td>
-                            {line.originalLineId ? (
+                            {kind === "purchase" && line.originalLineId ? (
                               line.expiryDate || "—"
-                            ) : line.sourceItem?.hasExpiry &&
+                            ) : (line.sourceItem?.hasExpiry &&
                               (kind === "purchase" ||
-                                normalizeDigits(
-                                  line.quantity.trim(),
-                                ).startsWith("-")) ? (
+                                normalizeDigits(line.quantity.trim()).startsWith("-"))) ||
+                              (kind === "sale" && line.originalLineId !== null &&
+                                line.sourceItem?.hasExpiry !== false) ? (
                               <ExpiryMonthField
                                 id={lineInputId(line, "expiry")}
                                 className="item-cell-field"
@@ -2585,6 +2602,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                                 onChange={(date) =>
                                   updateLine(line.key, {
                                     expiryDate: date,
+                                    expiryManuallyEdited: true,
                                   })
                                 }
                                 onKeyDown={(event) => {
