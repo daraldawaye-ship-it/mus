@@ -54,7 +54,8 @@ export function commerceRoutes(pool: Pool): Router {
         const item=(await client.query(
           `SELECT i.id,i.sale_notes AS "saleNotes",i.composition_id AS "compositionId",
              COALESCE(c.sale_notes,'') AS "compositionSaleNotes",
-             COALESCE(c.arabic_name,'') AS "compositionName"
+             COALESCE(c.arabic_name,'') AS "compositionName",
+             (COALESCE(c.identical_alternative,false) AND NOT COALESCE(c.non_interchangeable,false)) AS "identicalAlternative"
            FROM items i LEFT JOIN item_compositions c
              ON c.company_id=i.company_id AND c.id=i.composition_id
            WHERE i.company_id=$1 AND i.id=$2`,
@@ -62,7 +63,7 @@ export function commerceRoutes(pool: Pool): Router {
         )).rows[0];
         if(!item)throw new HttpError(404,"not_found","الصنف غير موجود في هذه الشركة");
         if(!item.compositionId)return {saleNotes:item.saleNotes,
-          compositionSaleNotes:"",compositionName:"",alternatives:[]};
+          compositionSaleNotes:"",compositionName:"",identicalAlternative:false,alternatives:[]};
         const threshold=await controlValue(client,companyId,"sales_near_expiry_months");
         const limit=typeof threshold==="number"?threshold:3;
         const rows=await client.query(
@@ -98,6 +99,7 @@ export function commerceRoutes(pool: Pool): Router {
         return {saleNotes:item.saleNotes,
           compositionSaleNotes:item.compositionSaleNotes,
           compositionName:item.compositionName,
+          identicalAlternative:item.identicalAlternative,
           alternatives:rows.rows};
       });
       res.json(result);
