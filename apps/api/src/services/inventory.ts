@@ -419,7 +419,10 @@ export async function applyStock(
     item.hasExpiry &&
     !batchKey &&
     input.kind !== "sales_return" &&
-    !(input.kind === "purchase" && input.allowUnknownExpiry)
+    !(input.kind === "purchase" && input.allowUnknownExpiry) &&
+    // A transfer never invents an expiry date. Historical/negative source
+    // balances with an unknown batch key stay unknown at the destination.
+    !(input.kind === "transfer_in" && input.originalMovementId != null)
   )
     conflict("تاريخ انتهاء الدفعة مطلوب لهذا الصنف");
   if (batchKey && batchKey < input.documentDate && !input.allowExpired)
