@@ -4690,3 +4690,16 @@ ul {
     min-width:0; flex:1; padding:6px 4px; font-size:12px;
   }
 }
+
+/* Turn multi-button page heading toolbars into one compact actions menu. */
+.sales-header-actions-dropdown--raw > :is(button,a) {
+  display:flex; align-items:center; justify-content:flex-start;
+  gap:8px; width:100%; border-radius:5px;
+  background:transparent; color:var(--text);
+  border:0; box-shadow:none;
+  padding:9px 10px; font-size:13px; text-align:start;
+  white-space:normal; overflow-wrap:anywhere;
+}
+.sales-header-actions-dropdown--raw > :is(button,a):is(:hover,:focus-visible):not(:disabled) {
+  background:var(--hover);
+}
