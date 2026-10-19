@@ -7,7 +7,7 @@ export type SaleAlerts = {
   compositionName: string;
   identicalAlternative: boolean;
   alternatives: {
-    id: number; name: string; nearestExpiryDate: string | null;
+    id: number; name: string; clearanceRate: string; nearestExpiryDate: string | null;
     clearance: boolean; nearExpiry: boolean;
   }[];
 };
@@ -31,23 +31,21 @@ export function InvoiceSaleAlerts({
   const hasNotes=!!data.saleNotes||!!data.compositionSaleNotes;
   if(!hasNotes && !data.alternatives.length)return null;
   return (
-    <section className="invoice-sale-alerts" aria-label="تنبيهات الصنف عند البيع">
-      {(data.saleNotes || data.compositionSaleNotes) && <p className="invoice-sale-alert-note">
-        {[data.saleNotes,data.compositionSaleNotes].filter(Boolean).join(" — ")}
-      </p>}
-      {data.alternatives.length>0 && <>
-        <div className="invoice-sale-alert-peers">
-          {data.alternatives.map(row=><div key={row.id} className="invoice-sale-alert-peer">
-            <span className="invoice-sale-alert-item-name" title={row.name}>{row.name}</span>
-            <span className="invoice-sale-alert-indicators">
-              {row.clearance && <span className="invoice-sale-clearance">تصريف</span>}
-              {row.nearExpiry && <span className="invoice-sale-expiry" title={row.nearestExpiryDate??""}>
-                {row.nearestExpiryDate? `انتهاء ${row.nearestExpiryDate.slice(0,7)}`:"قرب انتهاء"}
-              </span>}
-            </span>
-          </div>)}
-        </div>
-      </>}
+    <section className="invoice-sale-alerts invoice-sale-alerts-inline" aria-label="تنبيهات الصنف عند البيع">
+      {[
+        ...[data.saleNotes,data.compositionSaleNotes].filter(Boolean).map((note,index)=>(
+          <span key={`note-${index}`} className="invoice-sale-inline-note">{note}</span>
+        )),
+        ...data.alternatives.map(row=>(
+          <span key={`peer-${row.id}`} className={row.clearance?"invoice-sale-inline-clearance":"invoice-sale-inline-peer"}
+            title={row.name}>
+            {row.name}{row.clearance?` (تصريف ${row.clearanceRate}%)`:""}
+            {row.nearExpiry?` (انتهاء ${row.nearestExpiryDate?.slice(0,7)??"قريب"})`:""}
+          </span>
+        )),
+      ].map((segment,index)=><span key={index} className="invoice-sale-inline-segment">
+        {index>0&&<span className="invoice-sale-inline-separator"> — </span>}{segment}
+      </span>)}
     </section>
   );
 }
