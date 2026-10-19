@@ -3769,3 +3769,51 @@ test("reconciliation uses nearest expiry only and preserves the existing batch d
     "GET",`${s.path}/items/${item.id}`)).item.nearestExpiryDate,"2027-04-01");
   await assertBalanced(f,s.company.id);
 });
+
+
+test("sale alerts include item and composition notes, clearance alternatives and controlled expiry window",async(t)=>{
+  const f=await fixture(t);
+  const s=await setup(f,"Sell-side notes and alternatives");
+  const composition=(await f.owner.ok<{composition:{id:number;saleNotes:string}}>(
+    "POST",`${s.path}/item-compositions`,{
+      arabicName:"تركيب التنبيه",englishName:"Alert composition",
+      description:"",saleNotes:"راجع الجرعة قبل البيع",
+      active:true,identicalAlternative:true,nonInterchangeable:false,
+      idempotencyKey:randomUUID(),
+    },201)).composition;
+  assert.equal(composition.saleNotes,"راجع الجرعة قبل البيع");
+  const product=await s.item({
+    name:"الصنف المطلوب",compositionId:composition.id,
+    saleNotes:"يحتاج تبريدًا عند البيع",
+  });
+  const altClearance=await s.item({
+    name:"البديل للتصريف",compositionId:composition.id,
+    commissionRate:"5",clearanceFrom:"2020-01-01",clearanceTo:"2099-12-31",
+  });
+  const date=(await f.pool.query(
+    "SELECT ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date + INTERVAL '1 month')::date::text AS soon"
+  )).rows[0].soon as string;
+  const altExpiry=await s.item({
+    name:"البديل قصير الصلاحية",compositionId:composition.id,
+    nearestExpiryDate:date,hasExpiry:true,
+  });
+  const other=await s.item({name:"غير مرتبط",saleNotes:"ملاحظة خاصة"});
+  type Alerts={saleNotes:string;compositionSaleNotes:string;
+    alternatives:{id:number;clearance:boolean;nearExpiry:boolean}[]};
+  const alerts=await f.owner.ok<Alerts>("GET",
+    `${s.path}/sales-item-alerts/${product.id}`);
+  assert.equal(alerts.saleNotes,"يحتاج تبريدًا عند البيع");
+  assert.equal(alerts.compositionSaleNotes,"راجع الجرعة قبل البيع");
+  assert(alerts.alternatives.some(x=>x.id===altClearance.id&&x.clearance));
+  assert(alerts.alternatives.some(x=>x.id===altExpiry.id&&x.nearExpiry));
+  assert(!alerts.alternatives.some(x=>x.id===other.id));
+  await f.owner.ok("PUT",`${s.path}/control/sales_near_expiry_months`,{
+    value:0,employeeId:null,revision:null,
+  });
+  const after=await f.owner.ok<Alerts>("GET",`${s.path}/sales-item-alerts/${product.id}`);
+  assert(!after.alternatives.some(x=>x.id===altExpiry.id));
+  assert(after.alternatives.some(x=>x.id===altClearance.id));
+  const s2=await setup(f,"Another company's restricted notes");
+  assert.equal((await f.owner.request("GET",
+    `${s2.path}/sales-item-alerts/${product.id}`)).status,404);
+});

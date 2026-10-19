@@ -20,6 +20,7 @@ import {
 } from "react-router-dom";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { InvoicePrintSheet } from "../InvoicePrintSheet";
+import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
 import { InvoiceItemAdjustmentSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1062,10 +1063,11 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
     <div className={showOptions ? "invoice-workspace" : "invoice-workspace invoice-workspace-no-options"}>
       <div className="invoice-workspace-main">{children}</div>
       {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
+        {kind === "sale" && <InvoiceSaleAlerts companyId={companyId} userId={user?.id} itemId={selectedItemId} />}
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
           context={context} kind={kind} selectedItemId={selectedItemId}
           selectedItemName={selectedItemName} userId={user?.id} />
-        <section className="invoice-empty-panel" aria-label="المساحة الثانية" />
+        {kind === "purchase" && <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
       </aside>}
     </div>
   );

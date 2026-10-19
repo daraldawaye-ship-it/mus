@@ -122,6 +122,13 @@ async function fixture(t: TestContext) {
     password: "Local-activity-upgrade-passphrase-2026",
   });
 
+  // This fixture intentionally stays on the historical 087 accounting
+  // schema while calling CURRENT item-master APIs. Supply only the new
+  // display-note columns, without applying later accounting migrations or
+  // changing the historical posted invoice structures under test.
+  await scoped.query("ALTER TABLE items ADD COLUMN sale_notes text NOT NULL DEFAULT ''");
+  await scoped.query("ALTER TABLE item_compositions ADD COLUMN sale_notes text NOT NULL DEFAULT ''");
+
   // Only the test's HTTP authentication transport is stubbed. All company,
   // master and invoice writes use the existing business routes, authorization,
   // posting services, triggers and audit transactions at the actual 087 schema.
