@@ -1433,7 +1433,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     !!description ||
     (kind === "purchase" && (!!supplier || !!supplierReceiptNumber)) ||
     accountManuallyChosen.current ||
-    (!!account && account.id !== defaultCashbox?.id) ||
+    (!!account && account.id !== (kind === "sale" ? defaultCashbox?.id : configuredPurchaseAccount?.id)) ||
     (!!branch &&
       (branchManuallyChosen.current ||
         branch.id !== automaticBranchId.current)) ||
