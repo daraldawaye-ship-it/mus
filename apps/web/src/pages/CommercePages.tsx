@@ -1383,6 +1383,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setCashboxError("أدخل مبلغًا صالحًا بالريال اليمني حتى منزلتين عشريتين.");
       return;
     }
+    if(cashboxDraft.kind==="electronic" && Number(normalizeDigits(cashboxDraft.amount))<0) {
+      setCashboxError("لا يُسمح بترحيل مبلغ سالب إلى المحفظة الإلكترونية.");
+      return;
+    }
     setCashboxBusy(true);
     setCashboxError("");
     try {
@@ -2076,6 +2080,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 {kind === "sale" ? (
                   <SalesHeaderActionsDropdown
                     listUrl={listPath(companyId, kind)}
+                    purchaseUrl={`${invoicePath(companyId,"new")}?kind=purchase`}
+                    canOpenPurchase={commerceAccess(context)}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
                     canManagePledges={!locked && commerceAccess(context, true)}
                     canEdit={!locked}
@@ -2849,9 +2855,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               يُسمح بالترحيل حتى لو أصبح رصيد أحد الحسابين سالبًا.
             </small>}
             {cashboxDraft.kind==="electronic" && <small className="muted">
-              المبلغ الموجب يُرحّل من صندوقك إلى محفظة الشركة الإلكترونية،
-              والسالب يعني استلام المبلغ من محفظة الشركة إلى صندوقك.
-              يُسمح بالحركة حتى لو أصبح الرصيد الدفتري للحساب المحوّل منه سالبًا.
+              يُسمح فقط بترحيل مبلغ موجب من صندوقك إلى محفظة الشركة الإلكترونية.
+              لاستلام مبالغ من المحفظة استخدم صفحة استلام المحفظة الإلكترونية.
             </small>}
             {cashboxDraft.kind==="close" && <small className="muted">
               هذا حقل جرد النقد الفعلي وليس تحويلًا باتجاهين، لذلك لا يقبل السالب.
