@@ -343,7 +343,7 @@ export function WalletPage({ context }: { context: CompanyContext }) {
           ...(canAward ? [{label:"إضافة نقاط",onClick:openAward,
             disabled:pending || !list.data?.employees.length}] : []),
           {label:"تحديث",onClick:()=>{void refresh();},disabled:list.loading},
-        ]}/>
+        ]}/>}
       />
       {notice && <Notice tone="success">{notice}</Notice>}
       {list.error && (
