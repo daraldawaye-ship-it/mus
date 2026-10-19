@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import {
   type CompanyContext,
   type ItemComposition,
   type ItemCompositionInput,
+  type Item,
   type ProductForm,
   productForms,
 } from "../../../../packages/contracts/src/index";
@@ -19,6 +20,8 @@ import {
   Button, Card, DataTable, Dialog, Field, Notice,
   PageHeader, Select, ValueCell,
 } from "../ui";
+
+const LinkedItemEditor=lazy(()=>import("./ItemsPages").then(m=>({default:m.InvoiceItemEditor})));
 
 export function ItemCompositionsPage({context}: {context: CompanyContext}) {
   const companyId=context.company.id;
@@ -117,7 +120,7 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
       onClose={()=>setImporting(false)}
       onImported={()=>{void list.refetch();}}/>}
     {editing!==undefined&&<CompositionEditor
-      key={editing?.id??"new"} companyId={companyId} canManage={canManage}
+      key={editing?.id??"new"} context={context} companyId={companyId} canManage={canManage}
       record={editing} onClose={()=>setEditing(undefined)}
       onSaved={async(result)=>{
         setEditing(undefined);
@@ -130,7 +133,7 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
 export function CompositionCreatePopup({context,onClose,onSaved}:{
   context:CompanyContext;onClose:()=>void;onSaved:(composition:ItemComposition)=>void;
 }){
-  return <CompositionEditor companyId={context.company.id} record={null}
+  return <CompositionEditor context={context} companyId={context.company.id} record={null}
     canManage={itemsAccess(context,true)} onClose={onClose} onSaved={onSaved}/>;
 }
 /** Reuse the existing composition card as a bottom sheet in reports. */
@@ -165,18 +168,30 @@ export function CompositionEditorSheet({
     </div>
   </Dialog>;
   return <CompositionEditor key={`${companyId}:${compositionId}`}
-    companyId={companyId} record={query.data.composition} canManage={canManage}
+    context={context} companyId={companyId} record={query.data.composition} canManage={canManage}
     sheet onClose={onClose} onSaved={onSaved}/>;
 }
 
 function CompositionEditor({
-  companyId,record,canManage,onClose,onSaved,sheet=false,
+  context,companyId,record,canManage,onClose,onSaved,sheet=false,
 }:{
-  companyId:number;record:ItemComposition|null;canManage:boolean;
+  context:CompanyContext;companyId:number;record:ItemComposition|null;canManage:boolean;
   onClose:()=>void;onSaved:(value:ItemComposition)=>void;
   sheet?:boolean;
 }){
   const guard=useScopeGuard(`company:${companyId}:item-composition:${record?.id??"new"}`);
+  const {user}=useSession();
+  const [linkedPage,setLinkedPage]=useState(1);
+  const [linkedItemId,setLinkedItemId]=useState<number|null>(null);
+  const [linkedBusy,setLinkedBusy]=useState(false);
+  const linked=useQuery({
+    queryKey:["composition-linked-items",user?.id,companyId,record?.id,linkedPage],
+    queryFn:({signal})=>api<{items:Item[];total:number}>(
+      `/companies/${companyId}/items?`+new URLSearchParams({
+        compositionId:String(record!.id),active:"all",page:String(linkedPage),pageSize:"20",sort:"name:asc",
+      }),{signal}),
+    enabled:!!user&&!!record,
+  });
   const [form,setForm]=useState({
     arabicName:record?.arabicName??"",
     englishName:record?.englishName??"",
@@ -287,6 +302,32 @@ function CompositionEditor({
         <label className="check-label"><input type="checkbox" disabled={disabled}
           checked={form.nonInterchangeable} onChange={e=>set("nonInterchangeable",e.target.checked)}/>
           غير قابل للتبديل</label>
+        {record&&<div className="form-full">
+          <h4>الأصناف المرتبطة بهذا التركيب ({linked.data?.total??0})</h4>
+          {linked.isPending&&<p>جارٍ تحميل الأصناف…</p>}
+          {linked.error&&<Notice tone="error">{errorMessage(linked.error)}</Notice>}
+          <div className="table-scroll">
+            <table className="data-table"><thead><tr>
+              <th>رمز الصنف</th><th>اسم الصنف</th><th>شكل الصنف</th><th>الحالة</th><th>الكرت</th>
+            </tr></thead><tbody>
+              {(linked.data?.items??[]).map(item=><tr key={item.id}>
+                <td>{item.code}</td><td>{item.name}</td><td>{item.productForm}</td>
+                <td>{item.active?"فعال":"مؤرشف"}</td>
+                <td><Button type="button" variant="secondary" size="compact"
+                  onClick={()=>setLinkedItemId(item.id)}>كرت الصنف</Button></td>
+              </tr>)}
+              {!linked.isPending&&!linked.data?.items.length&&<tr><td colSpan={5}>لا توجد أصناف مرتبطة.</td></tr>}
+            </tbody></table>
+          </div>
+          <div className="form-actions">
+            <Button type="button" variant="secondary" disabled={linkedPage===1}
+              onClick={()=>setLinkedPage(n=>n-1)}>السابق</Button>
+            <span>صفحة {linkedPage} من {Math.max(1,Math.ceil((linked.data?.total??0)/20))}</span>
+            <Button type="button" variant="secondary"
+              disabled={linkedPage*20>=(linked.data?.total??0)}
+              onClick={()=>setLinkedPage(n=>n+1)}>التالي</Button>
+          </div>
+        </div>}
         {record&&<p className="muted form-full">الإصدار {revision} — لا تُحذف الكروت؛ يمكن أرشفتها.</p>}
         <div className="form-actions form-full">
           {canManage&&<Button type="submit" disabled={saving}>
@@ -296,6 +337,15 @@ function CompositionEditor({
         </div>
       </form>
     </Dialog>
+    {linkedItemId!==null&&<Dialog open className="invoice-item-sheet" title="كرت الصنف"
+      onClose={()=>{if(!linkedBusy)setLinkedItemId(null);}}>
+      <Suspense fallback={<Notice>جارٍ تحميل كرت الصنف…</Notice>}>
+        <LinkedItemEditor context={context} itemId={linkedItemId}
+          onSavingChange={setLinkedBusy}
+          onClose={()=>setLinkedItemId(null)}
+          onSaved={()=>{setLinkedItemId(null);void linked.refetch();}}/>
+      </Suspense>
+    </Dialog>}
     <Dialog open={confirmClose} title="إغلاق كرت التركيب"
       onClose={()=>setConfirmClose(false)}>
       <p>{unknown?"قد تكون نتيجة الإنشاء محفوظة؛ تحقق من القائمة أولًا.":"هناك تغييرات لم تُحفظ."}</p>
