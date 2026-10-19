@@ -225,6 +225,7 @@ export const itemFieldColumns = [
   ["searchKeys", "search_keys"],
   ["purchaseNotes", "purchase_notes"],
   ["saleNotes", "sale_notes"],
+  ["productForm", "product_form"],
   ["orderStoppedUntil", "order_stopped_until"],
   ["hasExpiry", "has_expiry"],
   ["nearestExpiryDate", "nearest_expiry_date"],
