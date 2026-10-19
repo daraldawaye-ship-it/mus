@@ -451,6 +451,15 @@ page(
   { keywords: ["تركيب", "تركيبة", "composition", "بدائل"] },
 );
 page(
+  "company.item-form-differences",
+  "متابعة اختلاف شكل الصنف والتركيب",
+  "الأصناف والمخزون",
+  "/companies/:companyId/item-form-differences",
+  { view: permission("items.view") },
+  "مقارنة شكل الصنف مع الشكل المحدد في كرت التركيب، ومراجعة غير المصنف (عام).",
+  { type:"report", keywords:["شكل الصنف","شكل التركيب","مطابقة","اختلاف","تصنيف","عام"] },
+);
+page(
   "company.item-shelves",
   "كرت الرفوف",
   "الأصناف والمخزون",
