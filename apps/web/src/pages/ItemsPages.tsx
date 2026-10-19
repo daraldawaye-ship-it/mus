@@ -2033,18 +2033,24 @@ function ItemEditor({
       {adjustmentOpen && item && (
         <InventoryAdjustmentSheet
           context={context}
-          item={{ ...item, nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate }}
+          item={{ ...item,
+            nearestExpiryDate: nearestExpirySaved !== undefined ? nearestExpirySaved : item.nearestExpiryDate,
+            compositionId: fields.compositionId ?? item.compositionId,
+          }}
           onClose={() => setAdjustmentOpen(false)}
-          onSaved={(date, shelf) => {
-            setNearestExpirySaved(date);
+          onSaved={(date, shelf, metadata) => {
+            if (metadata.cardUpdated) setNearestExpirySaved(date);
             setFields((previous) => ({ ...previous,
-              nearestExpiryDate: date ?? "",
-              shelf:shelf.shelf,shelfId:shelf.shelfId,
+              ...(metadata.cardUpdated ? { nearestExpiryDate: date ?? "",
+                shelf:shelf.shelf,shelfId:shelf.shelfId } : {}),
+              compositionId: metadata.compositionId ?? previous.compositionId,
             }));
-            // A posted adjustment also increments the item's revision.
-            // Keep this open card in sync so its next save does not conflict.
-            savedRevision.current += 1;
-            setVisibleRevision(savedRevision.current);
+            // Only ordinary adjustments update the item's card revision;
+            // zero-location operations deliberately leave card fields intact.
+            if (metadata.cardUpdated) {
+              savedRevision.current += 1;
+              setVisibleRevision(savedRevision.current);
+            }
             void itemQueryClient.invalidateQueries({
               queryKey: ["items", user?.id, companyId, "detail", item.id],
             });
