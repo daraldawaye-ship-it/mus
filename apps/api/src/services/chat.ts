@@ -307,6 +307,15 @@ export async function acknowledgeChatMessages(
      WHERE id=ANY($1::integer[]) RETURNING *`,
     [ids, input.readMessageIds],
   )).rows.sort((a, b) => a.id - b.id);
+  if(input.readMessageIds.length){
+    await client.query(
+      "UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()"+
+      " WHERE recipient_user_id=$1 AND company_id IS NOT DISTINCT FROM $2::integer"+
+      " AND code IN ('CHAT_DIRECT_GLOBAL','CHAT_DIRECT_COMPANY')"+
+      " AND subject_key=ANY($3::text[]) AND read_at IS NULL AND completed_at IS NULL",
+      [current.user.id,current.companyId,input.readMessageIds.map(id=>"chat-message:"+id)],
+    );
+  }
   const changed = updated.some((row, index) =>
     JSON.stringify(receiptDTO(row)) !== JSON.stringify(receiptDTO(before[index]!)));
   if (changed)
