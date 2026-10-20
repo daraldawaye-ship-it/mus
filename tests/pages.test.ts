@@ -264,6 +264,15 @@ test("page registry covers stable actual routes, Arabic search, reports, paginat
     pageKeyForLocation(`/companies/${company.id}/items/123`, ""),
     "company.item-card",
   );
+  // A global page catalog has no company context, even for the platform owner.
+  // The UI must explain this as "اختر شركة", not an actual permission denial.
+  const publicCatalogue = await f.entries(f.owner);
+  const publicSales = publicCatalogue.items.find((page) => page.key === "company.sales")!;
+  assert.equal(publicSales.actionAccess.view, false);
+  assert.equal(publicSales.href, null);
+  const ownerCompany = await f.entries(f.owner, company.id);
+  assert.equal(ownerCompany.items.find((page) => page.key === "company.sales")?.actionAccess.view, true);
+  assert.equal(ownerCompany.items.find((page) => page.key === "company.pages")?.actionAccess.view, true);
   const clerk = await f.member(company.id, ["commerce.view"]);
   const directory = await f.entries(clerk.client, company.id);
   const sale = directory.items.find((page) => page.key === "company.sales")!;
