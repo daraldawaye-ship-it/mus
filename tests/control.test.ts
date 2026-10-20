@@ -84,6 +84,7 @@ test("control center isolates companies/employees, audits optimistic writes and 
   const salesperson=await staff("sales");
   const empty=await owner.ok<Directory>("GET",prefix);
   assert.equal(option(empty,"show_currency").value,true);
+  assert.equal(option(empty,"show_voucher_branch").value,false);
   assert.equal(option(empty,"auto_checkout_hours").value,16);
   assert.equal(option(empty,"sales_doctor_threshold").value,1000);
   assert.equal(option(empty,"idle_logout_hours").value,0);
@@ -131,6 +132,15 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(log.rows.length,4);
   assert.equal(log.rows[0].action,"control.value");
   assert.equal(log.rows[0].after_value.value,false);
+  // Receipt/payment branch starts hidden and can be enabled per company
+  // without exposing that change to another company's vouchers.
+  const branchControl = await owner.ok<{revision:number}>(
+    "PUT", prefix+"/show_voucher_branch",
+    {value:true,employeeId:null,revision:null},
+  );
+  assert.equal(branchControl.revision,1);
+  assert.equal(option(await owner.ok<Directory>("GET",prefix),"show_voucher_branch").value,true);
+  assert.equal(option(await owner.ok<Directory>("GET",`/companies/${second.id}/control`),"show_voucher_branch").value,false);
 
   // Purchase and sales item options are independently scoped per employee and company.
   await owner.ok("PUT",prefix+"/"+purchaseOptionsKey,

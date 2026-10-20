@@ -477,6 +477,9 @@ function DocumentEditor({
   const showCurrency = controls.value("show_currency") !== false;
   const editDateKey = kind === "receipt" ? "edit_receipts_date" : kind === "payment" ? "edit_payments_date" : "edit_journals_date";
   const allowDateEdit = controls.value(editDateKey) !== false;
+  // Hide the field (rather than just disabling it) when the control forbids edits.
+  const voucherDateVisible = controls.isSuccess && allowDateEdit;
+  const showVoucherBranch = controls.value("show_voucher_branch") === true;
   const hasManageAccess =
     financeAccess(context, "manage") &&
     (!document || document.status === "draft");
@@ -839,6 +842,93 @@ function DocumentEditor({
       </div>
     );
   }
+
+  // These shared controls appear in the compact cashbox modal and in the full
+  // editor. Only their placement changes; voucher validation and posting do not.
+  const dateControl = (
+    <Field
+      label="تاريخ المستند"
+      type="date"
+      required
+      value={documentDate}
+      disabled={!canEdit || saving || !allowDateEdit}
+      onChange={(event) => { touch(); setDate(event.target.value); }}
+    />
+  );
+  const receiptNumberControl = kind === "payment" ? (
+    <Field
+      label="رقم الوصل"
+      placeholder="رقم سند قبض المورد"
+      maxLength={100}
+      value={supplierReceiptNumber}
+      disabled={!canEdit || saving}
+      onChange={(event) => { touch(); setSupplierReceiptNumber(event.target.value); }}
+    />
+  ) : null;
+  const currencyControl = pickerButton(
+    "عملة المستند", currency ? `${currency.code} — ${currency.name}` : "اختر العملة",
+    { type: "currency" },
+  );
+  const branchControl = pickerButton("الفرع — اختياري", branch?.name ?? "",
+    { type: "branch" }, true);
+  const descriptionControl = (
+    <Field
+      label={embedded && kind !== "journal" ? "البيان" : "البيان العام"}
+      value={description}
+      maxLength={1000}
+      disabled={!canEdit || saving}
+      onChange={(event) => { touch(); setDescription(event.target.value); }}
+    />
+  );
+  const cashControl = lockedCashAccount ? (
+    <Field label="حساب الصندوق" value={accountLabel(lockedCashAccount)} readOnly />
+  ) : (
+    <ServerLookup<Account>
+      companyId={companyId}
+      resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true&cashOrBank=true`}
+      label="حساب الصندوق أو البنك"
+      singleInput pageSize={50} sort="name:asc"
+      value={cash as Account | null}
+      display={accountLabel}
+      disabled={pickerDisabled}
+      required
+      onChange={(item) => {
+        touch(); cashManuallyChosen.current = true; setCash(item);
+      }}
+    />
+  );
+  const counterpartyControl = (
+    <ServerLookup<Account>
+      companyId={companyId}
+      resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true`}
+      label={kind === "receipt" ? "الحساب المقبوض منه" : "الحساب المصروف إليه"}
+      singleInput pageSize={50} sort="name:asc"
+      value={counterparty as Account | null}
+      display={accountLabel}
+      disabled={pickerDisabled}
+      required
+      onChange={(item) => { touch(); setCounterparty(item); }}
+    />
+  );
+  const amountControl = (
+    <Field
+      label={`المبلغ${showCurrency && currency ? ` (${currency.code})` : ""}`}
+      money dir="ltr" inputMode="decimal" required
+      value={voucherAmount}
+      disabled={!canEdit || saving}
+      onChange={(event) => { touch(); setVoucherAmount(event.target.value); }}
+    />
+  );
+  const counterpartyDescriptionControl = (
+    <Field
+      label="بيان الطرف الآخر"
+      value={counterpartyDescription}
+      maxLength={500}
+      disabled={!canEdit || saving}
+      onChange={(event) => { touch(); setCounterpartyDescription(event.target.value); }}
+    />
+  );
+
   return (
     <div className="financial-document-page">
       {!embedded && <div className="financial-no-print">
@@ -918,108 +1008,43 @@ function DocumentEditor({
           </div>
         )}
         <form onSubmit={save}>
-          <div className="financial-header-grid">
-            <Field
-              label="تاريخ المستند"
-              type="date"
-              required
-              value={documentDate}
-              disabled={!canEdit || saving || !allowDateEdit}
-              onChange={(event) => {
-                touch();
-                setDate(event.target.value);
-              }}
-            />
-            {kind === "payment" && (
-              <Field
-                label="رقم الوصل"
-                placeholder="رقم سند قبض المورد"
-                maxLength={100}
-                value={supplierReceiptNumber}
-                disabled={!canEdit || saving}
-                onChange={(event) => {
-                  touch();
-                  setSupplierReceiptNumber(event.target.value);
-                }}
-              />
-            )}
-            {showCurrency && pickerButton(
-              "عملة المستند",
-              currency ? `${currency.code} — ${currency.name}` : "اختر العملة",
-              { type: "currency" },
-            )}
-            {pickerButton(
-              "الفرع — اختياري",
-              branch?.name ?? "",
-              { type: "branch" },
-              true,
-            )}
-            <Field
-              label="البيان العام"
-              value={description}
-              maxLength={1000}
-              disabled={!canEdit || saving}
-              onChange={(event) => {
-                touch();
-                setDescription(event.target.value);
-              }}
-            />
-          </div>
-          {kind !== "journal" && (
-            <div className="financial-voucher-grid">
-              <ServerLookup<Account>
-                companyId={companyId}
-                resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true&cashOrBank=true`}
-                label="حساب الصندوق أو البنك"
-                singleInput
-                pageSize={50}
-                sort="name:asc"
-                value={(lockedCashAccount ?? cash) as Account | null}
-                display={accountLabel}
-                disabled={pickerDisabled || !!lockedCashAccount}
-                required
-                onChange={(item) => {
-                  if (lockedCashAccount) return;
-                  touch(); cashManuallyChosen.current=true; setCash(item);
-                }}
-              />
-              <ServerLookup<Account>
-                companyId={companyId}
-                resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting&active=true`}
-                label={kind === "receipt" ? "الحساب المقبوض منه" : "الحساب المصروف إليه"}
-                singleInput
-                pageSize={50}
-                sort="name:asc"
-                value={counterparty as Account | null}
-                display={accountLabel}
-                disabled={pickerDisabled}
-                required
-                onChange={(item) => { touch(); setCounterparty(item); }}
-              />
-              <Field
-                label={`المبلغ${showCurrency && currency ? ` (${currency.code})` : ""}`}
-                money
-                dir="ltr"
-                inputMode="decimal"
-                required
-                value={voucherAmount}
-                disabled={!canEdit || saving}
-                onChange={(event) => {
-                  touch();
-                  setVoucherAmount(event.target.value);
-                }}
-              />
-              <Field
-                label="بيان الطرف الآخر"
-                value={counterpartyDescription}
-                maxLength={500}
-                disabled={!canEdit || saving}
-                onChange={(event) => {
-                  touch();
-                  setCounterpartyDescription(event.target.value);
-                }}
-              />
-            </div>
+          {embedded && kind !== "journal" ? (
+            <>
+              <details className="financial-voucher-extras financial-no-print">
+                <summary>خيارات إضافية</summary>
+                <div className="financial-voucher-extra-fields">
+                  {cashControl}
+                  {receiptNumberControl}
+                  {voucherDateVisible && dateControl}
+                  {showCurrency && currencyControl}
+                  {showVoucherBranch && branchControl}
+                  {counterpartyDescriptionControl}
+                </div>
+              </details>
+              <div className="financial-voucher-primary">
+                {counterpartyControl}
+                {amountControl}
+                {descriptionControl}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="financial-header-grid">
+                {(kind === "journal" || voucherDateVisible) && dateControl}
+                {receiptNumberControl}
+                {showCurrency && currencyControl}
+                {(kind === "journal" || showVoucherBranch) && branchControl}
+                {descriptionControl}
+              </div>
+              {kind !== "journal" && (
+                <div className="financial-voucher-grid">
+                  {cashControl}
+                  {counterpartyControl}
+                  {amountControl}
+                  {counterpartyDescriptionControl}
+                </div>
+              )}
+            </>
           )}
           {kind === "journal" ? (
             <div className="financial-lines-scroll">
@@ -1465,7 +1490,6 @@ export function CashboxVoucherModal({
       <Dialog open onClose={requestClose}
         title={record ? `${documentKindLabels[kind]} ${record.number}` : `إضافة ${documentKindLabels[kind]}`}
         className="cashbox-voucher-dialog">
-        <p className="muted">الصندوق: {account.code} — {account.name}</p>
         {notice && <Notice tone="success">{notice}</Notice>}
         <DocumentEditor
           key={record ? `${record.id}:${record.revision}:${record.status}` : "new"}
