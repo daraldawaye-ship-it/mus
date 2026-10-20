@@ -81,7 +81,15 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
    AND msg.id::text=split_part(n.subject_key,':',4)
    AND gm.joined_after_message_id<msg.id
    AND g.company_id IS NOT DISTINCT FROM n.company_id
- ))`;
+ ))
+ -- A cashier-only notification remains confidential if its recipient later
+ -- loses the active "أمين صندوق" position in the employee card.
+ AND (n.code NOT IN ('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED')
+      OR EXISTS(SELECT 1 FROM employees cashier
+        WHERE cashier.company_id=n.company_id
+          AND cashier.id=n.subject_employee_id
+          AND cashier.id=$3::integer AND cashier.user_id=$1
+          AND cashier.active AND 'cashier'=ANY(cashier.position_keys)))`;
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
