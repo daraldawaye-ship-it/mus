@@ -6,6 +6,7 @@ import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { audit } from "./audit.ts";
+import { notifyCompanyCashiers } from "./cashbox-notifications.ts";
 
 export const cashboxOperationSchema = z.object({
   kind: z.enum(["pouch", "electronic", "close"]),
@@ -177,6 +178,11 @@ export async function postEmployeeCashboxOperation(
      shortage:variance!==null&&variance>0n?moneyString(variance):"0",
      surplus:variance!==null&&variance<0n?moneyString(-variance):"0",
      notes:input.notes},companyId);
+  await notifyCompanyCashiers(client,{
+    companyId,operationId,employeeName:employee.name,
+    kind:input.kind,amount:moneyString(amount),
+    variance:variance===null?null:moneyString(variance),
+  });
   return {operationId,documentId,bookBalance:variance===null?null:moneyString(book),
     difference:variance===null?null:moneyString(variance)};
 }
