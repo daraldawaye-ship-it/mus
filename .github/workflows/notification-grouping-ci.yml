@@ -1,0 +1,54 @@
+name: Notification grouping regression
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/routes-notifications.ts"
+      - "apps/api/src/services/notifications.ts"
+      - "apps/web/src/NotificationBell.tsx"
+      - "apps/web/src/pages/NotificationsPage.tsx"
+      - "packages/contracts/src/notifications.ts"
+      - "tests/notifications.test.ts"
+      - ".github/workflows/notification-grouping-ci.yml"
+  push:
+    branches:
+      - codex/deploy-phase2
+      - codex/fix-notification-group-count-20261020
+
+permissions:
+  contents: read
+
+jobs:
+  notification-grouping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tijara_notifications_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tijara_notifications_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tijara_notifications_ci
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Notifications and aggregation tests
+        run: npx tsx --test --test-name-pattern="automatic notifications separate reading from completion" tests/notifications.test.ts
