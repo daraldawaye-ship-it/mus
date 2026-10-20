@@ -240,7 +240,12 @@ export function ServerLookup<T extends { id: number }>({
               onPointerDown={event=>event.preventDefault()}
               onClick={()=>{setPage(v=>v+1);setHighlight(0);}}>التالي</button>
           </div>
-        </div>, document.body
+        </div>, 
+        // Native modal dialogs live in the browser's top layer. Portaling the
+        // results into document.body puts them *behind* that layer regardless
+        // of z-index and makes the options impossible to click. Keep the
+        // popup in the nearest open dialog (or the body on ordinary pages).
+        inputArea.current?.closest("dialog[open]") ?? document.body
       )}
     </div>;
   }
