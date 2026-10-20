@@ -13,7 +13,7 @@ import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import { CashboxVoucherModal } from "./FinancePages";
-import { Button, Card, DataTable, Dialog, Field, Notice, PageHeader } from "../ui";
+import { Button, Card, DataTable, Dialog, Notice, PageHeader } from "../ui";
 
 type MyCashboxLedger = Page<AccountLedgerLine> & {
   account: { id: number; code: string; name: string } | null;
@@ -111,10 +111,16 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
     return <Notice tone="warning">لا تملك صلاحية عرض كشف حساب صندوقي.</Notice>;
   return (
     <>
-      <PageHeader
-        title="كشف حساب صندوقي"
-        description="حركات ورصيد صندوق المبيعات المربوط بحسابك فقط، دون صلاحية الاطلاع على حسابات الآخرين."
-      />
+      <div className="my-cashbox-page-heading">
+        <PageHeader
+          title="كشف حساب صندوقي"
+          actions={
+            <Button variant="secondary" size="compact" onClick={() => window.print()}>
+              طباعة التقرير
+            </Button>
+          }
+        />
+      </div>
       {isCashier && <div className="my-cashbox-voucher-actions" role="group"
         aria-label="سندات صندوقي">
         {canCreateVoucher ? <>
@@ -130,20 +136,20 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           <span className="muted">لتفعيل السندات، امنح الموظف صلاحية «إنشاء وتعديل المسودات المالية» من كرت الموظف.</span>
         </>}
       </div>}
-      <Card>
-        <div className="table-filters">
-          <Field
-            label="من تاريخ"
-            type="date"
-            value={dateFrom}
-            onChange={(event) => update("dateFrom", event.target.value)}
-          />
-          <Field
-            label="إلى تاريخ"
-            type="date"
-            value={dateTo}
-            onChange={(event) => update("dateTo", event.target.value)}
-          />
+      <Card className="my-cashbox-ledger-card">
+        <div className="my-cashbox-date-range" role="group" aria-label="فترة كشف حساب صندوقي">
+          <label className="my-cashbox-date-field">
+            <span>من</span>
+            <input type="date" dir="ltr" aria-label="من تاريخ"
+              value={dateFrom}
+              onChange={(event) => update("dateFrom", event.target.value)} />
+          </label>
+          <label className="my-cashbox-date-field">
+            <span>إلى</span>
+            <input type="date" dir="ltr" aria-label="إلى تاريخ"
+              value={dateTo}
+              onChange={(event) => update("dateTo", event.target.value)} />
+          </label>
         </div>
         {result.isLoading && <Notice>جارٍ تحميل الكشف…</Notice>}
         {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
