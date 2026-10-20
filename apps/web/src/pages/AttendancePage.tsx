@@ -14,6 +14,7 @@ import {
   type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import {
+  ApiFailure,
   api,
   usePagedQuery,
   useSession,
