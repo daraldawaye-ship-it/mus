@@ -70,7 +70,7 @@ export const permissionLabels: Record<Permission, string> = {
   "locations.view": "عرض الفروع والمواقع",
   "locations.manage": "إدارة الفروع والمواقع",
   "finance.view": "عرض القيود والسندات والأرصدة",
-  "finance.own-cashbox.view": "عرض كشف حساب صندوقي فقط",
+  "finance.own-cashbox.view": "عرض كشف حساب صندوقي (تُمنح تلقائيًا لصفة أمين صندوق)",
   "finance.manage": "إنشاء وتعديل المسودات المالية",
   "finance.post": "ترحيل وعكس القيود والسندات",
   "items.view": "عرض الأصناف ووكلائها",
