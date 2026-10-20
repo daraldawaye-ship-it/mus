@@ -117,6 +117,29 @@ test("new employees receive a mandatory advance plus optional, scoped sales cash
   assert.equal((await admin.ok<CashReply>("GET",cashPath)).account,null);
   assert.equal((await id1.client.request("GET",
     `/companies/${second.id}/my-sales-cashbox`)).status,403);
+  // Cashier is an employee position, not a blanket finance role: it grants
+  // only access to that employee's own mapped sales cashbox statement.
+  const ledgerPath=`/companies/${first.id}/my-cashbox-ledger`;
+  assert.equal((await id1.client.request("GET",ledgerPath)).status,403);
+  await runtime.pool.query(
+    "UPDATE employees SET position_keys=ARRAY['cashier']::text[] WHERE company_id=$1 AND id=$2",
+    [first.id,firstEmployee.employee.id],
+  );
+  const ownLedger=await id1.client.ok<{account:{id:number}|null}>("GET",ledgerPath);
+  assert.equal(ownLedger.account?.id,own.account?.id);
+  assert.equal((await id1.client.request("GET",
+    `/companies/${first.id}/financial-documents`)).status,403,
+    "cashier position must not authorize access to all financial documents");
+  assert.equal((await id1.client.request("GET",
+    `/companies/${first.id}/financial-options?type=accounts`)).status,403,
+    "cashier position must not list other financial accounts");
+  assert.equal((await id1.client.request("GET",
+    `/companies/${second.id}/my-cashbox-ledger`)).status,403,
+    "cashier must never view another company's cashbox");
+  assert.equal((await id2.client.request("GET",ledgerPath)).status,403,
+    "unassigned colleagues cannot see the cashbox ledger");
+
+
   await runtime.pool.query("UPDATE accounts SET active=false WHERE company_id=$1 AND id=$2",
     [first.id,own.account!.id]);
   assert.equal((await id1.client.ok<CashReply>("GET",cashPath)).account,null);
