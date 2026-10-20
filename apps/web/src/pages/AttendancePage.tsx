@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   useQuery,
   useQueryClient,
-  type QueryClient,
 } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -15,13 +14,13 @@ import {
   type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import {
-  ApiFailure,
   api,
   usePagedQuery,
   useSession,
   useScopeGuard,
 } from "../api";
 import { usePageDirectory } from "../page-directory";
+import { AttendancePunchControls, refreshAttendance } from "../AttendancePunchControls";
 import { errorMessage } from "../phase2";
 import {
   Button,
@@ -59,8 +58,6 @@ const statusLabels: Record<string, string> = {
   notRecorded: "لا توجد جلسات مسجلة",
   unconfigured: "إعداد النقاط غير محدد",
 };
-type PunchRequest =
-  { out: false; idempotencyKey: string } | { out: true; recordId: number };
 type AdjustmentRequest = {
   record: AttendanceRecord;
   payload: {
@@ -70,27 +67,6 @@ type AdjustmentRequest = {
     idempotencyKey: string;
   };
 };
-function refreshAttendance(
-  client: QueryClient,
-  userId: number | undefined,
-  companyId: number,
-) {
-  return Promise.all([
-    client.invalidateQueries({
-      queryKey: ["list", userId, `company:${companyId}:attendance`],
-    }),
-    client.invalidateQueries({
-      queryKey: ["wallet-summary", userId, companyId],
-    }),
-    client.invalidateQueries({
-      queryKey: ["list", userId, `company:${companyId}:wallet`],
-    }),
-    client.invalidateQueries({ queryKey: ["notifications", userId] }),
-    client.invalidateQueries({
-      queryKey: ["list", userId, `company:${companyId}:notifications`],
-    }),
-  ]);
-}
 export function AttendancePage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   return (
@@ -133,14 +109,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     enabled: !!user,
   });
   const data = overview.data;
-  const punchKey = ["attendance-punch", user?.id, companyId];
-  const [submittedPunch, setSubmittedPunch] = useState<PunchRequest | null>(
-    () => client.getQueryData<PunchRequest>(punchKey) ?? null,
-  );
-  const [pending, setPending] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
-  const punchLock = useRef(false);
+  const [notice, setNotice] = useState("");
   const adjustmentKey = ["attendance-adjustment", user?.id, companyId];
   const restored = client.getQueryData<AdjustmentRequest>(adjustmentKey);
   const [submittedAdjustment, setSubmittedAdjustment] =
@@ -158,23 +127,14 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     adjustmentFormId = useId();
   const lockedAdjustment = adjusting || !!submittedAdjustment;
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible")
-        void client.invalidateQueries({
-          queryKey: ["list", user?.id, `company:${companyId}:attendance`],
-        });
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [client, user?.id, companyId]);
-  useEffect(() => {
-    if (!submittedPunch && !submittedAdjustment) return;
+    if (!submittedAdjustment) return;
     const preventLeave = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", preventLeave);
     return () => window.removeEventListener("beforeunload", preventLeave);
-  }, [submittedPunch, submittedAdjustment]);
+  }, [submittedAdjustment]);
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -182,63 +142,6 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
       next.delete("page");
       return next;
     });
-  }
-  async function punch(out: boolean) {
-    if (punchLock.current || !data) return;
-    if (
-      !submittedPunch &&
-      (out ? !data.canCheckOut || !data.openRecord : !data.canCheckIn)
-    )
-      return;
-    const retry = !!submittedPunch;
-    const frozen: PunchRequest =
-      submittedPunch ??
-      (out
-        ? { out: true, recordId: data.openRecord!.id }
-        : { out: false, idempotencyKey: crypto.randomUUID() });
-    client.setQueryDefaults(["attendance-punch"], { gcTime: Infinity });
-    client.setQueryData(punchKey, frozen);
-    setSubmittedPunch(frozen);
-    punchLock.current = true;
-    setPending(true);
-    setError("");
-    setNotice("");
-    try {
-      const response = await api<{ record: AttendanceRecord }>(
-        base + (frozen.out ? "/check-out" : "/check-in"),
-        {
-          method: "POST",
-          signal: guard.signal,
-          body: frozen.out
-            ? { recordId: frozen.recordId }
-            : { idempotencyKey: frozen.idempotencyKey },
-        },
-      );
-      if (!guard.isCurrent()) return;
-      client.removeQueries({ queryKey: punchKey, exact: true });
-      setSubmittedPunch(null);
-      void refreshAttendance(client, user?.id, companyId);
-      setNotice(
-        response.record.closeSource === "automatic"
-          ? "أُغلقت الجلسة تلقائيًا بعد 16 ساعة وتحتاج مراجعة."
-          : `${frozen.out ? "تم تسجيل الانصراف" : "تم تسجيل الحضور"}: ${time(frozen.out ? response.record.checkedOutAt : response.record.checkedInAt)}`,
-      );
-    } catch (cause) {
-      if (!guard.isCurrent()) return;
-      setError(errorMessage(cause));
-      if (
-        !retry &&
-        cause instanceof ApiFailure &&
-        cause.status >= 400 &&
-        cause.status < 500
-      ) {
-        client.removeQueries({ queryKey: punchKey, exact: true });
-        setSubmittedPunch(null);
-      }
-    } finally {
-      punchLock.current = false;
-      if (guard.isCurrent()) setPending(false);
-    }
   }
   function openAdjustment(record: AttendanceRecord) {
     if (lockedAdjustment || !mayAdjust) return;
@@ -322,7 +225,6 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
         title="الحضور والانصراف"
         description="سجّل الحضور والانصراف في أي وقت، ويمكنك تسجيل أكثر من جلسة في اليوم. التوقيت: عدن."
       />
-      {error && <Notice tone="error">{error}</Notice>}
       {notice && <Notice tone="success">{notice}</Notice>}
       {overview.error && (
         <Notice tone="error">
@@ -396,45 +298,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
                   وتُحتسب نقاط الساعات حتى السقف اليومي المحدد.
                 </Notice>
               )}
-            <div className="form-actions">
-              <Button
-                disabled={pending || !!submittedPunch || !data?.canCheckIn}
-                onClick={() => void punch(false)}
-              >
-                تسجيل الحضور
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={pending || !!submittedPunch || !data?.canCheckOut}
-                onClick={() => void punch(true)}
-              >
-                تسجيل الانصراف
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={pending}
-                onClick={() =>
-                  void refreshAttendance(client, user?.id, companyId)
-                }
-              >
-                تحديث
-              </Button>
-              {pending && <span>جارٍ الحفظ…</span>}
-            </div>
-            {submittedPunch && !pending && (
-              <Notice tone="warning">
-                لم تتأكد نتيجة التسجيل بعد.{" "}
-                <Button onClick={() => void punch(submittedPunch.out)}>
-                  التحقق من نتيجة التسجيل
-                </Button>
-              </Notice>
-            )}
-            {data?.openRecord && (
-              <p>الجلسة المفتوحة منذ: {time(data.openRecord.checkedInAt)}</p>
-            )}
-            {!data?.openRecord && data?.todayRecord?.checkedOutAt && (
-              <p>آخر انصراف: {time(data.todayRecord.checkedOutAt)}</p>
-            )}
+            <AttendancePunchControls companyId={companyId} directory={data} />
             <p className="muted">
               بعد 16 ساعة دون انصراف، تُغلق الجلسة تلقائيًا وتُحال للمراجعة.
               أوقات التسجيل محفوظة ولا تُعدّل يدويًا.
