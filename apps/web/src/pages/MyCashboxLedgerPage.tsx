@@ -13,6 +13,7 @@ import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import { CashboxVoucherModal } from "./FinancePages";
+import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { Button, Card, DataTable, Dialog, Notice, PageHeader } from "../ui";
 
 type MyCashboxLedger = Page<AccountLedgerLine> & {
@@ -44,6 +45,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   // cashier can view only their assigned box without gaining all finance.
   const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
     isCashier;
+  const canViewReceipts = context.general || context.permissions.includes("finance.view");
   const [params, setParams] = useSearchParams();
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const [voucherKind, setVoucherKind] = useState<"receipt" | "payment" | null>(null);
@@ -114,28 +116,34 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
       <div className="my-cashbox-page-heading">
         <PageHeader
           title="كشف حساب صندوقي"
-          actions={
-            <Button variant="secondary" size="compact" onClick={() => window.print()}>
-              طباعة التقرير
-            </Button>
-          }
+          actions={<PageActionsDropdown actions={[
+            {
+              label: "إضافة سند صرف",
+              onClick: () => setVoucherKind("payment"),
+              disabled: !canCreateVoucher || !result.data?.account,
+            },
+            {
+              label: "إضافة سند قبض",
+              onClick: () => setVoucherKind("receipt"),
+              disabled: !canCreateVoucher || !result.data?.account,
+            },
+            {
+              label: "طباعة التقرير",
+              onClick: () => window.print(),
+            },
+            {
+              label: "فتح استلام الترحيلات",
+              to: `/companies/${companyId}/pouch-receipts`,
+              disabled: !canViewReceipts,
+            },
+            {
+              label: "فتح استلام المحفظة الإلكترونية",
+              to: `/companies/${companyId}/electronic-receipts`,
+              disabled: !canViewReceipts,
+            },
+          ]} label="إجراءات" />
         />
       </div>
-      {isCashier && <div className="my-cashbox-voucher-actions" role="group"
-        aria-label="سندات صندوقي">
-        {canCreateVoucher ? <>
-          <Button variant="secondary" disabled={!result.data?.account}
-            onClick={() => setVoucherKind("receipt")}>إضافة سند قبض</Button>
-          <Button variant="secondary" disabled={!result.data?.account}
-            onClick={() => setVoucherKind("payment")}>إضافة سند صرف</Button>
-        </> : <>
-          <Button variant="secondary" disabled
-            title="يلزم منح صلاحية إنشاء وتعديل المسودات المالية">إضافة سند قبض</Button>
-          <Button variant="secondary" disabled
-            title="يلزم منح صلاحية إنشاء وتعديل المسودات المالية">إضافة سند صرف</Button>
-          <span className="muted">لتفعيل السندات، امنح الموظف صلاحية «إنشاء وتعديل المسودات المالية» من كرت الموظف.</span>
-        </>}
-      </div>}
       <Card className="my-cashbox-ledger-card">
         <div className="my-cashbox-date-range" role="group" aria-label="فترة كشف حساب صندوقي">
           <label className="my-cashbox-date-field">
