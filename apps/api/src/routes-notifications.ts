@@ -274,9 +274,12 @@ export function notificationRoutes(pool: Pool) {
             )
           ).rows[0].total;
           // Filter visibility before aggregation to keep permission boundaries.
-          const groupedSelect=notificationSelect.replace(
-            "t.implemented\n  FROM notifications n",
-            "t.implemented,v.group_count,v.group_unread\n  FROM notifications n",
+          // Select the counts calculated from authorized records before choosing
+          // the newest entry for each notification type. Anchoring on SELECT n.*
+          // avoids depending on whitespace around the FROM clause.
+          const groupedSelect = notificationSelect.replace(
+            "SELECT n.*",
+            "SELECT n.*,v.group_count,v.group_unread",
           );
           const rows = (
             await client.query(
