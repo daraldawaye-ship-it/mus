@@ -66,6 +66,13 @@ export async function companyAccess(
   const legacy: Permission[] = general
     ? [...permissionKeys]
     : [...row.permissions];
+  // "أمين صندوق" is an employee position, not a general financial role.
+  // It grants only visibility into the employee's own linked sales cashbox.
+  // Voucher creation/posting remain independently controlled by finance grants.
+  if (!general && row && (row.position_keys ?? []).includes("cashier") &&
+      !legacy.includes("finance.own-cashbox.view")) {
+    legacy.push("finance.own-cashbox.view");
+  }
   for (const module of [
     "accounts",
     "currencies",
