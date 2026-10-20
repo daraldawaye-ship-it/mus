@@ -15,6 +15,7 @@ import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import type { ChatListQuery } from "./chat.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
+import { notifyChatRecipient } from "./chat-notifications.ts";
 
 interface Access { user: User; companyId: number | null; scopeId: number; }
 async function access(client: PoolClient, actor: User, context: ChatContext,
@@ -288,6 +289,13 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   for (const member of recipientMembers) await client.query(`INSERT INTO chat_group_receipts(message_id,group_id,membership_id,user_id,recipient_name)
     VALUES($1,$2,$3,$4,$5)`, [created.id, groupId, member.id, member.user_id, member.display_name]);
   await client.query("UPDATE chat_groups SET last_message_id=$2,updated_at=greatest(updated_at,$3) WHERE id=$1", [groupId, created.id, created.created_at]);
+  for (const member of recipientMembers) {
+    await notifyChatRecipient(client,{
+      companyId:current.companyId,recipientId:member.user_id,
+      senderName:current.user.displayName,messageId:created.id,
+      groupId,groupName:row.name,
+    });
+  }
   await audit(client, current.user, "chat.group.send", "chat_group_message", created.id, null,
     { groupId, messageId: created.id, senderId: current.user.id, membershipRevision: input.membershipRevision,
       recipientIds: recipientMembers.map(member => member.user_id), textLength: input.text.length, createdAt: created.created_at.toISOString() }, current.companyId);
