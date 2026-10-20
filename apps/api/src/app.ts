@@ -17,6 +17,7 @@ import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
 import { pledgeRoutes } from "./routes-pledges.ts";
+import { pushRoutes } from "./routes-push.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
@@ -54,6 +55,7 @@ export async function createApp(options: AppOptions = {}) {
   app.use(
     "/api",
     authRoutes(pool, config.production),
+    pushRoutes(pool),
     mediaRoutes(pool),
     chatRoutes(pool),
     chatGroupRoutes(pool),

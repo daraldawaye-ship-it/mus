@@ -25,6 +25,7 @@ import {
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
 import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import { ProfileImageUrlField } from "../ProfileImageUrlField";
 import {
@@ -550,6 +551,7 @@ function ProfileForms({ user }: { user: User }) {
           </div>
         </form>
       </Card>
+      <DeviceNotificationSettings />
       <SocialProviderOptions intent="link"/>
       <Card
         title="تغيير كلمة المرور"

@@ -5355,3 +5355,40 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .my-cashbox-date-range,
   .my-cashbox-voucher-actions { display: none !important; }
 }
+
+
+/* Compact, non-blocking push permission invitation shown after sign-in. */
+.device-push-invite {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.device-push-invite > strong { white-space: nowrap; }
+.device-push-invite > span {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.device-push-invite-actions {
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+  flex-wrap: wrap;
+}
+.device-push-invite-actions .button { height: 30px; }
+@media (max-width: 620px) {
+  .device-push-invite {
+    gap: 5px;
+    padding: 7px;
+  }
+  .device-push-invite > span { flex-basis: 100%; }
+  .device-push-invite-actions {
+    margin-inline-start: 0;
+  }
+}

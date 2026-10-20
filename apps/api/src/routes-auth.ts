@@ -122,6 +122,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
     handler(async (req, res) => {
       const user = actor(req);
       await transaction(pool, async (client) => {
+        await client.query("DELETE FROM web_push_subscriptions WHERE session_hash=$1", [req.auth!.tokenHash]);
         await client.query("DELETE FROM sessions WHERE token_hash=$1", [
           req.auth!.tokenHash,
         ]);
