@@ -50,9 +50,12 @@ export function UserShortcutFlyout({
   const loadingDefaultHref = !catalog.data && catalog.isLoading
     ? (companyId ? `/companies/${companyId}/pages` : "/pages") : null;
   const defaultHref = defaultPage?.href ?? loadingDefaultHref;
+  // Follow the same page-directory order as the main navigation, rather
+  // than the order in which the user happened to select shortcuts.
   const shortcuts=(shortcutQuery.data?.pageKeys??[])
     .map(key=>lookup.get(key)).filter((entry):entry is PageEntry=>
-      !!entry && entry.key!==defaultPage?.key);
+      !!entry && entry.key!==defaultPage?.key)
+    .sort((a,b)=>a.order-b.order || a.key.localeCompare(b.key));
   const quickAllowed=(user.owner||user.kind==="admin") &&
     !!lookup.get("public.general-table")?.actionAccess.create;
   useLayoutEffect(()=>{
