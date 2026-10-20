@@ -67,7 +67,7 @@ export function HomePage() {
   return (
     <>
       <PageHeader
-        title={user ? `مرحبًا، ${user.displayName}` : "تجارة"}
+        title={user ? `مرحبًا، ${user.displayName}` : "الرئيسي"}
         description="حسابك العام، وشركاتك، وفريق عملك في مكان واحد."
       />
       <Card
