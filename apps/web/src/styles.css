@@ -5063,3 +5063,80 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .notification-record .notification-group-count {
   margin-inline:8px;
 }
+
+/* My cashbox ledger: retain the complete desktop accounting table, and use
+   two compact rows for each movement on phones, like pouch receiving. */
+.my-cashbox-mobile-list { display:none; }
+@media(max-width:680px) {
+  .my-cashbox-desktop-table { display:none; }
+  .my-cashbox-mobile-list {
+    display:flex; flex-direction:column; gap:6px;
+    min-width:0; width:100%;
+  }
+  .my-cashbox-mobile-entry {
+    box-sizing:border-box;
+    min-width:0; max-width:100%; width:100%;
+    display:flex; flex-direction:column; gap:7px;
+    border:1px solid var(--border,#526077);
+    border-radius:8px;
+    padding:8px;
+    background:var(--surface,#192531);
+    overflow:hidden;
+  }
+  .my-cashbox-mobile-first,
+  .my-cashbox-mobile-second {
+    display:flex; align-items:center;
+    justify-content:space-between;
+    gap:6px; min-width:0; width:100%;
+  }
+  .my-cashbox-mobile-first { font-size:12px; }
+  .my-cashbox-mobile-first > span {
+    display:flex; flex-direction:column;
+    align-items:flex-start; justify-content:center;
+    flex:0 1 auto; min-width:0;
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .my-cashbox-mobile-first > span > small {
+    font-size:10px; line-height:1.3;
+    color:var(--muted);
+  }
+  .my-cashbox-mobile-first > span :is(strong,bdi) {
+    max-width:100%;
+    overflow:hidden; text-overflow:ellipsis;
+    font-size:12px; font-weight:650;
+  }
+  .my-cashbox-mobile-first .my-cashbox-mobile-balance { flex:1 1 44%; }
+  .my-cashbox-mobile-first .my-cashbox-mobile-debit,
+  .my-cashbox-mobile-first .my-cashbox-mobile-credit { flex:1 1 28%; }
+  .my-cashbox-mobile-second {
+    font-size:11px; line-height:1.4;
+    justify-content:flex-start;
+  }
+  .my-cashbox-mobile-date { flex:0 0 auto; white-space:nowrap; }
+  .my-cashbox-mobile-kind {
+    flex:0 1 auto; max-width:27%;
+    overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .my-cashbox-mobile-summary {
+    display:block; flex:1 1 0; min-width:0;
+    border:0; padding:0; background:transparent;
+    color:inherit; font:inherit;
+    text-align:start;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    cursor:pointer;
+  }
+  .my-cashbox-mobile-summary:focus-visible {
+    outline:2px solid var(--primary); outline-offset:3px;
+  }
+  .my-cashbox-mobile-pages {
+    display:flex; flex-wrap:wrap;
+    align-items:center; justify-content:space-between; gap:8px;
+    font-size:12px; margin-top:8px;
+  }
+  .my-cashbox-mobile-pages .button { min-width:0; }
+  .my-cashbox-mobile-empty { text-align:center; font-size:13px; }
+}
+.my-cashbox-mobile-details { display:grid; gap:8px; }
+.my-cashbox-mobile-details p { margin:0; overflow-wrap:anywhere; }
