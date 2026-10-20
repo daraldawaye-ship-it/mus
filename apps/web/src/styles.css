@@ -5190,3 +5190,25 @@ a.notification-quick-title:hover { text-decoration: underline; }
     border:2px solid #111 !important;
   }
 }
+
+/* Cashier's personal ledger exposes voucher shortcuts without granting a
+   general-finance role. Disabled actions explain which grant is missing. */
+.my-cashbox-voucher-actions {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.my-cashbox-voucher-actions > .muted {
+  font-size:12px;
+  flex:1 1 100%;
+}
+@media(max-width:680px) {
+  .my-cashbox-voucher-actions > :is(a,button) {
+    flex:1 1 auto;
+    min-width:0;
+    font-size:12px;
+    text-align:center;
+  }
+}
