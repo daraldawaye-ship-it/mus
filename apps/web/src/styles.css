@@ -5235,3 +5235,42 @@ a.notification-quick-title:hover { text-decoration: underline; }
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* Cashbox receipt/payment modal: frequent entry fields first; rarely used
+   metadata remains in a small, keyboard-accessible disclosure at the top. */
+.cashbox-voucher-dialog .financial-voucher-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.cashbox-voucher-dialog .financial-voucher-extras {
+  min-width: 0;
+  margin-bottom: 4px;
+}
+.cashbox-voucher-dialog .financial-voucher-extras > summary {
+  display: list-item;
+  width: fit-content;
+  margin-inline-end: auto;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.cashbox-voucher-dialog .financial-voucher-extra-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+@media (max-width: 680px) {
+  .cashbox-voucher-dialog .financial-voucher-extra-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
