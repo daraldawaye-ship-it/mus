@@ -504,11 +504,13 @@ function CompanyView({
       {reportPrintLayout(pageKey) === "generic" ? (
         <div className="company-report-printable">
           <CompanyPrintHeader context={context} />
-          <div className="company-report-print-toolbar">
-            <Button variant="secondary" onClick={() => window.print()}>
-              طباعة التقرير
-            </Button>
-          </div>
+          {pageKey !== "company.my-cashbox-ledger" && (
+            <div className="company-report-print-toolbar">
+              <Button variant="secondary" onClick={() => window.print()}>
+                طباعة التقرير
+              </Button>
+            </div>
+          )}
           <CompanyContent context={context} section={section} />
         </div>
       ) : (
