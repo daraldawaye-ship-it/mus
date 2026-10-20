@@ -48,6 +48,9 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
       entry.key === `${companyId ? "company" : "public"}.notifications`,
   );
   const allowed = !!user && (!page || (page.enabled && page.actionAccess.view));
+  const chatPage = directory.data?.find(entry =>
+    entry.key === `${companyId ? "company" : "public"}.chat`);
+  const chatAllowed = !!user && (!chatPage || (chatPage.enabled && chatPage.actionAccess.view));
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
@@ -428,9 +431,9 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
             <Link className="notification-quick-footer" to={`${base}/notifications`} onClick={close}>
               جميع الإشعارات <ExternalLink size={14} />
             </Link>
-            <Link className="notification-quick-footer" to={`${base}/chat`} onClick={close}>
+            {chatAllowed && <Link className="notification-quick-footer" to={`${base}/chat`} onClick={close}>
               الدردشة <ExternalLink size={14} />
-            </Link>
+            </Link>}
           </div>
         </div>,
         document.body,
