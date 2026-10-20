@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
 
 type Config={enabled:boolean;publicKey:string|null};
@@ -11,18 +11,145 @@ function vapidBytes(text:string):Uint8Array<ArrayBuffer>{
   for(let i=0;i<raw.length;i++)result[i]=raw.charCodeAt(i);
   return result;
 }
-function supported():boolean{
+export function supported():boolean{
   return "serviceWorker" in navigator && "PushManager" in window &&
     "Notification" in window && window.isSecureContext;
 }
-function onApplePhone():boolean{
+export function onApplePhone():boolean{
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
-function iosInstalled():boolean{
+export function iosInstalled():boolean{
   return window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & {standalone?:boolean}).standalone===true;
 }
+export const PUSH_REMINDER_INTERVAL_MS=3*24*60*60*1000;
+export const pushOptOutKey=(userId:number)=>"alraesy-push-disabled:"+userId;
+export const pushDeniedKey=(userId:number)=>"alraesy-push-denied-at:"+userId;
+export function denialReminderDue(lastDenied:number|null,now:number):boolean{
+  return lastDenied!==null && now-lastDenied>=PUSH_REMINDER_INTERVAL_MS;
+}
+export async function subscribeDevice(publicKey:string):Promise<void>{
+  if(!supported())throw new Error("هذا المتصفح لا يدعم إشعارات الويب.");
+  const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
+  await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub)sub=await reg.pushManager.subscribe({
+    userVisibleOnly:true,applicationServerKey:vapidBytes(publicKey),
+  });
+  const keys=sub.toJSON().keys;
+  if(!keys?.p256dh||!keys.auth)throw new Error("لم تُرجع خدمة الجهاز مفاتيح الاشتراك.");
+  await api("/push/subscribe",{
+    method:"POST",
+    body:{endpoint:sub.endpoint,keys:{p256dh:keys.p256dh,auth:keys.auth}},
+  });
+}
+type PromptMode="request"|"blocked"|null;
+
+/** Display an immediate opt-in invitation at login, without a browser
+ * permission request until the user explicitly clicks the button. Denial
+ * reminders are in-page only and occur at most once every three days. */
+export function DevicePushBootstrap({userId}:{userId:number}){
+  const [config,setConfig]=useState<Config|null>(null);
+  const [mode,setMode]=useState<PromptMode>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      try{
+        const cfg=await api<Config>("/push/config");
+        if(!mounted||!cfg.enabled||!cfg.publicKey||!supported()||
+          (onApplePhone()&&!iosInstalled()))return;
+        setConfig(cfg);
+        // An explicit opt-out from "حسابي" always overrides default-on.
+        if(localStorage.getItem(pushOptOutKey(userId))==="1")return;
+        if(Notification.permission==="granted"){
+          await subscribeDevice(cfg.publicKey);
+          return;
+        }
+        if(Notification.permission==="default"){
+          if(mounted)setMode("request");
+          return;
+        }
+        if(Notification.permission==="denied"){
+          const key=pushDeniedKey(userId);
+          const now=Date.now();
+          const prior=Number(localStorage.getItem(key));
+          if(!Number.isFinite(prior)||prior<=0){
+            localStorage.setItem(key,String(now));
+          }else if(denialReminderDue(prior,now)){
+            localStorage.setItem(key,String(now));
+            if(mounted)setMode("blocked");
+          }
+        }
+      }catch{
+        // User may be signed out or offline; do not interrupt navigation.
+      }
+    })();
+    return()=>{mounted=false;};
+  },[userId]);
+  async function allow(){
+    if(!config?.publicKey||busy)return;
+    setBusy(true);setError("");
+    try{
+      // Browser permission dialogs must happen from a direct user gesture.
+      const permission=await Notification.requestPermission();
+      if(permission==="granted"){
+        await subscribeDevice(config.publicKey);
+        localStorage.removeItem(pushOptOutKey(userId));
+        localStorage.removeItem(pushDeniedKey(userId));
+        setMode(null);
+      }else if(permission==="denied"){
+        localStorage.setItem(pushDeniedKey(userId),String(Date.now()));
+        setMode(null);
+      }else{
+        setMode(null);
+      }
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:"تعذر تفعيل الإشعارات");
+    }finally{setBusy(false);}
+  }
+  function recheck(){
+    if(Notification.permission==="granted"){
+      if(config?.publicKey){
+        setBusy(true);setError("");
+        void subscribeDevice(config.publicKey).then(()=>{
+          localStorage.removeItem(pushDeniedKey(userId));
+          setMode(null);
+        }).catch(cause=>{
+          setError(cause instanceof Error?cause.message:"تعذر تفعيل الإشعارات");
+        }).finally(()=>setBusy(false));
+      }
+    }else{
+      // Do not invoke requestPermission while blocked: browsers will reject
+      // repeated requests until the user changes site/OS permission settings.
+      setError("غيّر إذن الإشعارات من إعدادات Chrome أو إعدادات إشعارات التطبيق في الهاتف أولًا.");
+    }
+  }
+  if(!mode)return null;
+  return <div className="device-push-invite" role="region" aria-label="إشعارات الجهاز">
+    <strong>{mode==="blocked"?"تذكير بإشعارات الجهاز":"تفعيل إشعارات الرئيسي"}</strong>
+    <span>{mode==="blocked"
+      ?"كنت قد منعت إشعارات الجهاز. يمكنك السماح بها من إعدادات المتصفح أو الهاتف؛ لن يتكرر هذا التذكير قبل 3 أيام."
+      :"اسمح بإشعارات الجهاز لتصلك التنبيهات الجديدة حتى عندما تكون الصفحة مغلقة."}</span>
+    {error&&<span role="alert">{error}</span>}
+    <div className="device-push-invite-actions">
+      {mode==="request"
+        ?<Button size="compact" disabled={busy} onClick={()=>void allow()}>
+          {busy?"جارٍ التفعيل…":"تفعيل الإشعارات"}
+         </Button>
+        :<Button size="compact" disabled={busy} onClick={recheck}>
+          {busy?"جارٍ التحقق…":"تحقّق من السماح"}
+         </Button>}
+      <Button size="compact" variant="secondary" onClick={()=>setMode(null)}>
+        لاحقًا
+      </Button>
+    </div>
+  </div>;
+}
+
 export function DeviceNotificationSettings(){
+  const {user}=useSession();
   const [config,setConfig]=useState<Config|null>(null);
   const [state,setState]=useState<Status>("loading");
   const [busy,setBusy]=useState(false);
@@ -55,24 +182,17 @@ export function DeviceNotificationSettings(){
     // The OS permission prompt must be requested directly from a user click.
     const permission=await Notification.requestPermission();
     if(permission!=="granted"){
+      if(permission==="denied"&&user)localStorage.setItem(pushDeniedKey(user.id),String(Date.now()));
       setState(permission==="denied"?"blocked":"available");
       return;
     }
     setBusy(true);setError("");setMessage("");
     try{
-      const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
-      await navigator.serviceWorker.ready;
-      let sub=await reg.pushManager.getSubscription();
-      if(!sub)sub=await reg.pushManager.subscribe({
-        userVisibleOnly:true,
-        applicationServerKey:vapidBytes(config.publicKey),
-      });
-      const keys=sub.toJSON().keys;
-      if(!keys?.p256dh||!keys.auth)throw new Error("لم تُرجع خدمة الهاتف مفاتيح الاشتراك");
-      await api("/push/subscribe",{
-        method:"POST",
-        body:{endpoint:sub.endpoint,keys:{p256dh:keys.p256dh,auth:keys.auth}},
-      });
+      await subscribeDevice(config.publicKey);
+      if(user){
+        localStorage.removeItem(pushOptOutKey(user.id));
+        localStorage.removeItem(pushDeniedKey(user.id));
+      }
       setState("active");
       setMessage("تم تفعيل إشعارات هذا الجهاز. ستصلك التنبيهات الجديدة حتى عند إغلاق الصفحة، إذا سمح النظام بإشعارات الخلفية.");
     }catch(cause){
@@ -91,8 +211,9 @@ export function DeviceNotificationSettings(){
         });
         await sub.unsubscribe();
       }
+      if(user)localStorage.setItem(pushOptOutKey(user.id),"1");
       setState(Notification.permission==="denied"?"blocked":"available");
-      setMessage("تم إيقاف إشعارات هذا الجهاز.");
+      setMessage("تم إيقاف إشعارات هذا الجهاز. يمكنك إعادة تفعيلها من هنا.");
     }catch(cause){
       setError(cause instanceof Error?cause.message:"تعذر إلغاء الاشتراك");
     }finally{setBusy(false);}
@@ -104,7 +225,7 @@ export function DeviceNotificationSettings(){
     "ios-install":"على iPhone، أضف الموقع إلى الشاشة الرئيسية من Safari وافتح التطبيق المثبت لتفعيل الإشعارات.",
     blocked:"الإشعارات محظورة من إعدادات المتصفح أو الجهاز. اسمح بإشعارات هذا الموقع من الإعدادات ثم أعد فتح الصفحة.",
     active:"الإشعارات مفعلة على هذا الجهاز.",
-    available:"يمكنك تفعيل الإشعارات على هذا الجهاز لتصلك تنبيهات الموقع حتى عند إغلاقه.",
+    available:"الإشعارات مفعلة افتراضيًا في الموقع؛ اسمح بها على هذا الجهاز ليتم استقبالها في الخلفية.",
   };
   return <Card title="إشعارات الجهاز">
     <p className="muted">{description[state]}</p>
@@ -120,6 +241,6 @@ export function DeviceNotificationSettings(){
           {busy?"جارٍ الإيقاف…":"إيقاف إشعارات هذا الجهاز"}
         </Button>}
     </div>
-    <small className="muted">التفعيل اختياري لكل هاتف أو كمبيوتر بشكل مستقل، ولا يغيّر إعدادات الإشعارات داخل الموقع.</small>
+    <small className="muted">إشعارات الموقع مفعّلة افتراضيًا، وموافقة المتصفح مستقلة لكل هاتف وكمبيوتر. يمكنك إيقافها هنا في أي وقت.</small>
   </Card>;
 }
