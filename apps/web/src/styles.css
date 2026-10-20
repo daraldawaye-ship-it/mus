@@ -5332,7 +5332,8 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 @media print {
   .my-cashbox-date-range,
-  .my-cashbox-page-heading .page-actions { display: none !important; }
+  .my-cashbox-page-heading .page-actions,
+  .sales-header-actions-dropdown { display: none !important; }
 }
 
 
