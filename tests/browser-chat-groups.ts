@@ -114,7 +114,7 @@ try {
   await call(alice, "/appearance", "PATCH", { scope: `company:${company.id}`, mode: "light", color: "#7255b7" });
   const alicePage = await contexts[0]!.newPage(), bobPage = await contexts[1]!.newPage(), carolPage = await contexts[2]!.newPage();
   await alicePage.goto("/chat"); await alicePage.bringToFront();
-  await alicePage.getByRole("heading", { name: "دردشة تجارة", exact: true }).waitFor();
+  await alicePage.getByRole("heading", { name: "دردشة الرئيسي", exact: true }).waitFor();
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   const groupName = "فريق تجارة الاختباري";
   const groupId = await createGroup(alicePage, groupName, [bob.user, carol.user]);

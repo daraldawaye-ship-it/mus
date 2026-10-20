@@ -112,6 +112,13 @@ test("private groups enforce membership epochs and preserve exact per-recipient 
   const alice = await f.actor("alice"), bob = await f.actor("bob"), carol = await f.actor("carol"), newcomer = await f.actor("newcomer");
   let { group } = await create(alice, [bob, carol]);
   const first = await send(alice, group, "رسالة قبل انضمام العضو الجديد");
+  const sentAlerts=await f.pool.query(
+    "SELECT recipient_user_id,subject_key,message FROM notifications WHERE code='CHAT_GROUP_GLOBAL' ORDER BY id");
+  assert.deepEqual(sentAlerts.rows.map(row=>row.recipient_user_id).sort((a,b)=>a-b),
+    [bob.user.id,carol.user.id].sort((a,b)=>a-b));
+  assert(sentAlerts.rows.every(row=>row.subject_key==="chat-group:"+group.id+":message:"+first.id));
+  assert(sentAlerts.rows.every(row=>!row.message.includes("رسالة قبل انضمام")),
+    "Group messages do not leak into the public notifications table");
   assert.equal(first.recipientCount, 2); assert.equal(first.deliveredCount, 0); assert.equal(first.readCount, 0);
   assert.deepEqual(first.receipts.map(receipt => receipt.userId).sort((a, b) => a - b), [bob.user.id, carol.user.id]);
   for (const outsider of [f.owner, newcomer]) {

@@ -124,6 +124,14 @@ test("chat receipts acknowledge exact inbound messages, remain monotonic and nev
   const first = await send(alice, bob, "الأولى");
   const second = await send(alice, bob, "الثانية");
   const outbound = await send(bob, alice, "رد مستقل");
+  const privateAlerts=await f.pool.query(
+    "SELECT recipient_user_id,title,message,read_at FROM notifications WHERE code='CHAT_DIRECT_GLOBAL' ORDER BY id"
+  );
+  assert.equal(privateAlerts.rows.length,3);
+  assert.equal(privateAlerts.rows.filter(row=>row.recipient_user_id===bob.user.id).length,2);
+  assert.equal(privateAlerts.rows.filter(row=>row.recipient_user_id===alice.user.id).length,1);
+  assert(privateAlerts.rows.every(row=>!row.message.includes("الأولى")&&!row.message.includes("الثانية")),
+    "Chat message contents must not leak into push notifications");
   const initial = await messages(bob, alice);
   assert.equal(initial.find(message => message.id === first.id)?.deliveredAt, null);
   assert.equal(initial.find(message => message.id === first.id)?.readAt, null, "Fetching messages never marks them read");
@@ -144,6 +152,9 @@ test("chat receipts acknowledge exact inbound messages, remain monotonic and nev
   assert(Date.parse(delivered.deliveredAt) >= Date.parse(delivered.createdAt));
   assert.equal((await messages(alice, bob)).find(message => message.id === second.id)?.deliveredAt, null, "Exact IDs do not acknowledge later messages");
   await bob.client.ok("POST", receiptPath(alice.user.id), { ...globalChat, readMessageIds: [first.id, first.id] });
+  const storedAlert=await f.pool.query("SELECT read_at FROM notifications WHERE recipient_user_id=$1 AND subject_key=$2",
+    [bob.user.id,"chat-message:"+first.id]);
+  assert(storedAlert.rows[0]?.read_at,"Reading a private message also reads its notification");
   const read = (await messages(alice, bob)).find(message => message.id === first.id)!;
   assert(read.readAt && read.deliveredAt);
   assert.equal(read.deliveredAt, delivered.deliveredAt);

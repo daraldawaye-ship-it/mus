@@ -15,6 +15,7 @@ import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import type { ChatListQuery } from "./chat.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
+import { notifyChatRecipient } from "./chat-notifications.ts";
 
 interface Access { user: User; companyId: number | null; scopeId: number; }
 async function access(client: PoolClient, actor: User, context: ChatContext,
@@ -288,6 +289,13 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   for (const member of recipientMembers) await client.query(`INSERT INTO chat_group_receipts(message_id,group_id,membership_id,user_id,recipient_name)
     VALUES($1,$2,$3,$4,$5)`, [created.id, groupId, member.id, member.user_id, member.display_name]);
   await client.query("UPDATE chat_groups SET last_message_id=$2,updated_at=greatest(updated_at,$3) WHERE id=$1", [groupId, created.id, created.created_at]);
+  for (const member of recipientMembers) {
+    await notifyChatRecipient(client,{
+      companyId:current.companyId,recipientId:member.user_id,
+      senderName:current.user.displayName,messageId:created.id,
+      groupId,groupName:row.name,
+    });
+  }
   await audit(client, current.user, "chat.group.send", "chat_group_message", created.id, null,
     { groupId, messageId: created.id, senderId: current.user.id, membershipRevision: input.membershipRevision,
       recipientIds: recipientMembers.map(member => member.user_id), textLength: input.text.length, createdAt: created.created_at.toISOString() }, current.companyId);
@@ -303,6 +311,16 @@ export async function acknowledgeChatGroupMessages(client: PoolClient, actor: Us
   const after = (await client.query(`UPDATE chat_group_receipts SET delivered_at=coalesce(delivered_at,statement_timestamp()),
     read_at=CASE WHEN message_id=ANY($2::integer[]) THEN coalesce(read_at,statement_timestamp()) ELSE read_at END
     WHERE membership_id=$3 AND message_id=ANY($1::integer[]) RETURNING *`, [ids, input.readMessageIds, row.own_membership_id])).rows.sort((a, b) => a.message_id - b.message_id);
+  if(input.readMessageIds.length){
+    await client.query(
+      "UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()"+
+      " WHERE recipient_user_id=$1 AND company_id IS NOT DISTINCT FROM $2::integer"+
+      " AND code IN ('CHAT_GROUP_GLOBAL','CHAT_GROUP_COMPANY')"+
+      " AND subject_key=ANY($3::text[]) AND read_at IS NULL AND completed_at IS NULL",
+      [current.user.id,current.companyId,
+       input.readMessageIds.map(id=>"chat-group:"+groupId+":message:"+id)],
+    );
+  }
   const receipt = (value: QueryResultRow) => ({ messageId: value.message_id, userId: value.user_id, deliveredAt: iso(value.delivered_at), readAt: iso(value.read_at) });
   if (JSON.stringify(before.map(receipt)) !== JSON.stringify(after.map(receipt)))
     await audit(client, current.user, "chat.group.receipt", "chat_group", groupId, { receipts: before.map(receipt) }, { receipts: after.map(receipt) }, current.companyId);
