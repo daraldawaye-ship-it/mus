@@ -1039,7 +1039,15 @@ function Workspace() {
             {sessionError && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}
             <Routes>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={
+                user
+                  ? lastCompany.isPending
+                    ? <Notice>جارٍ فتح شركتك…</Notice>
+                    : lastCompany.data && !lastCompany.isError
+                      ? <Navigate to={`/companies/${lastCompany.data.company.id}`} replace />
+                      : <HomePage />
+                  : <HomePage />
+              } />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route
