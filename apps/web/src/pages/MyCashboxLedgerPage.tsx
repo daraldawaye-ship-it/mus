@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -12,7 +12,7 @@ import {
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
-import { Card, DataTable, Field, Notice, PageHeader } from "../ui";
+import { Button, Card, DataTable, Dialog, Field, Notice, PageHeader } from "../ui";
 
 type MyCashboxLedger = Page<AccountLedgerLine> & {
   account: { id: number; code: string; name: string } | null;
@@ -39,6 +39,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
     context.general ||
     context.permissions.includes("finance.own-cashbox.view");
   const [params, setParams] = useSearchParams();
+  const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const today = todayInAden();
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
@@ -141,7 +142,52 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
                 {result.data.totals!.baseCurrencyCode}
               </strong>
             </div>
-            <DataTable
+            {/* Phone layout: exactly two horizontal lines per movement.
+                Document number and currency do not appear in this view. */}
+            <div className="my-cashbox-mobile-list" role="list"
+              aria-label="حركات كشف حساب صندوقي">
+              {result.data.items.length===0&&
+                <p className="my-cashbox-mobile-empty">لا توجد حركات في الفترة المحددة.</p>}
+              {result.data.items.map(line=><article key={line.id}
+                className="my-cashbox-mobile-entry" role="listitem">
+                <div className="my-cashbox-mobile-first">
+                  <span className="my-cashbox-mobile-balance">
+                    <small>الرصيد</small>
+                    <strong>{balanceText(line.runningBalance)}</strong>
+                  </span>
+                  <span className="my-cashbox-mobile-debit">
+                    <small>مدين</small>
+                    <bdi>{formatMoney(line.baseDebit)}</bdi>
+                  </span>
+                  <span className="my-cashbox-mobile-credit">
+                    <small>دائن</small>
+                    <bdi>{formatMoney(line.baseCredit)}</bdi>
+                  </span>
+                </div>
+                <div className="my-cashbox-mobile-second">
+                  <span className="my-cashbox-mobile-date" dir="ltr">{line.documentDate}</span>
+                  <span className="my-cashbox-mobile-kind">
+                    {line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}
+                  </span>
+                  <button type="button" className="my-cashbox-mobile-summary"
+                    title={`${line.counterpartAccounts||"—"} — ${line.description||"—"}`}
+                    aria-label={`عرض تفاصيل حركة ${line.documentDate}`}
+                    onClick={()=>setSelectedMovement(line)}>
+                    {line.counterpartAccounts||"—"}{line.description&&` — ${line.description}`}
+                  </button>
+                </div>
+              </article>)}
+              {result.data.total>pageSize&&<div className="my-cashbox-mobile-pages">
+                <Button variant="secondary" size="compact" disabled={page<=1||result.isFetching}
+                  onClick={()=>update("page",String(page-1))}>السابق</Button>
+                <span>صفحة {page} من {Math.ceil(result.data.total/pageSize)}</span>
+                <Button variant="secondary" size="compact"
+                  disabled={page*pageSize>=result.data.total||result.isFetching}
+                  onClick={()=>update("page",String(page+1))}>التالي</Button>
+              </div>}
+            </div>
+            <div className="my-cashbox-desktop-table">
+              <DataTable
               columns={columns}
               data={result.data.items}
               total={result.data.total}
@@ -153,10 +199,24 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               onSortingChange={() => {}}
               loading={result.isFetching}
               ariaLabel="كشف حساب صندوقي"
-            />
+              />
+            </div>
           </>
         )}
       </Card>
+      <Dialog open={selectedMovement!==null}
+        onClose={()=>setSelectedMovement(null)} title="تفاصيل حركة الصندوق">
+        {selectedMovement&&<div className="my-cashbox-mobile-details">
+          <p><strong>التاريخ:</strong> {selectedMovement.documentDate}</p>
+          <p><strong>النوع:</strong> {selectedMovement.reversesDocumentId
+            ? "قيد عكسي":documentKindLabels[selectedMovement.kind]}</p>
+          <p><strong>الحساب المقابل:</strong> {selectedMovement.counterpartAccounts||"—"}</p>
+          <p><strong>البيان:</strong> {selectedMovement.description||"—"}</p>
+          <p><strong>مدين:</strong> {formatMoney(selectedMovement.baseDebit)}</p>
+          <p><strong>دائن:</strong> {formatMoney(selectedMovement.baseCredit)}</p>
+          <p><strong>الرصيد:</strong> {balanceText(selectedMovement.runningBalance)}</p>
+        </div>}
+      </Dialog>
     </>
   );
 }
