@@ -483,7 +483,9 @@ export async function requestPageKeys(
     );
   if (resource === "transaction-import") {
     keys.push("company.settings");
-    if (req.method === "GET")
+    if (req.path.endsWith("/source-dates"))
+      keys.push("company.stock-movements", "company.stock-balances");
+    if (req.method === "GET" || req.path.endsWith("/source-dates"))
       keys.push(
         "company.sales",
         "company.purchases",

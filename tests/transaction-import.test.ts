@@ -344,6 +344,10 @@ function voucher(
   };
 }
 const importPath = (s: Setup) => s.base + "/transaction-import/batch";
+type SourceDatePreview = {
+  snapshotHash: string;
+  counts: { table_name: string; total: number; pending: number }[];
+};
 async function importBatch(
   f: Fixture,
   s: Setup,
@@ -472,7 +476,7 @@ test("historical invoices preserve net prices and unknown expiry without changin
   assert.equal(
     (
       await f.pool.query(
-        "SELECT count(*)::integer AS count FROM employee_wallet_entries WHERE company_id=$1 AND invoice_id=$2",
+        "SELECT count(*)::integer AS count FROM employee_wallet_entries WHERE company_id=$1 AND invoice_id=$2 AND kind='automatic'",
         [s.company.id, ordinary.id],
       )
     ).rows[0].count,
@@ -915,10 +919,11 @@ test("historical imports preserve explicit expense counterparties and purchase-r
     (
       await f.owner.request("POST", s.base + "/invoices", {
         ...expenseReturn,
+        idempotencyKey: randomUUID(),
         counterpartyAccountId: s.cash.id,
       })
     ).status,
-    409,
+    201,
   );
   const saleSource = source("invoice", expenseSale);
   saleSource.sourceRows = [
@@ -1093,5 +1098,276 @@ test("a 100-voucher historical batch posts balanced documents atomically and ret
     ).status,
     400,
     "The batch remains bounded at 100 documents",
+  );
+});
+
+test("source-date correction atomically dates imported invoices, mixed stock movements and every linked journal while preserving ordinary history and derived reports", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f),
+    item = await s.item(false);
+  const purchase = source("invoice", s.invoice(item.id));
+  const sale = source(
+    "invoice",
+    s.invoice(item.id, {
+      kind: "sale",
+      lines: [
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "2",
+          unitPrice: "9",
+          expiryDate: null,
+        },
+        {
+          itemId: item.id,
+          unit: 1,
+          quantity: "-1",
+          unitPrice: "9",
+          expiryDate: null,
+        },
+      ],
+    }),
+  );
+  sale.sourceCreatedAt = "2026-10-01 00:15:00";
+  const input = batch([purchase, sale, source("voucher", voucher(s))]);
+  const posted = await importBatch(f, s, input);
+  assert.equal(posted.failed.length, 0);
+  const ordinary = (
+    await f.owner.ok<{ invoice: Invoice }>(
+      "POST",
+      s.base + "/invoices",
+      s.invoice(item.id, {
+        kind: "sale",
+        lines: [{ itemId: item.id, unit: 1, quantity: "1", expiryDate: null }],
+      }),
+      201,
+    )
+  ).invoice;
+  const other = await setup(f);
+  await importBatch(f, other, batch([source("voucher", voucher(other))]));
+  const path = s.base + "/transaction-import/source-dates",
+    query = "?sourceSystem=disposable-source-v1";
+  const preview = await f.owner.ok<SourceDatePreview>("GET", path + query);
+  assert.equal(
+    preview.counts.find((r) => r.table_name === "invoices")?.pending,
+    2,
+  );
+  const request = {
+    idempotencyKey: randomUUID(),
+    sourceSystem: input.sourceSystem,
+    snapshotHash: preview.snapshotHash,
+  };
+  await assert.rejects(
+    f.pool.query(
+      "UPDATE invoices SET document_date=$1 WHERE company_id=$2 AND id=$3",
+      ["2026-09-30", s.company.id, posted.imported[0]!.id],
+    ),
+  );
+  const client = await f.pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "SELECT set_config('tijara.source_date_company',$1,true),set_config('tijara.source_date_txid',txid_current()::text,true)",
+      [String(s.company.id)],
+    );
+    await assert.rejects(
+      client.query(
+        "UPDATE invoices SET document_date=$1 WHERE company_id=$2 AND id=$3",
+        ["2026-09-30", s.company.id, posted.imported[0]!.id],
+      ),
+    );
+    await client.query("ROLLBACK");
+  } finally {
+    client.release();
+  }
+  const result = await f.owner.ok<{
+    protectedHistoryUnchanged: boolean;
+    replayed: boolean;
+    counts: SourceDatePreview["counts"];
+  }>("POST", path, request);
+  assert.equal(result.protectedHistoryUnchanged, true);
+  assert.equal(result.replayed, false);
+  assert(result.counts.every((r) => r.pending === 0));
+  const invoices = (
+    await f.pool.query(
+      "SELECT id,document_date::text AS date FROM invoices WHERE company_id=$1 ORDER BY id",
+      [s.company.id],
+    )
+  ).rows;
+  assert.deepEqual(
+    invoices.map((r) => r.date),
+    ["2026-09-30", "2026-10-01", "2026-10-15"],
+  );
+  assert.equal(invoices[2].id, ordinary.id);
+  const stock = (
+    await f.pool.query(
+      "SELECT invoice_id,document_date::text AS date FROM stock_movements WHERE company_id=$1 ORDER BY id",
+      [s.company.id],
+    )
+  ).rows;
+  assert.deepEqual(
+    stock.map((r) => r.date),
+    ["2026-09-30", "2026-10-01", "2026-10-01", "2026-10-15"],
+  );
+  assert.equal(
+    (
+      await f.pool.query(
+        `SELECT count(*)::int AS n FROM invoices i JOIN financial_documents d ON d.company_id=i.company_id AND d.id IN(i.financial_document_id,i.cost_document_id,i.variance_document_id) WHERE i.company_id=$1 AND d.document_date<>i.document_date`,
+        [s.company.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const days = (
+    await f.pool.query(
+      "SELECT document_date::text AS date,sale_invoices::int,sale_return_invoices::int,purchase_invoices::int FROM item_daily_activity WHERE company_id=$1 AND item_id=$2 ORDER BY document_date",
+      [s.company.id, item.id],
+    )
+  ).rows;
+  assert.deepEqual(days, [
+    {
+      date: "2026-09-30",
+      sale_invoices: 0,
+      sale_return_invoices: 0,
+      purchase_invoices: 1,
+    },
+    {
+      date: "2026-10-01",
+      sale_invoices: 1,
+      sale_return_invoices: 1,
+      purchase_invoices: 0,
+    },
+    {
+      date: "2026-10-15",
+      sale_invoices: 1,
+      sale_return_invoices: 0,
+      purchase_invoices: 0,
+    },
+  ]);
+  for (const table of [
+    "item_purchase_price_facts",
+    "item_purchase_price_daily",
+  ])
+    assert.equal(
+      (
+        await f.pool.query(
+          `SELECT document_date::text AS date FROM ${table} WHERE company_id=$1`,
+          [s.company.id],
+        )
+      ).rows[0].date,
+      "2026-09-30",
+    );
+  assert.equal(
+    (
+      await f.pool.query(
+        "SELECT document_date::text AS date FROM financial_documents WHERE company_id=$1",
+        [other.company.id],
+      )
+    ).rows[0].date,
+    "2026-10-15",
+  );
+  assert.equal(
+    (await f.owner.ok<{ replayed: boolean }>("POST", path, request)).replayed,
+    true,
+  );
+  assert.equal(
+    (
+      await f.owner.request("POST", path, {
+        ...request,
+        sourceSystem: "changed",
+      })
+    ).status,
+    409,
+  );
+  assert.equal((await importBatch(f, s, input)).replayed, true);
+  await assert.rejects(
+    f.pool.query(
+      "UPDATE stock_movements SET document_date=$1 WHERE company_id=$2",
+      ["2026-09-29", s.company.id],
+    ),
+  );
+  const member = await f.member(s.company.id);
+  assert.equal((await member.client.request("GET", path + query)).status, 403);
+  await f.owner.ok("PUT", "/page-catalog/company.stock-movements/settings", {
+    companyId: s.company.id,
+    visible: true,
+    enabled: false,
+    order: 10,
+    revision: null,
+  });
+  assert.equal((await f.owner.request("GET", path + query)).status, 403);
+  assert.equal(
+    (await f.owner.ok<{ replayed: boolean }>("POST", path, request)).replayed,
+    true,
+  );
+  assert.equal(
+    (
+      await f.owner.request("POST", path, {
+        ...request,
+        idempotencyKey: randomUUID(),
+      })
+    ).status,
+    403,
+  );
+});
+
+test("source-date correction rejects stale previews and rolls back dates, derived projections and receipts when audit fails", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f);
+  const path = s.base + "/transaction-import/source-dates",
+    query = "?sourceSystem=disposable-source-v1";
+  await importBatch(f, s, batch([source("voucher", voucher(s))]));
+  const stale = await f.owner.ok<SourceDatePreview>("GET", path + query);
+  await importBatch(f, s, batch([source("voucher", voucher(s))]));
+  assert.equal(
+    (
+      await f.owner.request("POST", path, {
+        idempotencyKey: randomUUID(),
+        sourceSystem: "disposable-source-v1",
+        snapshotHash: stale.snapshotHash,
+      })
+    ).status,
+    409,
+  );
+  const preview = await f.owner.ok<SourceDatePreview>("GET", path + query),
+    request = {
+      idempotencyKey: randomUUID(),
+      sourceSystem: "disposable-source-v1",
+      snapshotHash: preview.snapshotHash,
+    };
+  await f.pool.query(
+    "CREATE FUNCTION reject_date_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='company.transactions.sourceDates' THEN RAISE EXCEPTION 'date audit rollback test'; END IF; RETURN NEW; END $$",
+  );
+  await f.pool.query(
+    "CREATE TRIGGER reject_date_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_date_audit()",
+  );
+  assert.equal((await f.owner.request("POST", path, request)).status, 500);
+  assert.equal(
+    (
+      await f.pool.query(
+        "SELECT count(*)::int AS n FROM transaction_source_date_repairs",
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert(
+    (
+      await f.pool.query(
+        "SELECT document_date::text AS date FROM financial_documents WHERE company_id=$1",
+        [s.company.id],
+      )
+    ).rows.every((r) => r.date === "2026-10-15"),
+  );
+  assert.equal(
+    (await f.owner.ok<SourceDatePreview>("GET", path + query)).snapshotHash,
+    preview.snapshotHash,
+  );
+  await f.pool.query("DROP TRIGGER reject_date_audit ON audit_events");
+  await f.pool.query("DROP FUNCTION reject_date_audit()");
+  await f.owner.ok("POST", path, request);
+  assert(
+    (await f.owner.ok<SourceDatePreview>("GET", path + query)).counts.every(
+      (r) => r.pending === 0,
+    ),
   );
 });
