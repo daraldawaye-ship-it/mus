@@ -8,16 +8,17 @@ import {
   invoiceItemActionLabels,
 } from "../apps/web/src/InvoiceItemActionsDropdown.tsx";
 
-test("sales and purchases share one item action dropdown with three commands", () => {
+test("sales and purchases share one item action dropdown with four commands", () => {
   assert.deepEqual(Object.values(invoiceItemActionLabels), [
     "تعديل كرت الصنف",
     "تسوية الصنف",
+    "مناقلة صنف",
     "إرسال تقرير مرتبط بالصنف",
   ]);
   const html=renderToStaticMarkup(
     createElement(InvoiceItemActionsDropdown, {
       itemName:"محلول ملح 500 مل",disabled:false,
-      canEdit:true,canAdjust:true,canReport:true,onAction:()=>{},
+      canEdit:true,canAdjust:true,canTransfer:true,canReport:true,onAction:()=>{},
     }),
   );
   assert.match(html,/aria-haspopup="menu"/);

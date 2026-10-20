@@ -418,6 +418,7 @@ function DocumentDetail({
 }
 
 type PickAccount = Pick<Account, "id" | "code" | "name">;
+type EditorStatus = { dirty: boolean; saving: boolean; unknownCreation: boolean };
 type PickCurrency = Pick<
   CompanyCurrency,
   "id" | "code" | "name" | "decimalPlaces"
@@ -449,11 +450,19 @@ function DocumentEditor({
   document,
   newKind,
   onSaved,
+  embedded = false,
+  lockedCashAccount,
+  onEditorStateChange,
+  onDismiss,
 }: {
   context: CompanyContext;
   document: FinancialDocument | null;
   newKind: FinancialDocumentKind;
   onSaved: (document: FinancialDocument, message: string) => void;
+  embedded?: boolean;
+  lockedCashAccount?: PickAccount;
+  onEditorStateChange?: (status: EditorStatus) => void;
+  onDismiss?: () => void;
 }) {
   const companyId = context.company.id;
   const queryClient = useQueryClient();
@@ -527,13 +536,13 @@ function DocumentEditor({
   const defaultCashbox = useEmployeeCashbox(context);
   const cashManuallyChosen = useRef(false);
   const [cash, setCash] = useState<PickAccount | null>(
-    cashLine
+    lockedCashAccount ?? (cashLine
       ? {
           id: cashLine.accountId,
           code: cashLine.accountCode,
           name: cashLine.accountName,
         }
-      : null,
+      : null),
   );
   useEffect(() => {
     if (
@@ -572,6 +581,9 @@ function DocumentEditor({
   const [reverseDate, setReverseDate] = useState(today());
   const [createKey] = useState(() => crypto.randomUUID());
   const [reverseKey] = useState(() => crypto.randomUUID());
+  useEffect(() => {
+    onEditorStateChange?.({ dirty, saving, unknownCreation });
+  }, [dirty, saving, unknownCreation, onEditorStateChange]);
   useEffect(() => {
     if (!dirty && !saving && !unknownCreation) return;
     const leaving = (event: BeforeUnloadEvent) => {
@@ -620,11 +632,13 @@ function DocumentEditor({
     event.preventDefault();
     if (saving || !hasManageAccess) return;
     setError("");
+    // The personal-cashbox modal cannot submit a different cash account.
+    const effectiveCash = lockedCashAccount ?? cash;
     const voucherLines =
-      cash && counterparty
+      effectiveCash && counterparty
         ? [
             {
-              accountId: cash.id,
+              accountId: effectiveCash.id,
               debit: kind === "receipt" ? voucherAmount : "0",
               credit: kind === "payment" ? voucherAmount : "0",
               description,
@@ -642,7 +656,7 @@ function DocumentEditor({
       documentDate,
       currencyId: currency?.id ?? 0,
       branchId: branch?.id ?? null,
-      cashAccountId: kind === "journal" ? null : (cash?.id ?? null),
+      cashAccountId: kind === "journal" ? null : (effectiveCash?.id ?? null),
       supplierReceiptNumber: kind === "payment" ? supplierReceiptNumber : "",
       description,
       lines:
@@ -690,9 +704,11 @@ function DocumentEditor({
       if (!guard.isCurrent()) return;
       setDirty(false);
       setUnknownCreation(false);
-      if (document)
-        onSaved(result.document, "تم حفظ المسودة. يمكنك الآن ترحيلها.");
-      else {
+      if (document || embedded) {
+        onSaved(result.document, document
+          ? "تم حفظ المسودة. يمكنك الآن ترحيلها."
+          : "تم حفظ المسودة. رحّل السند لتظهر حركته في كشف حساب صندوقي.");
+      } else {
         allowNavigation.current = true;
         navigate(documentPath(companyId, result.document.id), {
           replace: true,
@@ -825,7 +841,7 @@ function DocumentEditor({
   }
   return (
     <div className="financial-document-page">
-      <div className="financial-no-print">
+      {!embedded && <div className="financial-no-print">
         <PageHeader
           title={
             document
@@ -850,7 +866,7 @@ function DocumentEditor({
             </>
           }
         />
-      </div>
+      </div>}
       <Card className="financial-document">
         <div className="financial-print-heading">
           <CompanyPrintHeader context={context} />
@@ -958,11 +974,14 @@ function DocumentEditor({
                 singleInput
                 pageSize={50}
                 sort="name:asc"
-                value={cash as Account | null}
+                value={(lockedCashAccount ?? cash) as Account | null}
                 display={accountLabel}
-                disabled={pickerDisabled}
+                disabled={pickerDisabled || !!lockedCashAccount}
                 required
-                onChange={(item) => { touch(); cashManuallyChosen.current=true; setCash(item); }}
+                onChange={(item) => {
+                  if (lockedCashAccount) return;
+                  touch(); cashManuallyChosen.current=true; setCash(item);
+                }}
               />
               <ServerLookup<Account>
                 companyId={companyId}
@@ -1220,6 +1239,10 @@ function DocumentEditor({
                 توجد تعديلات غير محفوظة؛ احفظها قبل الترحيل والطباعة.
               </span>
             )}
+            {embedded && onDismiss && (
+              <Button variant="secondary" disabled={saving}
+                onClick={onDismiss}>إغلاق النافذة</Button>
+            )}
           </div>
         </form>
       </Card>
@@ -1410,6 +1433,66 @@ function DocumentEditor({
         </div>
       </Dialog>
     </div>
+  );
+}
+
+
+/** Reuses the financial document editor without navigating away from the employee's own ledger. */
+export function CashboxVoucherModal({
+  context, kind, account, onClose,
+}: {
+  context: CompanyContext;
+  kind: "receipt" | "payment";
+  account: PickAccount;
+  onClose: () => void;
+}) {
+  const [record, setRecord] = useState<FinancialDocument | null>(null);
+  const [notice, setNotice] = useState("");
+  const [editorStatus, setEditorStatus] = useState<EditorStatus>({
+    dirty: false, saving: false, unknownCreation: false,
+  });
+  const [confirmClose, setConfirmClose] = useState(false);
+  const requestClose = () => {
+    if (editorStatus.saving) return;
+    if (editorStatus.dirty || editorStatus.unknownCreation) {
+      setConfirmClose(true);
+      return;
+    }
+    onClose();
+  };
+  return (
+    <>
+      <Dialog open onClose={requestClose}
+        title={record ? `${documentKindLabels[kind]} ${record.number}` : `إضافة ${documentKindLabels[kind]}`}
+        className="cashbox-voucher-dialog">
+        <p className="muted">الصندوق: {account.code} — {account.name}</p>
+        {notice && <Notice tone="success">{notice}</Notice>}
+        <DocumentEditor
+          key={record ? `${record.id}:${record.revision}:${record.status}` : "new"}
+          context={context}
+          document={record}
+          newKind={kind}
+          embedded
+          lockedCashAccount={account}
+          onEditorStateChange={setEditorStatus}
+          onDismiss={requestClose}
+          onSaved={(saved, message) => {
+            setRecord(saved);
+            setNotice(message);
+          }}
+        />
+      </Dialog>
+      <Dialog open={confirmClose} title="إغلاق السند دون حفظ"
+        onClose={() => setConfirmClose(false)}>
+        <p>{editorStatus.unknownCreation
+          ? "نتيجة الحفظ غير مؤكدة؛ ربما تم إنشاء السند. الإغلاق الآن قد يترك مسودة تحتاج مراجعة، فلا تنشئ نسخة أخرى قبل التحقق."
+          : "هناك تعديلات غير محفوظة على السند. هل تريد تجاهلها وإغلاق النافذة؟"}</p>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => setConfirmClose(false)}>متابعة التعديل</Button>
+          <Button variant="danger" onClick={onClose}>إغلاق دون حفظ</Button>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

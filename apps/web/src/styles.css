@@ -5212,3 +5212,26 @@ a.notification-quick-title:hover { text-decoration: underline; }
     text-align:center;
   }
 }
+
+
+/* Compact voucher editor in the cashier's personal account-statement modal. */
+.dialog.cashbox-voucher-dialog {
+  width: min(900px, calc(100vw - 28px));
+}
+.cashbox-voucher-dialog .financial-header-grid,
+.cashbox-voucher-dialog .financial-voucher-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cashbox-voucher-dialog .financial-document-page {
+  min-width: 0;
+}
+@media (max-width: 680px) {
+  .dialog.cashbox-voucher-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .cashbox-voucher-dialog .financial-header-grid,
+  .cashbox-voucher-dialog .financial-voucher-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

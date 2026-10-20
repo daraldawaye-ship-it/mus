@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -12,6 +12,7 @@ import {
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
+import { CashboxVoucherModal } from "./FinancePages";
 import { Button, Card, DataTable, Dialog, Field, Notice, PageHeader } from "../ui";
 
 type MyCashboxLedger = Page<AccountLedgerLine> & {
@@ -45,6 +46,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
     isCashier;
   const [params, setParams] = useSearchParams();
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
+  const [voucherKind, setVoucherKind] = useState<"receipt" | "payment" | null>(null);
   const today = todayInAden();
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
@@ -116,14 +118,10 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
       {isCashier && <div className="my-cashbox-voucher-actions" role="group"
         aria-label="سندات صندوقي">
         {canCreateVoucher ? <>
-          <Link className="button button-secondary"
-            to={`/companies/${companyId}/financial-documents/new?kind=receipt`}>
-            إضافة سند قبض
-          </Link>
-          <Link className="button button-secondary"
-            to={`/companies/${companyId}/financial-documents/new?kind=payment`}>
-            إضافة سند صرف
-          </Link>
+          <Button variant="secondary" disabled={!result.data?.account}
+            onClick={() => setVoucherKind("receipt")}>إضافة سند قبض</Button>
+          <Button variant="secondary" disabled={!result.data?.account}
+            onClick={() => setVoucherKind("payment")}>إضافة سند صرف</Button>
         </> : <>
           <Button variant="secondary" disabled
             title="يلزم منح صلاحية إنشاء وتعديل المسودات المالية">إضافة سند قبض</Button>
@@ -231,6 +229,14 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           </>
         )}
       </Card>
+      {voucherKind && result.data?.account && (
+        <CashboxVoucherModal key={voucherKind}
+          context={context}
+          kind={voucherKind}
+          account={result.data.account}
+          onClose={() => setVoucherKind(null)}
+        />
+      )}
       <Dialog open={selectedMovement!==null}
         onClose={()=>setSelectedMovement(null)} title="تفاصيل حركة الصندوق">
         {selectedMovement&&<div className="my-cashbox-mobile-details">
