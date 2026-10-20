@@ -46,6 +46,21 @@ function accessText(entry: PageEntry, action: PageAction) {
     ? rule.permissions.map((key) => permissionLabels[key]).join(" + ")
     : rule.label;
 }
+/** A company-only page cannot be authorized from the public directory.
+ * This is not an access denial for the platform owner or any employee. */
+function accessStatus(entry: PageEntry, action: PageAction, companyId?: number): string {
+  if (!entry.actions[action]) return "—";
+  if (!entry.enabled) return "معطلة";
+  if (entry.scope === "company" && !companyId) return "اختر شركة";
+  return entry.actionAccess[action] ? "مسموح" : "غير مأذون";
+}
+function accessStatusHelp(entry: PageEntry, action: PageAction, companyId?: number): string {
+  const status=accessStatus(entry,action,companyId);
+  if (status==="معطلة") return "الصفحة معطلة من إعدادات الصفحات؛ يجب تفعيلها أولًا.";
+  if (status==="اختر شركة") return "هذا دليل الموقع العام؛ افتح قائمة صفحات شركة محددة لفحص إذنك فيها، حتى إن كنت المالك.";
+  if (status==="غير مأذون") return `يتطلب الإجراء: ${accessText(entry,action)}. يمكن للمالك أو المدير العام مراجعة صلاحيات الموظف من إدارة الخيارات والصلاحيات.`;
+  return accessText(entry,action);
+}
 function State({
   value,
   yes,
@@ -155,18 +170,14 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
           enableSorting: false,
           cell: ({ row }: { row: { original: PageEntry } }) => (
             <span
-              title={accessText(row.original, action)}
+              title={accessStatusHelp(row.original, action, companyId)}
               className={
                 row.original.actionAccess[action]
                   ? "page-directory-allowed"
                   : "muted"
               }
             >
-              {!row.original.actions[action]
-                ? "—"
-                : row.original.actionAccess[action]
-                  ? "مسموح"
-                  : "غير مأذون"}
+              {accessStatus(row.original, action, companyId)}
             </span>
           ),
         }),
@@ -321,9 +332,9 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
           />
         </div>
         <p className="muted page-directory-help">
-          <ShieldCheck size={15} /> إظهار الصفحة لا يمنح صلاحية بياناتها. فتح
-          البيانات وكل إجراء يخضعان للتحقق في الخادم. انقر اسم الصفحة لعرض
-          الشروط والرابط الثابت.
+          <ShieldCheck size={15} /> {companyId
+            ? "هذا الدليل يفحص صلاحيات حسابك داخل الشركة الحالية. إظهار الصفحة لا يمنح صلاحية بياناتها؛ افتح التفاصيل لمعرفة المتطلبات."
+            : "صفحات الشركات في الدليل العام تظهر بعبارة «اختر شركة» لا «غير مأذون». افتح الشركة أولًا لفحص صلاحياتك فيها، حتى لو كنت المالك."}
         </p>
       </Card>
       <Dialog
@@ -336,6 +347,7 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
             key={`${companyId ?? "public"}:${entry.key}`}
             entry={entry}
             companyId={companyId}
+            canManagePermissions={!!context?.general || !!context?.permissions.includes("pages.manage")}
             onUpdated={() => void list.refetch()}
           />
         ) : (
@@ -352,10 +364,12 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
 function PageDetails({
   entry,
   companyId,
+  canManagePermissions,
   onUpdated,
 }: {
   entry: PageEntry;
   companyId?: number;
+  canManagePermissions: boolean;
   onUpdated: () => void;
 }) {
   const { user } = useSession(),
@@ -490,16 +504,42 @@ function PageDetails({
               <td>{pageActionLabels[action]}</td>
               <td>{accessText(entry, action)}</td>
               <td>
-                {!entry.actions[action]
-                  ? "غير متاح"
-                  : entry.actionAccess[action]
-                    ? "مسموح"
-                    : "غير مأذون"}
+                {accessStatus(entry, action, companyId) === "—"
+                  ? "غير متاح" : accessStatus(entry, action, companyId)}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {entry.scope === "company" && !companyId && (
+        <Notice>
+          لا يوجد منع لصلاحياتك هنا؛ هذا هو دليل الموقع العام، ولم يتم تحديد شركة.
+          <div className="actions">
+            <Link className="button button-secondary" to="/companies">
+              اختيار الشركة لعرض صلاحياتها
+            </Link>
+          </div>
+        </Notice>
+      )}
+      {!entry.enabled && (
+        <Notice tone="warning">
+          صفحة «{entry.name}» معطلة من إعدادات الصفحات. تفعيلها مطلوب قبل أي إذن بالعرض.
+        </Notice>
+      )}
+      {companyId && entry.enabled && entry.actions.view && !entry.actionAccess.view && (
+        <Notice tone="warning">
+          عرض هذه الصفحة يتطلب: {accessText(entry, "view")}.
+          {canManagePermissions
+            ? " يمكنك مراجعة سماح الدور أو الموظف من إدارة الخيارات والصلاحيات."
+            : " اطلب من مالك المنصة أو المدير العام مراجعة صلاحياتك."}
+        </Notice>
+      )}
+      {companyId && entry.actions.view?.role === "permissions" && canManagePermissions && (
+        <Link className="button button-secondary"
+          to={`/companies/${companyId}/configuration?tab=permissions&permissionPage=${encodeURIComponent(entry.key)}`}>
+          إدارة صلاحيات هذه الصفحة
+        </Link>
+      )}
       {(entry.record === "invoice" ||
         entry.record === "financial-document") && (
         <small className="muted">
