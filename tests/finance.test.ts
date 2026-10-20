@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { notifyCompanyCashiers } from "../apps/api/src/services/cashbox-notifications.ts";
 import type {
   Account,
   AccountBalance,
@@ -1863,4 +1864,53 @@ test("supplier receipt reference stays on payment voucher drafts and posted prin
     );
     assert.equal(bad.status, 400);
   }
+});
+
+test("cashbox transfers and closure notify only currently authorized cashier employees",async t=>{
+  const f=await fixture(t);
+  const company=await f.company("شركة تنبيهات الصندوق");
+  const cashier=await f.member(company.id,[],81);
+  const observer=await f.member(company.id,[],82);
+  await f.pool.query(
+    "UPDATE employees SET position_keys=ARRAY['cashier']::text[] WHERE company_id=$1 AND id=$2",
+    [company.id,cashier.employee.id],
+  );
+  const conn=await f.pool.connect();
+  try{
+    await conn.query("BEGIN");
+    for(const [kind,operationId,amount,variance] of [
+      ["electronic",871,"3500",null],
+      ["pouch",872,"2600",null],
+      ["close",873,"2000","-50"],
+    ] as const){
+      await notifyCompanyCashiers(conn,{
+        companyId:company.id,operationId,employeeName:"بائع تجريبي",
+        kind,amount,variance,
+      });
+    }
+    await conn.query("COMMIT");
+  }catch(e){await conn.query("ROLLBACK");throw e;}finally{conn.release();}
+  const all=await f.pool.query(
+    "SELECT code,recipient_user_id,title,message,subject_employee_id FROM notifications WHERE company_id=$1 ORDER BY id",
+    [company.id],
+  );
+  assert.deepEqual(all.rows.map(row=>row.code),[
+    "CASHBOX_ELECTRONIC_TRANSFER","CASHBOX_POUCH_TRANSFER","CASHBOX_CLOSED",
+  ]);
+  assert(all.rows.every(row=>row.recipient_user_id===cashier.user.id));
+  assert(all.rows.every(row=>row.subject_employee_id===cashier.employee.id));
+  assert(all.rows.some(row=>row.message.includes("3500")));
+  assert(all.rows.some(row=>row.message.includes("2600")));
+  assert(all.rows.some(row=>row.message.includes("2000")));
+  const route="/companies/"+company.id+"/notifications";
+  const before=await cashier.client.ok<{total:number}>("GET",route);
+  assert.equal(before.total,3);
+  const unrelated=await observer.client.ok<{total:number}>("GET",route);
+  assert.equal(unrelated.total,0);
+  await f.pool.query(
+    "UPDATE employees SET position_keys='{}'::text[] WHERE company_id=$1 AND id=$2",
+    [company.id,cashier.employee.id],
+  );
+  const after=await cashier.client.ok<{total:number}>("GET",route);
+  assert.equal(after.total,0,"Losing cashier position revokes access to old cashier alerts");
 });
