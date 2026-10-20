@@ -137,10 +137,13 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               <span>الافتتاحي: {formatMoney(result.data.totals!.openingBalance)}</span>
               <span>مدين الفترة: {formatMoney(result.data.totals!.debit)}</span>
               <span>دائن الفترة: {formatMoney(result.data.totals!.credit)}</span>
-              <strong>
-                الختامي: <bdi>{balanceText(result.data.totals!.closingBalance)}</bdi>{" "}
-                {result.data.totals!.baseCurrencyCode}
-              </strong>
+              <div className="my-cashbox-closing" aria-label="الرصيد الختامي للصندوق">
+                <span className="my-cashbox-closing-label">الرصيد الختامي</span>
+                <strong className="my-cashbox-closing-value" dir="rtl">
+                  {balanceText(result.data.totals!.closingBalance)}
+                  <small>{result.data.totals!.baseCurrencyCode}</small>
+                </strong>
+              </div>
             </div>
             {/* Phone layout: exactly two horizontal lines per movement.
                 Document number and currency do not appear in this view. */}
