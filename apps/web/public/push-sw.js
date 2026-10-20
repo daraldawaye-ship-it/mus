@@ -6,10 +6,27 @@ self.addEventListener("push", event => {
   const body=typeof payload.body==="string" ? payload.body.slice(0,200) : "لديك إشعار جديد";
   const url=typeof payload.url==="string" && /^\/(?!\/)/.test(payload.url)
     ? payload.url : "/notifications";
-  event.waitUntil(self.registration.showNotification(title,{
-    body,icon:"/site-icon.png",badge:"/site-icon.png",
-    tag:"alraesy-notification-"+String(payload.id??"new"),data:{url},
-  }));
+  const id=Number.isSafeInteger(payload.id) && payload.id>0 ? payload.id : null;
+  const importance=["low","medium","high","critical"].includes(payload.importance)
+    ? payload.importance : "medium";
+  const urgent=importance==="critical" || importance==="high";
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(title,{
+      body,icon:"/site-icon.png",badge:"/site-icon.png",
+      tag:"alraesy-notification-"+String(id??"new"),data:{url},
+      dir:"rtl",lang:"ar",silent:false,
+      // Android may use vibration for alerting notifications; the OS controls
+      // actual sound and heads-up display, and may ignore these preferences.
+      vibrate:urgent ? [220,100,220,100,300] : [180,100,180],
+    }),
+    // A foreground tab gets a compact in-page banner immediately, without
+    // waiting for its 30-second notification counter refresh.
+    self.clients.matchAll({type:"window",includeUncontrolled:true}).then(clients=>
+      Promise.all(clients.map(client=>
+        client.postMessage({type:"alraesy:push-notification",id,title,body,url,importance})
+      ))
+    ),
+  ]));
 });
 self.addEventListener("notificationclick",event=>{
   event.notification.close();
