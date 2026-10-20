@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Check, CheckCheck, ChevronDown, Clock3, ExternalLink } from "lucide-react";
+import { Bell, Check, CheckCheck, ChevronDown, Clock3, ExternalLink, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,6 +13,16 @@ import { errorMessage } from "./phase2";
 import { usePageDirectory } from "./page-directory";
 
 type SnoozeDraft = { record: NotificationRecord; until: string };
+type HeadsUp = {
+  id: number;
+  title: string;
+  message: string;
+  href: string;
+  importance: "low" | "medium" | "high" | "critical";
+};
+// Never treat a pushed or database-provided destination as an external URL.
+const safeNotificationHref = (url: string | null | undefined, fallback: string) =>
+  url?.startsWith("/") && !url.startsWith("//") ? url : fallback;
 
 const adenTime = (value: string) =>
   new Intl.DateTimeFormat("ar-YE", {
@@ -46,6 +56,9 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [headsUp, setHeadsUp] = useState<HeadsUp | null>(null);
+  const mountedAt = useRef(Date.now());
+  const seenNotifications = useRef(new Set<number>());
   const open = position !== null;
   const query = useQuery({
     queryKey: ["notifications", user?.id, scope, "bell"],
@@ -58,6 +71,64 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
   });
+
+  // The Push service worker forwards newly received alerts immediately to an
+  // open tab. The existing 30s inbox refresh is a fallback for devices without
+  // a working Push subscription. Do not replay historical unread alerts.
+  useEffect(() => {
+    if (!allowed || !user || !("serviceWorker" in navigator)) return;
+    function onPush(event: MessageEvent) {
+      const incoming: unknown = event.data;
+      if (!incoming || typeof incoming !== "object") return;
+      const data = incoming as Partial<HeadsUp> & { type?: unknown; body?: unknown; url?: unknown };
+      if (data.type !== "alraesy:push-notification" ||
+          typeof data.id !== "number" || !Number.isSafeInteger(data.id) || data.id < 1 ||
+          typeof data.title !== "string" || typeof data.body !== "string" ||
+          seenNotifications.current.has(data.id)) return;
+      seenNotifications.current.add(data.id);
+      setHeadsUp({
+        id: data.id,
+        title: data.title.slice(0, 100),
+        message: data.body.slice(0, 200),
+        href: safeNotificationHref(typeof data.url === "string" ? data.url : null, `${base}/notifications`),
+        importance: data.importance === "high" || data.importance === "critical" ||
+          data.importance === "low" ? data.importance : "medium",
+      });
+      void query.refetch();
+    }
+    navigator.serviceWorker.addEventListener("message", onPush);
+    return () => navigator.serviceWorker.removeEventListener("message", onPush);
+  }, [allowed, user?.id, base, query.refetch]);
+
+  useEffect(() => {
+    if (!allowed || !query.data) return;
+    const fresh = query.data.items.find((item) =>
+      !item.readAt && item.groupUnread > 0 &&
+      Date.parse(item.createdAt) > mountedAt.current &&
+      !seenNotifications.current.has(item.id)
+    );
+    if (!fresh) return;
+    seenNotifications.current.add(fresh.id);
+    setHeadsUp({
+      id: fresh.id, title: fresh.title, message: fresh.message,
+      href: safeNotificationHref(fresh.href, `${base}/notifications`),
+      importance: fresh.importance,
+    });
+  }, [allowed, query.data, base]);
+
+  useEffect(() => {
+    if (!headsUp) return;
+    const timeout = window.setTimeout(() => setHeadsUp((prev) =>
+      prev?.id === headsUp.id ? null : prev
+    ), 8500);
+    return () => window.clearTimeout(timeout);
+  }, [headsUp]);
+
+  useEffect(() => {
+    setHeadsUp(null);
+    mountedAt.current = Date.now();
+    seenNotifications.current.clear();
+  }, [user?.id]);
 
   function close() {
     setPosition(null);
@@ -187,6 +258,26 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
 
   return (
     <>
+      {headsUp && createPortal(
+        <div
+          className={`notification-heads-up importance-${headsUp.importance}`}
+          role="status" aria-live="polite" dir="rtl"
+          key={headsUp.id}
+        >
+          <Bell size={19} aria-hidden="true" />
+          <div className="notification-heads-up-content">
+            <strong>{headsUp.title}</strong>
+            <p>{headsUp.message}</p>
+          </div>
+          <Link to={headsUp.href} className="button button-primary button-compact"
+            onClick={() => setHeadsUp(null)}>فتح</Link>
+          <button type="button" className="notification-heads-up-close"
+            aria-label="إغلاق التنبيه" onClick={() => setHeadsUp(null)}>
+            <X size={16} />
+          </button>
+        </div>,
+        document.body,
+      )}
       <button
         ref={trigger}
         type="button"
