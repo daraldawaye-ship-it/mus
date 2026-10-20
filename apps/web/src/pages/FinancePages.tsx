@@ -1010,11 +1010,6 @@ function DocumentEditor({
         <form onSubmit={save}>
           {embedded && kind !== "journal" ? (
             <>
-              <div className="financial-voucher-primary">
-                {counterpartyControl}
-                {amountControl}
-                {descriptionControl}
-              </div>
               <details className="financial-voucher-extras financial-no-print">
                 <summary>خيارات إضافية</summary>
                 <div className="financial-voucher-extra-fields">
@@ -1026,6 +1021,11 @@ function DocumentEditor({
                   {counterpartyDescriptionControl}
                 </div>
               </details>
+              <div className="financial-voucher-primary">
+                {counterpartyControl}
+                {amountControl}
+                {descriptionControl}
+              </div>
             </>
           ) : (
             <>
