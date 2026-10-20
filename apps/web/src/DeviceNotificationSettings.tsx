@@ -41,7 +41,8 @@ export function DeviceNotificationSettings(){
         if(Notification.permission==="denied"){setState("blocked");return;}
         const reg=await navigator.serviceWorker.getRegistration("/");
         const subscription=await reg?.pushManager.getSubscription();
-        if(alive)setState(subscription?"active":"available");
+        const active=await api<{devices:number}>("/push/status");
+        if(alive)setState(subscription&&active.devices>0?"active":"available");
       }catch(cause){
         if(alive){setState("unsupported");
           setError(cause instanceof Error?cause.message:"تعذر معرفة حالة الإشعارات");}
