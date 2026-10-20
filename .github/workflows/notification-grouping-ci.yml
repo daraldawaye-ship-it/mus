@@ -51,4 +51,4 @@ jobs:
       - name: Build
         run: npm run build
       - name: Notifications and aggregation tests
-        run: npx tsx --test tests/notifications.test.ts
+        run: npx tsx --test --test-name-pattern="automatic notifications separate reading from completion" tests/notifications.test.ts
