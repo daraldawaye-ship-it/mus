@@ -78,7 +78,7 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
    SELECT 1 FROM chat_group_members gm
    JOIN chat_groups g ON g.id=gm.group_id
    WHERE gm.user_id=$1 AND gm.left_at IS NULL
-   AND gm.group_id=split_part(n.subject_key,':',2)::integer
+   AND gm.group_id::text=split_part(n.subject_key,':',2)
    AND g.company_id IS NOT DISTINCT FROM n.company_id
  ))`;
 export const notificationDTO = (
