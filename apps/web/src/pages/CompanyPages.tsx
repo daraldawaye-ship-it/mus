@@ -25,6 +25,7 @@ import {
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { moduleAccess } from "../phase2";
 import { ImageUpload } from "../ImageUpload";
+import { AttendancePunchControls } from "../AttendancePunchControls";
 import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
@@ -292,6 +293,9 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         title={company.name}
         description="بيانات الشركة وصلاحيات وصولك الحالية."
       />
+      <Card title="الحضور والانصراف">
+        <AttendancePunchControls companyId={company.id} compact />
+      </Card>
       <div className="card-grid">
         <Card title="بيانات الشركة">
           <dl className="details-list">
