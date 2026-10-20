@@ -929,8 +929,8 @@ function Workspace() {
   if (sessionLoading)
     return (
       <div className="boot-state">
-        <span className="brand-symbol">ت</span>
-        <p>جارٍ تحميل مساحة العمل…</p>
+        <img className="brand-symbol" src="/site-icon.png" alt="أيقونة الرئيسي" />
+        <p>جارٍ تحميل الموقع…</p>
       </div>
     );
   return (
@@ -944,12 +944,12 @@ function Workspace() {
           <NavLink
             to="/"
             className="brand"
-            aria-label="تجارة — الموقع العام"
-            title="تجارة — الموقع العام"
+            aria-label="الرئيسي — الموقع العام"
+            title="الرئيسي — الموقع العام"
           >
-            <span className="brand-symbol">ت</span>
+            <img className="brand-symbol" src="/site-icon.png" alt="" />
             <span className="brand-copy">
-              تجارة<small>مساحة العمل</small>
+              الرئيسي<small>Alraesy</small>
             </span>
           </NavLink>
           <Navigation context={navigationContext} />
@@ -1202,7 +1202,7 @@ function Workspace() {
             </Routes>
           </main>
           <footer className="workspace-footer">
-            <span>تجارة</span>
+            <span>الرئيسي</span>
             <span>الحسابات · الشركات · فريق العمل</span>
           </footer>
         </div>
