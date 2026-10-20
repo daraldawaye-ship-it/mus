@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   useInfiniteQuery,
+  useQuery,
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
@@ -30,7 +31,8 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import type { User } from "../../../../packages/contracts/src/index";
+import type { User, Company, CompanyPage } from "../../../../packages/contracts/src/index";
+import { useNavigate } from "react-router-dom";
 import type {
   ChatConversation,
   ChatMessage,
@@ -128,7 +130,45 @@ function Receipt({ message }: { message: ChatMessage }) {
 
 /** Remount the entire local state when actor or public/company scope changes. */
 export function ChatPage(props: ChatProps) {
-  return <ChatWorkspace key={`${props.user.id}:${props.scope}:${props.companyId ?? "public"}`} {...props} />;
+  return <>
+    <ChatScopePicker {...props} />
+    <ChatWorkspace key={`${props.user.id}:${props.scope}:${props.companyId ?? "public"}`} {...props} />
+  </>;
+}
+
+/** Existing company permissions remain authoritative; selecting a company
+ * only navigates to its protected chat route. */
+function ChatScopePicker({ user, scope, companyId }: ChatProps) {
+  const navigate=useNavigate();
+  const companies=useQuery({
+    queryKey:["chat","scope-companies",user.id],
+    queryFn: async()=>{
+      const first=await api<CompanyPage>("/companies?page=1&pageSize=100&sort=name:asc");
+      const pages=Math.min(20,Math.ceil(first.total/100));
+      if(pages<=1)return first.items;
+      const rest=await Promise.all(Array.from({length:pages-1},(_,i)=>
+        api<CompanyPage>(`/companies?page=${i+2}&pageSize=100&sort=name:asc`)));
+      return [first,...rest].flatMap(page=>page.items);
+    },
+    staleTime:60000,
+  });
+  const available=companies.data??[];
+  if(companies.isError)return <Notice tone="warning">تعذر تحميل قائمة شركات الدردشة. يمكنك فتح الشركة من قائمة الشركات والمحاولة مجددًا.</Notice>;
+  if(!available.length)return null;
+  const selected=scope==="company"&&companyId?"company:"+companyId:"global";
+  return <div className="chat-scope-picker">
+    <label htmlFor="chat-scope-select">اختر الدردشة</label>
+    <select id="chat-scope-select" value={selected} onChange={event=>{
+      const target=event.target.value;
+      if(target==="global"){navigate("/chat");return;}
+      const id=Number(target.slice("company:".length));
+      if(target.startsWith("company:") && available.some(company=>company.id===id))
+        navigate("/companies/"+id+"/chat");
+    }}>
+      <option value="global">الدردشة العامة — الرئيسي</option>
+      {available.map((company:Company)=><option key={company.id} value={`company:${company.id}`}>{company.name}</option>)}
+    </select>
+  </div>;
 }
 
 function ChatWorkspace({ user, scope, companyId }: ChatProps) {
@@ -262,9 +302,9 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   return (
     <div className="chat-page" dir="rtl" data-chat-scope={scope}>
       <PageHeader
-        title={scope === "global" ? "دردشة تجارة" : "دردشة الشركة"}
-        description={scope === "global" ? "تواصل مباشرة مع مستخدمي تجارة." : "محادثات خاصة بين أعضاء هذه الشركة."}
-        actions={<span className="chat-scope-badge">{scope === "global" ? <Globe2 size={15} /> : <Users size={15} />}{scope === "global" ? "مستخدمو تجارة" : "أعضاء الشركة"}</span>}
+        title={scope === "global" ? "دردشة الرئيسي" : "دردشة الشركة"}
+        description={scope === "global" ? "محادثاتك العامة" : "محادثات أعضاء الشركة"}
+        actions={<span className="chat-scope-badge">{scope === "global" ? <Globe2 size={15} /> : <Users size={15} />}{scope === "global" ? "مستخدمو الرئيسي" : "أعضاء الشركة"}</span>}
       />
       {storageFailed && <Notice tone="warning">تعذر حفظ المسودات على هذا الجهاز. أبقِ الصفحة مفتوحة حتى يتأكد إرسال رسائلك.</Notice>}
       <div className={`chat-shell ${peer || group ? "chat-shell-selected" : ""}`}>
@@ -308,7 +348,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
         )}
       </div>
       <Dialog open={directoryOpen} onClose={() => setDirectoryOpen(false)} title="محادثة جديدة" className="chat-directory-dialog">
-        <p className="chat-directory-description">{scope === "global" ? "ابحث عن مستخدم في تجارة لبدء محادثة خاصة." : "اختر أحد أعضاء الشركة لبدء محادثة خاصة."}</p>
+        <p className="chat-directory-description">{scope === "global" ? "ابحث عن مستخدم في الرئيسي لبدء محادثة خاصة." : "اختر أحد أعضاء الشركة لبدء محادثة خاصة."}</p>
         <Field autoFocus label="البحث عن مستخدم" placeholder="اكتب الاسم…" maxLength={100} value={directorySearch} onChange={event => setDirectorySearch(event.target.value)} />
         {directory.error && <Notice tone="error">{errorText(directory.error)}<Button variant="ghost" size="compact" onClick={() => void directory.refetch()}>إعادة المحاولة</Button></Notice>}
         <div className="chat-directory-list" aria-busy={directory.isFetching}>
