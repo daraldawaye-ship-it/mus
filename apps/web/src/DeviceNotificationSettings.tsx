@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
+import { denialReminderDue } from "./push-permission-policy";
 
 type Config={enabled:boolean;publicKey:string|null};
 type Status="loading"|"unsupported"|"ios-install"|"disabled"|"blocked"|"active"|"available";
@@ -22,12 +23,8 @@ export function iosInstalled():boolean{
   return window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & {standalone?:boolean}).standalone===true;
 }
-export const PUSH_REMINDER_INTERVAL_MS=3*24*60*60*1000;
 export const pushOptOutKey=(userId:number)=>"alraesy-push-disabled:"+userId;
 export const pushDeniedKey=(userId:number)=>"alraesy-push-denied-at:"+userId;
-export function denialReminderDue(lastDenied:number|null,now:number):boolean{
-  return lastDenied!==null && now-lastDenied>=PUSH_REMINDER_INTERVAL_MS;
-}
 export async function subscribeDevice(publicKey:string):Promise<void>{
   if(!supported())throw new Error("هذا المتصفح لا يدعم إشعارات الويب.");
   const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
