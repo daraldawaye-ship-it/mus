@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createDecipheriv, createECDH, hkdfSync } from "node:crypto";
 import { test } from "node:test";
 import { encryptPayload, hashEndpoint, validPushEndpoint, validPushKeys } from "../apps/api/src/services/web-push.ts";
+import { denialReminderDue,PUSH_REMINDER_INTERVAL_MS } from "../apps/web/src/push-permission-policy.ts";
 
 test("push endpoints reject non-push hosts and embedded credentials",()=>{
   assert.equal(validPushEndpoint("https://fcm.googleapis.com/fcm/send/test"),true);
@@ -38,4 +39,15 @@ test("webpush aes128gcm payload decrypts under the receiver's subscription keys"
   const plain=Buffer.concat([decipher.update(encrypted.subarray(0,-16)),decipher.final()]);
   assert.equal(plain.at(-1),2);
   assert.deepEqual(JSON.parse(plain.subarray(0,-1).toString("utf8")),message);
+});
+
+test("denied notification permission reminders recur after three days, never immediately",()=>{
+  const now=Date.UTC(2026,9,20);
+  assert.equal(PUSH_REMINDER_INTERVAL_MS,259200000);
+  assert.equal(denialReminderDue(null,now),false);
+  assert.equal(denialReminderDue(0,now),false);
+  assert.equal(denialReminderDue(now,now),false);
+  assert.equal(denialReminderDue(now-2*86400000,now),false);
+  assert.equal(denialReminderDue(now-3*86400000,now),true);
+  assert.equal(denialReminderDue(now+60000,now),false);
 });
