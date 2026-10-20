@@ -5470,3 +5470,47 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .notification-device-help p { margin: 8px 0 0; line-height: 1.7; }
 .notification-device-help strong { font-weight: 650; }
+
+
+/* Public/company chat selector and shared notification/chat shortcuts. */
+.chat-scope-picker {
+  display: flex;
+  gap: 7px;
+  flex-wrap: nowrap;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  margin-bottom: 7px;
+}
+.chat-scope-picker label { font-size: 12px; white-space: nowrap; font-weight: 600; }
+.chat-scope-picker select {
+  flex: 1;
+  min-width: 0;
+  max-width: 350px;
+  height: var(--control-height);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface);
+  padding-inline: 7px;
+  font-size: 12px;
+}
+.notification-quick-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 0 0 auto;
+}
+.notification-quick-shortcuts .notification-quick-footer {
+  border-inline-end: 1px solid var(--border);
+  justify-content: center;
+  font-size: 12px;
+  padding: 8px 4px;
+  text-align: center;
+}
+.notification-quick-shortcuts .notification-quick-footer:last-child { border-inline-end: 0; }
+@media (max-width: 520px) {
+  .chat-scope-picker { padding: 5px; gap: 5px; }
+  .chat-scope-picker select { max-width: none; }
+}
