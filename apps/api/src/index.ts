@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
+import { startPushNotifications } from "./services/web-push.ts";
 
 const application = await createApp();
 let vite: import("vite").ViteDevServer | undefined;
@@ -21,6 +22,7 @@ server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
   console.log(`Tijara listening on port ${port}`),
 );
 const stopNotifications = startAttendanceNotifications(application.pool);
+const stopPush = startPushNotifications(application.pool,application.config.appOrigin);
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
@@ -30,6 +32,7 @@ async function shutdown(): Promise<void> {
     server.close((error) => (error ? reject(error) : resolve())),
   );
   await stopNotifications();
+  await stopPush();
   await vite?.close();
   await application.close();
 }
