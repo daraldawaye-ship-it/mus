@@ -1,6 +1,7 @@
 {
   "name": "الرئيسي | Alraesy",
   "short_name": "الرئيسي",
+  "id": "/",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/",
@@ -12,6 +13,12 @@
     {
       "src": "/site-icon.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/site-icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     }

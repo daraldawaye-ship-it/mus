@@ -5338,6 +5338,16 @@ a.notification-quick-title:hover { text-decoration: underline; }
 
 
 /* Compact, non-blocking push permission invitation shown after sign-in. */
+.app-device-setup:has(> *) {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.app-device-setup p { overflow-wrap: anywhere; }
+.app-device-setup .form-actions { flex-wrap: wrap; }
+@media print {
+  .app-device-setup { display: none !important; }
+}
 .device-push-invite {
   display: flex;
   align-items: center;

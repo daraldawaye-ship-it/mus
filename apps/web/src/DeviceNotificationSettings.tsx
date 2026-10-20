@@ -1,281 +1,310 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
-import { denialReminderDue } from "./push-permission-policy";
-import { Link } from "react-router-dom";
 
-type Config={enabled:boolean;publicKey:string|null};
-type Status="loading"|"unsupported"|"ios-install"|"disabled"|"blocked"|"active"|"available";
-function vapidBytes(text:string):Uint8Array<ArrayBuffer>{
-  const raw=atob(text.replace(/-/g,"+").replace(/_/g,"/")+
-    "=".repeat((4-text.length%4)%4));
-  const result=new Uint8Array(raw.length);
-  for(let i=0;i<raw.length;i++)result[i]=raw.charCodeAt(i);
+type Config = { enabled: boolean; publicKey: string | null };
+type Status = "loading" | "unsupported" | "ios-install" | "disabled" |
+  "blocked" | "active" | "available" | "error";
+
+function vapidBytes(text: string): Uint8Array<ArrayBuffer> {
+  const raw = atob(text.replace(/-/g, "+").replace(/_/g, "/") +
+    "=".repeat((4 - text.length % 4) % 4));
+  const result = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) result[i] = raw.charCodeAt(i);
   return result;
 }
-export function supported():boolean{
+
+export function supported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window &&
     "Notification" in window && window.isSecureContext;
 }
-export function onApplePhone():boolean{
-  return /iPad|iPhone|iPod/.test(navigator.userAgent);
-}
-export function iosInstalled():boolean{
-  return window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as Navigator & {standalone?:boolean}).standalone===true;
-}
-export const pushOptOutKey=(userId:number)=>"alraesy-push-disabled:"+userId;
-export const pushDeniedKey=(userId:number)=>"alraesy-push-denied-at:"+userId;
-export async function subscribeDevice(publicKey:string):Promise<void>{
-  if(!supported())throw new Error("هذا المتصفح لا يدعم إشعارات الويب.");
-  const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
-  await navigator.serviceWorker.ready;
-  let sub=await reg.pushManager.getSubscription();
-  if(!sub)sub=await reg.pushManager.subscribe({
-    userVisibleOnly:true,applicationServerKey:vapidBytes(publicKey),
-  });
-  const keys=sub.toJSON().keys;
-  if(!keys?.p256dh||!keys.auth)throw new Error("لم تُرجع خدمة الجهاز مفاتيح الاشتراك.");
-  await api("/push/subscribe",{
-    method:"POST",
-    body:{endpoint:sub.endpoint,keys:{p256dh:keys.p256dh,auth:keys.auth}},
-  });
-}
-type PromptMode="request"|"blocked"|null;
 
-/** Display an immediate opt-in invitation at login, without a browser
- * permission request until the user explicitly clicks the button. Denial
- * reminders are in-page only and occur at most once every three days. */
-export function DevicePushBootstrap({userId}:{userId:number}){
-  const [config,setConfig]=useState<Config|null>(null);
-  const [mode,setMode]=useState<PromptMode>(null);
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState("");
-  useEffect(()=>{
-    let mounted=true;
-    (async()=>{
-      try{
-        const cfg=await api<Config>("/push/config");
-        if(!mounted||!cfg.enabled||!cfg.publicKey||!supported()||
-          (onApplePhone()&&!iosInstalled()))return;
-        setConfig(cfg);
-        // An explicit opt-out from "حسابي" always overrides default-on.
-        if(localStorage.getItem(pushOptOutKey(userId))==="1")return;
-        if(Notification.permission==="granted"){
-          await subscribeDevice(cfg.publicKey);
-          return;
-        }
-        if(Notification.permission==="default"){
-          if(mounted)setMode("request");
-          return;
-        }
-        if(Notification.permission==="denied"){
-          const key=pushDeniedKey(userId);
-          const now=Date.now();
-          const prior=Number(localStorage.getItem(key));
-          if(!Number.isFinite(prior)||prior<=0){
-            localStorage.setItem(key,String(now));
-          }else if(denialReminderDue(prior,now)){
-            localStorage.setItem(key,String(now));
-            if(mounted)setMode("blocked");
-          }
-        }
-      }catch{
-        // User may be signed out or offline; do not interrupt navigation.
-      }
-    })();
-    return()=>{mounted=false;};
-  },[userId]);
-  async function allow(){
-    if(!config?.publicKey||busy)return;
-    setBusy(true);setError("");
-    try{
-      // Browser permission dialogs must happen from a direct user gesture.
-      const permission=await Notification.requestPermission();
-      if(permission==="granted"){
-        await subscribeDevice(config.publicKey);
-        localStorage.removeItem(pushOptOutKey(userId));
-        localStorage.removeItem(pushDeniedKey(userId));
-        setMode(null);
-      }else if(permission==="denied"){
-        localStorage.setItem(pushDeniedKey(userId),String(Date.now()));
-        setMode(null);
-      }else{
-        setMode(null);
-      }
-    }catch(cause){
-      setError(cause instanceof Error?cause.message:"تعذر تفعيل الإشعارات");
-    }finally{setBusy(false);}
+export function onApplePhone(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+export function iosInstalled(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+type SubscriptionScope = { signal?: AbortSignal; isCurrent?: () => boolean };
+function assertCurrent(scope: SubscriptionScope) {
+  scope.signal?.throwIfAborted();
+  if (scope.isCurrent && !scope.isCurrent())
+    throw new DOMException("انتهت جلسة إعداد الإشعارات", "AbortError");
+}
+
+function waitForDevice<T>(pending: Promise<T>, scope: SubscriptionScope = {}): Promise<T> {
+  assertCurrent(scope);
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      finish();
+      reject(new Error("تعذر إكمال إعداد الإشعارات. تحقق من الاتصال ثم أعد المحاولة."));
+    }, 15000);
+    const aborted = () => {
+      finish();
+      reject(new DOMException("انتهت جلسة إعداد الإشعارات", "AbortError"));
+    };
+    const finish = () => {
+      window.clearTimeout(timeout);
+      scope.signal?.removeEventListener("abort", aborted);
+    };
+    scope.signal?.addEventListener("abort", aborted, { once: true });
+    pending.then((result) => {
+      finish();
+      resolve(result);
+    }, (cause: unknown) => {
+      finish();
+      reject(cause);
+    });
+  });
+}
+
+function readyWorker(scope: SubscriptionScope): Promise<ServiceWorkerRegistration> {
+  return waitForDevice(navigator.serviceWorker.ready, scope);
+}
+
+export async function subscribeDevice(publicKey: string, scope: SubscriptionScope = {}): Promise<void> {
+  if (!supported()) throw new Error("هذا المتصفح لا يدعم إشعارات الويب.");
+  assertCurrent(scope);
+  await waitForDevice(navigator.serviceWorker.register("/push-sw.js", { scope: "/" }), scope);
+  const registration = await readyWorker(scope);
+  assertCurrent(scope);
+  let subscription = await waitForDevice(registration.pushManager.getSubscription(), scope);
+  assertCurrent(scope);
+  if (!subscription) {
+    subscription = await waitForDevice(registration.pushManager.subscribe({
+      userVisibleOnly: true, applicationServerKey: vapidBytes(publicKey),
+    }), scope);
   }
-  function recheck(){
-    if(Notification.permission==="granted"){
-      if(config?.publicKey){
-        setBusy(true);setError("");
-        void subscribeDevice(config.publicKey).then(()=>{
-          localStorage.removeItem(pushDeniedKey(userId));
-          setMode(null);
-        }).catch(cause=>{
-          setError(cause instanceof Error?cause.message:"تعذر تفعيل الإشعارات");
-        }).finally(()=>setBusy(false));
+  assertCurrent(scope);
+  const keys = subscription.toJSON().keys;
+  if (!keys?.p256dh || !keys.auth)
+    throw new Error("لم تُرجع خدمة الجهاز مفاتيح الاشتراك.");
+  await waitForDevice(api("/push/subscribe", {
+    method: "POST", signal: scope.signal,
+    body: { endpoint: subscription.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } },
+  }), scope);
+  assertCurrent(scope);
+  const status = await waitForDevice(api<{ devices: number }>("/push/status", { signal: scope.signal }), scope);
+  assertCurrent(scope);
+  if (Notification.permission !== "granted" || status.devices < 1)
+    throw new Error("لم يكتمل ربط إشعارات هذا الجهاز بالحساب. أعد المحاولة.");
+}
+
+type PushLifetime = {
+  alive: boolean;
+  busy: boolean;
+  publicKey: string | null;
+  controller: AbortController;
+  check: () => Promise<void>;
+};
+
+/** The site channel is always on. Only the device's native permission requires
+ * a click; a denied permission is explained immediately. */
+function useDevicePush(userId: number | null) {
+  const [state, setState] = useState<Status>("loading");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lifetime = useRef<PushLifetime | null>(null);
+  const currentUser = useRef(userId);
+  currentUser.current = userId;
+
+  useEffect(() => {
+    const run: PushLifetime = {
+      alive: true, busy: false, publicKey: null,
+      controller: new AbortController(), check: async () => {},
+    };
+    lifetime.current = run;
+    const current = () => run.alive && currentUser.current === userId;
+    run.check = async () => {
+      if (!userId || run.busy || !current()) return;
+      run.busy = true;
+      setBusy(true);
+      setError("");
+      try {
+        const config = await waitForDevice(api<Config>("/push/config", { signal: run.controller.signal }), {
+          signal: run.controller.signal, isCurrent: current,
+        });
+        if (!current()) return;
+        run.publicKey = config.publicKey;
+        if (!config.enabled || !config.publicKey) { setState("disabled"); return; }
+        // On iOS the APIs can be missing until the Home Screen app is opened.
+        if (onApplePhone() && !iosInstalled()) { setState("ios-install"); return; }
+        if (!supported()) { setState("unsupported"); return; }
+        if (Notification.permission === "denied") { setState("blocked"); return; }
+        if (Notification.permission !== "granted") { setState("available"); return; }
+        await subscribeDevice(config.publicKey, {
+          signal: run.controller.signal, isCurrent: current,
+        });
+        if (current()) setState("active");
+      } catch (cause) {
+        if (current()) {
+          setState("error");
+          setError(cause instanceof Error ? cause.message : "تعذر التحقق من إشعارات الجهاز.");
+        }
+      } finally {
+        run.busy = false;
+        if (current()) setBusy(false);
       }
-    }else{
-      // Do not invoke requestPermission while blocked: browsers will reject
-      // repeated requests until the user changes site/OS permission settings.
-      setError("غيّر إذن الإشعارات من إعدادات Chrome أو إعدادات إشعارات التطبيق في الهاتف أولًا.");
+    };
+    const refresh = () => { if (document.visibilityState !== "hidden") void run.check(); };
+    setState("loading");
+    void run.check();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      run.alive = false;
+      run.controller.abort();
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [userId]);
+
+  async function enable() {
+    const run = lifetime.current;
+    if (!run?.alive || run.busy || !run.publicKey || !supported()) return;
+    const identity = userId;
+    const current = () => run.alive && lifetime.current === run && currentUser.current === identity;
+    run.busy = true;
+    setBusy(true);
+    setError("");
+    try {
+      // This call must stay directly in the button handler, before any await.
+      const permission = Notification.permission === "default"
+        ? await waitForDevice(Notification.requestPermission(), {
+          signal: run.controller.signal, isCurrent: current,
+        }) : Notification.permission;
+      if (!current()) return;
+      if (permission !== "granted") {
+        setState(permission === "denied" ? "blocked" : "available");
+        if (permission === "default")
+          setError("لم تكتمل موافقة الجهاز. اضغط تفعيل الإشعارات ثم اختر «السماح» في نافذة المتصفح.");
+        return;
+      }
+      await subscribeDevice(run.publicKey, {
+        signal: run.controller.signal, isCurrent: current,
+      });
+      if (current()) setState("active");
+    } catch (cause) {
+      if (current()) {
+        setState("error");
+        setError(cause instanceof Error ? cause.message : "تعذر تفعيل إشعارات الجهاز.");
+      }
+    } finally {
+      run.busy = false;
+      if (current()) setBusy(false);
     }
   }
-  if(!mode)return null;
+
+  return { state, busy, error, enable, recheck: () => void lifetime.current?.check() };
+}
+
+const description: Record<Status, string> = {
+  loading: "جارٍ فحص إشعارات هذا الجهاز…",
+  disabled: "خدمة إشعارات الأجهزة غير مهيأة في الخادم حاليًا. أعد التحقق لاحقًا أو تواصل مع الإدارة.",
+  unsupported: "هذا المتصفح لا يتيح إشعارات الويب هنا. افتح الرابط في متصفح يدعمها، وتأكد من استخدام اتصال HTTPS.",
+  "ios-install": "على iPhone وiPad: أضف الموقع إلى الشاشة الرئيسية من قائمة المشاركة، ثم افتح أيقونة الرئيسي لتفعيل الإشعارات. يلزم iOS أو iPadOS 16.4 أو أحدث.",
+  blocked: "الإشعارات محظورة من المتصفح أو الجهاز. اسمح بإشعارات الرئيسي من إعدادات الموقع أو إعدادات إشعارات التطبيق، ثم اضغط «إعادة التحقق».",
+  active: "تم التحقق من إذن الإشعارات وربط هذا الجهاز بالحساب.",
+  available: "اضغط «تفعيل الإشعارات» ثم اختر «السماح» في نافذة الجهاز لتصلك تنبيهات العمل حتى عند إغلاق الصفحة.",
+  error: "لم يكتمل إعداد إشعارات هذا الجهاز. تحقق من الاتصال ثم أعد المحاولة.",
+};
+
+function NotificationHelp({ expanded = false }: { expanded?: boolean }) {
+  return <details className="notification-device-help" open={expanded || undefined}>
+    <summary>طريقة السماح بالإشعارات وتشغيل الصوت والتنبيه</summary>
+    {onApplePhone() ? (
+      <p>على iPhone وiPad: افتح <strong>الإعدادات ← الإشعارات ← الرئيسي (Alraesy)</strong>، ثم فعّل «السماح بالإشعارات» و«الأصوات» و«اللافتات». افتح التطبيق من أيقونته في الشاشة الرئيسية، وتأكد من أن وضع التركيز لا يكتم التنبيهات.</p>
+    ) : (
+      <p>على Android: افتح <strong>إعدادات المتصفح ← إعدادات المواقع أو أذونات المواقع ← الإشعارات</strong> واسمح لهذا الموقع. ومن إعدادات الهاتف افتح «التطبيقات ← الرئيسي أو المتصفح الذي تستخدمه ← الإشعارات» وفعّل السماح والصوت والتنبيه العائم إن توفّر. على الكمبيوتر افتح أذونات الموقع بجانب عنوانه واسمح بالإشعارات، ثم راجع إشعارات المتصفح في إعدادات النظام.</p>
+    )}
+    <p className="muted">السماح بالإشعارات والصوت واللافتات يخضع لإعدادات الجهاز؛ لا يمكن للموقع تشغيلها نيابةً عنك.</p>
+  </details>;
+}
+
+function PushAction({ push }: { push: ReturnType<typeof useDevicePush> }) {
+  if (push.state === "loading" || push.state === "active") return null;
+  return <Button size="compact" disabled={push.busy}
+    onClick={push.state === "available" ? () => void push.enable() : push.recheck}>
+    {push.busy ? "جارٍ التحقق…" : push.state === "available" ? "تفعيل الإشعارات" : "إعادة التحقق"}
+  </Button>;
+}
+
+export function DevicePushBootstrap({ userId, onReadyChange }: {
+  userId: number;
+  onReadyChange?: (ready: boolean) => void;
+}) {
+  const push = useDevicePush(userId);
+  useEffect(() => onReadyChange?.(push.state === "active"), [push.state, onReadyChange]);
+  if (push.state === "active") return null;
   return <div className="device-push-invite" role="region" aria-label="إشعارات الجهاز">
-    <strong>{mode==="blocked"?"تذكير بإشعارات الجهاز":"تفعيل إشعارات الرئيسي"}</strong>
-    <span>{mode==="blocked"
-      ?"كنت قد منعت إشعارات الجهاز. يمكنك السماح بها من إعدادات المتصفح أو الهاتف؛ لن يتكرر هذا التذكير قبل 3 أيام."
-      :"اسمح بإشعارات الجهاز لتصلك التنبيهات الجديدة حتى عندما تكون الصفحة مغلقة."}</span>
-    {error&&<span role="alert">{error}</span>}
-    <div className="device-push-invite-actions">
-      {mode==="request"
-        ?<Button size="compact" disabled={busy} onClick={()=>void allow()}>
-          {busy?"جارٍ التفعيل…":"تفعيل الإشعارات"}
-         </Button>
-        :<Button size="compact" disabled={busy} onClick={recheck}>
-          {busy?"جارٍ التحقق…":"تحقّق من السماح"}
-         </Button>}
-      {mode==="blocked"&&<Link className="button button-secondary button-compact"
-        to="/profile" onClick={()=>setMode(null)}>
-        كيفية تفعيلها من إعدادات الهاتف
-      </Link>}
-      <Button size="compact" variant="secondary" onClick={()=>setMode(null)}>
-        لاحقًا
-      </Button>
-    </div>
+    <strong>تفعيل إشعارات العمل</strong>
+    <span role="status">{description[push.state]}</span>
+    {push.error && <Notice tone="error">{push.error}</Notice>}
+    <div className="device-push-invite-actions"><PushAction push={push} /></div>
+    {(push.state === "blocked" || push.state === "unsupported") &&
+      <NotificationHelp expanded={push.state === "blocked"} />}
   </div>;
 }
 
-export function DeviceNotificationSettings(){
-  const {user}=useSession();
-  const [config,setConfig]=useState<Config|null>(null);
-  const [state,setState]=useState<Status>("loading");
-  const [busy,setBusy]=useState(false);
-  const [message,setMessage]=useState("");
-  const [error,setError]=useState("");
-  const [testBusy,setTestBusy]=useState(false);
-  const [testResult,setTestResult]=useState("");
-  useEffect(()=>{
-    let alive=true;
-    (async()=>{
-      try{
-        const info=await api<Config>("/push/config");
-        if(!alive)return;
-        setConfig(info);
-        if(!info.enabled){setState("disabled");return;}
-        if(!supported()){setState("unsupported");return;}
-        if(onApplePhone()&&!iosInstalled()){setState("ios-install");return;}
-        if(Notification.permission==="denied"){setState("blocked");return;}
-        const reg=await navigator.serviceWorker.getRegistration("/");
-        const subscription=await reg?.pushManager.getSubscription();
-        const active=await api<{devices:number}>("/push/status");
-        if(alive)setState(subscription&&active.devices>0?"active":"available");
-      }catch(cause){
-        if(alive){setState("unsupported");
-          setError(cause instanceof Error?cause.message:"تعذر معرفة حالة الإشعارات");}
-      }
-    })();
-    return()=>{alive=false;};
-  },[]);
-  async function enable(){
-    if(busy||!config?.publicKey||!supported())return;
-    // The OS permission prompt must be requested directly from a user click.
-    const permission=await Notification.requestPermission();
-    if(permission!=="granted"){
-      if(permission==="denied"&&user)localStorage.setItem(pushDeniedKey(user.id),String(Date.now()));
-      setState(permission==="denied"?"blocked":"available");
-      return;
+export function DeviceNotificationSettings() {
+  const { user } = useSession();
+  const push = useDevicePush(user?.id ?? null);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState("");
+  const [testError, setTestError] = useState("");
+  const currentUser = useRef(user?.id);
+  currentUser.current = user?.id;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  useEffect(() => {
+    setTestBusy(false);
+    setTestResult("");
+    setTestError("");
+  }, [user?.id]);
+
+  async function testNotification() {
+    if (testBusy || !supported() || Notification.permission !== "granted") return;
+    const identity = user?.id;
+    const current = () => alive.current && currentUser.current === identity;
+    setTestBusy(true); setTestResult(""); setTestError("");
+    try {
+      await waitForDevice(navigator.serviceWorker.register("/push-sw.js", { scope: "/" }), { isCurrent: current });
+      const registration = await readyWorker({ isCurrent: current });
+      if (!current()) return;
+      await registration.showNotification("تجربة إشعار من الرئيسي", {
+        body: "هذا إشعار تجريبي لتفقد ظهور التنبيه والصوت على جهازك.",
+        icon: "/site-icon.png", badge: "/site-icon.png", tag: "alraesy-notification-test",
+        silent: false, vibrate: [200, 100, 200],
+      } as NotificationOptions & { vibrate: number[] });
+      if (current()) setTestResult("تم إرسال إشعار تجريبي إلى نظام الجهاز. تحقق من ظهوره؛ إن وصل بصمت راجع إعدادات الصوت والتنبيه أدناه.");
+    } catch (cause) {
+      if (current()) setTestError(cause instanceof Error ? cause.message : "تعذر إرسال الإشعار التجريبي.");
+    } finally {
+      if (current()) setTestBusy(false);
     }
-    setBusy(true);setError("");setMessage("");
-    try{
-      await subscribeDevice(config.publicKey);
-      if(user){
-        localStorage.removeItem(pushOptOutKey(user.id));
-        localStorage.removeItem(pushDeniedKey(user.id));
-      }
-      setState("active");
-      setMessage("تم تفعيل إشعارات هذا الجهاز. ستصلك التنبيهات الجديدة حتى عند إغلاق الصفحة، إذا سمح النظام بإشعارات الخلفية.");
-    }catch(cause){
-      setError(cause instanceof Error?cause.message:"تعذر تشغيل إشعارات الجهاز");
-    }finally{setBusy(false);}
   }
-  async function disable(){
-    if(busy||!supported())return;
-    setBusy(true);setError("");setMessage("");
-    try{
-      const reg=await navigator.serviceWorker.getRegistration("/");
-      const sub=await reg?.pushManager.getSubscription();
-      if(sub){
-        await api("/push/unsubscribe",{
-          method:"POST",body:{endpoint:sub.endpoint},
-        });
-        await sub.unsubscribe();
-      }
-      if(user)localStorage.setItem(pushOptOutKey(user.id),"1");
-      setState(Notification.permission==="denied"?"blocked":"available");
-      setMessage("تم إيقاف إشعارات هذا الجهاز. يمكنك إعادة تفعيلها من هنا.");
-    }catch(cause){
-      setError(cause instanceof Error?cause.message:"تعذر إلغاء الاشتراك");
-    }finally{setBusy(false);}
-  }
-  async function testNotification(){
-    if(testBusy || !supported() || Notification.permission!=="granted")return;
-    setTestBusy(true);setTestResult("");setError("");
-    try{
-      const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
-      await reg.showNotification("تجربة إشعار من الرئيسي",{
-        body:"هذا إشعار تجريبي لتفقد ظهور التنبيه العائم والصوت على جهازك.",
-        icon:"/site-icon.png",badge:"/site-icon.png",tag:"alraesy-notification-test",
-        silent:false,
-        vibrate:[200,100,200],
-      } as NotificationOptions & {vibrate:number[]});
-      setTestResult("أرسلنا إشعارًا تجريبيًا إلى هذا الجهاز. إن وصل بصمت، راجع إعدادات التنبيهات والصوت أسفل الصفحة.");
-    }catch(cause){
-      setError(cause instanceof Error?cause.message:"تعذر إرسال الإشعار التجريبي.");
-    }finally{setTestBusy(false);}
-  }
-  const description:Record<Status,string>={
-    loading:"جارٍ فحص دعم الإشعارات…",
-    disabled:"خدمة الإشعارات غير مهيأة في الخادم حاليًا.",
-    unsupported:"هذا المتصفح لا يدعم إشعارات الويب، أو الموقع ليس على اتصال HTTPS.",
-    "ios-install":"على iPhone، أضف الموقع إلى الشاشة الرئيسية من Safari وافتح التطبيق المثبت لتفعيل الإشعارات.",
-    blocked:"الإشعارات محظورة من إعدادات المتصفح أو الجهاز. اسمح بإشعارات هذا الموقع من الإعدادات ثم أعد فتح الصفحة.",
-    active:"الإشعارات مفعلة على هذا الجهاز.",
-    available:"الإشعارات مفعلة افتراضيًا في الموقع؛ اسمح بها على هذا الجهاز ليتم استقبالها في الخلفية.",
-  };
+
   return <Card title="إشعارات الجهاز">
-    <p className="muted">{description[state]}</p>
-    {error&&<Notice tone="error">{error}</Notice>}
-    {message&&<Notice tone="success">{message}</Notice>}
-    <div className="form-actions">
-      {state==="available"&&
-        <Button disabled={busy||!config?.publicKey} onClick={()=>void enable()}>
-          {busy?"جارٍ التفعيل…":"تفعيل إشعارات الجهاز"}
-        </Button>}
-      {state==="active"&&
-        <Button variant="secondary" disabled={busy} onClick={()=>void disable()}>
-          {busy?"جارٍ الإيقاف…":"إيقاف إشعارات هذا الجهاز"}
-        </Button>}
-    </div>
-    {state==="active" && <div className="form-actions">
-      <Button variant="secondary" disabled={testBusy} onClick={()=>void testNotification()}>
-        {testBusy?"جارٍ الإرسال…":"تجربة إشعار على هذا الجهاز"}
+    <p className="muted" role="status">{description[push.state]}</p>
+    {push.error && <Notice tone="error">{push.error}</Notice>}
+    <div className="form-actions"><PushAction push={push} /></div>
+    {push.state === "active" && <div className="form-actions">
+      <Button variant="secondary" disabled={testBusy} onClick={() => void testNotification()}>
+        {testBusy ? "جارٍ الإرسال…" : "تجربة إشعار على هذا الجهاز"}
       </Button>
-      {testResult&&<Notice tone="success">{testResult}</Notice>}
+      {testResult && <Notice tone="success">{testResult}</Notice>}
+      {testError && <Notice tone="error">{testError}</Notice>}
     </div>}
-    <details className="notification-device-help">
-      <summary>الإشعارات تصل بصمت؟ طريقة تشغيل التنبيه والصوت من إعدادات الهاتف</summary>
-      {onApplePhone()?(
-        <p>على iPhone: افتح <strong>الإعدادات ← الإشعارات ← الرئيسي (Alraesy)</strong>، ثم فعّل «السماح بالإشعارات» و«الأصوات» و«اللافتات». تأكد أيضًا من عدم تشغيل وضع التركيز الذي يكتم التنبيهات. يجب فتح التطبيق المثبّت من الشاشة الرئيسية.</p>
-      ):(
-        <p>على Android: اضغط مطولًا على أيقونة التطبيق ثم افتح <strong>معلومات التطبيق ← الإشعارات</strong>، وفعّل الإشعارات والصوت و«الظهور على الشاشة/التنبيه العائم» إن كانت متاحة. إن كنت تستخدم Chrome دون تثبيت الموقع فافتح إعدادات Chrome ثم «إعدادات المواقع ← الإشعارات»، وتحقق أيضًا من إعدادات إشعارات Chrome في الهاتف. أوقف وضع «عدم الإزعاج» إذا كنت تريد الصوت.</p>
-      )}
-      <p className="muted">لا يمكن للموقع تشغيل الصوت أو اللافتات من تلقاء نفسه؛ تعتمد طريقة ظهور الإشعار على طراز الهاتف وإعدادات النظام.</p>
-    </details>
-    <small className="muted">إشعارات الموقع مفعّلة افتراضيًا، وموافقة المتصفح مستقلة لكل هاتف وكمبيوتر. يمكنك إيقافها هنا في أي وقت.</small>
+    <NotificationHelp expanded={push.state === "blocked"} />
+    <small className="muted">إشعارات العمل مفعلة داخل الموقع. موافقة المتصفح مستقلة لكل جهاز ومتصفح، ويلزم إكمال إعدادها مرة على كل جهاز تستخدمه.</small>
   </Card>;
 }

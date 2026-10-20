@@ -1,0 +1,39 @@
+name: Automatic app and notification setup
+on:
+  push:
+    branches:
+      - codex/automatic-app-setup
+      - codex/deploy-phase2
+    paths:
+      - 'apps/web/src/AppSetup.tsx'
+      - 'apps/web/src/app-install.ts'
+      - 'apps/web/src/DeviceNotificationSettings.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/main.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/web/public/**'
+      - 'tests/app-install.test.ts'
+      - 'tests/browser-app-setup.ts'
+      - 'tests/fixtures/app-setup*'
+      - '.github/workflows/app-setup-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  app-setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Install controller and existing push delivery checks
+        run: node --import tsx --test tests/app-install.test.ts tests/web-push.test.ts
+      - run: npx playwright install --with-deps chromium
+      - name: Automatic setup browser scenarios
+        run: npx tsx tests/browser-app-setup.ts
