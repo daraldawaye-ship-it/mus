@@ -12,6 +12,7 @@ import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import { pagePermissionAliases, permissionRuleEffects } from "./permission-rules.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
+import { notifyChatRecipient } from "./chat-notifications.ts";
 
 export interface ChatListQuery extends ChatContext {
   search: string;
@@ -268,6 +269,10 @@ export async function sendChatMessage(
     [thread.id, current.scopeId, input.clientMessageId, current.user.id, peerId, input.text],
   )).rows[0];
   await client.query("UPDATE chat_conversations SET updated_at=greatest(updated_at,$2) WHERE id=$1", [thread.id, row.created_at]);
+  await notifyChatRecipient(client,{
+    companyId:current.companyId,recipientId:peerId,
+    senderName:current.user.displayName,messageId:row.id,
+  });
   // Audit readers are not chat participants: never copy private content into
   // general/company audit logs, including receipt snapshots.
   await audit(client, current.user, "chat.send", "chat_message", row.id, null, {
