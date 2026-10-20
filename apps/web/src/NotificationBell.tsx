@@ -80,20 +80,11 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
     function onPush(event: MessageEvent) {
       const incoming: unknown = event.data;
       if (!incoming || typeof incoming !== "object") return;
-      const data = incoming as Partial<HeadsUp> & { type?: unknown; body?: unknown; url?: unknown };
+      const data = incoming as { type?: unknown; id?: unknown };
       if (data.type !== "alraesy:push-notification" ||
-          typeof data.id !== "number" || !Number.isSafeInteger(data.id) || data.id < 1 ||
-          typeof data.title !== "string" || typeof data.body !== "string" ||
-          seenNotifications.current.has(data.id)) return;
-      seenNotifications.current.add(data.id);
-      setHeadsUp({
-        id: data.id,
-        title: data.title.slice(0, 100),
-        message: data.body.slice(0, 200),
-        href: safeNotificationHref(typeof data.url === "string" ? data.url : null, `${base}/notifications`),
-        importance: data.importance === "high" || data.importance === "critical" ||
-          data.importance === "low" ? data.importance : "medium",
-      });
+          typeof data.id !== "number" || !Number.isSafeInteger(data.id) || data.id < 1) return;
+      // Service workers are shared across tabs, which might represent different
+      // sessions. Never trust broadcast payload text; fetch the authorized inbox.
       void query.refetch();
     }
     navigator.serviceWorker.addEventListener("message", onPush);
