@@ -5453,3 +5453,20 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .notification-heads-up { padding: 8px; gap: 6px; }
   .notification-heads-up .button { padding-inline: 9px; }
 }
+
+
+.notification-device-help {
+  margin-block: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.notification-device-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+}
+.notification-device-help p { margin: 8px 0 0; line-height: 1.7; }
+.notification-device-help strong { font-weight: 650; }
