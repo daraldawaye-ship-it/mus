@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
 import { denialReminderDue } from "./push-permission-policy";
+import { Link } from "react-router-dom";
 
 type Config={enabled:boolean;publicKey:string|null};
 type Status="loading"|"unsupported"|"ios-install"|"disabled"|"blocked"|"active"|"available";
@@ -138,6 +139,10 @@ export function DevicePushBootstrap({userId}:{userId:number}){
         :<Button size="compact" disabled={busy} onClick={recheck}>
           {busy?"جارٍ التحقق…":"تحقّق من السماح"}
          </Button>}
+      {mode==="blocked"&&<Link className="button button-secondary button-compact"
+        to="/profile" onClick={()=>setMode(null)}>
+        كيفية تفعيلها من إعدادات الهاتف
+      </Link>}
       <Button size="compact" variant="secondary" onClick={()=>setMode(null)}>
         لاحقًا
       </Button>
@@ -152,6 +157,8 @@ export function DeviceNotificationSettings(){
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
+  const [testBusy,setTestBusy]=useState(false);
+  const [testResult,setTestResult]=useState("");
   useEffect(()=>{
     let alive=true;
     (async()=>{
@@ -215,6 +222,22 @@ export function DeviceNotificationSettings(){
       setError(cause instanceof Error?cause.message:"تعذر إلغاء الاشتراك");
     }finally{setBusy(false);}
   }
+  async function testNotification(){
+    if(testBusy || !supported() || Notification.permission!=="granted")return;
+    setTestBusy(true);setTestResult("");setError("");
+    try{
+      const reg=await navigator.serviceWorker.register("/push-sw.js",{scope:"/"});
+      await reg.showNotification("تجربة إشعار من الرئيسي",{
+        body:"هذا إشعار تجريبي لتفقد ظهور التنبيه العائم والصوت على جهازك.",
+        icon:"/site-icon.png",badge:"/site-icon.png",tag:"alraesy-notification-test",
+        silent:false,
+        vibrate:[200,100,200],
+      } as NotificationOptions & {vibrate:number[]});
+      setTestResult("أرسلنا إشعارًا تجريبيًا إلى هذا الجهاز. إن وصل بصمت، راجع إعدادات التنبيهات والصوت أسفل الصفحة.");
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:"تعذر إرسال الإشعار التجريبي.");
+    }finally{setTestBusy(false);}
+  }
   const description:Record<Status,string>={
     loading:"جارٍ فحص دعم الإشعارات…",
     disabled:"خدمة الإشعارات غير مهيأة في الخادم حاليًا.",
@@ -238,6 +261,21 @@ export function DeviceNotificationSettings(){
           {busy?"جارٍ الإيقاف…":"إيقاف إشعارات هذا الجهاز"}
         </Button>}
     </div>
+    {state==="active" && <div className="form-actions">
+      <Button variant="secondary" disabled={testBusy} onClick={()=>void testNotification()}>
+        {testBusy?"جارٍ الإرسال…":"تجربة إشعار على هذا الجهاز"}
+      </Button>
+      {testResult&&<Notice tone="success">{testResult}</Notice>}
+    </div>}
+    <details className="notification-device-help">
+      <summary>الإشعارات تصل بصمت؟ طريقة تشغيل التنبيه والصوت من إعدادات الهاتف</summary>
+      {onApplePhone()?(
+        <p>على iPhone: افتح <strong>الإعدادات ← الإشعارات ← الرئيسي (Alraesy)</strong>، ثم فعّل «السماح بالإشعارات» و«الأصوات» و«اللافتات». تأكد أيضًا من عدم تشغيل وضع التركيز الذي يكتم التنبيهات. يجب فتح التطبيق المثبّت من الشاشة الرئيسية.</p>
+      ):(
+        <p>على Android: اضغط مطولًا على أيقونة التطبيق ثم افتح <strong>معلومات التطبيق ← الإشعارات</strong>، وفعّل الإشعارات والصوت و«الظهور على الشاشة/التنبيه العائم» إن كانت متاحة. إن كنت تستخدم Chrome دون تثبيت الموقع فافتح إعدادات Chrome ثم «إعدادات المواقع ← الإشعارات»، وتحقق أيضًا من إعدادات إشعارات Chrome في الهاتف. أوقف وضع «عدم الإزعاج» إذا كنت تريد الصوت.</p>
+      )}
+      <p className="muted">لا يمكن للموقع تشغيل الصوت أو اللافتات من تلقاء نفسه؛ تعتمد طريقة ظهور الإشعار على طراز الهاتف وإعدادات النظام.</p>
+    </details>
     <small className="muted">إشعارات الموقع مفعّلة افتراضيًا، وموافقة المتصفح مستقلة لكل هاتف وكمبيوتر. يمكنك إيقافها هنا في أي وقت.</small>
   </Card>;
 }

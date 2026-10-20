@@ -5392,3 +5392,81 @@ a.notification-quick-title:hover { text-decoration: underline; }
     margin-inline-start: 0;
   }
 }
+
+
+/* New-notification heads-up banner: visible immediately in an open app, with
+   a link to the record, without blocking the screen or accounting inputs. */
+.notification-heads-up {
+  position: fixed;
+  z-index: 10080;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(460px, calc(100vw - 20px));
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--primary);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .24);
+  text-align: start;
+}
+.notification-heads-up.importance-critical,
+.notification-heads-up.importance-high {
+  border-inline-start-color: var(--error-text);
+}
+.notification-heads-up-content { min-width: 0; flex: 1; }
+.notification-heads-up-content strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.notification-heads-up-content p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  max-height: 3.5em;
+  overflow: hidden;
+}
+.notification-heads-up .button {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 30px;
+}
+.notification-heads-up-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.notification-heads-up-close:hover { color: var(--text); }
+@media (max-width: 540px) {
+  .notification-heads-up { padding: 8px; gap: 6px; }
+  .notification-heads-up .button { padding-inline: 9px; }
+}
+
+
+.notification-device-help {
+  margin-block: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.notification-device-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+}
+.notification-device-help p { margin: 8px 0 0; line-height: 1.7; }
+.notification-device-help strong { font-weight: 650; }
