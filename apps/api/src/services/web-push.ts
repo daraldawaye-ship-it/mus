@@ -65,6 +65,7 @@ export function encryptPayload(p256dh:string,auth:string,payload:object):Buffer{
 interface NotificationMessage{
   endpoint:string;p256dh:string;auth:string;title:string;message:string;
   href:string|null;company_id:number|null;notification_id:number;
+  importance:"low"|"medium"|"high"|"critical";
 }
 async function send(input:NotificationMessage,origin:string):Promise<number>{
   if(!pushReady||!validPushEndpoint(input.endpoint))throw new Error("Invalid push endpoint");
@@ -72,12 +73,15 @@ async function send(input:NotificationMessage,origin:string):Promise<number>{
     ?input.href:input.company_id?"/companies/"+input.company_id+"/notifications":"/notifications";
   const body=encryptPayload(input.p256dh,input.auth,{
     title:input.title.slice(0,100),body:input.message.slice(0,180),url,id:input.notification_id,
+    importance:input.importance,
   });
   const response=await fetch(input.endpoint,{
     method:"POST",
     headers:{
       Authorization:"vapid t="+jwt(input.endpoint,origin)+", k="+publicKey,
-      TTL:"3600",Urgency:"normal",
+      TTL:"3600",
+      // Push-service delivery urgency is a hint, not a device sound setting.
+      Urgency:input.importance==="low"?"normal":"high",
       "Content-Encoding":"aes128gcm","Content-Type":"application/octet-stream",
     },
     body:new Uint8Array(body),signal:AbortSignal.timeout(9000),
@@ -91,7 +95,7 @@ interface Queued extends NotificationMessage{
 async function deliver(client:PoolClient,origin:string):Promise<boolean>{
   const pending=await client.query<Queued>(
     "SELECT d.id,d.subscription_id,d.attempts,d.notification_id,"+
-    " p.endpoint,p.p256dh,p.auth,p.user_id,n.title,n.message,n.href,n.company_id,"+
+    " p.endpoint,p.p256dh,p.auth,p.user_id,n.title,n.message,n.href,n.company_id,n.importance,"+
     " e.id AS employee_id,(u.owner OR COALESCE(e.is_general_manager,false)) AS general"+
     " FROM web_push_deliveries d"+
     " JOIN web_push_subscriptions p ON p.id=d.subscription_id"+
