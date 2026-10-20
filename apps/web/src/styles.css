@@ -5514,3 +5514,33 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .chat-scope-picker { padding: 5px; gap: 5px; }
   .chat-scope-picker select { max-width: none; }
 }
+
+
+/* Both collection registers: two small direct navigation links in one row. */
+.receipt-cross-page-links {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+}
+.receipt-cross-page-links > .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 6px 9px;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.3;
+}
+@media (max-width: 540px) {
+  .receipt-cross-page-links > .button {
+    flex: 1 1 0;
+    padding-inline: 5px;
+    white-space: normal;
+  }
+}
+@media print {
+  .receipt-cross-page-links { display: none !important; }
+}
