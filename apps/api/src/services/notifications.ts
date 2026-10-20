@@ -71,6 +71,15 @@ export const inboxFilter = `n.recipient_user_id=$1 AND (
    SELECT 1 FROM memos m
    WHERE m.company_id=n.company_id AND n.subject_key=('memo:' || m.id::text)
    AND ${memoFollowerSql("m", "$3")}
+ ))
+ -- Chat group notifications follow current group membership (including a
+ -- member leaving and rejoining after a previous message).
+ AND (n.code NOT IN ('CHAT_GROUP_GLOBAL','CHAT_GROUP_COMPANY') OR EXISTS(
+   SELECT 1 FROM chat_group_members gm
+   JOIN chat_groups g ON g.id=gm.group_id
+   WHERE gm.user_id=$1 AND gm.left_at IS NULL
+   AND gm.group_id=split_part(n.subject_key,':',2)::integer
+   AND g.company_id IS NOT DISTINCT FROM n.company_id
  ))`;
 export const notificationDTO = (
   r: QueryResultRow,
