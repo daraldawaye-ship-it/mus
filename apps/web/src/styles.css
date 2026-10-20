@@ -5140,3 +5140,53 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .my-cashbox-mobile-details { display:grid; gap:8px; }
 .my-cashbox-mobile-details p { margin:0; overflow-wrap:anywhere; }
+
+/* Clearly distinguish the closing cashbox amount from opening and movement
+   totals on phones and desktop. Theme variables preserve contrast in dark mode. */
+.my-cashbox-closing {
+  display:flex;
+  flex:0 1 auto;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+  padding:7px 12px;
+  border-radius:8px;
+  border:1px solid var(--info-text);
+  background:var(--info-bg);
+  color:var(--info-text);
+}
+.my-cashbox-closing-label {
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.my-cashbox-closing-value {
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  font-size:18px;
+  line-height:1.3;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.my-cashbox-closing-value small {
+  font-size:11px;
+  font-weight:600;
+}
+@media(max-width:680px) {
+  .my-cashbox-closing {
+    flex:1 1 100%;
+    width:100%;
+    padding:8px 10px;
+  }
+  .my-cashbox-closing-value { font-size:19px; }
+}
+@media print {
+  .my-cashbox-closing {
+    background:white !important;
+    color:#111 !important;
+    border:2px solid #111 !important;
+  }
+}
