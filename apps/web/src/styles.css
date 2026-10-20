@@ -4562,6 +4562,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .account-lookup-option[aria-selected="true"] { font-weight: 700; }
 .sales-header-actions-dropdown > button:disabled { opacity: .45; cursor: not-allowed; }
+.sales-header-actions-dropdown > a[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .account-lookup-status { padding: 7px; font-size: 11px; color: var(--muted); }
 .account-lookup-pages {
   display: flex;
@@ -5191,28 +5192,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
   }
 }
 
-/* Cashier's personal ledger exposes voucher shortcuts without granting a
-   general-finance role. Disabled actions explain which grant is missing. */
-.my-cashbox-voucher-actions {
-  display:flex;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:10px;
-}
-.my-cashbox-voucher-actions > .muted {
-  font-size:12px;
-  flex:1 1 100%;
-}
-@media(max-width:680px) {
-  .my-cashbox-voucher-actions > :is(a,button) {
-    flex:1 1 auto;
-    min-width:0;
-    font-size:12px;
-    text-align:center;
-  }
-}
-
 
 /* Compact voucher editor in the cashier's personal account-statement modal. */
 .dialog.cashbox-voucher-dialog {
@@ -5353,7 +5332,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 @media print {
   .my-cashbox-date-range,
-  .my-cashbox-voucher-actions { display: none !important; }
+  .my-cashbox-page-heading .page-actions { display: none !important; }
 }
 
 
