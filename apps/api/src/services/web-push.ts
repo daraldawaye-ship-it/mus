@@ -1,6 +1,7 @@
 import { createCipheriv, createECDH, createHash, createPrivateKey, hkdfSync, randomBytes, sign } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { inboxFilter } from "./notifications.ts";
+import { permissionRuleEffects } from "./permission-rules.ts";
 
 const publicKey=process.env.WEB_PUSH_PUBLIC_KEY??"";
 const privateKey=process.env.WEB_PUSH_PRIVATE_KEY??"";
@@ -112,7 +113,14 @@ async function deliver(client:PoolClient,origin:string):Promise<boolean>{
     " AND (n.company_id IS NULL OR $4::boolean OR $3::integer IS NOT NULL)"+
     " AND "+inboxFilter,
     [row.user_id,row.company_id,row.employee_id,row.general,row.notification_id]);
-  if(!allowed.rowCount){
+  const setting=await client.query<{disabled:boolean}>(
+    "SELECT EXISTS(SELECT 1 FROM page_settings pg WHERE pg.page_key=$1"+
+    " AND (pg.company_id IS NULL OR pg.company_id=$2) AND pg.enabled=false) AS disabled",
+    [row.company_id===null?"public.notifications":"company.notifications",row.company_id]);
+  const denied=row.company_id!==null && row.employee_id!==null && !row.general &&
+    (await permissionRuleEffects(client,row.company_id,row.employee_id))
+      .get("company.notifications:view")==="deny";
+  if(!allowed.rowCount || setting.rows[0]?.disabled || denied){
     await client.query("UPDATE web_push_deliveries SET cancelled_at=clock_timestamp() WHERE id=$1",[row.id]);
     return true;
   }
