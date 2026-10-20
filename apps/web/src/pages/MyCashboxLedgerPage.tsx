@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -35,9 +35,14 @@ const balanceText = (amount: string) =>
 export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const companyId = context.company.id;
+  const isCashier = context.general || !!context.employee?.positions.includes("cashier");
   const allowed =
     context.general ||
     context.permissions.includes("finance.own-cashbox.view");
+  // Creating a voucher is an independent financial write privilege. A
+  // cashier can view only their assigned box without gaining all finance.
+  const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
+    isCashier;
   const [params, setParams] = useSearchParams();
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const today = todayInAden();
@@ -108,6 +113,25 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
         title="كشف حساب صندوقي"
         description="حركات ورصيد صندوق المبيعات المربوط بحسابك فقط، دون صلاحية الاطلاع على حسابات الآخرين."
       />
+      {isCashier && <div className="my-cashbox-voucher-actions" role="group"
+        aria-label="سندات صندوقي">
+        {canCreateVoucher ? <>
+          <Link className="button button-secondary"
+            to={`/companies/${companyId}/financial-documents/new?kind=receipt`}>
+            إضافة سند قبض
+          </Link>
+          <Link className="button button-secondary"
+            to={`/companies/${companyId}/financial-documents/new?kind=payment`}>
+            إضافة سند صرف
+          </Link>
+        </> : <>
+          <Button variant="secondary" disabled
+            title="يلزم منح صلاحية إنشاء وتعديل المسودات المالية">إضافة سند قبض</Button>
+          <Button variant="secondary" disabled
+            title="يلزم منح صلاحية إنشاء وتعديل المسودات المالية">إضافة سند صرف</Button>
+          <span className="muted">لتفعيل السندات، امنح الموظف صلاحية «إنشاء وتعديل المسودات المالية» من كرت الموظف.</span>
+        </>}
+      </div>}
       <Card>
         <div className="table-filters">
           <Field
