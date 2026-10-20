@@ -1287,6 +1287,13 @@ function EmployeeEditor({
         )}
         <EmployeePositionPicker value={positions} onChange={setPositions}
           disabled={baseLocked}/>
+        {positions.includes("cashier") && <p className="muted">
+          صفة «أمين صندوق» تفتح كشف حساب صندوق الموظف المرتبط فقط.
+          لتفعيل «إضافة سند قبض» و«إضافة سند صرف»، افتح الصلاحيات
+          المباشرة أدناه واختر «إنشاء وتعديل المسودات المالية».
+          ولترحيل السندات اختر أيضًا «ترحيل وعكس القيود والسندات».
+          يجب ربط صندوق المبيعات بحساب الموظف من كرت حسابات الموظف.
+        </p>}
         <details className="employee-legacy-permissions">
           <summary>الصلاحيات المباشرة القديمة (للتوافق مع النظام الحالي)</summary>
           <PermissionFields value={permissions} onChange={setPermissions}
