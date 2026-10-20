@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
 import { denialReminderDue } from "./push-permission-policy";
+import { Link } from "react-router-dom";
 
 type Config={enabled:boolean;publicKey:string|null};
 type Status="loading"|"unsupported"|"ios-install"|"disabled"|"blocked"|"active"|"available";
@@ -138,6 +139,10 @@ export function DevicePushBootstrap({userId}:{userId:number}){
         :<Button size="compact" disabled={busy} onClick={recheck}>
           {busy?"جارٍ التحقق…":"تحقّق من السماح"}
          </Button>}
+      {mode==="blocked"&&<Link className="button button-secondary button-compact"
+        to="/profile" onClick={()=>setMode(null)}>
+        كيفية تفعيلها من إعدادات الهاتف
+      </Link>}
       <Button size="compact" variant="secondary" onClick={()=>setMode(null)}>
         لاحقًا
       </Button>
