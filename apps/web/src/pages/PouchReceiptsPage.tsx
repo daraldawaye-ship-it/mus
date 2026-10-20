@@ -68,6 +68,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const [uncertain,setUncertain]=useState(false);
   const [exactKeys,setExactKeys]=useState<Record<number,string>>({});
   const canPost=context.general||context.permissions.includes("finance.post");
+  const canViewMyCashbox=context.general||context.permissions.includes("finance.own-cashbox.view");
   const queryKey=[endpoint,user?.id,companyId,status,page] as const;
   const counterpart=useQuery<{items:Counterparty[]}>({
     queryKey:["receipt-counterpart-accounts",user?.id,companyId,voucherDraft?.search??""],
@@ -182,6 +183,22 @@ export function PouchReceiptsPage({context,source="pouch"}:{
           : "حركات الحوافظ وإغلاق الصناديق للاستلام في صندوقك؛ ويُرحّل الفرق إلى العجز والزيادة."}
         actions={<Button variant="secondary" onClick={()=>void list.refetch()}
           disabled={list.isFetching||pending}>تحديث</Button>}/>
+      <nav className="receipt-cross-page-links" aria-label="التنقل بين الاستلام وكشف الصندوق">
+        <Link className="button button-secondary button-compact"
+          to={`/companies/${companyId}/${electronic?"pouch-receipts":"electronic-receipts"}`}
+          aria-label={electronic?"فتح استلام الترحيلات":"فتح استلام المحفظة الإلكترونية"}>
+          {electronic?"استلام الترحيلات":"استلام المحفظة الإلكترونية"}
+        </Link>
+        {canViewMyCashbox
+          ? <Link className="button button-secondary button-compact"
+              to={`/companies/${companyId}/my-cashbox-ledger`}>
+              كشف حساب صندوقي
+            </Link>
+          : <button type="button" className="button button-secondary button-compact"
+              disabled title="تحتاج صفة أمين صندوق أو صلاحية عرض كشف حساب صندوقي">
+              كشف حساب صندوقي
+            </button>}
+      </nav>
       {!electronic && <p className="receipt-kind-help">
         <strong>إغلاق صندوق:</strong> جرد النقد الفعلي عند إغلاق الوردية وترحيله للحافظة مع تسجيل أي فرق.
         {" — "}
