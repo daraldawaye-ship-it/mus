@@ -41,6 +41,12 @@ async function directoryPermissionState(
       ? { ...context, permissions: [...(context.employee?.permissions ?? [])] }
       : context;
   if (baseContext && !baseContext.general) {
+    // Mirror the scoped cashier-position grant used by companyAccess. Only
+    // this employee's own box is visible; no generic finance access is added.
+    if (baseContext.employee?.positions.includes("cashier") &&
+        !baseContext.permissions.includes("finance.own-cashbox.view")) {
+      baseContext.permissions.push("finance.own-cashbox.view");
+    }
     for (const module of [
       "accounts",
       "currencies",
