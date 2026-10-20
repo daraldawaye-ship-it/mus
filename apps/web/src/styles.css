@@ -5274,3 +5274,84 @@ a.notification-quick-title:hover { text-decoration: underline; }
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* My cashbox ledger: title + print button share one compact row, and both
+   Gregorian date pickers stay side-by-side even on a narrow phone. */
+.my-cashbox-page-heading .page-heading {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.my-cashbox-page-heading .page-heading > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.my-cashbox-page-heading .page-heading h1 {
+  margin: 0;
+  white-space: nowrap;
+  font-size: clamp(16px, 3vw, 22px);
+}
+.my-cashbox-page-heading .page-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.my-cashbox-date-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 210px));
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+.my-cashbox-date-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.my-cashbox-date-field > span { flex: 0 0 auto; }
+.my-cashbox-date-field > input[type="date"] {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  height: var(--control-height);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 680px) {
+  .my-cashbox-page-heading .page-heading h1 { font-size: 17px; }
+  .my-cashbox-page-heading .page-actions .button {
+    height: 32px;
+    padding-inline: 7px;
+    font-size: 11px;
+  }
+  .my-cashbox-ledger-card { padding: 8px; }
+  .my-cashbox-date-range {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .my-cashbox-date-field { gap: 3px; font-size: 11px; }
+  .my-cashbox-date-field > input[type="date"] {
+    padding-inline: 2px;
+    font-size: 11px;
+  }
+  .my-cashbox-date-field > input[type="date"]::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
+    width: 14px;
+  }
+}
+@media print {
+  .my-cashbox-date-range,
+  .my-cashbox-voucher-actions { display: none !important; }
+}
