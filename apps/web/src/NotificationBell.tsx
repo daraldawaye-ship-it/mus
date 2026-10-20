@@ -424,9 +424,14 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
             ))}
           </div>
 
-          <Link className="notification-quick-footer" to={`${base}/notifications`} onClick={close}>
-            عرض جميع الإشعارات <ExternalLink size={14} />
-          </Link>
+          <div className="notification-quick-shortcuts">
+            <Link className="notification-quick-footer" to={`${base}/notifications`} onClick={close}>
+              جميع الإشعارات <ExternalLink size={14} />
+            </Link>
+            <Link className="notification-quick-footer" to={`${base}/chat`} onClick={close}>
+              الدردشة <ExternalLink size={14} />
+            </Link>
+          </div>
         </div>,
         document.body,
       )}
