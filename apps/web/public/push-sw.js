@@ -19,11 +19,11 @@ self.addEventListener("push", event => {
       // actual sound and heads-up display, and may ignore these preferences.
       vibrate:urgent ? [220,100,220,100,300] : [180,100,180],
     }),
-    // A foreground tab gets a compact in-page banner immediately, without
-    // waiting for its 30-second notification counter refresh.
+    // Ask foreground tabs to refetch their authenticated inbox. Do not send
+    // notification text to tabs potentially signed in as a different user.
     self.clients.matchAll({type:"window",includeUncontrolled:true}).then(clients=>
       Promise.all(clients.map(client=>
-        client.postMessage({type:"alraesy:push-notification",id,title,body,url,importance})
+        client.postMessage({type:"alraesy:push-notification",id})
       ))
     ),
   ]));
