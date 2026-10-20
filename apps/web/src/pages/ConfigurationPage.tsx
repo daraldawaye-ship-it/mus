@@ -163,7 +163,7 @@ export function ConfigurationPage({ context }: { context: CompanyContext }) {
   const [roleId, setRoleId] = useState(0);
   const [employeeId, setEmployeeId] = useState(0);
   const [action, setAction] = useState("");
-  const [permissionPage, setPermissionPage] = useState("");
+  const [permissionPage, setPermissionPage] = useState(() => params.get("permissionPage") ?? "");
   const data = query.data;
   const filtered = useMemo(
     () =>
