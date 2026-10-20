@@ -1,0 +1,23 @@
+name: Web Push delivery checks
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/deploy-phase2
+jobs:
+  web-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Push encryption and endpoint security
+        run: npx tsx --test tests/web-push.test.ts
