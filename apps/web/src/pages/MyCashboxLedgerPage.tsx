@@ -141,7 +141,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               to: `/companies/${companyId}/electronic-receipts`,
               disabled: !canViewReceipts,
             },
-          ]} label="إجراءات" />
+          ]} label="إجراءات" />}
         />
       </div>
       <Card className="my-cashbox-ledger-card">
