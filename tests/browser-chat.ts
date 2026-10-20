@@ -115,7 +115,7 @@ try {
   const alicePage = await aliceContext.newPage(), bobPage = await bobContext.newPage();
   await alicePage.goto("/chat");
   await alicePage.bringToFront();
-  await alicePage.getByRole("heading", { name: "دردشة تجارة", exact: true }).waitFor();
+  await alicePage.getByRole("heading", { name: "دردشة الرئيسي", exact: true }).waitFor();
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   await beginConversation(alicePage, bob.user.name);
   await assertChatAvatarFallback(alicePage.locator(".chat-thread-heading"));
@@ -170,7 +170,7 @@ try {
   await assertFitsMobile(alicePage);
   await alicePage.screenshot({ path: `${evidence}/mobile-light-company.png`, fullPage: true });
   await alicePage.goto("/chat");
-  await alicePage.getByRole("heading", { name: "دردشة تجارة", exact: true }).waitFor();
+  await alicePage.getByRole("heading", { name: "دردشة الرئيسي", exact: true }).waitFor();
   await alicePage.getByRole("button", { name: `فتح محادثة ${bob.user.name}`, exact: true }).click();
   await alicePage.locator('html[data-theme="dark"]').waitFor();
   await alicePage.locator(`[data-chat-message-id="${receivedMessage.id}"]`).waitFor({ state: "visible" });
