@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createDecipheriv, createECDH, hkdfSync } from "node:crypto";
 import { test } from "node:test";
 import { encryptPayload, hashEndpoint, validPushEndpoint, validPushKeys } from "../apps/api/src/services/web-push.ts";
-import { denialReminderDue,PUSH_REMINDER_INTERVAL_MS } from "../apps/web/src/push-permission-policy.ts";
+import { automaticPushPromptAllowed, denialReminderDue,PUSH_REMINDER_INTERVAL_MS } from "../apps/web/src/push-permission-policy.ts";
 
 test("push endpoints reject non-push hosts and embedded credentials",()=>{
   assert.equal(validPushEndpoint("https://fcm.googleapis.com/fcm/send/test"),true);
@@ -50,4 +50,15 @@ test("denied notification permission reminders recur after three days, never imm
   assert.equal(denialReminderDue(now-2*86400000,now),false);
   assert.equal(denialReminderDue(now-3*86400000,now),true);
   assert.equal(denialReminderDue(now+60000,now),false);
+});
+
+test("permission is auto-requested only once from a trusted browser activation", () => {
+  assert.equal(automaticPushPromptAllowed("default", true, "click"), true);
+  assert.equal(automaticPushPromptAllowed("default", true, "keydown", "Enter"), true);
+  assert.equal(automaticPushPromptAllowed("default", true, "keydown", " "), true);
+  assert.equal(automaticPushPromptAllowed("default", true, "keydown", "Escape"), false);
+  assert.equal(automaticPushPromptAllowed("default", true, "scroll"), false);
+  assert.equal(automaticPushPromptAllowed("default", false, "click"), false);
+  assert.equal(automaticPushPromptAllowed("granted", true, "click"), false);
+  assert.equal(automaticPushPromptAllowed("denied", true, "click"), false);
 });
