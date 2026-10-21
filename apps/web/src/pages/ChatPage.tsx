@@ -535,7 +535,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
       <header className="chat-thread-heading">
         <Button variant="ghost" className="chat-mobile-back" size="compact" onClick={onBack} aria-label="العودة إلى المحادثات"><ArrowRight size={20} /></Button>
         <ChatAvatar name={peer.name} avatarUrl={peer.avatarUrl} size="small" />
-        <div className="chat-peer-heading"><h2>{peer.name}</h2><small>{scope === "global" ? "محادثة خاصة · مستخدم تجارة" : "محادثة خاصة · داخل الشركة"}</small></div>
+        <div className="chat-peer-heading"><h2>{peer.name}</h2><small>{scope === "global" ? "محادثة خاصة · مستخدم الرئيسي" : "محادثة خاصة · داخل الشركة"}</small></div>
         <ShieldCheck size={17} className="chat-thread-shield" aria-label="محادثة خاصة بين الطرفين" />
       </header>
       {(messages.error || receiptError) && <div className="chat-thread-alert"><Notice tone="error">{errorText(messages.error ?? receiptError)}<Button variant="ghost" size="compact" onClick={() => {
