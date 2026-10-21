@@ -1,0 +1,109 @@
+name: Baseline browser verification
+
+on:
+  push:
+    branches:
+      - codex/alraesy-branding-baseline-check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseline-chat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tijara_chat_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tijara_chat_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/tijara_chat_ci
+      CI: "true"
+    steps:
+      - name: Check out exact production-branch baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 2e809f52f9afdcec16a5d15e3f3b6e36c68a03e3
+      - name: Verify baseline source
+        run: test "$(git rev-parse HEAD)" = "2e809f52f9afdcec16a5d15e3f3b6e36c68a03e3"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Existing baseline private chat browser checks
+        run: npx tsx tests/browser-chat.ts
+      - name: Baseline browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-chat-browser-evidence
+          path: /tmp/tijara-chat-browser
+          if-no-files-found: ignore
+
+  baseline-account-statistics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ACCOUNT_BALANCE_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_ACTIVITY_STATISTICS_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_STOCK_VALUE_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_STATISTICS_REPORT_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      ACCOUNT_STATISTICS_BROWSER_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      TRANSACTION_RESET_TEST_DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+      TZ: Asia/Aden
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2e809f52f9afdcec16a5d15e3f3b6e36c68a03e3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Install the focused browser suite's Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Select the installed Chromium executable
+        run: |
+          node --input-type=module <<'NODE'
+          import { accessSync, appendFileSync, constants } from "node:fs";
+          import { chromium } from "playwright";
+          const executable = chromium.executablePath();
+          accessSync(executable, constants.X_OK);
+          appendFileSync(process.env.GITHUB_ENV, `CHROMIUM_PATH=${executable}\n`);
+          NODE
+      - run: npm run check
+      - run: npm run build
+      - name: Verify the account statistics table and account card in the browser
+        run: node --import tsx tests/browser-account-statistics.ts
