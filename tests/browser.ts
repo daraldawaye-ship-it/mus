@@ -270,7 +270,7 @@ async function logoutToPublic(page: Page, actor: Actor): Promise<void> {
     },
   );
   await page.waitForURL(origin + "/");
-  await page.getByRole("heading", { name: "تجارة", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "الرئيسي", exact: true }).waitFor();
   assert.equal(new URL(page.url()).pathname, "/");
   assert.equal(
     await page.locator(".scope-title strong").textContent(),

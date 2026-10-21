@@ -10,7 +10,7 @@ import { userDTO } from "./repositories/models.ts";
 
 const tools=[{
  name:"query_general_table",
- description:"اقرأ من الجدول العام في تجارة. صفِّ حسب اسم الجدول والرقم 2 (صفر أو فارغ)، ورتب بحسب الرقم 1 من الأكبر إلى الأصغر. يعيد النص الكامل لحقل الوصف أو الشرح. للقراءة فقط.",
+ description:"اقرأ من الجدول العام في الرئيسي. صفِّ حسب اسم الجدول والرقم 2 (صفر أو فارغ)، ورتب بحسب الرقم 1 من الأكبر إلى الأصغر. يعيد النص الكامل لحقل الوصف أو الشرح. للقراءة فقط.",
  inputSchema:{type:"object",properties:{
    tableName:{type:"string",description:"اسم الجدول مثل: طلب تعديلات في الموقع"},
    number2EmptyOrZero:{type:"boolean",default:false},
@@ -99,11 +99,11 @@ const selectFields=`general_table_id AS "id",
 export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router{
  const router=Router();
  const unauthorized=(res:import("express").Response,id:string|number)=>{
-   const challenge=`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Authorize Tijara's general table read access"`;
+   const challenge=`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Authorize Alraesy's general table read access"`;
    res.setHeader("WWW-Authenticate",challenge);
    res.setHeader("Cache-Control","no-store");
    res.json({jsonrpc:"2.0",id,result:{
-     content:[{type:"text",text:"Authentication required: connect Tijara using OAuth."}],
+     content:[{type:"text",text:"Authentication required: connect Alraesy using OAuth."}],
      isError:true,
      _meta:{"mcp/www_authenticate":[challenge]},
    }});
@@ -149,7 +149,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    if(apiTools.some(tool=>tool.name===params.name)){
      const granted=String(user.granted_scope).split(" ");
      if(!granted.includes(API_READ_SCOPE)||(params.name==="tijara_api_write"&&!granted.includes(API_WRITE_SCOPE))){
-       fail(-32001,"Additional scope required. Reconnect Tijara and approve the requested site read/write access.");return;
+       fail(-32001,"Additional scope required. Reconnect Alraesy and approve the requested site read/write access.");return;
      }
      try {
      if(params.name==="tijara_api_catalog"){
@@ -161,7 +161,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    }
    const isWrite=["create_general_table_record","update_general_table_record"].includes(params.name);
    if(isWrite&&!String(user.granted_scope).split(" ").includes("general_table.write")){
-     fail(-32001,"Write scope required. Reconnect Tijara and approve read and write permissions.");return;
+     fail(-32001,"Write scope required. Reconnect Alraesy and approve read and write permissions.");return;
    }
    let result:unknown;
    if(params.name==="query_general_table"){

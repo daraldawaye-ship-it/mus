@@ -58,7 +58,7 @@ export function ItemImportDialog({
         typeof data.companyHint!=="string"||!Array.isArray(data.items)||
         data.count!==data.items.length||!data.items.length||
         data.items.some(row=>!row||typeof row.legacyId!=="string"||typeof row.name!=="string"))
-        throw new Error("هذا ليس ملف أصناف تجارة المجهز للاستيراد.");
+        throw new Error("هذا ليس ملف أصناف الرئيسي المجهز للاستيراد.");
       if(new Set(data.items.map(row=>row.legacyId)).size!==data.items.length)
         throw new Error("المعرف في النظام السابق مكرر داخل الملف.");
       if(!matchCompany(context.company.name,data.companyHint))

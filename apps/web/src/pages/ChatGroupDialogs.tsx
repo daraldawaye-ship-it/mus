@@ -215,7 +215,7 @@ function GroupCreateDialog({ user, scope, companyId, open, onClose, onCreated }:
     </Button>
   </>}>
     <div className="chat-group-form">
-      <div className="chat-group-summary"><span className="chat-avatar" aria-hidden="true"><Users size={22} /></span><p>مجموعة {scope === "company" ? "داخل الشركة" : "بين مستخدمي تجارة"}. تُضاف أنت تلقائيًا مديرًا للمجموعة.</p></div>
+      <div className="chat-group-summary"><span className="chat-avatar" aria-hidden="true"><Users size={22} /></span><p>مجموعة {scope === "company" ? "داخل الشركة" : "بين مستخدمي الرئيسي"}. تُضاف أنت تلقائيًا مديرًا للمجموعة.</p></div>
       {error && <Notice tone="error">{error}</Notice>}
       {storageFailed && <Notice tone="warning">تعذر حفظ المسودة محليًا؛ يلزم نجاح الحفظ قبل إرسال طلب الإنشاء.</Notice>}
       {draft.frozen && <Notice tone="warning">
@@ -338,7 +338,7 @@ function GroupDetailsDialog({ user, scope, companyId, groupId, open, onClose, on
         {detail.isPending && <p className="chat-dialog-empty">جارٍ تحميل المجموعة…</p>}
         {(mustReload || changedRevision) && <Notice tone="warning">تغيّرت بيانات المجموعة أو لم يصل تأكيد التعديل. حمّل أحدث البيانات قبل المتابعة؛ سيُلغي ذلك التعديلات غير المحفوظة. <Button variant="secondary" size="compact" disabled={busy} onClick={() => void reload()}>تحديث البيانات وإلغاء التعديلات</Button></Notice>}
         {current && edit && <>
-          <div className="chat-group-summary"><span className="chat-avatar" aria-hidden="true"><Users size={22} /></span><div><strong>{current.group.name}</strong><p className="muted">{current.members.length.toLocaleString("ar")} عضو · {scope === "company" ? "دردشة الشركة" : "دردشة تجارة العامة"}</p></div></div>
+          <div className="chat-group-summary"><span className="chat-avatar" aria-hidden="true"><Users size={22} /></span><div><strong>{current.group.name}</strong><p className="muted">{current.members.length.toLocaleString("ar")} عضو · {scope === "company" ? "دردشة الشركة" : "دردشة الرئيسي العامة"}</p></div></div>
           {manager ? <Field label="اسم المجموعة" maxLength={120} value={edit.name} disabled={locked}
             onChange={event => setEdit({ ...edit, name: event.target.value })} /> : <Notice>يدير هذه المجموعة {current.members.find(member => member.id === current.group.managerId)?.name ?? "مدير المجموعة"}.</Notice>}
           <section className="chat-group-section" aria-label="أعضاء المجموعة">
