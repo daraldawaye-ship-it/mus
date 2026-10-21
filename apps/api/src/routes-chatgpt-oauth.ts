@@ -90,9 +90,9 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     const fullAccess=[FULL_READ_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
     const writing=[WRITE_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
     const scopeDescription=fullAccess
-      ? (writing?"قراءة وتنفيذ عمليات تجارة المتاحة، بما فيها إنشاء وتعديل الموظفين والحسابات والفواتير والمخزون والإعدادات والترحيل والعكس بحسب صلاحيات حسابك":"قراءة بيانات تجارة المتاحة بحسب صلاحيات حسابك")
+      ? (writing?"قراءة وتنفيذ عمليات الرئيسي المتاحة، بما فيها إنشاء وتعديل الموظفين والحسابات والفواتير والمخزون والإعدادات والترحيل والعكس بحسب صلاحيات حسابك":"قراءة بيانات الرئيسي المتاحة بحسب صلاحيات حسابك")
       : (writing?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط");
-    res.type("html").send(webPage("السماح لـ ChatGPT بالوصول إلى بيانات تجارة",
+    res.type("html").send(webPage("السماح لـ ChatGPT بالوصول إلى بيانات الرئيسي | Alraesy",
       `<p>الحساب: <strong>${safe(req.auth.user.displayName)}</strong></p>
       <p>الصلاحيات المطلوبة: <strong>${scopeDescription}</strong>.</p>
       <p>${fullAccess?"تظل صلاحيات الشركة وعزل بياناتها وقواعد التدقيق سارية. لا يتيح الاتصال إدارة كلمات المرور أو تجاوز صلاحيات حسابك.":"لا توجد صلاحية للحذف أو الوصول إلى حسابات الشركات وفواتيرها. يمكن مراجعة أي تعديل قبل تنفيذه."}</p>
@@ -186,7 +186,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       <input type="hidden" name="csrf" value="${safe(req.auth!.csrf)}">
       <button type="submit">إلغاء الاتصال</button></form></li>`).join("");
     res.type("html").send(webPage("اتصالات ChatGPT",`<p>يمكنك إلغاء أي اتصال فورًا.</p>
-      <ul>${rows||"<li>لا توجد اتصالات فعالة</li>"}</ul><a href="/">العودة إلى تجارة</a>`));
+      <ul>${rows||"<li>لا توجد اتصالات فعالة</li>"}</ul><a href="/">العودة إلى الرئيسي</a>`));
   }));
   router.post("/oauth/connections/:id/revoke",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)
