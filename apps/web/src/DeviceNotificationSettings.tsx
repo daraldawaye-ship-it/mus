@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
+import { automaticPushPromptAllowed } from "./push-permission-policy";
 
 type Config = { enabled: boolean; publicKey: string | null };
 type Status = "loading" | "unsupported" | "ios-install" | "disabled" |
@@ -102,8 +103,24 @@ type PushLifetime = {
   check: () => Promise<void>;
 };
 
-/** The site channel is always on. Only the device's native permission requires
- * a click; a denied permission is explained immediately. */
+/** Avoid repeated system permission dialogs after dismissal and prevent two
+ * mounted notification settings components from asking on the same click. */
+const automaticPushRequests = new Set<number>();
+function claimAutomaticPushRequest(userId: number): boolean {
+  if (automaticPushRequests.has(userId)) return false;
+  const key = `alraesy:push-prompted:${userId}`;
+  try {
+    if (window.sessionStorage.getItem(key) === "1") return false;
+    window.sessionStorage.setItem(key, "1");
+  } catch {
+    // Some privacy modes deny storage; the in-memory guard still applies.
+  }
+  automaticPushRequests.add(userId);
+  return true;
+}
+
+/** The site's notification channel is automatic. A browser may only request
+ * its native permission during the user's first trusted site interaction. */
 function useDevicePush(userId: number | null) {
   const [state, setState] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
@@ -201,6 +218,30 @@ function useDevicePush(userId: number | null) {
     }
   }
 
+  // Chrome/Android and several other browsers block permission dialogs on page
+  // load. Ask on the first ordinary, trusted click or keyboard activation after
+  // login, without requiring a special notification-settings button. Keep the
+  // native Allow/Deny choice entirely under the user's control.
+  useEffect(() => {
+    if (!userId || state !== "available" || !supported() ||
+        Notification.permission !== "default") return;
+    const onInteraction = (event: Event) => {
+      const key = event instanceof KeyboardEvent ? event.key : undefined;
+      if (!automaticPushPromptAllowed(Notification.permission, event.isTrusted, event.type, key)) return;
+      if (!lifetime.current?.publicKey || lifetime.current.busy) return;
+      if (!claimAutomaticPushRequest(userId)) return;
+      // enable() invokes Notification.requestPermission() synchronously before
+      // its first await, retaining the gesture required by the browser.
+      void enable();
+    };
+    document.addEventListener("click", onInteraction, true);
+    document.addEventListener("keydown", onInteraction, true);
+    return () => {
+      document.removeEventListener("click", onInteraction, true);
+      document.removeEventListener("keydown", onInteraction, true);
+    };
+  }, [userId, state]);
+
   return { state, busy, error, enable, recheck: () => void lifetime.current?.check() };
 }
 
@@ -211,7 +252,7 @@ const description: Record<Status, string> = {
   "ios-install": "على iPhone وiPad: أضف الموقع إلى الشاشة الرئيسية من قائمة المشاركة، ثم افتح أيقونة الرئيسي لتفعيل الإشعارات. يلزم iOS أو iPadOS 16.4 أو أحدث.",
   blocked: "الإشعارات محظورة من المتصفح أو الجهاز. اسمح بإشعارات الرئيسي من إعدادات الموقع أو إعدادات إشعارات التطبيق، ثم اضغط «إعادة التحقق».",
   active: "تم التحقق من إذن الإشعارات وربط هذا الجهاز بالحساب.",
-  available: "اضغط «تفعيل الإشعارات» ثم اختر «السماح» في نافذة الجهاز لتصلك تنبيهات العمل حتى عند إغلاق الصفحة.",
+  available: "سيطلب المتصفح إذن إشعارات العمل تلقائيًا عند أول تفاعل داخل الموقع. اختر «السماح» من نافذة النظام مرة واحدة.",
   error: "لم يكتمل إعداد إشعارات هذا الجهاز. تحقق من الاتصال ثم أعد المحاولة.",
 };
 
@@ -241,7 +282,10 @@ export function DevicePushBootstrap({ userId, onReadyChange }: {
 }) {
   const push = useDevicePush(userId);
   useEffect(() => onReadyChange?.(push.state === "active"), [push.state, onReadyChange]);
-  if (push.state === "active") return null;
+  // Do not show a site-level opt-in button: device permission is requested
+  // automatically at the next permitted user activation.
+  if (push.state === "active" || push.state === "loading" ||
+      push.state === "available") return null;
   return <div className="device-push-invite" role="region" aria-label="إشعارات الجهاز">
     <strong>تفعيل إشعارات العمل</strong>
     <span role="status">{description[push.state]}</span>
