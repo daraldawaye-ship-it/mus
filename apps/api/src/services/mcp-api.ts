@@ -23,7 +23,7 @@ export const oauthScopes = [
 ];
 
 export function scopeIncludes(scope: string, permission: string): boolean {
-  return scope.split(/\\s+/).includes(permission);
+  return scope.split(/\s+/).includes(permission);
 }
 export function scopeRequiresPublicAdmin(scope: string): boolean {
   return scopeIncludes(scope, "general_table.read") ||
