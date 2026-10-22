@@ -5,12 +5,12 @@ import { tokenHash } from "./services/auth.ts";
 import { transaction } from "./db.ts";
 import { generalTableSchema, type GeneralTableInput } from "../../../packages/contracts/src/general-table.ts";
 import { audit } from "./services/audit.ts";
-import { apiTools, apiCatalog, dispatchApi, oauthScopes, API_READ_SCOPE, API_WRITE_SCOPE } from "./services/mcp-api.ts";
+import { apiTools, apiCatalog, dispatchApi, oauthScopes, API_READ_SCOPE, API_WRITE_SCOPE, canReadGeneralTable } from "./services/mcp-api.ts";
 import { userDTO } from "./repositories/models.ts";
 
 const tools=[{
  name:"query_general_table",
- description:"اقرأ من الجدول العام في تجارة. صفِّ حسب اسم الجدول والرقم 2 (صفر أو فارغ)، ورتب بحسب الرقم 1 من الأكبر إلى الأصغر. يعيد النص الكامل لحقل الوصف أو الشرح. للقراءة فقط.",
+ description:"اقرأ من الجدول العام في الرئيسي. صفِّ حسب اسم الجدول والرقم 2 (صفر أو فارغ)، ورتب بحسب الرقم 1 من الأكبر إلى الأصغر. يعيد النص الكامل لحقل الوصف أو الشرح. للقراءة فقط.",
  inputSchema:{type:"object",properties:{
    tableName:{type:"string",description:"اسم الجدول مثل: طلب تعديلات في الموقع"},
    number2EmptyOrZero:{type:"boolean",default:false},
@@ -103,7 +103,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    res.setHeader("WWW-Authenticate",challenge);
    res.setHeader("Cache-Control","no-store");
    res.json({jsonrpc:"2.0",id,result:{
-     content:[{type:"text",text:"Authentication required: connect Tijara using OAuth."}],
+     content:[{type:"text",text:"Authentication required: connect الرئيسي using OAuth."}],
      isError:true,
      _meta:{"mcp/www_authenticate":[challenge]},
    }});
@@ -122,7 +122,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    const fail=(code:number,message:string)=>res.json({jsonrpc:"2.0",id:body.id,error:{code,message}});
    if(body.method==="initialize"){
      ok({protocolVersion:"2025-06-18",capabilities:{tools:{listChanged:false}},
-       serverInfo:{name:"tijara-general-table",version:"1.2.0"}});return;
+       serverInfo:{name:"الرئيسي",version:"1.3.0"}});return;
    }
    if(body.method==="ping"){ok({});return;}
    if(body.method==="tools/list"){ok({tools:[...tools,...apiTools]});return;}
@@ -130,7 +130,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    if(body.method==="prompts/list"){ok({prompts:[]});return;}
    if(body.method!=="tools/call"){fail(-32601,"Method not found");return;}
    // MCP capabilities are discoverable anonymously, but actual record reads
-   // always require an unexpired, unrevoked, scoped and owner/admin token.
+   // always require an unexpired, unrevoked, scoped and authorized token, with company-level checks on each API call.
    const auth=req.get("authorization")??"";
    if(!/^Bearer [A-Za-z0-9_-]{43}$/.test(auth)){
      unauthorized(res,body.id);return;
@@ -139,7 +139,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
      `SELECT u.*,t.scope AS granted_scope FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
        WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
        AND t.revoked_at IS NULL AND t.scope=ANY($3::text[])
-       AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
+       AND t.resource=ANY($2::text[])
        AND NOT u.archived AND NOT u.suspended LIMIT 1`,
      [tokenHash(auth.slice(7)),[origin,origin+"/mcp"],oauthScopes],
    )).rows[0];
@@ -158,6 +158,9 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
      }
      dispatchApi(business,req,res,next,userDTO(user),params.name,params.arguments??{},body.id);return;
      } catch { fail(-32602,"Invalid API operation or arguments; inspect tijara_api_catalog"); return; }
+   }
+   if(!canReadGeneralTable(String(user.granted_scope),userDTO(user))){
+     fail(-32001,"Global table access requires admin status and general_table.read.");return;
    }
    const isWrite=["create_general_table_record","update_general_table_record"].includes(params.name);
    if(isWrite&&!String(user.granted_scope).split(" ").includes("general_table.write")){
