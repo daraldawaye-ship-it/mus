@@ -6,15 +6,36 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 
 export const API_READ_SCOPE = "tijara.read";
 export const API_WRITE_SCOPE = "tijara.write";
+// Company users connect with site-only scopes. The global general table
+// remains an administrative resource, even when bundled with site access.
+export const SITE_READ_SCOPE = API_READ_SCOPE;
+export const SITE_WRITE_SCOPE = API_READ_SCOPE + " " + API_WRITE_SCOPE;
 export const FULL_READ_SCOPE = "general_table.read tijara.read";
 export const FULL_WRITE_SCOPE =
   "general_table.read general_table.write tijara.read tijara.write";
 export const oauthScopes = [
   "general_table.read",
   "general_table.read general_table.write",
+  SITE_READ_SCOPE,
+  SITE_WRITE_SCOPE,
   FULL_READ_SCOPE,
   FULL_WRITE_SCOPE,
 ];
+
+export function scopeIncludes(scope: string, permission: string): boolean {
+  return scope.split(/\\s+/).includes(permission);
+}
+export function scopeRequiresPublicAdmin(scope: string): boolean {
+  return scopeIncludes(scope, "general_table.read") ||
+    scopeIncludes(scope, "general_table.write");
+}
+export function canReadGeneralTable(
+  scope: string,
+  user: Pick<User, "owner" | "kind">,
+): boolean {
+  return scopeIncludes(scope, "general_table.read") &&
+    (user.owner || user.kind === "admin");
+}
 
 interface Layer {
   route?: { path: string; methods: Record<string, boolean> };
@@ -60,7 +81,7 @@ export const apiTools = [
   {
     name: "tijara_api_catalog",
     description:
-      "اكتشف عمليات تجارة الحالية وحقول الطلب قبل التنفيذ. يشمل الشركات والمستخدمين والموظفين وحساباتهم وخياراتهم والدوام والمحفظة والمذكرات والإشعارات والحسابات والفواتير والمخزون والإعدادات. أرسل operation للحصول على عقد عملية بعينها، أو filter للبحث في المسارات. لا يمنح وصولًا يتجاوز حساب المستخدم.",
+      "اكتشف عمليات الرئيسي الحالية وحقول الطلب قبل التنفيذ. يشمل الشركات والمستخدمين والموظفين وحساباتهم وخياراتهم والدوام والمحفظة والمذكرات والإشعارات والحسابات والفواتير والمخزون والإعدادات. أرسل operation للحصول على عقد عملية بعينها، أو filter للبحث في المسارات. لا يمنح وصولًا يتجاوز حساب المستخدم.",
     inputSchema: {
       type: "object",
       properties: { operation: { type: "string" }, filter: { type: "string" } },
