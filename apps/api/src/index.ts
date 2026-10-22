@@ -1,7 +1,14 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
+import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
 import { startPushNotifications } from "./services/web-push.ts";
+
+// This branch is only for private preview deployments. Fail closed before
+// connecting to the database if the preview password was not configured.
+const previewGate = process.env.NODE_ENV === "production"
+  ? previewAccessGuard(process.env.PREVIEW_ACCESS_PASSWORD)
+  : undefined;
 
 const application = await createApp();
 let vite: import("vite").ViteDevServer | undefined;
@@ -17,7 +24,7 @@ if (!application.config.production) {
 const port = Number(process.env.PORT ?? 3000);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error("PORT must be between 1 and 65535");
-const server = createServer(application.app);
+const server = createServer(previewGate ? previewGate(application.app) : application.app);
 server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
   console.log(`Alraesy listening on port ${port}`),
 );
