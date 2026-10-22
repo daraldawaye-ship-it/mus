@@ -88,7 +88,7 @@ export const apiTools = [
       additionalProperties: false,
     },
     securitySchemes: [
-      { type: "oauth2", scopes: ["general_table.read", API_READ_SCOPE] },
+      { type: "oauth2", scopes: [API_READ_SCOPE] },
     ],
     annotations: {
       readOnlyHint: true,
@@ -107,7 +107,7 @@ export const apiTools = [
       additionalProperties: false,
     },
     securitySchemes: [
-      { type: "oauth2", scopes: ["general_table.read", API_READ_SCOPE] },
+      { type: "oauth2", scopes: [API_READ_SCOPE] },
     ],
     annotations: {
       readOnlyHint: true,
@@ -132,8 +132,6 @@ export const apiTools = [
       {
         type: "oauth2",
         scopes: [
-          "general_table.read",
-          "general_table.write",
           API_READ_SCOPE,
           API_WRITE_SCOPE,
         ],
