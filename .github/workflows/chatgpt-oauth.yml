@@ -1,7 +1,7 @@
 name: ChatGPT connector read/write checks
 on:
   push:
-    branches: [codex/deploy-phase2]
+    branches: [codex/deploy-phase2, codex/maini-app-permissions-no-deploy-20261022]
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
@@ -14,6 +14,9 @@ on:
       - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
+      - 'apps/api/migrations/990_chatgpt_company_user_scopes.sql'
+      - 'apps/api/src/services/mcp-api.ts'
+      - 'tests/chatgpt-scopes.test.ts'
       - 'tests/api.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   pull_request:
@@ -29,6 +32,9 @@ on:
       - 'packages/contracts/src/**'
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
+      - 'apps/api/migrations/990_chatgpt_company_user_scopes.sql'
+      - 'apps/api/src/services/mcp-api.ts'
+      - 'tests/chatgpt-scopes.test.ts'
       - 'tests/api.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   workflow_dispatch:
@@ -66,4 +72,5 @@ jobs:
       - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - run: node --import tsx --test tests/table-column-order.test.ts
       - run: node --import tsx --test tests/profile-image-field.test.ts
-      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts
+      - run: node --import tsx --test tests/chatgpt-scopes.test.ts
+      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|ChatGPT site access|media images)' tests/api.test.ts
