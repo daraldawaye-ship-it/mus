@@ -93,7 +93,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     const writing=scopeIncludes(validated.scope,"general_table.write")||scopeIncludes(validated.scope,API_WRITE_SCOPE);
     const scopeDescription=siteAccess
       ? (scopeIncludes(validated.scope,API_WRITE_SCOPE)
-        ? "قراءة وتنفيذ عمليات الرئيسي بحسب صلاحيات حسابك في كل شركة"
+        ? "قراءة وتنفيذ عمليات الرئيسي المسموحة لك، ومنها الموظفين والفواتير والمخزون والإعدادات والترحيل والعكس بحسب صلاحياتك في كل شركة"
         : "قراءة بيانات الرئيسي بحسب صلاحيات حسابك في كل شركة")
       : (writing?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط");
     res.type("html").send(webPage("السماح لـ ChatGPT بالوصول إلى الرئيسي",
