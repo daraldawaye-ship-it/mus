@@ -465,7 +465,7 @@ function ItemSearch({
       setSearch(query.trim());
       setPage(1);
       setActive(0);
-    }, 250);
+    }, 110);
     return () => window.clearTimeout(timer);
   }, [query, selected, open]);
   const expanded = open && !!search && !selected && !disabled;
@@ -507,10 +507,11 @@ function ItemSearch({
     queryKey: ["commerce", user?.id, companyId, "item-search", search, page],
     queryFn: ({ signal }) =>
       api<Page<Item>>(
-        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc" })}`,
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc", fast: "1" })}`,
         { signal },
       ),
-    enabled: !!user && !!search && !disabled,
+    enabled: !!user && expanded,
+    staleTime: 30_000,
   });
   const items = result.data?.items ?? [];
   function choose(item: Item) {
