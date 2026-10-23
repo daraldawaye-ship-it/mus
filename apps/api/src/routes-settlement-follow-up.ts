@@ -38,6 +38,7 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
             nearestExpiryDate: "i.nearest_expiry_date",
             lastAdjustmentDate: "last_count.document_date",
             countLimit: "count_limit.raw_limit",
+            hasNegativeStock: "COALESCE(stats.has_negative_stock, false)",
           },
           "monthlySales:desc,name:asc",
         );
@@ -59,6 +60,7 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           nearestExpiryDate: string | null;
           lastAdjustmentDate: string | null;
           countLimit: string;
+          hasNegativeStock: boolean;
         }>(
           `SELECT i.id, i.name,
             COALESCE(activity.monthly_sales, 0)::text AS "monthlySales",
@@ -66,7 +68,8 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
             c.code AS "currencyCode",
             i.nearest_expiry_date::text AS "nearestExpiryDate",
             last_count.document_date::text AS "lastAdjustmentDate",
-            ROUND(count_limit.raw_limit, 6)::text AS "countLimit"
+            ROUND(count_limit.raw_limit, 6)::text AS "countLimit",
+            COALESCE(stats.has_negative_stock, false) AS "hasNegativeStock"
           FROM items i
           JOIN company_currencies c
             ON c.company_id=i.company_id AND c.id=i.currency_id
