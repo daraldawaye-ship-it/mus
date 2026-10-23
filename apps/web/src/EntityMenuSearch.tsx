@@ -77,7 +77,7 @@ export function EntityMenuSearch({
       `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort})}`,
       {signal},
     ),
-    enabled: canSearch,
+    enabled: canSearch && focused,
     staleTime: 3000,
   });
   const choices = result.data?.items ?? [];
@@ -115,7 +115,7 @@ export function EntityMenuSearch({
               }
               if (event.key === "Enter") {
                 event.preventDefault();
-                if (choices[active] && !result.isFetching) choose(choices[active]);
+                if (choices[active] && !result.isFetching && search === entry.trim()) choose(choices[active]);
               }
               if (event.key === "Escape") {
                 event.stopPropagation();setFocused(false);setEntry(selected?.name ?? "");
@@ -139,7 +139,7 @@ export function EntityMenuSearch({
           {result.isError && <p className="user-menu-entity-hint">تعذر البحث أو ليست لديك صلاحية عرض هذه البيانات.</p>}
           {!result.isFetching && !result.isError && !choices.length &&
             <p className="user-menu-entity-hint">لا توجد نتائج مطابقة.</p>}
-          {choices.map((choice,index) => (
+          {(search === entry.trim() ? choices : []).map((choice,index) => (
             <button key={choice.id} type="button" role="option"
               aria-selected={active === index}
               className={`user-menu-entity-choice${active===index?" selected":""}`}
