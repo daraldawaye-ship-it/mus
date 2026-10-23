@@ -1809,3 +1809,48 @@ test("item field audit records independent before/after events and rejects stale
   );
   assert.equal(noExtra.rows[0]!.total, 2);
 });
+
+
+test("item stocktake request is server-stamped and cannot be edited manually", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company();
+  const curr = await currency(f, company.id);
+  const initial = await item(f, company.id, curr.id);
+  assert.equal(initial.stocktakeRequiredAt, null);
+  const url = `/companies/${company.id}/items/${initial.id}`;
+  const requestedBefore = Date.now();
+  const recorded = (await f.owner.ok<{ item: Item }>(
+    "PATCH", url + "/stocktake-request", { revision: initial.revision },
+  )).item;
+  const recordedTime = Date.parse(recorded.stocktakeRequiredAt ?? "");
+  assert(Number.isFinite(recordedTime));
+  assert(recordedTime >= requestedBefore - 5000 && recordedTime <= Date.now() + 5000);
+  assert.equal(recorded.revision, initial.revision + 1);
+  assert.equal(
+    (await f.owner.request("PATCH", url + "/stocktake-request",
+      { revision: recorded.revision, date: "2020-01-01" })).status, 400,
+    "Client-provided timestamp must be rejected",
+  );
+  assert.equal(
+    (await f.owner.request("PATCH", url + "/stocktake-request",
+      { revision: initial.revision })).status, 409,
+    "Stale button presses must not silently overwrite the timestamp",
+  );
+  assert.equal(
+    (await f.owner.request("PATCH", url,
+      patchItem(recorded, { stocktakeRequiredAt: "2020-01-01T00:00:00Z" }))).status,
+    400,
+    "The normal item card PATCH must not accept manual time changes",
+  );
+  const loaded = (await f.owner.ok<{ item: Item }>("GET", url)).item;
+  assert.equal(loaded.stocktakeRequiredAt, recorded.stocktakeRequiredAt);
+  const audit = await f.pool.query(
+    "SELECT before_value,after_value FROM audit_events WHERE company_id=$1 AND action='item.field.update' AND target_id=$2",
+    [company.id, initial.id],
+  );
+  assert(audit.rows.some(row =>
+    row.after_value.field === "stocktakeRequiredAt" &&
+    row.after_value.value === recorded.stocktakeRequiredAt &&
+    row.before_value.value === null
+  ));
+});
