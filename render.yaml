@@ -1,14 +1,21 @@
-# Review the paid web and database plans in Render before applying this Blueprint.
+# Additional paid resources: review pricing and obtain cost approval before applying.
+# Private preview only. Never merge this branch into Railway's production branch.
+previews:
+  generation: "off"
+
 services:
   - type: web
-    name: tijara
+    name: alraesy-private-preview
     runtime: docker
-    plan: starter
+    repo: https://github.com/daraldawaye-ship-it/mus
+    branch: preview/render-2026-10-23
+    plan: 0.5c-512mb
     region: frankfurt
+    numInstances: 1
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    autoDeploy: false
+    autoDeployTrigger: "off"
     envVars:
       - key: NODE_ENV
         value: production
@@ -16,15 +23,22 @@ services:
         value: 0.0.0.0
       - key: PORT
         value: "10000"
+      - key: PREVIEW_ACCESS_PASSWORD
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: tijara-db
+          name: alraesy-preview-db
           property: connectionString
+    # configuration() uses Render's trusted RENDER_EXTERNAL_URL for APP_ORIGIN.
+    # Set APP_ORIGIN explicitly only when adding a custom HTTPS domain.
 
 databases:
-  - name: tijara-db
-    plan: basic-256mb
+  - name: alraesy-preview-db
+    plan: 0.1c-256mb
     region: frankfurt
-    databaseName: tijara
-    user: tijara
+    postgresMajorVersion: "17"
+    databaseName: tijara_preview
+    user: tijara_preview
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false
     ipAllowList: []
