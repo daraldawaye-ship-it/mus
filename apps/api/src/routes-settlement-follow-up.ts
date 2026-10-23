@@ -92,7 +92,37 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           LIMIT $4 OFFSET $5`,
           [...params, importance, query.pageSize, query.offset],
         );
+        // Compute across all matching active items, independent of the visible page.
+        // A stock_total > 0 is required: out-of-stock/negative items must not
+        // contribute to the monthly count workload, even if they have sales.
+        // 30 / ((importance * 30) / (sales + 5)) = (sales + 5) / importance.
+        const summary = await client.query<{
+          stocktakeFrequencyTotal: string;
+          stockedItemsCount: number;
+        }>(
+          `SELECT
+            COALESCE(ROUND(SUM(
+              (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) / $3::numeric
+            ), 6), 0)::text AS "stocktakeFrequencyTotal",
+            COUNT(*)::integer AS "stockedItemsCount"
+          FROM items i
+          JOIN item_statistics stock
+            ON stock.company_id=i.company_id AND stock.item_id=i.id
+            AND stock.stock_total > 0
+          LEFT JOIN LATERAL (
+            SELECT SUM(d.sale_invoices - d.sale_return_invoices) AS monthly_sales
+            FROM item_daily_activity d
+            WHERE d.company_id=i.company_id AND d.item_id=i.id
+              AND d.document_date BETWEEN
+                ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - interval '1 month' + interval '1 day')::date
+                AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+          ) activity ON true
+          WHERE ${where}`,
+          [...params, importance],
+        );
         return {
+          stocktakeFrequencyTotal: summary.rows[0]?.stocktakeFrequencyTotal ?? "0",
+          stockedItemsCount: summary.rows[0]?.stockedItemsCount ?? 0,
           items: result.rows,
           total: count.rows[0]?.total ?? 0,
           page: query.page,
