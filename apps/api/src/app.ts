@@ -22,6 +22,7 @@ import { locationRoutes } from "./routes-locations.ts";
 import { generalTableRoutes } from "./routes-general-table.ts";
 import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
+import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
 import { itemImportRoutes } from "./routes-item-import.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
@@ -89,6 +90,7 @@ export async function createApp(options: AppOptions = {}) {
     generalTableRoutes(pool),
     financeRoutes(pool),
     itemRoutes(pool),
+    settlementFollowUpRoutes(pool),
     itemImportRoutes(pool),
     inventoryRoutes(pool),
     commerceOptionRoutes(pool),
