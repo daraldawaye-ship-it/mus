@@ -1237,9 +1237,9 @@ function ItemEditor({
   const allowNavigation = useRef(false);
   useEffect(() => {
     // The invoice's bottom sheet must not close while edits are pending.
-    onSavingChange?.(saving || (embedded && (dirty || optionBusy)));
+    onSavingChange?.(saving || stocktakeBusy || (embedded && (dirty || optionBusy)));
     return () => onSavingChange?.(false);
-  }, [saving, dirty, optionBusy, embedded, onSavingChange]);
+  }, [saving, stocktakeBusy, dirty, optionBusy, embedded, onSavingChange]);
   function markDirty() {
     draftVersion.current += 1;
     setError("");
@@ -1364,7 +1364,7 @@ function ItemEditor({
     }
   }
   async function reload() {
-    if (!item || saving) return;
+    if (!item || saving || stocktakeBusy) return;
     setSaving(true);
     setError("");
     try {
@@ -1406,7 +1406,7 @@ function ItemEditor({
     fields, currency, agent, supplier, supplierManuallyTouched]);
 
   function leaveEditor() {
-    if (item && optionBusy) return;
+    if (item && (optionBusy || stocktakeBusy)) return;
     if (item && dirty) {
       // An explicit Close also commits the most recent text edit.
       void save();
