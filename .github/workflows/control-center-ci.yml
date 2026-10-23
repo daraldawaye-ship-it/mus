@@ -99,6 +99,8 @@ jobs:
         run: node --import tsx --test tests/last-company-activation.test.ts
       - name: Recent selections remain scoped by company and user
         run: node --import tsx --test tests/recent-entities.test.ts
+      - name: Fast invoice and avatar item lookup regression
+        run: node --import tsx --test --test-name-pattern="invoice quick lookup uses bounded pages" tests/item-sale-ranking-cache.test.ts
       - name: Keep user shortcut flyout inside viewport in RTL and narrow layouts
         run: node --import tsx --test tests/shortcut-position.test.ts
       - name: General table numeric inline edit and sort regressions
