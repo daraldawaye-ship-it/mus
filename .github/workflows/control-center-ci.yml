@@ -27,6 +27,13 @@ on:
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/UserShortcuts.tsx'
       - 'apps/web/src/UserMenu.tsx'
+      - 'apps/web/src/EntityMenuSearch.tsx'
+      - 'apps/web/src/recent-entities.ts'
+      - 'apps/web/src/phase2.tsx'
+      - 'apps/web/src/pages/AccountsPage.tsx'
+      - 'apps/web/src/pages/CompanyPages.tsx'
+      - 'apps/web/src/pages/ItemsPages.tsx'
+      - 'tests/recent-entities.test.ts'
       - 'apps/web/src/UserShortcutMenuGrid.tsx'
       - 'apps/web/src/user-menu-tabs.css'
       - 'tests/browser.ts'
@@ -88,6 +95,8 @@ jobs:
         run: node --import tsx --test tests/control.test.ts
       - name: Persist last visited company across rapid public-page navigation
         run: node --import tsx --test tests/last-company-activation.test.ts
+      - name: Recent selections remain scoped by company and user
+        run: node --import tsx --test tests/recent-entities.test.ts
       - name: Keep user shortcut flyout inside viewport in RTL and narrow layouts
         run: node --import tsx --test tests/shortcut-position.test.ts
       - name: General table numeric inline edit and sort regressions
