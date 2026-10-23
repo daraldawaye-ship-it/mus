@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM postgres:18-bookworm@sha256:bbf83594798e144bff365a9c191c5d779f181fb3135902064ab8ff11918020fc AS migration-tools
 RUN mkdir -p /opt/pg18/bin /opt/pg18/lib \
-    && cp /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore /opt/pg18/bin/ \
-    && ldd /opt/pg18/bin/pg_dump /opt/pg18/bin/pg_restore \
+    && cp /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore /usr/lib/postgresql/18/bin/psql /opt/pg18/bin/ \
+    && ldd /opt/pg18/bin/pg_dump /opt/pg18/bin/pg_restore /opt/pg18/bin/psql \
        | awk '$2 == "=>" && $3 ~ /^[/]/ { print $3 }' | sort -u \
        | while read -r library; do \
            case "$(basename "$library")" in \

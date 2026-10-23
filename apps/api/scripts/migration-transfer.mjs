@@ -7,13 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const controlSchema = "_alraesy_migration";
+const backupSchema = "_alraesy_render_preview_backup";
 const quote = (value) => '"' + value.replaceAll('"', '""') + '"';
 const literal = (value) => "'" + value.replaceAll("'", "''") + "'";
 const fail = (code) => Object.assign(new Error(code), { code });
 const tableQuery = `SELECT n.nspname AS schema, c.relname AS name
   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE c.relkind IN ('r','p') AND n.nspname !~ '^pg_'
-    AND n.nspname NOT IN ('information_schema','${controlSchema}')
+    AND n.nspname NOT IN ('information_schema','${controlSchema}','${backupSchema}')
   ORDER BY n.nspname COLLATE "C", c.relname COLLATE "C"`;
 
 function connection(url, source = false) {
@@ -45,6 +46,42 @@ async function tool(executable, args, env) {
     child.on("error", () => reject(fail("TOOL_START_FAILED")));
     child.on("exit", (code) => code === 0 ? resolve() : reject(
       Object.assign(fail("POSTGRES_TOOL_FAILED"), { privateDetail: detail })));
+  });
+}
+
+async function restorePublicAtomically(archive,url,toolDir) {
+  // psql owns one transaction spanning the schema rename and the complete dump.
+  // No old preview row is merged with source data. On any stream/SQL error the
+  // connection closes and PostgreSQL rolls the transaction back.
+  const env=toolEnvironment(url,false,toolDir);
+  const listing=await new Promise((resolve,reject)=>{
+    const child=spawn(join(toolDir,"bin/pg_restore"),["--list",archive],{env,stdio:["ignore","pipe","ignore"]});
+    let text="";child.stdout.on("data",chunk=>{text+=chunk;});
+    child.on("error",()=>reject(fail("TOOL_START_FAILED")));
+    child.on("close",code=>code===0?resolve(text):reject(fail("ARCHIVE_LIST_FAILED")));
+  });
+  const createsPublic=/;[^\n]*\bSCHEMA\s+-\s+public\s/m.test(listing);
+  return new Promise((resolve,reject)=>{
+    const loader=spawn(join(toolDir,"bin/psql"),["--no-psqlrc","--quiet","--single-transaction","--set=ON_ERROR_STOP=on","--file=-"],{env,stdio:["pipe","ignore","pipe"]});
+    const exporter=spawn(join(toolDir,"bin/pg_restore"),["--no-owner","--no-acl","--file=-",archive],{env,stdio:["ignore","pipe","pipe"]});
+    let detail="",exportCode,loadCode,finished=false;
+    const finish=()=>{
+      if(finished || exportCode===undefined || loadCode===undefined) return;
+      finished=true;
+      if(exportCode===0&&loadCode===0)resolve();
+      else reject(Object.assign(fail("ATOMIC_RESTORE_FAILED"),{privateDetail:detail}));
+    };
+    const error=()=>{exporter.kill("SIGTERM");loader.kill("SIGTERM");};
+    for(const child of [loader,exporter]){
+      child.stderr.on("data",chunk=>{if(detail.length<65536)detail+=chunk.toString();});
+      child.on("error",error);
+    }
+    loader.stdin.on("error",()=>exporter.kill("SIGTERM"));
+    loader.stdin.write(`ALTER SCHEMA public RENAME TO ${quote(backupSchema)};\n`+
+      (createsPublic?"":"CREATE SCHEMA public;\n"));
+    exporter.stdout.pipe(loader.stdin,{end:false});
+    exporter.on("close",code=>{exportCode=code??-1;if(code===0)loader.stdin.end("\n");else loader.kill("SIGTERM");finish();});
+    loader.on("close",code=>{loadCode=code??-1;if(code!==0)exporter.kill("SIGTERM");finish();});
   });
 }
 
@@ -96,7 +133,7 @@ export async function fingerprint(client) {
   const sequences = [];
   const sequenceNames = await client.query(`SELECT n.nspname AS schema,c.relname AS name
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE c.relkind='S' AND n.nspname !~ '^pg_' AND n.nspname <> '${controlSchema}'
+    WHERE c.relkind='S' AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('${controlSchema}','${backupSchema}')
     ORDER BY n.nspname COLLATE "C",c.relname COLLATE "C"`);
   for (const sequence of sequenceNames.rows) {
     const value = await client.query(`SELECT last_value::text, is_called FROM ${quote(sequence.schema)}.${quote(sequence.name)}`);
@@ -106,28 +143,28 @@ export async function fingerprint(client) {
     SELECT 'function' AS kind,n.nspname AS schema,p.proname AS name,
       pg_get_function_identity_arguments(p.oid) AS identity,pg_get_functiondef(p.oid) AS definition
       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-      WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}') AND p.prokind IN ('f','p')
+      WHERE n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}','${backupSchema}') AND p.prokind IN ('f','p')
     UNION ALL SELECT 'constraint',n.nspname,c.relname,co.conname,
       pg_get_constraintdef(co.oid,true)||':'||co.convalidated::text
       FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
       -- PG18 also catalogs NOT NULL here; PG17 represents it only on columns.
       -- Column attnotnull is compared below on both versions.
-      WHERE co.contype <> 'n' AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}')
+      WHERE co.contype <> 'n' AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}','${backupSchema}')
     UNION ALL SELECT 'index',n.nspname,c.relname,'',pg_get_indexdef(c.oid)
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE c.relkind='i' AND n.nspname !~ '^pg_' AND n.nspname <> '${controlSchema}'
+      WHERE c.relkind='i' AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('${controlSchema}','${backupSchema}')
     UNION ALL SELECT 'trigger',n.nspname,c.relname,t.tgname,pg_get_triggerdef(t.oid,true)||':'||t.tgenabled::text
       FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE NOT t.tgisinternal AND n.nspname !~ '^pg_' AND n.nspname <> '${controlSchema}'
+      WHERE NOT t.tgisinternal AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('${controlSchema}','${backupSchema}')
     UNION ALL SELECT 'view',n.nspname,c.relname,'',pg_get_viewdef(c.oid,true)
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE c.relkind IN ('v','m') AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}')
+      WHERE c.relkind IN ('v','m') AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}','${backupSchema}')
     UNION ALL SELECT 'column',n.nspname,c.relname,a.attname,
       format_type(a.atttypid,a.atttypmod)||':'||a.attnotnull::text||':'||a.attidentity::text||':'||a.attgenerated::text||':'||coalesce(pg_get_expr(d.adbin,d.adrelid),'')
       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
       LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
       WHERE c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped
-      AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}')
+      AND n.nspname !~ '^pg_' AND n.nspname NOT IN ('information_schema','${controlSchema}','${backupSchema}')
   `)).rows.map(row => ["constraint","index"].includes(row.kind)
       ? {...row,definition:portableDefinition(row.definition)} : row)
     .sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b), "en"));
@@ -135,14 +172,87 @@ export async function fingerprint(client) {
   return { data, sequences, catalog, extensions };
 }
 
-export async function stageMigration({ sourceUrl, adminUrl, runId, enforceHosts = false, toolDir = "/opt/pg18" }) {
+// Railway can pause service deployments during an outage. A database-scoped
+// read-only default plus draining existing application sessions gives the final
+// dump a stable write boundary without deleting or modifying business records.
+export async function sourceReadOnly({sourceUrl,adminUrl,runId,restore=false,enforceHosts=false}) {
+  if (!/^[a-z0-9_]{8,35}$/.test(runId ?? "")) throw fail("INVALID_RUN_ID");
+  const source=new URL(sourceUrl),admin=new URL(adminUrl);
+  if (enforceHosts && (source.hostname!=="centerbeam.proxy.rlwy.net" || source.port!=="29292" ||
+      !admin.hostname.startsWith("dpg-dbdltoo473hc73cqrkqg-a"))) throw fail("UNEXPECTED_DATABASE_HOST");
+  if(source.host===admin.host && source.pathname===admin.pathname) throw fail("SOURCE_EQUALS_TARGET");
+  const manager=connection(admin);
+  const controller=connection(source,true);
+  controller.connectionParameters.options="-c default_transaction_read_only=off";
+  let locked=false,probe;
+  try {
+    await manager.connect();
+    locked=(await manager.query("SELECT pg_try_advisory_lock(hashtext('alraesy-source-freeze')) AS locked")).rows[0].locked;
+    if(!locked) throw fail("ANOTHER_FREEZE_RUNNING");
+    await manager.query(`CREATE SCHEMA IF NOT EXISTS ${quote(controlSchema)}`);
+    await manager.query(`CREATE TABLE IF NOT EXISTS ${quote(controlSchema)}.source_freezes
+      (run_id text PRIMARY KEY,previous_value text,frozen boolean NOT NULL DEFAULT false,
+       created_at timestamptz NOT NULL DEFAULT now(),restored_at timestamptz)`);
+    await controller.connect();
+    let record=(await manager.query(`SELECT previous_value,frozen FROM ${quote(controlSchema)}.source_freezes WHERE run_id=$1`,[runId])).rows[0];
+    if(restore && !record) throw fail("FREEZE_RECORD_MISSING");
+    if(!record) {
+      const settings=(await controller.query(`SELECT setconfig FROM pg_db_role_setting
+        WHERE setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) AND setrole=0`)).rows[0]?.setconfig ?? [];
+      const previous=settings.find(x=>x.startsWith("default_transaction_read_only="))?.split("=")[1] ?? null;
+      await manager.query(`INSERT INTO ${quote(controlSchema)}.source_freezes(run_id,previous_value) VALUES($1,$2)`,[runId,previous]);
+      record={previous_value:previous,frozen:false};
+    }
+    const database=(await controller.query("SELECT current_database() AS name")).rows[0].name;
+    if(restore) {
+      if(record.previous_value===null) await controller.query(`ALTER DATABASE ${quote(database)} RESET default_transaction_read_only`);
+      else await controller.query(`ALTER DATABASE ${quote(database)} SET default_transaction_read_only TO ${literal(record.previous_value)}`);
+    } else await controller.query(`ALTER DATABASE ${quote(database)} SET default_transaction_read_only TO 'on'`);
+    // In-flight work rolls back; committed records are retained. Reconnecting
+    // application sessions inherit the database's read-only default.
+    await controller.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+      WHERE datname=current_database() AND usename=current_user AND pid<>pg_backend_pid()
+      AND backend_type='client backend'`);
+    probe=connection(source,true); await probe.connect();
+    const value=(await probe.query("SHOW default_transaction_read_only")).rows[0].default_transaction_read_only;
+    if(!restore && value!=="on") throw fail("SOURCE_FREEZE_NOT_APPLIED");
+    await manager.query(`UPDATE ${quote(controlSchema)}.source_freezes SET frozen=$2,
+      restored_at=CASE WHEN $2 THEN NULL ELSE now() END WHERE run_id=$1`,[runId,!restore]);
+    return {run_id:runId,source_read_only:value};
+  } finally {
+    await probe?.end().catch(()=>{});await controller.end().catch(()=>{});
+    if(locked) await manager.query("SELECT pg_advisory_unlock(hashtext('alraesy-source-freeze'))").catch(()=>{});
+    await manager.end().catch(()=>{});
+  }
+}
+
+export async function discardCandidate({adminUrl,runId}) {
+  if(!/^[a-z0-9_]{8,35}$/.test(runId??""))throw fail("INVALID_RUN_ID");
+  const c=connection(new URL(adminUrl));await c.connect();
+  try {
+    const row=(await c.query(`SELECT database_name,archive_sha256,
+      expected->'data'=actual->'data' AS contents_checked,
+      EXISTS(SELECT 1 FROM ${quote(controlSchema)}.dump_chunks c WHERE c.run_id=r.run_id) AS has_archive
+      FROM ${quote(controlSchema)}.runs r WHERE run_id=$1`,[runId])).rows[0];
+    if(!row||!row.contents_checked||!row.has_archive||!row.archive_sha256||row.database_name!=="alraesy_mig_"+runId)
+      throw fail("CANDIDATE_DISCARD_NOT_SAFE");
+    const current=(await c.query("SELECT current_database() AS name")).rows[0].name;
+    if(row.database_name===current)throw fail("CANNOT_DISCARD_CURRENT_DATABASE");
+    const exists=(await c.query("SELECT datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) AS owned FROM pg_database WHERE datname=$1",[row.database_name])).rows[0];
+    if(exists&&!exists.owned)throw fail("UNEXPECTED_CANDIDATE_OWNER");
+    if(exists)await c.query(`DROP DATABASE ${quote(row.database_name)}`);
+    console.log("MIGRATION_UNUSED_CANDIDATE_REMOVED "+runId);
+  } finally {await c.end();}
+}
+
+export async function stageMigration({ sourceUrl, adminUrl, runId, enforceHosts = false, toolDir = "/opt/pg18",inPlace=false }) {
   if (!/^[a-z0-9_]{8,35}$/.test(runId ?? "")) throw fail("INVALID_RUN_ID");
   const source = new URL(sourceUrl), admin = new URL(adminUrl);
   if (![source,admin].every(url => ["postgres:","postgresql:"].includes(url.protocol))) throw fail("INVALID_PROTOCOL");
   if (enforceHosts && (source.hostname !== "centerbeam.proxy.rlwy.net" || source.port !== "29292" ||
       !admin.hostname.startsWith("dpg-dbdltoo473hc73cqrkqg-a"))) throw fail("UNEXPECTED_DATABASE_HOST");
   if (source.host === admin.host && source.pathname === admin.pathname) throw fail("SOURCE_EQUALS_TARGET");
-  const databaseName = "alraesy_mig_" + runId;
+  const databaseName = inPlace ? decodeURIComponent(admin.pathname.slice(1)) : "alraesy_mig_" + runId;
   const candidate = new URL(admin); candidate.pathname = "/" + databaseName;
   const management = connection(admin), original = connection(source, true);
   let restored, directory, locked = false, recorded = false;
@@ -161,18 +271,24 @@ export async function stageMigration({ sourceUrl, adminUrl, runId, enforceHosts 
     const previous = (await management.query(`SELECT state,summary FROM ${quote(controlSchema)}.runs WHERE run_id=$1`,[runId])).rows[0];
     if (previous?.state === "verified") return previous.summary;
     if (previous) throw fail("RUN_ALREADY_STARTED_REVIEW_REQUIRED");
-    if ((await management.query("SELECT 1 FROM pg_database WHERE datname=$1",[databaseName])).rowCount)
+    if (!inPlace && (await management.query("SELECT 1 FROM pg_database WHERE datname=$1",[databaseName])).rowCount)
       throw fail("CANDIDATE_ALREADY_EXISTS");
+    if(inPlace){
+      const schemas=(await management.query(`SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_'
+        AND nspname NOT IN ('information_schema','${controlSchema}') ORDER BY nspname`)).rows;
+      if(schemas.length!==1||schemas[0].nspname!=="public")throw fail("REVIEW_TARGET_SCHEMAS_BEFORE_REPLACEMENT");
+    }
     await management.query(`INSERT INTO ${quote(controlSchema)}.runs(run_id,state,database_name) VALUES($1,'preparing',$2)`,[runId,databaseName]);
     recorded = true;
     await original.connect();
     await beginSnapshot(original);
-    if ((await original.query("SELECT 1 FROM pg_namespace WHERE nspname=$1",[controlSchema])).rowCount)
+    if ((await original.query("SELECT 1 FROM pg_namespace WHERE nspname=ANY($1)",[[controlSchema,backupSchema]])).rowCount)
       throw fail("RESERVED_SOURCE_SCHEMA");
     const snapshot = (await original.query("SELECT pg_export_snapshot() AS snapshot")).rows[0].snapshot;
     const sourceVersion = (await original.query("SHOW server_version")).rows[0].server_version;
     const sourceBytes = BigInt((await original.query("SELECT pg_database_size(current_database())::text AS bytes")).rows[0].bytes);
-    const adminBytes = BigInt((await management.query("SELECT pg_database_size(current_database())::text AS bytes")).rows[0].bytes);
+    const adminBytes = BigInt((await management.query(`SELECT coalesce(sum(pg_database_size(oid)),0)::text AS bytes
+      FROM pg_database WHERE datname=current_database() OR datname LIKE 'alraesy_mig_%'`)).rows[0].bytes);
     if (enforceHosts && sourceBytes * 2n + adminBytes + 134217728n > 1073741824n)
       throw fail("REVIEW_STORAGE_HEADROOM");
     directory = await mkdtemp(join(tmpdir(), "alraesy-migration-"));
@@ -193,10 +309,19 @@ export async function stageMigration({ sourceUrl, adminUrl, runId, enforceHosts 
     const locale = (await original.query(`SELECT pg_encoding_to_char(encoding) AS encoding,
       datcollate,datctype,datlocprovider,datlocale FROM pg_database WHERE datname=current_database()`)).rows[0];
     if (locale.encoding !== "UTF8" || locale.datlocprovider !== "c") throw fail("REVIEW_DATABASE_LOCALE");
-    await management.query(`CREATE DATABASE ${quote(databaseName)} TEMPLATE template0 ENCODING 'UTF8'
-      LOCALE_PROVIDER libc LC_COLLATE ${literal(locale.datcollate)} LC_CTYPE ${literal(locale.datctype)}`);
-    console.log("MIGRATION_PROGRESS restoring_isolated_candidate");
-    await tool(join(toolDir,"bin/pg_restore"),["--no-owner","--no-acl","--exit-on-error","--single-transaction", "--dbname="+databaseName,archive],toolEnvironment(candidate,false,toolDir));
+    if(inPlace){
+      const targetLocale=(await management.query(`SELECT pg_encoding_to_char(encoding) AS encoding,
+        datcollate,datctype,datlocprovider FROM pg_database WHERE datname=current_database()`)).rows[0];
+      for(const key of ['encoding','datcollate','datctype','datlocprovider'])
+        if(targetLocale[key].toLowerCase()!==locale[key].toLowerCase())throw fail("TARGET_DATABASE_LOCALE_DIFFERS");
+      console.log("MIGRATION_PROGRESS replacing_preview_schema_atomically");
+      await restorePublicAtomically(archive,admin,toolDir);
+    } else {
+      await management.query(`CREATE DATABASE ${quote(databaseName)} TEMPLATE template0 ENCODING 'UTF8'
+        LOCALE_PROVIDER libc LC_COLLATE ${literal(locale.datcollate)} LC_CTYPE ${literal(locale.datctype)}`);
+      console.log("MIGRATION_PROGRESS restoring_isolated_candidate");
+      await tool(join(toolDir,"bin/pg_restore"),["--no-owner","--no-acl","--exit-on-error","--single-transaction", "--dbname="+databaseName,archive],toolEnvironment(candidate,false,toolDir));
+    }
     restored = connection(candidate); await restored.connect(); await beginSnapshot(restored);
     const actual = await fingerprint(restored);
     const targetVersion = (await restored.query("SHOW server_version")).rows[0].server_version;
@@ -208,10 +333,19 @@ export async function stageMigration({ sourceUrl, adminUrl, runId, enforceHosts 
       source_database_bytes:sourceBytes.toString(),archive_bytes:(await stat(archive)).size.toString(),
       archive_sha256:archiveSha256,tables_verified:expected.data.length,sequences_verified:expected.sequences.length,
       schema_objects_verified:expected.catalog.length,users:table("users"),companies:table("companies"),media_assets:table("media_assets"),
-      manifest_sha256:createHash("sha256").update(JSON.stringify(expected)).digest("hex") };
+      manifest_sha256:createHash("sha256").update(JSON.stringify(expected)).digest("hex"),in_place:inPlace };
+    if(inPlace)await management.query(`DROP SCHEMA ${quote(backupSchema)} CASCADE`);
     await management.query(`UPDATE ${quote(controlSchema)}.runs SET state='verified',summary=$2,finished_at=now() WHERE run_id=$1`,[runId,JSON.stringify(summary)]);
     return summary;
   } catch (error) {
+    if(inPlace && (await management.query("SELECT 1 FROM pg_namespace WHERE nspname=$1",[backupSchema]).catch(()=>({rowCount:0}))).rowCount){
+      await management.query("BEGIN");
+      try {
+        await management.query("DROP SCHEMA public CASCADE");
+        await management.query(`ALTER SCHEMA ${quote(backupSchema)} RENAME TO public`);
+        await management.query("COMMIT");
+      } catch {await management.query("ROLLBACK").catch(()=>{});}
+    }
     if (recorded) await management.query(`UPDATE ${quote(controlSchema)}.runs SET state='failed',error_detail=$2,finished_at=now() WHERE run_id=$1`,
       [runId, error.privateDetail ?? error.code ?? "MIGRATION_FAILED"]).catch(()=>{});
     throw error;
