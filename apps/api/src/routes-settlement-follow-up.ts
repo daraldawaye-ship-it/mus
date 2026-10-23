@@ -85,7 +85,7 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           -- Net returns can make monthly sales negative; zero is the safe
           -- minimum only for the divisor, while the displayed sales stay exact.
           LEFT JOIN LATERAL (
-            SELECT $3::numeric / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) / 30 AS raw_limit
+            SELECT ($3::numeric * 30) / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) AS raw_limit
           ) count_limit ON true
           WHERE ${where}
           ORDER BY ${query.order}
