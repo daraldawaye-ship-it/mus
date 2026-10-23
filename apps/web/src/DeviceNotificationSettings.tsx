@@ -103,33 +103,19 @@ type PushLifetime = {
   check: () => Promise<void>;
 };
 
-/** Avoid repeated system permission dialogs after dismissal and prevent two
- * mounted notification settings components from asking on the same click. */
-const automaticPushRequests = new Set<number>();
-function claimAutomaticPushRequest(userId: number): boolean {
-  if (automaticPushRequests.has(userId)) return false;
-  const key = `alraesy:push-prompted:${userId}`;
-  try {
-    if (window.sessionStorage.getItem(key) === "1") return false;
-    window.sessionStorage.setItem(key, "1");
-  } catch {
-    // Some privacy modes deny storage; the in-memory guard still applies.
-  }
-  automaticPushRequests.add(userId);
-  return true;
-}
-
-/** The site's notification channel is automatic. A browser may only request
- * its native permission during the user's first trusted site interaction. */
-function useDevicePush(userId: number | null) {
+/** Ask again on each new site visit, including a reload with an existing login.
+ * Only the page-level bootstrap owns automatic requests; settings can coexist. */
+function useDevicePush(userId: number | null, automatic = false) {
   const [state, setState] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lifetime = useRef<PushLifetime | null>(null);
+  const automaticPromptAttempted = useRef(false);
   const currentUser = useRef(userId);
   currentUser.current = userId;
 
   useEffect(() => {
+    automaticPromptAttempted.current = false;
     const run: PushLifetime = {
       alive: true, busy: false, publicKey: null,
       controller: new AbortController(), check: async () => {},
@@ -223,13 +209,14 @@ function useDevicePush(userId: number | null) {
   // login, without requiring a special notification-settings button. Keep the
   // native Allow/Deny choice entirely under the user's control.
   useEffect(() => {
-    if (!userId || state !== "available" || !supported() ||
+    if (!automatic || !userId || state !== "available" || !supported() ||
         Notification.permission !== "default") return;
     const onInteraction = (event: Event) => {
       const key = event instanceof KeyboardEvent ? event.key : undefined;
       if (!automaticPushPromptAllowed(Notification.permission, event.isTrusted, event.type, key)) return;
       if (!lifetime.current?.publicKey || lifetime.current.busy) return;
-      if (!claimAutomaticPushRequest(userId)) return;
+      if (automaticPromptAttempted.current) return;
+      automaticPromptAttempted.current = true;
       // enable() invokes Notification.requestPermission() synchronously before
       // its first await, retaining the gesture required by the browser.
       void enable();
@@ -240,7 +227,7 @@ function useDevicePush(userId: number | null) {
       document.removeEventListener("click", onInteraction, true);
       document.removeEventListener("keydown", onInteraction, true);
     };
-  }, [userId, state]);
+  }, [automatic, userId, state]);
 
   return { state, busy, error, enable, recheck: () => void lifetime.current?.check() };
 }
@@ -280,12 +267,10 @@ export function DevicePushBootstrap({ userId, onReadyChange }: {
   userId: number;
   onReadyChange?: (ready: boolean) => void;
 }) {
-  const push = useDevicePush(userId);
+  const push = useDevicePush(userId, true);
   useEffect(() => onReadyChange?.(push.state === "active"), [push.state, onReadyChange]);
-  // Do not show a site-level opt-in button: device permission is requested
-  // automatically at the next permitted user activation.
-  if (push.state === "active" || push.state === "loading" ||
-      push.state === "available") return null;
+  // Keep a reminder and explicit retry visible after a dismissed native request.
+  if (push.state === "active" || push.state === "loading") return null;
   return <div className="device-push-invite" role="region" aria-label="إشعارات الجهاز">
     <strong>تفعيل إشعارات العمل</strong>
     <span role="status">{description[push.state]}</span>

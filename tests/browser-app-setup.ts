@@ -228,6 +228,37 @@ try {
     assert.equal((await probe(page)).permissionHadGesture, true);
     assert.equal(counts.subscribe, 1);
   });
+  await scenario("dismissed permission is requested again after every authenticated page visit", {
+    signedIn: true, permission: "default", answer: "default",
+  }, async page => {
+    for (let visit = 0; visit < 3; visit++) {
+      if (visit) await page.reload();
+      const region = pushRegion(page);
+      await region.getByRole("button", { name: /تفعيل.*إشعارات/ }).waitFor();
+      await noNativeRequest(page);
+      // A stale marker from the old implementation must not suppress a visit.
+      await page.evaluate(() => sessionStorage.setItem("alraesy:push-prompted:7", "1"));
+      await page.getByRole("heading", { name: "ثبّت تطبيق الرئيسي على جهازك" }).click();
+      await page.waitForFunction(() =>
+        (window as unknown as { setupProbe: Probe }).setupProbe.permissionRequests === 1);
+      await region.getByText("لم تكتمل موافقة الجهاز", { exact: false }).waitFor();
+      await page.getByRole("heading", { name: "ثبّت تطبيق الرئيسي على جهازك" }).click();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await region.getByRole("button", { name: /تفعيل.*إشعارات/ }).waitFor({ state: "visible" });
+      assert.equal((await probe(page)).permissionRequests, 1, "ordinary interactions must not repeatedly prompt within a visit");
+      assert.equal((await probe(page)).permissionHadGesture, true);
+    }
+  });
+  await scenario("blocked permission reminder returns on every visit without a native request", {
+    signedIn: true, permission: "denied",
+  }, async page => {
+    for (let visit = 0; visit < 2; visit++) {
+      if (visit) await page.reload();
+      await pushRegion(page).getByText("الإشعارات محظورة", { exact: false }).waitFor();
+      await page.getByRole("heading", { name: "ثبّت تطبيق الرئيسي على جهازك" }).click();
+      await noNativeRequest(page);
+    }
+  });
   await scenario("failed subscription remains visible and can retry without a second native request", {
     signedIn: true, permission: "default", failSubscribe: 1,
   }, async (page, counts) => {
