@@ -35,6 +35,27 @@ export async function createApp(options: AppOptions = {}) {
     res.setHeader("Cache-Control", "no-store");
     next();
   });
+  // Include authentication/pool waits in lookup timing without recording search
+  // text, identities, tokens or response contents. One record per HTTP request.
+  if (config.production) app.use((req, res, next) => {
+    if (req.method === "GET" && /^\/api\/companies\/[1-9]\d*\/commerce-options$/.test(req.path)
+        && req.query.type === "items") {
+      const started = performance.now();
+      let reported = false;
+      const report = () => {
+        if (reported) return;
+        reported = true;
+        console.info("ITEM_LOOKUP_HTTP", JSON.stringify({
+          durationMs: Math.round(performance.now() - started),
+          status: res.statusCode,
+          completed: res.writableEnded,
+        }));
+      };
+      res.once("finish", report);
+      res.once("close", report);
+    }
+    next();
+  });
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   // MCP and OAuth have dedicated bearer / PKCE / CSRF checks; they cannot use
   // the browser JSON API's Origin/CSRF middleware.

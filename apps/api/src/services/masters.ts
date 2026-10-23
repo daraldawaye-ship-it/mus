@@ -68,6 +68,7 @@ export async function masterPage<T>(
   fallback = "id:asc",
   optionKind?: "item" | "account",
   exactMatchColumns: string[] = [],
+  searchPlan?: { withSql: string; predicate: string },
 ) {
   const options = optionKind
     ? await optionListPlan(pool, req, companyId, optionKind, alias)
@@ -78,7 +79,11 @@ export async function masterPage<T>(
     fallback,
   );
   const parameters: unknown[] = [companyId, searchPattern(query.q)];
-  let filter = `${alias}.company_id=$1 AND (${searchColumns.map((column) => `${column} ILIKE $2`).join(" OR ")}${query.q && options?.search ? ` OR ${options.search}` : ""})`;
+  const prefix = query.q && searchPlan ? `${searchPlan.withSql} ` : "";
+  const search = searchPlan
+    ? (query.q ? searchPlan.predicate : "$2::text IS NOT NULL")
+    : searchColumns.map((column) => `${column} ILIKE $2`).join(" OR ");
+  let filter = `${alias}.company_id=$1 AND (${search}${query.q && options?.search ? ` OR ${options.search}` : ""})`;
   for (const [field, allowed] of Object.entries(filters)) {
     const value = req.query[field];
     if (value === undefined) continue;
@@ -103,7 +108,7 @@ export async function masterPage<T>(
   const optionFilter = options?.filter(parameters);
   if (optionFilter) filter += ` AND ${optionFilter}`;
   const count = await pool.query(
-    `SELECT count(*)::integer AS total ${from} WHERE ${filter}`,
+    `${prefix}SELECT count(*)::integer AS total ${from} WHERE ${filter}`,
     parameters,
   );
   // Exact code/barcode matches take precedence over popularity. Bind the raw
@@ -118,7 +123,7 @@ export async function masterPage<T>(
     ).join(" OR ")}) THEN 0 ELSE 1 END ASC, ${order}`;
   }
   const rows = await pool.query(
-    `${select} WHERE ${filter} ORDER BY ${order} LIMIT $${rowParameters.length + 1} OFFSET $${rowParameters.length + 2}`,
+    `${prefix}${select} WHERE ${filter} ORDER BY ${order} LIMIT $${rowParameters.length + 1} OFFSET $${rowParameters.length + 2}`,
     [...rowParameters, query.pageSize, query.offset],
   );
   return {

@@ -11,6 +11,7 @@ import type {
   Permission, SessionResponse,
 } from "../packages/contracts/src/index.ts";
 import type { Invoice } from "../packages/contracts/src/commerce.ts";
+import { itemLookupSearchPlan } from "../apps/api/src/services/item-lookup-search.ts";
 
 // Disposable schemas and test-only credentials; this suite never contacts production.
 const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -339,4 +340,61 @@ test("real invoice posting updates prepared ranks once per invoice and rolls bac
     [c.id, product.id, today],
   )).rows[0]!;
   assert.equal(facts.net, "-1");
+});
+
+test("indexed invoice and header item lookup narrows Arabic and composition matches before display joins", async t => {
+  const f = await fixture(t), c = await f.company(), currency = await f.currency(c.id);
+  const composition = (await f.owner.ok<{ composition: { id: number } }>(
+    "POST", `/companies/${c.id}/item-compositions`, {
+      idempotencyKey: randomUUID(), arabicName: "تركيبة اسبرين", englishName: "ASPIRIN COMBINATION",
+      description: "", active: true, identicalAlternative: false, nonInterchangeable: false,
+    }, 201)).composition;
+  const named = await f.item(c.id, currency.id, {
+    name: "اسبرين للاختبار", englishName: "Aspirin Test", compositionId: composition.id,
+  });
+  const compositionOnly = await f.item(c.id, currency.id, {
+    name: "دواء باسم مختلف", compositionId: composition.id,
+  });
+  const literal = await f.item(c.id, currency.id, { name: "منتج برمز خاص", barcode: "TXT%_\\123" });
+  await f.item(c.id, currency.id, { name: "اسبرين مؤرشف", active: false });
+  const other = await f.company("Foreign text search"), otherCurrency = await f.currency(other.id);
+  await f.item(other.id, otherCurrency.id, { name: "اسبرين من شركة أخرى" });
+  // A representative 15k-card catalog makes the planner exercise the text
+  // indexes, instead of a fixture so small that every search is a table scan.
+  await f.pool.query(`INSERT INTO items(
+    company_id,code,name,english_name,currency_id,unit1_name,has_expiry,
+    created_by,idempotency_key,creation_payload
+  ) SELECT $1::integer,lpad((500000+n)::text,8,'0'),'صنف تجريبي عادي '||n,
+    'Unrelated catalog product '||n,$2::integer,'حبة',false,$3::integer,
+    md5(($1::integer)::text||':lookup:'||n)::uuid,'{}'::jsonb FROM generate_series(1,15000) AS series(n)`,
+  [c.id, currency.id, named.createdBy]);
+  // Production builds the GIN index over the existing catalog. This fixture
+  // inserts after migration, so flush its bulk-insert pending list first.
+  await f.pool.query("VACUUM (ANALYZE) items");
+  await f.pool.query("ANALYZE item_compositions; ANALYZE company_currencies");
+  const base = `/companies/${c.id}/commerce-options?type=items&sort=saleTimes:desc,code:asc`;
+  for (const q of ["اسبر", "aspirin", "تركيبة اسبرين"]) {
+    const started = performance.now();
+    const page = await f.owner.ok<Page<Item>>("GET", `${base}&q=${encodeURIComponent(q)}`);
+    assert.deepEqual(page.items.map(row => row.id), [named.id, compositionOnly.id]);
+    assert.equal(page.total, 2, "An own-text and composition match must not duplicate a card");
+    console.log(`Header lookup ${q}: ${Math.round(performance.now() - started)}ms including the full HTTP request`);
+  }
+  for (const q of ["%", "_", "\\"])
+    assert.deepEqual((await f.owner.ok<Page<Item>>("GET", `${base}&q=${encodeURIComponent(q)}`))
+      .items.map(row => row.id), [literal.id], "Search wildcard characters stay literal");
+  const plan = (await f.pool.query(`${itemLookupSearchPlan.withSql}
+    SELECT i.id FROM items i WHERE i.company_id=$1 AND ${itemLookupSearchPlan.predicate}`,
+  [c.id, "%اسبر%"])).rows;
+  assert.equal(plan.length, 3, "Candidate filtering remains independent of the outer active filter");
+  const explained = (await f.pool.query(`EXPLAIN (ANALYZE,FORMAT JSON) ${itemLookupSearchPlan.withSql}
+    SELECT i.id FROM items i WHERE i.company_id=$1 AND ${itemLookupSearchPlan.predicate}`,
+  [c.id, "%اسبر%"])).rows[0]!;
+  const names: string[] = [];
+  function indexes(node: Record<string, unknown>) {
+    if (typeof node["Index Name"] === "string") names.push(node["Index Name"]);
+    for (const child of (node.Plans ?? []) as Array<Record<string, unknown>>) indexes(child);
+  }
+  indexes(explained["QUERY PLAN"][0].Plan);
+  assert(names.includes("items_lookup_text"), "Selective text lookup uses its actual GIN index");
 });

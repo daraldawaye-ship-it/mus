@@ -24,6 +24,7 @@ import {
   itemSaleTimesOrderSql,
 } from "./services/item-sale-ranking.ts";
 import { canReadItemStock } from "./services/item-coverage.ts";
+import { itemLookupSearchPlan } from "./services/item-lookup-search.ts";
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
@@ -80,6 +81,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
             "saleTimes:desc,code:asc",
             undefined,
             ["i.code","i.barcode"],
+            itemLookupSearchPlan,
           );
         }
         if (req.query.type === "accounts") {
