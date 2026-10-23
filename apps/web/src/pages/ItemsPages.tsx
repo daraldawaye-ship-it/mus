@@ -429,6 +429,10 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           onPageSizeChange={list.setPageSize}
           loading={list.loading}
           ariaLabel="جدول الأصناف"
+          onRowInteract={(item: Item) => {
+            if (user) rememberRecentEntity(user.id, companyId, "item",
+              {id:item.id,name:item.name});
+          }}
         />
       </Card>
       <Dialog open={sheetItemId!==null} title="كرت الصنف" className="invoice-item-sheet"
