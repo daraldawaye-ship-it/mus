@@ -398,3 +398,40 @@ test("indexed invoice and header item lookup narrows Arabic and composition matc
   indexes(explained["QUERY PLAN"][0].Plan);
   assert(names.includes("items_lookup_text"), "Selective text lookup uses its actual GIN index");
 });
+
+test("invoice quick lookup uses bounded pages for short names while keeping longer searches sales-ranked", async t => {
+  const f = await fixture(t), c = await f.company(), currency = await f.currency(c.id);
+  const products: Item[] = [];
+  for (let index = 0; index < 12; index++) {
+    products.push(await f.item(c.id, currency.id, {
+      name: `صنابير اختبار ${index}`,
+      searchKeys: "FAST-LOOKUP-ITEM",
+    }));
+  }
+  await f.item(c.id, currency.id, { name: "صنابير مؤرشف", active: false });
+  const other = await f.company("Unrelated typeahead tenant"), otherCurrency = await f.currency(other.id);
+  await f.item(other.id, otherCurrency.id, { name: "صنابير لشركة أخرى" });
+
+  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
+  type FastPage = Page<Item> & { hasMore: boolean };
+  const first = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=1`);
+  const second = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=2`);
+  const last = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=3`);
+  assert.deepEqual([first.items.length, second.items.length, last.items.length], [5, 5, 2]);
+  assert.deepEqual([first.hasMore, second.hasMore, last.hasMore], [true, true, false]);
+  assert.deepEqual([first.total, second.total, last.total], [6, 11, 12]);
+  assert.deepEqual([...first.items, ...second.items, ...last.items].map(value => value.id),
+    products.map(value => value.id), "The fast path keeps active/company scope and stable page order");
+
+  const today = (await f.pool.query<{ day: string }>(
+    "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS day",
+  )).rows[0]!.day;
+  await daily(f, c.id, products[8]!.id, today, "30");
+  const long = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صنابير")}&page=1`);
+  assert.equal(long.items[0]!.id, products[8]!.id, "Longer searches retain monthly sales ranking");
+  assert.equal(long.hasMore, true);
+  const legacy = await f.owner.ok<Page<Item>>(
+    "GET", `/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent("صن")}&pageSize=5`,
+  );
+  assert.equal(legacy.total, 12, "Normal list endpoints retain exact totals");
+});

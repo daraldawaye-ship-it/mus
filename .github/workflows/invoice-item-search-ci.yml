@@ -1,0 +1,60 @@
+name: Invoice item search speed and fresh results
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/EntityMenuSearch.tsx'
+      - 'apps/api/src/routes-commerce-options.ts'
+      - 'apps/api/src/services/masters.ts'
+      - 'tests/browser-invoice-focus.ts'
+      - 'tests/item-sale-ranking-cache.test.ts'
+      - '.github/workflows/invoice-item-search-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invoice-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Verify fast paginated invoice item suggestions
+        run: node --import tsx --test --test-name-pattern="invoice quick lookup uses bounded pages" tests/item-sale-ranking-cache.test.ts
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Resolve Playwright browser path
+        run: |
+          node --input-type=module <<'NODE'
+          import { accessSync, appendFileSync, constants } from "node:fs";
+          import { chromium } from "playwright";
+          const binary = chromium.executablePath();
+          accessSync(binary, constants.X_OK);
+          appendFileSync(process.env.GITHUB_ENV, `CHROMIUM_PATH=${binary}\n`);
+          NODE
+      - name: Sales and purchases hide previous search results while loading
+        run: node --import tsx tests/browser-invoice-focus.ts
