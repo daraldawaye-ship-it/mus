@@ -1222,6 +1222,8 @@ function ItemEditor({
   const [reloadConfirmation, setReloadConfirmation] = useState(false);
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
   const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
+  const [stocktakeRequiredAt, setStocktakeRequiredAt] = useState<string | null>(item?.stocktakeRequiredAt ?? null);
+  const [stocktakeBusy, setStocktakeBusy] = useState(false);
   const adjustmentDirectory = usePageDirectory(companyId);
   const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
   const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
@@ -1333,6 +1335,32 @@ function ItemEditor({
     } finally {
       savingRequest.current = false;
       if (guard.isCurrent()) setSaving(false);
+    }
+  }
+  async function stampStocktakeRequiredAt() {
+    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || unknownCreation || conflict || savingRequest.current) return;
+    setStocktakeBusy(true);
+    setError("");
+    setSavedMessage("");
+    try {
+      const result = await api<{ item: Item }>(`/companies/${companyId}/items/${item.id}/stocktake-request`, {
+        method: "PATCH",
+        body: { revision: savedRevision.current },
+        signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      savedRevision.current = result.item.revision;
+      savedItem.current = result.item;
+      setVisibleRevision(result.item.revision);
+      setStocktakeRequiredAt(result.item.stocktakeRequiredAt);
+      setSavedMessage("سُجل التاريخ والوقت الحاليان لطلب الجرد.");
+      void changed(true);
+    } catch (reason) {
+      if (!guard.isCurrent()) return;
+      if (reason instanceof ApiFailure && reason.status === 409) setConflict(true);
+      setError(errorMessage(reason));
+    } finally {
+      if (guard.isCurrent()) setStocktakeBusy(false);
     }
   }
   async function reload() {
@@ -1683,6 +1711,24 @@ function ItemEditor({
                 }}
                 hint="يُحفظ يوم 01 من الشهر. يمكنك تعديله من الكرت أو من تسوية الصنف."
               />
+            )}
+            {item && (
+              <div className="field item-stocktake-required">
+                <label htmlFor="item-stocktake-required-at">مطلوب_جرده</label>
+                <div className="item-composition-controls">
+                  <input id="item-stocktake-required-at" readOnly
+                    value={stocktakeRequiredAt
+                      ? new Date(stocktakeRequiredAt).toLocaleString("ar-YE", { timeZone: "Asia/Aden", dateStyle: "short", timeStyle: "medium" })
+                      : ""}
+                    placeholder="لم يُطلب الجرد بعد"
+                    aria-label="تاريخ ووقت طلب جرد الصنف" />
+                  <Button variant="secondary" size="compact" type="button"
+                    disabled={disabled || dirty || saving || stocktakeBusy || conflict || optionBusy}
+                    onClick={() => void stampStocktakeRequiredAt()}>
+                    {stocktakeBusy ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
+                  </Button>
+                </div>
+              </div>
             )}
             <label className="check-label">
               <input
