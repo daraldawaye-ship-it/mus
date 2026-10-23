@@ -129,7 +129,7 @@ function ControlRow({
             ? (option.defaultValue ? "مفعّل" : "معطّل")
             : option.type === "multi_choice" ? "لا توجد أنواع ملزمة"
               : option.type === "account" ? "بدون حساب افتراضي"
-              : `${option.defaultValue}${option.type==="hours"?" ساعة":" ريال"}`}</small>
+              : `${option.defaultValue}${option.type==="hours"?" ساعة":option.key==="inventory_count_importance"?"":" ريال"}`}</small>
         </div>
         <div className="control-option-input">
           {option.type === "boolean" ? (
@@ -176,7 +176,7 @@ function ControlRow({
               {accountQuery.error&&<small className="text-error">تعذر تحميل الحساب المحدد.</small>}
             </div>
           ) : (
-            <Field label={option.type==="hours"?"عدد الساعات":"قيمة الحد بالريال"} type="number"
+            <Field label={option.type==="hours"?"عدد الساعات":option.key==="inventory_count_importance"?"مستوى أهمية الجرد":"قيمة الحد بالريال"} type="number"
               min={option.min ?? 0} max={option.max ?? (option.type==="hours"?72:999999999)} step={1}
               value={String(value)} onChange={(event) => setValue(Number(event.target.value))}
               disabled={!option.canEdit || busy || noEmployee} />
