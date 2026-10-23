@@ -176,7 +176,8 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
       });
       if (!guard.isCurrent()) return;
       if (companyId && user && parsed.data.action === "assign") {
-        const employee = list.data?.employees.find(entry => entry.id === parsed.data.employeeId);
+        const targetEmployeeId = parsed.data.employeeId;
+        const employee = list.data?.employees.find(entry => entry.id === targetEmployeeId);
         if (employee) rememberRecentEntity(user.id,companyId,"employee",
           {id:employee.id,name:employee.name});
       }
