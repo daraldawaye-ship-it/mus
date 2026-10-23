@@ -1826,6 +1826,15 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
     stocktakeFrequencyTotal:string;
     stockedItemsCount:number;
   };
+  const projection = await f.pool.query<{
+    stock_showroom:string;stock_returns:string;stock_without_returns:string;has_negative_stock:boolean;
+  }>(
+    "SELECT stock_showroom::text,stock_returns::text,stock_without_returns::text,has_negative_stock FROM item_statistics WHERE company_id=$1 AND item_id=$2",
+    [company.id, initial.id],
+  );
+  assert.equal(projection.rows[0]?.stock_showroom, "0");
+  assert.equal(projection.rows[0]?.stock_without_returns, "0");
+  assert.equal(projection.rows[0]?.has_negative_stock, false);
   const originalReport = await f.owner.ok<SettlementReport>("GET", reportUrl);
   assert.equal(originalReport.items.length, 1);
   assert.equal(originalReport.items[0]!.monthlySales, "0");
