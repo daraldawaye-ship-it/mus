@@ -412,24 +412,30 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
   const other = await f.company("Unrelated typeahead tenant"), otherCurrency = await f.currency(other.id);
   await f.item(other.id, otherCurrency.id, { name: "صنابير لشركة أخرى" });
 
-  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
-  type FastPage = Page<Item> & { hasMore: boolean };
-  const first = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=1`);
-  const second = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=2`);
-  const last = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صن")}&page=3`);
-  assert.deepEqual([first.items.length, second.items.length, last.items.length], [5, 5, 2]);
-  assert.deepEqual([first.hasMore, second.hasMore, last.hasMore], [true, true, false]);
-  assert.deepEqual([first.total, second.total, last.total], [6, 11, 12]);
-  assert.deepEqual([...first.items, ...second.items, ...last.items].map(value => value.id),
-    products.map(value => value.id), "The fast path keeps active/company scope and stable page order");
-
   const today = (await f.pool.query<{ day: string }>(
     "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS day",
   )).rows[0]!.day;
   await daily(f, c.id, products[8]!.id, today, "30");
-  const long = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent("صنابير")}&page=1`);
-  assert.equal(long.items[0]!.id, products[8]!.id, "Longer searches retain monthly sales ranking");
-  assert.equal(long.hasMore, true);
+  await daily(f, c.id, products[4]!.id, today, "12");
+  await daily(f, c.id, products[11]!.id, today, "5");
+  const ordered = [products[8]!, products[4]!, products[11]!,
+    ...products.filter((_, index) => ![8, 4, 11].includes(index))];
+  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
+  type FastPage = Page<Item> & { hasMore: boolean };
+  // One or two Arabic letters used to drop popularity ordering. They must
+  // retain the same 30-day sale-frequency ranking as longer text, including
+  // across pages, without paying for a full count on every keystroke.
+  for (const term of ["ص", "صن", "صنابير"]) {
+    const first = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=1`);
+    const second = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=2`);
+    const last = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=3`);
+    assert.deepEqual([first.items.length, second.items.length, last.items.length], [5, 5, 2]);
+    assert.deepEqual([first.hasMore, second.hasMore, last.hasMore], [true, true, false]);
+    assert.deepEqual([first.total, second.total, last.total], [6, 11, 12]);
+    assert.deepEqual([...first.items, ...second.items, ...last.items].map(value => value.id),
+      ordered.map(value => value.id),
+      `Fast lookup must sort '${term}' by monthly sale frequency with active/company scope`);
+  }
   const legacy = await f.owner.ok<Page<Item>>(
     "GET", `/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent("صن")}&pageSize=5`,
   );
