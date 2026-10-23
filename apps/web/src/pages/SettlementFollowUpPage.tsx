@@ -4,7 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import type { CompanyContext } from "../../../../packages/contracts/src/index";
 import { usePagedQuery } from "../api";
 import { formatMoney } from "../format-money";
-import { Card, DataTable, Field, Notice, PageHeader, ValueCell } from "../ui";
+import { Card, DataTable, Field, Notice, PageHeader } from "../ui";
 
 interface SettlementFollowUpRow {
   id: number;
@@ -29,11 +29,9 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
         header: "اسم الصنف",
         size: 280,
         cell: ({ row }) => (
-          <ValueCell value={row.original.name}>
-            <Link to={`/companies/${companyId}/items/${row.original.id}`}>
-              {row.original.name}
-            </Link>
-          </ValueCell>
+          <Link to={`/companies/${companyId}/items/${row.original.id}`} title={row.original.name}>
+            {row.original.name}
+          </Link>
         ),
       },
       {
