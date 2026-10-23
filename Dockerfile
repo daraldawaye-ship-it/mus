@@ -1,16 +1,4 @@
 # syntax=docker/dockerfile:1
-FROM postgres:18-bookworm@sha256:bbf83594798e144bff365a9c191c5d779f181fb3135902064ab8ff11918020fc AS migration-tools
-RUN mkdir -p /opt/pg18/bin /opt/pg18/lib \
-    && cp /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore /usr/lib/postgresql/18/bin/psql /opt/pg18/bin/ \
-    && ldd /opt/pg18/bin/pg_dump /opt/pg18/bin/pg_restore /opt/pg18/bin/psql \
-       | awk '$2 == "=>" && $3 ~ /^[/]/ { print $3 }' | sort -u \
-       | while read -r library; do \
-           case "$(basename "$library")" in \
-             libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|libresolv.so.*) ;; \
-             *) cp -L "$library" /opt/pg18/lib/ ;; \
-           esac; \
-         done
-
 FROM node:24.19.0-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -31,7 +19,6 @@ RUN --mount=type=secret,id=proxy_ca \
 FROM node:24.19.0-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
-COPY --from=migration-tools /opt/pg18 /opt/pg18
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/api ./apps/api

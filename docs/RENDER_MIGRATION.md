@@ -83,3 +83,27 @@ the previous database setting, and performed full in-place replacement using a
 non-superuser database owner. The previous preview owner was discarded, while the
 target database name/credentials remained unchanged. A separate incompatible
 PG18 virtual-column fixture exercised transaction rollback on PG17.
+
+## Live cutover evidence (2026-10-23)
+
+The compatibility copy matched all table contents and schema definitions. The
+only mismatch was the notification identity sequence advancing while Railway
+workers ran. The final run `20261023_final1` used the recorded source read-only
+boundary, removed the unused candidate to free space, and replaced the preview
+schema in the existing Render database. It completed with all table, sequence
+and schema fingerprints equal and `in_place: true`; no preview owner was merged.
+
+Render deployment `dep-dbdnu8m7bikc73e9ehf0` became live at 15:44 UTC. Both local
+and public HTTPS checks passed for health, the frontend, authenticated-API
+rejection and OAuth resource discovery. A subsequent direct query confirmed
+that the target database remains writable and contains one original owner.
+
+Migration source credentials and run controls were cleared after verification.
+Normal production startup no longer imports migration jobs; PostgreSQL migration
+binaries were removed from the runtime image. Recovery tooling remains in Git
+for review, but must be invoked deliberately with the matching tools and access.
+Do not re-run the old source dump over production. Browser Web Push still needs
+the source VAPID pair if those secrets have not yet been configured.
+
+At cleanup readback, Render reported 5 GB provisioned storage (autoscaling off).
+The Blueprint records that existing size; cleanup does not resize the database.

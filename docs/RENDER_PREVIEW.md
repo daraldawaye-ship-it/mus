@@ -1,3 +1,8 @@
+> Historical preparation record. The full migration is complete and Render now
+> hosts production. Read `docs/PROJECT_CONTEXT.md` and `docs/RENDER_MIGRATION.md`
+> before using the older preview/owner-creation instructions below. Do not create
+> another owner or re-import the frozen source over current production data.
+
 # Isolated Render preview
 
 This configuration belongs only to branch `preview/render-2026-10-23` in

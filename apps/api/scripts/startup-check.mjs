@@ -18,14 +18,14 @@ export async function verifyWebsite() {
     try{result=await check("http://127.0.0.1:"+(process.env.PORT||3000),origin);break;}
     catch(error){if(attempt===9)throw error;await wait(500);}
   }
-  console.log("MIGRATION_LOCAL_HTTP_VERIFIED "+JSON.stringify(result));
+  console.log("STARTUP_LOCAL_HTTP_VERIFIED "+JSON.stringify(result));
   // Wait for the platform's healthy-instance routing to switch to this deploy.
   void(async()=>{
     for(let attempt=0;attempt<18;attempt++){
       await wait(5000);
-      try{const external=await check(origin,origin);console.log("MIGRATION_EXTERNAL_HTTP_VERIFIED "+JSON.stringify(external));return;}
+      try{const external=await check(origin,origin);console.log("STARTUP_EXTERNAL_HTTP_VERIFIED "+JSON.stringify(external));return;}
       catch{}
     }
-    console.error("MIGRATION_EXTERNAL_HTTP_CHECK_REQUIRES_REVIEW");
+    console.error("STARTUP_EXTERNAL_HTTP_CHECK_REQUIRES_REVIEW");
   })();
 }

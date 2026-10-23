@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+## Current production destination (2026-10-23)
+
+The user authorized the full migration to Render and replacement of all preview data. Render is now the production destination; read docs/PROJECT_CONTEXT.md and docs/RENDER_MIGRATION.md. Use branch `preview/render-2026-10-23` and the existing isolated checkout. Historical instructions below that say to deploy or merge to Railway are superseded for deployment routing: publish authorized changes to this Render branch and verify Render `live`, HTTP health and relevant behavior. Do not merge into `codex/deploy-phase2`, re-enable Railway writes or deploy the old Railway service unless the user explicitly requests that rollback. Keep financial, permissions and data-safety rules unchanged. Never enable the completed migration startup controls or recopy the frozen old source over current Render data.
+
+
 The product name is الرئيسي | Alraesy. Read docs/PROJECT_CONTEXT.md for the verified repository, production branch and Railway IDs. A user-requested code change includes testing, merging into codex/deploy-phase2, deployment and verification unless the user explicitly says not to publish. Preserve existing source and database history; never infer production from main or from the migration project. Report deployment only after Railway SUCCESS and a successful /api/health readback. Keep compatibility identifiers (OAuth scopes, MCP tool names, cookies, storage keys and import formats) stable when updating visible branding.
 
 Read docs/SPEC.md, docs/DECISIONS.md, docs/ARCHITECTURE.md and docs/PHASE_2.md before changes. Read docs/REQUESTS_REVIEW.md when planning later modules; the full new user attachment is preserved in docs/reference/05_FUTURE_REQUESTS_RAW.txt. Its historical dialogue and technical proposals are review material, not blanket authorization or proof of implementation. Current user decisions override the archived original references.
