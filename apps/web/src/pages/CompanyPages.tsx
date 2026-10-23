@@ -605,6 +605,10 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
           getRowId={(row) => String(row.id)}
           selectionMode="os"
           ariaLabel="قائمة موظفي الشركة"
+          onRowInteract={(employee: Employee) => {
+            if (user) rememberRecentEntity(user.id, companyId, "employee",
+              {id:employee.id,name:employee.name});
+          }}
         />
       </Card>
       {editor !== null && (
