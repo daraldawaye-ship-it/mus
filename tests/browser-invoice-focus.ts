@@ -207,16 +207,22 @@ try {
   await page.goto(base + "/items");
   await page.getByRole("table", { name: "جدول الأصناف" })
     .getByText("Other fresh item", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
   await assertRecent("صنف", "Other fresh item");
   await page.goto(base + "/accounts");
   await page.getByRole("searchbox", { name: "بحث في الحسابات" })
     .fill("Recent account");
   await page.getByRole("table", { name: "دليل الحسابات" })
     .getByText("Recent account", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
   await assertRecent("حساب", "Recent account");
   await page.goto(base + "/employees");
   await page.getByRole("table", { name: "قائمة موظفي الشركة" })
     .getByText("Focus worker", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
   await assertRecent("مستخدم", "Focus worker");
   assert.deepEqual(errors, []);
   console.log(
