@@ -9,6 +9,7 @@ import type {
 import { api, useSession } from "./api";
 import { Button, Field, Notice, Select } from "./ui";
 import { lookupOptionLabel } from "./lookup-option-label";
+import { rememberRecentEntity } from "./recent-entities";
 
 /** Pick active Yemeni rial for new documents without altering saved records.
  * Fetch through the same finance/commerce permissions as each document editor. */
@@ -174,6 +175,11 @@ export function ServerLookup<T extends { id: number }>({
       ? [value, ...items]
       : items;
   const choose = (next: T) => {
+    if (user && (resource.includes("type=accounts") || /\\/accounts(?:\\?|$)/.test(resource))) {
+      const record = next as T & {name?: string};
+      rememberRecentEntity(user.id, companyId, "account",
+        {id:next.id,name:record.name ?? display(next)});
+    }
     onChange(next);
     setEntry(display(next));
     setQuery("");
