@@ -37,6 +37,9 @@ on:
       - 'packages/contracts/src/pages.ts'
       - 'packages/contracts/src/index.ts'
       - 'tests/control.test.ts'
+      - 'tests/items.test.ts'
+      - 'apps/api/src/routes-settlement-follow-up.ts'
+      - 'apps/web/src/pages/SettlementFollowUpPage.tsx'
       - '.github/workflows/control-center-ci.yml'
   workflow_dispatch:
 permissions:

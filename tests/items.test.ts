@@ -1820,14 +1820,51 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
   assert.equal(initial.stocktakeRequiredAt, null);
   // The new report is backed by item_daily_activity and the company's control value.
   const reportUrl = `/companies/${company.id}/settlement-follow-up`;
-  const originalReport = await f.owner.ok<{items: {monthlySales:string;countLimit:string}[]}>("GET", reportUrl);
+  type SettlementReport = {
+    items: {id:number;monthlySales:string;countLimit:string}[];
+    total:number;
+    stocktakeFrequencyTotal:string;
+    stockedItemsCount:number;
+  };
+  const originalReport = await f.owner.ok<SettlementReport>("GET", reportUrl);
   assert.equal(originalReport.items.length, 1);
   assert.equal(originalReport.items[0]!.monthlySales, "0");
   assert.equal(Number(originalReport.items[0]!.countLimit), 48);
+  assert.equal(originalReport.stocktakeFrequencyTotal, "0",
+    "Items without stock never contribute to the monthly count total");
+  assert.equal(originalReport.stockedItemsCount, 0);
+
+  const stocked = await item(f, company.id, curr.id, {name:"صنف مخزون موجب"});
+  const empty = await item(f, company.id, curr.id, {name:"صنف بدون مخزون"});
+  await f.pool.query(
+    "UPDATE item_statistics SET stock_total=12,stock_showroom=12 WHERE company_id=$1 AND item_id=$2",
+    [company.id, stocked.id],
+  );
+  for (const candidate of [stocked.id, empty.id]) {
+    await f.pool.query(
+      `INSERT INTO item_daily_activity(company_id,item_id,document_date,sale_invoices)
+       VALUES($1,$2,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date,10)`,
+      [company.id, candidate],
+    );
+  }
+  const weighted = await f.owner.ok<SettlementReport>("GET", reportUrl);
+  assert.equal(weighted.total, 3);
+  assert.equal(weighted.stockedItemsCount, 1);
+  assert.equal(Number(weighted.stocktakeFrequencyTotal), 1.875,
+    "Only positive-stock items add 30 / stocktake days; sales without stock are excluded");
+  assert.equal(Number(weighted.items.find(row=>row.id===stocked.id)!.countLimit), 16);
+  assert.equal((await f.owner.ok<SettlementReport>("GET", reportUrl+"?pageSize=1")).stocktakeFrequencyTotal,
+    weighted.stocktakeFrequencyTotal,
+    "The total spans every page rather than only the visible items");
+  assert.equal((await f.owner.ok<SettlementReport>("GET", reportUrl+"?q=بدون")).stocktakeFrequencyTotal, "0",
+    "The total follows the report search filter");
+
   await f.owner.ok("PUT", `/companies/${company.id}/control/inventory_count_importance`,
     { value: 12, employeeId: null, revision: null });
-  const revisedReport = await f.owner.ok<{items: {countLimit:string}[]}>("GET", reportUrl);
-  assert.equal(Number(revisedReport.items[0]!.countLimit), 72);
+  const revisedReport = await f.owner.ok<SettlementReport>("GET", reportUrl);
+  assert.equal(Number(revisedReport.items.find(row=>row.id===initial.id)!.countLimit), 72);
+  assert.equal(Number(revisedReport.stocktakeFrequencyTotal), 1.25,
+    "Updating company importance rescales the stocked-items total");
   const url = `/companies/${company.id}/items/${initial.id}`;
   const requestedBefore = Date.now();
   const recorded = (await f.owner.ok<{ item: Item }>(

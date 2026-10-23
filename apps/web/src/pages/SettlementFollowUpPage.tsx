@@ -19,7 +19,10 @@ interface SettlementFollowUpRow {
 
 export function SettlementFollowUpPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
-  const list = usePagedQuery<SettlementFollowUpRow>(
+  const list = usePagedQuery<SettlementFollowUpRow, {
+    stocktakeFrequencyTotal: string;
+    stockedItemsCount: number;
+  }>(
     `/companies/${companyId}/settlement-follow-up`,
     `company:${companyId}:settlement-follow-up`,
     "monthlySales:desc,name:asc",
@@ -78,6 +81,21 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
   return (
     <>
       <PageHeader title="متابعة التسويات للأصناف" />
+      <Card
+        title="إجمالي الجرد خلال 30 يومًا"
+        description="مجموع (30 ÷ الجرد لا يزيد عن) للأصناف ذات الرصيد الموجب فقط، وفق البحث الحالي وعبر جميع صفحات الجدول."
+      >
+        <p>
+          <strong style={{ fontSize: "1.6rem", fontVariantNumeric: "tabular-nums" }}>
+            {list.loading && !list.data
+              ? "…"
+              : Number(list.data?.stocktakeFrequencyTotal ?? "0").toLocaleString("en-US", {
+                  maximumFractionDigits: 3,
+                })}
+          </strong>{" "}مرة جرد
+        </p>
+        <p>الأصناف ذات الكمية: {list.data?.stockedItemsCount ?? 0}</p>
+      </Card>
       <Card>
         <div className="table-filters">
           <Field
