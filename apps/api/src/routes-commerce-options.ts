@@ -44,14 +44,21 @@ export function commerceOptionRoutes(pool: Pool): Router {
             throw error;
           await companyAccess(client, user, companyId, "inventory.view");
         }
+        // Keep short in-progress terms responsive: use indexed item-code
+        // order and bounded suggestions instead of sorting all matches by sales.
+        const fastItemLookup = req.query.type === "items" && req.query.fast === "1" &&
+          typeof req.query.q === "string" && !!req.query.q.trim();
+        const shortItemLookup = fastItemLookup &&
+          Array.from((req.query.q as string).trim()).length < 3;
         const query = {
           ...req.query,
           ...(req.query.id === undefined ? { active: "true" } : {}),
+          ...(shortItemLookup ? { sort: "code:asc" } : {}),
         };
         const request: Request = Object.create(req) as Request;
         Object.defineProperty(request, "query", { value: query });
         if (req.query.type === "items") {
-          const canRank = await canOrderItemsBySales(client,user,companyId);
+          const canRank = !shortItemLookup && await canOrderItemsBySales(client,user,companyId);
           if (canRank) await assertItemSaleRankingsReady(client);
           const canShowStock = await canReadItemStock(client,user,companyId);
           const stockFrom = itemFrom + (canRank ? itemSaleTimesJoinSql : "") + (canShowStock
@@ -81,7 +88,8 @@ export function commerceOptionRoutes(pool: Pool): Router {
             "saleTimes:desc,code:asc",
             undefined,
             ["i.code","i.barcode"],
-            itemLookupSearchPlan,
+            shortItemLookup ? undefined : itemLookupSearchPlan,
+            fastItemLookup,
           );
         }
         if (req.query.type === "accounts") {
