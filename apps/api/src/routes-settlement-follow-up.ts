@@ -53,7 +53,8 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           OR i.barcode ILIKE $2 OR i.search_keys ILIKE $2
         )`;
         // Shared report relation: due filtering happens in SQL BEFORE LIMIT/OFFSET.
-        // Negative stock is read from the precomputed item statistics projection.
+        // The negative-stock condition is showroom-only, read from the cached
+        // statistics projection; negative warehouses/returns do not trigger it.
         const reportFrom = `FROM items i
           JOIN company_currencies c
             ON c.company_id=i.company_id AND c.id=i.currency_id
@@ -76,7 +77,7 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           ? ` AND (
               last_count.id IS NULL
               OR ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - last_count.document_date) > count_limit.raw_limit
-              OR COALESCE(stats.has_negative_stock, false)
+              OR COALESCE(stats.stock_showroom, 0) < 0
               OR (i.stocktake_required_at IS NOT NULL AND i.stocktake_required_at > last_count.created_at)
             )`
           : "";
