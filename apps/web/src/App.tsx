@@ -195,6 +195,11 @@ const ItemAgentsPage = lazy(() =>
     default: module.ItemAgentsPage,
   })),
 );
+const SettlementFollowUpPage = lazy(() =>
+  import("./pages/SettlementFollowUpPage").then((module) => ({
+    default: module.SettlementFollowUpPage,
+  })),
+);
 const InventoryBalancesPage = lazy(() =>
   import("./pages/InventoryPages").then((module) => ({
     default: module.InventoryBalancesPage,
@@ -267,6 +272,7 @@ const companySections = [
   "stock-movements",
   "stock-operations",
   "stock-adjustments",
+  "settlement-follow-up",
   "inventory-settings",
   "purchases",
   "sales",
@@ -323,6 +329,7 @@ function Navigation({
     "company.stock-movements": <FileText size={17} />,
     "company.stock-operations": <Package size={17} />,
     "company.stock-adjustments": <Package size={17} />,
+    "company.settlement-follow-up": <TableProperties size={17} />,
     "company.inventory-settings": <Settings2 size={17} />,
     "company.sales": <FileText size={17} />,
     "company.purchases": <FileText size={17} />,
@@ -577,6 +584,12 @@ function CompanyContent({
       return (
         <Suspense fallback={<Notice>جارٍ تحميل تسوية الأصناف…</Notice>}>
           <InventoryAdjustmentsPage key={context.company.id} context={context} />
+        </Suspense>
+      );
+    case "settlement-follow-up":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل متابعة التسويات للأصناف…</Notice>}>
+          <SettlementFollowUpPage key={context.company.id} context={context} />
         </Suspense>
       );
     case "inventory-settings":
