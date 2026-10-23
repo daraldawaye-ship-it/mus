@@ -85,6 +85,10 @@ try {
     salePrice1: "5",
     idempotencyKey: randomUUID(),
   });
+  await call(base + "/items", "POST", {
+    name: "Other fresh item", barcode: "FRESH-002", currencyId,
+    salePrice1: "8", idempotencyKey: randomUUID(),
+  });
   const context = await browser.newContext({
     baseURL: origin,
     storageState: await api.storageState(),
@@ -93,14 +97,29 @@ try {
   page.setDefaultTimeout(8000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // Hold the next request long enough to verify that the previous search
+  // is not rendered as a faded or disabled suggestion while typing.
+  await page.route("**/commerce-options?**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("type") === "items" && url.searchParams.get("q") === "Other fresh item")
+      await new Promise(resolve => setTimeout(resolve, 450));
+    await route.continue();
+  });
   await page.goto(base + "/invoices/new?kind=sale");
   const rows = page.locator(".commerce-matrix tbody tr");
   const search = rows.first().locator('input[type="search"]');
+  const itemResults = page.getByRole("listbox", { name: "نتائج الأصناف" });
   await search.fill("Focus item");
-  await page
-    .getByRole("listbox", { name: "نتائج الأصناف" })
-    .getByRole("button", { name: /Focus item/ })
-    .click();
+  await itemResults.getByRole("button", { name: /Focus item/ }).waitFor();
+  await search.fill("Other fresh item");
+  assert.equal(await itemResults.getByRole("button", { name: /Focus item/ }).count(), 0,
+    "Sales search must hide stale suggestions immediately on input change");
+  await page.waitForTimeout(165);
+  assert.equal(await itemResults.getByRole("button", { name: /Focus item/ }).count(), 0,
+    "Sales search must not expose stale suggestions while the next query is pending");
+  await itemResults.getByRole("button", { name: /Other fresh item/ }).waitFor();
+  await search.fill("Focus item");
+  await itemResults.getByRole("button", { name: /Focus item/ }).click();
   async function focused(id: string) {
     await page.waitForFunction(
       (target) => document.activeElement?.id === target,
@@ -131,11 +150,18 @@ try {
   await page.goto(base + "/invoices/new?kind=purchase");
   const purchaseRows = page.locator(".commerce-matrix tbody tr");
   const purchaseSearch = purchaseRows.first().locator('input[type="search"]');
+  const purchaseResults = page.getByRole("listbox", { name: "نتائج الأصناف" });
   await purchaseSearch.fill("Focus item");
-  await page
-    .getByRole("listbox", { name: "نتائج الأصناف" })
-    .getByRole("button", { name: /Focus item/ })
-    .click();
+  await purchaseResults.getByRole("button", { name: /Focus item/ }).waitFor();
+  await purchaseSearch.fill("Other fresh item");
+  assert.equal(await purchaseResults.getByRole("button", { name: /Focus item/ }).count(), 0,
+    "Purchase search must hide stale suggestions immediately on input change");
+  await page.waitForTimeout(165);
+  assert.equal(await purchaseResults.getByRole("button", { name: /Focus item/ }).count(), 0,
+    "Purchase search must not expose stale suggestions while loading");
+  await purchaseResults.getByRole("button", { name: /Other fresh item/ }).waitFor();
+  await purchaseSearch.fill("Focus item");
+  await purchaseResults.getByRole("button", { name: /Focus item/ }).click();
   const purchaseQuantity = purchaseRows.first().locator('[id^="invoice-quantity-"]');
   await focused((await purchaseQuantity.getAttribute("id"))!);
   await purchaseQuantity.fill("3");
@@ -148,7 +174,7 @@ try {
   await focused((await purchaseExpiry.getAttribute("id"))!);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: sales selection focus and purchase item -> quantity -> price -> expiry",
+    "PASS: sales/purchase stale search choices hidden and keyboard/focus workflows preserved",
   );
   await context.close();
 } finally {
