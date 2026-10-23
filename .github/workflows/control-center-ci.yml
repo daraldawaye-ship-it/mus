@@ -40,6 +40,7 @@ on:
       - 'tests/items.test.ts'
       - 'apps/api/src/routes-settlement-follow-up.ts'
       - 'apps/api/migrations/112_item_negative_stock_projection.sql'
+      - 'apps/api/migrations/113_item_ordering_stock_projection.sql'
       - 'apps/web/src/pages/SettlementFollowUpPage.tsx'
       - '.github/workflows/control-center-ci.yml'
   workflow_dispatch:
