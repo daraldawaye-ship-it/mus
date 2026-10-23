@@ -1814,7 +1814,8 @@ test("item field audit records independent before/after events and rejects stale
 test("item stocktake request is server-stamped and cannot be edited manually", async (t) => {
   const f = await fixture(t);
   const company = await f.company();
-  const curr = await currency(f, company.id, 2, "USD");
+  const curr = (await f.owner.ok<Page<CompanyCurrency>>("GET",
+    `/companies/${company.id}/currencies`)).items.find(c => c.code === "YER")!;
   const initial = await item(f, company.id, curr.id);
   assert.equal(initial.stocktakeRequiredAt, null);
   // The new report is backed by item_daily_activity and the company's control value.
