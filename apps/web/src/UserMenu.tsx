@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { CircleUserRound, Link2, LogOut, Palette } from "lucide-react";
+import {
+  CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
+  UserRound, Wrench, Zap,
+} from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
 import { thumbnailUrl } from "./ImageUpload";
-import { UserShortcutFlyout, ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
+import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
+import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
+import "./user-menu-tabs.css";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -29,6 +34,15 @@ function Avatar({ user, large = false }: { user: User; large?: boolean }) {
   );
 }
 
+const sections = [
+  { key: "navigation", label: "التنقل", icon: Compass },
+  { key: "actions", label: "الإجراءات", icon: Zap },
+  { key: "tools", label: "الأدوات", icon: Wrench },
+  { key: "settings", label: "الإعدادات", icon: Settings },
+  { key: "account", label: "الحساب", icon: UserRound },
+] as const;
+type SectionKey = typeof sections[number]["key"];
+
 export function UserMenu({
   user,
   onLogout,
@@ -43,16 +57,18 @@ export function UserMenu({
   const appearance = useAppearance();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<SectionKey>("navigation");
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const scrollArea = useRef<HTMLDivElement>(null);
 
   useEffect(() => setOpen(false), [location.pathname, user.id]);
   useEffect(() => {
     if (!open) return;
-    menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    menu.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
     const onOutside = (event: PointerEvent) => {
       if (!container.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -70,8 +86,27 @@ export function UserMenu({
       document.removeEventListener("keydown", onEscape);
     };
   }, [open]);
+  useEffect(() => {
+    if (scrollArea.current) scrollArea.current.scrollTop = 0;
+  }, [activeTab]);
 
   const dismiss = () => setOpen(false);
+  const openMenu = () => {
+    setActiveTab("navigation");
+    setOpen(true);
+  };
+  const selectByKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = sections.findIndex(section => section.key === activeTab);
+    // The UI is right-to-left; ArrowLeft moves to the next tab in reading order.
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? sections.length - 1
+      : (index + (event.key === "ArrowLeft" ? 1 : -1) + sections.length) % sections.length;
+    setActiveTab(sections[next].key);
+    menu.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  };
+
   return (
     <div className="user-menu" ref={container}>
       <button
@@ -80,81 +115,107 @@ export function UserMenu({
         ref={trigger}
         aria-label="قائمة المستخدم"
         title={user.displayName}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-controls={open ? "user-account-menu" : undefined}
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => open ? dismiss() : openMenu()}
       >
         <Avatar user={user} />
       </button>
       {open && (
         <div
-          className="user-menu-panel"
+          className="user-menu-panel user-menu-tabbed-panel"
           id="user-account-menu"
-          role="menu"
-          aria-label="خيارات المستخدم"
+          role="dialog"
+          aria-label="قائمة المستخدم والأقسام"
           ref={menu}
         >
-          <div className="user-menu-identity">
-            <Avatar user={user} large />
-            <span className="user-menu-identity-text">
-              <strong title={user.displayName}>{user.displayName}</strong>
-              <small title={user.email} dir="ltr">{user.email}</small>
-            </span>
+          <div className="user-menu-tabs" role="tablist"
+            aria-label="أقسام قائمة المستخدم"
+            onKeyDown={selectByKeyboard}>
+            {sections.map(section => {
+              const Icon = section.icon;
+              const selected = section.key === activeTab;
+              return (
+                <button
+                  type="button" key={section.key}
+                  id={`user-menu-tab-${section.key}`}
+                  role="tab"
+                  className={`user-menu-tab${selected ? " is-active" : ""}`}
+                  aria-selected={selected}
+                  aria-controls="user-menu-tabpanel"
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => setActiveTab(section.key)}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  <span>{section.label}</span>
+                </button>
+              );
+            })}
           </div>
-          <div className="user-menu-items">
-            <NavLink
-              to="/profile"
-              role="menuitem"
-              className="user-menu-item"
-              onClick={dismiss}
-            >
-              <CircleUserRound size={17} aria-hidden="true" />
-              تعديل حسابي
-            </NavLink>
-            <button
-              className="user-menu-item"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                dismiss();
-                appearance.open();
-              }}
-            >
-              <Palette size={17} aria-hidden="true" />
-              المظهر
-            </button>
-            {(user.owner || user.kind === "admin") && (
-              <a className="user-menu-item" role="menuitem" href="/oauth/connections">
-                <Link2 size={17} aria-hidden="true" />
-                اتصالات ChatGPT
-              </a>
+          <div
+            id="user-menu-tabpanel"
+            className="user-menu-tab-content"
+            role="tabpanel"
+            tabIndex={0}
+            aria-labelledby={`user-menu-tab-${activeTab}`}
+            ref={scrollArea}
+          >
+            {activeTab === "navigation" && (
+              <UserShortcutMenuGrid
+                user={user} companyId={companyId} employeeId={employeeId}
+                onNavigate={dismiss}
+                onManage={() => { dismiss(); setShortcutEditorOpen(true); }}
+                onQuickAdd={() => { dismiss(); setQuickAddOpen(true); }}
+              />
             )}
-            <UserShortcutFlyout user={user} companyId={companyId}
-              employeeId={employeeId}
-              onNavigate={dismiss}
-              onManage={()=>{dismiss();setShortcutEditorOpen(true);}}
-              onQuickAdd={()=>{dismiss();setQuickAddOpen(true);}}
-            />
-            <button
-              className="user-menu-item user-menu-logout"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                dismiss();
-                onLogout();
-              }}
-            >
-              <LogOut size={17} aria-hidden="true" />
-              تسجيل الخروج
-            </button>
+            {activeTab === "account" && (
+              <>
+                <div className="user-menu-account-identity">
+                  <Avatar user={user} large />
+                  <span className="user-menu-identity-text">
+                    <strong title={user.displayName}>{user.displayName}</strong>
+                    <small title={user.email} dir="ltr">{user.email}</small>
+                  </span>
+                </div>
+                <div className="user-menu-grid">
+                  <NavLink to="/profile" className="user-menu-tile" onClick={dismiss}>
+                    <CircleUserRound size={17} aria-hidden="true" />
+                    <span>تعديل حسابي</span>
+                  </NavLink>
+                  <button type="button" className="user-menu-tile"
+                    onClick={() => { dismiss(); appearance.open(); }}>
+                    <Palette size={17} aria-hidden="true" />
+                    <span>المظهر</span>
+                  </button>
+                  {(user.owner || user.kind === "admin") && (
+                    <a href="/oauth/connections" className="user-menu-tile" onClick={dismiss}>
+                      <Link2 size={17} aria-hidden="true" />
+                      <span>اتصالات ChatGPT</span>
+                    </a>
+                  )}
+                  <button type="button" className="user-menu-tile user-menu-tile-logout"
+                    onClick={() => { dismiss(); onLogout(); }}>
+                    <LogOut size={17} aria-hidden="true" />
+                    <span>تسجيل الخروج</span>
+                  </button>
+                </div>
+              </>
+            )}
+            {(activeTab === "actions" || activeTab === "tools" || activeTab === "settings") && (
+              <div className="user-menu-empty" aria-live="polite">
+                لا توجد خيارات في هذا القسم حاليًا
+              </div>
+            )}
           </div>
+          <div className="user-menu-tabs-footer">اسحب لأسفل لعرض المزيد من خيارات القسم</div>
         </div>
       )}
       <ShortcutEditor user={user} companyId={companyId}
-        open={shortcutEditorOpen} onClose={()=>setShortcutEditorOpen(false)}/>
-      {(user.owner||user.kind==="admin")&&<GeneralTableQuickAdd
-        open={quickAddOpen} onClose={()=>setQuickAddOpen(false)}/>}
+        open={shortcutEditorOpen} onClose={() => setShortcutEditorOpen(false)} />
+      {(user.owner || user.kind === "admin") && (
+        <GeneralTableQuickAdd open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
+      )}
     </div>
   );
 }
