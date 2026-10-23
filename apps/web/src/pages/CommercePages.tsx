@@ -468,7 +468,10 @@ function ItemSearch({
     }, 110);
     return () => window.clearTimeout(timer);
   }, [query, selected, open]);
-  const expanded = open && !!search && !selected && !disabled;
+  // Open for the current input, not the last debounced search value.
+  // Never leave the previous query suggestions visible while typing the next.
+  const expanded = open && !!query.trim() && !selected && !disabled;
+  const searchCurrent = search === query.trim();
   useLayoutEffect(() => {
     if (!expanded) return;
     const position = () => {
@@ -510,10 +513,14 @@ function ItemSearch({
         `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc", fast: "1" })}`,
         { signal },
       ),
-    enabled: !!user && expanded,
+    enabled: !!user && expanded && searchCurrent && !!search,
     staleTime: 30_000,
   });
-  const items = result.data?.items ?? [];
+  // A cached or in-flight result belongs to the *previous* input until the
+  // current request finishes. Hide it entirely rather than showing disabled,
+  // faded choices that could be mistaken for new matches.
+  const resultsReady = searchCurrent && !result.isFetching && result.isSuccess;
+  const items = resultsReady ? result.data.items : [];
   function choose(item: Item) {
     onChoose(item);
     setOpen(false);
@@ -524,6 +531,7 @@ function ItemSearch({
   useEffect(() => {
     if (
       !disabled &&
+      searchCurrent &&
       autoChoose &&
       autoChoose === search &&
       !result.isFetching &&
@@ -678,15 +686,15 @@ function ItemSearch({
                 </li>
               ))}
             </ul>
-            {result.isFetching ? (
+            {!searchCurrent || result.isFetching || result.isPending ? (
               <span className="muted">جارٍ البحث…</span>
             ) : (
-              !items.length && <span className="muted">لا توجد نتائج.</span>
+              !result.isError && !items.length && <span className="muted">لا توجد نتائج.</span>
             )}
-            {result.error && (
+            {searchCurrent && result.error && (
               <Notice tone="error">{errorMessage(result.error)}</Notice>
             )}
-            <div className="lookup-pages">
+            {resultsReady && <div className="lookup-pages">
               <Button
                 size="compact"
                 variant="ghost"
@@ -712,7 +720,7 @@ function ItemSearch({
               >
                 التالي
               </Button>
-            </div>
+            </div>}
           </div>,
           document.body,
         )}
