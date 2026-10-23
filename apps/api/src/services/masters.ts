@@ -69,6 +69,7 @@ export async function masterPage<T>(
   optionKind?: "item" | "account",
   exactMatchColumns: string[] = [],
   searchPlan?: { withSql: string; predicate: string },
+  skipCount = false,
 ) {
   const options = optionKind
     ? await optionListPlan(pool, req, companyId, optionKind, alias)
@@ -107,7 +108,9 @@ export async function masterPage<T>(
   }
   const optionFilter = options?.filter(parameters);
   if (optionFilter) filter += ` AND ${optionFilter}`;
-  const count = await pool.query(
+  // Typeahead needs only one additional row to know whether another page
+  // exists. Avoid a full matching-row count for each keystroke.
+  const count = skipCount ? null : await pool.query(
     `${prefix}SELECT count(*)::integer AS total ${from} WHERE ${filter}`,
     parameters,
   );
@@ -124,11 +127,14 @@ export async function masterPage<T>(
   }
   const rows = await pool.query(
     `${prefix}${select} WHERE ${filter} ORDER BY ${order} LIMIT $${rowParameters.length + 1} OFFSET $${rowParameters.length + 2}`,
-    [...rowParameters, query.pageSize, query.offset],
+    [...rowParameters, query.pageSize + (skipCount ? 1 : 0), query.offset],
   );
+  const hasMore = skipCount && rows.rows.length > query.pageSize;
+  const visibleRows = hasMore ? rows.rows.slice(0, query.pageSize) : rows.rows;
   return {
-    items: options ? await options.rows(rows.rows, dto) : rows.rows.map(dto),
-    total: count.rows[0].total as number,
+    items: options ? await options.rows(visibleRows, dto) : visibleRows.map(dto),
+    total: count ? count.rows[0].total as number : query.offset + visibleRows.length + (hasMore ? 1 : 0),
+    ...(skipCount ? { hasMore } : {}),
     page: query.page,
     pageSize: query.pageSize,
     ...(options ? { optionDefinitions: options.definitions } : {}),
