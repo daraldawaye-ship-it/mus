@@ -29,6 +29,7 @@ import { AttendancePunchControls } from "../AttendancePunchControls";
 import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
+import { rememberRecentEntity } from "../recent-entities";
 import {
   Button,
   Card,
@@ -493,7 +494,11 @@ function EmployeesContent({ context }: { context: CompanyContext }) {
               <Button
                 size="compact"
                 variant="ghost"
-                onClick={() => setEditor(row.original)}
+                onClick={() => {
+                if (user) rememberRecentEntity(user.id, companyId, "employee",
+                  {id:row.original.id,name:row.original.name});
+                setEditor(row.original);
+              }}
                 aria-label={`تعديل ${row.original.name}`}
               >
                 تعديل
