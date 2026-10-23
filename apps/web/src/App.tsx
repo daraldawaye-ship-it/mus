@@ -1025,6 +1025,7 @@ function Workspace() {
                   // for public routes. Use it for personal shortcuts too.
                   companyId={navigationContext?.company.id ?? null}
                   employeeId={navigationContext?.employee?.id ?? null}
+                  employeeName={navigationContext?.employee?.name ?? null}
                   onLogout={() => {
                     setLogoutError("");
                     void logout()

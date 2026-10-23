@@ -214,7 +214,7 @@ async function openAppearance(page: Page): Promise<void> {
   await userTrigger.or(appearanceTrigger).first().waitFor({ state: "visible" });
   if (await userTrigger.isVisible()) {
     await userTrigger.click();
-    await page.getByRole("tab", { name: "الحساب" }).click();
+    await page.getByRole("tab", { name: "الإعدادات" }).click();
     await page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" })
       .getByRole("button", { name: "المظهر", exact: true }).click();
   } else {
@@ -257,7 +257,7 @@ async function logoutToPublic(page: Page, actor: Actor): Promise<void> {
   await page
     .getByRole("button", { name: "قائمة المستخدم", exact: true })
     .click();
-  await page.getByRole("tab", { name: "الحساب" }).click();
+  await page.getByRole("tab", { name: "الإعدادات" }).click();
   await page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" })
     .getByRole("button", { name: "تسجيل الخروج", exact: true }).click();
   await eventually(
@@ -653,7 +653,7 @@ try {
       await menu.waitFor();
       assert.deepEqual(
         await menu.getByRole("tab").allTextContents(),
-        ["التنقل", "الإجراءات", "الأدوات", "الإعدادات", "الحساب"],
+        ["التنقل", "صنف", "حساب", "مستخدم", "الأدوات", "الإعدادات"],
       );
       assert.equal(await menu.getByRole("tab", { name: "التنقل" }).getAttribute("aria-selected"), "true");
       await menu.getByRole("button", { name: "تحديد اختصاراتي" }).waitFor();
@@ -666,12 +666,14 @@ try {
       assert(geometry.width <= 600 && geometry.width > 400);
       assert(geometry.height < 330);
       assert(geometry.contentHeight > 0 && geometry.maxContent === "auto");
-      await menu.getByRole("tab", { name: "الإجراءات" }).click();
+      for (const label of ["صنف", "حساب", "مستخدم"]) {
+        await menu.getByRole("tab", { name: label, exact: true }).click();
+        await menu.getByRole("combobox", { name: `البحث عن ${label}` }).waitFor();
+      }
+      await menu.getByRole("tab", { name: "الأدوات" }).click();
       await menu.getByText("لا توجد خيارات في هذا القسم حاليًا").waitFor();
       assert.equal(await menu.getByRole("button", { name: "تسجيل الخروج" }).count(), 0);
-      await menu.getByRole("tab", { name: "الأدوات" }).click();
       await menu.getByRole("tab", { name: "الإعدادات" }).click();
-      await menu.getByRole("tab", { name: "الحساب" }).click();
       await menu.getByRole("button", { name: "المظهر", exact: true }).click();
       await page.getByTestId("appearance-color").waitFor();
       await closeDialog(page);
@@ -683,7 +685,7 @@ try {
       await page.locator(".scope-title strong").click();
       await menu.waitFor({ state: "hidden" });
       await trigger.click();
-      await menu.getByRole("tab", { name: "الحساب" }).click();
+      await menu.getByRole("tab", { name: "الإعدادات" }).click();
       await menu.getByRole("link", { name: "تعديل حسابي" }).click();
       await page.waitForURL(origin + "/profile");
       await menu.waitFor({ state: "hidden" });

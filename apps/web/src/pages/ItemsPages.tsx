@@ -60,6 +60,7 @@ import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { usePageDirectory } from "../page-directory";
+import { rememberRecentEntity } from "../recent-entities";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -553,6 +554,11 @@ function InvoiceItemDetail({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  useEffect(() => {
+    if (user && result.data?.item)
+      rememberRecentEntity(user.id, context.company.id, "item",
+        {id:result.data.item.id,name:result.data.item.name});
+  }, [user?.id, context.company.id, result.data?.item?.id]);
   if (result.isPending) return <Notice>جارٍ تحميل كرت الصنف…</Notice>;
   if (result.error)
     return (
@@ -610,6 +616,11 @@ function ItemDetail({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  useEffect(() => {
+    if (user && result.data?.item)
+      rememberRecentEntity(user.id, context.company.id, "item",
+        {id:result.data.item.id,name:result.data.item.name});
+  }, [user?.id, context.company.id, result.data?.item?.id]);
   if (itemId !== "new" && result.isPending)
     return <Notice>جارٍ تحميل الصنف…</Notice>;
   if (result.error)

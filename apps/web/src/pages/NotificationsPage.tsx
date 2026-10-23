@@ -22,6 +22,7 @@ import {
   type NotificationTemplateDirectory,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
+import { rememberRecentEntity } from "../recent-entities";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -174,6 +175,12 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
         signal: guard.signal,
       });
       if (!guard.isCurrent()) return;
+      if (companyId && user && parsed.data.action === "assign") {
+        const targetEmployeeId = parsed.data.employeeId;
+        const employee = list.data?.employees.find(entry => entry.id === targetEmployeeId);
+        if (employee) rememberRecentEntity(user.id,companyId,"employee",
+          {id:employee.id,name:employee.name});
+      }
       await refresh();
       if (guard.isCurrent()) {
         setDraft(null);

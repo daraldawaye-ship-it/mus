@@ -55,6 +55,7 @@ import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
 import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
+import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { SalesHeaderActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { PledgeDialogs } from "../PledgeDialogs";
@@ -1549,6 +1550,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
   }
   function chooseItem(line: DraftLine, selected: Item, preserveQuantity = false) {
+    if (user) rememberRecentEntity(user.id, companyId, "item", {id:selected.id,name:selected.name});
     activeLineKey.current=line.key;
     setHeaderItem(selected);
     onChooseItem({id:selected.id,name:selected.name});

@@ -194,3 +194,127 @@
     font-size: 11px;
   }
 }
+
+/* Six sections, keeping search as the first row and matches inside the
+   panel's own scroll area (never another global page list). */
+.user-menu-tab {
+  flex-basis: calc(100% / 6);
+}
+.user-menu-entity-section {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 12px;
+  gap: 7px;
+  min-width: 0;
+}
+.user-menu-entity-search {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0 6px;
+  background: var(--surface);
+}
+.user-menu-entity-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+.user-menu-entity-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding-inline: 10px;
+  color: var(--on-soft);
+}
+.user-menu-entity-input-wrap:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+.user-menu-entity-input-wrap input {
+  width: 100%;
+  min-width: 0;
+  height: 39px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.user-menu-entity-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+  min-height: 37px;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--on-soft);
+  text-align: start;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.user-menu-entity-choice small {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.user-menu-entity-choice span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-menu-entity-choice:hover,
+.user-menu-entity-choice.selected {
+  color: var(--on-nav-active);
+  background: var(--nav-active);
+}
+.user-menu-entity-hint {
+  margin: 3px 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.user-menu-entity-results {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.user-menu-entity-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--surface);
+}
+.user-menu-entity-pager button {
+  border: 0;
+  background: var(--soft);
+  color: var(--on-soft);
+  border-radius: 5px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.user-menu-entity-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (max-width: 520px) {
+  .user-menu-tab {
+    padding-inline: 0;
+    font-size: 10px;
+    gap: 2px;
+  }
+  .user-menu-tab svg { width: 14px; height: 14px; }
+}
