@@ -1837,6 +1837,11 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
   assert.equal(projection.rows[0]?.has_negative_stock, false);
   const originalReport = await f.owner.ok<SettlementReport>("GET", reportUrl);
   assert.equal(originalReport.items.length, 1);
+  const dueInitial = await f.owner.ok<SettlementReport>("GET", reportUrl+"?dueOnly=1");
+  assert.equal(dueInitial.total, 1, "An item that has never been counted must be due");
+  assert.equal(dueInitial.items[0]?.id, initial.id);
+  assert.equal((await f.owner.request("GET", reportUrl+"?dueOnly=maybe")).status, 400);
+
   assert.equal(originalReport.items[0]!.monthlySales, "0");
   assert.equal(Number(originalReport.items[0]!.countLimit), 48);
   assert.equal(originalReport.stocktakeFrequencyTotal, "0",
@@ -1879,6 +1884,9 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
   const recorded = (await f.owner.ok<{ item: Item }>(
     "PATCH", url + "/stocktake-request", { revision: initial.revision },
   )).item;
+  const dueRequested = await f.owner.ok<SettlementReport>("GET", reportUrl+"?dueOnly=1");
+  assert(dueRequested.items.some(row => row.id === initial.id),
+    "Requesting stocktake must include the item in the due-only filter");
   const recordedTime = Date.parse(recorded.stocktakeRequiredAt ?? "");
   assert(Number.isFinite(recordedTime));
   assert(recordedTime >= requestedBefore - 5000 && recordedTime <= Date.now() + 5000);
