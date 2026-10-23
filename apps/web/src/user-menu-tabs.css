@@ -1,0 +1,196 @@
+/* Avatar menu: compact five-tab reference layout. All colors come from the
+   per-user theme tokens, including the light/dark background and accent. */
+.user-menu-panel.user-menu-tabbed-panel {
+  width: min(600px, calc(100vw - 18px));
+  max-height: min(320px, calc(100dvh - 66px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 16px 42px #00000036;
+}
+
+.user-menu-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 58px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.user-menu-tab {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 20%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 4px 15px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.user-menu-tab:hover,
+.user-menu-tab:focus-visible {
+  background: #ffffff23;
+}
+
+.user-menu-tab:focus-visible {
+  outline: 2px solid var(--on-primary);
+  outline-offset: -4px;
+}
+
+.user-menu-tab.is-active::after {
+  content: "";
+  position: absolute;
+  inset-inline: 23%;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--on-primary);
+}
+
+.user-menu-tab-content {
+  flex: 1 1 auto;
+  height: 174px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 5px;
+  background: var(--surface);
+}
+
+.user-menu-tab-content:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.user-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0;
+  background: var(--border);
+}
+
+.user-menu-tile {
+  min-width: 0;
+  min-height: 54px;
+  padding: 9px 7px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: none;
+  border-radius: 0;
+  background: var(--soft);
+  color: var(--on-soft);
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.user-menu-tile > svg {
+  flex: 0 0 auto;
+}
+
+.user-menu-tile > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-menu-tile:hover,
+.user-menu-tile:focus-visible {
+  background: var(--nav-active);
+  color: var(--on-nav-active);
+}
+
+.user-menu-tile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.user-menu-tile-logout {
+  color: var(--error-text);
+}
+
+.user-menu-grid-note {
+  padding: 12px;
+  grid-column: 1 / -1;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.user-menu-account-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  min-height: 58px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.user-menu-account-identity .user-menu-identity-text {
+  text-align: start;
+}
+
+.user-menu-empty {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.user-menu-tabs-footer {
+  flex: 0 0 auto;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .user-menu-tab {
+    flex-direction: column;
+    gap: 3px;
+    font-size: 10px;
+    padding: 8px 1px 13px;
+  }
+  .user-menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .user-menu-tile {
+    min-height: 48px;
+    font-size: 11px;
+  }
+}
