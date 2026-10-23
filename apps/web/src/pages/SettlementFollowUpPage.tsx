@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CompanyContext } from "../../../../packages/contracts/src/index";
 import { usePagedQuery } from "../api";
@@ -19,11 +19,13 @@ interface SettlementFollowUpRow {
 
 export function SettlementFollowUpPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
+  const [params, setParams] = useSearchParams();
+  const dueOnly = params.get("dueOnly") === "1";
   const list = usePagedQuery<SettlementFollowUpRow, {
     stocktakeFrequencyTotal: string;
     stockedItemsCount: number;
   }>(
-    `/companies/${companyId}/settlement-follow-up`,
+    `/companies/${companyId}/settlement-follow-up?dueOnly=${dueOnly ? "1" : "0"}`,
     `company:${companyId}:settlement-follow-up`,
     "monthlySales:desc,name:asc",
   );
@@ -105,6 +107,23 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
             placeholder="اسم الصنف أو الرمز أو الباركود"
             onChange={(event) => list.setQuery(event.target.value)}
           />
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={dueOnly}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  if (checked) next.set("dueOnly", "1");
+                  else next.delete("dueOnly");
+                  next.delete("page");
+                  return next;
+                });
+              }}
+            />
+            الأصناف المطلوب جردها فقط
+          </label>
         </div>
         {list.error && <Notice tone="error">{list.error.message}</Notice>}
         <DataTable
