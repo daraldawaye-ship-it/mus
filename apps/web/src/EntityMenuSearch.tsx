@@ -59,7 +59,7 @@ export function EntityMenuSearch({
     if (!focused) setEntry(selected?.name ?? "");
   }, [selected?.id, selected?.name, focused]);
   useEffect(() => {
-    const timer = window.setTimeout(() => { setSearch(entry.trim()); setPage(1); setActive(0); }, 230);
+    const timer = window.setTimeout(() => { setSearch(entry.trim()); setPage(1); setActive(0); }, kind === "item" ? 110 : 230);
     return () => window.clearTimeout(timer);
   }, [entry]);
 
@@ -73,14 +73,16 @@ export function EntityMenuSearch({
     : kind === "account" ? "name:asc" : "name:asc";
   const result = useQuery({
     queryKey: ["avatar-entity-search", user.id, company, kind, search, page],
-    queryFn: ({signal}) => api<Page<Choice>>(
-      `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort})}`,
+    queryFn: ({signal}) => api<Page<Choice> & {hasMore?:boolean}>(
+      `${resource}&${new URLSearchParams({q:search,page:String(page),pageSize:"10",sort,...(kind === "item" ? {fast:"1"} : {})})}`,
       {signal},
     ),
     enabled: canSearch && focused,
-    staleTime: 3000,
+    staleTime: kind === "item" ? 30_000 : 3000,
   });
   const choices = result.data?.items ?? [];
+  const hasNext = kind === "item" ? !!result.data?.hasMore : page * 10 < (result.data?.total ?? 0);
+  const showPages = kind === "item" ? page > 1 || hasNext : (result.data?.total ?? 0) > 10;
   const choose = (value: Choice) => {
     rememberRecentEntity(user.id, company, kind, {id:value.id,name:value.name});
     setRecent({id:value.id,name:value.name});
@@ -151,13 +153,12 @@ export function EntityMenuSearch({
                 ? (choice.displayName ?? "") : (choice.code ?? choice.barcode ?? "")}</small>
             </button>
           ))}
-          {(result.data?.total ?? 0) > 10 && (
+          {showPages && (
             <div className="user-menu-entity-pager">
               <button type="button" disabled={page<=1 || result.isFetching}
                 onClick={()=>{setPage(v=>v-1);setActive(0);}}>السابق</button>
-              <span>{page} / {Math.max(1,Math.ceil((result.data?.total ?? 0)/10))}</span>
-              <button type="button" disabled={result.isFetching ||
-                page*10 >= (result.data?.total ?? 0)}
+              <span>{kind === "item" ? `صفحة ${page}` : `${page} / ${Math.max(1,Math.ceil((result.data?.total ?? 0)/10))}`}</span>
+              <button type="button" disabled={result.isFetching || !hasNext}
                 onClick={()=>{setPage(v=>v+1);setActive(0);}}>التالي</button>
             </div>
           )}
