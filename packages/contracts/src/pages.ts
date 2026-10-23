@@ -486,6 +486,15 @@ page(
   "وكلاء الأصناف وربطهم بكروت الشركة.",
 );
 page(
+  "company.settlement-follow-up",
+  "متابعة التسويات للأصناف",
+  "الأصناف والمخزون",
+  "/companies/:companyId/settlement-follow-up",
+  { view: permission("items.view", "commerce.view", "inventory.view") },
+  "متابعة مرات المبيعات خلال آخر شهر وسعر الشراء وأقرب انتهاء وآخر تسوية من إحصائيات الصنف.",
+  { type: "report", keywords: ["تسوية", "متابعة التسويات", "مبيعات", "مرات", "انتهاء", "جرد"] },
+);
+page(
   "company.stock-balances",
   "أرصدة المخزون",
   "التقارير",
