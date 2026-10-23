@@ -33,6 +33,8 @@ on:
       - 'apps/web/src/pages/AccountsPage.tsx'
       - 'apps/web/src/pages/CompanyPages.tsx'
       - 'apps/web/src/pages/ItemsPages.tsx'
+      - 'apps/web/src/InvoiceItemActionSheets.tsx'
+      - 'apps/web/src/pages/NotificationsPage.tsx'
       - 'tests/recent-entities.test.ts'
       - 'apps/web/src/UserShortcutMenuGrid.tsx'
       - 'apps/web/src/user-menu-tabs.css'
