@@ -36,6 +36,7 @@ import {
 } from "../AccountStatisticsCard";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
+import { rememberRecentEntity } from "../recent-entities";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -149,7 +150,11 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         `/companies/${companyId}/accounts/${account.id}`,
         { signal: guard.signal },
       );
-      if (guard.isCurrent()) setEditor({ account: result.account });
+      if (guard.isCurrent()) {
+        if (user) rememberRecentEntity(user.id, companyId, "account",
+          {id:result.account.id,name:result.account.name});
+        setEditor({ account: result.account });
+      }
     } catch (reason) {
       if (guard.isCurrent()) setError(errorMessage(reason));
     } finally {
