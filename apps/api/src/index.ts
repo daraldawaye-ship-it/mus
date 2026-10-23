@@ -4,9 +4,9 @@ import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
 import { startPushNotifications } from "./services/web-push.ts";
 
-// This branch is only for private preview deployments. Fail closed before
-// connecting to the database if the preview password was not configured.
-const previewGate = process.env.NODE_ENV === "production"
+// Private previews fail closed unless public access is explicitly configured.
+const previewGate = process.env.NODE_ENV === "production" &&
+  process.env.PREVIEW_ACCESS_MODE !== "public"
   ? previewAccessGuard(process.env.PREVIEW_ACCESS_PASSWORD)
   : undefined;
 

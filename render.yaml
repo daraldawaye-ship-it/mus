@@ -1,5 +1,5 @@
 # Additional paid resources: review pricing and obtain cost approval before applying.
-# Private preview only. Never merge this branch into Railway's production branch.
+# Isolated Render preview. Never merge into Railway's production branch.
 previews:
   generation: "off"
 
@@ -23,8 +23,8 @@ services:
         value: 0.0.0.0
       - key: PORT
         value: "10000"
-      - key: PREVIEW_ACCESS_PASSWORD
-        generateValue: true
+      - key: PREVIEW_ACCESS_MODE
+        value: public
       - key: DATABASE_URL
         fromDatabase:
           name: alraesy-preview-db

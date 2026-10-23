@@ -1,4 +1,4 @@
-# Private Render preview
+# Isolated Render preview
 
 This configuration belongs only to branch `preview/render-2026-10-23` in
 `daraldawaye-ship-it/mus`. Do not merge it into `codex/deploy-phase2`, change the
@@ -27,7 +27,7 @@ No paid resources may be created until the user approves the additional cost.
 Do not click Apply on a Blueprint or issue an equivalent MCP/API create call
 before that approval. Saving or pushing this configuration does not deploy it.
 
-## Isolation and private access
+## Isolation and public access
 
 - The web source is pinned to `preview/render-2026-10-23`, not `main` or Railway's
   production branch. Automatic service deploys and preview environments are off.
@@ -35,19 +35,16 @@ before that approval. Saving or pushing this configuration does not deploy it.
   preview database. This is the internal connection in the same region/workspace.
 - `ipAllowList: []` disables public database access. Do not replace it with
   `0.0.0.0/0` to simplify access.
-- Render generates a random `PREVIEW_ACCESS_PASSWORD` with `generateValue: true`.
-  Its base64 value is accepted by the existing preview gate. Retrieve it only in
-  the Render Dashboard's secret editor; never put it in Git, logs, or chat.
-- Browser Basic Auth uses username `preview`. Application sign-in remains a
-  separate layer. Production startup refuses a missing/invalid preview secret
-  before database access. Only exact `GET /api/health` is anonymous.
+- The user explicitly requested public website access after the first deployment.
+  `PREVIEW_ACCESS_MODE=public` bypasses only the outer HTTP Basic Auth gate.
+  Application sign-in, account authorization and company isolation stay enabled.
+  The guard still fails closed for production deployments without this explicit
+  setting. An old generated password may remain stored but is unused in public mode.
 - The existing configuration uses Render's documented `RENDER_EXTERNAL_URL` as
   the HTTPS application origin when `APP_ORIGIN` is unset. A later custom domain
   needs an explicit `APP_ORIGIN` with that final HTTPS origin.
 - Leave production OAuth settings, Web Push keys and owner secrets unset. Do not
   import production records. Use only synthetic preview data.
-- Basic Auth and MCP's Bearer authentication use the same Authorization header;
-  this browser preview is not a replacement for the production MCP integration.
 
 ## Deploy after cost approval
 
@@ -56,14 +53,14 @@ before that approval. Saving or pushing this configuration does not deploy it.
    applying. The new Blueprint link is
    https://dashboard.render.com/blueprint/new?repo=https://github.com/daraldawaye-ship-it/mus
    and defaults may otherwise select another branch. Do not apply `main`.
-3. Review both plans, 1 GB storage, generated preview secret, database binding,
+3. Review both plans, 1 GB storage, explicit public access mode, database binding,
    Frankfurt region, and disabled autodeploy. Complete Git provider connection
    only if Render requests it.
 4. If tools create resources directly instead, use this same desired state and
    verify any fields the MCP schema cannot set through the Dashboard/API first;
    do not claim a Blueprint manages resources created independently.
 5. Monitor the specific deploy until `live`, then verify HTTPS, anonymous health,
-   anonymous/wrong-password rejection, authenticated pages and static assets.
+   anonymous sign-in page/static assets, and rejection of unauthenticated private APIs.
 6. Open an interactive shell on this **paid preview web service** and run
    `npm run owner:create`. Enter a separate preview name, email and password when
    prompted. Password input is hidden. The command refuses an existing owner.
@@ -107,3 +104,16 @@ Sources checked on 2026-10-23:
 - https://render.com/docs/private-network
 - https://render.com/docs/free
 - https://render.com/pricing
+
+## Live deployment and public-access follow-up (2026-10-23)
+
+The user approved approximately $13/month and applied the Blueprint. The first
+web deployment failed with a refused private database connection. A manual retry
+succeeded: Render reported `live` and application logs confirmed port 10000.
+Railway and production data were unchanged.
+
+The public-access follow-up changes only the preview entry-point gate and its
+Blueprint mode. Set `PREVIEW_ACCESS_MODE=public` on the existing service when
+using a direct MCP deploy; future Blueprint syncs retain the same declared value.
+The live URL remains https://alraesy-private-preview.onrender.com despite its
+historical name. Owner creation remains a separate step described above.
