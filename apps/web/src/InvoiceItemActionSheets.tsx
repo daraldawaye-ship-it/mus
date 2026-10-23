@@ -12,6 +12,7 @@ import { api, ApiFailure, useScopeGuard, useSession } from "./api";
 import { errorMessage, ServerLookup } from "./phase2";
 import { Button, Field, Notice } from "./ui";
 import { InventoryAdjustmentSheet, InventoryTransferSheet } from "./pages/InventoryPages";
+import { rememberRecentEntity } from "./recent-entities";
 
 export function InvoiceItemAdjustmentSheet({
   context,itemId,onClose,onSaved,
@@ -128,6 +129,11 @@ export function InvoiceItemReportSheet({
         queryClient.invalidateQueries({queryKey:["notifications",user?.id]}),
       ]);
       if(!guard.isCurrent())return;
+      if(user) {
+        rememberRecentEntity(user.id,companyId,"item",{id:itemId,name:itemName});
+        if(recipient?.id===frozen.recipientEmployeeId)
+          rememberRecentEntity(user.id,companyId,"employee",{id:recipient.id,name:recipient.name});
+      }
       onCreated(created.memo.id);
     }catch(cause){
       if(!guard.isCurrent())return;
