@@ -44,14 +44,46 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           },
           "monthlySales:desc,name:asc",
         );
+        const dueOnly = req.query.dueOnly === "1";
+        if (req.query.dueOnly !== undefined && !["0", "1"].includes(String(req.query.dueOnly)))
+          throw new HttpError(400, "invalid_query", "خيار المطلوب جردها غير صالح");
         const params = [companyId, searchPattern(query.q)];
         const where = `i.company_id=$1 AND i.active=true AND (
           i.name ILIKE $2 OR i.code ILIKE $2 OR i.english_name ILIKE $2
           OR i.barcode ILIKE $2 OR i.search_keys ILIKE $2
         )`;
+        // Shared report relation: due filtering happens in SQL BEFORE LIMIT/OFFSET.
+        // Negative stock is read from the precomputed item statistics projection.
+        const reportFrom = `FROM items i
+          JOIN company_currencies c
+            ON c.company_id=i.company_id AND c.id=i.currency_id
+          LEFT JOIN item_statistics stats
+            ON stats.company_id=i.company_id AND stats.item_id=i.id
+          LEFT JOIN stock_operations last_count
+            ON last_count.company_id=stats.company_id AND last_count.id=stats.last_adjustment_operation_id AND last_count.kind='adjustment'
+          LEFT JOIN LATERAL (
+            SELECT sum(d.sale_invoices - d.sale_return_invoices) AS monthly_sales
+            FROM item_daily_activity d
+            WHERE d.company_id=i.company_id AND d.item_id=i.id
+              AND d.document_date BETWEEN
+                ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - interval '1 month' + interval '1 day')::date
+                AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+          ) activity ON true
+          LEFT JOIN LATERAL (
+            SELECT ($3::numeric * 30) / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) AS raw_limit
+          ) count_limit ON true`;
+        const dueWhere = dueOnly
+          ? ` AND (
+              last_count.id IS NULL
+              OR ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - last_count.document_date) > count_limit.raw_limit
+              OR COALESCE(stats.has_negative_stock, false)
+              OR (i.stocktake_required_at IS NOT NULL AND i.stocktake_required_at > last_count.created_at)
+            )`
+          : "";
+        const filteredWhere = where + dueWhere;
         const count = await client.query<{ total: number }>(
-          `SELECT count(*)::integer AS total FROM items i WHERE ${where}`,
-          params,
+          `SELECT count(*)::integer AS total ${reportFrom} WHERE ${filteredWhere}`,
+          [...params, importance],
         );
         const result = await client.query<{
           id: number;
@@ -76,27 +108,8 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
             COALESCE(stats.has_negative_stock, false) AS "hasNegativeStock",
             COALESCE(stats.stock_showroom, 0)::text AS "showroomQuantity",
             COALESCE(stats.stock_without_returns, 0)::text AS "quantityWithoutReturns"
-          FROM items i
-          JOIN company_currencies c
-            ON c.company_id=i.company_id AND c.id=i.currency_id
-          LEFT JOIN item_statistics stats
-            ON stats.company_id=i.company_id AND stats.item_id=i.id
-          LEFT JOIN stock_operations last_count
-            ON last_count.company_id=stats.company_id AND last_count.id=stats.last_adjustment_operation_id AND last_count.kind='adjustment'
-          LEFT JOIN LATERAL (
-            SELECT sum(d.sale_invoices - d.sale_return_invoices) AS monthly_sales
-            FROM item_daily_activity d
-            WHERE d.company_id=i.company_id AND d.item_id=i.id
-              AND d.document_date BETWEEN
-                ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - interval '1 month' + interval '1 day')::date
-                AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
-          ) activity ON true
-          -- Net returns can make monthly sales negative; zero is the safe
-          -- minimum only for the divisor, while the displayed sales stay exact.
-          LEFT JOIN LATERAL (
-            SELECT ($3::numeric * 30) / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) AS raw_limit
-          ) count_limit ON true
-          WHERE ${where}
+          ${reportFrom}
+          WHERE ${filteredWhere}
           ORDER BY ${query.order}
           LIMIT $4 OFFSET $5`,
           [...params, importance, query.pageSize, query.offset],
@@ -114,19 +127,8 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
               (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) / $3::numeric
             ), 6), 0)::text AS "stocktakeFrequencyTotal",
             COUNT(*)::integer AS "stockedItemsCount"
-          FROM items i
-          JOIN item_statistics stock
-            ON stock.company_id=i.company_id AND stock.item_id=i.id
-            AND stock.stock_total > 0
-          LEFT JOIN LATERAL (
-            SELECT SUM(d.sale_invoices - d.sale_return_invoices) AS monthly_sales
-            FROM item_daily_activity d
-            WHERE d.company_id=i.company_id AND d.item_id=i.id
-              AND d.document_date BETWEEN
-                ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - interval '1 month' + interval '1 day')::date
-                AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
-          ) activity ON true
-          WHERE ${where}`,
+          ${reportFrom}
+          WHERE ${filteredWhere} AND stats.stock_total > 0`,
           [...params, importance],
         );
         return {
