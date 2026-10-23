@@ -1817,6 +1817,16 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
   const curr = await currency(f, company.id);
   const initial = await item(f, company.id, curr.id);
   assert.equal(initial.stocktakeRequiredAt, null);
+  // The new report is backed by item_daily_activity and the company's control value.
+  const reportUrl = `/companies/${company.id}/settlement-follow-up`;
+  const originalReport = await f.owner.ok<{items: {monthlySales:string;countLimit:string}[]}>("GET", reportUrl);
+  assert.equal(originalReport.items.length, 1);
+  assert.equal(originalReport.items[0]!.monthlySales, "0");
+  assert.equal(Number(originalReport.items[0]!.countLimit), Number((8 / 5 / 30).toFixed(6)));
+  await f.owner.ok("PUT", `/companies/${company.id}/control/inventory_count_importance`,
+    { value: 12, employeeId: null, revision: null });
+  const revisedReport = await f.owner.ok<{items: {countLimit:string}[]}>("GET", reportUrl);
+  assert.equal(Number(revisedReport.items[0]!.countLimit), Number((12 / 5 / 30).toFixed(6)));
   const url = `/companies/${company.id}/items/${initial.id}`;
   const requestedBefore = Date.now();
   const recorded = (await f.owner.ok<{ item: Item }>(
