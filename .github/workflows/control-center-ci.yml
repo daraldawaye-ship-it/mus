@@ -73,6 +73,8 @@ jobs:
         run: node --import tsx --test tests/invoice-clearance-label.test.ts
       - name: Item card field audit and revision regression
         run: node --import tsx --test --test-name-pattern="item field audit records" tests/items.test.ts
+      - name: Requested stocktake timestamp and inventory count importance
+        run: node --import tsx --test --test-name-pattern="item stocktake request is server-stamped" tests/items.test.ts
       - name: Scoped option value and permission tests
         run: node --import tsx --test tests/control.test.ts
       - name: Persist last visited company across rapid public-page navigation
