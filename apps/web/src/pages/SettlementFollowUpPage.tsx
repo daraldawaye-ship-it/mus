@@ -14,6 +14,7 @@ interface SettlementFollowUpRow {
   currencyCode: string;
   nearestExpiryDate: string | null;
   lastAdjustmentDate: string | null;
+  countLimit: string;
 }
 
 export function SettlementFollowUpPage({ context }: { context: CompanyContext }) {
@@ -64,6 +65,12 @@ export function SettlementFollowUpPage({ context }: { context: CompanyContext })
         header: "آخر تسوية بتاريخ",
         size: 160,
         cell: ({ row }) => <bdi>{row.original.lastAdjustmentDate ?? "—"}</bdi>,
+      },
+      {
+        accessorKey: "countLimit",
+        header: "الجرد لا يزيد عن",
+        size: 175,
+        cell: ({ row }) => <bdi>{row.original.countLimit}</bdi>,
       },
     ],
     [companyId],

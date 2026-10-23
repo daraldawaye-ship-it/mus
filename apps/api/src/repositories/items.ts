@@ -119,6 +119,8 @@ export function itemDTO(row: QueryResultRow): Item {
     orderStoppedUntil: row.order_stopped_until,
     hasExpiry: row.has_expiry,
     nearestExpiryDate: row.nearest_expiry_date_text ?? null,
+    stocktakeRequiredAt: row.stocktake_required_at
+      ? new Date(row.stocktake_required_at).toISOString() : null,
     active: row.active,
   };
 }

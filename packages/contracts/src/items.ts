@@ -316,6 +316,8 @@ export interface Item extends ItemIdentity {
   orderStoppedUntil: string | null;
   hasExpiry: boolean;
   nearestExpiryDate: string | null;
+  /** Server-stamped request time; editable only using the card's action button. */
+  stocktakeRequiredAt: string | null;
   active: boolean;
 }
 

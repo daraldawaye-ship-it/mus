@@ -5,6 +5,7 @@ import { HttpError } from "./errors.ts";
 import { readItems } from "./services/items.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { controlValue } from "./services/control-values.ts";
 
 /** Read-only: monthly counts from the incrementally maintained daily summary;
  * latest count via the item_statistics snapshot pointer, not a history scan. */
@@ -25,6 +26,8 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
               "متابعة التسويات تتطلب صلاحيات عرض الأصناف والفواتير والمخزون.",
             );
         }
+        const configured = await controlValue(client, companyId, "inventory_count_importance");
+        const importance = typeof configured === "number" ? configured : 8;
         const query = listQuery(
           req.query,
           {
@@ -34,6 +37,7 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
             purchasePrice: "i.purchase_price",
             nearestExpiryDate: "i.nearest_expiry_date",
             lastAdjustmentDate: "last_count.document_date",
+            countLimit: "count_limit.raw_limit",
           },
           "monthlySales:desc,name:asc",
         );
@@ -54,13 +58,15 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           currencyCode: string;
           nearestExpiryDate: string | null;
           lastAdjustmentDate: string | null;
+          countLimit: string;
         }>(
           `SELECT i.id, i.name,
             COALESCE(activity.monthly_sales, 0)::text AS "monthlySales",
             i.purchase_price::text AS "purchasePrice",
             c.code AS "currencyCode",
             i.nearest_expiry_date::text AS "nearestExpiryDate",
-            last_count.document_date::text AS "lastAdjustmentDate"
+            last_count.document_date::text AS "lastAdjustmentDate",
+            ROUND(count_limit.raw_limit, 6)::text AS "countLimit"
           FROM items i
           JOIN company_currencies c
             ON c.company_id=i.company_id AND c.id=i.currency_id
@@ -76,10 +82,15 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
                 ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - interval '1 month' + interval '1 day')::date
                 AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
           ) activity ON true
+          -- Net returns can make monthly sales negative; zero is the safe
+          -- minimum only for the divisor, while the displayed sales stay exact.
+          LEFT JOIN LATERAL (
+            SELECT $3::numeric / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) / 30 AS raw_limit
+          ) count_limit ON true
           WHERE ${where}
           ORDER BY ${query.order}
-          LIMIT $3 OFFSET $4`,
-          [...params, query.pageSize, query.offset],
+          LIMIT $4 OFFSET $5`,
+          [...params, importance, query.pageSize, query.offset],
         );
         return {
           items: result.rows,

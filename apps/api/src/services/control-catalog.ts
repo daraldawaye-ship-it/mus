@@ -29,6 +29,7 @@ export const controlCatalog: readonly ControlOption[] = [
   { key: "mobile_sales", label: "السماح بإنشاء فواتير المبيعات من الهاتف", category: "الأجهزة", scope: "company", type: "boolean", defaultValue: true, integrated: true },
   { key: "mobile_purchases", label: "السماح بإنشاء فواتير المشتريات من الهاتف", category: "الأجهزة", scope: "company", type: "boolean", defaultValue: true, integrated: true },
   { key: "auto_checkout_hours", label: "عدد ساعات الانصراف التلقائي", category: "الدوام", scope: "company", type: "hours", defaultValue: 16, min: 1, max: 48, integrated: true },
+  { key: "inventory_count_importance", label: "مستوى أهمية الجرد", category: "الأصناف والمخزون", scope: "company", type: "number", defaultValue: 8, min: 1, max: 1000, integrated: true, description: "يحدد قيمة البسط في معادلة «الجرد لا يزيد عن»: المستوى ÷ (مرات البيع في آخر شهر + 5) ÷ 30." },
   { key: "show_shortcuts_menu", label: "إظهار اختصار إلى في قائمة المستخدم", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: true, description: "إظهار الاختصارات الشخصية للصفحات المسموح بها، مع إدارتها لكل مستخدم." },
   { key: "show_header_points", label: "عرض مبلغ النقاط أعلى الشاشة", category: "الموظف", scope: "employee", type: "boolean", defaultValue: true, integrated: true },
   { key: "idle_logout_hours", label: "تسجيل الخروج بعد السكون (ساعة؛ صفر للتعطيل)", category: "الموظف", scope: "employee", type: "hours", defaultValue: 0, min: 0, max: 72, integrated: true },

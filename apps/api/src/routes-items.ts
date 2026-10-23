@@ -831,6 +831,32 @@ export function itemRoutes(pool: Pool): Router {
       );
     }),
   );
+  // A separate, audited action stamps server time. Normal item PATCH never accepts this field.
+  router.patch(
+    `${base}/items/:id/stocktake-request`,
+    handler(async (req, res) => {
+      const rowId = id(req.params.id);
+      const input = parse(z.object({ revision: z.number().int().positive() }).strict(), req.body);
+      const item = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+        const before = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
+        if (before.revision !== input.revision)
+          conflict("تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل الكرت ثم حاول مجددًا.");
+        const updated = await client.query(
+          `UPDATE items SET stocktake_required_at=clock_timestamp(),revision=revision+1,
+             updated_at=clock_timestamp() WHERE company_id=$1 AND id=$2 AND revision=$3`,
+          [companyId, rowId, input.revision],
+        );
+        if (!updated.rowCount) conflict("تم تعديل الصنف بواسطة مستخدم آخر.");
+        const next = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
+        await audit(client, user, "item.field.update", "item", rowId,
+          { field: "stocktakeRequiredAt", label: "مطلوب_جرده", value: before.stocktakeRequiredAt },
+          { field: "stocktakeRequiredAt", label: "مطلوب_جرده", value: next.stocktakeRequiredAt },
+          companyId);
+        return next;
+      });
+      res.json({ item });
+    }),
+  );
   router.patch(
     `${base}/items/:id`,
     handler(async (req, res) => {
