@@ -16,6 +16,8 @@ BEGIN
   WHERE s.company_id=p_company AND s.item_id=p_item;
 END $$;
 
+-- Explicit statistics repairs must also restore the cached flag.
+-- The stock-delta trigger keeps ordinary posting incremental.
 CREATE OR REPLACE FUNCTION update_item_negative_stock() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP='DELETE' THEN
