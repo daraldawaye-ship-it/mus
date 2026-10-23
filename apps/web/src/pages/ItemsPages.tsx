@@ -201,6 +201,7 @@ export function ItemsPage({ context }: { context: CompanyContext }) {
   return <ItemsManager context={context} />;
 }
 function ItemsManager({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
   const companyId = context.company.id;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
