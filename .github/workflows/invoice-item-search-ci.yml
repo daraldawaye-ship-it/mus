@@ -46,7 +46,9 @@ jobs:
       - name: Verify fast paginated invoice item suggestions
         run: node --import tsx --test --test-name-pattern="invoice quick lookup uses bounded pages" tests/item-sale-ranking-cache.test.ts
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # GitHub Ubuntu already provides the required libraries; avoid blocking
+        # on apt/dpkg when multiple browser jobs install system packages.
+        run: npx playwright install chromium
       - name: Resolve Playwright browser path
         run: |
           node --input-type=module <<'NODE'

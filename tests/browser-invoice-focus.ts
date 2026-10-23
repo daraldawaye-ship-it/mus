@@ -78,6 +78,27 @@ try {
     base + "/currencies",
   );
   const currencyId = currencies.items.find((c) => c.code === "YER")!.id;
+  await call(base + "/accounts", "POST", {
+    name: "Recent account", kind: "posting", category: "asset",
+    normalSide: "debit", parentId: null,
+  });
+  const employeeSession = await request.newContext({ baseURL: origin });
+  try {
+    const registered = await employeeSession.post("/api/auth/register", {
+      data: {
+        name: "Focus worker", displayName: "Worker",
+        email: "focus.worker@example.test", phone: "",
+        password: "invoice-focus-worker-passphrase",
+      },
+      headers: { origin },
+    });
+    assert.equal(registered.status(), 201, await registered.text());
+    const account = await registered.json() as { user: { id: number } };
+    await call(base + "/employees", "POST", {
+      userId: account.user.id, name: "Focus worker",
+      phone: "", role: "employee", active: true, permissions: [],
+    });
+  } finally { await employeeSession.dispose(); }
   await call(base + "/items", "POST", {
     name: "Focus item",
     barcode: "FOCUS-001",
@@ -172,9 +193,40 @@ try {
   await purchasePrice.press("Enter");
   const purchaseExpiry = purchaseRows.first().locator('input[id^="invoice-expiry-"]:not([id$="-year"])');
   await focused((await purchaseExpiry.getAttribute("id"))!);
+  // The avatar search must follow the last record clicked in each list,
+  // not only an editor that was opened or a previously searched item.
+  async function assertRecent(tab: "صنف" | "حساب" | "مستخدم", text: string) {
+    await page.getByRole("button", { name: "قائمة المستخدم" }).click();
+    await page.getByRole("tab", { name: tab }).click();
+    const input = page.getByRole("combobox", { name: `البحث عن ${tab}` });
+    assert.equal(await input.inputValue(), text,
+      `The user-menu ${tab} must show the last clicked record`);
+    await page.getByRole("button", { name: "قائمة المستخدم" }).click();
+  }
+  await assertRecent("صنف", "Focus item");
+  await page.goto(base + "/items");
+  await page.getByRole("table", { name: "جدول الأصناف" })
+    .getByText("Other fresh item", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
+  await assertRecent("صنف", "Other fresh item");
+  await page.goto(base + "/accounts");
+  await page.getByRole("searchbox", { name: "بحث في الحسابات" })
+    .fill("Recent account");
+  await page.getByRole("table", { name: "دليل الحسابات" })
+    .getByText("Recent account", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
+  await assertRecent("حساب", "Recent account");
+  await page.goto(base + "/employees");
+  await page.getByRole("table", { name: "قائمة موظفي الشركة" })
+    .getByText("Focus worker", { exact: true }).click();
+  await page.getByRole("dialog", { name: "القيمة الكاملة" })
+    .getByRole("button", { name: "إغلاق النافذة" }).click();
+  await assertRecent("مستخدم", "Focus worker");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: sales/purchase stale search choices hidden and keyboard/focus workflows preserved",
+    "PASS: sales/purchase search, focus and latest item/account/employee from invoice and lists",
   );
   await context.close();
 } finally {

@@ -10,6 +10,7 @@ import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { firstUnitStockText } from "../sale-stock-quantity";
+import { rememberRecentEntity } from "../recent-entities";
 
 const periods:readonly {key:ItemActivityReportPeriod;label:string}[]=[
  {key:"oneMonth",label:"آخر شهر"},
@@ -175,7 +176,11 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
            <tbody>
              {result.rows.map(row=><tr key={row.itemId}>
                <td><bdi>{row.code}</bdi></td>
-               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
+               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
+                 onClick={() => {
+                   if (user) rememberRecentEntity(user.id, companyId, "item",
+                     {id:row.itemId,name:row.name});
+                 }}>{row.name}</Link>
                  {!row.active&&" (مؤرشف)"}</td>
                <td>{metric==="saleTimes"?"مرة":row.unitName}</td>
                {periods.map(p=><td key={p.key} dir="ltr" style={{textAlign:"end"}}>

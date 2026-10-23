@@ -201,6 +201,7 @@ export function ItemsPage({ context }: { context: CompanyContext }) {
   return <ItemsManager context={context} />;
 }
 function ItemsManager({ context }: { context: CompanyContext }) {
+  const { user } = useSession();
   const companyId = context.company.id;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -429,6 +430,10 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           onPageSizeChange={list.setPageSize}
           loading={list.loading}
           ariaLabel="جدول الأصناف"
+          onRowInteract={(item: Item) => {
+            if (user) rememberRecentEntity(user.id, companyId, "item",
+              {id:item.id,name:item.name});
+          }}
         />
       </Card>
       <Dialog open={sheetItemId!==null} title="كرت الصنف" className="invoice-item-sheet"

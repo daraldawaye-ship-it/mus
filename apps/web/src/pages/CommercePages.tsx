@@ -2447,12 +2447,16 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
                           onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                          if (user) rememberRecentEntity(user.id, companyId, "item",
+                            {id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
                         onClickCapture={() => {
                           activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
                           onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                          if (user) rememberRecentEntity(user.id, companyId, "item",
+                            {id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
                         onKeyDownCapture={(event) => {
                           // RTL invoice matrix: right returns to the preceding

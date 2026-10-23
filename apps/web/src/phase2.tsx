@@ -175,10 +175,18 @@ export function ServerLookup<T extends { id: number }>({
       ? [value, ...items]
       : items;
   const choose = (next: T) => {
-    if (user && (resource.includes("type=accounts") || resource.includes("/accounts"))) {
-      const record = next as T & {name?: string};
-      rememberRecentEntity(user.id, companyId, "account",
-        {id:next.id,name:record.name ?? display(next)});
+    if (user) {
+      const kind = resource.includes("type=accounts") || /\/accounts(?:[/?]|$)/.test(resource)
+        ? "account"
+        : resource.includes("type=items") || /\/items(?:[/?]|$)/.test(resource)
+          ? "item"
+          : /\/employees(?:[/?]|$)|\/memos\/recipients(?:[/?]|$)/.test(resource)
+            ? "employee" : null;
+      if (kind) {
+        const record = next as T & {name?: string};
+        rememberRecentEntity(user.id, companyId, kind,
+          {id:next.id,name:record.name ?? display(next)});
+      }
     }
     onChange(next);
     setEntry(display(next));
@@ -275,10 +283,11 @@ export function ServerLookup<T extends { id: number }>({
         title={value ? display(value) : label}
         disabled={disabled || result.isFetching}
         onChange={(event) =>
-          onChange(
-            options.find((item) => item.id === Number(event.target.value)) ??
-              null,
-          )
+          (() => {
+            const selected = options.find((item) => item.id === Number(event.target.value));
+            if (selected) choose(selected);
+            else onChange(null);
+          })()
         }
       >
         <option value="">{emptyLabel}</option>

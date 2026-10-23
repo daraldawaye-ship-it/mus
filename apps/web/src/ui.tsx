@@ -301,6 +301,8 @@ interface TableProps<T> {
   loading?: boolean;
   selectionMode?: "single" | "multi" | "os";
   onSelectionChange?: (ids: string[]) => void;
+  /** Notify the caller of the actual record clicked, including row actions. */
+  onRowInteract?: (row: T) => void;
   getRowId?: (row: T) => string;
   ariaLabel?: string;
 }
@@ -317,6 +319,7 @@ export function DataTable<T>({
   loading,
   selectionMode = "multi",
   onSelectionChange,
+  onRowInteract,
   getRowId,
   ariaLabel = "جدول البيانات",
 }: TableProps<T>) {
@@ -500,6 +503,7 @@ export function DataTable<T>({
                 key={row.id}
                 data-row-id={row.id}
                 aria-selected={!!selected[row.id]}
+                onClickCapture={() => onRowInteract?.(row.original)}
                 onClick={(event) => {
                   if (
                     !(event.target as HTMLElement).closest(

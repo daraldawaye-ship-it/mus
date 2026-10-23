@@ -7,6 +7,7 @@ import {api,useSession} from "../api";
 import {usePageDirectory} from "../page-directory";
 import {errorMessage} from "../phase2";
 import {Button,Card,Field,Notice,PageHeader,Select} from "../ui";
+import {rememberRecentEntity} from "../recent-entities";
 const fmtDate=(value:string|null)=>value?new Intl.DateTimeFormat("ar-YE",{
  timeZone:"Asia/Aden",dateStyle:"short",timeStyle:"short"}).format(new Date(value)):"—";
 const hours=(n:number)=>n<1?`${Math.round(n*60)} دقيقة`:
@@ -64,7 +65,12 @@ export function MemoReportPage({context}:{context:CompanyContext}){
      <option value="executor">المنفذ في أي مرحلة</option>
     </Select>
     <Field label="بحث موظف" value={lookup} onChange={e=>setLookup(e.target.value)}/>
-    <Select label="الموظف المحدد" value={get("employeeId")} onChange={e=>change("employeeId",e.target.value)}>
+    <Select label="الموظف المحدد" value={get("employeeId")} onChange={e=>{
+      change("employeeId",e.target.value);
+      const selected=staff.data?.items.find(item=>String(item.id)===e.target.value);
+      if(user&&selected)rememberRecentEntity(user.id,companyId,"employee",
+        {id:selected.id,name:selected.name});
+    }}>
      <option value="">جميع الموظفين</option>
      {staff.data?.items.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
     </Select>
