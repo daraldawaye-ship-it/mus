@@ -520,7 +520,7 @@ function ItemSearch({
   // current request finishes. Hide it entirely rather than showing disabled,
   // faded choices that could be mistaken for new matches.
   const resultsReady = searchCurrent && !result.isFetching && result.isSuccess;
-  const items = resultsReady ? result.data.items : [];
+  const items = resultsReady ? (result.data?.items ?? []) : [];
   function choose(item: Item) {
     onChoose(item);
     setOpen(false);
