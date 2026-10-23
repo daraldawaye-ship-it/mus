@@ -214,7 +214,9 @@ async function openAppearance(page: Page): Promise<void> {
   await userTrigger.or(appearanceTrigger).first().waitFor({ state: "visible" });
   if (await userTrigger.isVisible()) {
     await userTrigger.click();
-    await page.getByRole("menuitem", { name: "المظهر", exact: true }).click();
+    await page.getByRole("tab", { name: "الحساب" }).click();
+    await page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" })
+      .getByRole("button", { name: "المظهر", exact: true }).click();
   } else {
     await appearanceTrigger.click();
   }
@@ -255,9 +257,9 @@ async function logoutToPublic(page: Page, actor: Actor): Promise<void> {
   await page
     .getByRole("button", { name: "قائمة المستخدم", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "تسجيل الخروج", exact: true })
-    .click();
+  await page.getByRole("tab", { name: "الحساب" }).click();
+  await page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" })
+    .getByRole("button", { name: "تسجيل الخروج", exact: true }).click();
   await eventually(
     () => call<SessionResponse>(actor, "/auth/session"),
     (value) => {
@@ -635,37 +637,54 @@ try {
   );
 
   await scenario(
-    "user avatar menu offers profile, appearance and logout controls",
+    "five-tab avatar menu preserves shortcuts, account actions and theme",
     async () => {
       const { page } = await pageFor("owner@browser.test");
       await page.goto("/");
       const trigger = page.getByRole("button", {
-        name: "قائمة المستخدم",
-        exact: true,
+        name: "قائمة المستخدم", exact: true,
       });
       await trigger.waitFor();
       assert.equal(await page.locator(".topbar .account-name").count(), 0);
       assert.equal(await page.locator(".topbar .user-avatar").count(), 1);
-      assert.equal(
-        await page.getByRole("button", { name: "إعدادات المظهر" }).count(),
-        0,
-      );
+      assert.equal(await page.getByRole("button", { name: "إعدادات المظهر" }).count(), 0);
       await trigger.click();
-      const menu = page.getByRole("menu", { name: "خيارات المستخدم" });
+      const menu = page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" });
       await menu.waitFor();
-      assert.equal(await menu.getByRole("menuitem").count(), 3);
-      await menu.getByRole("menuitem", { name: "المظهر" }).click();
+      assert.deepEqual(
+        await menu.getByRole("tab").allTextContents(),
+        ["التنقل", "الإجراءات", "الأدوات", "الإعدادات", "الحساب"],
+      );
+      assert.equal(await menu.getByRole("tab", { name: "التنقل" }).getAttribute("aria-selected"), "true");
+      await menu.getByRole("button", { name: "تحديد اختصاراتي" }).waitFor();
+      const geometry = await menu.evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        const content = element.querySelector(".user-menu-tab-content") as HTMLElement;
+        return { width: rect.width, height: rect.height,
+          contentHeight: content.clientHeight, maxContent: getComputedStyle(content).overflowY };
+      });
+      assert(geometry.width <= 600 && geometry.width > 400);
+      assert(geometry.height < 330);
+      assert(geometry.contentHeight > 0 && geometry.maxContent === "auto");
+      await menu.getByRole("tab", { name: "الإجراءات" }).click();
+      await menu.getByText("لا توجد خيارات في هذا القسم حاليًا").waitFor();
+      assert.equal(await menu.getByRole("button", { name: "تسجيل الخروج" }).count(), 0);
+      await menu.getByRole("tab", { name: "الأدوات" }).click();
+      await menu.getByRole("tab", { name: "الإعدادات" }).click();
+      await menu.getByRole("tab", { name: "الحساب" }).click();
+      await menu.getByRole("button", { name: "المظهر", exact: true }).click();
       await page.getByTestId("appearance-color").waitFor();
       await closeDialog(page);
       await trigger.click();
-      await page.getByRole("menu").waitFor();
+      await menu.waitFor();
       await page.keyboard.press("Escape");
-      await page.getByRole("menu").waitFor({ state: "hidden" });
+      await menu.waitFor({ state: "hidden" });
       await trigger.click();
       await page.locator(".scope-title strong").click();
-      await page.getByRole("menu").waitFor({ state: "hidden" });
+      await menu.waitFor({ state: "hidden" });
       await trigger.click();
-      await menu.getByRole("menuitem", { name: "تعديل حسابي" }).click();
+      await menu.getByRole("tab", { name: "الحساب" }).click();
+      await menu.getByRole("link", { name: "تعديل حسابي" }).click();
       await page.waitForURL(origin + "/profile");
       await menu.waitFor({ state: "hidden" });
     },
