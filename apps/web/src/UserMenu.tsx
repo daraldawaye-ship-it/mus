@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { NavLink, useLocation } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
-  UserRound, Wrench, Zap,
+  UserRound, Wrench, Package, WalletCards,
 } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
 import { thumbnailUrl } from "./ImageUpload";
 import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
+import { EntityMenuSearch } from "./EntityMenuSearch";
 import "./user-menu-tabs.css";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
@@ -36,10 +37,11 @@ function Avatar({ user, large = false }: { user: User; large?: boolean }) {
 
 const sections = [
   { key: "navigation", label: "التنقل", icon: Compass },
-  { key: "actions", label: "الإجراءات", icon: Zap },
+  { key: "item", label: "صنف", icon: Package },
+  { key: "financialAccount", label: "حساب", icon: WalletCards },
+  { key: "employee", label: "مستخدم", icon: UserRound },
   { key: "tools", label: "الأدوات", icon: Wrench },
   { key: "settings", label: "الإعدادات", icon: Settings },
-  { key: "account", label: "الحساب", icon: UserRound },
 ] as const;
 type SectionKey = typeof sections[number]["key"];
 
@@ -48,11 +50,13 @@ export function UserMenu({
   onLogout,
   companyId = null,
   employeeId = null,
+  employeeName = null,
 }: {
   user: User;
   onLogout: () => void;
   companyId?: number | null;
   employeeId?: number | null;
+  employeeName?: string | null;
 }) {
   const appearance = useAppearance();
   const location = useLocation();
@@ -169,7 +173,13 @@ export function UserMenu({
                 onQuickAdd={() => { dismiss(); setQuickAddOpen(true); }}
               />
             )}
-            {activeTab === "account" && (
+            {(activeTab === "item" || activeTab === "financialAccount" || activeTab === "employee") && (
+              <EntityMenuSearch key={`${user.id}:${companyId}:${activeTab}`}
+                user={user} companyId={companyId} employeeId={employeeId}
+                employeeName={employeeName}
+                kind={activeTab === "item" ? "item" : activeTab === "financialAccount" ? "account" : "employee"} />
+            )}
+            {activeTab === "settings" && (
               <>
                 <div className="user-menu-account-identity">
                   <Avatar user={user} large />
@@ -202,7 +212,7 @@ export function UserMenu({
                 </div>
               </>
             )}
-            {(activeTab === "actions" || activeTab === "tools" || activeTab === "settings") && (
+            {activeTab === "tools" && (
               <div className="user-menu-empty" aria-live="polite">
                 لا توجد خيارات في هذا القسم حاليًا
               </div>
