@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
@@ -95,7 +95,7 @@ export function UserMenu({
     setActiveTab("navigation");
     setOpen(true);
   };
-  const selectByKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+  const selectByKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const index = sections.findIndex(section => section.key === activeTab);
