@@ -175,7 +175,7 @@ export function ServerLookup<T extends { id: number }>({
       ? [value, ...items]
       : items;
   const choose = (next: T) => {
-    if (user && (resource.includes("type=accounts") || /\\/accounts(?:\\?|$)/.test(resource))) {
+    if (user && (resource.includes("type=accounts") || resource.includes("/accounts"))) {
       const record = next as T & {name?: string};
       rememberRecentEntity(user.id, companyId, "account",
         {id:next.id,name:record.name ?? display(next)});
