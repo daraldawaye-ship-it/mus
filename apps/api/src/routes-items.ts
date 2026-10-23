@@ -19,7 +19,12 @@ import { readItemActivity } from "./services/item-activity.ts";
 import { readCompositionStatistics } from "./services/composition-statistics.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
-import { canOrderItemsBySales, itemSaleTimesOrderSql } from "./services/item-sale-ranking.ts";
+import {
+  assertItemSaleRankingsReady,
+  canOrderItemsBySales,
+  itemSaleTimesJoinSql,
+  itemSaleTimesOrderSql,
+} from "./services/item-sale-ranking.ts";
 import {
   canReadItemCoverage,
   canReadItemStock,
@@ -612,6 +617,7 @@ export function itemRoutes(pool: Pool): Router {
       res.json(
         await readItems(pool, req, async (client, companyId) => {
           const canRank = await canOrderItemsBySales(client,actor(req),companyId);
+          if (canRank) await assertItemSaleRankingsReady(client);
           const canViewCoverage = await canReadItemCoverage(client, actor(req), companyId);
           const canViewStock = await canReadItemStock(client, actor(req), companyId);
           // masterPage validates the complete sort expression. This check only
@@ -624,7 +630,7 @@ export function itemRoutes(pool: Pool): Router {
           const stockJoin = canViewStock
             ? " LEFT JOIN item_statistics list_stock ON list_stock.company_id=i.company_id AND list_stock.item_id=i.id"
             : "";
-          const listFrom = itemFrom + stockJoin + coverageJoin;
+          const listFrom = itemFrom + (canRank ? itemSaleTimesJoinSql : "") + stockJoin + coverageJoin;
           const stockSelect = canViewStock
             ? ",COALESCE(list_stock.stock_total,0)::text AS available_smallest"
             : ",NULL::text AS available_smallest";

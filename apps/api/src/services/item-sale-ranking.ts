@@ -1,23 +1,25 @@
 import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
+import { HttpError } from "../errors.ts";
 import { directoryEntries } from "./pages.ts";
 
 /**
- * Rolling one-month net occurrences per item: distinct positive sale invoices
- * minus distinct return invoices. The source facts are updated on posting;
- * do not scan immutable invoice lines in search requests.
- *
- * The inner subquery is scoped by the item company's composite key, and the
- * (company_id,item_id,document_date) PK supports the requested date range.
+ * Monthly counts are prepared outside search and maintained by daily-activity
+ * deltas in the posting transaction. A missing sparse row means a zero count.
+ * Use the transaction's Aden date for both readiness and the lookup.
  */
-export const itemSaleTimesOrderSql = `COALESCE((
- SELECT SUM(d.sale_invoices - d.sale_return_invoices)
- FROM item_daily_activity d
- WHERE d.company_id=i.company_id AND d.item_id=i.id
-   AND d.document_date BETWEEN
-     ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date - INTERVAL '1 month' + INTERVAL '1 day')::date
-     AND (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date
-),0)`;
+export const itemSaleTimesJoinSql = ` LEFT JOIN item_sale_rankings sale_rank
+ ON sale_rank.company_id=i.company_id AND sale_rank.item_id=i.id
+ AND sale_rank.as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date`;
+export const itemSaleTimesOrderSql = "COALESCE(sale_rank.net_sale_invoices,0)";
+
+export async function assertItemSaleRankingsReady(client: PoolClient): Promise<void> {
+  const ready = await client.query(
+    "SELECT 1 FROM item_sale_ranking_days WHERE as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date",
+  );
+  if (!ready.rowCount)
+    throw new HttpError(503, "search_updating", "البحث قيد التحديث، حاول مجددًا بعد لحظات");
+}
 
 /** Hide sales-based ranking when the invoice/sales pages are not visible. */
 export async function canOrderItemsBySales(

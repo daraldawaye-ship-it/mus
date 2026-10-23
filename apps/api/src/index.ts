@@ -3,6 +3,7 @@ import { createApp } from "./app.ts";
 import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
 import { startPushNotifications } from "./services/web-push.ts";
+import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-sale-ranking-worker.ts";
 
 // Private previews fail closed unless public access is explicitly configured.
 const previewGate = process.env.NODE_ENV === "production" &&
@@ -11,6 +12,8 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+// Cover restarts after a date change before accepting item-search requests.
+await prepareItemSaleRankings(application.pool);
 let vite: import("vite").ViteDevServer | undefined;
 if (!application.config.production) {
   const { createServer: createVite } = await import("vite");
@@ -30,6 +33,7 @@ server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
 );
 const stopNotifications = startAttendanceNotifications(application.pool);
 const stopPush = startPushNotifications(application.pool,application.config.appOrigin);
+const stopItemSaleRankings = startItemSaleRankings(application.pool);
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
@@ -40,6 +44,7 @@ async function shutdown(): Promise<void> {
   );
   await stopNotifications();
   await stopPush();
+  await stopItemSaleRankings();
   await vite?.close();
   await application.close();
 }
