@@ -19,6 +19,7 @@ import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
+import { rememberRecentEntity } from "../recent-entities";
 import {
   AccountStatisticsCard,
   usePendingAccountStatisticsActions,
@@ -417,6 +418,10 @@ export function AccountStatisticsReportPage({
           loading={canView && report.isFetching}
           getRowId={(row) => String(row.account.id)}
           ariaLabel="إحصاءات الحسابات"
+          onRowInteract={(row: Row) => {
+            if (user) rememberRecentEntity(user.id, companyId, "account",
+              {id:row.account.id,name:row.account.name});
+          }}
         />
       </Card>
       {(canView || recoverPending) && accountId && (
