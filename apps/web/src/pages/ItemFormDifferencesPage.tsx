@@ -5,6 +5,7 @@ import type { CompanyContext, ProductForm } from "../../../../packages/contracts
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
+import { rememberRecentEntity } from "../recent-entities";
 
 const InvoiceItemEditor=lazy(()=>import("./ItemsPages").then(m=>({default:m.InvoiceItemEditor})));
 const CompositionEditorSheet=lazy(()=>import("./ItemCompositionsPage").then(m=>({default:m.CompositionEditorSheet})));
@@ -133,7 +134,11 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                 <td>
                   <div className="form-actions">
                     <Button variant="secondary" size="compact"
-                      onClick={()=>setOpened({type:"item",id:row.itemId})}>كرت الصنف</Button>
+                      onClick={()=>{
+                        if (user) rememberRecentEntity(user.id, companyId, "item",
+                          {id:row.itemId,name:row.itemName});
+                        setOpened({type:"item",id:row.itemId});
+                      }}>كرت الصنف</Button>
                     <Button variant="secondary" size="compact"
                       onClick={()=>setOpened({type:"composition",id:row.compositionId})}>كرت التركيب</Button>
                   </div>
