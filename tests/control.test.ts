@@ -87,9 +87,11 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert.equal(option(empty,"show_voucher_branch").value,false);
   assert.equal(option(empty,"auto_checkout_hours").value,16);
   assert.equal(option(empty,"sales_doctor_threshold").value,1000);
+  assert.equal(option(empty,"inventory_count_importance").value,8);
   assert.equal(option(empty,"idle_logout_hours").value,0);
   assert.equal(option(empty,"show_shortcuts_menu").value,true);
   assert.equal(option(empty,"show_currency").revision,null);
+  assert.equal(option(empty,"inventory_count_importance").revision,null);
   const purchaseOptionsKey = "show_recent_item_purchases";
   const salesOptionsKey = "show_item_options_sales";
   assert.equal(option(empty, purchaseOptionsKey).value, true);
@@ -255,6 +257,17 @@ test("control center isolates companies/employees, audits optimistic writes and 
   assert(names.items.includes("متابعة الملاحظات"));
   assert.equal((await salesperson.client.request("GET",
     "/general-table/table-names")).status,403);
+  // Changing the count importance is company-scoped and validates its range.
+  assert.equal(option(await owner.ok<Directory>("GET",`/companies/${second.id}/control`),"inventory_count_importance").value,8);
+  assert.equal((await owner.request("PUT",prefix+"/inventory_count_importance",
+    {value:0,employeeId:null,revision:null})).status,400);
+  await owner.ok("PUT",prefix+"/inventory_count_importance",
+    {value:12,employeeId:null,revision:null});
+  assert.equal(option(await owner.ok<Directory>("GET",prefix),"inventory_count_importance").value,12);
+  assert.equal(option(await owner.ok<Directory>("GET",`/companies/${second.id}/control`),"inventory_count_importance").value,8);
+  const settlement = await owner.ok<{items:{countLimit:string;monthlySales:string}[]}>("GET",
+    `/companies/${first.id}/settlement-follow-up?sort=countLimit:asc`);
+  assert.deepEqual(settlement.items, []);
   const newNamed=await owner.ok<{record:{id:number;tableName:string}}>(
     "POST","/general-table",{...quickPayload,tableName:"عنوان جديد",title:"سجل آخر"},201);
   assert.notEqual(newNamed.record.id,quick.id);
