@@ -92,6 +92,7 @@ const AccountStatisticsReportPage = lazy(() =>
     default: module.AccountStatisticsReportPage,
   })),
 );
+const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage").then(m=>({default:m.LegacySalesImportPage})));
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
@@ -335,6 +336,7 @@ const companySections = [
   "settlement-follow-up",
   "inventory-settings",
   "purchases",
+  "legacy-sales-import",
   "sales",
   "pouch-receipts",
   "electronic-receipts",
@@ -763,6 +765,8 @@ function CompanyContent({
           <PouchReceiptsPage key={context.company.id} context={context}/>
         </Suspense>
       );
+    case "legacy-sales-import":
+      return user?.owner ? <Suspense fallback={<Notice>جارٍ تحميل الاستيراد…</Notice>}><LegacySalesImportPage context={context}/></Suspense> : <Notice tone="error">للمالك فقط</Notice>;
     case "sales":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل فواتير المبيعات…</Notice>}>
