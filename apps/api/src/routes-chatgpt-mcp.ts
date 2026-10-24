@@ -7,7 +7,7 @@ import { generalTableSchema, type GeneralTableInput } from "../../../packages/co
 import { audit } from "./services/audit.ts";
 import { apiTools, apiCatalog, dispatchApi, oauthScopes, API_READ_SCOPE, API_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { userDTO } from "./repositories/models.ts";
-import { requireLegalLegacyOwner } from "./legacy-legal-tables.ts";
+import { assertGeneralTableAccess } from "./general-table-access.ts";
 
 const tools=[{
  name:"query_general_table",
@@ -175,7 +175,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
      const parsed=argsSchema.safeParse(params.arguments??{});
      if(!parsed.success){fail(-32602,"Invalid table filters");return;}
      const {tableName,number2EmptyOrZero,page,pageSize}=parsed.data;
-     requireLegalLegacyOwner(Boolean(user.owner),tableName);
+     await assertGeneralTableAccess(pool,user,tableName);
      const where="general_table_table_name=$1"+
        (number2EmptyOrZero?" AND (general_table_number2 IS NULL OR general_table_number2=0)":"");
      const total=(await pool.query<{total:number}>(
@@ -193,13 +193,13 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
        `SELECT ${selectFields} FROM general_table WHERE general_table_id=$1`,
        [parsed.data.id])).rows[0];
      if(!row){fail(-32602,"Record not found");return;}
-     requireLegalLegacyOwner(Boolean(user.owner),String(row.tableName));
+     await assertGeneralTableAccess(pool,user,String(row.tableName));
      result={record:row};
    }else if(params.name==="create_general_table_record"){
      const parsed=createSchema.safeParse(params.arguments??{});
      if(!parsed.success){fail(-32602,"Invalid record fields");return;}
      const input=generalTableSchema.parse({...emptyRecord,...parsed.data});
-     requireLegalLegacyOwner(Boolean(user.owner),input.tableName);
+     await assertGeneralTableAccess(pool,user,input.tableName,"editor");
      const record=await transaction(pool,async db=>{
        const actorResult=await db.query("SELECT * FROM users WHERE id=$1 FOR SHARE",[user.id]);
        const active=actorResult.rows[0];
@@ -233,8 +233,8 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
        const old=await db.query(`SELECT ${selectFields} FROM general_table WHERE general_table_id=$1 FOR UPDATE`,[id]);
        if(!old.rows[0])return {error:"Record not found",code:"not_found"};
        const before=old.rows[0];
-       requireLegalLegacyOwner(Boolean(active.owner),String(before.tableName));
-       if(changes.tableName!==undefined) requireLegalLegacyOwner(Boolean(active.owner),changes.tableName);
+       await assertGeneralTableAccess(db,userDTO(active),String(before.tableName),"editor");
+       if(changes.tableName!==undefined) await assertGeneralTableAccess(db,userDTO(active),changes.tableName,"editor");
        if(new Date(before.updatedAt).toISOString()!==new Date(expectedUpdatedAt).toISOString())
          return {error:"Record changed since last read. Reload before editing.",code:"conflict",current:before};
        const keys=Object.keys(changes) as (keyof GeneralTableInput)[];
