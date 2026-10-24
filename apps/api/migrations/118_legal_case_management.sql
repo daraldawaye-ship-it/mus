@@ -4,6 +4,8 @@ CREATE TABLE legal_cases (
   title varchar(250) NOT NULL CHECK (length(btrim(title))>0),
   case_number varchar(120) NOT NULL DEFAULT '',
   agency varchar(250) NOT NULL DEFAULT '',
+  drive_folder_id varchar(200) NOT NULL DEFAULT '',
+  drive_folder_url text NOT NULL DEFAULT '',
   stage varchar(120) NOT NULL DEFAULT '',
   status varchar(12) NOT NULL DEFAULT 'unknown' CHECK(status IN ('active','closed','unknown')),
   file_copy_status varchar(12) NOT NULL DEFAULT 'unknown' CHECK(file_copy_status IN ('unknown','yes','no','partial')),
