@@ -1,15 +1,25 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Pool, PoolClient } from "pg";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transaction, type Database } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
-import { calculateLegalTaskPriority } from "./legal-task-priority.ts";
+import { calculateLegalTaskPriority, compareLegalTasks, type TaskPriorityInput } from "./legal-task-priority.ts";
+
+type LegalTaskRow = QueryResultRow & TaskPriorityInput & {
+  id:number;kind:string;sort_order:number;
+};
 
 const positive = z.number().int().positive().max(2147483647);
+const legalTaskPrioritySchema=z.object({
+  priority:z.number().int().min(1).max(10).nullable(),
+  revision:positive,
+  reason:z.string().trim().max(2000).default(""),
+}).strict();
+export const mcpBodySchemas = { legalTaskPrioritySchema };
 const date = z.iso.date().nullable();
 const httpsUrl = z.union([z.literal(""), z.url().refine(value => /^https:\/\//i.test(value), "الرابط يجب أن يكون HTTPS")]);
 const caseSchema = z.object({
@@ -175,9 +185,30 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.get("/legal/cases/:id/records",handler(async(req,res)=>{
     const caseId=number(req.params.id),user=actor(req);
     await canCase(pool,user,caseId);
-    const rows=await pool.query(
-      "SELECT r.*,u.display_name AS creator_name,(SELECT count(*)::int FROM legal_document_images i WHERE i.record_id=r.id) AS image_count FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id LEFT JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 AND ($2::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$3))) ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 WHEN 'hearing' THEN 2 WHEN 'task' THEN 3 WHEN 'report' THEN 4 WHEN 'fact' THEN 5 ELSE 6 END,r.sort_order,r.record_date NULLS LAST,r.id DESC",[caseId,user.owner,user.id]);
-    res.json({items:rows.rows});
+    const rows=await pool.query<LegalTaskRow>(
+      `SELECT r.*,u.display_name AS creator_name,
+        (SELECT count(*)::int FROM legal_document_images i WHERE i.record_id=r.id) AS image_count,
+        linked.case_title,linked.next_hearing
+       FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id
+       LEFT JOIN users u ON u.id=r.created_by
+       LEFT JOIN LATERAL (
+         SELECT string_agg(c.title,' ' ORDER BY c.id) AS case_title,
+           MIN(c.next_hearing)::text AS next_hearing
+         FROM legal_record_cases all_cases JOIN legal_cases c ON c.id=all_cases.case_id
+         WHERE all_cases.record_id=r.id
+       ) linked ON true
+       WHERE rc.case_id=$1 AND ($2::boolean OR NOT EXISTS(
+         SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id
+           AND NOT EXISTS(SELECT 1 FROM legal_case_access granted
+             WHERE granted.case_id=other.case_id AND granted.user_id=$3)))
+       ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 WHEN 'hearing' THEN 2 WHEN 'task' THEN 3 WHEN 'report' THEN 4 WHEN 'fact' THEN 5 ELSE 6 END,
+         r.sort_order,r.record_date NULLS LAST,r.id DESC`,[caseId,user.owner,user.id]);
+    const now=Date.now();
+    const tasks=rows.rows.filter(row=>row.kind==="task")
+      .map(row=>({...row,...calculateLegalTaskPriority(row,now)})).sort(compareLegalTasks);
+    let taskIndex=0;
+    // Preserve the existing grouping and order of documents, facts and reports.
+    res.json({items:rows.rows.map(row=>row.kind==="task"?tasks[taskIndex++]:row)});
   }));
   router.get("/legal/cases/:id/access",handler(async(req,res)=>{
     ownerOnly(actor(req));
@@ -206,13 +237,13 @@ export function legalCaseRoutes(pool:Pool):Router {
     const term=String(req.query.q??"").trim().slice(0,120);
     // Visibility is checked for ALL linked cases so a task shared with a
     // confidential case cannot leak to a user with only partial access.
-    const rows=await pool.query(
-      `SELECT r.id,r.title,r.body,r.status,r.due_at,r.assigned_to,r.sort_order,
+    const rows=await pool.query<LegalTaskRow>(
+      `SELECT r.id,r.kind,r.title,r.body,r.status,r.due_at,r.assigned_to,r.sort_order,
         r.revision,r.task_priority,r.task_priority_reason,r.created_at,r.updated_at,
         COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'next_hearing',c.next_hearing)
           ORDER BY c.id) FILTER(WHERE c.id IS NOT NULL),'[]'::json) AS cases,
         MIN(c.next_hearing)::text AS next_hearing,
-        MIN(c.title) AS case_title
+        string_agg(c.title,' ' ORDER BY c.id) AS case_title
        FROM legal_records r
        LEFT JOIN legal_record_cases rc ON rc.record_id=r.id
        LEFT JOIN legal_cases c ON c.id=rc.case_id
@@ -226,31 +257,27 @@ export function legalCaseRoutes(pool:Pool):Router {
                SELECT 1 FROM legal_case_access a WHERE a.case_id=x.case_id AND a.user_id=$2
              ))
          ))
-       GROUP BY r.id ORDER BY r.id DESC LIMIT 1000`,
-      [user.owner,user.id,"%"+term.replace(/[%_\\]/g,"\\  router.get("/legal/records",handler(async(req,res)=>{")+"%"],
+       GROUP BY r.id`,
+      [user.owner,user.id,"%"+term.replace(/[%_\\]/g,"\\$&")+"%"],
     );
+    // Rank every visible task before returning it; a newer normal task must not
+    // hide an older urgent one behind a database fetch limit.
+    const now=Date.now();
     const items=rows.rows.map(row=>({
-      ...row,...calculateLegalTaskPriority(row),
-    })).sort((a,b)=>{
-      const ad=a.status==="verified"?1:0,bd=b.status==="verified"?1:0;
-      if(ad!==bd)return ad-bd;
-      if(a.priority!==b.priority)return a.priority-b.priority;
-      const at=a.due_at?Date.parse(a.due_at):Infinity,bt=b.due_at?Date.parse(b.due_at):Infinity;
-      return at-bt||a.sort_order-b.sort_order||b.id-a.id;
-    });
+      ...row,...calculateLegalTaskPriority(row,now),
+    })).sort(compareLegalTasks);
     res.json({items,total:items.length});
   }));
   router.put("/legal/tasks/:id/priority",handler(async(req,res)=>{
     const recordId=number(req.params.id);
-    const input=parse(z.object({
-      priority:z.number().int().min(1).max(10).nullable(),
-      reason:z.string().trim().max(2000).default(""),
-    }).strict(),req.body);
+    const input=parse(legalTaskPrioritySchema,req.body);
     const record=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));ownerOnly(user);
       await forbidIfDisabled(db);
-      const old=await getRecord(db,recordId);
+      const old=(await db.query("SELECT * FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
+      if(!old)missing();
       if(old.kind!=="task")throw new HttpError(400,"invalid_kind","السجل ليس مهمة");
+      if(old.revision!==input.revision)throw new HttpError(409,"conflict","تغيرت المهمة؛ أعد تحميلها قبل تعديل الأولوية");
       const next=(await db.query(
         "UPDATE legal_records SET task_priority=$2,task_priority_reason=$3,revision=revision+1,updated_by=$4,updated_at=now() WHERE id=$1 RETURNING *",
         [recordId,input.priority,input.priority===null?"":input.reason,user.id],

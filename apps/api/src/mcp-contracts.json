@@ -6346,5 +6346,49 @@
   "GET /companies/:companyId/transaction-import/source-dates/status/:idempotencyKey": {
     "queryFields": [],
     "source": "routes-import-source-dates.ts"
+  },
+  "GET /legal/tasks": {
+    "queryFields": [
+      "q"
+    ],
+    "source": "routes-legal-cases.ts"
+  },
+  "PUT /legal/tasks/:id/priority": {
+    "queryFields": [],
+    "bodyContract": "legalTaskPrioritySchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "reason": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "priority",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
   }
 }

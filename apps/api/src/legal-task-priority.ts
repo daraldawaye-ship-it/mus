@@ -2,9 +2,9 @@
 // stored facts: explicit owner-defined priority, filed deadlines and risk keywords.
 // An AI assistant can also update owner priorities using the dedicated route.
 export type TaskPriorityInput = {
-  title:string;body:string;due_at:string|null;status:string;
+  title:string;body:string;due_at:string|Date|null;status:string;
   task_priority:number|null;task_priority_reason:string|null;
-  case_title?:string|null;case_summary?:string|null;next_hearing?:string|null;
+  case_title?:string|null;case_summary?:string|null;next_hearing?:string|Date|null;
 };
 const urgencyWords: {test:RegExp; priority:number;reason:string}[] = [
   {test:/لطف الزبيري|أمر الأداء.*تظلم|التظلم.*أمر الأداء/,priority:1,reason:"مهلة تظلم قضائي"},
@@ -19,9 +19,9 @@ const urgencyWords: {test:RegExp; priority:number;reason:string}[] = [
   {test:/وقف التنفيذ|محضر النطق|الاستئناف|نقض|ميعاد الطعن/,priority:6,reason:"إجراء طعن أو تنفيذ قضائي"},
   {test:/التفتيش القضائي|شكوى التفتيش|التفتيش/,priority:8,reason:"متابعة رقابية"},
 ];
-function dueDateOf(raw:string|undefined|null):number|null{
+function dueDateOf(raw:string|Date|undefined|null):number|null{
   if(!raw) return null;
-  const ms=Date.parse(raw);
+  const ms=raw instanceof Date?raw.getTime():Date.parse(raw);
   return Number.isFinite(ms)?ms:null;
 }
 export function calculateLegalTaskPriority(t:TaskPriorityInput,now=Date.now()){
@@ -31,7 +31,7 @@ export function calculateLegalTaskPriority(t:TaskPriorityInput,now=Date.now()){
   let priority=9,reason="متابعة عادية تحتاج ترتيبًا";
   const explicit=t.title.match(/\[أولوية\s+(\d{1,2})\]/);
   if(explicit&&+explicit[1]>=1&&+explicit[1]<=10){priority=Math.max(1,Math.min(10,+explicit[1]));reason="ترتيب عاجل محدد سابقًا من المالك";}
-  else for(const rule of urgencyWords) if(rule.test(info)){priority=rule.priority;reason=rule.reason;break;}
+  else for(const rule of urgencyWords) if(rule.test.test(info)){priority=rule.priority;reason=rule.reason;break;}
   const due=dueDateOf(t.due_at);
   const hearing=dueDateOf(t.next_hearing);
   const closest=[due,hearing].filter((x):x is number=>x!==null).sort((a,b)=>a-b)[0];
@@ -42,4 +42,22 @@ export function calculateLegalTaskPriority(t:TaskPriorityInput,now=Date.now()){
     else if(days<=7){priority=Math.min(priority,5);reason+="؛ الموعد خلال أسبوع";}
   }
   return {priority,reason,source:"automatic" as const};
+}
+
+
+// Use the same ordering for the cross-case board and the tasks within a case.
+// Dates are evaluated after priority; legacy sort_order is only a stable tie break.
+export type OrderedLegalTask = {
+  id:number;status:string;priority:number;sort_order:number;
+  due_at:string|Date|null;next_hearing?:string|Date|null;
+};
+export function compareLegalTasks(a:OrderedLegalTask,b:OrderedLegalTask):number {
+  const completed=Number(a.status==="verified")-Number(b.status==="verified");
+  if(completed)return completed;
+  if(a.priority!==b.priority)return a.priority-b.priority;
+  const closest=(task:OrderedLegalTask)=>Math.min(
+    dueDateOf(task.due_at)??Infinity,dueDateOf(task.next_hearing)??Infinity,
+  );
+  const deadline=closest(a)-closest(b);
+  return (Number.isNaN(deadline)?0:deadline)||a.sort_order-b.sort_order||b.id-a.id;
 }

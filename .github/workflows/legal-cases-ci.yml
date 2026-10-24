@@ -6,11 +6,15 @@ on:
   pull_request:
     paths:
       - "apps/api/src/routes-legal-cases.ts"
+      - "apps/api/src/legal-task-priority.ts"
       - "apps/api/migrations/118_legal_case_management.sql"
       - "apps/web/src/pages/LegalCasesPage.tsx"
+      - "apps/web/src/pages/LegalTaskBoard.tsx"
       - "apps/web/src/pages/LegalCasesPage.css"
       - "packages/contracts/src/pages.ts"
       - "packages/contracts/src/index.ts"
+      - "tests/legal-cases.test.ts"
+      - "tests/legal-task-priority.test.ts"
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -41,4 +45,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: npx tsx --test tests/legal-cases.test.ts
+      - run: npx tsx --test tests/legal-cases.test.ts tests/legal-task-priority.test.ts

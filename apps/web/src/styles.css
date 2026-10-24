@@ -1,3 +1,57 @@
+.legal-workspace, .legal-workspace .card {
+  min-width: 0;
+}
+.legal-workspace {
+  display: grid;
+  gap: 12px;
+}
+.legal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.legal-task-scroll {
+  max-width: 100%;
+  overflow: auto;
+  max-height: 65vh;
+  margin-block-start: 12px;
+}
+.legal-task-table {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+}
+.legal-task-table th, .legal-task-table td {
+  padding: 8px;
+  text-align: start;
+  vertical-align: top;
+  border-block-end: 1px solid var(--border);
+}
+.legal-task-table th {
+  position: sticky;
+  top: 0;
+  background: var(--table-head);
+}
+.legal-task-table small {
+  display: block;
+  max-width: 240px;
+  color: var(--muted);
+}
+.legal-task-table details p {
+  max-width: 400px;
+}
+.legal-priority-control, .legal-priority-edit {
+  display: grid;
+  gap: 8px;
+}
+.legal-priority-edit {
+  min-width: 220px;
+}
+.legal-preserve {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 :root {
   font-family: Tahoma, Arial, sans-serif;
   font-size: 14px;

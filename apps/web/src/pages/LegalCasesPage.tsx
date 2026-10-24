@@ -4,10 +4,11 @@ import { useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { errorMessage } from "../phase2";
+import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from "./LegalTaskBoard";
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing";
 type Case = {id:number;title:string;case_number:string;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
-type Entry = {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
+type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
 type RecordForm = {kind:Kind;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
@@ -36,7 +37,7 @@ function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordFor
  const set=(key:keyof RecordForm,v:unknown)=>change({...value,[key]:v});
  return <div className="legal-fields">
  <Field label="العنوان" value={value.title} onChange={e=>set("title",e.target.value)}/>
- <Field label="الترتيب" type="number" min={0} value={value.sortOrder} onChange={e=>set("sortOrder",Number(e.target.value))}/>
+ <Field label={value.kind==="task"?"ترتيب ثانوي عند تساوي الأولوية":"الترتيب"} type="number" min={0} value={value.sortOrder} onChange={e=>set("sortOrder",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label="الشرح التفصيلي" value={value.body} rows={6} onChange={v=>set("body",v)}/></div>
  {(value.kind==="document")&&<>
  <div className="legal-wide"><TextField label="النص الكامل للمستند — مستقل عن الشرح" value={value.contentText} rows={8} onChange={v=>set("contentText",v)}/></div>
@@ -65,7 +66,7 @@ export function LegalCasesPage() {
  const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
  const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
- const records=useQuery({queryKey:["legal","records",caseId],queryFn:()=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records"),enabled:caseId>0});
+ const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab],queryFn:()=>api<{items:Entry[]}>("/legal/records"),enabled:owner&&tab==="unlinked"});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
  const links=useQuery({queryKey:["legal","linked",focus],queryFn:()=>api<{record:Entry;caseIds:number[];linkedIds:number[];images:{id:number;filename:string}[]}>("/legal/records/"+focus),enabled:!!focus});
@@ -97,6 +98,10 @@ export function LegalCasesPage() {
  return <div className="legal-workspace">
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
+ <LegalTaskBoard key={user?.id} owner={owner} onOpenCase={id=>{
+  setCaseEdit(false);setCaseNew(false);setEntryEdit(null);setLinkAfterSave(null);setFocus(null);
+  setParams({case:String(id),tab:"task"});
+ }}/>
  <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
  <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":c.status==="active"?"فعالة":"غير محددة"} · أولوية {c.priority}</small></button>)}</div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
@@ -146,7 +151,10 @@ export function LegalCasesPage() {
  {(r.image_urls??[]).map((url,i)=><a key={url+i} target="_blank" rel="noreferrer" href={url}>صورة {i+1}</a>)}
  </div>}
  {r.kind==="report"&&<p className="legal-meta">المرسل: {r.creator_name||r.created_by} · {new Date(r.created_at).toLocaleString("ar-YE")} · {r.reviewed_at?"اطُّلع عليه":"بانتظار المراجعة"} {owner&&!r.reviewed_at&&<Button variant="secondary" onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/review",{method:"POST"});})}>اعتماد الاطلاع</Button>}</p>}
- {r.kind==="task"&&<div className="legal-actions"><span>الموعد: {r.due_at?.slice(0,16)||"غير محدد"}</span><Select value={r.status||"pending"} disabled={!owner&&r.assigned_to!==user?.id&&!editor} onChange={e=>void action(async()=>{await api("/legal/records/"+r.id+"/task-status",{method:"POST",body:{status:e.target.value}});})}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option>{owner&&<option value="verified">تم التحقق</option>}</Select></div>}
+ {r.kind==="task"&&<div className="legal-actions"><span>الموعد: {r.due_at?.slice(0,16)||"غير محدد"}</span>
+ {r.priority!==undefined&&<span>الأولوية: {r.priority} · {r.source==="manual"?"يدوي":"تلقائي"} · {r.reason}</span>}
+ {owner&&r.priority!==undefined&&<LegalTaskPriorityControl task={r as LegalTaskPriority}/>}
+ <Select aria-label={`حالة المهمة ${r.id}`} value={r.status||"pending"} disabled={!owner&&r.assigned_to!==user?.id&&!editor} onChange={e=>void action(async()=>{await api("/legal/records/"+r.id+"/task-status",{method:"POST",body:{status:e.target.value}});})}><option value="pending">مطلوبة</option><option value="working">جارٍ العمل</option><option value="submitted">تم الإبلاغ</option><option value="blocked">متعذرة</option>{owner&&<option value="verified">تم التحقق</option>}</Select></div>}
  {focus===r.id&&links.data&&<div className="legal-linked"><div>القضايا المرتبطة: {links.data.caseIds.join("، ")||"لا توجد"}</div><div>السجلات المرتبطة: {links.data.linkedIds.map(i=>"#"+i).join("، ")||"لا توجد"}</div>
  {owner&&tab==="unlinked"&&caseId>0&&<Button onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/cases",{method:"POST",body:{caseId,linked:true}});})}>ربط بالقضية الحالية</Button>}
  {editor&&<div className="legal-actions"><Field label="رقم سجل للربط" type="number" value={linkNumber} onChange={e=>setLinkNumber(e.target.value)}/><Button disabled={!Number(linkNumber)} onClick={()=>void action(async()=>{await api("/legal/records/"+r.id+"/links",{method:"POST",body:{otherId:Number(linkNumber),linked:true}});setLinkNumber("");})}>ربط</Button></div>}

@@ -63,6 +63,80 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  const scoped=await reporter.call("GET","/legal/cases/"+caseId+"/records");
  assert.equal(scoped.status,200);
  assert.ok(!scoped.data.items.some((x:{id:number})=>x.id===documentId),"shared document must not leak when second case is inaccessible");
+
+ // The current task board uses calculated per-task priorities, independently of
+ // the legacy order of case records. A single edit must never renumber peers.
+ const task=async(title:string,extra:Record<string,unknown>={})=>{
+  const result=await owner.call("POST","/legal/records",{kind:"task",title,caseIds:[caseId],...extra});
+  assert.equal(result.status,201,JSON.stringify(result.data));
+  return result.data.record as {id:number;revision:number};
+ };
+ const overdue=await task("موعد مسجل فائت",{dueAt:"2000-01-01T00:00:00Z",sortOrder:999});
+ const ordinary=await task("متابعة عادية",{sortOrder:0});
+ const near=await task("موعد قريب",{dueAt:new Date(Date.now()+86400000).toISOString()});
+ const done=await task("[أولوية 1] مهمة منجزة",{status:"verified"});
+ const unlinked=await task("مهمة خاصة بالمالك",{caseIds:[]});
+ const hiddenCase=await owner.call("POST","/legal/cases",{title:"محبوسية تحتاج متابعة"});
+ assert.equal(hiddenCase.status,201);
+ const shared=await task("متابعة مشتركة",{caseIds:[caseId,hiddenCase.data.record.id]});
+ const escaped=await task("بحث%_\\نص",{caseIds:[]});
+ const search=await owner.call("GET","/legal/tasks?q="+encodeURIComponent("%_\\"));
+ assert.equal(search.status,200,JSON.stringify(search.data));
+ assert.deepEqual(search.data.items.map((x:{id:number})=>x.id),[escaped.id],"search metacharacters are literal");
+ const initialBoard=await owner.call("GET","/legal/tasks");
+ assert.equal(initialBoard.status,200,JSON.stringify(initialBoard.data));
+ assert.equal(initialBoard.data.items[0].id,overdue.id);
+ assert.equal(initialBoard.data.items.find((x:{id:number})=>x.id===shared.id).priority,4,"all linked case titles contribute to urgency");
+ const visibleBoard=await reporter.call("GET","/legal/tasks");
+ assert.equal(visibleBoard.status,200);
+ for(const hidden of [shared.id,unlinked.id,escaped.id])
+  assert.ok(!visibleBoard.data.items.some((x:{id:number})=>x.id===hidden),"partial case access must not expose task or priority facts");
+ const currentCase=await owner.call("GET","/legal/cases/"+caseId+"/records");
+ assert.equal(currentCase.status,200);
+ assert.deepEqual(currentCase.data.items.filter((x:{kind:string})=>x.kind==="task").map((x:{id:number})=>x.id),[overdue.id,near.id,shared.id,ordinary.id,done.id]);
+ const peerBefore=(await run.pool.query("SELECT * FROM legal_records WHERE id=$1",[overdue.id])).rows[0];
+ const priorityPath="/legal/tasks/"+ordinary.id+"/priority";
+ assert.equal((await reporter.call("PUT",priorityPath,{priority:1,revision:ordinary.revision})).status,403);
+ assert.equal((await owner.call("PUT",priorityPath,{priority:1})).status,400);
+ assert.equal((await owner.call("PUT",priorityPath,{priority:11,revision:ordinary.revision})).status,400);
+ const changed=await owner.call("PUT",priorityPath,{priority:1,reason:"عاجلة بقرار المالك",revision:ordinary.revision});
+ assert.equal(changed.status,200,JSON.stringify(changed.data));
+ assert.equal(changed.data.record.task_priority,1);
+ assert.equal(changed.data.record.task_priority_reason,"عاجلة بقرار المالك");
+ assert.equal(changed.data.record.revision,ordinary.revision+1);
+ const manualBoard=await owner.call("GET","/legal/tasks");
+ assert.equal(manualBoard.data.items[0].id,ordinary.id);
+ assert.equal(manualBoard.data.items[0].source,"manual");
+ const manualCase=await owner.call("GET","/legal/cases/"+caseId+"/records");
+ assert.equal(manualCase.data.items.find((x:{kind:string})=>x.kind==="task").id,ordinary.id,"case tasks share board priority order");
+ const stale=await owner.call("PUT",priorityPath,{priority:10,revision:ordinary.revision});
+ assert.equal(stale.status,409,"stale priority must not replace a newer edit");
+ const stored=await owner.call("GET","/legal/records/"+ordinary.id);
+ assert.equal(stored.data.record.task_priority,1);
+ const reset=await owner.call("PUT",priorityPath,{priority:null,reason:"ignored on reset",revision:changed.data.record.revision});
+ assert.equal(reset.status,200);
+ assert.equal(reset.data.record.task_priority,null);
+ assert.equal(reset.data.record.task_priority_reason,"");
+ const resetBoard=await owner.call("GET","/legal/tasks");
+ assert.equal(resetBoard.data.items.find((x:{id:number})=>x.id===ordinary.id).source,"automatic");
+ assert.equal(resetBoard.data.items.find((x:{id:number})=>x.id===ordinary.id).priority,9);
+ assert.equal(resetBoard.data.items[0].id,overdue.id);
+ assert.deepEqual((await run.pool.query("SELECT * FROM legal_records WHERE id=$1",[overdue.id])).rows[0],peerBefore,"editing one priority preserves every peer field");
+ const priorityAudit=await run.pool.query("SELECT before_value,after_value FROM audit_events WHERE target_type='legalRecord' AND target_id=$1 AND action='legal.update' ORDER BY id",[ordinary.id]);
+ assert.equal(priorityAudit.rows.length,2,"only accepted edits are audited");
+ assert.equal(priorityAudit.rows[0].before_value.task_priority,null);
+ assert.equal(priorityAudit.rows[0].after_value.task_priority,1);
+ assert.equal(priorityAudit.rows[1].after_value.task_priority,null);
+ // Generate newer routine records so the older urgent task lies beyond the old
+ // newest-1000 cutoff. Ranking must include it and report the real visible count.
+ await run.pool.query("INSERT INTO legal_records(kind,title,created_by,updated_by) SELECT 'task','متابعة إضافية '||n,$1,$1 FROM generate_series(1,1001) n",[changed.data.record.created_by]);
+ const completeBoard=await owner.call("GET","/legal/tasks");
+ assert.equal(completeBoard.status,200);
+ assert.equal(completeBoard.data.items[0].id,overdue.id);
+ assert.equal(completeBoard.data.total,1001+initialBoard.data.total);
+ assert.equal(completeBoard.data.items.at(-1).id,done.id,"completed tasks stay after pending tasks");
+ const visibleCase=await reporter.call("GET","/legal/cases/"+caseId+"/records");
+ assert.ok(!visibleCase.data.items.some((x:{id:number})=>x.id===shared.id));
  assert.equal((await owner.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:null})).status,200);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
  const afterRevocation=await reporter.call("GET","/legal/cases");
