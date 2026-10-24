@@ -54,6 +54,7 @@ async function readFinance<T>(
   pool: Pool,
   req: Request,
   action: (client: PoolClient, companyId: number) => Promise<T>,
+  allowAccountRead = false,
 ): Promise<T> {
   const companyId = id(req.params.companyId);
   return transaction(pool, async (client) => {
@@ -61,7 +62,13 @@ async function readFinance<T>(
       "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
     );
     const user = await currentActor(client, actor(req), false);
-    await companyAccess(client, user, companyId, "finance.view");
+    try {
+      await companyAccess(client, user, companyId, "finance.view");
+    } catch (error) {
+      if (!allowAccountRead || !(error instanceof HttpError) || error.status !== 403)
+        throw error;
+      await companyAccess(client, user, companyId, "accounts.view");
+    }
     return action(client, companyId);
   });
 }
@@ -415,7 +422,7 @@ export function financeRoutes(pool: Pool): Router {
           "invalid_query",
           "نوع قائمة الاختيار غير صالح",
         );
-      });
+      }, req.query.type === "accounts");
       res.json(result);
     }),
   );

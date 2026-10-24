@@ -27,6 +27,9 @@ on:
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/UserShortcuts.tsx'
       - 'apps/web/src/UserMenu.tsx'
+      - 'apps/web/src/avatar-menu-permissions.ts'
+      - 'tests/avatar-menu-permissions.test.ts'
+      - 'apps/api/src/routes-commerce-options.ts'
       - 'apps/web/src/EntityMenuSearch.tsx'
       - 'apps/web/src/recent-entities.ts'
       - 'apps/web/src/phase2.tsx'
@@ -99,6 +102,8 @@ jobs:
         run: node --import tsx --test tests/last-company-activation.test.ts
       - name: Recent selections remain scoped by company and user
         run: node --import tsx --test tests/recent-entities.test.ts
+      - name: Avatar tabs respect granted page and module permissions
+        run: node --import tsx --test tests/avatar-menu-permissions.test.ts
       - name: Fast invoice and avatar item lookup regression
         run: node --import tsx --test --test-name-pattern="invoice quick lookup uses bounded pages" tests/item-sale-ranking-cache.test.ts
       - name: Keep user shortcut flyout inside viewport in RTL and narrow layouts

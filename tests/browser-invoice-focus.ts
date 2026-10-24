@@ -280,8 +280,41 @@ try {
     .getByRole("button", { name: "إغلاق النافذة" }).click();
   await assertRecent("مستخدم", "Focus worker");
   assert.deepEqual(errors, []);
+  // A regular employee with no company module permissions must not see
+  // the protected top tabs, but can still navigate and change personal settings.
+  const limitedApi = await request.newContext({ baseURL: origin });
+  try {
+    const response = await limitedApi.post("/api/auth/login", {
+      headers: { origin },
+      data: {
+        email: "focus.worker@example.test",
+        password: "invoice-focus-worker-passphrase",
+      },
+    });
+    assert.equal(response.status(), 200, await response.text());
+    const limitedContext = await browser.newContext({
+      baseURL: origin,
+      storageState: await limitedApi.storageState(),
+    });
+    try {
+      const limitedPage = await limitedContext.newPage();
+      await limitedPage.goto(base);
+      await limitedPage.getByRole("button", { name: "قائمة المستخدم" }).click();
+      const limitedMenu = limitedPage.getByRole("dialog", { name: "قائمة المستخدم والأقسام" });
+      await limitedMenu.getByRole("tab", { name: "الإعدادات" }).waitFor();
+      assert.deepEqual(await limitedMenu.getByRole("tab").allTextContents(),
+        ["التنقل", "الإعدادات"]);
+      // Keyboard navigation moves across visible tabs only.
+      await limitedMenu.getByRole("tab", { name: "التنقل" }).press("ArrowLeft");
+      assert.equal(await limitedMenu.getByRole("tab", { name: "الإعدادات" }).getAttribute("aria-selected"), "true");
+    } finally {
+      await limitedContext.close();
+    }
+  } finally {
+    await limitedApi.dispose();
+  }
   console.log(
-    "PASS: sales/purchase search, focus and latest item/account/employee from invoice and lists",
+    "PASS: sales/purchase search, latest item/account/employee and permission-scoped avatar tabs",
   );
   await context.close();
 } finally {
