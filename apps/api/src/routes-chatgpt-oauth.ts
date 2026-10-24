@@ -103,7 +103,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       <p>يمكن إلغاء الاتصال في أي وقت من <a href="/oauth/connections">إدارة الاتصالات</a>.</p>
       <form action="/oauth/authorize" method="post">${params}
       <input type="hidden" name="csrf" value="${safe(req.auth.csrf)}">
-      <button type="submit">${[WRITE_SCOPE,ALRAESY_WRITE].includes(String(req.query.scope))?"أوافق على القراءة والتعديل ضمن صلاحياتي":"أوافق على القراءة فقط"}</button></form>`));
+      <button type="submit">${req.query.scope===WRITE_SCOPE?"أوافق على القراءة والإنشاء والتعديل":req.query.scope===ALRAESY_WRITE?"أوافق على القراءة والتعديل ضمن صلاحياتي":"أوافق على القراءة فقط"}</button></form>`));
   }));
   router.post("/oauth/authorize",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)
