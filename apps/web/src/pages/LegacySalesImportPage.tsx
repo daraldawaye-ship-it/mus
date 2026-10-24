@@ -9,6 +9,7 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   const {user}=useSession();
   const [batches,setBatches]=useState<Batch[]>([]);
   const [name,setName]=useState("");
+  const [url,setUrl]=useState("");
   const [busy,setBusy]=useState(false);
   const [limit,setLimit]=useState(5);
   const [results,setResults]=useState<string[]>([]);
@@ -29,6 +30,16 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
       }
       setBatches(parsed);
     } catch(e) {setError(e instanceof Error?e.message:"تعذر قراءة الملف.");}
+  }
+  async function loadUrl() {
+    if(!url.trim()||busy)return;
+    setBusy(true);setError("");setResults([]);setBatches([]);
+    try {
+      const response=await api<{batches:Batch[]}>(`/companies/${context.company.id}/transaction-import/from-url`,{method:"POST",body:{url:url.trim()}});
+      setBatches(response.batches);setName("الرابط المحدد");
+      setResults(["تم استلام البيانات من الرابط والتحقق من الصيغة. لا تُحفظ نسخة من الملف على خادم الموقع."]);
+    }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الرابط.");}
+    finally{setBusy(false);}
   }
   async function run() {
     if(!user?.owner||busy||!batches.length)return;
@@ -51,7 +62,12 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
       <Notice>ارفع ملف JSONL أو JSON المجهز من Access. يُستورد إلى {context.company.name} فقط. لا ترفع ملف ACCDB مباشرة؛ يجب استخراج الدفعات أولًا.</Notice>
-      <input type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])}/>
+      <label>رابط الملف الآمن (HTTPS)</label>
+      <input type="url" dir="ltr" value={url} placeholder="https://..." onChange={e=>setUrl(e.target.value)} disabled={busy} style={{width:"100%"}}/>
+      <Button disabled={busy||!url.trim()} onClick={()=>void loadUrl()}>قراءة الملف من الرابط</Button>
+      <p>لا يخزن الموقع الملف بعد قراءته؛ تبقى النسخة الأصلية لدى الجهة المستضيفة للرابط.</p>
+      <details><summary>أو اختيار ملف من الجهاز</summary>
+      <input type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])}/></details>
       {name&&<p>الملف: {name} — الفواتير: {count}</p>}
       {batches.length>0&&<><p>أول فاتورة: {batches[0].documents[0].sourceId} — التاريخ: {batches[0].postingDate}</p>
         <label>عدد الفواتير التجريبية <input type="number" min={1} max={100} value={limit} onChange={e=>setLimit(Math.max(1,Math.min(100,Number(e.target.value)||5)))}/></label>
