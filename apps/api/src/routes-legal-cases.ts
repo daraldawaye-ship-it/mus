@@ -7,6 +7,7 @@ import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
+import { calculateLegalTaskPriority } from "./legal-task-priority.ts";
 
 const positive = z.number().int().positive().max(2147483647);
 const date = z.iso.date().nullable();
@@ -199,6 +200,65 @@ export function legalCaseRoutes(pool:Pool):Router {
       return {userId:input.userId,role:input.role};
     });
     res.json({access});
+  }));
+  router.get("/legal/tasks",handler(async(req,res)=>{
+    const user=actor(req);
+    const term=String(req.query.q??"").trim().slice(0,120);
+    // Visibility is checked for ALL linked cases so a task shared with a
+    // confidential case cannot leak to a user with only partial access.
+    const rows=await pool.query(
+      `SELECT r.id,r.title,r.body,r.status,r.due_at,r.assigned_to,r.sort_order,
+        r.revision,r.task_priority,r.task_priority_reason,r.created_at,r.updated_at,
+        COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'next_hearing',c.next_hearing)
+          ORDER BY c.id) FILTER(WHERE c.id IS NOT NULL),'[]'::json) AS cases,
+        MIN(c.next_hearing)::text AS next_hearing,
+        MIN(c.title) AS case_title
+       FROM legal_records r
+       LEFT JOIN legal_record_cases rc ON rc.record_id=r.id
+       LEFT JOIN legal_cases c ON c.id=rc.case_id
+       WHERE r.kind='task' AND (r.title ILIKE $3 OR r.body ILIKE $3)
+         AND ($1::boolean OR (
+           EXISTS(SELECT 1 FROM legal_record_cases x
+             JOIN legal_case_access a ON a.case_id=x.case_id AND a.user_id=$2
+             WHERE x.record_id=r.id)
+           AND NOT EXISTS(SELECT 1 FROM legal_record_cases x
+             WHERE x.record_id=r.id AND NOT EXISTS(
+               SELECT 1 FROM legal_case_access a WHERE a.case_id=x.case_id AND a.user_id=$2
+             ))
+         ))
+       GROUP BY r.id ORDER BY r.id DESC LIMIT 1000`,
+      [user.owner,user.id,"%"+term.replace(/[%_\\]/g,"\\  router.get("/legal/records",handler(async(req,res)=>{")+"%"],
+    );
+    const items=rows.rows.map(row=>({
+      ...row,...calculateLegalTaskPriority(row),
+    })).sort((a,b)=>{
+      const ad=a.status==="verified"?1:0,bd=b.status==="verified"?1:0;
+      if(ad!==bd)return ad-bd;
+      if(a.priority!==b.priority)return a.priority-b.priority;
+      const at=a.due_at?Date.parse(a.due_at):Infinity,bt=b.due_at?Date.parse(b.due_at):Infinity;
+      return at-bt||a.sort_order-b.sort_order||b.id-a.id;
+    });
+    res.json({items,total:items.length});
+  }));
+  router.put("/legal/tasks/:id/priority",handler(async(req,res)=>{
+    const recordId=number(req.params.id);
+    const input=parse(z.object({
+      priority:z.number().int().min(1).max(10).nullable(),
+      reason:z.string().trim().max(2000).default(""),
+    }).strict(),req.body);
+    const record=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));ownerOnly(user);
+      await forbidIfDisabled(db);
+      const old=await getRecord(db,recordId);
+      if(old.kind!=="task")throw new HttpError(400,"invalid_kind","السجل ليس مهمة");
+      const next=(await db.query(
+        "UPDATE legal_records SET task_priority=$2,task_priority_reason=$3,revision=revision+1,updated_by=$4,updated_at=now() WHERE id=$1 RETURNING *",
+        [recordId,input.priority,input.priority===null?"":input.reason,user.id],
+      )).rows[0];
+      await audit(db,user,"legal.update","legalRecord",recordId,old,next);
+      return next;
+    });
+    res.json({record});
   }));
   router.get("/legal/records",handler(async(req,res)=>{
     const user=actor(req),kind=req.query.kind;
