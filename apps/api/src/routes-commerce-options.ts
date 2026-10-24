@@ -42,7 +42,16 @@ export function commerceOptionRoutes(pool: Pool): Router {
         } catch (error) {
           if (!(error instanceof HttpError) || error.status !== 403)
             throw error;
-          await companyAccess(client, user, companyId, "inventory.view");
+          try {
+            await companyAccess(client, user, companyId, "inventory.view");
+          } catch (inventoryError) {
+            // Item-card readers can search items even without commerce/stock access.
+            // Other option types retain their existing commerce/inventory policy.
+            if (req.query.type !== "items" ||
+                !(inventoryError instanceof HttpError) || inventoryError.status !== 403)
+              throw inventoryError;
+            await companyAccess(client, user, companyId, "items.view");
+          }
         }
         // Keep typeahead responsive with bounded result pages, but preserve
         // the same monthly sales-frequency order for EVERY search length.
