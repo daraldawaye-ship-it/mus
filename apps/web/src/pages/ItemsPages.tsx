@@ -219,6 +219,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   const canManage = itemsAccess(context, true);
   const [importOpen, setImportOpen] = useState(false);
   const [sheetItemId,setSheetItemId]=useState<number|null>(null);
+  const previousSelectedIds = useRef<Set<string>>(new Set());
   const [sheetBusy,setSheetBusy]=useState(false);
   function filter(key: string, value: string) {
     setParams((previous) => {
@@ -430,6 +431,16 @@ function ItemsManager({ context }: { context: CompanyContext }) {
           onPageSizeChange={list.setPageSize}
           loading={list.loading}
           ariaLabel="جدول الأصناف"
+          onSelectionChange={(ids) => {
+            // Keyboard/checkbox row selection must also update the item shown
+            // in the avatar, not only clicking a cell or opening its card.
+            const newlySelected = ids.filter(id => !previousSelectedIds.current.has(id));
+            previousSelectedIds.current = new Set(ids);
+            if (!user || newlySelected.length !== 1) return;
+            const item = list.data?.items.find(entry => String(entry.id) === newlySelected[0]);
+            if (item) rememberRecentEntity(user.id, companyId, "item",
+              {id:item.id,name:item.name});
+          }}
           onRowInteract={(item: Item) => {
             if (user) rememberRecentEntity(user.id, companyId, "item",
               {id:item.id,name:item.name});
