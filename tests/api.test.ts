@@ -3501,15 +3501,15 @@ test("ChatGPT site access uses fresh consent, domain permissions, employee accou
   const target=await register(f,"mcp-employee@example.test",{name:"Rawan",phone:"777888010"});
   const {createSession}=await import("../apps/api/src/services/auth.ts");
   const session=await createSession(f.pool,platform.user.id);
-  const issue=async(scope:string)=>{
+  const issue=async(scope:string,login=session)=>{
     const registration=await fetch(f.baseUrl+"/oauth/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({redirect_uris:["http://localhost:4322/callback"]})});
     const client=await registration.json() as {client_id:string};
     const verifier="m".repeat(64);
     const fields={client_id:client.client_id,redirect_uri:"http://localhost:4322/callback",response_type:"code",scope,state:"state_mcp_12345678",resource:"http://localhost/mcp",code_challenge:createHash("sha256").update(verifier).digest("base64url"),code_challenge_method:"S256"};
-    const consent=await fetch(f.baseUrl+"/oauth/authorize?"+new URLSearchParams(fields),{headers:{cookie:"tijara_session="+session.token}});
+    const consent=await fetch(f.baseUrl+"/oauth/authorize?"+new URLSearchParams(fields),{headers:{cookie:"tijara_session="+login.token}});
     assert.equal(consent.status,200);
     if(scope.includes("tijara.write"))assert.match(await consent.text(),/الموظفين.*الفواتير.*الترحيل/);
-    const approval=await fetch(f.baseUrl+"/oauth/authorize",{method:"POST",redirect:"manual",headers:{"content-type":"application/x-www-form-urlencoded",cookie:"tijara_session="+session.token},body:new URLSearchParams({...fields,csrf:session.csrf})});
+    const approval=await fetch(f.baseUrl+"/oauth/authorize",{method:"POST",redirect:"manual",headers:{"content-type":"application/x-www-form-urlencoded",cookie:"tijara_session="+login.token},body:new URLSearchParams({...fields,csrf:login.csrf})});
     assert.equal(approval.status,302);
     const code=new URL(approval.headers.get("location")!).searchParams.get("code")!;
     const exchange=await fetch(f.baseUrl+"/oauth/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,redirect_uri:fields.redirect_uri,code,code_verifier:verifier,resource:fields.resource})});
@@ -3536,6 +3536,25 @@ test("ChatGPT site access uses fresh consent, domain permissions, employee accou
   const created=await rpc(access,"tijara_api_write",{operation:"POST /companies/:companyId/employees",pathParams,body:{userId:target.user.id,name:"Rawan",phone:"777888010",role:"employee",active:true,permissions:[],createSalesCashbox:true}});
   assert.equal(created.result.structuredContent.status,201,JSON.stringify(created));
   const emp=created.result.structuredContent.data.employee;
+  // An ordinary member authorizes site-only scopes independently.
+  // That never grants platform-admin or another-company access.
+  const staffSession=await createSession(f.pool,target.user.id);
+  const staffRead=await issue("tijara.read",staffSession);
+  const staffCompanies=await rpc(staffRead,"tijara_api_read",{operation:"GET /companies"});
+  assert.equal(staffCompanies.result.structuredContent.status,200,JSON.stringify(staffCompanies));
+  const staffOther=await rpc(staffRead,"tijara_api_read",{
+    operation:"GET /companies/:companyId",pathParams:{companyId:999999}});
+  assert([403,404].includes(staffOther.result.structuredContent.status));
+  const staffTable=await rpc(staffRead,"query_general_table",{tableName:"طلب تعديلات في الموقع"});
+  assert.equal(staffTable.error.code,-32001);
+  assert.equal((await rpc(staffRead,"tijara_api_write",{
+    operation:"POST /companies",body:{name:"Unauthorized company"}
+  })).error.code,-32001);
+  const staffWrite=await issue("tijara.read tijara.write",staffSession);
+  const blockedStaff=await rpc(staffWrite,"tijara_api_write",{
+    operation:"POST /companies",body:{name:"Unauthorized company"}
+  });
+  assert.equal(blockedStaff.result.structuredContent.status,403,JSON.stringify(blockedStaff));
   const accounts=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees/:employeeId/accounts",pathParams:{...pathParams,employeeId:emp.id}});
   assert.deepEqual(accounts.result.structuredContent.data.accounts.links.map((a:any)=>a.kind).sort(),["advance","sales_cash","sales_pouch"]);
   assert.equal((await f.pool.query("SELECT count(*)::int AS n FROM audit_events WHERE action='employee.create' AND target_id=$1",[emp.id])).rows[0].n,1);
