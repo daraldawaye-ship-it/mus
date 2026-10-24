@@ -33,6 +33,16 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
       setBatches(parsed);
     } catch(e) {setError(e instanceof Error?e.message:"تعذر قراءة الملف.");}
   }
+  async function loadPrepared() {
+    if(busy)return;
+    setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");
+    try {
+      const response=await api<{batches:Batch[]}>(`/companies/${context.company.id}/transaction-import/prepared-next-50`);
+      setBatches(response.batches);setName("الدفعة الخاصة — 50 فاتورة");
+      setLimit(50);setNotice("تم تحميل 50 فاتورة من المصدر الخاص. اضغط ترحيل 50 فاتورة للاعتماد.");
+    }catch(e){setError(e instanceof Error?e.message:"الدفعة الخاصة غير متاحة بعد.");}
+    finally{setBusy(false);}
+  }
   async function loadUrl() {
     if(!url.trim()||busy)return;
     setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);
@@ -67,6 +77,7 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   return <div className="form-stack">
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
+      <Button disabled={busy} onClick={()=>void loadPrepared()}>تحميل الدفعة الخاصة — 50 فاتورة</Button>
       <Notice>ارفع ملف JSONL أو JSON المجهز من Access. يُستورد إلى {context.company.name} فقط. لا ترفع ملف ACCDB مباشرة؛ يجب استخراج الدفعات أولًا.</Notice>
       <label>رابط الملف الآمن (HTTPS)</label>
       <input type="url" dir="ltr" value={url} placeholder="https://..." onChange={e=>setUrl(e.target.value)} disabled={busy} style={{width:"100%"}}/>
