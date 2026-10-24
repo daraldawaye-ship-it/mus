@@ -33,6 +33,8 @@ import { permissionRequest } from "./services/permission-rules.ts";
 import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
 import { socialAuthRoutes } from "./routes-social-auth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
+import { alraesyApiBearer } from "./http.ts";
+import { alraesyApiCatalog, alraesyMcpRoutes } from "./routes-alraesy-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
 
 export async function createApp(options: AppOptions = {}) {
@@ -58,19 +60,8 @@ export async function createApp(options: AppOptions = {}) {
   // External IdPs redirect here (Apple uses form_post); dedicated one-use
   // state/cookie and signed ID-token validation secure these callbacks.
   app.use("/api", socialAuthRoutes(pool, config.appOrigin, config.production));
-  app.use(chatgptMcpRoutes(pool, config.appOrigin));
-  app.use(
-    "/api",
-    express.json({ limit: "5mb" }),
-    loadSession(pool),
-    mutationSecurity(config.appOrigin),
-  );
-  app.use(setupRoutes(pool, config.appOrigin));
-  app.use("/api", (req, _res, next) => permissionRequest.run(req, next));
-  app.use(
-    "/api",
-    pageRoutes(pool),
-    pageAvailabilityGate(pool),
+  const pages=pageRoutes(pool);
+  const apiRouters=[
     authRoutes(pool, config.production),
     mediaRoutes(pool),
     publicRoutes(pool),
@@ -93,7 +84,19 @@ export async function createApp(options: AppOptions = {}) {
     inventoryRoutes(pool),
     commerceOptionRoutes(pool),
     commerceRoutes(pool),
+  ];
+  app.use(chatgptMcpRoutes(pool, config.appOrigin));
+  app.use(alraesyMcpRoutes(pool, config.appOrigin, alraesyApiCatalog([pages,...apiRouters])));
+  app.use(
+    "/api",
+    express.json({ limit: "5mb" }),
+    loadSession(pool),
+    alraesyApiBearer(pool,config.appOrigin),
+    mutationSecurity(config.appOrigin),
   );
+  app.use(setupRoutes(pool, config.appOrigin));
+  app.use("/api", (req, _res, next) => permissionRequest.run(req, next));
+  app.use("/api",pages,pageAvailabilityGate(pool),...apiRouters);
   app.use("/api", (_req, res) =>
     res
       .status(404)
