@@ -10,6 +10,8 @@ import { thumbnailUrl } from "./ImageUpload";
 import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
 import { EntityMenuSearch } from "./EntityMenuSearch";
+import { usePageDirectory } from "./page-directory";
+import { allowedAvatarTabs } from "./avatar-menu-permissions";
 import "./user-menu-tabs.css";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
@@ -60,6 +62,9 @@ export function UserMenu({
 }) {
   const appearance = useAppearance();
   const location = useLocation();
+  const directory = usePageDirectory(companyId ?? undefined);
+  const permittedTabs = allowedAvatarTabs(user.owner, companyId, directory.data);
+  const visibleSections = sections.filter(section => permittedTabs.includes(section.key));
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SectionKey>("navigation");
   const [itemMenuReset, setItemMenuReset] = useState(0);
@@ -71,6 +76,10 @@ export function UserMenu({
   const scrollArea = useRef<HTMLDivElement>(null);
 
   useEffect(() => setOpen(false), [location.pathname, user.id]);
+  useEffect(() => {
+    if (!permittedTabs.includes(activeTab)) setActiveTab("navigation");
+  }, [activeTab, permittedTabs.join("|")]);
+  const displayedTab = permittedTabs.includes(activeTab) ? activeTab : "navigation";
   useEffect(() => {
     if (!open) return;
     menu.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
@@ -103,12 +112,12 @@ export function UserMenu({
   const selectByKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const index = sections.findIndex(section => section.key === activeTab);
+    const index = visibleSections.findIndex(section => section.key === displayedTab);
     // The UI is right-to-left; ArrowLeft moves to the next tab in reading order.
     const next = event.key === "Home" ? 0
-      : event.key === "End" ? sections.length - 1
-      : (index + (event.key === "ArrowLeft" ? 1 : -1) + sections.length) % sections.length;
-    setActiveTab(sections[next].key);
+      : event.key === "End" ? visibleSections.length - 1
+      : (index + (event.key === "ArrowLeft" ? 1 : -1) + visibleSections.length) % visibleSections.length;
+    setActiveTab(visibleSections[next].key);
     menu.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   };
 
@@ -138,9 +147,9 @@ export function UserMenu({
           <div className="user-menu-tabs" role="tablist"
             aria-label="أقسام قائمة المستخدم"
             onKeyDown={selectByKeyboard}>
-            {sections.map(section => {
+            {visibleSections.map(section => {
               const Icon = section.icon;
-              const selected = section.key === activeTab;
+              const selected = section.key === displayedTab;
               return (
                 <button
                   type="button" key={section.key}
@@ -151,7 +160,7 @@ export function UserMenu({
                   aria-controls="user-menu-tabpanel"
                   tabIndex={selected ? 0 : -1}
                   onClick={() => {
-                    if (section.key === "item" && activeTab === "item")
+                    if (section.key === "item" && displayedTab === "item")
                       setItemMenuReset(value => value + 1);
                     setActiveTab(section.key);
                   }}
@@ -167,10 +176,10 @@ export function UserMenu({
             className="user-menu-tab-content"
             role="tabpanel"
             tabIndex={0}
-            aria-labelledby={`user-menu-tab-${activeTab}`}
+            aria-labelledby={`user-menu-tab-${displayedTab}`}
             ref={scrollArea}
           >
-            {activeTab === "navigation" && (
+            {displayedTab === "navigation" && (
               <UserShortcutMenuGrid
                 user={user} companyId={companyId} employeeId={employeeId}
                 onNavigate={dismiss}
@@ -178,14 +187,14 @@ export function UserMenu({
                 onQuickAdd={() => { dismiss(); setQuickAddOpen(true); }}
               />
             )}
-            {(activeTab === "item" || activeTab === "financialAccount" || activeTab === "employee") && (
-              <EntityMenuSearch key={`${user.id}:${companyId}:${activeTab}`}
+            {(displayedTab === "item" || displayedTab === "financialAccount" || displayedTab === "employee") && (
+              <EntityMenuSearch key={`${user.id}:${companyId}:${displayedTab}`}
                 user={user} companyId={companyId} employeeId={employeeId}
                 employeeName={employeeName}
-                kind={activeTab === "item" ? "item" : activeTab === "financialAccount" ? "account" : "employee"}
+                kind={displayedTab === "item" ? "item" : displayedTab === "financialAccount" ? "account" : "employee"}
                 itemMenuReset={itemMenuReset} />
             )}
-            {activeTab === "settings" && (
+            {displayedTab === "settings" && (
               <>
                 <div className="user-menu-account-identity">
                   <Avatar user={user} large />
@@ -218,7 +227,7 @@ export function UserMenu({
                 </div>
               </>
             )}
-            {activeTab === "tools" && (
+            {displayedTab === "tools" && (
               <div className="user-menu-empty" aria-live="polite">
                 لا توجد خيارات في هذا القسم حاليًا
               </div>
