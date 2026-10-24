@@ -210,6 +210,50 @@ try {
   await page.getByRole("dialog", { name: "القيمة الكاملة" })
     .getByRole("button", { name: "إغلاق النافذة" }).click();
   await assertRecent("صنف", "Other fresh item");
+  // The avatar item tab starts with a scalable three-column action grid.
+  // An action replaces the grid with ten real-result slots; tapping the
+  // already-active top Item tab restores the actions without losing the item.
+  await page.route("**/item-history/**", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("type") !== "purchase") return route.continue();
+    const pageNumber = Number(url.searchParams.get("page"));
+    assert.equal(url.searchParams.get("pageSize"), "10");
+    const offset = (pageNumber - 1) * 10;
+    const items = Array.from({ length: pageNumber === 1 ? 10 : 2 }, (_, index) => ({
+      lineId: offset + index + 1,
+      documentId: offset + index + 1,
+      documentDate: "2026-10-24",
+      partyName: `Supplier ${offset + index + 1}`,
+      quantityFirstUnit: "1",
+      unitPriceFirstUnit: "100",
+      currencyCode: "YER",
+    }));
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ items, hasMore: pageNumber === 1 }) });
+  });
+  await page.getByRole("button", { name: "قائمة المستخدم" }).click();
+  const itemTab = page.getByRole("tab", { name: "صنف", exact: true });
+  await itemTab.click();
+  const itemGrid = page.locator(".user-menu-item-actions");
+  await itemGrid.waitFor();
+  assert.deepEqual(await itemGrid.locator("button").allTextContents(),
+    ["مشتريات", "مبيعات", "تسويات", "مناقلات", "البدائل"]);
+  await itemGrid.getByRole("button", { name: "مشتريات" }).click();
+  await itemGrid.waitFor({ state: "hidden" });
+  const historyRows = page.locator(".user-menu-item-history-row");
+  await historyRows.nth(9).waitFor();
+  assert.equal(await historyRows.count(), 10);
+  assert.match(await historyRows.first().innerText(), /Supplier 1/);
+  await page.getByRole("button", { name: "المزيد" }).click();
+  await page.getByText("الصفحة 2", { exact: true }).waitFor();
+  await page.getByText("Supplier 11", { exact: true }).waitFor();
+  assert.equal(await historyRows.count(), 2);
+  assert.equal(await page.getByRole("button", { name: "المزيد" }).count(), 0);
+  await itemTab.click();
+  await itemGrid.waitFor();
+  assert.equal(await page.getByRole("combobox", { name: "البحث عن صنف" }).inputValue(),
+    "Other fresh item");
+  await page.getByRole("button", { name: "قائمة المستخدم" }).click();
   await page.goto(base + "/accounts");
   await page.getByRole("searchbox", { name: "بحث في الحسابات" })
     .fill("Recent account");
