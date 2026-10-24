@@ -159,6 +159,12 @@ export async function directoryEntries(
     user,
     companyId,
   );
+  // Legal files default to the owner. The owner can grant access separately
+  // to individual cases; users without any grant should not see this page.
+  const legalVisible = user.owner || Boolean((await db.query(
+    "SELECT 1 FROM legal_case_access WHERE user_id=$1 LIMIT 1",
+    [user.id],
+  )).rowCount);
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
     [companyId],
@@ -210,6 +216,7 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
+            (definition.key !== "public.legal-cases" || legalVisible) &&
             directoryActionAllowed(
               definition,
               action,
