@@ -378,11 +378,16 @@ test("returns location stock remains in inventory but never inflates item covera
   const report = (await f.owner.ok<{ report: ItemActivityReport }>(
     "GET", `/companies/${company.id}/item-statistics-report?sortBy=approximateCoverageDays&sortDir=desc`,
   )).report;
-  assert.equal(report.rows.find(value => value.itemId === saved.id)?.approximateCoverageDays, "75");
-  await f.pool.query(
-    "UPDATE stock_balances SET quantity_smallest=70 WHERE company_id=$1 AND item_id=$2 AND location_id=$3",
-    [company.id, saved.id, returns.id],
-  );
+  assert.equal(Number(report.rows.find(value => value.itemId === saved.id)?.approximateCoverageDays), 75);
+  // Raise only the returns-location count. The increase belongs in stock
+  // movements, valuation, and the physical balance together.
+  await f.owner.ok("POST", `/companies/${company.id}/stock-adjustments`, {
+    idempotencyKey: randomUUID(), documentDate,
+    itemId: saved.id, locationId: returns.id,
+    countedQuantity: "70", expectedQuantitySmallest: "40", unit: 3,
+    expiryDate: null, nearestExpiryDate: "2027-12-01",
+    unitCostBase: "1", description: "Further customer-return stock count",
+  }, 201);
   assert.equal((await coverage(f.owner, company.id, saved.id)).approximateCoverageDays, "75");
   assert.equal((await f.pool.query(
     "SELECT stock_total::text,stock_returns::text FROM item_statistics WHERE company_id=$1 AND item_id=$2",
