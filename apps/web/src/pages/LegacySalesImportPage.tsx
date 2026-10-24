@@ -20,7 +20,11 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
     setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);setName(file.name);
     if(file.size>30_000_000){setError("قسّم الملف إلى أجزاء أصغر من 30 ميجابايت.");return;}
     try {
-      const text=await file.text();
+      const compressed=/\.gz$/i.test(file.name);
+      const text=compressed
+        ? await new Response(file.stream().pipeThrough(new DecompressionStream("gzip"))).text()
+        : await file.text();
+      if(text.length>150_000_000)throw new Error("الملف بعد فك الضغط أكبر من الحد المسموح.");
       const raw=text.trim().startsWith("[")?JSON.parse(text):text.trim().split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
       if(!Array.isArray(raw)||!raw.length)throw new Error("الملف فارغ أو ليس JSON/JSONL.");
       const parsed=raw as Batch[];
@@ -54,9 +58,9 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   return <div className="form-stack">
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
-      <Notice>اختر ملف JSON أو JSONL المستخرج من النظام السابق ثم اضغط ترحيل جميع الفواتير. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
+      <Notice>اختر ملف JSON أو JSONL أو JSONL.GZ المضغوط المستخرج من النظام السابق ثم اضغط ترحيل جميع الفواتير. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
       <label htmlFor="legacy-invoice-file">اختيار ملف الفواتير من الجهاز</label>
-      <input id="legacy-invoice-file" type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])} style={{width:"100%"}}/>
+      <input id="legacy-invoice-file" type="file" accept=".json,.jsonl,.gz,application/json,application/gzip" disabled={busy} onChange={e=>void load(e.target.files?.[0])} style={{width:"100%"}}/>
       {name&&<p>الملف: {name} — الفواتير: {count}</p>}
       {batches.length>0&&<><p>أول فاتورة: {batches[0].documents[0].sourceId} — التاريخ: {batches[0].postingDate}</p>
         <Button disabled={busy} onClick={()=>void run()}>{busy?"جارٍ الترحيل…":`ترحيل جميع الفواتير (${count})`}</Button></>}
