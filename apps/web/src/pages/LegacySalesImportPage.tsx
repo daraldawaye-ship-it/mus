@@ -10,7 +10,6 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   const [batches,setBatches]=useState<Batch[]>([]);
   const [name,setName]=useState("");
   const [busy,setBusy]=useState(false);
-  const [limit,setLimit]=useState(50);
   const [summary,setSummary]=useState({added:0,existing:0,failed:0,total:0,processed:0});
   const [failures,setFailures]=useState<string[]>([]);
   const [notice,setNotice]=useState("");
@@ -35,19 +34,18 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   async function run() {
     if(!user?.owner||busy||!batches.length)return;
     setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");
-    let done=0;
     try {
       for(const batch of batches) {
-        if(done>=limit)break;
-        const selected=batch.documents.slice(0,limit-done);
-        const body={...batch,documents:selected,idempotencyKey:crypto.randomUUID()};
-        const response=await api<Result>(`/companies/${context.company.id}/transaction-import/batch`,{method:"POST",body});
-        done+=selected.length;
-        const added=response.imported??response.accepted??[];
-        const existing=response.existing??response.skipped??[];
-        const failed=response.failed??[];
-        setSummary(prev=>({added:prev.added+added.length,existing:prev.existing+existing.length,failed:prev.failed+failed.length,total:prev.total+added.reduce((n,row)=>n+Number(row.total??0),0),processed:prev.processed+selected.length}));
-        if(failed.length)setFailures(prev=>[...prev,...failed.map(row=>`${row.sourceId??"فاتورة"}: ${row.message??"تعذر الترحيل"}`)]);
+        for(let offset=0;offset<batch.documents.length;offset+=100) {
+          const selected=batch.documents.slice(offset,offset+100);
+          const body={...batch,documents:selected,idempotencyKey:crypto.randomUUID()};
+          const response=await api<Result>(`/companies/${context.company.id}/transaction-import/batch`,{method:"POST",body});
+          const added=response.imported??response.accepted??[];
+          const existing=response.existing??response.skipped??[];
+          const failed=response.failed??[];
+          setSummary(prev=>({added:prev.added+added.length,existing:prev.existing+existing.length,failed:prev.failed+failed.length,total:prev.total+added.reduce((n,row)=>n+Number(row.total??0),0),processed:prev.processed+selected.length}));
+          if(failed.length)setFailures(prev=>[...prev,...failed.map(row=>`${row.sourceId??"فاتورة"}: ${row.message??"تعذر الترحيل"}`)]);
+        }
       }
     } catch(e){setError(e instanceof Error?e.message:"تعذر الترحيل.");}
     finally{setBusy(false);}
@@ -56,13 +54,12 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   return <div className="form-stack">
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
-      <Notice>اختر ملف JSON أو JSONL المستخرج من النظام السابق ثم حدد عدد الفواتير واضغط ترحيل. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
+      <Notice>اختر ملف JSON أو JSONL المستخرج من النظام السابق ثم اضغط ترحيل جميع الفواتير. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
       <label htmlFor="legacy-invoice-file">اختيار ملف الفواتير من الجهاز</label>
       <input id="legacy-invoice-file" type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])} style={{width:"100%"}}/>
       {name&&<p>الملف: {name} — الفواتير: {count}</p>}
       {batches.length>0&&<><p>أول فاتورة: {batches[0].documents[0].sourceId} — التاريخ: {batches[0].postingDate}</p>
-        <label>عدد الفواتير المطلوب ترحيلها <input type="number" min={1} max={100} value={limit} onChange={e=>setLimit(Math.max(1,Math.min(100,Number(e.target.value)||5)))}/></label>
-        <Button disabled={busy} onClick={()=>void run()}>{busy?"جارٍ الترحيل…":`ترحيل ${Math.min(limit,count)} فواتير`}</Button></>}
+        <Button disabled={busy} onClick={()=>void run()}>{busy?"جارٍ الترحيل…":`ترحيل جميع الفواتير (${count})`}</Button></>}
       {error&&<Notice tone="error">{error}</Notice>}
       {notice&&<Notice tone="success">{notice}</Notice>}
       {summary.processed>0&&<div className="details-list"><strong>نتيجة الترحيل</strong><div>تمت المعالجة: {summary.processed} — أضيف: {summary.added} — موجود مسبقًا: {summary.existing} — مرفوض: {summary.failed}</div><div>إجمالي الفواتير الجديدة: {summary.total.toLocaleString("ar-YE")} ريال</div></div>}
