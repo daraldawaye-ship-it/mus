@@ -1,0 +1,27 @@
+name: Legal Cases CI
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+  pull_request:
+    paths:
+      - "apps/api/src/routes-legal-cases.ts"
+      - "apps/api/migrations/118_legal_case_management.sql"
+      - "apps/web/src/pages/LegalCasesPage.tsx"
+      - "apps/web/src/pages/LegalCasesPage.css"
+      - "packages/contracts/src/pages.ts"
+      - "packages/contracts/src/index.ts"
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
