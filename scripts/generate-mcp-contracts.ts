@@ -127,6 +127,12 @@ for (const file of await readdir(root)) {
           } catch {}
         }
       }
+      if (!bodyName && !bodySchemaSource && variables.has("mcpBodylessOperations")) {
+        const mod = await import(pathToFileURL(resolve(root, file)).href);
+        if (mod.mcpBodylessOperations?.includes(method + " " + path)) {
+          bodySchema = { type: "object", properties: {}, additionalProperties: false };
+        }
+      }
       contracts[method + " " + path] = {
         queryFields: [...query],
         ...(bodyName ? { bodyContract: bodyName } : {}),

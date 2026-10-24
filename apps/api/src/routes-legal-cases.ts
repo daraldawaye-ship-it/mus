@@ -19,7 +19,6 @@ const legalTaskPrioritySchema=z.object({
   revision:positive,
   reason:z.string().trim().max(2000).default(""),
 }).strict();
-export const mcpBodySchemas = { legalTaskPrioritySchema };
 const date = z.iso.date().nullable();
 const httpsUrl = z.union([z.literal(""), z.url().refine(value => /^https:\/\//i.test(value), "الرابط يجب أن يكون HTTPS")]);
 const caseSchema = z.object({
@@ -56,6 +55,36 @@ const recordSchema = z.object({
   assignedTo: positive.nullable().default(null),
   caseIds: z.array(positive).max(100).default([]),
 }).strict();
+const legalCaseUpdateSchema = caseSchema.extend({revision:positive});
+const legalCaseAccessSchema = z.object({
+  userId:positive,
+  role:z.enum(["viewer","reporter","editor"]).nullable(),
+}).strict();
+const legalRecordUpdateSchema = recordSchema.omit({caseIds:true}).extend({revision:positive});
+const legalRecordCaseSchema = z.object({caseId:positive,linked:z.boolean()}).strict();
+const legalRecordLinkSchema = z.object({otherId:positive,linked:z.boolean()}).strict();
+const legalRecordTaskStatusSchema = z.object({
+  status:z.enum(["pending","working","submitted","verified","blocked"]),
+}).strict();
+const legalRecordImageSchema = z.object({
+  filename:z.string().max(250).default(""),
+  dataUrl:z.string().min(30).max(3000000),
+}).strict();
+export const mcpBodySchemas = {
+  caseSchema,
+  legalCaseUpdateSchema,
+  legalCaseAccessSchema,
+  recordSchema,
+  legalRecordUpdateSchema,
+  legalRecordCaseSchema,
+  legalRecordLinkSchema,
+  legalRecordTaskStatusSchema,
+  legalRecordImageSchema,
+  legalTaskPrioritySchema,
+};
+// This action intentionally reads no body; keep that explicit in the catalog
+// without adding a different validator or workflow to the existing API route.
+export const mcpBodylessOperations = ["POST /legal/records/:id/review"];
 const caseColumns = [
   "title","case_number","agency","drive_folder_id","drive_folder_url","stage","status","file_copy_status",
   "start_date","next_hearing","priority","summary",
@@ -166,7 +195,7 @@ export function legalCaseRoutes(pool:Pool):Router {
   }));
   router.put("/legal/cases/:id",handler(async(req,res)=>{
     const caseId=number(req.params.id);
-    const payload=parse(caseSchema.extend({revision:positive}),req.body);
+    const payload=parse(legalCaseUpdateSchema,req.body);
     const record=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canCase(db,user,caseId,"editor");
@@ -217,7 +246,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     res.json({items:rows.rows});
   }));
   router.put("/legal/cases/:id/access",handler(async(req,res)=>{
-    const caseId=number(req.params.id),input=parse(z.object({userId:positive,role:z.enum(["viewer","reporter","editor"]).nullable()}).strict(),req.body);
+    const caseId=number(req.params.id),input=parse(legalCaseAccessSchema,req.body);
     const access=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));ownerOnly(user);
       await canCase(db,user,caseId);
@@ -325,7 +354,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     res.status(201).json({record});
   }));
   router.put("/legal/records/:id",handler(async(req,res)=>{
-    const recordId=number(req.params.id),input=parse(recordSchema.omit({caseIds:true}).extend({revision:positive}),req.body);
+    const recordId=number(req.params.id),input=parse(legalRecordUpdateSchema,req.body);
     const record=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canRecord(db,user,recordId,"editor");
@@ -340,7 +369,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     res.json({record});
   }));
   router.post("/legal/records/:id/cases",handler(async(req,res)=>{
-    const recordId=number(req.params.id),input=parse(z.object({caseId:positive,linked:z.boolean()}).strict(),req.body);
+    const recordId=number(req.params.id),input=parse(legalRecordCaseSchema,req.body);
     await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canRecord(db,user,recordId,"editor");
@@ -353,7 +382,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     res.json({ok:true});
   }));
   router.post("/legal/records/:id/links",handler(async(req,res)=>{
-    const recordId=number(req.params.id),input=parse(z.object({otherId:positive,linked:z.boolean()}).strict(),req.body);
+    const recordId=number(req.params.id),input=parse(legalRecordLinkSchema,req.body);
     if(recordId===input.otherId) throw new HttpError(400,"invalid_link","لا يمكن ربط السجل بنفسه");
     await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
@@ -381,7 +410,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     res.json({record});
   }));
   router.post("/legal/records/:id/task-status",handler(async(req,res)=>{
-    const recordId=number(req.params.id),input=parse(z.object({status:z.enum(["pending","working","submitted","verified","blocked"])}).strict(),req.body);
+    const recordId=number(req.params.id),input=parse(legalRecordTaskStatusSchema,req.body);
     const record=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canRecord(db,user,recordId,"viewer");
@@ -397,7 +426,7 @@ export function legalCaseRoutes(pool:Pool):Router {
   }));
   router.post("/legal/records/:id/images",handler(async(req,res)=>{
     const recordId=number(req.params.id);
-    const input=parse(z.object({filename:z.string().max(250).default(""),dataUrl:z.string().min(30).max(3000000)}).strict(),req.body);
+    const input=parse(legalRecordImageSchema,req.body);
     const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.dataUrl);
     if(!match) throw new HttpError(400,"invalid_image","صيغة صورة غير صالحة");
     const image=Buffer.from(match[2],"base64"),mime="image/"+match[1];

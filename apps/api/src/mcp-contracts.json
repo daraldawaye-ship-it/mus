@@ -6390,5 +6390,747 @@
       "additionalProperties": false
     },
     "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/overview": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/people": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/cases": {
+    "queryFields": [
+      "q",
+      "status",
+      "page"
+    ],
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/cases": {
+    "queryFields": [],
+    "bodyContract": "caseSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "caseNumber": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "agency": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250
+        },
+        "driveFolderId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "stage": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "status": {
+          "default": "active",
+          "type": "string",
+          "enum": [
+            "active",
+            "closed",
+            "unknown"
+          ]
+        },
+        "fileCopyStatus": {
+          "default": "unknown",
+          "type": "string",
+          "enum": [
+            "unknown",
+            "yes",
+            "no",
+            "partial"
+          ]
+        },
+        "startDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextHearing": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "summary": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/cases/:id": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "PUT /legal/cases/:id": {
+    "queryFields": [],
+    "bodyContract": "legalCaseUpdateSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "caseNumber": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "agency": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250
+        },
+        "driveFolderId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "stage": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "status": {
+          "default": "active",
+          "type": "string",
+          "enum": [
+            "active",
+            "closed",
+            "unknown"
+          ]
+        },
+        "fileCopyStatus": {
+          "default": "unknown",
+          "type": "string",
+          "enum": [
+            "unknown",
+            "yes",
+            "no",
+            "partial"
+          ]
+        },
+        "startDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextHearing": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "summary": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100000
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "title",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/cases/:id/records": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/cases/:id/access": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "PUT /legal/cases/:id/access": {
+    "queryFields": [],
+    "bodyContract": "legalCaseAccessSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "reporter",
+                "editor"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "userId",
+        "role"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/records": {
+    "queryFields": [
+      "kind",
+      "q"
+    ],
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/records/:id": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records": {
+    "queryFields": [],
+    "bodyContract": "recordSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "document",
+            "event",
+            "explanation",
+            "task",
+            "report",
+            "hearing"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "body": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250000
+        },
+        "contentText": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "imageUrls": {
+          "default": [],
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": ""
+              },
+              {
+                "type": "string",
+                "format": "uri"
+              }
+            ]
+          }
+        },
+        "pdfUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "driveFileId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "sourceIssuer": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "documentNumber": {
+          "default": "",
+          "type": "string",
+          "maxLength": 150
+        },
+        "recordDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dueAt": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortOrder": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "status": {
+          "default": "",
+          "type": "string",
+          "maxLength": 40
+        },
+        "assignedTo": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "caseIds": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "PUT /legal/records/:id": {
+    "queryFields": [],
+    "bodyContract": "legalRecordUpdateSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "document",
+            "event",
+            "explanation",
+            "task",
+            "report",
+            "hearing"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "body": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250000
+        },
+        "contentText": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "imageUrls": {
+          "default": [],
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": ""
+              },
+              {
+                "type": "string",
+                "format": "uri"
+              }
+            ]
+          }
+        },
+        "pdfUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "driveFileId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderId": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "driveFolderUrl": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        },
+        "sourceIssuer": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "documentNumber": {
+          "default": "",
+          "type": "string",
+          "maxLength": 150
+        },
+        "recordDate": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dueAt": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortOrder": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "status": {
+          "default": "",
+          "type": "string",
+          "maxLength": 40
+        },
+        "assignedTo": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "kind",
+        "title",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records/:id/cases": {
+    "queryFields": [],
+    "bodyContract": "legalRecordCaseSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "caseId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "linked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "caseId",
+        "linked"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records/:id/links": {
+    "queryFields": [],
+    "bodyContract": "legalRecordLinkSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "otherId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "linked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "otherId",
+        "linked"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records/:id/review": {
+    "queryFields": [],
+    "bodySchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records/:id/task-status": {
+    "queryFields": [],
+    "bodyContract": "legalRecordTaskStatusSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "working",
+            "submitted",
+            "verified",
+            "blocked"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "POST /legal/records/:id/images": {
+    "queryFields": [],
+    "bodyContract": "legalRecordImageSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "filename": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250
+        },
+        "dataUrl": {
+          "type": "string",
+          "minLength": 30,
+          "maxLength": 3000000
+        }
+      },
+      "required": [
+        "dataUrl"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/images/:id": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "GET /legal/cases/:id/ai-export": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
   }
 }
