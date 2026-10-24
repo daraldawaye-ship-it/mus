@@ -175,7 +175,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const caseId=number(req.params.id),user=actor(req);
     await canCase(pool,user,caseId);
     const rows=await pool.query(
-      "SELECT r.*,u.display_name AS creator_name,(SELECT count(*)::int FROM legal_document_images i WHERE i.record_id=r.id) AS image_count FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id LEFT JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 WHEN 'hearing' THEN 2 WHEN 'task' THEN 3 WHEN 'report' THEN 4 WHEN 'fact' THEN 5 ELSE 6 END,r.sort_order,r.record_date NULLS LAST,r.id DESC",[caseId]);
+      "SELECT r.*,u.display_name AS creator_name,(SELECT count(*)::int FROM legal_document_images i WHERE i.record_id=r.id) AS image_count FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id LEFT JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 AND ($2::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$3))) ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 WHEN 'hearing' THEN 2 WHEN 'task' THEN 3 WHEN 'report' THEN 4 WHEN 'fact' THEN 5 ELSE 6 END,r.sort_order,r.record_date NULLS LAST,r.id DESC",[caseId,user.owner,user.id]);
     res.json({items:rows.rows});
   }));
   router.get("/legal/cases/:id/access",handler(async(req,res)=>{
@@ -205,7 +205,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     if(kind!==undefined && !kindSchema.safeParse(kind).success) throw new HttpError(400,"invalid_query","نوع سجل غير صالح");
     const q=String(req.query.q??"").trim().slice(0,120),limit=100;
     const rows=await pool.query(
-      "SELECT r.* FROM legal_records r WHERE ($1::boolean OR EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id)) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) ORDER BY r.id DESC LIMIT $5",
+      "SELECT r.* FROM legal_records r WHERE ($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) ORDER BY r.id DESC LIMIT $5",
       [user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",limit]);
     res.json({items:rows.rows});
   }));
@@ -343,7 +343,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     await canCase(pool,user,caseId);
     const [record,records,linked]=await Promise.all([
       pool.query("SELECT * FROM legal_cases WHERE id=$1",[caseId]),
-      pool.query("SELECT r.*,u.display_name AS creator_name FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 ELSE 2 END,r.sort_order,r.record_date NULLS LAST,r.id",[caseId]),
+      pool.query("SELECT r.*,u.display_name AS creator_name FROM legal_records r JOIN legal_record_cases rc ON rc.record_id=r.id JOIN users u ON u.id=r.created_by WHERE rc.case_id=$1 AND ($2::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$3))) ORDER BY CASE r.kind WHEN 'explanation' THEN 0 WHEN 'event' THEN 1 ELSE 2 END,r.sort_order,r.record_date NULLS LAST,r.id",[caseId,user.owner,user.id]),
       pool.query("SELECT l.first_record_id,l.second_record_id FROM legal_record_links l WHERE l.first_record_id IN(SELECT record_id FROM legal_record_cases WHERE case_id=$1) OR l.second_record_id IN(SELECT record_id FROM legal_record_cases WHERE case_id=$1)",[caseId]),
     ]);
     res.json({version:1,case:record.rows[0],records:records.rows,links:linked.rows,notes:"Original scans and external PDFs require separately authorized retrieval; text is not inferred from links."});
