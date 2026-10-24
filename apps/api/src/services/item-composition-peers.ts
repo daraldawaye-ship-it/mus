@@ -5,7 +5,7 @@ import { missing } from "../errors.ts";
 
 /** Existing composition relationship only: no reservation or implied interchangeable stock. */
 export async function readItemCompositionPeers(
- client: PoolClient,user: User,companyId: number,itemId: number,page: number,
+ client: PoolClient,user: User,companyId: number,itemId: number,page: number,pageSize: 10 | 20 = 20,
 ): Promise<ItemCompositionPeers> {
  const primary=(await client.query(
    `SELECT i.composition_id,c.arabic_name,c.english_name,c.active,
@@ -29,7 +29,7 @@ export async function readItemCompositionPeers(
    composition.active&&composition.identicalAlternative?"identicalAlternative":"sameComposition";
  const result:ItemCompositionPeers={
    companyId,itemId,canViewStock,composition,relation,
-   total:0,page,pageSize:20,peers:[],
+   total:0,page,pageSize,peers:[],
  };
  if(!composition)return result;
  const count=await client.query(
@@ -50,8 +50,8 @@ export async function readItemCompositionPeers(
      i.factor2,i.factor3,${stockCol}
     FROM items i ${stockJoin}
     WHERE i.company_id=$1 AND i.composition_id=$2 AND i.id<>$3 AND i.active=true
-    ORDER BY ${stockOrder} LIMIT 20 OFFSET $4`,
-   [companyId,composition.id,itemId,(page-1)*20],
+    ORDER BY ${stockOrder} LIMIT $5 OFFSET $4`,
+   [companyId,composition.id,itemId,(page-1)*pageSize,pageSize],
  );
  result.peers=rows.rows.map(r=>({
    id:r.id,code:r.code,name:r.name,active:r.active,
