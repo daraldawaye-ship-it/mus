@@ -347,7 +347,7 @@ test("returns location stock remains in inventory but never inflates item covera
       // Items in this fixture track expiry; the adjustment must use a
       // real batch date rather than introducing unknown-expiry stock.
       nearestExpiryDate: "2027-12-01",
-      unitCostBase: "0",
+      unitCostBase: "1",
       description: "Coverage stock by location",
     }, 201);
   }
