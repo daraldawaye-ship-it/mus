@@ -329,11 +329,24 @@ test("returns location stock remains in inventory but never inflates item covera
     { branchId: branch.id, name: "مرتجعات العملاء", kind: "returns" }, 201,
   )).location;
   const saved = await item(f, company.id, currency.id, { reserveQuantity: "5" });
+  // Stock balances are not standalone writable counters: every change must
+  // have a matching stock movement and valuation. Seed through the ordinary
+  // inventory adjustment endpoint so the deferred database integrity guard
+  // still protects the test as it protects production.
+  const documentDate = new Date().toISOString().slice(0, 10);
   for (const [location, quantity] of [[showroom, "30"], [warehouse, "20"], [returns, "40"]] as const) {
-    await f.pool.query(
-      "INSERT INTO stock_balances(company_id,item_id,location_id,quantity_smallest) VALUES($1,$2,$3,$4)",
-      [company.id, saved.id, location.id, quantity],
-    );
+    await f.owner.ok("POST", `/companies/${company.id}/stock-adjustments`, {
+      idempotencyKey: randomUUID(),
+      documentDate,
+      itemId: saved.id,
+      locationId: location.id,
+      countedQuantity: quantity,
+      expectedQuantitySmallest: "0",
+      unit: 3,
+      expiryDate: null,
+      unitCostBase: "0",
+      description: "Coverage stock by location",
+    }, 201);
   }
   await f.pool.query(
     `INSERT INTO item_daily_activity(company_id,item_id,document_date,sale_quantity)
