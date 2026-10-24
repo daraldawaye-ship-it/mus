@@ -13,7 +13,8 @@ import { currentActor, publicAdmin } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { missing, HttpError } from "./errors.ts";
-import { PRIVATE_LEGAL_TABLES, requireLegalLegacyOwner } from "./legacy-legal-tables.ts";
+import { PRIVATE_LEGAL_TABLES } from "./legacy-legal-tables.ts";
+import { assertGeneralTableAccess, hasGeneralTableAccess } from "./general-table-access.ts";
 
 const columns: Record<keyof GeneralTableInput, string> = {
   tableName: "general_table_table_name",
@@ -72,7 +73,7 @@ export function generalTableRoutes(pool: Pool): Router {
     "/general-table",
     handler(async (req, res) => {
       const currentUser = actor(req);
-      publicAdmin(currentUser);
+      if(!await hasGeneralTableAccess(pool,currentUser)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
       const query = listQuery(
         req.query,
         {
@@ -102,8 +103,8 @@ export function generalTableRoutes(pool: Pool): Router {
         where += ` AND ${column}=$${params.length}`;
       }
       if (!currentUser.owner) {
-        params.push([...PRIVATE_LEGAL_TABLES]);
-        where += ` AND general_table_table_name <> ALL(${params.length}::text[])`;
+        params.push(currentUser.id);
+        where += ` AND general_table_table_name IN (SELECT table_name FROM general_table_grants WHERE user_id=${params.length})`;
       }
       const total = await pool.query(
         `SELECT count(*)::integer AS total FROM general_table WHERE ${where}`,
@@ -135,7 +136,7 @@ export function generalTableRoutes(pool: Pool): Router {
       );
       const records = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
-        publicAdmin(user);
+        if(!await hasGeneralTableAccess(client,user)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
         await assertRequestPagesEnabled(client, req, true);
         // Lock and validate every source record before any insert. The entire
         // copy operation rolls back if a source is missing or auditing fails.
@@ -145,7 +146,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         const found = new Map(source.rows.map((row) => [row.general_table_id as number, row]));
         if (found.size !== input.ids.length) missing();
-        for (const row of source.rows) requireLegalLegacyOwner(user.owner, String(row.general_table_table_name));
+        for (const row of source.rows) await assertGeneralTableAccess(client,user,String(row.general_table_table_name),"editor");
         const created: GeneralTableRecord[] = [];
         for (const sourceId of input.ids) {
           const original = recordDTO(found.get(sourceId)!);
@@ -170,7 +171,7 @@ export function generalTableRoutes(pool: Pool): Router {
   router.get(
     "/general-table/table-names",
     handler(async (req, res) => {
-      publicAdmin(actor(req));
+      if(!await hasGeneralTableAccess(pool,actor(req))) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
       const query = req.query.q;
       if (query !== undefined && (typeof query !== "string" || query.length > 120))
         throw new HttpError(400, "invalid_query", "اسم الجدول غير صالح");
@@ -178,9 +179,9 @@ export function generalTableRoutes(pool: Pool): Router {
       const rows = await pool.query(
         `SELECT DISTINCT general_table_table_name AS name FROM general_table
          WHERE general_table_table_name<>'' AND general_table_table_name ILIKE $1
-           AND ($2::boolean OR general_table_table_name <> ALL($3::text[]))
+           AND ($2::boolean OR general_table_table_name IN (SELECT table_name FROM general_table_grants WHERE user_id=$3))
          ORDER BY name LIMIT 100`,
-        [searchPattern(q),actor(req).owner,[...PRIVATE_LEGAL_TABLES]],
+        [searchPattern(q),actor(req).owner,actor(req).id],
       );
       res.json({ items: rows.rows.map(row => row.name as string) });
     }),
@@ -188,13 +189,13 @@ export function generalTableRoutes(pool: Pool): Router {
   router.get(
     "/general-table/:id",
     handler(async (req, res) => {
-      publicAdmin(actor(req));
+      if(!await hasGeneralTableAccess(pool,actor(req))) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
       const found = await pool.query(
         "SELECT * FROM general_table WHERE general_table_id=$1",
         [id(req.params.id)],
       );
       if (!found.rows[0]) missing();
-      requireLegalLegacyOwner(actor(req).owner,String(found.rows[0].general_table_table_name));
+      await assertGeneralTableAccess(pool,actor(req),String(found.rows[0].general_table_table_name));
       res.json({ record: recordDTO(found.rows[0]) });
     }),
   );
@@ -202,10 +203,10 @@ export function generalTableRoutes(pool: Pool): Router {
     "/general-table",
     handler(async (req, res) => {
       const input = parse(generalTableSchema, req.body);
-      requireLegalLegacyOwner(actor(req).owner,input.tableName);
+      
       const record = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
-        publicAdmin(user);
+        if(!await hasGeneralTableAccess(client,user)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
         await assertRequestPagesEnabled(client, req, true);
         const placeholders = sqlFields.map((_, i) => `$${i + 1}`).join(",");
         const result = await client.query(
@@ -239,7 +240,7 @@ export function generalTableRoutes(pool: Pool): Router {
       }).strict(), req.body);
       const record = await transaction(pool, async client => {
         const user = await currentActor(client, actor(req));
-        publicAdmin(user);
+        if(!await hasGeneralTableAccess(client,user)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
         await assertRequestPagesEnabled(client, req, true);
         const current = await client.query(
           "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE",
@@ -247,7 +248,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!current.rows[0]) missing();
         const before = recordDTO(current.rows[0]);
-        requireLegalLegacyOwner(user.owner,before.tableName);
+        await assertGeneralTableAccess(client,user,before.tableName,"editor");
         if (before.title !== input.expectedTitle)
           throw new HttpError(409, "stale_title",
             "تم تعديل العنوان من مستخدم آخر؛ حدث القائمة قبل الحفظ.");
@@ -276,7 +277,7 @@ export function generalTableRoutes(pool: Pool): Router {
       }).strict(), req.body);
       const record = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
-        publicAdmin(user);
+        if(!await hasGeneralTableAccess(client,user)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
         await assertRequestPagesEnabled(client, req, true);
         const current = await client.query(
           "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE",
@@ -284,7 +285,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!current.rows[0]) missing();
         const before = recordDTO(current.rows[0]);
-        requireLegalLegacyOwner(user.owner,before.tableName);
+        await assertGeneralTableAccess(client,user,before.tableName,"editor");
         if (before[input.field] !== input.expectedValue)
           throw new HttpError(409, "stale_number",
             "تغيرت قيمة الرقم من مستخدم آخر؛ حدّث الجدول وحاول مجددًا.");
@@ -310,7 +311,7 @@ export function generalTableRoutes(pool: Pool): Router {
       const input = parse(generalTableSchema, req.body);
       const record = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
-        publicAdmin(user);
+        if(!await hasGeneralTableAccess(client,user)) throw new HttpError(403,"general_table_forbidden","الجدول العام مغلق إلا بتفويض من المالك");
         await assertRequestPagesEnabled(client, req, true);
         const found = await client.query(
           "SELECT * FROM general_table WHERE general_table_id=$1 FOR UPDATE",
@@ -318,8 +319,8 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!found.rows[0]) missing();
         const before = recordDTO(found.rows[0]);
-        requireLegalLegacyOwner(user.owner,before.tableName);
-        requireLegalLegacyOwner(user.owner,input.tableName);
+        await assertGeneralTableAccess(client,user,before.tableName,"editor");
+        await assertGeneralTableAccess(client,user,input.tableName,"editor");
         const assignments = sqlFields
           .map((field, index) => `${field}=$${index + 1}`)
           .join(",");
