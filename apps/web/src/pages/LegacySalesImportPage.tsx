@@ -18,7 +18,7 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   async function load(file?:File) {
     if(!file)return;
     setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);setName(file.name);
-    if(file.size>30_000_000){setError("قسّم الملف إلى أجزاء أصغر من 30 ميجابايت.");return;}
+    if(file.size>50_000_000){setError("الحد الأقصى لحجم ملف الترحيل 50 ميجابايت.");return;}
     try {
       const compressed=/\.gz$/i.test(file.name);
       const text=compressed
@@ -59,7 +59,7 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
       <Notice>اختر ملف JSON أو JSONL أو JSONL.GZ المضغوط المستخرج من النظام السابق ثم اضغط ترحيل جميع الفواتير. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
-      <label htmlFor="legacy-invoice-file">اختيار ملف الفواتير من الجهاز</label>
+      <label htmlFor="legacy-invoice-file">اختيار ملف الفواتير من الجهاز (حتى 50 ميجابايت)</label>
       <input id="legacy-invoice-file" type="file" accept=".json,.jsonl,.gz,application/json,application/gzip" disabled={busy} onChange={e=>void load(e.target.files?.[0])} style={{width:"100%"}}/>
       {name&&<p>الملف: {name} — الفواتير: {count}</p>}
       {batches.length>0&&<><p>أول فاتورة: {batches[0].documents[0].sourceId} — التاريخ: {batches[0].postingDate}</p>
