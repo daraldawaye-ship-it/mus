@@ -62,13 +62,14 @@ export function LegalCasesPage() {
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
  const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
- const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState("");
+ const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
  const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId],queryFn:()=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records"),enabled:caseId>0});
  const all=useQuery({queryKey:["legal","all",tab],queryFn:()=>api<{items:Entry[]}>("/legal/records"),enabled:owner&&tab==="unlinked"});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
  const links=useQuery({queryKey:["legal","linked",focus],queryFn:()=>api<{record:Entry;caseIds:number[];linkedIds:number[];images:{id:number;filename:string}[]}>("/legal/records/"+focus),enabled:!!focus});
+ const access=useQuery({queryKey:["legal","access",caseId],queryFn:()=>api<{items:{user_id:number;user_name:string;role:string}[]}>("/legal/cases/"+caseId+"/access"),enabled:owner&&caseId>0&&tab==="access"});
  const editor=owner||selected.data?.role==="editor",reporter=editor||selected.data?.role==="reporter";
  const visible=(tab==="unlinked"?(all.data?.items??[]).filter(e=>!records.data?.items.some(r=>r.id===e.id)):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case")next.set("tab","overview");return next;});
@@ -114,8 +115,24 @@ export function LegalCasesPage() {
  <div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>{setCaseDraft(caseForm(selected.data!.record));setCaseEdit(true);}}>تعديل بيانات القضية</Button>}
  <Button variant="secondary" onClick={()=>void action(async()=>{const data=await api<unknown>("/legal/cases/"+caseId+"/ai-export");await navigator.clipboard.writeText(JSON.stringify(data,null,2));setNotice("تم نسخ البيانات المترابطة");})}>نسخ ملف القضية للذكاء الاصطناعي</Button></div></>}
  </Card>
- <div className="legal-tabs">{[{id:"overview",label:"نظرة عامة"},...kinds,...(owner?[{id:"unlinked",label:"السجلات القديمة"}]:[])].map(k=><Button key={k.id} variant={tab===k.id?"primary":"secondary"} onClick={()=>{go("tab",k.id);setEntryEdit(null);}}>{k.label}{k.id!=="overview"&&(records.data?.items??[]).filter(r=>r.kind===k.id).length?" ("+(records.data?.items??[]).filter(r=>r.kind===k.id).length+")":""}</Button>)}</div>
+ <div className="legal-tabs">{[{id:"overview",label:"نظرة عامة"},...kinds,...(owner?[{id:"access",label:"الصلاحيات"},{id:"unlinked",label:"السجلات القديمة"}]:[])].map(k=><Button key={k.id} variant={tab===k.id?"primary":"secondary"} onClick={()=>{go("tab",k.id);setEntryEdit(null);}}>{k.label}{k.id!=="overview"&&(records.data?.items??[]).filter(r=>r.kind===k.id).length?" ("+(records.data?.items??[]).filter(r=>r.kind===k.id).length+")":""}</Button>)}</div>
  {tab==="overview"?<Card title="محتويات الملف"><div className="legal-overview">{kinds.map(k=><button key={k.id} onClick={()=>go("tab",k.id)}><strong>{k.label}</strong><span>{(records.data?.items??[]).filter(r=>r.kind===k.id).length}</span></button>)}</div></Card>:
+ tab==="access"&&owner?<Card title="منح صلاحيات القضايا">
+ <p>الوصول لك وحدك افتراضيًا. اختر المستخدم الذي تريد تفويضه لهذه القضية تحديدًا. لن يستطيع الاطلاع على القضايا الأخرى دون إذن مستقل.</p>
+ <div className="legal-actions">
+ <Select label="المستخدم" value={accessUser} onChange={e=>setAccessUser(e.target.value)}>
+ <option value="">اختر المستخدم</option>{(people.data?.items??[]).filter(p=>p.id!==user?.id).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+ </Select>
+ <Select label="الصلاحية" value={accessRole} onChange={e=>setAccessRole(e.target.value)}>
+ <option value="viewer">الاطلاع فقط</option>
+ <option value="reporter">الاطلاع وإرسال تقارير</option>
+ <option value="editor">الاطلاع والتعديل والمتابعة</option>
+ </Select>
+ <Button disabled={!accessUser||busy} onClick={()=>void action(async()=>{await api("/legal/cases/"+caseId+"/access",{method:"PUT",body:{userId:Number(accessUser),role:accessRole}});})}>منح أو تعديل الصلاحية</Button>
+ </div>
+ {(access.data?.items??[]).length===0&&<p>لم تُمنح أي صلاحية لمستخدم آخر في هذه القضية.</p>}
+ {(access.data?.items??[]).map(a=><div className="legal-actions" key={a.user_id}><strong>{a.user_name}</strong><span>{({viewer:"اطلاع فقط",reporter:"اطلاع وتقارير",editor:"اطلاع وتعديل"} as Record<string,string>)[a.role]??a.role}</span><Button variant="danger" disabled={busy} onClick={()=>void action(async()=>{await api("/legal/cases/"+caseId+"/access",{method:"PUT",body:{userId:a.user_id,role:null}});})}>إلغاء الصلاحية</Button></div>)}
+ </Card>:
  <Card title={tab==="unlinked"?"سجلات قديمة لم تربط بالقضايا":kinds.find(k=>k.id===tab)?.label||"السجلات"}>
  <div className="legal-actions">{((editor||(tab==="report"&&reporter))&&tab!=="unlinked")&&<Button onClick={()=>beginEntry(tab as Kind)}>إضافة سجل</Button>}{tab==="report"&&<span>يسمح بعدة تقارير يوميًا، دون محو ما سبق.</span>}</div>
  {entryEdit!==null&&<div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>}
