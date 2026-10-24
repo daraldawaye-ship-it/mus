@@ -3549,11 +3549,11 @@ test("ChatGPT site access uses fresh consent, domain permissions, employee accou
   const staffTable=await rpc(staffRead,"query_general_table",{tableName:"طلب تعديلات في الموقع"});
   assert.equal(staffTable.error.code,-32001);
   assert.equal((await rpc(staffRead,"tijara_api_write",{
-    operation:"POST /companies",body:{name:"Unauthorized company"}
+    operation:"POST /companies",body:{name:"Unauthorized company",phone:"1234567",address:"Unpermitted"}
   })).error.code,-32001);
   const staffWrite=await issue("tijara.read tijara.write",staffSession);
   const blockedStaff=await rpc(staffWrite,"tijara_api_write",{
-    operation:"POST /companies",body:{name:"Unauthorized company"}
+    operation:"POST /companies",body:{name:"Unauthorized company",phone:"1234567",address:"Unpermitted"}
   });
   assert.equal(blockedStaff.result.structuredContent.status,403,JSON.stringify(blockedStaff));
   const accounts=await rpc(access,"tijara_api_read",{operation:"GET /companies/:companyId/employees/:employeeId/accounts",pathParams:{...pathParams,employeeId:emp.id}});
