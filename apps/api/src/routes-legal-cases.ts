@@ -15,6 +15,8 @@ const caseSchema = z.object({
   title: z.string().trim().min(1).max(250),
   caseNumber: z.string().trim().max(120).default(""),
   agency: z.string().trim().max(250).default(""),
+  driveFolderId: z.string().max(200).default(""),
+  driveFolderUrl: httpsUrl.default(""),
   stage: z.string().trim().max(120).default(""),
   status: z.enum(["active","closed","unknown"]).default("active"),
   fileCopyStatus: z.enum(["unknown","yes","no","partial"]).default("unknown"),
@@ -44,11 +46,11 @@ const recordSchema = z.object({
   caseIds: z.array(positive).max(100).default([]),
 }).strict();
 const caseColumns = [
-  "title","case_number","agency","stage","status","file_copy_status",
+  "title","case_number","agency","drive_folder_id","drive_folder_url","stage","status","file_copy_status",
   "start_date","next_hearing","priority","summary",
 ] as const;
 const caseValues = (v:z.infer<typeof caseSchema>)=>[
-  v.title,v.caseNumber,v.agency,v.stage,v.status,v.fileCopyStatus,
+  v.title,v.caseNumber,v.agency,v.driveFolderId,v.driveFolderUrl,v.stage,v.status,v.fileCopyStatus,
   v.startDate,v.nextHearing,v.priority,v.summary,
 ];
 const recordColumns = [
@@ -162,7 +164,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       if(previous.revision!==payload.revision) throw new HttpError(409,"conflict","عُدلت القضية من جهاز آخر؛ أعد تحميلها");
       if(!user.owner && previous.status!==payload.status) throw new HttpError(403,"legal_forbidden","تغيير حالة القضية من اختصاص المالك");
       const values=caseValues(payload);
-      const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$11 WHERE id=$12 RETURNING *";
+      const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$13 WHERE id=$14 RETURNING *";
       const next=(await db.query(sql,[...values,user.id,caseId])).rows[0];
       await audit(db,user,"legal.update","legalCase",caseId,previous,next);
       return next;
