@@ -24,6 +24,11 @@ test("read-only item access shows item tab, not accounts, staff or admin tools",
   ]), ["navigation", "item", "settings"]);
 });
 
+test("accounts.view alone enables account lookup without finance posting rights", () => {
+  assert.deepEqual(allowedAvatarTabs(false, 12, [page("company.accounts")]),
+    ["navigation", "financialAccount", "settings"]);
+});
+
 test("finance, employees and permission administrators see their own tabs", () => {
   assert.deepEqual(allowedAvatarTabs(false, 12, [
     page("company.account-ledger"), page("company.employees"),
