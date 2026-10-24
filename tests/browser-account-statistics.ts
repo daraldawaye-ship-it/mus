@@ -906,7 +906,15 @@ try {
         await page.getByRole("button", { name: "الإجراءات", exact: true }).click();
         await page.getByRole("menu", { name: "إجراءات الصفحة" })
           .getByRole("menuitem", { name: "تحديث التقرير", exact: true }).click();
-        await incoming;
+        // If the UI no longer initiates an HTTP refresh, fail with a
+        // diagnostic rather than hanging this CI job indefinitely.
+        await Promise.race([
+          incoming,
+          new Promise<void>((_, reject) => setTimeout(
+            () => reject(new Error("Refreshing the account report did not issue a report request")),
+            12000,
+          )),
+        ]);
         await navigate(
           page,
           `/companies/${otherCompany.id}/account-statistics?q=${isolatedAccount.code}`,
