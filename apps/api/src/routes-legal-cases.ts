@@ -16,7 +16,7 @@ const caseSchema = z.object({
   caseNumber: z.string().trim().max(120).default(""),
   agency: z.string().trim().max(250).default(""),
   stage: z.string().trim().max(120).default(""),
-  status: z.enum(["active","closed"]).default("active"),
+  status: z.enum(["active","closed","unknown"]).default("active"),
   fileCopyStatus: z.enum(["unknown","yes","no","partial"]).default("unknown"),
   startDate: date.default(null),
   nextHearing: date.default(null),
@@ -119,7 +119,7 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.get("/legal/cases",handler(async(req,res)=>{
     const user=actor(req),q=String(req.query.q??"").trim().slice(0,150);
     const status=req.query.status;
-    if(status!==undefined && !["active","closed"].includes(String(status))) throw new HttpError(400,"invalid_query","حالة غير صالحة");
+    if(status!==undefined && !["active","closed","unknown"].includes(String(status))) throw new HttpError(400,"invalid_query","حالة غير صالحة");
     const page=Math.max(1,Math.min(100000,Number(req.query.page)||1));
     const limit=30;
     const where="($1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2)) AND (c.title ILIKE $3 OR c.case_number ILIKE $3 OR c.agency ILIKE $3 OR c.summary ILIKE $3) AND ($4::text IS NULL OR c.status=$4)";
@@ -160,6 +160,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       await forbidIfDisabled(db);
       const previous=(await db.query("SELECT * FROM legal_cases WHERE id=$1 FOR UPDATE",[caseId])).rows[0];
       if(previous.revision!==payload.revision) throw new HttpError(409,"conflict","عُدلت القضية من جهاز آخر؛ أعد تحميلها");
+      if(!user.owner && previous.status!==payload.status) throw new HttpError(403,"legal_forbidden","تغيير حالة القضية من اختصاص المالك");
       const values=caseValues(payload);
       const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$11 WHERE id=$12 RETURNING *";
       const next=(await db.query(sql,[...values,user.id,caseId])).rows[0];
