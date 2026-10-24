@@ -6,12 +6,15 @@ import { HttpError } from "../errors.ts";
 const sourceDate =
   "substring(s.source_metadata->>'sourceCreatedAt' from 1 for 10)::date";
 const tables = ["invoices", "financial_documents", "stock_movements"] as const;
+export type SourceDateProgress = (stage: string) => void;
 
 export async function prepareSourceDateTargets(
   db: PoolClient,
   companyId: number,
   sourceSystem: string,
+  progress?: SourceDateProgress,
 ) {
+  progress?.("source-validation");
   const sources = await db.query(
     "SELECT source_metadata->>'sourceCreatedAt' AS date FROM transaction_source_imports WHERE company_id=$1 AND source_system=$2",
     [companyId, sourceSystem],
@@ -34,6 +37,7 @@ export async function prepareSourceDateTargets(
         "يوجد مستند مستورد دون تاريخ مصدر صالح؛ لم يتغير أي تاريخ",
       );
   }
+  progress?.("source-targets");
   await db.query(`CREATE TEMP TABLE tijara_source_date_targets (
     company_id integer NOT NULL,table_name text NOT NULL,id integer NOT NULL,
     original_date date NOT NULL,source_date date NOT NULL,
@@ -67,12 +71,16 @@ export async function prepareSourceDateTargets(
     WHERE s.company_id=$1 AND s.source_system=$2`,
     [companyId, sourceSystem],
   );
+  // Autovacuum does not analyze temporary tables. These targets are large enough
+  // that default estimates can turn subsequent joins into repeated full scans.
+  await db.query("ANALYZE tijara_source_date_targets");
 }
 
 export async function sourceDateState(
   db: PoolClient,
   companyId: number,
   sourceSystem: string,
+  progress?: SourceDateProgress,
 ) {
   const fingerprint = createHash("sha256"),
     unchanged = createHash("sha256");
@@ -86,18 +94,26 @@ export async function sourceDateState(
     "stock_item_valuations",
     "transaction_source_imports",
   ]) {
+    progress?.(`fingerprint:${table}`);
     const target = tables.includes(table as (typeof tables)[number]);
     const result = await db.query(
       `SELECT
-      encode(sha256(convert_to(COALESCE(string_agg(encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex'),'|' ORDER BY ${table === "transaction_source_imports" ? "r.source_system,r.source_kind,r.source_id" : table === "stock_item_valuations" ? "r.item_id" : "r.id"}),''),'UTF8')),'hex') AS full_hash,
-      encode(sha256(convert_to(COALESCE(string_agg(encode(sha256(convert_to(${target ? "CASE WHEN t.id IS NOT NULL THEN to_jsonb(r)-'document_date' ELSE to_jsonb(r) END" : "to_jsonb(r)"}::text,'UTF8')),'hex'),'|' ORDER BY ${table === "transaction_source_imports" ? "r.source_system,r.source_kind,r.source_id" : table === "stock_item_valuations" ? "r.item_id" : "r.id"}),''),'UTF8')),'hex') AS unchanged_hash
+      encode(sha256(convert_to(COALESCE(string_agg(encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex'),'|' ORDER BY ${table === "transaction_source_imports" ? "r.source_system,r.source_kind,r.source_id" : table === "stock_item_valuations" ? "r.item_id" : "r.id"}),''),'UTF8')),'hex') AS full_hash
+      ${target ? ",encode(sha256(convert_to(COALESCE(string_agg(encode(sha256(convert_to((CASE WHEN t.id IS NOT NULL THEN to_jsonb(r)-'document_date' ELSE to_jsonb(r) END)::text,'UTF8')),'hex'),'|' ORDER BY r.id),''),'UTF8')),'hex') AS unchanged_hash" : ""}
       FROM ${table} r ${target ? "LEFT JOIN tijara_source_date_targets t ON t.company_id=r.company_id AND t.table_name='" + table + "' AND t.id=r.id" : ""}
       WHERE r.company_id=$1`,
       [companyId],
     );
     fingerprint.update(table + ":" + result.rows[0].full_hash);
-    unchanged.update(table + ":" + result.rows[0].unchanged_hash);
+    // Non-target tables have no permitted date differences. Reuse their exact
+    // full hash rather than serializing and hashing every protected row twice.
+    unchanged.update(
+      table +
+        ":" +
+        (target ? result.rows[0].unchanged_hash : result.rows[0].full_hash),
+    );
   }
+  progress?.("fingerprint:counts");
   const counts = (
     await db.query(`SELECT table_name,count(*)::integer AS total,
     count(*) FILTER(WHERE r_date<>source_date)::integer AS pending,
@@ -109,6 +125,7 @@ export async function sourceDateState(
       UNION ALL SELECT t.*,m.document_date,pg_column_size(m) FROM tijara_source_date_targets t JOIN stock_movements m ON t.company_id=m.company_id AND t.id=m.id WHERE table_name='stock_movements'
     ) x GROUP BY table_name ORDER BY table_name`)
   ).rows;
+  progress?.("fingerprint:ledger");
   const ledger = (
     await db.query(
       `SELECT count(*)::integer AS documents,COALESCE(sum(total_base_debit),0)::text AS debit,
@@ -124,28 +141,37 @@ export async function sourceDateState(
   };
 }
 
-export async function applySourceDates(db: PoolClient, companyId: number) {
+export async function applySourceDates(
+  db: PoolClient,
+  companyId: number,
+  progress?: SourceDateProgress,
+) {
+  progress?.("changed-dates");
   const changes = (
     await db.query(`SELECT table_name AS table,id,original_date::text AS from,source_date::text AS to
     FROM tijara_source_date_targets WHERE original_date<>source_date ORDER BY table_name,id`)
   ).rows;
   if (!changes.length) return changes;
+  progress?.("affected-days");
   await db.query(`CREATE TEMP TABLE tijara_source_date_days ON COMMIT DROP AS
     SELECT DISTINCT l.item_id,d.day FROM tijara_source_date_targets t
     JOIN invoice_lines l ON l.company_id=t.company_id AND l.invoice_id=t.id
     CROSS JOIN LATERAL unnest(ARRAY[t.original_date,t.source_date]) d(day)
     WHERE t.table_name='invoices' AND t.original_date<>t.source_date`);
   await db.query("CREATE UNIQUE INDEX ON tijara_source_date_days(item_id,day)");
+  await db.query("ANALYZE tijara_source_date_days");
   await db.query(`CREATE TEMP TABLE tijara_source_price_days ON COMMIT DROP AS
     SELECT DISTINCT f.item_id,f.base_currency_id,d.day FROM item_purchase_price_facts f
     JOIN tijara_source_date_targets t ON t.company_id=f.company_id AND t.id=f.invoice_id AND t.table_name='invoices'
     CROSS JOIN LATERAL unnest(ARRAY[t.original_date,t.source_date]) d(day)
     WHERE t.original_date<>t.source_date`);
+  await db.query("ANALYZE tijara_source_price_days");
   await db.query(
     "SELECT set_config('tijara.source_date_company',$1,true),set_config('tijara.source_date_txid',txid_current()::text,true)",
     [String(companyId)],
   );
   for (const table of tables) {
+    progress?.(`update:${table}`);
     await db.query(
       `UPDATE ${table} r SET document_date=t.source_date FROM tijara_source_date_targets t
       WHERE t.company_id=r.company_id AND t.id=r.id AND t.table_name=$1 AND r.document_date<>t.source_date`,
@@ -154,6 +180,7 @@ export async function applySourceDates(db: PoolClient, companyId: number) {
   }
   // Only rebuild affected item/day facts, including any ordinary invoices on
   // those days. Existing composition triggers refresh their own projections.
+  progress?.("activity-projections");
   await db.query(
     `DELETE FROM item_daily_activity d USING tijara_source_date_days t
     WHERE d.company_id=$1 AND d.item_id=t.item_id AND d.document_date=t.day`,
@@ -182,6 +209,7 @@ export async function applySourceDates(db: PoolClient, companyId: number) {
     FROM per_invoice GROUP BY item_id,document_date`,
     [companyId],
   );
+  progress?.("purchase-price-projections");
   await db.query(
     `DELETE FROM item_purchase_price_daily d USING tijara_source_price_days t
     WHERE d.company_id=$1 AND d.item_id=t.item_id AND d.document_date=t.day AND d.base_currency_id=t.base_currency_id`,
@@ -193,9 +221,11 @@ export async function applySourceDates(db: PoolClient, companyId: number) {
     "SELECT refresh_item_purchase_price_day($1,item_id,day,base_currency_id) FROM tijara_source_price_days ORDER BY item_id,day,base_currency_id",
     [companyId],
   );
+  progress?.("account-statistics-invalidation");
   await db.query("SELECT invalidate_company_account_balance_statistics($1)", [
     companyId,
   ]);
+  progress?.("integrity-validation");
   await db.query("SET CONSTRAINTS ALL IMMEDIATE");
   await db.query(
     "SELECT set_config('tijara.source_date_company','',true),set_config('tijara.source_date_txid','',true)",

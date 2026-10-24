@@ -6342,5 +6342,9 @@
       "additionalProperties": false
     },
     "source": "routes-import-source-dates.ts"
+  },
+  "GET /companies/:companyId/transaction-import/source-dates/status/:idempotencyKey": {
+    "queryFields": [],
+    "source": "routes-import-source-dates.ts"
   }
 }

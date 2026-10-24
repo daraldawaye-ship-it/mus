@@ -1297,6 +1297,19 @@ test("source-date correction atomically dates imported invoices, mixed stock mov
   });
   assert.equal((await f.owner.request("GET", path + query)).status, 403);
   assert.equal(
+    (
+      await f.owner.ok<{ status: string }>(
+        "GET",
+        path + "/status/" + request.idempotencyKey,
+      )
+    ).status,
+    "completed",
+  );
+  assert.equal(
+    (await f.owner.request("GET", path + "/status/" + randomUUID())).status,
+    403,
+  );
+  assert.equal(
     (await f.owner.ok<{ replayed: boolean }>("POST", path, request)).replayed,
     true,
   );
@@ -1369,5 +1382,104 @@ test("source-date correction rejects stale previews and rolls back dates, derive
     (await f.owner.ok<SourceDatePreview>("GET", path + query)).counts.every(
       (r) => r.pending === 0,
     ),
+  );
+});
+
+test("long source-date repairs return progress without waiting on actor/company locks and preserve a single accepted UUID", async (t) => {
+  const f = await fixture(t),
+    s = await setup(f),
+    item = await s.item(false);
+  const input = batch([source("invoice", s.invoice(item.id))]);
+  await importBatch(f, s, input);
+  const path = s.base + "/transaction-import/source-dates";
+  const preview = await f.owner.ok<SourceDatePreview>(
+    "GET",
+    path + "?sourceSystem=" + input.sourceSystem,
+  );
+  const request = {
+    idempotencyKey: randomUUID(),
+    sourceSystem: input.sourceSystem,
+    snapshotHash: preview.snapshotHash,
+  };
+  const statusPath = path + "/status/" + request.idempotencyKey;
+  const member = await f.member(s.company.id);
+  const blocker = await f.pool.connect();
+  await blocker.query("BEGIN");
+  try {
+    await blocker.query("SELECT id FROM companies WHERE id=$1 FOR UPDATE", [
+      s.company.id,
+    ]);
+    const accepted = await f.owner.request<{ status: string; stage: string }>(
+      "POST",
+      path,
+      request,
+    );
+    assert.equal(accepted.status, 202);
+    assert.equal(accepted.body.status, "processing");
+    assert.equal(accepted.body.stage, "waiting_for_transaction_locks");
+    const started = Date.now();
+    const repeated = await f.owner.request<{ status: string }>(
+      "POST",
+      path,
+      request,
+    );
+    assert.equal(repeated.status, 202);
+    assert.equal(repeated.body.status, "processing");
+    const status = await f.owner.ok<{ status: string }>("GET", statusPath);
+    assert.equal(status.status, "processing");
+    assert(
+      Date.now() - started < 2000,
+      "Retry/status must not wait for the mutation's actor or company lock",
+    );
+    assert.equal(
+      (
+        await f.owner.request("POST", path, {
+          ...request,
+          sourceSystem: "different-source",
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await f.owner.request("POST", path, {
+          ...request,
+          idempotencyKey: randomUUID(),
+        })
+      ).status,
+      409,
+    );
+    assert.equal((await member.client.request("GET", statusPath)).status, 403);
+  } finally {
+    await blocker.query("ROLLBACK");
+    blocker.release();
+  }
+  let completed:
+    | {
+        status: string;
+        protectedHistoryUnchanged?: boolean;
+        counts?: { pending: number }[];
+      }
+    | undefined;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    completed = await f.owner.ok("GET", statusPath);
+    if (completed?.status === "completed") break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(completed?.status, "completed");
+  assert.equal(completed?.protectedHistoryUnchanged, true);
+  assert(completed?.counts?.every((row) => row.pending === 0));
+  assert.equal(
+    (await f.owner.ok<{ replayed: boolean }>("POST", path, request)).replayed,
+    true,
+  );
+  assert.equal(
+    (
+      await f.pool.query(
+        "SELECT count(*)::integer AS count FROM transaction_source_date_repairs WHERE company_id=$1",
+        [s.company.id],
+      )
+    ).rows[0].count,
+    1,
   );
 });
