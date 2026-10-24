@@ -69,6 +69,28 @@ function recordDTO(row: QueryResultRow): GeneralTableRecord {
 }
 export function generalTableRoutes(pool: Pool): Router {
   const router = Router();
+  router.get("/general-table/access",handler(async(req,res)=>{
+    const user=actor(req);
+    if(!user.owner)throw new HttpError(403,"owner_only","للمالك فقط");
+    const rows=await pool.query("SELECT g.user_id,u.name,g.table_name,g.role FROM general_table_grants g JOIN users u ON u.id=g.user_id ORDER BY g.table_name,u.name");
+    res.json({items:rows.rows});
+  }));
+  router.put("/general-table/access",handler(async(req,res)=>{
+    const owner=actor(req);
+    if(!owner.owner)throw new HttpError(403,"owner_only","للمالك فقط");
+    const input=parse(z.object({userId:z.number().int().positive(),tableName:z.string().trim().min(1).max(120),role:z.enum(["viewer","editor"]).nullable()}).strict(),req.body);
+    if(input.userId===owner.id)throw new HttpError(400,"invalid_grant","المالك لديه كامل الصلاحيات");
+    await transaction(pool,async db=>{
+      const user=await currentActor(db,owner);
+      if(!user.owner)throw new HttpError(403,"owner_only","للمالك فقط");
+      const target=await db.query("SELECT id FROM users WHERE id=$1 AND NOT archived AND NOT suspended",[input.userId]);
+      if(!target.rowCount)missing();
+      if(input.role===null)await db.query("DELETE FROM general_table_grants WHERE user_id=$1 AND table_name=$2",[input.userId,input.tableName]);
+      else await db.query("INSERT INTO general_table_grants(user_id,table_name,role,granted_by) VALUES($1,$2,$3,$4) ON CONFLICT(user_id,table_name) DO UPDATE SET role=EXCLUDED.role,granted_by=EXCLUDED.granted_by,granted_at=now()",[input.userId,input.tableName,input.role,user.id]);
+      await audit(db,user,"page.settings","generalTable",input.userId,null,{tableName:input.tableName,role:input.role});
+    });
+    res.json({ok:true});
+  }));
   router.get(
     "/general-table",
     handler(async (req, res) => {
