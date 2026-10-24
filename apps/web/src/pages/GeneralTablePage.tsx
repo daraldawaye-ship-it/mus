@@ -156,6 +156,17 @@ function GeneralTableContent() {
   const [savingTitle,setSavingTitle]=useState<number|null>(null);
   const [descriptionPopup,setDescriptionPopup]=useState<{id:number;text:string}|null>(null);
   const [copyError,setCopyError]=useState("");
+  const [grantUser,setGrantUser]=useState("");
+  const [grantTable,setGrantTable]=useState("");
+  const [grantRole,setGrantRole]=useState("viewer");
+  const [grantStatus,setGrantStatus]=useState("");
+  async function saveGrant(role:string|null){
+    try{
+      await api("/general-table/access",{method:"PUT",body:{userId:Number(grantUser),tableName:grantTable.trim(),role}});
+      setGrantStatus(role===null?"تم إلغاء الصلاحية":"تم حفظ الصلاحية");
+    }catch(error){setGrantStatus(errorMessage(error));}
+  }
+
   async function duplicateSelected() {
     if (duplicating || !selectedIds.length || selectedIds.length > 100) return;
     setError("");
@@ -285,7 +296,17 @@ function GeneralTableContent() {
         </Button>
         <Button disabled={duplicating} onClick={()=>{setError("");setEditor("new");}}>إضافة سجل</Button>
       </>} />
-    <Notice>هذه السجلات ضمن إدارة الموقع العام حاليًا، وليست ظاهرة للجمهور أو مرتبطة بشركة. يمكن ربط استخداماتها بوحدات أخرى لاحقًا.</Notice>
+    <Notice>الجدول العام مغلق افتراضيًا. المالك فقط يمنح صلاحية الاطلاع أو التعديل على اسم جدول محدد.</Notice>
+    {user?.owner&&<Card title="منح صلاحيات الجدول العام">
+      <div className="table-filters">
+        <Field label="رقم المستخدم" value={grantUser} type="number" onChange={e=>setGrantUser(e.target.value)}/>
+        <Field label="اسم الجدول" value={grantTable} onChange={e=>setGrantTable(e.target.value)}/>
+        <div className="field"><label>الصلاحية</label><select value={grantRole} onChange={e=>setGrantRole(e.target.value)}><option value="viewer">اطلاع فقط</option><option value="editor">اطلاع وتعديل</option></select></div>
+        <Button disabled={!Number(grantUser)||!grantTable.trim()} onClick={()=>void saveGrant(grantRole)}>منح الصلاحية</Button>
+        <Button variant="secondary" disabled={!Number(grantUser)||!grantTable.trim()} onClick={()=>void saveGrant(null)}>إلغاء الصلاحية</Button>
+      </div>
+      {grantStatus&&<Notice>{grantStatus}</Notice>}
+    </Card>}
     {notice && <Notice tone="success">{notice}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
     <Card title="السجلات">
