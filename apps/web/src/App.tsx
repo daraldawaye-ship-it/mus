@@ -23,6 +23,7 @@ import {
   Wallet,
   Home,
   TableProperties,
+  Scale,
   LayoutDashboard,
   ListTree,
   LogIn,
@@ -91,6 +92,7 @@ const AccountStatisticsReportPage = lazy(() =>
     default: module.AccountStatisticsReportPage,
   })),
 );
+const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -365,6 +367,7 @@ function Navigation({
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
     "public.general-table": <TableProperties size={17} />,
+    "public.legal-cases": <Scale size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
     "public.chat": <MessageSquare size={17} />,
@@ -1146,6 +1149,7 @@ function Workspace() {
                   </Protected>
                 }
               />
+              <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
               <Route
                 path="/general-table"
                 element={
