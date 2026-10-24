@@ -9,6 +9,8 @@ import { HttpError } from "./errors.ts";
 
 const SCOPE="general_table.read";
 const WRITE_SCOPE="general_table.read general_table.write";
+const ALRAESY_READ="alraesy.read";
+const ALRAESY_WRITE="alraesy.read alraesy.write";
 const token=()=>randomBytes(32).toString("base64url");
 const hashPkce=(v:string)=>createHash("sha256").update(v).digest("base64url");
 const safe=(v:unknown)=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
@@ -31,14 +33,19 @@ const redirectAllowed=(raw:string,production:boolean)=>{
 export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):Router {
   const router=Router(),limit=authLimiter(),sessions=loadSession(pool);
   const resource=origin+"/mcp";
+  const alraesyResource=origin+"/mcp/alraesy";
+  const alraesyScopeInfo={resource:alraesyResource,authorization_servers:[origin],
+    scopes_supported:[ALRAESY_READ,"alraesy.write"],bearer_methods_supported:["header"]};
   const scopeInfo={resource,authorization_servers:[origin],scopes_supported:[SCOPE,"general_table.write"],bearer_methods_supported:["header"]};
   router.get("/.well-known/oauth-protected-resource",(_req,res)=>res.json(scopeInfo));
   router.get("/.well-known/oauth-protected-resource/mcp",(_req,res)=>res.json(scopeInfo));
+  router.get("/.well-known/oauth-protected-resource/mcp/alraesy",(_req,res)=>res.json(alraesyScopeInfo));
   router.get("/.well-known/oauth-authorization-server",(_req,res)=>res.json({
     issuer:origin,authorization_endpoint:origin+"/oauth/authorize",token_endpoint:origin+"/oauth/token",
     registration_endpoint:origin+"/oauth/register",response_types_supported:["code"],
     grant_types_supported:["authorization_code","refresh_token"],token_endpoint_auth_methods_supported:["none"],
-    scopes_supported:[SCOPE,"general_table.write"],code_challenge_methods_supported:["S256"],
+    scopes_supported:[SCOPE,"general_table.write",ALRAESY_READ,"alraesy.write"],
+    code_challenge_methods_supported:["S256"],
     authorization_response_iss_parameter_supported:true,client_id_metadata_document_supported:false,
   }));
   router.post("/oauth/register",express.json({limit:"8kb"}),handler(async(req,res)=>{
@@ -63,7 +70,9 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       challenge=str(input.code_challenge),state=str(input.state),requested=str(input.resource);
     if(input.response_type!=="code"||input.code_challenge_method!=="S256"||
       !/^[A-Za-z0-9_-]{43,128}$/.test(challenge)||state.length<8||state.length>512||
-      ![SCOPE,WRITE_SCOPE].includes(str(input.scope))||![origin,resource].includes(requested))
+      !(requested===alraesyResource ?
+        [ALRAESY_READ,ALRAESY_WRITE].includes(str(input.scope)) :
+        [origin,resource].includes(requested)&&[SCOPE,WRITE_SCOPE].includes(str(input.scope))))
       throw new HttpError(400,"invalid_request","معلمات تفويض ChatGPT غير صحيحة");
     const row=(await pool.query<{redirect_uris:string[]}>(
       "SELECT redirect_uris FROM chatgpt_oauth_clients WHERE client_id=$1",[clientId])).rows[0];
@@ -80,25 +89,28 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
         `<p>سجّل الدخول أولًا بصلاحية المالك أو المسؤول ثم وافق على الاتصال.</p><a class="primary" href="${safe(redirect)}">تسجيل الدخول والمتابعة</a>`));
       return;
     }
-    publicAdmin(req.auth.user);
+    if(req.query.resource!==alraesyResource) publicAdmin(req.auth.user);
     const params=["client_id","redirect_uri","code_challenge","code_challenge_method",
       "response_type","state","scope","resource"].map(key=>
       `<input type="hidden" name="${key}" value="${safe(req.query[key])}">`).join("");
-    res.type("html").send(webPage("السماح لـ ChatGPT بقراءة بيانات تجارة",
+    const alraesy=req.query.resource===alraesyResource;
+    res.type("html").send(webPage(alraesy?"ربط الرئيسي مع ChatGPT":"السماح لـ ChatGPT بقراءة بيانات تجارة",
       `<p>الحساب: <strong>${safe(req.auth.user.displayName)}</strong></p>
-      <p>الصلاحيات المطلوبة: <strong>${req.query.scope===WRITE_SCOPE?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط"}</strong>.</p>
-      <p>لا توجد صلاحية للحذف أو الوصول إلى حسابات الشركات وفواتيرها. يمكن مراجعة أي تعديل قبل تنفيذه.</p>
+      <p>الصلاحيات المطلوبة: <strong>${alraesy ?
+        (req.query.scope===ALRAESY_WRITE?"قراءة وتنفيذ عمليات الموقع ضمن صلاحيات حسابك":"قراءة بيانات الموقع المسموح لك بها") :
+        (req.query.scope===WRITE_SCOPE?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط")}</strong>.</p>
+      <p>${alraesy?"ستطبق صلاحيات المستخدم والشركة والصفحة والسجل كما في الموقع؛ تغيير كلمة المرور عبر صفحة الحساب الآمنة فقط.":"لا توجد صلاحية للحذف أو الوصول إلى حسابات الشركات وفواتيرها."}</p>
       <p>يمكن إلغاء الاتصال في أي وقت من <a href="/oauth/connections">إدارة الاتصالات</a>.</p>
       <form action="/oauth/authorize" method="post">${params}
       <input type="hidden" name="csrf" value="${safe(req.auth.csrf)}">
-      <button type="submit">${req.query.scope===WRITE_SCOPE?"أوافق على القراءة والإنشاء والتعديل":"أوافق على القراءة فقط"}</button></form>`));
+      <button type="submit">${[WRITE_SCOPE,ALRAESY_WRITE].includes(String(req.query.scope))?"أوافق على القراءة والتعديل ضمن صلاحياتي":"أوافق على القراءة فقط"}</button></form>`));
   }));
   router.post("/oauth/authorize",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)
       throw new HttpError(403,"csrf","يجب تسجيل الدخول والتصريح بالطلب");
     const details=await validate(req.body);
     const current=await currentActor(pool,req.auth.user,false);
-    publicAdmin(current);
+    if(details.requested!==alraesyResource) publicAdmin(current);
     const code=token();
     await transaction(pool,async(db)=>{
       await db.query("DELETE FROM chatgpt_oauth_codes WHERE expires_at<now()");
@@ -121,7 +133,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     res.setHeader("Cache-Control","no-store");
     const input=req.body as Record<string,unknown>;
     const clientId=str(input?.client_id),requested=str(input?.resource);
-    if(![origin,resource].includes(requested))
+    if(![origin,resource,alraesyResource].includes(requested))
       throw new HttpError(400,"invalid_target","المورد غير معروف");
     if(!(await pool.query("SELECT 1 FROM chatgpt_oauth_clients WHERE client_id=$1",[clientId])).rowCount)
       throw new HttpError(401,"invalid_client","العميل غير مسجل");
