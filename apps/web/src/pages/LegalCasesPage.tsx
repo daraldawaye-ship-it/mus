@@ -110,7 +110,7 @@ export function LegalCasesPage() {
  {caseEdit?<><CaseFields value={caseDraft} change={setCaseDraft} disabled={!owner}/><div className="legal-actions"><Button disabled={busy||!caseDraft.title} onClick={submitCase}>حفظ</Button><Button variant="secondary" onClick={()=>setCaseEdit(false)}>إلغاء</Button></div></>:
  <><div className="legal-tags"><span>{selected.data.record.case_number||"لم يحدد الرقم"}</span><span>{selected.data.record.agency||"لم تحدد الجهة"}</span><span>{selected.data.record.status==="closed"?"منتهية":selected.data.record.status==="active"?"فعالة":"غير محددة"}</span><span>صورة الملف: {({unknown:"غير محددة",yes:"موجودة",no:"غير موجودة",partial:"ناقصة"} as Record<string,string>)[selected.data.record.file_copy_status]??"غير محددة"}</span></div>
  <div className="legal-tags"><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div><p className="legal-preserve">{selected.data.record.summary}</p>{selected.data.record.drive_folder_url&&<p><a href={selected.data.record.drive_folder_url} rel="noreferrer" target="_blank">فتح مجلد القضية في Google Drive</a></p>}
- {selected.data.record.legacy_snapshot&&<details className="legal-legacy"><summary>البيانات الأصلية المنقولة من الجدول العام</summary><pre>{JSON.stringify(selected.data.record.legacy_snapshot,null,2)}</pre></details>}
+ {Boolean(selected.data.record.legacy_snapshot)&&<details className="legal-legacy"><summary>البيانات الأصلية المنقولة من الجدول العام</summary><pre>{JSON.stringify(selected.data.record.legacy_snapshot,null,2)}</pre></details>}
  <div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>{setCaseDraft(caseForm(selected.data!.record));setCaseEdit(true);}}>تعديل بيانات القضية</Button>}
  <Button variant="secondary" onClick={()=>void action(async()=>{const data=await api<unknown>("/legal/cases/"+caseId+"/ai-export");await navigator.clipboard.writeText(JSON.stringify(data,null,2));setNotice("تم نسخ البيانات المترابطة");})}>نسخ ملف القضية للذكاء الاصطناعي</Button></div></>}
  </Card>
@@ -124,7 +124,7 @@ export function LegalCasesPage() {
  {(visible.length===0&&!entryEdit)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
  {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task")}>إضافة مهمة</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
- {r.legacy_snapshot&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
+ {Boolean(r.legacy_snapshot)&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
  {r.kind==="document"&&<div className="legal-doc">{r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}
  {r.pdf_url&&<a target="_blank" rel="noreferrer" href={r.pdf_url}>رابط PDF</a>}
  {r.drive_file_id&&<span>Drive: {r.drive_file_id}</span>}
