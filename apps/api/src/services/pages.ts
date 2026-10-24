@@ -161,6 +161,7 @@ export async function directoryEntries(
   );
   // Legal files default to the owner. The owner can grant access separately
   // to individual cases; users without any grant should not see this page.
+  const generalTableVisible = user.owner || Boolean((await db.query("SELECT 1 FROM general_table_grants WHERE user_id=$1 LIMIT 1",[user.id])).rowCount);
   const legalVisible = user.owner || Boolean((await db.query(
     "SELECT 1 FROM legal_case_access WHERE user_id=$1 LIMIT 1",
     [user.id],
@@ -217,6 +218,7 @@ export async function directoryEntries(
           action,
           isEnabled &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
+            (definition.key !== "public.general-table" || generalTableVisible) &&
             directoryActionAllowed(
               definition,
               action,
