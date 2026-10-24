@@ -773,7 +773,11 @@ export async function createInvoice(
           quantitySmallest: taken,
           kind: "sales_return",
           documentDate: input.documentDate,
-          expiryDate: line.expiryDate,
+          // When the original sales row has no explicit expiry, its stock
+          // allocation still remembers the exact batch sold. Restore that
+          // batch on a linked return so original_movement_id and batch_key
+          // agree with the database integrity constraint.
+          expiryDate: line.expiryDate ?? (move.batch_key || null),
           costBase: restoredCost,
           invoiceId,
           invoiceLineId: lineId,
