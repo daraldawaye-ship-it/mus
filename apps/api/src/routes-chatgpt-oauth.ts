@@ -5,7 +5,7 @@ import { transaction } from "./db.ts";
 import { handler, loadSession } from "./http.ts";
 import { currentActor, publicAdmin } from "./policies/access.ts";
 import { tokenHash, authLimiter } from "./services/auth.ts";
-import { oauthScopes, FULL_READ_SCOPE, FULL_WRITE_SCOPE } from "./services/mcp-api.ts";
+import { oauthScopes, SITE_READ_SCOPE, SITE_WRITE_SCOPE, FULL_READ_SCOPE, FULL_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { HttpError } from "./errors.ts";
 
 const SCOPE="general_table.read";
@@ -80,15 +80,15 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     if(!req.auth){
       const redirect="/login?returnTo="+encodeURIComponent(req.originalUrl);
       res.status(401).type("html").send(webPage("الربط مع ChatGPT",
-        `<p>سجّل الدخول أولًا بصلاحية المالك أو المسؤول ثم وافق على الاتصال.</p><a class="primary" href="${safe(redirect)}">تسجيل الدخول والمتابعة</a>`));
+        `<p>سجّل الدخول بحسابك في الرئيسي ثم وافق على اتصال ChatGPT بحسب صلاحياتك.</p><a class="primary" href="${safe(redirect)}">تسجيل الدخول والمتابعة</a>`));
       return;
     }
-    publicAdmin(req.auth.user);
+    if (![SITE_READ_SCOPE,SITE_WRITE_SCOPE].includes(validated.scope)) publicAdmin(req.auth.user);
     const params=["client_id","redirect_uri","code_challenge","code_challenge_method",
       "response_type","state","scope","resource"].map(key=>
       `<input type="hidden" name="${key}" value="${safe(req.query[key])}">`).join("");
-    const fullAccess=[FULL_READ_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
-    const writing=[WRITE_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
+    const fullAccess=[SITE_READ_SCOPE,SITE_WRITE_SCOPE,FULL_READ_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
+    const writing=[WRITE_SCOPE,SITE_WRITE_SCOPE,FULL_WRITE_SCOPE].includes(validated.scope);
     const scopeDescription=fullAccess
       ? (writing?"قراءة وتنفيذ عمليات الرئيسي المتاحة، بما فيها إنشاء وتعديل الموظفين والحسابات والفواتير والمخزون والإعدادات والترحيل والعكس بحسب صلاحيات حسابك":"قراءة بيانات الرئيسي المتاحة بحسب صلاحيات حسابك")
       : (writing?"قراءة وإنشاء وتعديل سجلات الجدول العام":"قراءة سجلات الجدول العام فقط");
@@ -106,7 +106,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       throw new HttpError(403,"csrf","يجب تسجيل الدخول والتصريح بالطلب");
     const details=await validate(req.body);
     const current=await currentActor(pool,req.auth.user,false);
-    publicAdmin(current);
+    if (![SITE_READ_SCOPE,SITE_WRITE_SCOPE].includes(details.scope)) publicAdmin(current);
     const code=token();
     await transaction(pool,async(db)=>{
       await db.query("DELETE FROM chatgpt_oauth_codes WHERE expires_at<now()");
@@ -177,7 +177,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
   }));
   router.get("/oauth/connections",sessions,handler(async(req,res)=>{
     if(!req.auth)throw new HttpError(401,"unauthenticated","سجّل الدخول");
-    const user=await currentActor(pool,req.auth.user,false);publicAdmin(user);
+    const user=await currentActor(pool,req.auth.user,false);
     const records=await pool.query<{id:number;created_at:Date}>(
       "SELECT id,created_at FROM chatgpt_oauth_tokens WHERE user_id=$1 AND revoked_at IS NULL AND refresh_expires_at>now() ORDER BY id DESC LIMIT 100",
       [user.id]);
@@ -191,7 +191,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
   router.post("/oauth/connections/:id/revoke",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)
       throw new HttpError(403,"csrf","العملية غير مصرح بها");
-    const user=await currentActor(pool,req.auth.user,false);publicAdmin(user);
+    const user=await currentActor(pool,req.auth.user,false);
     if(!/^[1-9]\d*$/.test(String(req.params.id)))throw new HttpError(400,"invalid_id","رقم غير صالح");
     await transaction(pool,async(db)=>{
       await db.query("UPDATE chatgpt_oauth_tokens SET revoked_at=now() WHERE id=$1 AND user_id=$2",
