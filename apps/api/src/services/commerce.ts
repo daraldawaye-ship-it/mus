@@ -191,6 +191,8 @@ export interface InvoiceImportContext {
   allowHistoricalPrice: true;
   allowUnknownExpiry: true;
   suppressRewards: true;
+  /** Server-side legacy import only; current valuation is applied without retroactive changes. */
+  allowHistoricalStockChronology?: true;
   /** Preserve explicitly mapped legacy expense counterparties without reclassifying them. */
   allowExpenseCounterparty?: true;
 }
@@ -784,6 +786,7 @@ export async function createInvoice(
           originalMovementId: move.id,
           allowExpired: true,
           allowInactive: true,
+          allowHistoricalChronology: importContext?.allowHistoricalStockChronology,
         });
         cost -= restored.costBase;
         remaining -= taken;
@@ -850,6 +853,7 @@ export async function createInvoice(
         allowExpired: line.quantity < 0n,
         allowInactive: line.quantity < 0n,
         allowUnknownExpiry: importContext?.allowUnknownExpiry,
+        allowHistoricalChronology: importContext?.allowHistoricalStockChronology,
       });
       cost = input.kind === "sale" ? -movement.costBase : movement.costBase;
     }
