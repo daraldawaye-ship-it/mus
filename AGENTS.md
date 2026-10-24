@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Dar Aldawa 2026 sales migration handoff (2026-10-24)
+
+When asked to import the 2026 sales from a multi-year legacy Excel file, read `docs/DAR_ALDAWA_2026_SALES_RUNBOOK.md` and the private continuation bundle supplied by the user. The current request is preparation/explanation only, not authority to start an import. Preserve source identity `dar-aldawa-legacy-2026-10`, deduplicate with accepted source IDs/receipts (the summary API is aggregate-only), and batch NEW invoices by original day so dates are correct immediately. Existing corrected dates did not change original request hashes. Never infer duplicates from names/totals, resubmit regenerated old payloads, change source identities to bypass conflicts, reset current data, or read production SQL. Current production is Render. Private mappings/manifests/raw financial data stay out of Git. Refresh live records and verify continuation state before any future authorized execution.
+
 ## Current production destination (2026-10-23)
 
 The user authorized the full migration to Render and replacement of all preview data. Render is now the production destination; read docs/PROJECT_CONTEXT.md and docs/RENDER_MIGRATION.md. Use branch `preview/render-2026-10-23` and the existing isolated checkout. Historical instructions below that say to deploy or merge to Railway are superseded for deployment routing: publish authorized changes to this Render branch and verify Render `live`, HTTP health and relevant behavior. Do not merge into `codex/deploy-phase2`, re-enable Railway writes or deploy the old Railway service unless the user explicitly requests that rollback. Keep financial, permissions and data-safety rules unchanged. Never enable the completed migration startup controls or recopy the frozen old source over current Render data.
