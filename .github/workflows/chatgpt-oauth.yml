@@ -5,6 +5,10 @@ on:
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-alraesy-mcp.ts'
+      - 'apps/api/src/http.ts'
+      - 'apps/api/migrations/057_alraesy_chatgpt_scopes.sql'
+      - 'tests/alraesy-connector.test.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
       - 'apps/api/migrations/024_item_shelf.sql'
@@ -20,6 +24,10 @@ on:
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
       - 'apps/api/src/app.ts'
+      - 'apps/api/src/routes-alraesy-mcp.ts'
+      - 'apps/api/src/http.ts'
+      - 'apps/api/migrations/057_alraesy_chatgpt_scopes.sql'
+      - 'tests/alraesy-connector.test.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
       - 'apps/api/migrations/024_item_shelf.sql'
@@ -61,6 +69,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: node --import tsx --test tests/alraesy-connector.test.ts
       - run: npm run build
       - run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
