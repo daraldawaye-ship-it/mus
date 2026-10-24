@@ -13,6 +13,7 @@ import { currentActor, publicAdmin } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { missing, HttpError } from "./errors.ts";
+import { PRIVATE_LEGAL_TABLES, requireLegalLegacyOwner } from "./legacy-legal-tables.ts";
 
 const columns: Record<keyof GeneralTableInput, string> = {
   tableName: "general_table_table_name",
@@ -70,7 +71,8 @@ export function generalTableRoutes(pool: Pool): Router {
   router.get(
     "/general-table",
     handler(async (req, res) => {
-      publicAdmin(actor(req));
+      const currentUser = actor(req);
+      publicAdmin(currentUser);
       const query = listQuery(
         req.query,
         {
@@ -98,6 +100,10 @@ export function generalTableRoutes(pool: Pool): Router {
           throw new HttpError(400, "invalid_query", "عامل التصفية غير صالح");
         params.push(value.trim());
         where += ` AND ${column}=$${params.length}`;
+      }
+      if (!currentUser.owner) {
+        params.push([...PRIVATE_LEGAL_TABLES]);
+        where += ` AND general_table_table_name <> ALL(${params.length}::text[])`;
       }
       const total = await pool.query(
         `SELECT count(*)::integer AS total FROM general_table WHERE ${where}`,
@@ -139,6 +145,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         const found = new Map(source.rows.map((row) => [row.general_table_id as number, row]));
         if (found.size !== input.ids.length) missing();
+        for (const row of source.rows) requireLegalLegacyOwner(user.owner, String(row.general_table_table_name));
         const created: GeneralTableRecord[] = [];
         for (const sourceId of input.ids) {
           const original = recordDTO(found.get(sourceId)!);
@@ -171,8 +178,9 @@ export function generalTableRoutes(pool: Pool): Router {
       const rows = await pool.query(
         `SELECT DISTINCT general_table_table_name AS name FROM general_table
          WHERE general_table_table_name<>'' AND general_table_table_name ILIKE $1
+           AND ($2::boolean OR general_table_table_name <> ALL($3::text[]))
          ORDER BY name LIMIT 100`,
-        [searchPattern(q)],
+        [searchPattern(q),actor(req).owner,[...PRIVATE_LEGAL_TABLES]],
       );
       res.json({ items: rows.rows.map(row => row.name as string) });
     }),
@@ -186,6 +194,7 @@ export function generalTableRoutes(pool: Pool): Router {
         [id(req.params.id)],
       );
       if (!found.rows[0]) missing();
+      requireLegalLegacyOwner(actor(req).owner,String(found.rows[0].general_table_table_name));
       res.json({ record: recordDTO(found.rows[0]) });
     }),
   );
@@ -193,6 +202,7 @@ export function generalTableRoutes(pool: Pool): Router {
     "/general-table",
     handler(async (req, res) => {
       const input = parse(generalTableSchema, req.body);
+      requireLegalLegacyOwner(actor(req).owner,input.tableName);
       const record = await transaction(pool, async (client) => {
         const user = await currentActor(client, actor(req));
         publicAdmin(user);
@@ -237,6 +247,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!current.rows[0]) missing();
         const before = recordDTO(current.rows[0]);
+        requireLegalLegacyOwner(user.owner,before.tableName);
         if (before.title !== input.expectedTitle)
           throw new HttpError(409, "stale_title",
             "تم تعديل العنوان من مستخدم آخر؛ حدث القائمة قبل الحفظ.");
@@ -273,6 +284,7 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!current.rows[0]) missing();
         const before = recordDTO(current.rows[0]);
+        requireLegalLegacyOwner(user.owner,before.tableName);
         if (before[input.field] !== input.expectedValue)
           throw new HttpError(409, "stale_number",
             "تغيرت قيمة الرقم من مستخدم آخر؛ حدّث الجدول وحاول مجددًا.");
@@ -306,6 +318,8 @@ export function generalTableRoutes(pool: Pool): Router {
         );
         if (!found.rows[0]) missing();
         const before = recordDTO(found.rows[0]);
+        requireLegalLegacyOwner(user.owner,before.tableName);
+        requireLegalLegacyOwner(user.owner,input.tableName);
         const assignments = sqlFields
           .map((field, index) => `${field}=$${index + 1}`)
           .join(",");
