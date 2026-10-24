@@ -51,12 +51,14 @@ export function EntityMenuSearch({
       const detail = (event as CustomEvent<{userId:number;companyId:number;kind:RecentEntityKind;value:RecentEntity}>).detail;
       if (detail?.userId === user.id && detail.companyId === company && detail.kind === kind) {
         setRecent(detail.value);
-        if (!focused) setEntry(detail.value.name);
+        setEntry(detail.value.name);
+        setFocused(false);
+        setSearch(""); setPage(1); setActive(0);
       }
     };
     window.addEventListener(RECENT_ENTITY_EVENT, onChange);
     return () => window.removeEventListener(RECENT_ENTITY_EVENT, onChange);
-  }, [user.id, company, kind, focused]);
+  }, [user.id, company, kind]);
   useEffect(() => {
     if (!focused) setEntry(selected?.name ?? "");
   }, [selected?.id, selected?.name, focused]);
