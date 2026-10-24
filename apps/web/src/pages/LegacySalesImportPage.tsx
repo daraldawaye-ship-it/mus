@@ -4,7 +4,7 @@ import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
 type Batch = { idempotencyKey: string; sourceSystem: string; postingDate: string; documents: Array<{type:string;sourceId:string;payload:{kind:string;documentDate:string;lines:unknown[]}}> };
-type Result = { accepted?:unknown[]; skipped?:unknown[]; failed?:unknown[]; results?:unknown[] };
+type Result = { imported?:Array<{total?:string}>; existing?:unknown[]; failed?:Array<{sourceId?:string;message?:string}>; accepted?:Array<{total?:string}>; skipped?:unknown[] };
 export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   const {user}=useSession();
   const [batches,setBatches]=useState<Batch[]>([]);
@@ -12,12 +12,14 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   const [url,setUrl]=useState("");
   const [busy,setBusy]=useState(false);
   const [limit,setLimit]=useState(5);
-  const [results,setResults]=useState<string[]>([]);
+  const [summary,setSummary]=useState({added:0,existing:0,failed:0,total:0,processed:0});
+  const [failures,setFailures]=useState<string[]>([]);
+  const [notice,setNotice]=useState("");
   const [error,setError]=useState("");
   const count=batches.reduce((n,b)=>n+b.documents.length,0);
   async function load(file?:File) {
     if(!file)return;
-    setError("");setResults([]);setBatches([]);setName(file.name);
+    setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);setName(file.name);
     if(file.size>30_000_000){setError("قسّم الملف إلى أجزاء أصغر من 30 ميجابايت.");return;}
     try {
       const text=await file.text();
@@ -33,17 +35,17 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   }
   async function loadUrl() {
     if(!url.trim()||busy)return;
-    setBusy(true);setError("");setResults([]);setBatches([]);
+    setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);
     try {
       const response=await api<{batches:Batch[]}>(`/companies/${context.company.id}/transaction-import/from-url`,{method:"POST",body:{url:url.trim()}});
       setBatches(response.batches);setName("الرابط المحدد");
-      setResults(["تم استلام البيانات من الرابط والتحقق من الصيغة. لا تُحفظ نسخة من الملف على خادم الموقع."]);
+      setNotice("تمت قراءة الملف والتحقق منه.");
     }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الرابط.");}
     finally{setBusy(false);}
   }
   async function run() {
     if(!user?.owner||busy||!batches.length)return;
-    setBusy(true);setError("");setResults([]);
+    setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");
     let done=0;
     try {
       for(const batch of batches) {
@@ -52,7 +54,11 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
         const body={...batch,documents:selected,idempotencyKey:crypto.randomUUID()};
         const response=await api<Result>(`/companies/${context.company.id}/transaction-import/batch`,{method:"POST",body});
         done+=selected.length;
-        setResults(prev=>[...prev,`دفعة ${batch.postingDate}: ${JSON.stringify(response)}`]);
+        const added=response.imported??response.accepted??[];
+        const existing=response.existing??response.skipped??[];
+        const failed=response.failed??[];
+        setSummary(prev=>({added:prev.added+added.length,existing:prev.existing+existing.length,failed:prev.failed+failed.length,total:prev.total+added.reduce((n,row)=>n+Number(row.total??0),0),processed:prev.processed+selected.length}));
+        if(failed.length)setFailures(prev=>[...prev,...failed.map(row=>`${row.sourceId??"فاتورة"}: ${row.message??"تعذر الترحيل"}`)]);
       }
     } catch(e){setError(e instanceof Error?e.message:"تعذر الترحيل.");}
     finally{setBusy(false);}
@@ -73,7 +79,9 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
         <label>عدد الفواتير التجريبية <input type="number" min={1} max={100} value={limit} onChange={e=>setLimit(Math.max(1,Math.min(100,Number(e.target.value)||5)))}/></label>
         <Button disabled={busy} onClick={()=>void run()}>{busy?"جارٍ الترحيل…":`ترحيل ${Math.min(limit,count)} فواتير`}</Button></>}
       {error&&<Notice tone="error">{error}</Notice>}
-      {results.map((r,i)=><pre key={i} style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{r}</pre>)}
+      {notice&&<Notice tone="success">{notice}</Notice>}
+      {summary.processed>0&&<div className="details-list"><strong>نتيجة الترحيل</strong><div>تمت المعالجة: {summary.processed} — أضيف: {summary.added} — موجود مسبقًا: {summary.existing} — مرفوض: {summary.failed}</div><div>إجمالي الفواتير الجديدة: {summary.total.toLocaleString("ar-YE")} ريال</div></div>}
+      {failures.length>0&&<details><summary>عرض أسباب الرفض ({failures.length})</summary><ul>{failures.map((failure,i)=><li key={i}>{failure}</li>)}</ul></details>}
     </Card>
   </div>;
 }
