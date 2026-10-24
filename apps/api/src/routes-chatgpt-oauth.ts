@@ -86,7 +86,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     if(!req.auth){
       const redirect="/login?returnTo="+encodeURIComponent(req.originalUrl);
       res.status(401).type("html").send(webPage("الربط مع ChatGPT",
-        `<p>سجّل الدخول أولًا بصلاحية المالك أو المسؤول ثم وافق على الاتصال.</p><a class="primary" href="${safe(redirect)}">تسجيل الدخول والمتابعة</a>`));
+        `<p>سجّل الدخول بحسابك في الموقع أولًا ثم وافق على الصلاحيات المحددة.</p><a class="primary" href="${safe(redirect)}">تسجيل الدخول والمتابعة</a>`));
       return;
     }
     if(req.query.resource!==alraesyResource) publicAdmin(req.auth.user);
@@ -181,7 +181,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
   }));
   router.get("/oauth/connections",sessions,handler(async(req,res)=>{
     if(!req.auth)throw new HttpError(401,"unauthenticated","سجّل الدخول");
-    const user=await currentActor(pool,req.auth.user,false);publicAdmin(user);
+    const user=await currentActor(pool,req.auth.user,false);
     const records=await pool.query<{id:number;created_at:Date}>(
       "SELECT id,created_at FROM chatgpt_oauth_tokens WHERE user_id=$1 AND revoked_at IS NULL AND refresh_expires_at>now() ORDER BY id DESC LIMIT 100",
       [user.id]);
@@ -195,7 +195,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
   router.post("/oauth/connections/:id/revoke",form,sessions,handler(async(req,res)=>{
     if(!req.auth||req.body?.csrf!==req.auth.csrf)
       throw new HttpError(403,"csrf","العملية غير مصرح بها");
-    const user=await currentActor(pool,req.auth.user,false);publicAdmin(user);
+    const user=await currentActor(pool,req.auth.user,false);
     if(!/^[1-9]\d*$/.test(String(req.params.id)))throw new HttpError(400,"invalid_id","رقم غير صالح");
     await transaction(pool,async(db)=>{
       await db.query("UPDATE chatgpt_oauth_tokens SET revoked_at=now() WHERE id=$1 AND user_id=$2",
