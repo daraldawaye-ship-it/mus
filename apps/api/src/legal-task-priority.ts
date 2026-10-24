@@ -29,7 +29,7 @@ export function calculateLegalTaskPriority(t:TaskPriorityInput,now=Date.now()){
   if(manual!==null&&manual!==undefined&&manual>=1&&manual<=10) return {priority:manual,reason:t.task_priority_reason||"أولوية حددها المالك",source:"manual" as const};
   const info=t.title+" "+t.body+" "+(t.case_title||"");
   let priority=9,reason="متابعة عادية تحتاج ترتيبًا";
-  const explicit=t.title.match(/\\[أولوية\\s+(\\d{1,2})\\]/);
+  const explicit=t.title.match(/\[أولوية\s+(\d{1,2})\]/);
   if(explicit&&+explicit[1]>=1&&+explicit[1]<=10){priority=Math.max(1,Math.min(10,+explicit[1]));reason="ترتيب عاجل محدد سابقًا من المالك";}
   else for(const rule of urgencyWords) if(rule.test(info)){priority=rule.priority;reason=rule.reason;break;}
   const due=dueDateOf(t.due_at);
