@@ -117,3 +117,36 @@ SELECT CASE g.general_table_table_name
 FROM general_table g
 WHERE g.general_table_table_name IN ('معطيات في قضية مصطفى','مستندات قضايا مصطفى','مهام في قضايا مصطفى')
 ON CONFLICT(legacy_general_id) DO NOTHING;
+
+-- Index verified Drive archive folders without moving originals.
+UPDATE legal_cases AS c
+SET drive_folder_id=f.folder_id,
+    drive_folder_url='https://drive.google.com/drive/folders/' || f.folder_id
+FROM (VALUES
+ ('ناتكو','1fk6qTz3DpalyPKdhhRucGS4KWNqKFRK5'),
+ ('ريمان','13STQ7NUUZHz88L9B9zJgb3io3wPBR7Q2'),
+ ('برايم','1XUQiWzG9a1dwwiXxXvvATRWUBZHzgEnr'),
+ ('أسام الكبسي','1xfMwUYNw2o3Y-GKOfZ-9T5O80abeKhRh'),
+ ('العطاس','1ZGqIZPtAjzMN3rSm2L_7qBo6daqq-2G_'),
+ ('الشهاري','1t5ZNWq9-pF3gaq7AbeOVDd_eFOLAiEd6')
+) AS f(term,folder_id)
+WHERE c.title ILIKE '%' || f.term || '%' AND c.drive_folder_id='';
+
+-- Two actual Drive PDF records independently verified by Drive file IDs.
+-- Text is deliberately blank until transcribed/reviewed; original files remain in place.
+WITH sources(title, file_id, source_folder) AS (VALUES
+ ('ناتكو.pdf','10mN8X172QJFCbRiDnZgQkAPbSv7_wJE5','1OzGxKTR0igFkPctGSa66gLv9bYKC0xg7'),
+ ('ناتكو - طلب السير في إجراءات البيع.pdf','1wSD-ghZEYedhJG5CJ1RfkTSjz3bvL3mb','1OzGxKTR0igFkPctGSa66gLv9bYKC0xg7')
+), new_documents AS (
+ INSERT INTO legal_records(kind,title,body,pdf_url,drive_file_id,drive_folder_id,drive_folder_url,created_by,updated_by)
+ SELECT 'document',s.title,'رابط ملف أصلي في Google Drive. لم يُتحقق من نص المستند بعد.',
+        'https://drive.google.com/file/d/'||s.file_id||'/view',s.file_id,s.source_folder,
+        'https://drive.google.com/drive/folders/'||s.source_folder,u.id,u.id
+ FROM sources s CROSS JOIN users u
+ WHERE u.owner
+ RETURNING id
+)
+INSERT INTO legal_record_cases(record_id,case_id)
+SELECT d.id,c.id FROM new_documents d CROSS JOIN legal_cases c
+WHERE c.title ILIKE '%ناتكو%'
+ON CONFLICT DO NOTHING;
