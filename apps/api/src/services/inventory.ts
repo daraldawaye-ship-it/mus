@@ -372,6 +372,8 @@ export interface ApplyStockInput {
   allowInactive?: boolean;
   /** Trusted historical purchase import only; retain the unknown batch as empty. */
   allowUnknownExpiry?: boolean;
+  /** Legacy imports only: append stock valuation without changing prior journal costs. */
+  allowHistoricalChronology?: boolean;
 }
 export interface StockAllocation {
   movementId: number;
@@ -393,12 +395,8 @@ export async function applyStock(
     input.allowInactive,
   );
   await checkStockLocation(client, companyId, input.locationId);
-  await assertStockChronology(
-    client,
-    companyId,
-    input.itemId,
-    input.documentDate,
-  );
+  if (!input.allowHistoricalChronology)
+    await assertStockChronology(client, companyId, input.itemId, input.documentDate);
   const settings = await requireInventorySettings(client, companyId);
   const quantity = input.quantitySmallest;
   if (quantity === 0n)
