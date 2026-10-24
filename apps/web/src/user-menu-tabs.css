@@ -94,7 +94,8 @@
 
 /* Navigation shortcuts stay three columns on phones and wider screens.
    Other avatar tabs retain their existing responsive grid. */
-.user-menu-grid.user-menu-shortcuts-grid {
+.user-menu-grid.user-menu-shortcuts-grid,
+.user-menu-grid.user-menu-item-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -317,6 +318,20 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* Within the item tab, replace the grid with actual movement records. */
+.user-menu-item-actions { flex: 0 0 auto; }
+.user-menu-item-history { min-width: 0; padding-top: 2px; }
+.user-menu-item-history-heading { display:flex; align-items:center; gap:8px; padding:4px 2px 8px; font-size:12px; border-bottom:1px solid var(--border); }
+.user-menu-item-history-heading > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+.user-menu-item-history-row { padding:8px 3px; border-bottom:1px solid var(--border); font-size:12px; line-height:1.5; }
+.user-menu-item-history-row > strong { display:block; overflow-wrap:anywhere; }
+.user-menu-item-history-meta { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.user-menu-item-history-meta > span { min-width:0; overflow-wrap:anywhere; }
+.user-menu-item-history-meta > span:first-child { flex:1; }
+.user-menu-item-history-meta [dir="ltr"] { text-align:start; }
+.user-menu-item-history-pager { display:flex; align-items:center; justify-content:space-between; padding:9px 3px; font-size:12px; }
+.user-menu-item-history-pager button { padding:6px 14px; border:1px solid var(--border); border-radius:6px; font:inherit; background:var(--soft); color:var(--on-soft); cursor:pointer; }
+.user-menu-item-history-pager button:disabled { opacity:0.5; cursor:wait; }
 @media (max-width: 520px) {
   .user-menu-tab {
     padding-inline: 0;
