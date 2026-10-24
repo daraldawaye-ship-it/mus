@@ -901,9 +901,11 @@ try {
         { times: 1 },
       );
       try {
-        await page
-          .getByRole("button", { name: "تحديث التقرير", exact: true })
-          .click();
+        // PageHeader consolidates multiple actions in the "الإجراءات"
+        // menu. Refresh must be invoked from that visible menu.
+        await page.getByRole("button", { name: "الإجراءات", exact: true }).click();
+        await page.getByRole("menu", { name: "إجراءات الصفحة" })
+          .getByRole("menuitem", { name: "تحديث التقرير", exact: true }).click();
         await incoming;
         await navigate(
           page,
