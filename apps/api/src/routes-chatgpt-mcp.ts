@@ -123,7 +123,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    const fail=(code:number,message:string)=>res.json({jsonrpc:"2.0",id:body.id,error:{code,message}});
    if(body.method==="initialize"){
      ok({protocolVersion:"2025-06-18",capabilities:{tools:{listChanged:false}},
-       serverInfo:{name:"tijara-general-table",version:"1.2.0"}});return;
+       serverInfo:{name:"tijara-general-table",version:"1.3.0"}});return;
    }
    if(body.method==="ping"){ok({});return;}
    if(body.method==="tools/list"){ok({tools:[...tools,...apiTools]});return;}
