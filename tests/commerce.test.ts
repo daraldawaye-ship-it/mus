@@ -3957,8 +3957,10 @@ test("electronic wallet receipt register posts exact, partial, zero and negative
   assert.equal((await settle(fullShortage.operationId,"difference","0")).receipt.difference,"2000");
   assert.equal((await settle(partial.operationId,"difference","300")).receipt.difference,"200");
   assert.equal((await list("pending")).total,0);
-  assert.equal((await list("received")).total,5);
-  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,5);
+  // Three electronic transfers were made and settled; the unrelated
+  // pouch transfer must never increase the electronic receipt count.
+  assert.equal((await list("received")).total,3);
+  assert.equal((await list("all")).items.filter(x=>x.receiptId!==null).length,3);
   assert.equal(await book(cashierCash),"1300.000000");
   assert.equal(await book(wallet.id),"0.000000");
   assert.equal(await book(variance),"2200.000000");
