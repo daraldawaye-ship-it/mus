@@ -39,6 +39,11 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  assert.equal(created.status,201,JSON.stringify(created.data));
  const caseId=created.data.record.id as number;
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
+ assert.equal((await reporter.call("GET","/legal/cases/"+caseId+"/ai-export")).status,403);
+ const beforeGrant=await reporter.call("GET","/legal/cases");
+ assert.equal(beforeGrant.status,200);
+ assert.equal(beforeGrant.data.total,0);
+ assert.equal((await reporter.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:"editor"})).status,403);
  assert.equal((await owner.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:"reporter"})).status,200);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,200);
  const newReport=await reporter.call("POST","/legal/records",{kind:"report",title:"تقرير المتابعة الأول",body:"راجعت المحكمة",caseIds:[caseId]});
@@ -58,4 +63,10 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  const scoped=await reporter.call("GET","/legal/cases/"+caseId+"/records");
  assert.equal(scoped.status,200);
  assert.ok(!scoped.data.items.some((x:{id:number})=>x.id===documentId),"shared document must not leak when second case is inaccessible");
+ assert.equal((await owner.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:null})).status,200);
+ assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
+ const afterRevocation=await reporter.call("GET","/legal/cases");
+ assert.equal(afterRevocation.status,200);
+ assert.equal(afterRevocation.data.total,0);
+ assert.equal((await owner.call("GET","/legal/cases/"+caseId)).status,200);
 });
