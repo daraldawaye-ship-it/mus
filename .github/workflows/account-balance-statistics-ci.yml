@@ -67,9 +67,9 @@ jobs:
           NODE
       - run: npm run check
       - run: npm run build
-      - name: Verify history, periods, stock valuation, report projections, authorization and upgrades
-        run: node --import tsx --test --test-concurrency=1 tests/account-statistics-foundation.test.ts tests/account-balance-statistics.test.ts tests/account-activity-statistics.test.ts tests/account-activity-upgrade.test.ts tests/account-stock-value.test.ts tests/account-statistics-report.test.ts
       - name: Verify the account statistics table and account card in the browser
         run: node --import tsx tests/browser-account-statistics.ts
+      - name: Verify history, periods, stock valuation, report projections, authorization and upgrades
+        run: node --import tsx --test --test-concurrency=1 tests/account-statistics-foundation.test.ts tests/account-balance-statistics.test.ts tests/account-activity-statistics.test.ts tests/account-activity-upgrade.test.ts tests/account-stock-value.test.ts tests/account-statistics-report.test.ts
       - name: Verify resets preserve protected operational history and exact receipts
         run: node --import tsx --test tests/transaction-reset.test.ts
