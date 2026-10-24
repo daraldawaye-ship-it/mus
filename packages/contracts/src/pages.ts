@@ -166,7 +166,7 @@ page(
   "الجدول العام",
   "إدارة المنصة",
   "/general-table",
-  { view: admin, create: admin, edit: admin },
+  { view: signed, create: signed, edit: signed },
   "سجلات مرجعية عامة خاصة بإدارة المنصة.",
 );
 page(
