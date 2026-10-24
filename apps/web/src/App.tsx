@@ -473,6 +473,7 @@ function Navigation({
             {context.company.name}
           </div>
           {links("company")}
+          {user?.owner && <NavLink to={`/companies/${context.company.id}/legacy-sales-import`} onClick={close} className="nav-link"><FileText size={17}/><span className="nav-text">ترحيل مبيعات النظام السابق</span></NavLink>}
         </>
       )}
     </nav>
