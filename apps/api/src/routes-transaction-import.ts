@@ -166,6 +166,49 @@ export function transactionImportRoutes(pool: Pool): Router {
       res.json(result);
     }),
   );
+  // Owner-only URL ingestion. No source file is written to disk or retained.
+  router.post("/companies/:companyId/transaction-import/from-url", handler(async (req,res) => {
+    const companyId=id(req.params.companyId);
+    const input=parse(z.object({url:z.url().max(2000)}).strict(),req.body);
+    const target=new URL(input.url);
+    if(target.protocol!=="https:"||target.username||target.password||target.port)
+      throw new HttpError(400,"invalid_url","يجب استخدام رابط HTTPS آمن.");
+    const host=target.hostname.toLowerCase();
+    if(!["drive.google.com","docs.google.com","raw.githubusercontent.com","storage.googleapis.com"].includes(host))
+      throw new HttpError(400,"invalid_url","مصدر الرابط غير معتمد. استخدم رابط ملف من Google Drive أو تخزين معتمد.");
+    await transaction(pool,async client=>{
+      const user=await currentActor(client,actor(req));
+      ownerOnly(user);
+      if(user.suspended)throw new HttpError(403,"forbidden","الحساب موقوف");
+      await companyAccess(client,user,companyId,undefined,true);
+    });
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),12000);
+    let raw="";
+    try {
+      const response=await fetch(target,{redirect:"error",signal:controller.signal,headers:{Accept:"application/json,text/plain"}});
+      if(!response.ok)throw new HttpError(400,"source_unavailable","تعذر قراءة الملف من الرابط.");
+      if(Number(response.headers.get("content-length")||0)>3_000_000)throw new HttpError(413,"source_too_large","الملف كبير جدًا.");
+      const reader=response.body?.getReader();
+      if(!reader)throw new HttpError(400,"source_empty","الملف فارغ.");
+      const decoder=new TextDecoder();
+      let bytes=0;
+      while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;
+        if(bytes>3_000_000){await reader.cancel();throw new HttpError(413,"source_too_large","الملف كبير جدًا.");}
+        raw+=decoder.decode(part.value,{stream:true});
+      }
+      raw+=decoder.decode();
+    }finally{clearTimeout(timeout);}
+    let entries:unknown;
+    try{entries=raw.trim().startsWith("[")?JSON.parse(raw):raw.trim().split(/\\r?\\n/).filter(Boolean).map(line=>JSON.parse(line));}
+    catch{throw new HttpError(400,"invalid_file","تعذر قراءة JSON/JSONL.");}
+    if(!Array.isArray(entries)||entries.length<1||entries.length>100)
+      throw new HttpError(400,"invalid_file","الملف يجب أن يحتوي على 1 إلى 100 دفعة.");
+    const batches=entries.map(value=>parse(batchSchema,value));
+    if(batches.some(batch=>batch.documents.some(doc=>doc.type!=="invoice"||doc.payload.kind!=="sale")))
+      throw new HttpError(400,"invalid_file","هذه الصفحة لاستيراد المبيعات فقط.");
+    res.json({batches});
+  }));
   router.post(
     "/companies/:companyId/transaction-import/batch",
     handler(async (req, res) => {
