@@ -143,6 +143,14 @@ export function commerceRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const itemId = id(req.params.itemId);
       const type = req.query.type;
+      const pageRaw = req.query.page;
+      const pageSizeRaw = req.query.pageSize;
+      const page = pageRaw === undefined ? 1 :
+        typeof pageRaw === "string" && /^[1-9][0-9]{0,5}$/.test(pageRaw) ? Number(pageRaw) : 0;
+      const pageSize = pageSizeRaw === undefined ? 5 :
+        pageSizeRaw === "10" ? 10 : pageSizeRaw === "5" ? 5 : 0;
+      if (page < 1 || pageSize === 0)
+        throw new HttpError(400, "invalid_query", "صفحة حركات الصنف غير صالحة.");
       if (type !== "purchase" && type !== "sale" &&
           type !== "adjustment" && type !== "transfer")
         throw new HttpError(400, "invalid_query", "نوع تاريخ الصنف غير صالح.");
@@ -172,8 +180,8 @@ export function commerceRoutes(pool: Pool): Router {
              WHERE il.company_id=$1 AND il.item_id=$2
                AND i.kind=$3 AND il.smallest_quantity>0
              ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
-             LIMIT 5`,
-            [companyId, itemId, type],
+             LIMIT $4 OFFSET $5`,
+            [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
           );
           return result.rows;
         }
@@ -193,12 +201,12 @@ export function commerceRoutes(pool: Pool): Router {
            WHERE o.company_id=$1 AND m.item_id=$2 AND o.kind=$3
            GROUP BY o.id,o.document_date,o.description,it.factor2,it.factor3
            ORDER BY o.document_date DESC,o.id DESC
-           LIMIT 5`,
-          [companyId, itemId, type],
+           LIMIT $4 OFFSET $5`,
+          [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
         );
         return result.rows;
       });
-      res.json({ items });
+      res.json({ items: items.slice(0, pageSize), hasMore: items.length > pageSize });
     }),
   );
   router.get(

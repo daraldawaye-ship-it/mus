@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import { ItemMenuHistory } from "./ItemMenuHistory";
 import type { Page, User } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import {
@@ -16,13 +17,14 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 };
 
 export function EntityMenuSearch({
-  user, companyId, employeeId, employeeName, kind,
+  user, companyId, employeeId, employeeName, kind, itemMenuReset = 0,
 }: {
   user: User;
   companyId: number | null;
   employeeId: number | null;
   employeeName?: string | null;
   kind: RecentEntityKind;
+  itemMenuReset?: number;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -163,7 +165,12 @@ export function EntityMenuSearch({
           )}
         </div>
       )}
-      {!focused && selected && (
+      {kind === "item" && company > 0 && (
+        <ItemMenuHistory userId={user.id} companyId={company}
+          itemId={selected?.id ?? null} itemName={selected?.name ?? null}
+          resetKey={itemMenuReset} />
+      )}
+      {!focused && selected && kind !== "item" && (
         <p className="user-menu-entity-hint">
           {recent ? "آخر " + label + " تم التعامل معه: " : "المستخدم الافتراضي: "}
           <strong>{selected.name}</strong>

@@ -62,6 +62,7 @@ export function UserMenu({
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SectionKey>("navigation");
+  const [itemMenuReset, setItemMenuReset] = useState(0);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
@@ -149,7 +150,11 @@ export function UserMenu({
                   aria-selected={selected}
                   aria-controls="user-menu-tabpanel"
                   tabIndex={selected ? 0 : -1}
-                  onClick={() => setActiveTab(section.key)}
+                  onClick={() => {
+                    if (section.key === "item" && activeTab === "item")
+                      setItemMenuReset(value => value + 1);
+                    setActiveTab(section.key);
+                  }}
                 >
                   <Icon size={16} aria-hidden="true" />
                   <span>{section.label}</span>
@@ -177,7 +182,8 @@ export function UserMenu({
               <EntityMenuSearch key={`${user.id}:${companyId}:${activeTab}`}
                 user={user} companyId={companyId} employeeId={employeeId}
                 employeeName={employeeName}
-                kind={activeTab === "item" ? "item" : activeTab === "financialAccount" ? "account" : "employee"} />
+                kind={activeTab === "item" ? "item" : activeTab === "financialAccount" ? "account" : "employee"}
+                itemMenuReset={itemMenuReset} />
             )}
             {activeTab === "settings" && (
               <>
