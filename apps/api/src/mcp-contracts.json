@@ -6682,7 +6682,9 @@
   "GET /legal/records": {
     "queryFields": [
       "kind",
-      "q"
+      "q",
+      "page",
+      "unlinked"
     ],
     "source": "routes-legal-cases.ts"
   },
