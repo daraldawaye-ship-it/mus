@@ -16,8 +16,52 @@ declare global {
   namespace Express {
     interface Request {
       auth?: RequestAuth;
+      alraesyOAuth?: boolean;
     }
   }
+}
+/** OAuth authorization for the separate Alraesy API, never browser-cookie fallback. */
+export function alraesyApiBearer(pool: Pool, origin: string): RequestHandler {
+  return (req, _res, next) => {
+    const header=req.get("authorization");
+    if (!header) {next();return;}
+    const token=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(header)?.[1];
+    // Avoid converting browser session cookies into OAuth grants.
+    if (!token) {next(new HttpError(401,"unauthenticated","رمز الاتصال غير صالح"));return;}
+    if (/^\/(?:auth|setup|social|media)(?:\/|$)/.test(req.path)) {
+      next(new HttpError(403,"restricted_api","هذه العملية تتطلب موقع الرئيسي الآمن"));return;
+    }
+    pool.query(
+      `SELECT u.* FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
+       WHERE t.access_hash=$1 AND t.resource=$2
+         AND t.scope IN ('alraesy.read','alraesy.read alraesy.write')
+         AND t.access_expires_at>now() AND t.refresh_expires_at>now()
+         AND t.revoked_at IS NULL AND NOT u.archived AND NOT u.suspended LIMIT 1`,
+      [tokenHash(token),origin+"/mcp/alraesy"]
+    ).then(result=>{
+      if (!result.rows[0]) {next(new HttpError(401,"unauthenticated","انتهى تفويض الاتصال"));return;}
+      const method=req.method.toUpperCase();
+      if (!["GET","HEAD","OPTIONS"].includes(method)) {
+        // The bearer alone never elevates a read-only connection to writing.
+        // This second query avoids trusting request or tool-supplied scopes.
+        pool.query<{scope:string}>(
+          "SELECT scope FROM chatgpt_oauth_tokens WHERE access_hash=$1 AND resource=$2",
+          [tokenHash(token),origin+"/mcp/alraesy"]
+        ).then(scoped=>{
+          if (!scoped.rows[0]?.scope.split(" ").includes("alraesy.write")) {
+            next(new HttpError(403,"insufficient_scope","هذا الاتصال للقراءة فقط"));return;
+          }
+          req.auth={user:userDTO(result.rows[0]),tokenHash:"",csrf:""};
+          req.alraesyOAuth=true;
+          next();
+        }).catch(next);
+        return;
+      }
+      req.auth={user:userDTO(result.rows[0]),tokenHash:"",csrf:""};
+      req.alraesyOAuth=true;
+      next();
+    }).catch(next);
+  };
 }
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   return schema.parse(value);
@@ -72,6 +116,12 @@ export function loadSession(pool: Pool): RequestHandler {
 }
 export function mutationSecurity(origin: string): RequestHandler {
   return (req, _res, next) => {
+    if (req.alraesyOAuth) {
+      if (!["GET","HEAD","OPTIONS"].includes(req.method) && !req.is("application/json")) {
+        next(new HttpError(415,"content_type","الطلب يتطلب JSON"));return;
+      }
+      next();return;
+    }
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       next();
       return;
