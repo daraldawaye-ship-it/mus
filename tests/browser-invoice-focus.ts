@@ -99,7 +99,7 @@ try {
       phone: "", role: "employee", active: true, permissions: [],
     });
   } finally { await employeeSession.dispose(); }
-  await call(base + "/items", "POST", {
+  const focusItem = await call<{ item: { id: number } }>(base + "/items", "POST", {
     name: "Focus item",
     barcode: "FOCUS-001",
     currencyId,
@@ -110,6 +110,10 @@ try {
     name: "Other fresh item", barcode: "FRESH-002", currencyId,
     salePrice1: "8", idempotencyKey: randomUUID(),
   });
+  // A ten-record request is accepted without changing the old five-record API default.
+  const emptyHistory = await call<{items: unknown[];hasMore:boolean}>(
+    base + `/item-history/${focusItem.item.id}?type=purchase&page=1&pageSize=10`);
+  assert.deepEqual(emptyHistory, { items: [], hasMore: false });
   const context = await browser.newContext({
     baseURL: origin,
     storageState: await api.storageState(),
