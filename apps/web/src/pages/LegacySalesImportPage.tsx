@@ -9,9 +9,8 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   const {user}=useSession();
   const [batches,setBatches]=useState<Batch[]>([]);
   const [name,setName]=useState("");
-  const [url,setUrl]=useState("");
   const [busy,setBusy]=useState(false);
-  const [limit,setLimit]=useState(5);
+  const [limit,setLimit]=useState(50);
   const [summary,setSummary]=useState({added:0,existing:0,failed:0,total:0,processed:0});
   const [failures,setFailures]=useState<string[]>([]);
   const [notice,setNotice]=useState("");
@@ -32,26 +31,6 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
       }
       setBatches(parsed);
     } catch(e) {setError(e instanceof Error?e.message:"تعذر قراءة الملف.");}
-  }
-  async function loadPrepared() {
-    if(busy)return;
-    setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");
-    try {
-      const response=await api<{batches:Batch[]}>(`/companies/${context.company.id}/transaction-import/prepared-next-50`);
-      setBatches(response.batches);setName("الدفعة الخاصة — 50 فاتورة");
-      setLimit(50);setNotice("تم تحميل 50 فاتورة من المصدر الخاص. اضغط ترحيل 50 فاتورة للاعتماد.");
-    }catch(e){setError(e instanceof Error?e.message:"الدفعة الخاصة غير متاحة بعد.");}
-    finally{setBusy(false);}
-  }
-  async function loadUrl() {
-    if(!url.trim()||busy)return;
-    setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");setBatches([]);
-    try {
-      const response=await api<{batches:Batch[]}>(`/companies/${context.company.id}/transaction-import/from-url`,{method:"POST",body:{url:url.trim()}});
-      setBatches(response.batches);setName("الرابط المحدد");
-      setNotice("تمت قراءة الملف والتحقق منه.");
-    }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الرابط.");}
-    finally{setBusy(false);}
   }
   async function run() {
     if(!user?.owner||busy||!batches.length)return;
@@ -77,17 +56,12 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
   return <div className="form-stack">
     <PageHeader title="ترحيل مبيعات النظام السابق" description="صلاحية المالك فقط — التاريخ الأصلي محفوظ — يمنع تكرار معرّف المصدر" />
     <Card title="ملف الدفعات">
-      <Button disabled={busy} onClick={()=>void loadPrepared()}>تحميل الدفعة الخاصة — 50 فاتورة</Button>
-      <Notice>ارفع ملف JSONL أو JSON المجهز من Access. يُستورد إلى {context.company.name} فقط. لا ترفع ملف ACCDB مباشرة؛ يجب استخراج الدفعات أولًا.</Notice>
-      <label>رابط الملف الآمن (HTTPS)</label>
-      <input type="url" dir="ltr" value={url} placeholder="https://..." onChange={e=>setUrl(e.target.value)} disabled={busy} style={{width:"100%"}}/>
-      <Button disabled={busy||!url.trim()} onClick={()=>void loadUrl()}>قراءة الملف من الرابط</Button>
-      <p>لا يخزن الموقع الملف بعد قراءته؛ تبقى النسخة الأصلية لدى الجهة المستضيفة للرابط.</p>
-      <details><summary>أو اختيار ملف من الجهاز</summary>
-      <input type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])}/></details>
+      <Notice>اختر ملف JSON أو JSONL المستخرج من النظام السابق ثم حدد عدد الفواتير واضغط ترحيل. الملف يُقرأ محليًا داخل المتصفح، ويُرسل فقط محتوى الدفعات عند الترحيل.</Notice>
+      <label htmlFor="legacy-invoice-file">اختيار ملف الفواتير من الجهاز</label>
+      <input id="legacy-invoice-file" type="file" accept=".json,.jsonl,application/json" disabled={busy} onChange={e=>void load(e.target.files?.[0])} style={{width:"100%"}}/>
       {name&&<p>الملف: {name} — الفواتير: {count}</p>}
       {batches.length>0&&<><p>أول فاتورة: {batches[0].documents[0].sourceId} — التاريخ: {batches[0].postingDate}</p>
-        <label>عدد الفواتير التجريبية <input type="number" min={1} max={100} value={limit} onChange={e=>setLimit(Math.max(1,Math.min(100,Number(e.target.value)||5)))}/></label>
+        <label>عدد الفواتير المطلوب ترحيلها <input type="number" min={1} max={100} value={limit} onChange={e=>setLimit(Math.max(1,Math.min(100,Number(e.target.value)||5)))}/></label>
         <Button disabled={busy} onClick={()=>void run()}>{busy?"جارٍ الترحيل…":`ترحيل ${Math.min(limit,count)} فواتير`}</Button></>}
       {error&&<Notice tone="error">{error}</Notice>}
       {notice&&<Notice tone="success">{notice}</Notice>}
