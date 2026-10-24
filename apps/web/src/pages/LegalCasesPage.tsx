@@ -61,6 +61,7 @@ export function LegalCasesPage() {
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
+ const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
  const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
  const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
@@ -78,16 +79,16 @@ export function LegalCasesPage() {
   else if(selected.data)await api("/legal/cases/"+caseId,{method:"PUT",body:{...caseDraft,revision:selected.data.record.revision}});
   setCaseEdit(false);setCaseNew(false);
  });
- const beginEntry=(kind:Kind,e?:Entry)=>{setEntryDraft(entryForm(kind,caseId,e));setEntryEdit(e?e.id:"new");setError("");};
+ const beginEntry=(kind:Kind,e?:Entry,fromReport?:number)=>{setEntryDraft(entryForm(kind,caseId,e));setEntryEdit(e?e.id:"new");setLinkAfterSave(fromReport??null);setError("");};
  const submitEntry=()=>void action(async()=>{
-  if(entryEdit==="new"){const result=await api<{record:Entry}>("/legal/records",{method:"POST",body:entryDraft});setFocus(result.record.id);}
+  if(entryEdit==="new"){const result=await api<{record:Entry}>("/legal/records",{method:"POST",body:entryDraft});if(linkAfterSave)await api("/legal/records/"+result.record.id+"/links",{method:"POST",body:{otherId:linkAfterSave,linked:true}});setFocus(result.record.id);}
   else if(typeof entryEdit==="number"){
    const old=(records.data?.items??[]).concat(all.data?.items??[]).find(x=>x.id===entryEdit);
    if(!old)throw new Error("تعذر العثور على السجل");
    const {caseIds:_,...payload}=entryDraft;
    await api("/legal/records/"+entryEdit,{method:"PUT",body:{...payload,revision:old.revision}});
   }
-  setEntryEdit(null);
+  setEntryEdit(null);setLinkAfterSave(null);
  });
  const imageUpload=(entryId:number,file:File|undefined)=>{if(!file)return;if(file.size>2097152){setError("الحد 2 ميجابايت للصورة؛ استخدم Drive للملفات الكبيرة");return;}
   const reader=new FileReader();reader.onload=()=>void action(async()=>{await api("/legal/records/"+entryId+"/images",{method:"POST",body:{filename:file.name,dataUrl:String(reader.result)}});setFocus(entryId);});
@@ -122,7 +123,7 @@ export function LegalCasesPage() {
  <div className="legal-actions">{((editor||(tab==="report"&&reporter))&&tab!=="unlinked")&&<Button onClick={()=>beginEntry(tab as Kind)}>إضافة سجل</Button>}{tab==="report"&&<span>يسمح بعدة تقارير يوميًا، دون محو ما سبق.</span>}</div>
  {entryEdit!==null&&<div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>}
  {(visible.length===0&&!entryEdit)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
- {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task")}>إضافة مهمة</Button>}</div></div>
+ {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
  {Boolean(r.legacy_snapshot)&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
  {r.kind==="document"&&<div className="legal-doc">{r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}
