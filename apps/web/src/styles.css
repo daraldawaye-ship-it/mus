@@ -3700,7 +3700,10 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .chat-page .page-heading h1 { font-size: 18px; }
   .chat-page .page-heading p { font-size: 11px; }
   .chat-scope-badge { padding: 6px 8px; font-size: 10px; gap: 4px; }
-  .chat-shell { display: flex; height: calc(100dvh - 154px); min-height: 350px; max-height: none; border-radius: 9px; }
+  /* Reserve room for the top bar, page heading, scope picker and bottom
+     safe area. The previous 154px subtraction put the composer below the
+     visible viewport on narrow phones. Feed alone scrolls within the shell. */
+  .chat-shell { display: flex; height: max(210px, calc(100dvh - 320px)); min-height: 0; max-height: calc(100dvh - 260px); border-radius: 9px; }
   .chat-sidebar { width: 100%; border-inline-end: 0; }
   .chat-shell > .chat-welcome { display: none; }
   .chat-shell-selected > .chat-sidebar { display: none; }
