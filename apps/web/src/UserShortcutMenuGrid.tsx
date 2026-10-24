@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
-import { ListTree, Settings2, TableProperties } from "lucide-react";
 import type { PageEntry, User } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { useControls } from "./control";
@@ -53,10 +52,9 @@ export function UserShortcutMenuGrid({
     !!permitted.get("public.general-table")?.actionAccess.create;
 
   return (
-    <div className="user-menu-grid" aria-label="التنقل والاختصارات">
+    <div className="user-menu-grid user-menu-shortcuts-grid" aria-label="التنقل والاختصارات">
       {defaultHref && (
         <NavLink to={defaultHref} className="user-menu-tile" onClick={onNavigate}>
-          <ListTree size={16} aria-hidden="true" />
           <span>قائمة الصفحات</span>
         </NavLink>
       )}
@@ -65,18 +63,15 @@ export function UserShortcutMenuGrid({
           key={entry.key} to={entry.href!} title={entry.name}
           className="user-menu-tile" onClick={onNavigate}
         >
-          <ListTree size={16} aria-hidden="true" />
           <span>{entry.name}</span>
         </NavLink>
       ))}
       {allowQuickAdd && (
         <button type="button" className="user-menu-tile" onClick={onQuickAdd}>
-          <TableProperties size={16} aria-hidden="true" />
           <span>إضافة إلى الجدول العام</span>
         </button>
       )}
       <button type="button" className="user-menu-tile" onClick={onManage}>
-        <Settings2 size={16} aria-hidden="true" />
         <span>تحديد اختصاراتي</span>
       </button>
       {directory.isLoading && <span className="user-menu-grid-note">جارٍ تحميل الصفحات…</span>}
