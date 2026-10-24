@@ -60,6 +60,7 @@ export function LegalCasesPage() {
  const {user}=useSession(),owner=!!user?.owner,client=useQueryClient(),[params,setParams]=useSearchParams();
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
  const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
@@ -67,12 +68,12 @@ export function LegalCasesPage() {
  const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
- const all=useQuery({queryKey:["legal","all",tab],queryFn:()=>api<{items:Entry[]}>("/legal/records"),enabled:owner&&tab==="unlinked"});
+ const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
  const links=useQuery({queryKey:["legal","linked",focus],queryFn:()=>api<{record:Entry;caseIds:number[];linkedIds:number[];images:{id:number;filename:string}[]}>("/legal/records/"+focus),enabled:!!focus});
  const access=useQuery({queryKey:["legal","access",caseId],queryFn:()=>api<{items:{user_id:number;user_name:string;role:string}[]}>("/legal/cases/"+caseId+"/access"),enabled:owner&&caseId>0&&tab==="access"});
  const editor=owner||selected.data?.role==="editor",reporter=editor||selected.data?.role==="reporter";
- const visible=(tab==="unlinked"?(all.data?.items??[]).filter(e=>!records.data?.items.some(r=>r.id===e.id)):(records.data?.items??[]).filter(e=>e.kind===tab));
+ const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case")next.set("tab","overview");return next;});
  const action=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");setNotice("");try{await fn();await client.invalidateQueries({queryKey:["legal"]});setNotice("حُفظ التغيير");}catch(e){setError(errorMessage(e));}finally{setBusy(false);}};
  const submitCase=()=>void action(async()=>{
@@ -140,8 +141,9 @@ export function LegalCasesPage() {
  </Card>:
  <Card title={tab==="unlinked"?"سجلات قديمة لم تربط بالقضايا":kinds.find(k=>k.id===tab)?.label||"السجلات"}>
  <div className="legal-actions">{((editor||(tab==="report"&&reporter))&&tab!=="unlinked")&&<Button onClick={()=>beginEntry(tab as Kind)}>إضافة سجل</Button>}{tab==="report"&&<span>يسمح بعدة تقارير يوميًا، دون محو ما سبق.</span>}</div>
+ {tab==="unlinked"&&owner&&<><Field label="بحث في السجلات التي لم ترتبط بأي قضية" value={unlinkedSearch} onChange={e=>{setUnlinkedSearch(e.target.value);setUnlinkedPage(1);}}/>{all.isPending&&<Notice>جارٍ تحميل السجلات…</Notice>}{all.error&&<Notice tone="error">{errorMessage(all.error)}</Notice>}{all.data&&<p>السجلات غير المرتبطة: {all.data.total} — صفحة {unlinkedPage} من {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</p>}</>}
  {entryEdit!==null&&<div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>}
- {(visible.length===0&&!entryEdit)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
+ {(visible.length===0&&!entryEdit&&!all.isPending)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
  {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
  {Boolean(r.legacy_snapshot)&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
@@ -161,6 +163,7 @@ export function LegalCasesPage() {
  {r.kind==="document"&&<><div className="legal-doc-images">{links.data.images.map(img=><a key={img.id} target="_blank" rel="noreferrer" href={"/api/legal/images/"+img.id}><img src={"/api/legal/images/"+img.id} alt={img.filename||"صورة مستند"}/></a>)}</div>
  {editor&&<label>رفع صورة للمستند (حتى 2MB للصورة) <input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>imageUpload(r.id,e.target.files?.[0])}/></label>}</>}
  </div>}</article>)}
+ {tab==="unlinked"&&owner&&all.data&&<div className="legal-actions"><Button variant="secondary" disabled={unlinkedPage<=1} onClick={()=>{setUnlinkedPage(p=>p-1);setFocus(null);}}>السابق</Button><span>{unlinkedPage} / {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</span><Button variant="secondary" disabled={unlinkedPage*all.data.pageSize>=all.data.total} onClick={()=>{setUnlinkedPage(p=>p+1);setFocus(null);}}>التالي</Button></div>}
  </Card>}
  </>:<Card title="اختر قضية"><p>اختر قضية من القائمة لعرض سجلاتها ومعطياتها ومستنداتها وتقاريرها.</p></Card>}
  </div></div></div>;
