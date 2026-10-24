@@ -57,6 +57,22 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  assert.equal(exportResult.status,200);
  assert.ok(exportResult.data.records.some((x:{id:number;content_text:string})=>x.id===documentId&&x.content_text==="النص الأصلي كما هو"));
  assert.equal((await owner.call("POST","/legal/records/"+reportId+"/review")).status,200);
+ // Orphan reviews must only list records not connected to ANY case, with paging.
+ const orphan=await owner.call("POST","/legal/records",{kind:"fact",title:"معطى لم يرتبط بقضية",caseIds:[]});
+ assert.equal(orphan.status,201);
+ const orphanList=await owner.call("GET","/legal/records?unlinked=true&page=1");
+ assert.equal(orphanList.status,200,JSON.stringify(orphanList.data));
+ assert.equal(orphanList.data.total,1);
+ assert.deepEqual(orphanList.data.items.map((x:{id:number})=>x.id),[orphan.data.record.id]);
+ assert.equal(orphanList.data.pageSize,30);
+ const nextOrphanPage=await owner.call("GET","/legal/records?unlinked=true&page=2");
+ assert.equal(nextOrphanPage.status,200);
+ assert.equal(nextOrphanPage.data.items.length,0);
+ assert.equal((await owner.call("GET","/legal/records?unlinked=maybe")).status,400);
+ assert.equal((await owner.call("GET","/legal/records?unlinked=true&page=0")).status,400);
+ assert.equal((await reporter.call("GET","/legal/records?unlinked=true")).status,403);
+ const orphanSearch=await owner.call("GET","/legal/records?unlinked=true&q="+encodeURIComponent("لم يرتبط"));
+ assert.deepEqual(orphanSearch.data.items.map((x:{id:number})=>x.id),[orphan.data.record.id]);
  const secondCase=await owner.call("POST","/legal/cases",{title:"قضية سرية أخرى"});
  const secondId=secondCase.data.record.id as number;
  assert.equal((await owner.call("POST","/legal/records/"+documentId+"/cases",{caseId:secondId,linked:true})).status,200);
