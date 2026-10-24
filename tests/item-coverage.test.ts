@@ -329,11 +329,27 @@ test("returns location stock remains in inventory but never inflates item covera
     { branchId: branch.id, name: "مرتجعات العملاء", kind: "returns" }, 201,
   )).location;
   const saved = await item(f, company.id, currency.id, { reserveQuantity: "5" });
+  // Stock balances are not standalone writable counters: every change must
+  // have a matching stock movement and valuation. Seed through the ordinary
+  // inventory adjustment endpoint so the deferred database integrity guard
+  // still protects the test as it protects production.
+  const documentDate = new Date().toISOString().slice(0, 10);
   for (const [location, quantity] of [[showroom, "30"], [warehouse, "20"], [returns, "40"]] as const) {
-    await f.pool.query(
-      "INSERT INTO stock_balances(company_id,item_id,location_id,quantity_smallest) VALUES($1,$2,$3,$4)",
-      [company.id, saved.id, location.id, quantity],
-    );
+    await f.owner.ok("POST", `/companies/${company.id}/stock-adjustments`, {
+      idempotencyKey: randomUUID(),
+      documentDate,
+      itemId: saved.id,
+      locationId: location.id,
+      countedQuantity: quantity,
+      expectedQuantitySmallest: "0",
+      unit: 3,
+      expiryDate: null,
+      // Items in this fixture track expiry; the adjustment must use a
+      // real batch date rather than introducing unknown-expiry stock.
+      nearestExpiryDate: "2027-12-01",
+      unitCostBase: "1",
+      description: "Coverage stock by location",
+    }, 201);
   }
   await f.pool.query(
     `INSERT INTO item_daily_activity(company_id,item_id,document_date,sale_quantity)
@@ -362,11 +378,16 @@ test("returns location stock remains in inventory but never inflates item covera
   const report = (await f.owner.ok<{ report: ItemActivityReport }>(
     "GET", `/companies/${company.id}/item-statistics-report?sortBy=approximateCoverageDays&sortDir=desc`,
   )).report;
-  assert.equal(report.rows.find(value => value.itemId === saved.id)?.approximateCoverageDays, "75");
-  await f.pool.query(
-    "UPDATE stock_balances SET quantity_smallest=70 WHERE company_id=$1 AND item_id=$2 AND location_id=$3",
-    [company.id, saved.id, returns.id],
-  );
+  assert.equal(Number(report.rows.find(value => value.itemId === saved.id)?.approximateCoverageDays), 75);
+  // Raise only the returns-location count. The increase belongs in stock
+  // movements, valuation, and the physical balance together.
+  await f.owner.ok("POST", `/companies/${company.id}/stock-adjustments`, {
+    idempotencyKey: randomUUID(), documentDate,
+    itemId: saved.id, locationId: returns.id,
+    countedQuantity: "70", expectedQuantitySmallest: "40", unit: 3,
+    expiryDate: null, nearestExpiryDate: "2027-12-01",
+    unitCostBase: "1", description: "Further customer-return stock count",
+  }, 201);
   assert.equal((await coverage(f.owner, company.id, saved.id)).approximateCoverageDays, "75");
   assert.equal((await f.pool.query(
     "SELECT stock_total::text,stock_returns::text FROM item_statistics WHERE company_id=$1 AND item_id=$2",
