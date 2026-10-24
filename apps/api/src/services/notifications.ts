@@ -46,6 +46,7 @@ export async function effectiveTemplate(
       [companyId, code],
     )
   ).rows[0];
+  if (companyId === 2 && code === 'INVENTORY_NEGATIVE') return r ? { ...templateDTO(r), enabled: false } : null;
   return r ? templateDTO(r) : null;
 }
 export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
@@ -53,7 +54,7 @@ export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can
  FROM notifications n JOIN notification_templates t ON t.code=n.code
  LEFT JOIN notification_settings s ON s.code=n.code AND s.company_id IS NOT DISTINCT FROM n.company_id`;
 // Recipient identity is necessary but not sufficient: membership and current follow grants are checked again.
-export const inboxFilter = `n.recipient_user_id=$1 AND (
+export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND (
  (n.company_id IS NULL AND COALESCE((SELECT enabled FROM page_settings WHERE company_id IS NULL AND page_key='public.notifications'),true)) OR n.company_id=$2::integer)
  AND (n.company_id IS NULL OR $4::boolean OR n.assigned
  OR (COALESCE(s.notify_subject,true) AND n.subject_employee_id=$3::integer)
@@ -266,7 +267,7 @@ export async function refreshNotificationReminders(
   const rows = (
     await client.query(
       notificationSelect +
-        ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND n.completed_at IS NULL
+        ` WHERE n.company_id IS NOT DISTINCT FROM $1::integer AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND n.completed_at IS NULL
  AND ((n.next_reminder_at<=clock_timestamp() AND COALESCE(s.allow_repeat,false) AND COALESCE(s.enabled,t.implemented)) OR n.snoozed_until<=clock_timestamp())
  AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp()) ORDER BY n.id FOR UPDATE OF n`,
       [companyId],
