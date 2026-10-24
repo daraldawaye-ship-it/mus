@@ -106,7 +106,7 @@ try {
     salePrice1: "5",
     idempotencyKey: randomUUID(),
   });
-  await call(base + "/items", "POST", {
+  const otherItem = await call<{ item: { id: number } }>(base + "/items", "POST", {
     name: "Other fresh item", barcode: "FRESH-002", currencyId,
     salePrice1: "8", idempotencyKey: randomUUID(),
   });
@@ -213,6 +213,13 @@ try {
     .getByText("Other fresh item", { exact: true }).click();
   await page.getByRole("dialog", { name: "القيمة الكاملة" })
     .getByRole("button", { name: "إغلاق النافذة" }).click();
+  await assertRecent("صنف", "Other fresh item");
+  // The checkbox / highlighted selection also becomes the current avatar item.
+  const table = page.getByRole("table", { name: "جدول الأصناف" });
+  await table.getByRole("checkbox", { name: `اختيار السجل ${focusItem.item.id}` }).check();
+  await assertRecent("صنف", "Focus item");
+  // Selecting another row while retaining the previous checked row must win.
+  await table.getByRole("checkbox", { name: `اختيار السجل ${otherItem.item.id}` }).check();
   await assertRecent("صنف", "Other fresh item");
   // The avatar item tab starts with a scalable three-column action grid.
   // An action replaces the grid with ten real-result slots; tapping the
