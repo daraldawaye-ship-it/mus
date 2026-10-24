@@ -6,12 +6,16 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 
 export const API_READ_SCOPE = "tijara.read";
 export const API_WRITE_SCOPE = "tijara.write";
+export const SITE_READ_SCOPE = "tijara.read";
+export const SITE_WRITE_SCOPE = "tijara.read tijara.write";
 export const FULL_READ_SCOPE = "general_table.read tijara.read";
 export const FULL_WRITE_SCOPE =
   "general_table.read general_table.write tijara.read tijara.write";
 export const oauthScopes = [
   "general_table.read",
   "general_table.read general_table.write",
+  SITE_READ_SCOPE,
+  SITE_WRITE_SCOPE,
   FULL_READ_SCOPE,
   FULL_WRITE_SCOPE,
 ];
@@ -67,7 +71,7 @@ export const apiTools = [
       additionalProperties: false,
     },
     securitySchemes: [
-      { type: "oauth2", scopes: ["general_table.read", API_READ_SCOPE] },
+      { type: "oauth2", scopes: [API_READ_SCOPE] },
     ],
     annotations: {
       readOnlyHint: true,
@@ -111,8 +115,6 @@ export const apiTools = [
       {
         type: "oauth2",
         scopes: [
-          "general_table.read",
-          "general_table.write",
           API_READ_SCOPE,
           API_WRITE_SCOPE,
         ],

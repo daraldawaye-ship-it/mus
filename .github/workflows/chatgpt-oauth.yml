@@ -66,4 +66,4 @@ jobs:
       - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - run: node --import tsx --test tests/table-column-order.test.ts
       - run: node --import tsx --test tests/profile-image-field.test.ts
-      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|media images)' tests/api.test.ts
+      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|ChatGPT site access|media images)' tests/api.test.ts
