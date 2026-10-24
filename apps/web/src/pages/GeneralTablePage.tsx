@@ -38,8 +38,8 @@ const formatDate = (value: string | null): string =>
 
 export function GeneralTablePage() {
   const { user } = useSession();
-  if (!user || !(user.owner || user.kind === "admin"))
-    return <Notice tone="warning">إدارة الجدول العام لمالك المنصة وإدارة الموقع فقط.</Notice>;
+  if (!user)
+    return <Notice tone="warning">الجدول العام متاح للمالك أو لمن منحه المالك صلاحية.</Notice>;
   return <GeneralTableContent />;
 }
 
