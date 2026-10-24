@@ -2,7 +2,8 @@
    per-user theme tokens, including the light/dark background and accent. */
 .user-menu-panel.user-menu-tabbed-panel {
   width: min(600px, calc(100vw - 18px));
-  max-height: min(320px, calc(100dvh - 66px));
+  height: min(360px, calc(100dvh - 66px));
+  max-height: min(360px, calc(100dvh - 66px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -16,7 +17,7 @@
   display: flex;
   flex: 0 0 auto;
   width: 100%;
-  min-height: 58px;
+  min-height: 39px;
   border-radius: 8px;
   overflow: hidden;
   background: var(--primary);
@@ -31,7 +32,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 12px 4px 15px;
+  padding: 6px 4px 9px;
   color: inherit;
   background: transparent;
   border: 0;
@@ -190,7 +191,7 @@
     flex-direction: column;
     gap: 3px;
     font-size: 10px;
-    padding: 8px 1px 13px;
+    padding: 3px 1px 6px;
   }
   .user-menu-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -209,7 +210,7 @@
 .user-menu-entity-section {
   display: flex;
   flex-direction: column;
-  padding: 8px 10px 12px;
+  padding: 4px 10px 12px;
   gap: 7px;
   min-width: 0;
 }
@@ -220,8 +221,8 @@
   display: flex;
   align-items: stretch;
   flex-direction: column;
-  gap: 5px;
-  padding: 2px 0 6px;
+  gap: 0;
+  padding: 0 0 6px;
   background: var(--surface);
 }
 .user-menu-entity-label {
