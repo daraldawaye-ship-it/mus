@@ -26,8 +26,9 @@ export function allowedAvatarTabs(
   const result: AvatarMenuTab[] = ["navigation"];
   if (any("company.items", "company.item-card", "company.sales", "company.purchases", "company.stock-movements"))
     result.push("item");
-  // financial-options?type=accounts requires finance.view on the API.
-  if (any("company.financial-documents", "company.account-ledger", "company.account-balances"))
+  // Account readers and finance readers can search accounts, but neither
+  // receives financial posting privileges from this presentation change.
+  if (any("company.accounts", "company.financial-documents", "company.account-ledger", "company.account-balances"))
     result.push("financialAccount");
   if (any("company.employees")) result.push("employee");
   // This placeholder is reserved for administrators with configuration rights.
