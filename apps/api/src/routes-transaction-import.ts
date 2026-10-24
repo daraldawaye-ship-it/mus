@@ -267,6 +267,7 @@ export function transactionImportRoutes(pool: Pool): Router {
                   allowHistoricalPrice: true,
                   allowUnknownExpiry: true,
                   suppressRewards: true,
+                  allowHistoricalStockChronology: true,
                   allowExpenseCounterparty: true,
                 },
               );
