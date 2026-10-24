@@ -259,16 +259,26 @@ export function transactionImportRoutes(pool: Pool): Router {
         const imported: ImportSummary[] = [],
           existing: ImportSummary[] = [],
           failed: ImportFailure[] = [];
+        // Fetch duplicate identities once per batch instead of once per invoice.
+        const mappedRows = await client.query(
+          "SELECT * FROM transaction_source_imports WHERE company_id=$1 AND source_system=$2 AND source_kind=$3 AND source_id=ANY($4::text[])",
+          [companyId, input.sourceSystem, "invoice", input.documents.filter(doc=>doc.type==="invoice").map(doc=>doc.sourceId)],
+        );
+        const mappedInvoices = new Map<string, (typeof mappedRows.rows)[number]>(
+          mappedRows.rows.map(row=>[String(row.source_id),row]),
+        );
+        const mappedVoucherRows = await client.query(
+          "SELECT * FROM transaction_source_imports WHERE company_id=$1 AND source_system=$2 AND source_kind=$3 AND source_id=ANY($4::text[])",
+          [companyId, input.sourceSystem, "voucher", input.documents.filter(doc=>doc.type==="voucher").map(doc=>doc.sourceId)],
+        );
+        const mappedVouchers = new Map<string, (typeof mappedVoucherRows.rows)[number]>(
+          mappedVoucherRows.rows.map(row=>[String(row.source_id),row]),
+        );
         for (const source of input.documents) {
           await client.query("SAVEPOINT transaction_import_document");
           try {
             const recordHash = fingerprint(source);
-            const mapped = (
-              await client.query(
-                "SELECT * FROM transaction_source_imports WHERE company_id=$1 AND source_system=$2 AND source_kind=$3 AND source_id=$4",
-                [companyId, input.sourceSystem, source.type, source.sourceId],
-              )
-            ).rows[0];
+            const mapped = (source.type === "invoice" ? mappedInvoices : mappedVouchers).get(source.sourceId);
             if (mapped) {
               if (
                 mapped.created_by !== user.id ||
