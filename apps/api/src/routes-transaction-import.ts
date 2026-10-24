@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -166,6 +167,24 @@ export function transactionImportRoutes(pool: Pool): Router {
       res.json(result);
     }),
   );
+  router.get("/companies/:companyId/transaction-import/prepared-next-50",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    if(companyId!==2)throw new HttpError(404,"not_found","لا توجد دفعة لهذه الشركة.");
+    await transaction(pool,async client=>{
+      const user=await currentActor(client,actor(req),false);
+      ownerOnly(user);
+      if(user.suspended)throw new HttpError(403,"forbidden","الحساب موقوف");
+      await companyAccess(client,user,companyId);
+    });
+    const encoded=process.env.ALRAESY_PRIVATE_NEXT50_ZLIB;
+    if(!encoded)throw new HttpError(404,"not_found","الدفعة الخاصة غير متاحة.");
+    const raw=inflateSync(Buffer.from(encoded,"base64"),{maxOutputLength:1_000_000}).toString("utf8");
+    const batches=raw.split(/\\r?\\n/).filter(Boolean).map(line=>parse(batchSchema,JSON.parse(line)));
+    if(batches.reduce((n,b)=>n+b.documents.length,0)!==50)
+      throw new HttpError(500,"invalid_batch","عدد الفواتير في الدفعة غير صحيح.");
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({batches});
+  }));
   // Owner-only URL ingestion. No source file is written to disk or retained.
   router.post("/companies/:companyId/transaction-import/from-url", handler(async (req,res) => {
     const companyId=id(req.params.companyId);
