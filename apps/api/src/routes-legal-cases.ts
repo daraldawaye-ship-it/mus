@@ -105,14 +105,6 @@ const getRecord=async(db:Database,recordId:number)=>{
 };
 export function legalCaseRoutes(pool:Pool):Router {
   const router=Router();
-  // Owner-only until the platform owner explicitly enables delegation in a later release.
-  // This gate covers reads, writes, image bytes, and AI exports, including MCP dispatch.
-  router.use((req,_res,next)=>{
-    try {
-      ownerOnly(actor(req));
-      next();
-    } catch(error) { next(error); }
-  });
   router.get("/legal/overview",handler(async(req,res)=>{
     const user=actor(req);
     const [cases,records]=await Promise.all([
@@ -194,7 +186,6 @@ export function legalCaseRoutes(pool:Pool):Router {
   }));
   router.put("/legal/cases/:id/access",handler(async(req,res)=>{
     const caseId=number(req.params.id),input=parse(z.object({userId:positive,role:z.enum(["viewer","reporter","editor"]).nullable()}).strict(),req.body);
-    if(input.role!==null) throw new HttpError(403,"legal_owner_only","منح صلاحيات القضايا لغير المالك متوقف حاليًا");
     const access=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));ownerOnly(user);
       await canCase(db,user,caseId);
