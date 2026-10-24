@@ -5,7 +5,7 @@ CREATE TABLE legal_cases (
   case_number varchar(120) NOT NULL DEFAULT '',
   agency varchar(250) NOT NULL DEFAULT '',
   stage varchar(120) NOT NULL DEFAULT '',
-  status varchar(12) NOT NULL DEFAULT 'active' CHECK(status IN ('active','closed')),
+  status varchar(12) NOT NULL DEFAULT 'unknown' CHECK(status IN ('active','closed','unknown')),
   file_copy_status varchar(12) NOT NULL DEFAULT 'unknown' CHECK(file_copy_status IN ('unknown','yes','no','partial')),
   start_date date,
   next_hearing date,
