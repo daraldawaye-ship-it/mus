@@ -1521,9 +1521,10 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
     body:JSON.stringify({jsonrpc:"2.0",id:2,method:"tools/list"}),
   });
   assert.equal(anonymousList.status,200);
-  const anonymousTools=await anonymousList.json() as {result:{tools:{securitySchemes:{type:string;scopes:string[]}[]}[]}};
+  const anonymousTools=await anonymousList.json() as {result:{tools:{name:string;securitySchemes:{type:string;scopes:string[]}[]}[]}};
   assert(anonymousTools.result.tools.every(tool=>
-    tool.securitySchemes.some(scheme=>scheme.type==="oauth2"&&scheme.scopes.includes("general_table.read"))));
+    tool.securitySchemes.some(scheme=>scheme.type==="oauth2"&&
+      scheme.scopes.includes(tool.name.startsWith("tijara_api_")?"tijara.read":"general_table.read"))));
 
   const register=await fetch(base("/oauth/register"),{
     method:"POST",headers:{"content-type":"application/json"},
