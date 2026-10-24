@@ -6,8 +6,8 @@ import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { errorMessage } from "../phase2";
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing";
-type Case = {id:number;title:string;case_number:string;agency:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;revision:number};
-type Entry = {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number};
+type Case = {id:number;title:string;case_number:string;agency:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
+type Entry = {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;agency:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
 type RecordForm = {kind:Kind;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
@@ -23,7 +23,7 @@ function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseFo
  <Field label="رقم القضية" value={value.caseNumber} onChange={e=>set("caseNumber",e.target.value)}/>
  <Field label="المحكمة أو الجهة" value={value.agency} onChange={e=>set("agency",e.target.value)}/>
  <Field label="المرحلة القضائية" value={value.stage} onChange={e=>set("stage",e.target.value)}/>
- <Select label="الحالة" disabled={disabled} value={value.status} onChange={e=>set("status",e.target.value)}><option value="active">فعالة</option><option value="closed">منتهية</option></Select>
+ <Select label="الحالة" disabled={disabled} value={value.status} onChange={e=>set("status",e.target.value)}><option value="active">فعالة</option><option value="closed">منتهية</option><option value="unknown">غير محددة</option></Select>
  <Select label="صورة الملف" value={value.fileCopyStatus} onChange={e=>set("fileCopyStatus",e.target.value)}><option value="unknown">لم تحدد</option><option value="yes">موجودة</option><option value="no">غير موجودة</option><option value="partial">ناقصة</option></Select>
  <Field label="تاريخ بداية القضية" type="date" value={value.startDate??""} onChange={e=>set("startDate",e.target.value||null)}/>
  <Field label="تاريخ الجلسة القادمة" type="date" value={value.nextHearing??""} onChange={e=>set("nextHearing",e.target.value||null)}/>
@@ -95,7 +95,7 @@ export function LegalCasesPage() {
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
  <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
- <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":"فعالة"} · أولوية {c.priority}</small></button>)}</div>
+ <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":c.status==="active"?"فعالة":"غير محددة"} · أولوية {c.priority}</small></button>)}</div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
  <p>عدد القضايا: {list.data?.total??"…"}؛ البيانات القديمة باقية كما هي.</p>
@@ -106,8 +106,9 @@ export function LegalCasesPage() {
  selected.data?<><Card title={selected.data.record.title}>
  {selected.data.record.needs_review&&<Notice tone="warning">هذا السجل منقول من الجدول العام ويحتاج استكمال بياناته ومراجعتها؛ الأصل محفوظ.</Notice>}
  {caseEdit?<><CaseFields value={caseDraft} change={setCaseDraft} disabled={!owner}/><div className="legal-actions"><Button disabled={busy||!caseDraft.title} onClick={submitCase}>حفظ</Button><Button variant="secondary" onClick={()=>setCaseEdit(false)}>إلغاء</Button></div></>:
- <><div className="legal-tags"><span>{selected.data.record.case_number||"لم يحدد الرقم"}</span><span>{selected.data.record.agency||"لم تحدد الجهة"}</span><span>{selected.data.record.status==="closed"?"منتهية":"فعالة"}</span><span>صورة الملف: {({unknown:"غير محددة",yes:"موجودة",no:"غير موجودة",partial:"ناقصة"} as Record<string,string>)[selected.data.record.file_copy_status]??"غير محددة"}</span></div>
+ <><div className="legal-tags"><span>{selected.data.record.case_number||"لم يحدد الرقم"}</span><span>{selected.data.record.agency||"لم تحدد الجهة"}</span><span>{selected.data.record.status==="closed"?"منتهية":selected.data.record.status==="active"?"فعالة":"غير محددة"}</span><span>صورة الملف: {({unknown:"غير محددة",yes:"موجودة",no:"غير موجودة",partial:"ناقصة"} as Record<string,string>)[selected.data.record.file_copy_status]??"غير محددة"}</span></div>
  <div className="legal-tags"><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div><p className="legal-preserve">{selected.data.record.summary}</p>
+ {selected.data.record.legacy_snapshot&&<details className="legal-legacy"><summary>البيانات الأصلية المنقولة من الجدول العام</summary><pre>{JSON.stringify(selected.data.record.legacy_snapshot,null,2)}</pre></details>}
  <div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>{setCaseDraft(caseForm(selected.data!.record));setCaseEdit(true);}}>تعديل بيانات القضية</Button>}
  <Button variant="secondary" onClick={()=>void action(async()=>{const data=await api<unknown>("/legal/cases/"+caseId+"/ai-export");await navigator.clipboard.writeText(JSON.stringify(data,null,2));setNotice("تم نسخ البيانات المترابطة");})}>نسخ ملف القضية للذكاء الاصطناعي</Button></div></>}
  </Card>
@@ -121,6 +122,7 @@ export function LegalCasesPage() {
  {(visible.length===0&&!entryEdit)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
  {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task")}>إضافة مهمة</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
+ {r.legacy_snapshot&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
  {r.kind==="document"&&<div className="legal-doc">{r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}
  {r.pdf_url&&<a target="_blank" rel="noreferrer" href={r.pdf_url}>رابط PDF</a>}
  {r.drive_file_id&&<span>Drive: {r.drive_file_id}</span>}
