@@ -139,7 +139,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
      `SELECT u.*,t.scope AS granted_scope FROM chatgpt_oauth_tokens t JOIN users u ON u.id=t.user_id
        WHERE t.access_hash=$1 AND t.access_expires_at>now() AND t.refresh_expires_at>now()
        AND t.revoked_at IS NULL AND t.scope=ANY($3::text[])
-       AND t.resource=ANY($2::text[]) AND (u.owner OR u.kind='admin')
+       AND t.resource=ANY($2::text[])
        AND NOT u.archived AND NOT u.suspended LIMIT 1`,
      [tokenHash(auth.slice(7)),[origin,origin+"/mcp"],oauthScopes],
    )).rows[0];
@@ -159,8 +159,14 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
      dispatchApi(business,req,res,next,userDTO(user),params.name,params.arguments??{},body.id);return;
      } catch { fail(-32602,"Invalid API operation or arguments; inspect tijara_api_catalog"); return; }
    }
+   // A site-only employee connection never grants access to the
+   // owner/admin general table, including its dedicated read tools.
+   const generalGrants=String(user.granted_scope).split(" ");
+   if ((!user.owner && user.kind!=="admin") || !generalGrants.includes("general_table.read")) {
+     fail(-32001,"General table access requires a separately authorized platform administrator.");return;
+   }
    const isWrite=["create_general_table_record","update_general_table_record"].includes(params.name);
-   if(isWrite&&!String(user.granted_scope).split(" ").includes("general_table.write")){
+   if(isWrite&&!generalGrants.includes("general_table.write")){
      fail(-32001,"Write scope required. Reconnect Alraesy and approve read and write permissions.");return;
    }
    let result:unknown;
