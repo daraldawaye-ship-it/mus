@@ -319,11 +319,20 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.get("/legal/records",handler(async(req,res)=>{
     const user=actor(req),kind=req.query.kind;
     if(kind!==undefined && !kindSchema.safeParse(kind).success) throw new HttpError(400,"invalid_query","نوع سجل غير صالح");
-    const q=String(req.query.q??"").trim().slice(0,120),limit=100;
-    const rows=await pool.query(
-      "SELECT r.* FROM legal_records r WHERE ($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) ORDER BY r.id DESC LIMIT $5",
-      [user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",limit]);
-    res.json({items:rows.rows});
+    const page=Number(req.query.page??1);
+    if(!Number.isSafeInteger(page)||page<1||page>100000) throw new HttpError(400,"invalid_query","رقم الصفحة غير صالح");
+    const unlinkedParam=req.query.unlinked;
+    if(unlinkedParam!==undefined && !["true","false"].includes(String(unlinkedParam))) throw new HttpError(400,"invalid_query","مرشح الربط غير صالح");
+    const unlinked=unlinkedParam==="true";
+    if(unlinked) ownerOnly(user);
+    const q=String(req.query.q??"").trim().slice(0,120),limit=unlinked?30:100;
+    const where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
+    const args=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
+    const [rows,count]=await Promise.all([
+      pool.query("SELECT r.* FROM legal_records r WHERE "+where+" ORDER BY r.id DESC LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT COUNT(*)::int AS total FROM legal_records r WHERE "+where,args),
+    ]);
+    res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
   }));
   router.get("/legal/records/:id",handler(async(req,res)=>{
     const recordId=number(req.params.id),user=actor(req);
