@@ -91,6 +91,12 @@
   background: var(--border);
 }
 
+/* Navigation shortcuts stay three columns on phones and wider screens.
+   Other avatar tabs retain their existing responsive grid. */
+.user-menu-grid.user-menu-shortcuts-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .user-menu-tile {
   min-width: 0;
   min-height: 54px;
