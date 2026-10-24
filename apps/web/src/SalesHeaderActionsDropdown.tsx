@@ -222,7 +222,10 @@ export function HeaderActionsOverflow({
     {coords&&createPortal(
       <div ref={menu} role="menu" aria-label="إجراءات الصفحة"
         className="sales-header-actions-dropdown sales-header-actions-dropdown--raw"
-        onClickCapture={event=>{
+        // Close only after the clicked action's own onClick has executed.
+        // Capturing the click could unmount the portal before a cloned
+        // Button's refetch handler ran (e.g. account report refresh).
+        onClick={event=>{
           const target=event.target as HTMLElement;
           const clickable=target.closest("a,button");
           if(clickable && !clickable.hasAttribute("disabled") &&
