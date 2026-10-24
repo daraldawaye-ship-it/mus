@@ -664,12 +664,29 @@ try {
           contentHeight: content.clientHeight, maxContent: getComputedStyle(content).overflowY };
       });
       assert(geometry.width <= 600 && geometry.width > 400);
-      assert(geometry.height < 330);
+      assert(geometry.height >= 340 && geometry.height <= 370);
       assert(geometry.contentHeight > 0 && geometry.maxContent === "auto");
       for (const label of ["صنف", "حساب", "مستخدم"]) {
         await menu.getByRole("tab", { name: label, exact: true }).click();
         await menu.getByRole("combobox", { name: `البحث عن ${label}` }).waitFor();
+        assert.equal(await menu.locator(".user-menu-entity-label").count(), 0);
       }
+      const originalViewport = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 800 });
+      const mobileLayout = await menu.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const tabs = element.querySelector(".user-menu-tabs")!.getBoundingClientRect();
+        const search = element.querySelector(".user-menu-entity-input-wrap")!.getBoundingClientRect();
+        const content = element.querySelector(".user-menu-tab-content")!.getBoundingClientRect();
+        return {
+          width: bounds.width, height: bounds.height, bottom: bounds.bottom,
+          tabsHeight: tabs.height, searchOffset: search.top - content.top,
+        };
+      });
+      assert(mobileLayout.width <= 390 && mobileLayout.height >= 340);
+      assert(mobileLayout.bottom <= 800 && mobileLayout.tabsHeight <= 44);
+      assert(mobileLayout.searchOffset < 20);
+      if (originalViewport) await page.setViewportSize(originalViewport);
       await menu.getByRole("tab", { name: "الأدوات" }).click();
       await menu.getByText("لا توجد خيارات في هذا القسم حاليًا").waitFor();
       assert.equal(await menu.getByRole("button", { name: "تسجيل الخروج" }).count(), 0);

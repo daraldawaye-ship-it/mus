@@ -93,7 +93,6 @@ export function EntityMenuSearch({
   return (
     <div className="user-menu-entity-section">
       <label className="user-menu-entity-search">
-        <span className="user-menu-entity-label">البحث عن {label}</span>
         <span className="user-menu-entity-input-wrap">
           <Search size={17} aria-hidden="true" />
           <input
