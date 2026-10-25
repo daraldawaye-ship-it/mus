@@ -81,6 +81,34 @@ const batchSchema = z
         });
     });
   });
+// Initial historical intake is intentionally more permissive than normal invoice posting.
+// Its quantities may be fractional (up to six decimals). They are preserved
+// as historical source data and are NOT passed to stock or accounting yet.
+const stagedQuantitySchema = z.string().trim()
+  .regex(/^-?\\d{1,22}(?:\\.\\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
+  .refine(value => !/^-?0(?:\\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
+const stagedLineSchema = invoiceLineSchema.safeExtend({ quantity: stagedQuantitySchema });
+const stagedInvoiceSchema = z.object({
+  ...invoiceSchema.shape,
+  lines: z.array(stagedLineSchema).min(1).max(200),
+}).strict();
+const stagedDocumentSchema = z.discriminatedUnion("type", [
+  z.object({type: z.literal("invoice"), ...sourceFields, payload: stagedInvoiceSchema}).strict(),
+  z.object({type: z.literal("voucher"), ...sourceFields, payload: financialDocumentSchema}).strict(),
+]);
+const stagingBatchSchema = z.object({
+  ...batchSchema.shape,
+  documents: z.array(stagedDocumentSchema).min(1).max(300),
+}).strict().superRefine((batch, context) => {
+  const identities = new Set<string>();
+  batch.documents.forEach((doc, index) => {
+    const key = doc.type + ":" + doc.sourceId;
+    if (identities.has(key)) context.addIssue({code:"custom",path:["documents",index,"sourceId"],message:"هوية المصدر مكررة داخل الدفعة"});
+    identities.add(key);
+    if (doc.payload.documentDate !== batch.postingDate)
+      context.addIssue({code:"custom",path:["documents",index,"payload","documentDate"],message:"تاريخ المستند لا يطابق تاريخ الدفعة"});
+  });
+});
 export const mcpBodySchemas = { batchSchema };
 
 function canonical(value: unknown): unknown {
@@ -113,7 +141,7 @@ type ImportFailure = {
 
 export function transactionImportRoutes(pool: Pool): Router {
   const router = Router();
-  router.use(transactionImportStagingRoutes(pool, batchSchema));
+  router.use(transactionImportStagingRoutes(pool, stagingBatchSchema));
   router.get(
     "/companies/:companyId/transaction-import/summary",
     handler(async (req, res) => {
