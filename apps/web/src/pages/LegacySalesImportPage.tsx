@@ -40,8 +40,8 @@ export function LegacySalesImportPage({context}:{context:CompanyContext}) {
     setBusy(true);setError("");setSummary({added:0,existing:0,failed:0,total:0,processed:0});setFailures([]);setNotice("");
     try {
       for(const batch of batches) {
-        for(let offset=0;offset<batch.documents.length;offset+=100) {
-          const selected=batch.documents.slice(offset,offset+100);
+        for(let offset=0;offset<batch.documents.length;offset+=300) {
+          const selected=batch.documents.slice(offset,offset+300);
           const body={...batch,documents:selected,idempotencyKey:crypto.randomUUID()};
           const response=await api<Result>(`/companies/${context.company.id}/transaction-import/batch`,{method:"POST",body});
           const added=response.imported??response.accepted??[];
