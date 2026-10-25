@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
+import { importLegacyVouchersOnce } from "./services/import-legacy-vouchers-once.ts";
 import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
 import { startPushNotifications } from "./services/web-push.ts";
@@ -12,6 +13,11 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+try {
+  await importLegacyVouchersOnce(application.pool);
+} catch (error) {
+  console.error("LEGACY_VOUCHERS_IMPORT_FAILED", error instanceof Error ? error.message : String(error));
+}
 // Cover restarts after a date change before accepting item-search requests.
 await prepareItemSaleRankings(application.pool);
 let vite: import("vite").ViteDevServer | undefined;
