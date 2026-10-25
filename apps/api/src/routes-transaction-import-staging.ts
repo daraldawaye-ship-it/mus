@@ -33,7 +33,7 @@ const receiptSchema = z.object({
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === "object")
-    return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))
+    return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0)
       .map(([key,item])=>[key,canonical(item)]));
   return value;
 }
@@ -95,7 +95,7 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
            source_kind text,source_id text,source_document jsonb,request_hash text)
          ON CONFLICT DO NOTHING RETURNING source_id`,
         [companyId,input.sourceSystem,input.postingDate,JSON.stringify(pending),user.id],
-      ):{rowCount:number|null};
+      ):{rowCount:0};
       return {staged:inserted.rowCount??0,alreadyStaged:alreadyStaged+pending.length-(inserted.rowCount??0),alreadyPosted};
     });
     res.json(result);
@@ -168,7 +168,7 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
         [companyId,input.sourceSystem,JSON.stringify(input.failed.map(x=>({
           source_kind:x.type,source_id:x.sourceId,message:x.message,
         })))],
-      ):{rowCount:number|null};
+      ):{rowCount:0};
       return {completed:completed.rowCount??0,failed:failed.rowCount??0};
     });
     res.json(result);
