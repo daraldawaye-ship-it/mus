@@ -28,7 +28,7 @@ function unzip(buffer: Buffer, filename: string): Buffer {
     const local = buffer.readUInt32LE(offset + 42);
     const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
     offset += 46 + nameLength + extraLength + commentLength;
-    if (name !== filename) continue;
+    if (name !== filename && !(filename === "حركة_السندات2.xlsx" && name.endsWith(".xlsx"))) continue;
     if (size > 25_000_000) throw new Error("Uncompressed legacy file is too large");
     if (buffer.readUInt32LE(local) !== 0x04034b50)
       throw new Error("Invalid ZIP local header");
