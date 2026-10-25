@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { transactionImportStagingRoutes } from "./routes-transaction-import-staging.ts";
 import { inflateSync } from "node:zlib";
 import { Router } from "express";
 import type { Pool } from "pg";
@@ -112,6 +113,7 @@ type ImportFailure = {
 
 export function transactionImportRoutes(pool: Pool): Router {
   const router = Router();
+  router.use(transactionImportStagingRoutes(pool, batchSchema));
   router.get(
     "/companies/:companyId/transaction-import/summary",
     handler(async (req, res) => {
