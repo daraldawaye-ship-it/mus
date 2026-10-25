@@ -85,8 +85,8 @@ const batchSchema = z
 // Its quantities may be fractional (up to six decimals). They are preserved
 // as historical source data and are NOT passed to stock or accounting yet.
 const stagedQuantitySchema = z.string().trim()
-  .regex(/^-?\\d{1,22}(?:\\.\\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
-  .refine(value => !/^-?0(?:\\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
+  .regex(/^-?\d{1,22}(?:\.\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
+  .refine(value => !/^-?0(?:\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
 const stagedLineSchema = invoiceLineSchema.safeExtend({ quantity: stagedQuantitySchema });
 const stagedInvoiceSchema = z.object({
   ...invoiceSchema.shape,
