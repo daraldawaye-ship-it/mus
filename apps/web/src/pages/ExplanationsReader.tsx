@@ -85,6 +85,11 @@ export function ExplanationsTopicReader() {
   siblings.push(node);byParent.set(node.parentId,siblings);
  }
  for(const siblings of byParent.values())siblings.sort((a,b)=>a.position-b.position||a.id-b.id);
+ // Main-topic attachments are stored on the heading; display them below
+ // its first visible paragraph without changing the original file ownership.
+ const firstTopicParagraph=root ? (byParent.get(root.id)??[])[0] : undefined;
+ const carryRootDetails=!!root && firstTopicParagraph?.kind==="paragraph" &&
+   !!(root.body.trim()||root.evidence.trim()||root.assets.length);
  const renderFiles=(assets:Asset[]):ReactNode=>
   assets.length===0?null:<span className="explain-inline-assets" aria-label="صور ومستندات الفقرة">{assets.map(file=>
     file.mimeType.startsWith("image/")?
@@ -109,8 +114,12 @@ export function ExplanationsTopicReader() {
        <span className="explain-paragraph-number">{number}.</span>
        <div className="explain-print-copy" style={{color:node.color||undefined,fontSize:node.fontSize||undefined}}>
         {node.title&&<strong>{node.title}. </strong>}{node.body}
+        {carryRootDetails&&node.id===firstTopicParagraph?.id&&root?.body&&
+          <p className="explain-paragraph-detail"><strong>الشرح: </strong>{root.body}</p>}
         {node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
-        {renderFiles(node.assets)}
+        {carryRootDetails&&node.id===firstTopicParagraph?.id&&root?.evidence&&
+          <p className="explain-evidence">وجه الاستدلال: {root.evidence}</p>}
+        {renderFiles([...node.assets,...(carryRootDetails&&node.id===firstTopicParagraph?.id ? root?.assets??[] : [])])}
        </div>
       </div>}
     {renderChildren(node.id,depth+1)}
@@ -135,9 +144,9 @@ export function ExplanationsTopicReader() {
   {root&&data&&<article className="explain-print-paper">
    <div className="explain-print-kicker">{data.group.title}</div>
    <h1 style={{color:root.color||undefined,fontSize:root.fontSize||undefined}}>{root.title}</h1>
-   {root.body&&<p className="explain-print-intro">{root.body}</p>}
-   {root.evidence&&<p className="explain-evidence">وجه الاستدلال: {root.evidence}</p>}
-   {renderFiles(root.assets)}
+   {!carryRootDetails&&root.body&&<p className="explain-print-intro">{root.body}</p>}
+   {!carryRootDetails&&root.evidence&&<p className="explain-evidence">وجه الاستدلال: {root.evidence}</p>}
+   {!carryRootDetails&&renderFiles(root.assets)}
    <div className="explain-print-text">{renderChildren(root.id)}</div>
   </article>}
   <ImageDialog asset={selected} onClose={()=>setSelected(null)}/>
@@ -210,6 +219,19 @@ export function ExplanationsContinuousReader() {
  };
  const display=printData?.nodes??pages.data?.pages.flatMap(p=>p.nodes)??[];
  const total=printData?.total??pages.data?.pages[0]?.total??0;
+ // Keep the group heading, but defer its attached explanation and images
+ // until after the first child paragraph, as a continuous document.
+ const deferredByParagraph=new Map<number,FlowNode>();
+ const deferredHeadings=new Set<number>();
+ for(let index=0;index<display.length-1;index++){
+  const heading=display[index],firstChild=display[index+1];
+  if(heading.depth===0&&heading.kind==="heading"&&
+     firstChild.parentId===heading.id&&firstChild.kind==="paragraph"&&
+     (heading.body.trim()||heading.evidence.trim()||heading.assets.length)){
+    deferredByParagraph.set(firstChild.id,heading);
+    deferredHeadings.add(heading.id);
+  }
+ }
  const renderAttachments=(assets:Asset[])=>assets.length?<span className="explain-inline-assets" aria-label="صور ومستندات الفقرة">{assets.map(asset=>
   asset.mimeType.startsWith("image/")?
    <button key={asset.id} type="button" className="explain-inline-asset"
@@ -256,6 +278,8 @@ export function ExplanationsContinuousReader() {
      const topic=node.depth===0,subhead=node.kind==="heading";
      const alpha=node.parentKind==="paragraph"&&node.depth>=2;
      const style={color:node.color||undefined,fontSize:node.fontSize||undefined};
+     const parentDetails=deferredByParagraph.get(node.id);
+     const deferred=deferredHeadings.has(node.id);
      return <div key={node.id} id={"explain-record-"+node.id}
       className={"explain-flow-record"+(topic?" explain-flow-topic":subhead?" explain-flow-subheading":" explain-flow-paragraph")+
         (alpha?" explain-flow-letter":"") }
@@ -267,13 +291,15 @@ export function ExplanationsContinuousReader() {
         <span className="explain-flow-marker">{markerFor(node)}.</span>
         <div className="explain-flow-copy" style={style}>
          {node.title&&<strong>{node.title}. </strong>}{node.body}
+         {parentDetails?.body&&<p className="explain-paragraph-detail"><strong>الشرح: </strong>{parentDetails.body}</p>}
          {node.evidence&&<div className="explain-evidence">وجه الاستدلال: {node.evidence}</div>}
-         {renderAttachments(node.assets)}
+         {parentDetails?.evidence&&<div className="explain-evidence">وجه الاستدلال: {parentDetails.evidence}</div>}
+         {renderAttachments([...node.assets,...(parentDetails?.assets??[])])}
         </div>
        </div>}
-      {(topic||subhead)&&node.body&&<p className="explain-flow-heading-body">{node.body}</p>}
-      {(topic||subhead)&&node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
-      {(topic||subhead)&&renderAttachments(node.assets)}
+      {(topic||subhead)&&!deferred&&node.body&&<p className="explain-flow-heading-body">{node.body}</p>}
+      {(topic||subhead)&&!deferred&&node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
+      {(topic||subhead)&&!deferred&&renderAttachments(node.assets)}
      </div>;
     })}
    </div>
