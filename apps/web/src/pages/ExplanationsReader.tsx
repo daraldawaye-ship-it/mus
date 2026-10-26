@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
 import { Button, Notice, PageHeader } from "../ui";
@@ -136,6 +136,146 @@ export function ExplanationsTopicReader() {
    {renderFiles(root.assets)}
    <div className="explain-print-text">{renderChildren(root.id)}</div>
   </article>}
+  <ImageDialog asset={selected} onClose={()=>setSelected(null)}/>
+ </section>;
+}
+
+
+type FlowNode = Node & {depth:number;ordinal:number;parentKind:string|null};
+type FlowPage = {group:Group;total:number;offset:number;hasMore:boolean;nodes:FlowNode[]};
+const letterMarks=["أ","ب","ج","د","هـ","و","ز","ح","ط","ي","ك","ل","م","ن","س","ع","ف","ص","ق","ر","ش","ت","ث","خ","ذ","ض","ظ","غ"];
+const markerFor=(node:FlowNode)=>node.parentKind==="paragraph"&&node.depth>=2
+ ? (letterMarks[node.ordinal-1]??arabic(node.ordinal))
+ : arabic(node.ordinal);
+
+export function ExplanationsContinuousReader() {
+ const {user}=useSession();
+ const [params,setParams]=useSearchParams();
+ const requested=params.get("group")||"mustafa-cases";
+ const groups=useQuery({queryKey:["explanations","groups",user?.id],
+  queryFn:()=>api<{items:Group[]}>("/explanations/groups"),enabled:!!user});
+ const group=groups.data?.items.find(g=>g.slug===requested)??groups.data?.items[0];
+ const groupId=group?.id??0;
+ const pages=useInfiniteQuery({
+  queryKey:["explanations","flow",user?.id,groupId],
+  initialPageParam:0,
+  queryFn:({pageParam,signal})=>api<FlowPage>(
+   "/explanations/groups/"+groupId+"/document?offset="+pageParam,{signal}),
+  getNextPageParam:last=>last.hasMore?last.offset+last.nodes.length:undefined,
+  enabled:!!user&&groupId>0,
+ });
+ const [selected,setSelected]=useState<Asset|null>(null);
+ const [printData,setPrintData]=useState<FlowPage|null>(null);
+ const [printBusy,setPrintBusy]=useState(false);
+ const [printError,setPrintError]=useState("");
+ const loadingEnd=useRef<HTMLDivElement|null>(null);
+ const printed=useRef(false);
+ const currentCount=pages.data?.pages.reduce((n,p)=>n+p.nodes.length,0)??0;
+ const more=pages.hasNextPage;
+ const fetching=pages.isFetchingNextPage;
+ const loadNext=pages.fetchNextPage;
+ useEffect(()=>{
+  const sentinel=loadingEnd.current;
+  if(!sentinel||!more||fetching||!!printData)return;
+  const observer=new IntersectionObserver(entries=>{
+   if(entries.some(entry=>entry.isIntersecting))void loadNext();
+  },{rootMargin:"550px 0px"});
+  observer.observe(sentinel);
+  return ()=>observer.disconnect();
+ },[more,fetching,loadNext,printData,currentCount]);
+ useEffect(()=>{
+  if(!printData)return;
+  const onAfter=()=>{setPrintData(null);printed.current=false;};
+  window.addEventListener("afterprint",onAfter);
+  const raf=requestAnimationFrame(()=>{
+   requestAnimationFrame(()=>{
+    if(!printed.current){printed.current=true;window.print();}
+   });
+  });
+  return ()=>{cancelAnimationFrame(raf);window.removeEventListener("afterprint",onAfter);};
+ },[printData]);
+ useEffect(()=>{setPrintData(null);printed.current=false;setSelected(null);setPrintError("");},[groupId]);
+ const printAll=async()=>{
+  if(!groupId||printBusy)return;
+  setPrintError("");setPrintBusy(true);
+  try{
+   const data=await api<FlowPage>("/explanations/groups/"+groupId+"/document?all=true");
+   setPrintData(data);
+  }catch(error){setPrintError(errorMessage(error));}
+  finally{setPrintBusy(false);}
+ };
+ const display=printData?.nodes??pages.data?.pages.flatMap(p=>p.nodes)??[];
+ const total=printData?.total??pages.data?.pages[0]?.total??0;
+ const renderAttachments=(assets:Asset[])=>assets.length?<span className="explain-inline-assets"> {assets.map(asset=>
+  asset.mimeType.startsWith("image/")?
+   <button key={asset.id} type="button" className="explain-inline-asset"
+    onClick={()=>setSelected(asset)} title={asset.filename}>{asset.displayName||asset.filename}</button>:
+   <a key={asset.id} className="explain-inline-asset explain-inline-pdf"
+    href={assetUrl(asset.id)} target="_blank" rel="noreferrer" title={asset.filename}>
+    {asset.displayName||asset.filename}</a>
+ )}</span>:null;
+ return <section className="explain-document-screen explain-flow-screen" dir="rtl">
+  <div className="explain-flow-toolbar">
+   <div className="explain-flow-bar">
+    <strong>{group?.title||"مكتبة الشروح"}</strong>
+    <span className="explain-flow-count">المعروض {currentCount} من {total} سجلًا</span>
+    <span className="explain-toolbar-gap"/>
+    {group?.canEdit&&<Link className="button button-secondary"
+     to={"/explanations?group="+encodeURIComponent(group.slug)}>الإضافة والتعديل</Link>}
+    <Button variant="secondary" disabled={printBusy||!groupId||pages.isPending} onClick={()=>void printAll()}>
+     {printBusy?"جارٍ تجهيز الملف…":"طباعة الملف كاملًا"}
+    </Button>
+   </div>
+   {groups.data&&groups.data.items.length>1&&<div className="explain-reader-choose">
+    <label htmlFor="flow-group">المجموعة</label>
+    <select id="flow-group" value={group?.slug??""}
+     onChange={event=>setParams({group:event.target.value})}>
+     {groups.data.items.map(g=><option key={g.id} value={g.slug}>{g.title}</option>)}
+    </select>
+   </div>}
+   {printData&&<Button variant="secondary" onClick={()=>window.print()}>
+    إعادة فتح الطباعة
+   </Button>}
+  </div>
+  {printError&&<Notice tone="error">{printError}</Notice>}
+  {groups.error&&<Notice tone="error">{errorMessage(groups.error)}</Notice>}
+  {pages.error&&<Notice tone="error">{errorMessage(pages.error)}</Notice>}
+  {pages.isPending&&group&&<Notice>جارٍ تحميل الشروح…</Notice>}
+  {groups.data?.items.length===0&&<Notice>ليس لديك صلاحية لقراءة مجموعات الشروح.</Notice>}
+  {group&&display.length>0&&<article className="explain-flow-paper">
+   <header className="explain-flow-header">
+    <small>{group.title}</small><h1>{group.title}</h1>
+   </header>
+   <div className="explain-flow-content">
+    {display.map(node=>{
+     const topic=node.depth===0,subhead=node.kind==="heading";
+     const alpha=node.parentKind==="paragraph"&&node.depth>=2;
+     const style={color:node.color||undefined,fontSize:node.fontSize||undefined};
+     return <div key={node.id} id={"explain-record-"+node.id}
+      className={"explain-flow-record"+(topic?" explain-flow-topic":subhead?" explain-flow-subheading":" explain-flow-paragraph")+
+        (alpha?" explain-flow-letter":"") }
+      style={topic||subhead?undefined:{marginInlineStart:alpha?"1.5rem":node.depth>1?"0.8rem":undefined}}>
+      {topic?<h2 style={style}>{markerFor(node)}. {node.title}</h2>:
+       subhead?<h3 className={node.depth>=2?"explain-flow-subheading-two":"explain-flow-subheading-one"}
+        style={style}>{node.title}</h3>:
+       <div className="explain-flow-line">
+        <span className="explain-flow-marker">{markerFor(node)}.</span>
+        <div className="explain-flow-copy" style={style}>
+         {node.title&&<strong>{node.title}. </strong>}{node.body}
+         {renderAttachments(node.assets)}
+         {node.evidence&&<div className="explain-evidence">وجه الاستدلال: {node.evidence}</div>}
+        </div>
+       </div>}
+      {(topic||subhead)&&node.body&&<p className="explain-flow-heading-body">{node.body}</p>}
+      {(topic||subhead)&&renderAttachments(node.assets)}
+     </div>;
+    })}
+   </div>
+  </article>}
+  {group&&more&&!printData&&<div ref={loadingEnd} className="explain-flow-loading"
+   aria-live="polite">{fetching?"جارٍ تحميل ٥٠ سجلًا إضافيًا…":"يستكمل العرض تلقائيًا عند التمرير…"}</div>}
+  {pages.isFetchingNextPage&&pages.isError&&<Button variant="secondary"
+   onClick={()=>void pages.fetchNextPage()}>إعادة تحميل السجلات</Button>}
   <ImageDialog asset={selected} onClose={()=>setSelected(null)}/>
  </section>;
 }
