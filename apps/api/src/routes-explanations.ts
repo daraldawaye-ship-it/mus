@@ -41,7 +41,7 @@ function match(user:User, rule:Rule, fallback:boolean):boolean {
   return rule===null ? fallback : !!(rule.users?.includes(user.id) || rule.kinds?.includes(user.kind));
 }
 function grants(user:User, read:Rule, edit:Rule, parent:{read:boolean;edit:boolean}) {
-  const editAllowed=parent.edit && match(user,edit,parent.edit);
+  const editAllowed=parent.read && match(user,edit,parent.edit);
   const readAllowed=parent.read && (match(user,read,parent.read) || editAllowed);
   return {read:readAllowed,edit:editAllowed};
 }
