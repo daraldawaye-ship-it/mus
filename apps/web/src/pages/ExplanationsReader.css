@@ -125,3 +125,28 @@
  .explain-print-paper .explain-inline-asset{color:#154c86!important;background:#fff!important;border:1px solid #154c86!important}
  .explain-flow-paper .explain-inline-assets,.explain-print-paper .explain-inline-assets{background:#fff!important}
 }
+
+/* File labels use the exact accent selected in user appearance settings.
+   --primary remains the accessible text-color companion of that accent. */
+.explain-document-screen .explain-inline-asset,
+.explain-document-screen .explain-inline-pdf,
+.explain-flow-paper .explain-inline-asset,
+.explain-flow-paper .explain-inline-pdf{
+  color:var(--primary,#176b61);
+  border:1px solid var(--user-accent-color,var(--primary,#176b61));
+  background:var(--soft,var(--surface,#fff));
+}
+.explain-document-screen .explain-inline-asset:hover,
+.explain-flow-paper .explain-inline-asset:hover{
+  color:var(--primary,#176b61);
+  border-color:var(--user-accent-color,var(--primary,#176b61));
+  background:var(--hover,var(--soft,#edf5f5));
+}
+@media print{
+  .explain-document-screen .explain-inline-asset,
+  .explain-flow-paper .explain-inline-asset{
+    background:#fff!important;
+    color:#174a91!important;
+    border:1px solid #174a91!important;
+  }
+}
