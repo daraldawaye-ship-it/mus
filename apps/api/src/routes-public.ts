@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import {
   appearanceSchema,
@@ -22,6 +23,7 @@ import {
 import { auditDTO, userDTO } from "./repositories/models.ts";
 import { deny, missing, HttpError } from "./errors.ts";
 import { passwordHash } from "./services/auth.ts";
+import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 
 export function publicRoutes(pool: Pool): Router {
@@ -96,6 +98,15 @@ export function publicRoutes(pool: Pool): Router {
         await client.query("UPDATE users SET password_hash=$1 WHERE id=$2", [hash, targetId]);
         await client.query("DELETE FROM sessions WHERE user_id=$1", [targetId]);
         await audit(client, owner, "auth.password", "user", targetId, null, null);
+        await emitNotification(client, {
+          code: "AUTH_PASSWORD_CHANGED",
+          companyId: null,
+          subjectUserId: targetId,
+          subjectKey: `user:${targetId}`,
+          eventKey: `owner-reset:${randomUUID()}`,
+          message: "قام مالك المنصة بإعادة تعيين كلمة مرور حسابك. سجّل الدخول بالكلمة الجديدة، وراجع أمان حسابك إذا لم تكن تتوقع هذا التغيير.",
+          href: "/profile",
+        });
       });
       res.json({ ok: true });
     }),
