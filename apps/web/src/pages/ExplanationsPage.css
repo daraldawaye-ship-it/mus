@@ -37,3 +37,25 @@
 .explain-attachment>a{flex:1;overflow-wrap:anywhere}
 .explain-menu-options>a{text-align:right;cursor:pointer;padding:8px;color:inherit;text-decoration:none}
 .explain-menu-options>a:hover{background:rgba(100,116,139,.12)}
+
+
+/* The attachment uploader belongs to the record form, not hidden under the reading accordion. */
+.explain-editor-anchor{scroll-margin-top:20px;min-width:0}
+.explain-quick-assets{border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;padding:6px 9px;font:inherit;font-size:12px;white-space:nowrap;flex-shrink:0}
+.explain-quick-assets:hover{background:var(--hover)}
+.explain-editor-assets{display:grid;gap:10px;margin:16px 0;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--soft,var(--surface))}
+.explain-editor-assets h3{margin:0;font-size:17px}
+.explain-editor-assets h4{margin:10px 0 0;font-size:14px}
+.explain-editor-assets p,.explain-editor-assets small{margin:0;color:var(--muted)}
+.explain-select-files{display:inline-flex!important;position:relative;align-items:center;justify-content:center;cursor:pointer;width:max-content;max-width:100%;padding:8px 12px}
+.explain-select-files input[type=file]{position:absolute;opacity:0;width:100%;height:100%;inset:0;cursor:pointer;font-size:0}
+.explain-select-files:focus-within{outline:2px solid var(--focus);outline-offset:2px}
+.explain-pending-list{display:grid;gap:8px}
+.explain-editor-asset-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.explain-file-indicator{font-size:22px}
+.explain-file-data{flex:1 1 220px;min-width:180px;display:grid;gap:6px}
+.explain-file-data>small{overflow-wrap:anywhere}
+.explain-file-data>label{display:grid;gap:4px;font-size:12px}
+.explain-file-data input{width:100%;min-width:0;border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);background:var(--surface);font:inherit;font-size:14px}
+.explain-asset-buttons{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+@media(max-width:600px){.explain-quick-assets{font-size:11px;padding:5px}.explain-editor-assets{padding:10px}.explain-file-data{flex-basis:100%}}
