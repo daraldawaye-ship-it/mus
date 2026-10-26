@@ -94,6 +94,7 @@ const AccountStatisticsReportPage = lazy(() =>
 );
 const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage").then(m=>({default:m.LegacySalesImportPage})));
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
+const ExplanationsPage = lazy(() => import("./pages/ExplanationsPage").then(module => ({default:module.ExplanationsPage})));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -455,6 +456,7 @@ function Navigation({
     <nav aria-label="التنقل الرئيسي">
       <div className="nav-label nav-heading">الموقع العام</div>
       {links("public")}
+      {user && <NavLink to="/explanations?group=mustafa-cases" onClick={close} className={({isActive})=>`nav-link${isActive?" active":""}`}><BookOpen size={17}/><span className="nav-text">الشروح المنظمة</span><ChevronLeft size={13} className="nav-chevron"/></NavLink>}
       {!user && (
         <NavLink
           to="/login"
@@ -1154,6 +1156,7 @@ function Workspace() {
                   </Protected>
                 }
               />
+              <Route path="/explanations" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsPage/></Suspense></Protected>} />
               <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
               <Route
                 path="/general-table"
