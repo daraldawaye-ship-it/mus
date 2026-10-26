@@ -8,7 +8,7 @@ import "./ExplanationsPage.css";
 
 type Acl={users:number[];kinds:("admin"|"supervisor"|"member")[]}|null;
 type Group={id:number;slug:string;title:string;canEdit:boolean;defaultRead:Acl;defaultEdit:Acl};
-type Node={id:number;groupId:number;parentId:number|null;position:number;kind:"heading"|"paragraph";title:string;color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl;canEdit:boolean};
+type Node={id:number;groupId:number;parentId:number|null;position:number;kind:"heading"|"paragraph";title:string;preview:string;color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl;canEdit:boolean};
 type Detail={record:Node&{body:string;evidence:string};assets:{id:number;filename:string;mimeType:string}[]};
 type Person={id:number;name:string;kind:string};
 type Draft={title:string;body:string;evidence:string;kind:"heading"|"paragraph";color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl};
@@ -70,7 +70,7 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
   <div className="explain-row">
    <button type="button" className="explain-open" onClick={()=>{setOpen(!open);setDetails(!details);}} aria-expanded={open}>
     <span className="explain-num">{number}</span>
-    <span style={{color:node.color??undefined,fontSize:node.fontSize??undefined}}>{node.title || (node.kind==="paragraph"?"عرض الشرح":"عنوان دون تسمية")}</span>
+    <span style={{color:node.color??undefined,fontSize:node.fontSize??undefined}}>{node.title || (node.kind==="paragraph"?(node.preview+(node.preview.length>=180?"…":"")):"عنوان دون تسمية")}</span>
     <span aria-hidden="true">{open?"▾":"◂"}</span>
    </button>
    {node.canEdit&&<details className="explain-menu"><summary>الإجراءات</summary><div className="explain-menu-options">
