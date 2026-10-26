@@ -150,3 +150,10 @@
     border:1px solid #174a91!important;
   }
 }
+
+/* The explanation follows its numbered paragraph and precedes attached images. */
+.explain-paragraph-detail{margin:7px 0 5px;white-space:pre-wrap;line-height:1.65;color:inherit}
+.explain-paragraph-detail strong{color:var(--primary,#176b61)}
+@media print{
+ .explain-paragraph-detail,.explain-paragraph-detail strong{color:#111!important;background:#fff!important}
+}
