@@ -3902,3 +3902,42 @@ test("memo feature block rejects new invoice but allows exact saved retry and di
  assert.equal((await f.pool.query(
   "SELECT count(*)::int AS count FROM invoices WHERE company_id=$1",[co.id])).rows[0].count,1);
 });
+
+test("owner password reset applies to public users without employee memberships", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const ordinary = await register(f, "password-reset-public@example.test");
+  const administrator = await register(f, "password-reset-admin@example.test");
+  const targetId = ordinary.user.id;
+  const resetPath = `/users/${targetId}/password`;
+  const newPassword = "reset-public-account-2026";
+
+  // The account is a public user, not an employee of any company.
+  const membership = await f.pool.query(
+    "SELECT 1 FROM employees WHERE user_id=$1", [targetId],
+  );
+  assert.equal(membership.rowCount, 0);
+
+  await platform.client.ok("PATCH", `/users/${administrator.user.id}`, { kind: "admin" });
+  assert.equal((await administrator.client.request("POST", resetPath, { newPassword })).status, 403);
+  assert.equal((await ordinary.client.request("POST", resetPath, { newPassword })).status, 403);
+  assert.equal((await platform.client.request("POST", `/users/${platform.user.id}/password`, { newPassword })).status, 403);
+  assert.equal((await platform.client.request("POST", resetPath, { newPassword: "short" })).status, 400);
+
+  await platform.client.ok("POST", resetPath, { newPassword });
+  assert.equal((await ordinary.client.request("GET", "/profile")).status, 401);
+  const fresh = f.client();
+  assert.equal((await fresh.request("POST", "/auth/login", {
+    email: ordinary.user.email, password,
+  })).status, 401);
+  const loggedIn = await fresh.ok<SessionResponse>("POST", "/auth/login", {
+    email: ordinary.user.email, password: newPassword,
+  });
+  assert.equal(loggedIn.user?.id, targetId);
+
+  const auditPage = await platform.client.ok<Page<AuditEvent>>("GET", "/audit");
+  assert.ok(auditPage.items.some((entry) =>
+    entry.action === "auth.password" && entry.targetId === targetId,
+  ));
+  assertNoSecrets(auditPage);
+});
