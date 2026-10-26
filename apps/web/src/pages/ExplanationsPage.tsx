@@ -49,7 +49,7 @@ function DetailView({nodeId,canEdit,onEdit,onChanged}:{nodeId:number;canEdit:boo
   {detail.isPending&&<small>جارٍ تحميل الشرح…</small>}
   {detail.error&&<Notice tone="error">{errorMessage(detail.error)}</Notice>}
   {detail.data&&<>
-   <p className="explain-body">{detail.data.record.body||"لا يوجد شرح نصي."}</p>
+   <p className="explain-body" style={{color:detail.data.record.color??undefined,fontSize:detail.data.record.fontSize??undefined}}>{detail.data.record.body||"لا يوجد شرح نصي."}</p>
    {detail.data.record.evidence&&<p className="explain-body"><strong>وجه الاستدلال:</strong> {detail.data.record.evidence}</p>}
    {detail.data.assets.length>0&&<div className="explain-files">{detail.data.assets.map(a=><a key={a.id} href={"/api/explanations/assets/"+a.id} target="_blank" rel="noreferrer">
     {a.mimeType.startsWith("image/")?<img loading="lazy" src={"/api/explanations/assets/"+a.id} alt={a.filename}/>:null}
