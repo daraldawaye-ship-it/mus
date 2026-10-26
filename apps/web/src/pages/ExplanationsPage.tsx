@@ -9,7 +9,7 @@ import "./ExplanationsPage.css";
 type Acl={users:number[];kinds:("admin"|"supervisor"|"member")[]}|null;
 type Group={id:number;slug:string;title:string;canEdit:boolean;defaultRead:Acl;defaultEdit:Acl};
 type Node={id:number;groupId:number;parentId:number|null;position:number;kind:"heading"|"paragraph";title:string;preview:string;color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl;canEdit:boolean};
-type Detail={record:Node&{body:string;evidence:string};assets:{id:number;filename:string;mimeType:string}[]};
+type Detail={record:Node&{body:string;evidence:string};assets:{id:number;filename:string;displayName:string;mimeType:string}[]};
 type Person={id:number;name:string;kind:string};
 type Draft={title:string;body:string;evidence:string;kind:"heading"|"paragraph";color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl};
 type Insertion={groupId:number;parentId:number|null;afterId:number|null};
@@ -32,18 +32,35 @@ function AclField({title,value,onChange,people}:{title:string;value:Acl;onChange
 function DetailView({nodeId,canEdit,onEdit,onChanged}:{nodeId:number;canEdit:boolean;onEdit:()=>void;onChanged:()=>void}) {
  const [error,setError]=useState(""),[busy,setBusy]=useState(false);
  const detail=useQuery({queryKey:["explanations","detail",nodeId],queryFn:()=>api<Detail>("/explanations/nodes/"+nodeId)});
- const upload=async(file:File|undefined)=>{
-  if(!file)return;
-  if(file.size>2097152){setError("أقصى حجم للصورة أو PDF هو 2MB.");return;}
-  if(!["application/pdf","image/png","image/jpeg","image/webp"].includes(file.type)){setError("يسمح بـ PDF أو PNG أو JPEG أو WebP.");return;}
+ const [renaming,setRenaming]=useState<number|null>(null);
+ const upload=async(files:FileList|null)=>{
+  if(!files?.length)return;
   setBusy(true);setError("");
   try {
-   const dataUrl=await new Promise<string>((resolve,reject)=>{
-    const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("تعذر قراءة الملف"));reader.readAsDataURL(file);
-   });
-   await api("/explanations/nodes/"+nodeId+"/assets",{method:"POST",body:{filename:file.name,dataUrl}});
+   for(const file of Array.from(files)){
+    if(file.size>10*1024*1024)throw new Error("يتجاوز الملف "+file.name+" الحد التقني 10MB.");
+    if(!["application/pdf","image/png","image/jpeg","image/webp"].includes(file.type))
+      throw new Error("صيغة الملف "+file.name+" غير مدعومة.");
+    const dataUrl=await new Promise<string>((resolve,reject)=>{
+     const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("تعذر قراءة "+file.name));reader.readAsDataURL(file);
+    });
+    await api("/explanations/nodes/"+nodeId+"/assets",{method:"POST",body:{filename:file.name,displayName:file.name,dataUrl}});
+   }
    await detail.refetch();onChanged();
   }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+ };
+ const rename=async(assetId:number,oldName:string)=>{
+  const value=window.prompt("اسم الصورة الذي يظهر في الشرح:",oldName)?.trim();
+  if(!value || value===oldName)return;
+  setRenaming(assetId);setError("");
+  try{await api("/explanations/assets/"+assetId,{method:"PATCH",body:{displayName:value}});await detail.refetch();}
+  catch(e){setError(errorMessage(e));}finally{setRenaming(null);}
+ };
+ const remove=async(assetId:number)=>{
+  if(!window.confirm("حذف هذا المرفق؟"))return;
+  setRenaming(assetId);setError("");
+  try{await api("/explanations/assets/"+assetId,{method:"DELETE"});await detail.refetch();}
+  catch(e){setError(errorMessage(e));}finally{setRenaming(null);}
  };
  return <div className="explain-detail">
   {detail.isPending&&<small>جارٍ تحميل الشرح…</small>}
@@ -51,13 +68,22 @@ function DetailView({nodeId,canEdit,onEdit,onChanged}:{nodeId:number;canEdit:boo
   {detail.data&&<>
    <p className="explain-body" style={{color:detail.data.record.color??undefined,fontSize:detail.data.record.fontSize??undefined}}>{detail.data.record.body||"لا يوجد شرح نصي."}</p>
    {detail.data.record.evidence&&<p className="explain-body"><strong>وجه الاستدلال:</strong> {detail.data.record.evidence}</p>}
-   {detail.data.assets.length>0&&<div className="explain-files">{detail.data.assets.map(a=><a key={a.id} href={"/api/explanations/assets/"+a.id} target="_blank" rel="noreferrer">
-    {a.mimeType.startsWith("image/")?<img loading="lazy" src={"/api/explanations/assets/"+a.id} alt={a.filename}/>:null}
-    <span>{a.mimeType==="application/pdf"?"📄 ":"🖼️ "}{a.filename}</span>
-   </a>)}</div>}
-   {canEdit&&<div className="explain-actions"><Button size="compact" variant="secondary" onClick={onEdit}>تعديل الشرح والصلاحيات</Button>
-    <label className="button button-secondary button-compact">إضافة صورة أو PDF<input hidden type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void upload(e.target.files?.[0]);e.target.value="";}}/></label></div>}
+   {detail.data.assets.length>0&&<div className="explain-attachment-list">
+    {detail.data.assets.map(a=><div className="explain-attachment" key={a.id}>
+     <span>{a.mimeType==="application/pdf"?"📄":"🖼️"}</span>
+     <a href={"/api/explanations/assets/"+a.id} target="_blank" rel="noreferrer" title={a.filename}>{a.displayName||a.filename}</a>
+     {canEdit&&<><Button size="compact" variant="secondary" disabled={renaming!==null} onClick={()=>void rename(a.id,a.displayName||a.filename)}>تسمية</Button>
+      <Button size="compact" variant="danger" disabled={renaming!==null} onClick={()=>void remove(a.id)}>حذف</Button></>}
+    </div>)}
+   </div>}
+   {canEdit&&<div className="explain-actions">
+    <Button size="compact" variant="secondary" onClick={onEdit}>تعديل الشرح والصلاحيات</Button>
+    <label className="button button-secondary button-compact">إضافة صور وPDF
+      <input hidden multiple type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy}
+       onChange={e=>{void upload(e.target.files);e.target.value="";}}/></label>
+   </div>}
   </>}
+  {busy&&<Notice>جارٍ حفظ المرفقات المختارة…</Notice>}
   {error&&<Notice tone="error">{error}</Notice>}
  </div>;
 }
@@ -79,6 +105,7 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:root.id,afterId:node.parentId===root.id?node.id:null},"heading")}>إضافة فرعي 1</button>
     {node.id!==root.id&&<button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"paragraph")}>إضافة فرعي 2 تحته</button>}
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"paragraph")}>إضافة سجل تحته</button>
+    {node.id===root.id&&<Link to={"/explanations/topic/"+node.id}>عرض الموضوع كورقة</Link>}
     <button onClick={()=>onEdit(node)}>تعديل وصلاحيات</button>
     <button onClick={()=>onDelete(node)}>حذف السجل</button>
    </div></details>}
@@ -188,6 +215,7 @@ export function ExplanationsPage() {
      <AclField title="صلاحيات القراءة" value={draft.readAcl} people={people} onChange={v=>setDraft({...draft,readAcl:v})}/>
      <AclField title="صلاحيات التعديل" value={draft.editAcl} people={people} onChange={v=>setDraft({...draft,editAcl:v})}/>
     </div>
+    {editor.id!==null&&<Notice>يمكنك إضافة عدة صور أو ملفات PDF بأسمائها من قائمة مرفقات السجل بعد حفظ التعديل. لا يوجد حد لعدد الملفات.</Notice>}
     <div className="explain-actions"><Button disabled={busy} onClick={save}>{busy?"جارٍ الحفظ…":"حفظ"}</Button><Button variant="secondary" onClick={()=>setEditor(null)}>إلغاء</Button></div>
    </Card>}
   {groups.isPending&&<Notice>جارٍ تحميل مجموعات الشروح…</Notice>}
@@ -196,7 +224,7 @@ export function ExplanationsPage() {
   {tree.isPending&&group&&<Notice>جارٍ تحميل العناوين…</Notice>}
   {tree.error&&<Notice tone="error">{errorMessage(tree.error)}</Notice>}
   {group&&<Card title={group.title}>
-    <div className="explain-headline"><strong>عدد السجلات: {all.length}</strong><small>اضغط عنوانًا لعرض فروعه، ثم افتح الشرح لتحميل المحتوى والمرفقات.</small></div>
+    <div className="explain-headline"><Link className="button button-secondary" to={"/explanations/topics?group="+encodeURIComponent(group.slug)}>عرض للمستخدمين (قائمة الموضوعات)</Link><strong>عدد السجلات: {all.length}</strong><small>اضغط عنوانًا لعرض فروعه، ثم افتح الشرح لتحميل المحتوى والمرفقات.</small></div>
     <div className="explain-tree">{renderNodes(null)}</div>
    </Card>}
  </div>;
