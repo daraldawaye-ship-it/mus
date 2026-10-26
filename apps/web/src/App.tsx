@@ -95,6 +95,7 @@ const AccountStatisticsReportPage = lazy(() =>
 const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage").then(m=>({default:m.LegacySalesImportPage})));
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
 const ExplanationsPage = lazy(() => import("./pages/ExplanationsPage").then(module => ({default:module.ExplanationsPage})));
+const ExplanationsAccessPage = lazy(() => import("./pages/ExplanationsAccessPage").then(module => ({default:module.ExplanationsAccessPage})));
 const ExplanationsTopicIndex = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicIndex})));
 const ExplanationsContinuousReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsContinuousReader})));
 const ExplanationsTopicReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicReader})));
@@ -373,6 +374,9 @@ function Navigation({
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
     "public.general-table": <TableProperties size={17} />,
+    "public.explanations-reader": <BookOpen size={17}/>,
+    "public.explanations-editor": <FileText size={17}/>,
+    "public.explanations-access": <ShieldCheck size={17}/>,
     "public.legal-cases": <Scale size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
@@ -459,7 +463,7 @@ function Navigation({
     <nav aria-label="التنقل الرئيسي">
       <div className="nav-label nav-heading">الموقع العام</div>
       {links("public")}
-      {user && <NavLink to="/explanations/topics?group=mustafa-cases" onClick={close} className={({isActive})=>`nav-link${isActive?" active":""}`}><BookOpen size={17}/><span className="nav-text">قراءة الشروح</span><ChevronLeft size={13} className="nav-chevron"/></NavLink>}
+      
       {!user && (
         <NavLink
           to="/login"
@@ -1159,9 +1163,10 @@ function Workspace() {
                   </Protected>
                 }
               />
-              <Route path="/explanations/topics" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الموضوعات…</Notice>}><ExplanationsContinuousReader/></Suspense></Protected>} />
-              <Route path="/explanations/topic/:topicId" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></Protected>} />
-              <Route path="/explanations" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsPage/></Suspense></Protected>} />
+              <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsContinuousReader/></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/explanations/access" element={<Protected><PageRouteGuard pageKey="public.explanations-access"><Suspense fallback={<Notice>جارٍ تحميل منح الصلاحيات…</Notice>}><ExplanationsAccessPage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
               <Route
                 path="/general-table"
