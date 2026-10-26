@@ -131,9 +131,11 @@ export function LegalCasesPage() {
  {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة للبحث.</Notice>}
  {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
  <div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||"تاريخ غير محدد"}</small><h3>{r.title}</h3></div>
- <div className="legal-actions"><Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button></div></div>
+ <div className="legal-actions">
+ <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button>
+ {(r.kind==="fact"||r.kind==="document")&&<Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>}
+ </div></div>
  {(r.kind==="fact"||r.kind==="document")&&<>
- <Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>
  {expandedId===r.id&&<div className="legal-directory-extra">
  {expanded.isPending&&<Notice>جارٍ تحميل التفاصيل…</Notice>}
  {expanded.error&&<Notice tone="error">{errorMessage(expanded.error)} <Button variant="secondary" onClick={()=>void expanded.refetch()}>إعادة المحاولة</Button></Notice>}
