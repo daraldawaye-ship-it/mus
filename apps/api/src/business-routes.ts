@@ -15,6 +15,7 @@ import { currencyRoutes } from "./routes-currencies.ts";
 import { locationRoutes } from "./routes-locations.ts";
 import { generalTableRoutes } from "./routes-general-table.ts";
 import { legalCaseRoutes } from "./routes-legal-cases.ts";
+import { explanationRoutes } from "./routes-explanations.ts";
 import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
@@ -63,6 +64,7 @@ export function businessRoutes(pool: Pool): Router {
     locationRoutes(pool),
     generalTableRoutes(pool),
     legalCaseRoutes(pool),
+    explanationRoutes(pool),
     financeRoutes(pool),
     itemRoutes(pool),
     settlementFollowUpRoutes(pool),
