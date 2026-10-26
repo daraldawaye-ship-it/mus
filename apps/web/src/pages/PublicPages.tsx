@@ -664,6 +664,63 @@ function UserList() {
   const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState("");
+  // Public identities are independent of employees. Only the platform owner
+  // may reset another user's sign-in password.
+  const [passwordTarget, setPasswordTarget] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+
+  function closePasswordDialog() {
+    if (passwordBusy) return;
+    setPasswordTarget(null);
+    setNewPassword("");
+    setPasswordConfirmation("");
+    setPasswordError("");
+  }
+
+  function openPasswordDialog(target: User) {
+    if (!user?.owner || target.owner) return;
+    setPasswordTarget(target);
+    setNewPassword("");
+    setPasswordConfirmation("");
+    setPasswordError("");
+  }
+
+  async function savePasswordReset() {
+    if (!user?.owner || !passwordTarget || passwordBusy) return;
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      setPasswordError("كلمة المرور يجب أن تتكون من 12 إلى 128 حرفًا.");
+      return;
+    }
+    if (newPassword !== passwordConfirmation) {
+      setPasswordError("تأكيد كلمة المرور لا يطابق الكلمة الجديدة.");
+      return;
+    }
+    const target = passwordTarget;
+    setPasswordBusy(true);
+    setPasswordError("");
+    try {
+      await api(`/users/${target.id}/password`, {
+        method: "POST",
+        body: { newPassword },
+        signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      setPasswordTarget(null);
+      setNewPassword("");
+      setPasswordConfirmation("");
+      setNotice({
+        tone: "success",
+        text: `تغيّرت كلمة مرور ${target.displayName}، وأُلغيت جلساته السابقة.`,
+      });
+    } catch (cause) {
+      if (guard.isCurrent()) setPasswordError(messageOf(cause));
+    } finally {
+      if (guard.isCurrent()) setPasswordBusy(false);
+    }
+  }
   function openEditor(target: User) {
     if (target.owner) return;
     setEditTarget(target);
@@ -773,9 +830,26 @@ function UserList() {
       ),
     }));
     return [
-      { id:"edit",header:"الإجراءات",size:110,enableSorting:false,cell:({row})=>row.original.owner?"محمي":(
-        <Button type="button" size="compact" variant="secondary" onClick={()=>openEditor(row.original)} disabled={savingIds.has(row.original.id)}>تعديل</Button>
-      ) },
+      {
+        id: "edit", header: "الإجراءات", size: user?.owner ? 235 : 110,
+        enableSorting: false,
+        cell: ({ row }) => row.original.owner ? "محمي" : (
+          <div className="actions">
+            <Button type="button" size="compact" variant="secondary"
+              onClick={() => openEditor(row.original)}
+              disabled={savingIds.has(row.original.id)}>
+              تعديل
+            </Button>
+            {user?.owner && (
+              <Button type="button" size="compact" variant="secondary"
+                onClick={() => openPasswordDialog(row.original)}
+                disabled={savingIds.has(row.original.id)}>
+                تغيير كلمة المرور
+              </Button>
+            )}
+          </div>
+        ),
+      },
       { accessorKey: "id", header: "المعرف", size: 80 },
       {
         accessorKey: "name",
@@ -909,6 +983,38 @@ function UserList() {
           ariaLabel="جدول المستخدمين العامين"
         />
       </Card>
+      <Dialog
+        open={Boolean(passwordTarget)}
+        onClose={closePasswordDialog}
+        title={passwordTarget ? `تغيير كلمة مرور: ${passwordTarget.displayName}` : "تغيير كلمة المرور"}
+        footer={
+          <>
+            <Button type="button" variant="secondary" disabled={passwordBusy}
+              onClick={closePasswordDialog}>إلغاء</Button>
+            <Button type="button" disabled={passwordBusy || newPassword.length < 12 || newPassword.length > 128 || newPassword !== passwordConfirmation}
+              onClick={() => void savePasswordReset()}>
+              {passwordBusy ? "جارٍ التغيير…" : "حفظ كلمة المرور"}
+            </Button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <p className="form-full">
+            يمكن للمالك تعيين كلمة مرور جديدة لهذا الحساب العام حتى إن لم يكن
+            موظفًا في أي شركة. سيتم تسجيل خروج المستخدم من جميع أجهزته.
+          </p>
+          <Field label="كلمة المرور الجديدة" type="password" autoComplete="new-password"
+            value={newPassword} required minLength={12} maxLength={128}
+            onChange={(event) => {setNewPassword(event.target.value); setPasswordError("");}} />
+          <Field label="تأكيد كلمة المرور" type="password" autoComplete="new-password"
+            value={passwordConfirmation} required minLength={12} maxLength={128}
+            onChange={(event) => {setPasswordConfirmation(event.target.value); setPasswordError("");}} />
+          {newPassword && passwordConfirmation && newPassword !== passwordConfirmation && (
+            <Notice tone="error">تأكيد كلمة المرور لا يطابق الكلمة الجديدة.</Notice>
+          )}
+          {passwordError && <Notice tone="error">{passwordError}</Notice>}
+        </div>
+      </Dialog>
       <Dialog open={Boolean(editTarget)} onClose={()=>{if(!editBusy){setEditTarget(null);setEditDraft(null);}}} title={editTarget?`تعديل المستخدم: ${editTarget.displayName}`:"تعديل المستخدم"}
         footer={<><Button variant="secondary" disabled={editBusy} onClick={()=>{setEditTarget(null);setEditDraft(null);}}>إلغاء</Button>
         <Button disabled={editBusy||!editDraft} onClick={()=>void saveEditor()}>{editBusy?"جارٍ الحفظ…":"حفظ التعديلات"}</Button></>}>
