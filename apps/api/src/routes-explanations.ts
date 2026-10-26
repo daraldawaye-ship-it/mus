@@ -134,11 +134,68 @@ export function explanationRoutes(pool:Pool):Router {
       defaultRead:user.owner?group.default_read:null,defaultEdit:user.owner?group.default_edit:null},
       items:output});
   }));
+
+  // Independent reader endpoint: one main subject at a time, no asset bytes.
+  // Visibility is checked throughout the tree to avoid leaking hidden paragraphs.
+  router.get("/explanations/topics/:topicId",handler(async(req,res)=>{
+    const user=actor(req),topicId=id(req.params.topicId);
+    const access=await nodeAccess(pool,user,topicId);
+    requireRead(access.permissions.read);
+    if(access.node.parent_id!==null)missing();
+    const tree=(await pool.query(
+      `WITH RECURSIVE descendants AS (
+        SELECT * FROM explanation_nodes WHERE id=$1
+        UNION ALL
+        SELECT n.* FROM explanation_nodes n JOIN descendants d ON n.parent_id=d.id
+      ) SELECT * FROM descendants`,[topicId])).rows as NodeRow[];
+    const children=new Map<number,NodeRow[]>();
+    for(const n of tree) {
+      if(n.id===topicId || n.parent_id===null)continue;
+      const siblings=children.get(n.parent_id)??[];
+      siblings.push(n);children.set(n.parent_id,siblings);
+    }
+    for(const siblings of children.values())siblings.sort((a,b)=>a.position-b.position||a.id-b.id);
+    const visible:NodeRow[]=[access.node];
+    function visit(parent:NodeRow,permissions:{read:boolean;edit:boolean},depth:number) {
+      if(depth>30)return;
+      for(const node of children.get(parent.id)??[]){
+        const rights=grants(user,node.read_acl,node.edit_acl,permissions);
+        if(!rights.read)continue;
+        visible.push(node);
+        visit(node,rights,depth+1);
+      }
+    }
+    visit(access.node,access.permissions,0);
+    const ids=visible.map(n=>n.id);
+    const files=await pool.query(
+      'SELECT id,node_id,filename,display_name AS "displayName",mime_type AS "mimeType" FROM explanation_assets WHERE node_id=ANY($1::integer[]) ORDER BY created_at,id',
+      [ids]);
+    const byNode=new Map<number,QueryResultRow[]>();
+    for(const file of files.rows) {
+      const list=byNode.get(file.node_id)??[];list.push(file);byNode.set(file.node_id,list);
+    }
+    const topics=(await pool.query(
+      'SELECT id,title,position,read_acl,edit_acl FROM explanation_nodes WHERE group_id=$1 AND parent_id IS NULL ORDER BY position,id',[access.node.group_id])).rows;
+    const base=groupGrant(user,access.group);
+    res.json({
+      group:{id:access.group.id,title:access.group.title,slug:access.group.slug},
+      topicId,
+      topics:topics.filter(t=>grants(user,t.read_acl,t.edit_acl,base).read)
+        .map(t=>({id:t.id,title:t.title,position:t.position})),
+      nodes:visible.map(n=>({
+        id:n.id,parentId:n.parent_id,position:n.position,kind:n.kind,title:n.title,
+        body:n.body,evidence:n.evidence,color:n.color,fontSize:n.font_size,
+        canEdit:grants(user,n.read_acl,n.edit_acl,n.id===topicId?base:access.permissions).edit,
+        assets:byNode.get(n.id)??[],
+      })),
+    });
+  }));
+
   router.get("/explanations/nodes/:nodeId",handler(async(req,res)=>{
     const user=actor(req);
     const {node,permissions}=await nodeAccess(pool,user,id(req.params.nodeId));
     requireRead(permissions.read);
-    const assets=await pool.query("SELECT id,filename,mime_type AS \"mimeType\" FROM explanation_assets WHERE node_id=$1 ORDER BY id",[node.id]);
+    const assets=await pool.query("SELECT id,filename,display_name AS \"displayName\",mime_type AS \"mimeType\" FROM explanation_assets WHERE node_id=$1 ORDER BY id",[node.id]);
     res.json({record:{...nodeOutput(node,permissions),body:node.body,evidence:node.evidence,
       readAcl:permissions.edit?node.read_acl:null,editAcl:permissions.edit?node.edit_acl:null},assets:assets.rows});
   }));
@@ -193,7 +250,7 @@ export function explanationRoutes(pool:Pool):Router {
     res.json({ok:true});
   }));
   router.post("/explanations/nodes/:nodeId/assets",handler(async(req,res)=>{
-    const input=parse(z.object({filename:z.string().trim().min(1).max(250),dataUrl:z.string().max(2900000)}).strict(),req.body);
+    const input=parse(z.object({filename:z.string().trim().min(1).max(250),displayName:z.string().trim().min(1).max(250).optional(),dataUrl:z.string().max(14100000)}).strict(),req.body);
     const matchData=/^data:(image\/png|image\/jpeg|image\/webp|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.dataUrl);
     if(!matchData||!imageTypes.has(matchData[1]))throw new HttpError(400,"file_type","يسمح بالصور وPDF فقط");
     const binary=Buffer.from(matchData[2],"base64");
@@ -202,14 +259,33 @@ export function explanationRoutes(pool:Pool):Router {
       mime==="image/png"?header.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):
       mime==="image/jpeg"?header[0]===255&&header[1]===216&&header[2]===255:
       header.subarray(0,4).toString()==="RIFF"&&header.subarray(8,12).toString()==="WEBP";
-    if(!valid||binary.length<10||binary.length>2097152)throw new HttpError(400,"invalid_asset","ملف غير صالح أو يتجاوز 2MB");
+    if(!valid||binary.length<10||binary.length>10485760)throw new HttpError(400,"invalid_asset","ملف غير صالح أو يتجاوز 10MB");
     const user=actor(req),nodeId=id(req.params.nodeId);
     const result=await transaction(pool,async(client)=>{
       const {permissions}=await nodeAccess(client,user,nodeId);requireEdit(permissions.edit);
-      return client.query("INSERT INTO explanation_assets(node_id,filename,mime_type,content,uploaded_by) VALUES($1,$2,$3,$4,$5) RETURNING id",[nodeId,input.filename,mime,binary,user.id]);
+      return client.query("INSERT INTO explanation_assets(node_id,filename,display_name,mime_type,content,uploaded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",[nodeId,input.filename,input.displayName||input.filename,mime,binary,user.id]);
     });
     res.status(201).json({id:result.rows[0].id});
   }));
+
+  router.patch("/explanations/assets/:assetId",handler(async(req,res)=>{
+    const input=parse(z.object({displayName:z.string().trim().min(1).max(250)}).strict(),req.body);
+    const assetId=id(req.params.assetId);
+    const record=(await pool.query("SELECT node_id FROM explanation_assets WHERE id=$1",[assetId])).rows[0];
+    if(!record)missing();
+    const rights=await nodeAccess(pool,actor(req),record.node_id);requireEdit(rights.permissions.edit);
+    await pool.query("UPDATE explanation_assets SET display_name=$1 WHERE id=$2",[input.displayName,assetId]);
+    res.json({ok:true});
+  }));
+  router.delete("/explanations/assets/:assetId",handler(async(req,res)=>{
+    const assetId=id(req.params.assetId);
+    const record=(await pool.query("SELECT node_id FROM explanation_assets WHERE id=$1",[assetId])).rows[0];
+    if(!record)missing();
+    const rights=await nodeAccess(pool,actor(req),record.node_id);requireEdit(rights.permissions.edit);
+    await pool.query("DELETE FROM explanation_assets WHERE id=$1",[assetId]);
+    res.json({ok:true});
+  }));
+
   router.get("/explanations/assets/:assetId",handler(async(req,res)=>{
     const asset=(await pool.query("SELECT * FROM explanation_assets WHERE id=$1",[id(req.params.assetId)])).rows[0];
     if(!asset)missing();
