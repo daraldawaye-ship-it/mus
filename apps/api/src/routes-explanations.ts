@@ -32,7 +32,7 @@ const createNode = nodeFields.extend({
   groupId: integer, parentId: integer.nullable().default(null),
   afterId: integer.nullable().default(null),
 });
-const imageTypes = new Set(["image/png","image/jpeg","image/webp","application/pdf"]);
+const imageTypes = new Set(["image/png","image/jpeg","image/webp","image/gif","application/pdf"]);
 type Rule = { users?:number[]; kinds?:string[] } | null;
 type NodeRow = QueryResultRow & {id:number;group_id:number;parent_id:number|null;position:number;read_acl:Rule;edit_acl:Rule};
 function match(user:User, rule:Rule, fallback:boolean):boolean {
@@ -325,13 +325,14 @@ export function explanationRoutes(pool:Pool):Router {
   }));
   router.post("/explanations/nodes/:nodeId/assets",handler(async(req,res)=>{
     const input=parse(z.object({filename:z.string().trim().min(1).max(250),displayName:z.string().trim().min(1).max(250).optional(),dataUrl:z.string().max(14100000)}).strict(),req.body);
-    const matchData=/^data:(image\/png|image\/jpeg|image\/webp|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.dataUrl);
+    const matchData=/^data:(image\/png|image\/jpeg|image\/webp|image\/gif|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.dataUrl);
     if(!matchData||!imageTypes.has(matchData[1]))throw new HttpError(400,"file_type","يسمح بالصور وPDF فقط");
     const binary=Buffer.from(matchData[2],"base64");
     const mime=matchData[1],header=binary.subarray(0,12);
     const valid=mime==="application/pdf"?header.subarray(0,5).toString()==="%PDF-":
       mime==="image/png"?header.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):
       mime==="image/jpeg"?header[0]===255&&header[1]===216&&header[2]===255:
+      mime==="image/gif"?["GIF87a","GIF89a"].includes(header.subarray(0,6).toString("ascii")):
       header.subarray(0,4).toString()==="RIFF"&&header.subarray(8,12).toString()==="WEBP";
     if(!valid||binary.length<10||binary.length>10485760)throw new HttpError(400,"invalid_asset","ملف غير صالح أو يتجاوز 10MB");
     const user=actor(req),nodeId=id(req.params.nodeId);
