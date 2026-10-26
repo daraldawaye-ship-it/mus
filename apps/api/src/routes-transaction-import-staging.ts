@@ -21,7 +21,12 @@ type Batch = {
   sourceSystem: string;
   postingDate: string;
   documents: StagedDocument[];
+  preserveDocumentDates?: boolean;
 };
+export function stagingPostingDate(batch: {postingDate:string;preserveDocumentDates?:boolean}, doc: {payload:{documentDate:string}}): string {
+  return batch.preserveDocumentDates ? doc.payload.documentDate : batch.postingDate;
+}
+
 const sourceType = z.enum(["invoice", "voucher"]);
 const sourceReference = z.object({ type: sourceType, sourceId: z.string().min(1).max(100) }).strict();
 const receiptSchema = z.object({
@@ -60,7 +65,7 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
       const user=await assertOwner(client,req,companyId,true);
       const rows=input.documents.map(doc=>({
         source_kind:doc.type, source_id:doc.sourceId, source_document:doc,
-        request_hash:hash(doc),
+        request_hash:hash(doc), posting_date:stagingPostingDate(input,doc),
       }));
       const imported=await client.query(
         "SELECT source_kind,source_id,request_hash FROM transaction_source_imports WHERE company_id=$1 AND source_system=$2 AND source_id=ANY($3::text[])",
@@ -90,9 +95,9 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
       const inserted=pending.length?await client.query(
         `INSERT INTO legacy_import_staging
          (company_id,source_system,source_kind,source_id,posting_date,source_document,request_hash,created_by)
-         SELECT $1,$2,r.source_kind,r.source_id,$3::date,r.source_document,r.request_hash,$5
+         SELECT $1,$2,r.source_kind,r.source_id,COALESCE(r.posting_date::date,$3::date),r.source_document,r.request_hash,$5
          FROM jsonb_to_recordset($4::jsonb) AS r(
-           source_kind text,source_id text,source_document jsonb,request_hash text)
+           source_kind text,source_id text,source_document jsonb,request_hash text,posting_date text)
          ON CONFLICT DO NOTHING RETURNING source_id`,
         [companyId,input.sourceSystem,input.postingDate,JSON.stringify(pending),user.id],
       ):{rowCount:0};
@@ -186,3 +191,4 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
   }));
   return router;
 }
+

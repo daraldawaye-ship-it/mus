@@ -99,13 +99,14 @@ const stagedDocumentSchema = z.discriminatedUnion("type", [
 const stagingBatchSchema = z.object({
   ...batchSchema.shape,
   documents: z.array(stagedDocumentSchema).min(1).max(300),
+  preserveDocumentDates: z.boolean().optional(),
 }).strict().superRefine((batch, context) => {
   const identities = new Set<string>();
   batch.documents.forEach((doc, index) => {
     const key = doc.type + ":" + doc.sourceId;
     if (identities.has(key)) context.addIssue({code:"custom",path:["documents",index,"sourceId"],message:"هوية المصدر مكررة داخل الدفعة"});
     identities.add(key);
-    if (doc.payload.documentDate !== batch.postingDate)
+    if (!batch.preserveDocumentDates && doc.payload.documentDate !== batch.postingDate)
       context.addIssue({code:"custom",path:["documents",index,"payload","documentDate"],message:"تاريخ المستند لا يطابق تاريخ الدفعة"});
   });
 });
@@ -501,3 +502,4 @@ export function transactionImportRoutes(pool: Pool): Router {
   );
   return router;
 }
+
