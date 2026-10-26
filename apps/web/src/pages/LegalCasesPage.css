@@ -6,3 +6,9 @@
 .legal-directory-head .field{flex:1;min-width:min(100%,250px);max-width:520px}
 .legal-directory-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;max-height:280px;overflow:auto}
 .legal-directory-case-links{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.legal-directory-more{margin-top:8px;border:1px solid var(--border-color,#b8bcc4);border-radius:8px;padding:9px 12px}
+.legal-directory-more summary{cursor:pointer;font-weight:600;user-select:none}
+.legal-directory-extra{display:grid;gap:6px;padding-top:12px}
+.legal-directory-extra strong{font-size:13px}
+.legal-directory-extra p{margin:0 0 12px}

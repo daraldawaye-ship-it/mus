@@ -17,6 +17,14 @@ const globalLists=[{id:"event",label:"التسلسل الزمني"},{id:"fact",l
 const emptyCase:CaseForm={title:"",caseNumber:"",agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
 const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
 const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
+function evidenceReason(entry:Entry):string {
+ const texts=[entry.body,entry.content_text].filter(Boolean);
+ for(const value of texts){
+  const found=value.match(/(?:وجه\\s*الاستدلال|أوجه\\s*الاستدلال|دلالة\\s*المستند|وجه\\s*الدلالة)\\s*[:：\\-–]?\\s*([^\\n\\r]+(?:\\n(?!\\s*(?:[أا]ول[اً]|ثاني[اً]|الشرح|المحتوى|المرفقات)\\s*[:：]).+)*)/i);
+  if(found?.[1]?.trim())return found[1].trim();
+ }
+ return "";
+}
 function TextField({label,value,onChange,rows=3}:{label:string;value:string;onChange:(s:string)=>void;rows?:number}) {return <label className="legal-area"><span>{label}</span><textarea value={value} rows={rows} onChange={e=>onChange(e.target.value)}/></label>;}
 function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseForm)=>void;disabled?:boolean}) {
  const set=(key:keyof CaseForm,v:string|number|null)=>change({...value,[key]:v});
@@ -121,13 +129,20 @@ export function LegalCasesPage() {
  {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة للبحث.</Notice>}
  {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
  <div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||"تاريخ غير محدد"}</small><h3>{r.title}</h3></div>
- <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button></div>
- {r.body&&<p className="legal-directory-body">{r.body}</p>}
- {r.kind==="document"&&<div className="legal-doc">
+ <div className="legal-actions"><Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button></div></div>
+ {r.kind==="fact"&&<details className="legal-directory-more"><summary>إظهار المزيد</summary><div className="legal-directory-extra"><strong>الشرح</strong><p className="legal-preserve">{r.body||"لا يوجد شرح مسجل."}</p></div></details>}
+ {r.kind==="document"&&<>
+ <details className="legal-directory-more"><summary>إظهار الشرح والمحتوى ووجه الاستدلال</summary>
+ <div className="legal-directory-extra">
+ <strong>الشرح</strong><p className="legal-preserve">{r.body||"لا يوجد شرح مسجل."}</p>
+ <strong>المحتوى</strong><p className="legal-preserve">{r.content_text||"لم يُسجل محتوى نصي للمستند."}</p>
+ <strong>وجه الاستدلال</strong><p className="legal-preserve">{evidenceReason(r)||"لم يُسجل وجه الاستدلال بصورة مستقلة."}</p>
+ </div></details>
+ <div className="legal-doc">
  {r.pdf_url&&<a href={r.pdf_url} target="_blank" rel="noreferrer">فتح PDF</a>}
  {(r.image_urls??[]).map((url,i)=><a href={url} target="_blank" rel="noreferrer" key={url+i}>صورة {i+1}</a>)}
- {r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}
- </div>}
+ </div></>}
+ {r.kind==="event"&&r.body&&<p className="legal-directory-body">{r.body}</p>}
  {focus===r.id&&<div className="legal-linked">
  {links.isPending&&<span>جارٍ تحميل روابط السجل…</span>}
  {links.error&&<Notice tone="error">{errorMessage(links.error)}</Notice>}
