@@ -103,7 +103,6 @@ export function ExplanationsPage() {
  const people=persons.data?.items??[];
  const all=tree.data?.items??[],byId=new Map(all.map(n=>[n.id,n])),byParent=new Map<number|null,Node[]>();
  for(const n of all){const rows=byParent.get(n.parentId)??[];rows.push(n);byParent.set(n.parentId,rows);}
- function rootOf(n:Node):Node{let current=n;for(let i=0;i<30&&current.parentId!==null;i++){const p=byId.get(current.parentId);if(!p)break;current=p;}return current;}
  function renderNodes(parentId:number|null,prefix="",root?:Node):ReactNode{
   return (byParent.get(parentId)??[]).map((n,index)=>{
    const number=prefix?prefix+"."+(index+1):String(index+1);
