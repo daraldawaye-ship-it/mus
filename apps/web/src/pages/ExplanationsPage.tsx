@@ -179,6 +179,7 @@ export function ExplanationsPage() {
  return <div className="explain-page">
   <PageHeader title="الشروح المنظمة" description="شروح عامة بعناوين وفروع متعددة، ترقيم تلقائي وصلاحيات مستقلة لكل سجل."
    actions={<><Link className="button button-secondary" to="/legal-cases">صفحة قضايا مصطفى</Link>
+    {user?.owner&&<Link className="button button-secondary" to="/explanations/access">منح صلاحيات صفحات الشروح</Link>}
     {group?.canEdit&&<Button onClick={()=>beginInsert({groupId:group.id,parentId:null,afterId:null},"heading")}>إضافة عنوان رئيسي</Button>}
     {user?.owner&&<Button variant="secondary" onClick={()=>setNewGroup(!newGroup)}>مجموعة شروح جديدة</Button>}
    </>}/>
