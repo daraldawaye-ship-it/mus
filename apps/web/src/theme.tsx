@@ -82,6 +82,7 @@ export function buildThemeTokens(
     "--muted": accessible(dark ? "#a2b1c0" : "#5f6e79", surface),
     "--border": mix(surface, color, dark ? 0.35 : 0.23),
     "--primary": primary,
+    "--user-accent-color": color,
     "--on-primary": textOn(primary),
     "--soft": soft,
     "--on-soft": accessible(color, soft),
