@@ -77,7 +77,7 @@ function requireRead(allowed:boolean) {if(!allowed)missing();}
 function requireEdit(allowed:boolean) {if(!allowed)throw new HttpError(403,"explanation_forbidden","لا تملك صلاحية تعديل هذا السجل");}
 const nodeOutput=(r:QueryResultRow,permissions:{read:boolean;edit:boolean})=>({
   id:r.id,groupId:r.group_id,parentId:r.parent_id,position:r.position,kind:r.kind,
-  title:r.title,color:r.color,fontSize:r.font_size,
+  title:r.title,preview:r.preview??"",color:r.color,fontSize:r.font_size,
   readAcl:permissions.edit?r.read_acl:null,editAcl:permissions.edit?r.edit_acl:null,canEdit:permissions.edit,
   updatedAt:r.updated_at,
 });
@@ -116,7 +116,7 @@ export function explanationRoutes(pool:Pool):Router {
     const user=actor(req),groupId=id(req.params.groupId);
     const group=await groupById(pool,groupId);
     const base=groupGrant(user,group);requireRead(base.read);
-    const rows=(await pool.query("SELECT id,group_id,parent_id,position,kind,title,color,font_size,read_acl,edit_acl,updated_at FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",[groupId])).rows as NodeRow[];
+    const rows=(await pool.query("SELECT id,group_id,parent_id,position,kind,title,LEFT(body,180) AS preview,color,font_size,read_acl,edit_acl,updated_at FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",[groupId])).rows as NodeRow[];
     const byParent=new Map<number|null,NodeRow[]>();
     for(const n of rows) {const siblings=byParent.get(n.parent_id)??[];siblings.push(n);byParent.set(n.parent_id,siblings);}
     const output:ReturnType<typeof nodeOutput>[]=[];
