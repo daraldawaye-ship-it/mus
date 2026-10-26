@@ -135,6 +135,20 @@ export function explanationRoutes(pool:Pool):Router {
       items:output});
   }));
 
+  router.get("/explanations/groups/:groupId/topics",handler(async(req,res)=>{
+    const user=actor(req),group=await groupById(pool,id(req.params.groupId));
+    const base=groupGrant(user,group);
+    requireRead(base.read);
+    const rows=(await pool.query(
+      "SELECT id,title,position,read_acl,edit_acl FROM explanation_nodes WHERE group_id=$1 AND parent_id IS NULL ORDER BY position,id",
+      [group.id])).rows;
+    res.json({
+      group:{id:group.id,title:group.title,slug:group.slug,canEdit:base.edit},
+      topics:rows.filter(row=>grants(user,row.read_acl,row.edit_acl,base).read)
+        .map(row=>({id:row.id,title:row.title,position:row.position})),
+    });
+  }));
+
   // Independent reader endpoint: one main subject at a time, no asset bytes.
   // Visibility is checked throughout the tree to avoid leaking hidden paragraphs.
   router.get("/explanations/topics/:topicId",handler(async(req,res)=>{
@@ -185,7 +199,6 @@ export function explanationRoutes(pool:Pool):Router {
       nodes:visible.map(n=>({
         id:n.id,parentId:n.parent_id,position:n.position,kind:n.kind,title:n.title,
         body:n.body,evidence:n.evidence,color:n.color,fontSize:n.font_size,
-        canEdit:grants(user,n.read_acl,n.edit_acl,n.id===topicId?base:access.permissions).edit,
         assets:byNode.get(n.id)??[],
       })),
     });
