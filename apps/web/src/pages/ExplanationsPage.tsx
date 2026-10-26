@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
@@ -13,6 +13,8 @@ type Detail={record:Node&{body:string;evidence:string};assets:{id:number;filenam
 type Person={id:number;name:string;kind:string};
 type Draft={title:string;body:string;evidence:string;kind:"heading"|"paragraph";color:string|null;fontSize:number|null;readAcl:Acl;editAcl:Acl};
 type Insertion={groupId:number;parentId:number|null;afterId:number|null};
+type UploadAsset={key:string;file:File;displayName:string};
+type SavedAsset={id:number;filename:string;displayName:string;mimeType:string};
 const blank=(kind:"heading"|"paragraph"="paragraph"):Draft=>({title:"",body:"",evidence:"",kind,color:null,fontSize:null,readAcl:null,editAcl:null});
 const kinds=[{value:"admin",name:"إدارة"},{value:"supervisor",name:"مشرف"},{value:"member",name:"مستخدم"}] as const;
 function AclField({title,value,onChange,people}:{title:string;value:Acl;onChange:(acl:Acl)=>void;people:Person[]}) {
@@ -99,6 +101,7 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
     <span style={{color:node.color??undefined,fontSize:node.fontSize??undefined}}>{node.title || (node.kind==="paragraph"?(node.preview+(node.preview.length>=180?"…":"")):"عنوان دون تسمية")}</span>
     <span aria-hidden="true">{open?"▾":"◂"}</span>
    </button>
+   {node.canEdit&&<button className="explain-quick-assets" type="button" onClick={()=>onEdit(node)}>📎 المرفقات</button>}
    {node.canEdit&&<details className="explain-menu"><summary>الإجراءات</summary><div className="explain-menu-options">
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:node.parentId,afterId:node.id},"paragraph")}>إضافة سجل بعده</button>
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:null,afterId:root.id},"heading")}>إضافة عنوان رئيسي بعده</button>
@@ -106,7 +109,7 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
     {node.id!==root.id&&<button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"heading")}>إضافة عنوان فرعي 2</button>}
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"paragraph")}>إضافة سجل تحته</button>
     {node.id===root.id&&<Link to={"/explanations/topic/"+node.id}>عرض الموضوع كورقة</Link>}
-    <button onClick={()=>onEdit(node)}>تعديل وصلاحيات</button>
+    <button onClick={()=>onEdit(node)}>إضافة مرفقات / تعديل وصلاحيات</button>
     <button onClick={()=>onDelete(node)}>حذف السجل</button>
    </div></details>}
   </div>
@@ -119,6 +122,52 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
 export function ExplanationsPage() {
  const {user}=useSession(),client=useQueryClient(),[params,setParams]=useSearchParams();
  const [editor,setEditor]=useState<{id:number|null;where:Insertion}|null>(null);
+ const [pendingAssets,setPendingAssets]=useState<UploadAsset[]>([]);
+ const [assetNames,setAssetNames]=useState<Record<number,string>>({});
+ const [uploadStatus,setUploadStatus]=useState("");
+ const editorAnchor=useRef<HTMLDivElement|null>(null);
+ useEffect(()=>{if(editor)requestAnimationFrame(()=>editorAnchor.current?.scrollIntoView({behavior:"smooth",block:"start"}));},
+   [editor?.id,editor?.where.afterId,editor?.where.parentId]);
+ const savedFiles=useQuery({queryKey:["explanations","editor-assets",editor?.id],
+  queryFn:()=>api<Detail>("/explanations/nodes/"+editor!.id),
+  enabled:editor!==null&&editor.id!==null});
+ const chooseAttachments=(selection:FileList|null)=>{
+  if(!selection?.length)return;
+  const chosen=Array.from(selection);
+  const bad=chosen.find(f=>f.size===0||f.size>10485760||
+    !["image/png","image/jpeg","image/webp","application/pdf"].includes(f.type));
+  if(bad){setError("تعذر اختيار "+bad.name+": الملفات يجب أن تكون صورًا أو PDF وحجم كل ملف بين 1 بايت و10MB.");return;}
+  setError("");
+  setPendingAssets(previous=>[...previous,...chosen.map(file=>({
+    key:file.name+"-"+file.size+"-"+file.lastModified+"-"+Math.random(),
+    file,displayName:file.name,
+  }))]);
+ };
+ const discardAttachment=(key:string)=>setPendingAssets(previous=>previous.filter(a=>a.key!==key));
+ const updateAttachmentName=(key:string,name:string)=>setPendingAssets(previous=>previous.map(a=>a.key===key?{...a,displayName:name}:a));
+ const persistName=async(asset:SavedAsset)=>{
+  const displayName=(assetNames[asset.id]??asset.displayName??asset.filename).trim();
+  if(!displayName){setError("اسم المرفق مطلوب.");return;}
+  setBusy(true);setError("");
+  try{
+   await api("/explanations/assets/"+asset.id,{method:"PATCH",body:{displayName}});
+   await savedFiles.refetch();
+   await client.invalidateQueries({queryKey:["explanations","detail"]});
+   await client.invalidateQueries({queryKey:["explanations","flow"]});
+   setNotice("تم حفظ اسم المرفق.");
+  }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+ };
+ const deleteAttachment=async(asset:SavedAsset)=>{
+  if(!window.confirm("حذف المرفق «"+(asset.displayName||asset.filename)+"» نهائيًا؟"))return;
+  setBusy(true);setError("");
+  try{
+   await api("/explanations/assets/"+asset.id,{method:"DELETE"});
+   await savedFiles.refetch();
+   await client.invalidateQueries({queryKey:["explanations","detail"]});
+   await client.invalidateQueries({queryKey:["explanations","flow"]});
+   setNotice("حُذف المرفق.");
+  }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
+ };
  const [draft,setDraft]=useState<Draft>(blank());
  const [notice,setNotice]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const [newGroup,setNewGroup]=useState(false),[newGroupName,setNewGroupName]=useState(""),[newGroupSlug,setNewGroupSlug]=useState("");
@@ -146,13 +195,15 @@ export function ExplanationsPage() {
   catch(e){setError(errorMessage(e));}finally{setBusy(false);}
  };
  function beginInsert(where:Insertion,kind:"heading"|"paragraph"){
-  setDraft(blank(kind));setEditor({id:null,where});setError("");
+  setDraft(blank(kind));setPendingAssets([]);setAssetNames({});setUploadStatus("");
+  setEditor({id:null,where});setError("");
  }
  async function beginEdit(node:Node) {
   setBusy(true);setError("");
   try{const result=await api<Detail>("/explanations/nodes/"+node.id);
    const r=result.record;
    setDraft({title:r.title,body:r.body,evidence:r.evidence,kind:r.kind,color:r.color,fontSize:r.fontSize,readAcl:r.readAcl,editAcl:r.editAcl});
+   setPendingAssets([]);setAssetNames({});setUploadStatus("");
    setEditor({id:node.id,where:{groupId:node.groupId,parentId:node.parentId,afterId:null}});
   }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
  }
@@ -164,9 +215,35 @@ export function ExplanationsPage() {
   if(!editor)return;
   if(draft.kind==="heading"&&!draft.title.trim())throw new Error("اكتب عنوانًا.");
   if(draft.kind==="paragraph"&&!draft.title.trim()&&!draft.body.trim())throw new Error("أدخل شرحًا أو عنوانًا.");
-  if(editor.id===null)await api("/explanations/nodes",{method:"POST",body:{...draft,...editor.where}});
-  else await api("/explanations/nodes/"+editor.id,{method:"PATCH",body:draft});
-  setEditor(null);
+  if(pendingAssets.some(item=>!item.displayName.trim()||item.displayName.length>250))
+   throw new Error("اكتب اسمًا لكل مرفق لا يتجاوز 250 حرفًا.");
+  let recordId=editor.id;
+  if(recordId===null){
+   const result=await api<{id:number}>("/explanations/nodes",{method:"POST",body:{...draft,...editor.where}});
+   recordId=result.id;
+   setEditor({...editor,id:recordId});
+  }else{
+   await api("/explanations/nodes/"+recordId,{method:"PATCH",body:draft});
+  }
+  try{
+   for(let i=0;i<pendingAssets.length;i++){
+    const item=pendingAssets[i];
+    setUploadStatus("جارٍ رفع المرفق "+(i+1)+" من "+pendingAssets.length+": "+item.file.name);
+    const dataUrl=await new Promise<string>((resolve,reject)=>{
+     const reader=new FileReader();
+     reader.onload=()=>resolve(String(reader.result));
+     reader.onerror=()=>reject(new Error("تعذر قراءة الملف "+item.file.name));
+     reader.readAsDataURL(item.file);
+    });
+    await api("/explanations/nodes/"+recordId+"/assets",{
+     method:"POST",body:{filename:item.file.name,displayName:item.displayName.trim(),dataUrl},
+    });
+    discardAttachment(item.key);
+   }
+  }catch(e){
+   throw new Error("تم حفظ السجل، لكن تعذر استكمال رفع المرفقات. الملفات المتبقية لا تزال في القائمة: "+errorMessage(e));
+  }finally{setUploadStatus("");}
+  setPendingAssets([]);setEditor(null);
  });
  const saveGroup=()=>void run(async()=>{
   if(newGroup){
@@ -201,7 +278,7 @@ export function ExplanationsPage() {
     <AclField title="صلاحيات التعديل الافتراضية" value={groupDraft.defaultEdit} people={people} onChange={v=>setGroupDraft({...groupDraft,defaultEdit:v})}/>
     <div className="explain-actions"><Button disabled={busy} onClick={saveGroup}>حفظ المجموعة</Button><Button variant="secondary" onClick={()=>setEditGroup(false)}>إلغاء</Button></div>
   </Card>}
-  {editor&&<Card title={editor.id===null?"إضافة سجل":"تعديل السجل"}>
+  {editor&&<div ref={editorAnchor} className="explain-editor-anchor"><Card title={editor.id===null?"إضافة سجل ومرفقاته":"تعديل السجل ومرفقاته"}>
     <div className="explain-fields">
      <Select label="نوع السجل" value={draft.kind} onChange={e=>setDraft({...draft,kind:e.target.value as Draft["kind"]})}>
       <option value="heading">عنوان</option><option value="paragraph">فقرة شرح</option>
@@ -216,9 +293,53 @@ export function ExplanationsPage() {
      <AclField title="صلاحيات القراءة" value={draft.readAcl} people={people} onChange={v=>setDraft({...draft,readAcl:v})}/>
      <AclField title="صلاحيات التعديل" value={draft.editAcl} people={people} onChange={v=>setDraft({...draft,editAcl:v})}/>
     </div>
-    {editor.id!==null&&<Notice>يمكنك إضافة عدة صور أو ملفات PDF بأسمائها من قائمة مرفقات السجل بعد حفظ التعديل. لا يوجد حد لعدد الملفات.</Notice>}
-    <div className="explain-actions"><Button disabled={busy} onClick={save}>{busy?"جارٍ الحفظ…":"حفظ"}</Button><Button variant="secondary" onClick={()=>setEditor(null)}>إلغاء</Button></div>
-   </Card>}
+    <section className="explain-editor-assets" aria-label="إضافة وإدارة المرفقات">
+      <h3>📎 المرفقات — إضافة صور وملفات PDF</h3>
+      <p>يمكن إضافة أي عدد من الصور والملفات دفعة واحدة. يُحفظ اسم الملف الأصلي مع الاسم الذي تختاره ليظهر كزر داخل الشرح.</p>
+      <label className="button button-secondary explain-select-files">
+        <span>إضافة صور أو PDF</span>
+        <input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf"
+         disabled={busy} onChange={e=>{chooseAttachments(e.currentTarget.files);e.currentTarget.value="";}}/>
+      </label>
+      <small>لا يوجد حد لعدد المرفقات، والحد التقني لحجم الملف الواحد 10 ميجابايت.</small>
+      {pendingAssets.length>0&&<div className="explain-pending-list">
+       <strong>المرفقات الجديدة ({pendingAssets.length}) — تُرفع مع حفظ السجل</strong>
+       {pendingAssets.map(item=><div className="explain-editor-asset-row" key={item.key}>
+        <span className="explain-file-indicator">{item.file.type==="application/pdf"?"📄":"🖼️"}</span>
+        <div className="explain-file-data"><small title={item.file.name}>الملف الأصلي: {item.file.name}</small>
+          <label>اسم المرفق عند العرض
+           <input type="text" maxLength={250} value={item.displayName} disabled={busy}
+            onChange={e=>updateAttachmentName(item.key,e.target.value)}/>
+          </label>
+        </div>
+        <Button size="compact" variant="secondary" disabled={busy} onClick={()=>discardAttachment(item.key)}>إزالة</Button>
+       </div>)}
+      </div>}
+      {editor.id!==null&&<>
+       <h4>المرفقات المحفوظة</h4>
+       {savedFiles.isPending&&<small>جارٍ تحميل المرفقات…</small>}
+       {savedFiles.error&&<Notice tone="error">{errorMessage(savedFiles.error)}</Notice>}
+       {savedFiles.data?.assets.length===0&&<small>لا توجد مرفقات محفوظة في هذا السجل.</small>}
+       {savedFiles.data?.assets.map(asset=><div className="explain-editor-asset-row" key={asset.id}>
+        <span className="explain-file-indicator">{asset.mimeType==="application/pdf"?"📄":"🖼️"}</span>
+        <div className="explain-file-data"><small>الملف الأصلي: {asset.filename}</small>
+         <label>اسم المرفق عند العرض
+          <input type="text" maxLength={250} disabled={busy}
+           value={assetNames[asset.id]??asset.displayName??asset.filename}
+           onChange={e=>setAssetNames(old=>({...old,[asset.id]:e.target.value}))}/>
+         </label>
+        </div>
+        <div className="explain-asset-buttons">
+         <Button size="compact" variant="secondary" disabled={busy||!(asset.id in assetNames)} onClick={()=>void persistName(asset)}>حفظ الاسم</Button>
+         <a className="button button-secondary button-compact" href={"/api/explanations/assets/"+asset.id} target="_blank" rel="noreferrer">عرض</a>
+         <Button size="compact" variant="secondary" disabled={busy} onClick={()=>void deleteAttachment(asset)}>حذف</Button>
+        </div>
+       </div>)}
+      </>}
+    </section>
+    {uploadStatus&&<Notice>{uploadStatus}</Notice>}
+    <div className="explain-actions"><Button disabled={busy} onClick={save}>{busy?"جارٍ الحفظ…":"حفظ السجل والمرفقات"}</Button><Button variant="secondary" disabled={busy} onClick={()=>{setEditor(null);setPendingAssets([]);}}>إلغاء</Button></div>
+   </Card></div>}
   {groups.isPending&&<Notice>جارٍ تحميل مجموعات الشروح…</Notice>}
   {groups.error&&<Notice tone="error">{errorMessage(groups.error)}</Notice>}
   {groups.data?.items.length===0&&<Notice>لم تُمنح لهذا الحساب صلاحية قراءة مجموعات الشروح بعد.</Notice>}
