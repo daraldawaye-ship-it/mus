@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { errorMessage } from "../phase2";
@@ -118,6 +118,7 @@ export function LegalCasesPage() {
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
  <nav className="legal-directory-tabs" aria-label="قوائم متابعة القضايا">
+ <Link className="button button-secondary" to="/explanations?group=mustafa-cases">شرح قضايا مصطفى — العناوين المرتبة</Link>
  <Button variant={globalKind===null?"primary":"secondary"} aria-pressed={globalKind===null} onClick={()=>openGlobal(null)}>متابعة القضايا</Button>
  {globalLists.map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={()=>openGlobal(item.id)}>{item.label}</Button>)}
  </nav>
