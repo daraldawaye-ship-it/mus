@@ -222,6 +222,7 @@ export function ExplanationsContinuousReader() {
     <span className="explain-toolbar-gap"/>
     {group?.canEdit&&<Link className="button button-secondary"
      to={"/explanations?group="+encodeURIComponent(group.slug)}>الإضافة والتعديل</Link>}
+    {user?.owner&&<Link className="button button-secondary" to="/explanations/access">منح صلاحيات الصفحات</Link>}
     <Button variant="secondary" disabled={printBusy||!groupId||pages.isPending} onClick={()=>void printAll()}>
      {printBusy?"جارٍ تجهيز الملف…":"طباعة الملف كاملًا"}
     </Button>
