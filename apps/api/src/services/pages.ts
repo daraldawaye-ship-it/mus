@@ -166,6 +166,20 @@ export async function directoryEntries(
     "SELECT 1 FROM legal_case_access WHERE user_id=$1 LIMIT 1",
     [user.id],
   )).rowCount);
+  // Explanation groups are private until the owner grants read/edit access.
+  // The page catalog must reflect the same group ACLs checked by the API.
+  const explanationGroups=(await db.query(
+    "SELECT default_read,default_edit FROM explanation_groups"
+  )).rows;
+  const granted=(rule:unknown)=>{
+    if(!rule || typeof rule!=="object")return false;
+    const r=rule as {users?:unknown;kinds?:unknown};
+    return (Array.isArray(r.users)&&r.users.includes(user.id)) ||
+      (Array.isArray(r.kinds)&&r.kinds.includes(user.kind));
+  };
+  const explanationEdit=user.owner || explanationGroups.some(g=>granted(g.default_edit));
+  const explanationRead=explanationEdit ||
+    explanationGroups.some(g=>granted(g.default_read));
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
     [companyId],
@@ -219,6 +233,8 @@ export async function directoryEntries(
           isEnabled &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
+            (definition.key !== "public.explanations-reader" || explanationRead) &&
+            (definition.key !== "public.explanations-editor" || explanationEdit) &&
             directoryActionAllowed(
               definition,
               action,
