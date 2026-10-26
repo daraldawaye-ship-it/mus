@@ -96,6 +96,7 @@ const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage")
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
 const ExplanationsPage = lazy(() => import("./pages/ExplanationsPage").then(module => ({default:module.ExplanationsPage})));
 const ExplanationsTopicIndex = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicIndex})));
+const ExplanationsContinuousReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsContinuousReader})));
 const ExplanationsTopicReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicReader})));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
@@ -1158,7 +1159,7 @@ function Workspace() {
                   </Protected>
                 }
               />
-              <Route path="/explanations/topics" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الموضوعات…</Notice>}><ExplanationsTopicIndex/></Suspense></Protected>} />
+              <Route path="/explanations/topics" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الموضوعات…</Notice>}><ExplanationsContinuousReader/></Suspense></Protected>} />
               <Route path="/explanations/topic/:topicId" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></Protected>} />
               <Route path="/explanations" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsPage/></Suspense></Protected>} />
               <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
