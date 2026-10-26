@@ -41,7 +41,7 @@ function DetailView({nodeId,canEdit,onEdit,onChanged}:{nodeId:number;canEdit:boo
   try {
    for(const file of Array.from(files)){
     if(file.size>10*1024*1024)throw new Error("يتجاوز الملف "+file.name+" الحد التقني 10MB.");
-    if(!["application/pdf","image/png","image/jpeg","image/webp"].includes(file.type))
+    if(!["application/pdf","image/png","image/jpeg","image/webp","image/gif"].includes(file.type))
       throw new Error("صيغة الملف "+file.name+" غير مدعومة.");
     const dataUrl=await new Promise<string>((resolve,reject)=>{
      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("تعذر قراءة "+file.name));reader.readAsDataURL(file);
@@ -81,7 +81,7 @@ function DetailView({nodeId,canEdit,onEdit,onChanged}:{nodeId:number;canEdit:boo
    {canEdit&&<div className="explain-actions">
     <Button size="compact" variant="secondary" onClick={onEdit}>تعديل الشرح والصلاحيات</Button>
     <label className="button button-secondary button-compact">إضافة صور وPDF
-      <input hidden multiple type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy}
+      <input hidden multiple type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" disabled={busy}
        onChange={e=>{void upload(e.target.files);e.target.value="";}}/></label>
    </div>}
   </>}
@@ -135,8 +135,8 @@ export function ExplanationsPage() {
   if(!selection?.length)return;
   const chosen=Array.from(selection);
   const bad=chosen.find(f=>f.size===0||f.size>10485760||
-    !["image/png","image/jpeg","image/webp","application/pdf"].includes(f.type));
-  if(bad){setError("تعذر اختيار "+bad.name+": الملفات يجب أن تكون صورًا أو PDF وحجم كل ملف بين 1 بايت و10MB.");return;}
+    !["image/png","image/jpeg","image/webp","image/gif","application/pdf"].includes(f.type));
+  if(bad){setError("تعذر اختيار "+bad.name+": الملفات يجب أن تكون صورًا (بما فيها GIF المتحركة) أو PDF وحجم كل ملف بين 1 بايت و10MB.");return;}
   setError("");
   setPendingAssets(previous=>[...previous,...chosen.map(file=>({
     key:file.name+"-"+file.size+"-"+file.lastModified+"-"+Math.random(),
@@ -294,11 +294,11 @@ export function ExplanationsPage() {
      <AclField title="صلاحيات التعديل" value={draft.editAcl} people={people} onChange={v=>setDraft({...draft,editAcl:v})}/>
     </div>
     <section className="explain-editor-assets" aria-label="إضافة وإدارة المرفقات">
-      <h3>📎 المرفقات — إضافة صور وملفات PDF</h3>
+      <h3>📎 المرفقات — إضافة صور (بما فيها GIF) وملفات PDF</h3>
       <p>يمكن إضافة أي عدد من الصور والملفات دفعة واحدة. يُحفظ اسم الملف الأصلي مع الاسم الذي تختاره ليظهر كزر داخل الشرح.</p>
       <label className="button button-secondary explain-select-files">
         <span>إضافة صور أو PDF</span>
-        <input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf"
+        <input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
          disabled={busy} onChange={e=>{chooseAttachments(e.currentTarget.files);e.currentTarget.value="";}}/>
       </label>
       <small>لا يوجد حد لعدد المرفقات، والحد التقني لحجم الملف الواحد 10 ميجابايت.</small>
