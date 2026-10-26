@@ -79,6 +79,8 @@ function State({
   );
 }
 export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
+  const { user: pageUser } = useSession();
+  const userOwner = !!pageUser?.owner;
   const companyId = context?.company.id;
   const [params, setParams] = useSearchParams();
   const filters = new URLSearchParams();
@@ -235,9 +237,12 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
               دليل الموقع العام
             </Link>
           ) : (
-            <Link className="button button-secondary" to="/companies">
-              اختيار شركة
-            </Link>
+            <div className="actions">
+              <Link className="button button-secondary" to="/companies">اختيار شركة</Link>
+              {userOwner && <Link className="button button-secondary" to="/explanations/access">
+                منح صلاحيات صفحات الشروح
+              </Link>}
+            </div>
           )
         }
       />
