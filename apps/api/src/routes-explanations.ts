@@ -17,7 +17,7 @@ const nodeFields = z.object({
   body: z.string().max(250000).default(""),
   evidence: z.string().max(100000).default(""),
   kind: z.enum(["heading","paragraph"]).default("paragraph"),
-  color: z.union([z.literal(""),z.regex(/^#[0-9a-fA-F]{6}$/)]).nullable().default(null),
+  color: z.union([z.literal(""),z.string().regex(/^#[0-9a-fA-F]{6}$/)]).nullable().default(null),
   fontSize: z.number().int().min(10).max(36).nullable().default(null),
   readAcl: acl.default(null),
   editAcl: acl.default(null),
