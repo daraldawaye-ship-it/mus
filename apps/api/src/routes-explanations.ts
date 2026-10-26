@@ -149,6 +149,67 @@ export function explanationRoutes(pool:Pool):Router {
     });
   }));
 
+
+  // Continuous reader: return a stable, permission-filtered document in
+  // sequential 50-record slices. Printing explicitly requests all visible rows.
+  router.get("/explanations/groups/:groupId/document",handler(async(req,res)=>{
+    const user=actor(req),group=await groupById(pool,id(req.params.groupId));
+    const base=groupGrant(user,group);
+    requireRead(base.read);
+    const query=parse(z.object({
+      offset:z.coerce.number().int().min(0).max(1000000).default(0),
+      all:z.enum(["true","false"]).optional(),
+    }).strict(),req.query);
+    const rows=(await pool.query(
+      "SELECT id,parent_id,position,kind,title,body,evidence,color,font_size,read_acl,edit_acl FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",
+      [group.id])).rows as NodeRow[];
+    const children=new Map<number|null,NodeRow[]>();
+    for(const node of rows){
+      const siblings=children.get(node.parent_id)??[];
+      siblings.push(node);children.set(node.parent_id,siblings);
+    }
+    const ordered:{row:NodeRow;depth:number;ordinal:number;parentKind:string|null}[]=[];
+    const seen=new Set<number>();
+    function collect(parentId:number|null,rights:{read:boolean;edit:boolean},depth:number,parentKind:string|null){
+      if(depth>30)return;
+      let ordinal=0;
+      for(const node of children.get(parentId)??[]){
+        if(seen.has(node.id))continue;
+        seen.add(node.id);
+        const access=grants(user,node.read_acl,node.edit_acl,rights);
+        if(!access.read)continue;
+        ordinal++;
+        ordered.push({row:node,depth,ordinal,parentKind});
+        collect(node.id,access,depth+1,node.kind);
+      }
+    }
+    collect(null,base,0,null);
+    const printing=query.all==="true";
+    if(printing&&ordered.length>10000)
+      throw new HttpError(413,"document_too_large","الملف يتجاوز سعة الطباعة الكاملة");
+    const slice=printing?ordered:ordered.slice(query.offset,query.offset+50);
+    const ids=slice.map(({row})=>row.id);
+    const files=ids.length?(await pool.query(
+      'SELECT id,node_id,filename,display_name AS "displayName",mime_type AS "mimeType" FROM explanation_assets WHERE node_id=ANY($1::integer[]) ORDER BY created_at,id',
+      [ids])).rows:[];
+    const byNode=new Map<number,QueryResultRow[]>();
+    for(const file of files){
+      const list=byNode.get(file.node_id)??[];
+      list.push(file);
+      byNode.set(file.node_id,list);
+    }
+    res.json({
+      group:{id:group.id,title:group.title,slug:group.slug,canEdit:base.edit},
+      total:ordered.length,offset:printing?0:query.offset,
+      hasMore:!printing&&query.offset+slice.length<ordered.length,
+      nodes:slice.map(({row,depth,ordinal,parentKind})=>({
+        id:row.id,parentId:row.parent_id,depth,ordinal,parentKind,
+        kind:row.kind,title:row.title,body:row.body,evidence:row.evidence,
+        color:row.color,fontSize:row.font_size,assets:byNode.get(row.id)??[],
+      })),
+    });
+  }));
+
   // Independent reader endpoint: one main subject at a time, no asset bytes.
   // Visibility is checked throughout the tree to avoid leaking hidden paragraphs.
   router.get("/explanations/topics/:topicId",handler(async(req,res)=>{
