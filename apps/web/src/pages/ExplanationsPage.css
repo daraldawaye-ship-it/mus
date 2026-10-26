@@ -31,3 +31,9 @@
 .explain-people{display:flex;flex-wrap:wrap;gap:12px;max-height:130px;overflow:auto}
 .explain-choice-title{font-weight:600;font-size:13px}
 @media(max-width:650px){.explain-menu-options{left:0;min-width:160px}.explain-child{margin-right:7px}.explain-node{margin-right:2px}.explain-fields{grid-template-columns:1fr}.explain-row{gap:2px}}
+
+.explain-attachment-list{display:grid;gap:5px;margin:8px 0}
+.explain-attachment{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:5px;border-bottom:1px solid var(--border,#ddd)}
+.explain-attachment>a{flex:1;overflow-wrap:anywhere}
+.explain-menu-options>a{text-align:right;cursor:pointer;padding:8px;color:inherit;text-decoration:none}
+.explain-menu-options>a:hover{background:rgba(100,116,139,.12)}
