@@ -65,6 +65,8 @@ export async function createApp(options: AppOptions = {}) {
   app.use("/api", socialAuthRoutes(pool, config.appOrigin, config.production));
   const business = businessRoutes(pool);
   app.use(chatgptMcpRoutes(pool, config.appOrigin, business));
+  // Only the authenticated explanation attachment upload needs larger JSON bodies.
+  app.use("/api/explanations/nodes/:nodeId/assets", express.json({limit:"15mb"}));
   app.use(
     "/api",
     express.json({ limit: "5mb" }),
