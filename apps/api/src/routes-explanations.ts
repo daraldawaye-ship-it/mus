@@ -51,8 +51,9 @@ async function groupById(db:Pool|PoolClient,groupId:number) {
   return group;
 }
 function groupGrant(user:User,group:QueryResultRow) {
-  const base={read:user.owner,edit:user.owner};
-  return grants(user,group.default_read as Rule,group.default_edit as Rule,base);
+  const edit=user.owner || match(user,group.default_edit as Rule,false);
+  const read=user.owner || edit || match(user,group.default_read as Rule,false);
+  return {read,edit};
 }
 async function nodeAccess(db:Pool|PoolClient,user:User,nodeId:number) {
   const target=(await db.query("SELECT * FROM explanation_nodes WHERE id=$1",[nodeId])).rows[0] as NodeRow|undefined;
@@ -77,7 +78,7 @@ function requireEdit(allowed:boolean) {if(!allowed)throw new HttpError(403,"expl
 const nodeOutput=(r:QueryResultRow,permissions:{read:boolean;edit:boolean})=>({
   id:r.id,groupId:r.group_id,parentId:r.parent_id,position:r.position,kind:r.kind,
   title:r.title,color:r.color,fontSize:r.font_size,
-  readAcl:r.read_acl,editAcl:r.edit_acl,canEdit:permissions.edit,
+  readAcl:permissions.edit?r.read_acl:null,editAcl:permissions.edit?r.edit_acl:null,canEdit:permissions.edit,
   updatedAt:r.updated_at,
 });
 export function explanationRoutes(pool:Pool):Router {
