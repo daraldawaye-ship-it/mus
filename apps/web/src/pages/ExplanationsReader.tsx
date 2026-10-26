@@ -86,7 +86,7 @@ export function ExplanationsTopicReader() {
  }
  for(const siblings of byParent.values())siblings.sort((a,b)=>a.position-b.position||a.id-b.id);
  const renderFiles=(assets:Asset[]):ReactNode=>
-  assets.length===0?null:<span className="explain-inline-assets"> {assets.map(file=>
+  assets.length===0?null:<span className="explain-inline-assets" aria-label="صور ومستندات الفقرة">{assets.map(file=>
     file.mimeType.startsWith("image/")?
     <button type="button" key={file.id} className="explain-inline-asset"
       onClick={()=>setSelected(file)} title={file.filename}>{file.displayName||file.filename}</button>:
@@ -100,14 +100,17 @@ export function ExplanationsTopicReader() {
    return <div key={node.id} className={heading?"explain-print-heading":"explain-print-paragraph"}>
     {heading?
       <div className={depth>=2?"explain-subheading-two":"explain-subheading-one"} style={{color:node.color||undefined,fontSize:node.fontSize||undefined}}>
-       {node.title}{node.body&&<p className="explain-heading-body">{node.body}</p>}{renderFiles(node.assets)}
+       {node.title}
+       {node.body&&<p className="explain-heading-body">{node.body}</p>}
+       {node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
+       {renderFiles(node.assets)}
       </div>:
       <div className="explain-print-line">
        <span className="explain-paragraph-number">{number}.</span>
        <div className="explain-print-copy" style={{color:node.color||undefined,fontSize:node.fontSize||undefined}}>
         {node.title&&<strong>{node.title}. </strong>}{node.body}
-        {renderFiles(node.assets)}
         {node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
+        {renderFiles(node.assets)}
        </div>
       </div>}
     {renderChildren(node.id,depth+1)}
@@ -133,6 +136,7 @@ export function ExplanationsTopicReader() {
    <div className="explain-print-kicker">{data.group.title}</div>
    <h1 style={{color:root.color||undefined,fontSize:root.fontSize||undefined}}>{root.title}</h1>
    {root.body&&<p className="explain-print-intro">{root.body}</p>}
+   {root.evidence&&<p className="explain-evidence">وجه الاستدلال: {root.evidence}</p>}
    {renderFiles(root.assets)}
    <div className="explain-print-text">{renderChildren(root.id)}</div>
   </article>}
@@ -206,7 +210,7 @@ export function ExplanationsContinuousReader() {
  };
  const display=printData?.nodes??pages.data?.pages.flatMap(p=>p.nodes)??[];
  const total=printData?.total??pages.data?.pages[0]?.total??0;
- const renderAttachments=(assets:Asset[])=>assets.length?<span className="explain-inline-assets"> {assets.map(asset=>
+ const renderAttachments=(assets:Asset[])=>assets.length?<span className="explain-inline-assets" aria-label="صور ومستندات الفقرة">{assets.map(asset=>
   asset.mimeType.startsWith("image/")?
    <button key={asset.id} type="button" className="explain-inline-asset"
     onClick={()=>setSelected(asset)} title={asset.filename}>{asset.displayName||asset.filename}</button>:
@@ -263,11 +267,12 @@ export function ExplanationsContinuousReader() {
         <span className="explain-flow-marker">{markerFor(node)}.</span>
         <div className="explain-flow-copy" style={style}>
          {node.title&&<strong>{node.title}. </strong>}{node.body}
-         {renderAttachments(node.assets)}
          {node.evidence&&<div className="explain-evidence">وجه الاستدلال: {node.evidence}</div>}
+         {renderAttachments(node.assets)}
         </div>
        </div>}
       {(topic||subhead)&&node.body&&<p className="explain-flow-heading-body">{node.body}</p>}
+      {(topic||subhead)&&node.evidence&&<p className="explain-evidence">وجه الاستدلال: {node.evidence}</p>}
       {(topic||subhead)&&renderAttachments(node.assets)}
      </div>;
     })}
