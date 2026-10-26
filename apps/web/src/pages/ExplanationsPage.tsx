@@ -103,7 +103,7 @@ function ExplanationNode({node,children,number,root,onAdd,onEdit,onDelete,onChan
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:node.parentId,afterId:node.id},"paragraph")}>إضافة سجل بعده</button>
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:null,afterId:root.id},"heading")}>إضافة عنوان رئيسي بعده</button>
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:root.id,afterId:node.parentId===root.id?node.id:null},"heading")}>إضافة فرعي 1</button>
-    {node.id!==root.id&&<button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"paragraph")}>إضافة فرعي 2 تحته</button>}
+    {node.id!==root.id&&<button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"heading")}>إضافة عنوان فرعي 2</button>}
     <button onClick={()=>onAdd({groupId:node.groupId,parentId:node.id,afterId:null},"paragraph")}>إضافة سجل تحته</button>
     {node.id===root.id&&<Link to={"/explanations/topic/"+node.id}>عرض الموضوع كورقة</Link>}
     <button onClick={()=>onEdit(node)}>تعديل وصلاحيات</button>
