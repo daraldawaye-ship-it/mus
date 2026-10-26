@@ -70,6 +70,7 @@ export function LegalCasesPage() {
  const caseId=Number(params.get("case"))||0,tab=params.get("tab")||"overview";
  const globalKind=globalLists.find(k=>k.id===params.get("list"))?.id??null;
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
+ const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
@@ -80,7 +81,8 @@ export function LegalCasesPage() {
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
- const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch],queryFn:({signal})=>api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage)}),{signal}),enabled:!!user&&!!globalKind});
+ const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch],queryFn:({signal})=>api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"}),{signal}),enabled:!!user&&!!globalKind});
+ const expanded=useQuery({queryKey:["legal","expanded",user?.id,expandedId],queryFn:({signal})=>api<{record:Entry}>("/legal/records/"+expandedId,{signal}),enabled:!!user&&expandedId!==null});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
  const links=useQuery({queryKey:["legal","linked",focus],queryFn:()=>api<{record:Entry;caseIds:number[];linkedIds:number[];images:{id:number;filename:string}[]}>("/legal/records/"+focus),enabled:!!focus});
  const access=useQuery({queryKey:["legal","access",caseId],queryFn:()=>api<{items:{user_id:number;user_name:string;role:string}[]}>("/legal/cases/"+caseId+"/access"),enabled:owner&&caseId>0&&tab==="access"});
@@ -88,7 +90,7 @@ export function LegalCasesPage() {
  const visible=(tab==="unlinked"?(all.data?.items??[]):(records.data?.items??[]).filter(e=>e.kind===tab));
  const go=(key:string,value:string)=>setParams(p=>{const next=new URLSearchParams(p);next.set(key,value);if(key==="case"){next.set("tab","overview");next.delete("list");}return next;});
  const openGlobal=(kind:typeof globalLists[number]["id"]|null)=>{
-  setGlobalPage(1);setGlobalSearch("");setFocus(null);setEntryEdit(null);
+  setGlobalPage(1);setGlobalSearch("");setFocus(null);setExpandedId(null);setEntryEdit(null);
   setParams(p=>{const next=new URLSearchParams(p);if(kind)next.set("list",kind);else next.delete("list");return next;});
  };
  const action=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");setNotice("");try{await fn();await client.invalidateQueries({queryKey:["legal"]});setNotice("حُفظ التغيير");}catch(e){setError(errorMessage(e));}finally{setBusy(false);}};
@@ -121,7 +123,7 @@ export function LegalCasesPage() {
  </nav>
  {globalKind?<Card title={globalLists.find(item=>item.id===globalKind)?.label+" — جميع القضايا"}>
  <div className="legal-directory-head">
- <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);}} placeholder="العنوان أو التفاصيل"/>
+ <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="العنوان أو التفاصيل"/>
  {globalRecords.data&&<span>إجمالي السجلات: {globalRecords.data.total}</span>}
  </div>
  {globalRecords.isPending&&<Notice>جارٍ تحميل القائمة…</Notice>}
@@ -130,18 +132,24 @@ export function LegalCasesPage() {
  {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
  <div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||"تاريخ غير محدد"}</small><h3>{r.title}</h3></div>
  <div className="legal-actions"><Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button></div></div>
- {r.kind==="fact"&&<details className="legal-directory-more"><summary>إظهار المزيد</summary><div className="legal-directory-extra"><strong>الشرح</strong><p className="legal-preserve">{r.body||"لا يوجد شرح مسجل."}</p></div></details>}
+ {(r.kind==="fact"||r.kind==="document")&&<>
+ <Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>
+ {expandedId===r.id&&<div className="legal-directory-extra">
+ {expanded.isPending&&<Notice>جارٍ تحميل التفاصيل…</Notice>}
+ {expanded.error&&<Notice tone="error">{errorMessage(expanded.error)} <Button variant="secondary" onClick={()=>void expanded.refetch()}>إعادة المحاولة</Button></Notice>}
+ {expanded.data?.record?.id===r.id&&<>
+ <strong>الشرح</strong><p className="legal-preserve">{expanded.data.record.body||"لا يوجد شرح مسجل."}</p>
  {r.kind==="document"&&<>
- <details className="legal-directory-more"><summary>إظهار الشرح والمحتوى ووجه الاستدلال</summary>
- <div className="legal-directory-extra">
- <strong>الشرح</strong><p className="legal-preserve">{r.body||"لا يوجد شرح مسجل."}</p>
- <strong>المحتوى</strong><p className="legal-preserve">{r.content_text||"لم يُسجل محتوى نصي للمستند."}</p>
- <strong>وجه الاستدلال</strong><p className="legal-preserve">{evidenceReason(r)||"لم يُسجل وجه الاستدلال بصورة مستقلة."}</p>
- </div></details>
- <div className="legal-doc">
+ <strong>المحتوى</strong><p className="legal-preserve">{expanded.data.record.content_text||"لم يُسجل محتوى نصي للمستند."}</p>
+ <strong>وجه الاستدلال</strong><p className="legal-preserve">{evidenceReason(expanded.data.record)||"لم يُسجل وجه الاستدلال بصورة مستقلة."}</p>
+ </>}
+ </>}
+ </div>}
+ {r.kind==="document"&&<div className="legal-doc">
  {r.pdf_url&&<a href={r.pdf_url} target="_blank" rel="noreferrer">فتح PDF</a>}
  {(r.image_urls??[]).map((url,i)=><a href={url} target="_blank" rel="noreferrer" key={url+i}>صورة {i+1}</a>)}
- </div></>}
+ </div>}
+ </>}
  {r.kind==="event"&&r.body&&<p className="legal-directory-body">{r.body}</p>}
  {focus===r.id&&<div className="legal-linked">
  {links.isPending&&<span>جارٍ تحميل روابط السجل…</span>}
@@ -155,9 +163,9 @@ export function LegalCasesPage() {
  </div>}
  </article>)}
  {globalRecords.data&&globalRecords.data.total>globalRecords.data.pageSize&&<div className="legal-actions">
- <Button variant="secondary" disabled={globalPage<=1||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p-1);setFocus(null);}}>السابق</Button>
+ <Button variant="secondary" disabled={globalPage<=1||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p-1);setFocus(null);setExpandedId(null);}}>السابق</Button>
  <span>صفحة {globalPage} من {Math.ceil(globalRecords.data.total/globalRecords.data.pageSize)}</span>
- <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);}}>التالي</Button>
+ <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
  <LegalTaskBoard key={user?.id} owner={owner} onOpenCase={id=>{
