@@ -67,28 +67,32 @@
   }
 }
 
-/* Mobile: actions expand within the normal document flow. No floating dropdown
-   can escape the viewport, including with RTL or browser zoom. */
+/* Compact floating actions menu, anchored to its trigger on phones.
+   The trigger is the leftmost button in the RTL navigation grid:
+   position from its left edge so it opens into the viewport. */
 @media(max-width:700px){
-  .legal-main-navigation{
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
-    width:100%;max-width:100%;overflow:visible;
-  }
+  .legal-workspace{overflow-x:visible}
+  .legal-main-navigation{position:relative;z-index:45;overflow:visible}
+  .legal-main-navigation>.legal-actions-menu,
   .legal-main-navigation>.legal-actions-menu[open]{
-    grid-column:1 / -1;grid-row:auto;width:100%;max-width:100%;
-    box-sizing:border-box;
+    grid-column:auto;grid-row:auto;position:relative;
+    width:auto;max-width:100%;justify-self:stretch;min-width:0;
   }
   .legal-main-navigation>.legal-actions-menu[open]>summary{
-    width:100%;box-sizing:border-box;
+    width:auto;box-sizing:border-box;
   }
   .legal-main-navigation .legal-actions-menu-items{
-    position:static!important;inset:auto!important;
-    top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;
-    width:100%!important;min-width:0!important;max-width:100%!important;
-    box-sizing:border-box;margin-top:7px;
-    box-shadow:none;transform:none;
+    display:grid;position:absolute!important;
+    top:calc(100% + 5px)!important;
+    left:0!important;right:auto!important;bottom:auto!important;
+    width:min(260px,calc(100vw - 32px))!important;
+    min-width:0!important;max-width:calc(100vw - 32px)!important;
+    margin:0;box-sizing:border-box;
+    box-shadow:0 8px 24px rgba(0,0,0,.22);
+    transform:none;z-index:60;
   }
   .legal-main-navigation .legal-actions-menu-items>*{
-    width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+    width:100%;min-width:0;max-width:100%;
+    box-sizing:border-box;
   }
 }
