@@ -195,6 +195,8 @@ export interface InvoiceImportContext {
   allowHistoricalStockChronology?: true;
   /** Preserve explicitly mapped legacy expense counterparties without reclassifying them. */
   allowExpenseCounterparty?: true;
+  /** Historic invoices may reference existing inactive products without reactivating them. */
+  allowHistoricalInactiveItems?: true;
 }
 export async function createInvoice(
   client: PoolClient,
@@ -337,7 +339,8 @@ export async function createInvoice(
     input.lines.some(
       (line) =>
         BigInt(line.quantity) > 0n &&
-        !items.rows.find((item) => item.id === line.itemId)?.active,
+        !items.rows.find((item) => item.id === line.itemId)?.active &&
+        !importContext?.allowHistoricalInactiveItems,
     )
   )
     conflict("اختر أصنافًا فعالة من الشركة");
