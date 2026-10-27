@@ -29,3 +29,14 @@
   .legal-task-mobile-details summary{cursor:pointer}
   .legal-task-mobile-details .legal-priority-control{max-width:100%}
 }
+
+/* Separate legal cases / priority views and compact actions dropdown. */
+.legal-main-navigation{display:flex;align-items:center;gap:8px;flex-wrap:wrap;direction:rtl;min-width:0}
+.legal-actions-menu{position:relative;min-width:0}
+.legal-actions-menu>summary{display:flex;align-items:center;justify-content:center;cursor:pointer;padding:9px 14px;border:1px solid var(--border,#b8bcc4);border-radius:8px;font-weight:600;list-style:none}
+.legal-actions-menu>summary::-webkit-details-marker{display:none}
+.legal-actions-menu>summary::before{content:"☰";margin-left:7px}
+.legal-actions-menu[open]>summary{background:var(--surface-muted,rgba(128,128,128,.1))}
+.legal-actions-menu-items{position:absolute;top:calc(100% + 5px);right:0;z-index:25;display:grid;gap:6px;padding:9px;min-width:190px;max-width:min(90vw,310px);border:1px solid var(--border,#b8bcc4);border-radius:10px;background:var(--card-bg,var(--surface,#1b2836));box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.legal-actions-menu-items>.button,.legal-actions-menu-items>button{width:100%;text-align:start;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px){.legal-main-navigation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;width:100%;gap:6px}.legal-main-navigation>.button,.legal-main-navigation>button{min-width:0;height:auto;white-space:normal;padding:8px 5px;font-size:12px}.legal-actions-menu>summary{padding:8px;font-size:12px;white-space:nowrap}}
