@@ -279,6 +279,7 @@ export function transactionImportRoutes(pool: Pool): Router {
                   suppressRewards: true,
                   allowHistoricalStockChronology: true,
                   allowExpenseCounterparty: true,
+                  allowHistoricalInactiveItems: true,
                 },
               );
               summary = {
