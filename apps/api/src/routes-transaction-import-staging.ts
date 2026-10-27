@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { transaction } from "./db.ts";
+import { stagingBatchSchema } from "./routes-transaction-import-schemas.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { HttpError } from "./errors.ts";
 import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
@@ -35,6 +36,8 @@ const receiptSchema = z.object({
   failed: z.array(sourceReference.extend({message:z.string().max(1000)})).max(300),
 }).strict();
 
+export const mcpBodySchemas = { receiptSchema };
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === "object")
@@ -55,12 +58,12 @@ async function assertOwner(client:PoolClient, req:any, companyId:number, require
 }
 
 /** A staged document is NOT an invoice and never changes stock, journals or notifications. */
-export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTypeAny): Router {
+export function transactionImportStagingRoutes(pool: Pool): Router {
   const router=Router();
 
   router.post("/companies/:companyId/transaction-import/stage",handler(async(req,res)=>{
     const companyId=id(req.params.companyId);
-    const input=parse(batchSchema,req.body) as Batch;
+    const input=parse(stagingBatchSchema,req.body) as Batch;
     const result=await transaction(pool,async client=>{
       const user=await assertOwner(client,req,companyId,true);
       const rows=input.documents.map(doc=>({
