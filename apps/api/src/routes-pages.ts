@@ -55,14 +55,15 @@ export function pageRoutes(pool: Pool): Router {
         // Other users should discover only pages they can actually open.
         // User management and chat are admin-only in page navigation,
         // while their existing API permissions remain unchanged.
-        const canInspectCatalog = user.owner || user.kind === "admin";
+        const canInspectCatalog = user.owner;
         const entries = canInspectCatalog
           ? directory
           : directory.filter((entry) =>
               entry.visible &&
               entry.enabled &&
               entry.actionAccess.view &&
-              !["public.users", "public.chat", "company.chat"].includes(entry.key),
+              ((user.kind === "admin") ||
+                !["public.users", "public.chat", "company.chat"].includes(entry.key)),
             );
         const summary = {
           total: entries.length,
