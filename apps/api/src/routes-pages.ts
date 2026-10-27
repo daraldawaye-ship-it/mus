@@ -200,7 +200,7 @@ export function pageRoutes(pool: Pool): Router {
     const key=String(req.params.pageKey),definition=pageByKey(key);
     if(!definition)missing();
     const data=req.body??{};
-    const companyId=data.companyId===null?null:optionalId(data.companyId);
+    const companyId=data.companyId===null?null:optionalId(String(data.companyId));
     if(definition.scope==="company"&&!companyId)throw new HttpError(400,"company_required","حدد الشركة");
     if(definition.scope==="public"&&companyId)throw new HttpError(400,"invalid_scope","الصفحة ليست ضمن الشركة");
     const action=String(data.action??"");
