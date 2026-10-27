@@ -169,6 +169,83 @@ export function pageRoutes(pool: Pool): Router {
       res.json(result);
     }),
   );
+  // Page-level grants shown within each page's detail card.
+  router.get("/page-catalog/:pageKey/grants",handler(async(req,res)=>{
+    const key=String(req.params.pageKey);
+    const definition=pageByKey(key);
+    if(!definition)missing();
+    const companyId=optionalId(req.query.companyId);
+    const result=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req),false);
+      if(definition.scope==="company"){
+        if(!companyId)throw new HttpError(400,"company_required","حدد الشركة");
+        await companyAccess(client,user,companyId,"pages.manage");
+      } else ownerOnly(user);
+      const grants=await client.query(
+        "SELECT id,action,principal_type AS \"principalType\",principal_value AS \"principalValue\",effect FROM page_access_grants WHERE page_key=$1 AND company_id IS NOT DISTINCT FROM $2 ORDER BY id",
+        [key,companyId]
+      );
+      const people=await client.query(
+        "SELECT id, display_name AS name, kind, monitor FROM users WHERE archived=false ORDER BY display_name,id"
+      );
+      const positions=companyId?await client.query(
+        "SELECT DISTINCT jsonb_array_elements_text(COALESCE(to_jsonb(position_keys),'[]'::jsonb)) AS key FROM employees WHERE company_id=$1 AND active ORDER BY key",
+        [companyId]
+      ):{rows:[]};
+      return {grants:grants.rows,users:people.rows,positions:positions.rows.map((r)=>r.key)};
+    });
+    res.json(result);
+  }));
+  router.put("/page-catalog/:pageKey/grants",handler(async(req,res)=>{
+    const key=String(req.params.pageKey),definition=pageByKey(key);
+    if(!definition)missing();
+    const data=req.body??{};
+    const companyId=data.companyId===null?null:optionalId(data.companyId);
+    if(definition.scope==="company"&&!companyId)throw new HttpError(400,"company_required","حدد الشركة");
+    if(definition.scope==="public"&&companyId)throw new HttpError(400,"invalid_scope","الصفحة ليست ضمن الشركة");
+    const action=String(data.action??"");
+    if(!pageActions.includes(action as typeof pageActions[number])||!definition.actions[action as typeof pageActions[number]])
+      throw new HttpError(400,"invalid_action","إجراء غير صالح لهذه الصفحة");
+    const principalType=String(data.principalType??"");
+    const principalValue=String(data.principalValue??"").trim();
+    const effect=data.effect;
+    if(!["user","kind","monitor","position"].includes(principalType)||!principalValue||principalValue.length>100)
+      throw new HttpError(400,"invalid_principal","حدد نوع المستفيد وقيمته");
+    if(principalType==="kind"&&!["admin","supervisor","member"].includes(principalValue)||
+       principalType==="monitor"&&principalValue!=="true"||
+       principalType==="user"&&!/^[1-9]\\d*$/.test(principalValue)||
+       principalType==="position"&&!companyId)
+      throw new HttpError(400,"invalid_principal","المستفيد غير صالح");
+    if(effect!==null&&!["allow","deny"].includes(effect))
+      throw new HttpError(400,"invalid_effect","اختر سماح أو منع أو إزالة");
+    const result=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req));
+      if(companyId)await companyAccess(client,user,companyId,"pages.manage",true);
+      else ownerOnly(user);
+      if(principalType==="user"){
+        const lookup=await client.query("SELECT id FROM users WHERE id=$1 AND archived=false",[Number(principalValue)]);
+        if(!lookup.rowCount)missing("المستخدم غير موجود");
+      }
+      if(principalType==="position"){
+        const positions=await client.query("SELECT 1 FROM employees WHERE company_id=$1 AND active AND position_keys @> ARRAY[$2]::text[] LIMIT 1",[companyId,principalValue]);
+        if(!positions.rowCount)throw new HttpError(400,"invalid_position","الصفة غير مرتبطة بموظف حالي");
+      }
+      if(effect===null){
+        await client.query(
+          "DELETE FROM page_access_grants WHERE page_key=$1 AND company_id IS NOT DISTINCT FROM $2 AND action=$3 AND principal_type=$4 AND principal_value=$5",
+          [key,companyId,action,principalType,principalValue]
+        );
+      }else{
+        await client.query(
+          "INSERT INTO page_access_grants(page_key,company_id,action,principal_type,principal_value,effect,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (page_key,company_id,action,principal_type,principal_value) DO UPDATE SET effect=EXCLUDED.effect,updated_at=NOW()",
+          [key,companyId,action,principalType,principalValue,effect,user.id]
+        );
+      }
+      await audit(client,user,"pages.grants","pageAccess",0,null,{key,companyId,action,principalType,principalValue,effect},companyId??undefined);
+      return {saved:true};
+    });
+    res.json(result);
+  }));
   router.put(
     "/page-catalog/:pageKey/settings",
     handler(async (req, res) => {
