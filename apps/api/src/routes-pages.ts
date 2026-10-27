@@ -50,7 +50,20 @@ export function pageRoutes(pool: Pool): Router {
           "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
         );
         const user = await currentActor(client, actor(req), false);
-        const entries = await directoryEntries(client, user, companyId);
+        const directory = await directoryEntries(client, user, companyId);
+        // Administrators may audit and configure the entire page catalog.
+        // Other users should discover only pages they can actually open.
+        // User management and chat are admin-only in page navigation,
+        // while their existing API permissions remain unchanged.
+        const canInspectCatalog = user.owner || user.kind === "admin";
+        const entries = canInspectCatalog
+          ? directory
+          : directory.filter((entry) =>
+              entry.visible &&
+              entry.enabled &&
+              entry.actionAccess.view &&
+              !["public.users", "public.chat", "company.chat"].includes(entry.key),
+            );
         const summary = {
           total: entries.length,
           available: entries.filter((entry) => entry.actionAccess.view).length,
