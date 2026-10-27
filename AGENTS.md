@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Raw historical intake only (2026-10-27)
+
+The user's current instruction supersedes historical automatic posting: copy invoice source data in bulk without creating stock movements, valuations, financial documents, journals, rewards, or derived calculations. Existing `legacy_import_staging.source_document` already preserves raw invoice headers, lines and provenance; do not duplicate it into another raw store merely to call it a migration. Keep paused import runs paused across deployments. Do not resume, finish/rebuild, delete or reverse previously posted data without a new explicit instruction. Owner-only raw intake audits are read-only and must distinguish stored-source coverage from comparison with an original file. Actual stock/accounting processing is a separate later action.
+
 ## Dar Aldawa 2026 sales migration handoff (2026-10-24)
 
 When asked to import the 2026 sales from a multi-year legacy Excel file, read `docs/DAR_ALDAWA_2026_SALES_RUNBOOK.md` and the private continuation bundle supplied by the user. The current request is preparation/explanation only, not authority to start an import. Preserve source identity `dar-aldawa-legacy-2026-10`, deduplicate with accepted source IDs/receipts (the summary API is aggregate-only), and batch NEW invoices by original day so dates are correct immediately. Existing corrected dates did not change original request hashes. Never infer duplicates from names/totals, resubmit regenerated old payloads, change source identities to bypass conflicts, reset current data, or read production SQL. Current production is Render. Private mappings/manifests/raw financial data stay out of Git. Refresh live records and verify continuation state before any future authorized execution.

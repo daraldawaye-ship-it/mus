@@ -76,6 +76,50 @@ export function legacyImportRunRoutes(pool:Pool):Router {
     });
     res.json({run});
   }));
+  // Audit the already copied source, without posting or touching business data.
+  // Paused runs retain their maintenance isolation; this owner-only read uses
+  // their context solely to inspect the intake associated with that run.
+  router.get("/companies/:companyId/transaction-import/bulk/:idempotencyKey/raw-status",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId),key=parse(z.uuid(),req.params.idempotencyKey);
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);ownerOnly(user);
+      if(user.suspended)throw new HttpError(403,"forbidden","الحساب موقوف");
+      await client.query("SELECT set_config('alraesy.legacy_import_run',$1,true)",[key]);
+      await companyAccess(client,user,companyId);
+      const run=await loadLegacyImportRun(client,companyId,key);
+      const raw=(await client.query(`SELECT count(*)::integer AS documents,
+        COALESCE(sum(CASE WHEN jsonb_typeof(source_document->'payload'->'lines')='array'
+          THEN jsonb_array_length(source_document->'payload'->'lines') ELSE 0 END),0)::integer AS lines,
+        COALESCE(sum(CASE WHEN jsonb_typeof(source_document->'sourceRows')='array'
+          THEN jsonb_array_length(source_document->'sourceRows') ELSE 0 END),0)::integer AS "sourceRows",
+        COALESCE(sum(CASE WHEN jsonb_typeof(source_document->'sourceMovementIds')='array'
+          THEN jsonb_array_length(source_document->'sourceMovementIds') ELSE 0 END),0)::integer AS "sourceMovementIds",
+        count(*) FILTER(WHERE status='pending')::integer AS pending,
+        count(*) FILTER(WHERE status='completed')::integer AS completed,
+        count(*) FILTER(WHERE status='failed')::integer AS failed,
+        min(posting_date)::text AS "firstDate",max(posting_date)::text AS "lastDate",
+        count(*) FILTER(WHERE NOT COALESCE(
+          source_document->>'type'='invoice' AND source_document->>'sourceId'=source_id
+          AND length(source_document->>'sourceDocumentNumber')>0
+          AND length(source_document->>'sourceCreatedAt')>0
+          AND jsonb_typeof(source_document->'payload')='object'
+          AND source_document->'payload'->>'kind' IN ('sale','purchase')
+          AND source_document->'payload'->>'documentDate'=posting_date::text
+          AND CASE WHEN jsonb_typeof(source_document->'payload'->'lines')='array'
+            THEN jsonb_array_length(source_document->'payload'->'lines')>0 ELSE false END
+          AND CASE WHEN jsonb_typeof(source_document->'sourceRows')='array'
+            THEN jsonb_array_length(source_document->'sourceRows')>0 ELSE false END
+          AND CASE WHEN jsonb_typeof(source_document->'sourceMovementIds')='array'
+            THEN jsonb_array_length(source_document->'sourceMovementIds')>0 ELSE false END
+          AND CASE WHEN jsonb_typeof(source_document->'sourceCreators')='array'
+            THEN jsonb_array_length(source_document->'sourceCreators')>0 ELSE false END
+          AND request_hash ~ '^[0-9a-f]{64}$',false))::integer AS "invalidDocuments"
+        FROM legacy_import_staging WHERE company_id=$1 AND source_system=$2 AND source_kind='invoice'`,
+        [companyId,run.sourceSystem])).rows[0];
+      return {run,raw,scope:"staged_invoices",originalFileCoverageVerified:false};
+    });res.json(result);
+  }));
   router.post("/companies/:companyId/transaction-import/bulk/:idempotencyKey/actions",handler(async(req,res)=>{
     const companyId=id(req.params.companyId),key=parse(z.uuid(),req.params.idempotencyKey),
       input=parse(bulkImportActionSchema,req.body);

@@ -7762,5 +7762,9 @@
       "additionalProperties": false
     },
     "source": "routes-legacy-import-runs.ts"
+  },
+  "GET /companies/:companyId/transaction-import/bulk/:idempotencyKey/raw-status": {
+    "queryFields": [],
+    "source": "routes-legacy-import-runs.ts"
   }
 }
