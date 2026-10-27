@@ -12,3 +12,20 @@
 .legal-directory-extra{display:grid;gap:6px;padding-top:12px}
 .legal-directory-extra strong{font-size:13px}
 .legal-directory-extra p{margin:0 0 12px}
+
+/* On phones, render each task as a full-width two-row card, preserving every title. */
+.legal-task-mobile{display:none}
+@media(max-width:700px){
+  .legal-task-scroll{display:none}
+  .legal-task-mobile{display:grid;gap:10px;min-width:0;direction:rtl}
+  .legal-task-mobile-card{display:grid;gap:9px;min-width:0;width:100%;box-sizing:border-box;border:1px solid var(--border-color,#b8bcc4);border-radius:11px;padding:12px;background:var(--surface-muted,rgba(128,128,128,.04))}
+  .legal-task-mobile-main,.legal-task-mobile-secondary{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;flex-wrap:wrap}
+  .legal-task-mobile-title{flex:1 1 190px;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.7;font-size:15px}
+  .legal-task-mobile-priority{flex:0 0 auto;border:1px solid var(--border-color,#b8bcc4);border-radius:7px;padding:4px 7px;white-space:nowrap;font-size:12px}
+  .legal-task-mobile-cases{display:flex;flex:1 1 170px;min-width:0;flex-wrap:wrap;gap:5px;align-items:center}
+  .legal-task-mobile-cases .button,.legal-task-mobile-cases button{max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere;line-height:1.6;text-align:right}
+  .legal-task-mobile-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center;font-size:12px;opacity:.85}
+  .legal-task-mobile-details{min-width:0;border-top:1px solid var(--border-color,#b8bcc4);padding-top:7px;font-size:13px}
+  .legal-task-mobile-details summary{cursor:pointer}
+  .legal-task-mobile-details .legal-priority-control{max-width:100%}
+}
