@@ -366,6 +366,67 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
     </div>
   );
 }
+
+type CardPermissionDefinition = {key:string;pageKey:string;action:string;name:string;active:boolean;ruleRole:string};
+type CardEmployee = {id:number;name:string;active:boolean;generalManager:boolean;owner:boolean};
+type CardRule = {id:number;employeeId:number;permissionKey:string;effect:"allow"|"deny";active:boolean;revision:number};
+type CardDirectory = {definitions:CardPermissionDefinition[];employees:CardEmployee[];employeeRules:CardRule[]};
+function PagePermissionCard({pageKey,companyId}:{pageKey:string;companyId:number}) {
+  const {user}=useSession();
+  const client=useQueryClient();
+  const [employeeId,setEmployeeId]=useState(0);
+  const [busy,setBusy]=useState<string|null>(null);
+  const [error,setError]=useState("");
+  const [message,setMessage]=useState("");
+  const directory=useQuery({
+    queryKey:["page-permission-card",user?.id,companyId],
+    queryFn:({signal})=>api<CardDirectory>(`/companies/${companyId}/configuration/directory`,{signal}),
+  });
+  const definitions=(directory.data?.definitions??[]).filter(d=>d.active&&d.pageKey===pageKey);
+  const employees=(directory.data?.employees??[]).filter(e=>e.active&&!e.owner&&!e.generalManager);
+  const selected=employees.find(e=>e.id===employeeId);
+  async function change(def:CardPermissionDefinition,effect:"allow"|"deny"|null) {
+    if(!selected||busy)return;
+    setBusy(def.key);setError("");setMessage("");
+    const prior=directory.data?.employeeRules.find(r=>r.employeeId===selected.id&&r.permissionKey===def.key);
+    try {
+      await api(`/companies/${companyId}/configuration/employee-rules`,{
+        method:"PUT",
+        body:{employeeId:selected.id,permissionKey:def.key,effect,revision:prior?.revision??null},
+      });
+      await directory.refetch();
+      await client.invalidateQueries({queryKey:["page-directory"]});
+      setMessage("تم حفظ صلاحيات الموظف على هذه الصفحة.");
+    }catch(cause){setError(errorMessage(cause));}
+    finally{setBusy(null);}
+  }
+  return <section className="page-directory-settings" aria-label="منح صلاحيات الصفحة">
+    <strong><ShieldCheck size={15}/> منح صلاحيات هذه الصفحة</strong>
+    <p className="muted">اختر الموظف واضبط أذون العرض والإضافة والتعديل من كرت الصفحة مباشرة. الاستثناء الفردي يعلو على سماح الدور، ولا يلغي شروط صلاحيات البيانات الأخرى.</p>
+    {directory.isPending&&<Notice>جارٍ تحميل الموظفين والصلاحيات…</Notice>}
+    {directory.error&&<Notice tone="error">{errorMessage(directory.error)}</Notice>}
+    {directory.data&&<Select label="الموظف" value={employeeId} onChange={event=>{setEmployeeId(Number(event.target.value));setMessage("");setError("");}}>
+      <option value={0}>اختر موظفًا</option>
+      {employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+    </Select>}
+    {selected&&definitions.length===0&&<Notice>لا توجد أذون قابلة للتفويض الفردي لهذه الصفحة من هذا القسم.</Notice>}
+    {selected&&definitions.map(def=>{
+      const rule=directory.data?.employeeRules.find(r=>r.employeeId===employeeId&&r.permissionKey===def.key&&r.active);
+      const value=rule?.effect??"default";
+      return <div className="page-directory-permission-row" key={def.key}>
+        <strong>{pageActionLabels[def.action as PageAction]??def.name}</strong>
+        <Select label={def.name} value={value} disabled={busy!==null} onChange={event=>void change(def,event.target.value==="default"?null:event.target.value as "allow"|"deny")}>
+          <option value="default">بحسب الدور</option>
+          <option value="allow">سماح</option>
+          <option value="deny">منع</option>
+        </Select>
+      </div>;
+    })}
+    {error&&<Notice tone="error">{error}</Notice>}
+    {message&&<Notice tone="success">{message}</Notice>}
+  </section>;
+}
+
 function PageDetails({
   entry,
   companyId,
@@ -538,6 +599,12 @@ function PageDetails({
             ? " يمكنك مراجعة سماح الدور أو الموظف من إدارة الخيارات والصلاحيات."
             : " اطلب من مالك المنصة أو المدير العام مراجعة صلاحياتك."}
         </Notice>
+      )}
+      {companyId && entry.scope==="company" && canManagePermissions && (
+        <PagePermissionCard pageKey={entry.key} companyId={companyId}/>
+      )}
+      {entry.key==="public.legal-cases" && user?.owner && (
+        <Notice>صلاحيات إدارة القضايا تُمنح لكل قضية مستقلة لحماية بقية الملفات. افتح القضية من إدارة قضايا مصطفى ثم تبويب «الصلاحيات» لتفويض المستخدم.</Notice>
       )}
       {companyId && entry.actions.view?.role === "permissions" && canManagePermissions && (
         <Link className="button button-secondary"
