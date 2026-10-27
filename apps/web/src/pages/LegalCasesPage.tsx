@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./LegalCasesPage.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
