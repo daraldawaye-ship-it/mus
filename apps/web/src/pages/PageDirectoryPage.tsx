@@ -382,7 +382,7 @@ function PagePermissionCard({pageKey,companyId}:{pageKey:string;companyId:number
     queryKey:["page-permission-card",user?.id,companyId],
     queryFn:({signal})=>api<CardDirectory>(`/companies/${companyId}/configuration/directory`,{signal}),
   });
-  const definitions=(directory.data?.definitions??[]).filter(d=>d.active&&d.pageKey===pageKey);
+  const definitions=(directory.data?.definitions??[]).filter(d=>d.active&&d.pageKey===pageKey&&d.ruleRole==="permissions");
   const employees=(directory.data?.employees??[]).filter(e=>e.active&&!e.owner&&!e.generalManager);
   const selected=employees.find(e=>e.id===employeeId);
   async function change(def:CardPermissionDefinition,effect:"allow"|"deny"|null) {
