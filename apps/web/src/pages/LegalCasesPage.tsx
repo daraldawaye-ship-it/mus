@@ -118,10 +118,16 @@ export function LegalCasesPage() {
  return <div className="legal-workspace">
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setActivePanel("cases");setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
- <nav className="legal-directory-tabs" aria-label="قوائم متابعة القضايا">
- <Link className="button button-secondary" to="/explanations/topics?group=mustafa-cases">شرح قضايا مصطفى — العناوين المرتبة</Link>
- <Button variant={globalKind===null?"primary":"secondary"} aria-pressed={globalKind===null} onClick={()=>openGlobal(null)}>متابعة القضايا</Button>
- {globalLists.map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={()=>openGlobal(item.id)}>{item.label}</Button>)}
+ <nav className="legal-main-navigation" aria-label="التنقل في متابعة القضايا">
+  <Button variant={!globalKind&&activePanel==="tasks"?"primary":"secondary"} aria-pressed={!globalKind&&activePanel==="tasks"} onClick={()=>{openGlobal(null);setActivePanel("tasks");}}>الأولويات — المهام</Button>
+  <Button variant={!globalKind&&activePanel==="cases"?"primary":"secondary"} aria-pressed={!globalKind&&activePanel==="cases"} onClick={()=>{openGlobal(null);setActivePanel("cases");}}>القضايا</Button>
+  <details className="legal-actions-menu">
+   <summary>إجراءات</summary>
+   <div className="legal-actions-menu-items">
+    <Link className="button button-secondary" to="/explanations/topics?group=mustafa-cases">شرح قضايا مصطفى</Link>
+    {globalLists.map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={event=>{openGlobal(item.id);event.currentTarget.closest("details")?.removeAttribute("open");}}>{item.label}</Button>)}
+   </div>
+  </details>
  </nav>
  {globalKind?<Card title={globalLists.find(item=>item.id===globalKind)?.label+" — جميع القضايا"}>
  <div className="legal-directory-head">
@@ -172,10 +178,6 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- <nav className="legal-directory-tabs" aria-label="اختر قائمة القضايا أو المهام">
-  <Button variant={activePanel==="cases"?"primary":"secondary"} aria-pressed={activePanel==="cases"} onClick={()=>setActivePanel("cases")}>قائمة القضايا</Button>
-  <Button variant={activePanel==="tasks"?"primary":"secondary"} aria-pressed={activePanel==="tasks"} onClick={()=>setActivePanel("tasks")}>قائمة المهام</Button>
- </nav>
  {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner} onOpenCase={id=>{
   setCaseEdit(false);setCaseNew(false);setEntryEdit(null);setLinkAfterSave(null);setFocus(null);
   setActivePanel("cases");setParams({case:String(id),tab:"task"});
