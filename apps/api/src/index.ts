@@ -6,6 +6,7 @@ import { startAttendanceNotifications } from "./services/attendance-notification
 import { startPushNotifications } from "./services/web-push.ts";
 import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-sale-ranking-worker.ts";
 import { startLegacyImportWorker } from "./services/legacy-import-worker.ts";
+import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 
 // Private previews fail closed unless public access is explicitly configured.
 const previewGate = process.env.NODE_ENV === "production" &&
@@ -14,6 +15,7 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+if (!AUTOMATIONS_PAUSED) {
 try {
   await importLegacyVouchersOnce(application.pool);
 } catch (error) {
@@ -21,6 +23,8 @@ try {
 }
 // Cover restarts after a date change before accepting item-search requests.
 await prepareItemSaleRankings(application.pool);
+}
+if (AUTOMATIONS_PAUSED) console.info("ALRAESY_AUTOMATIONS_PAUSED", "workers, startup imports and application database requests paused");
 let vite: import("vite").ViteDevServer | undefined;
 if (!application.config.production) {
   const { createServer: createVite } = await import("vite");
@@ -38,10 +42,11 @@ const server = createServer(previewGate ? previewGate(application.app) : applica
 server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
   console.log(`Alraesy listening on port ${port}`),
 );
-const stopNotifications = startAttendanceNotifications(application.pool);
-const stopPush = startPushNotifications(application.pool,application.config.appOrigin);
-const stopItemSaleRankings = startItemSaleRankings(application.pool);
-const stopLegacyImport = startLegacyImportWorker(application.pool);
+const noWorker = async (): Promise<void> => {};
+const stopNotifications = AUTOMATIONS_PAUSED ? noWorker : startAttendanceNotifications(application.pool);
+const stopPush = AUTOMATIONS_PAUSED ? noWorker : startPushNotifications(application.pool,application.config.appOrigin);
+const stopItemSaleRankings = AUTOMATIONS_PAUSED ? noWorker : startItemSaleRankings(application.pool);
+const stopLegacyImport = AUTOMATIONS_PAUSED ? noWorker : startLegacyImportWorker(application.pool);
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;

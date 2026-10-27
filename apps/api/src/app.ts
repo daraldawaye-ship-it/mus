@@ -17,12 +17,20 @@ import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
 import { pledgeRoutes } from "./routes-pledges.ts";
+import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 import { pushRoutes } from "./routes-push.ts";
 
 export async function createApp(options: AppOptions = {}) {
   const config = configuration(options),
     pool = await createDatabase(config.databaseUrl, config.schema);
   const app = express();
+  // Before sessions, OAuth, MCP and business routes: even a read can otherwise
+  // refresh statistics or session timestamps. Health remains stateless.
+  if(config.production && AUTOMATIONS_PAUSED) app.use((req,res,next)=>{
+    if(req.method==="GET" && req.path==="/api/health")return next();
+    res.status(503).set("Retry-After","3600").json({error:{code:"automation_paused",
+      message:"الموقع في صيانة مؤقتة بأمر المالك؛ المهام التلقائية والوصول إلى بيانات التطبيق متوقفة."}});
+  });
   app.disable("x-powered-by");
   app.set("trust proxy", false);
   app.use((_req, res, next) => {

@@ -1,5 +1,7 @@
 # Alraesy — rebuilt foundation
 
+Current explicit full automation stop: read docs/AUTOMATION_PAUSE.md. AUTOMATIONS_PAUSED=true blocks all production requests except stateless health and stops every background/startup job. Preserve this pause until the user explicitly requests resumption. Do not resume the historical invoice job, calculations, notifications or database business writes automatically.
+
 ## Raw historical intake only (2026-10-27)
 
 The user's current instruction supersedes historical automatic posting: copy invoice source data in bulk without creating stock movements, valuations, financial documents, journals, rewards, or derived calculations. Existing `legacy_import_staging.source_document` already preserves raw invoice headers, lines and provenance; do not duplicate it into another raw store merely to call it a migration. Keep paused import runs paused across deployments. Do not resume, finish/rebuild, delete or reverse previously posted data without a new explicit instruction. Owner-only raw intake audits are read-only and must distinguish stored-source coverage from comparison with an original file. Actual stock/accounting processing is a separate later action.
