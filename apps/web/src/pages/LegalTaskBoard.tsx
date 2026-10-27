@@ -114,6 +114,29 @@ export function LegalTaskBoard({ owner, onOpenCase }: { owner: boolean; onOpenCa
     {query.error && <Notice tone="error">{errorMessage(query.error)} <Button variant="secondary" onClick={() => void query.refetch()}>إعادة المحاولة</Button></Notice>}
     {query.data && !query.error && <p>عدد المعروض: {tasks.length} / {query.data.total}</p>}
     {!query.isPending && !query.error && !tasks.length && <Notice>لا توجد مهام مطابقة.</Notice>}
+    <div className="legal-task-mobile" aria-label="المهام حسب الأولوية — عرض الهاتف">
+      {tasks.map((task, index) => <article className="legal-task-mobile-card" key={task.id}>
+        <div className="legal-task-mobile-main">
+          <strong className="legal-task-mobile-title">{index + 1}. {task.title}</strong>
+          <span className="legal-task-mobile-priority">الأولوية {task.priority} · {task.source === "manual" ? "يدوي" : "تلقائي"}</span>
+        </div>
+        <div className="legal-task-mobile-secondary">
+          <div className="legal-task-mobile-cases">
+            {task.cases.length ? task.cases.map(c => <Button key={c.id} size="compact" variant="secondary"
+              onClick={() => onOpenCase(c.id)}>{c.title}</Button>) : <span>غير مرتبطة بقضية</span>}
+          </div>
+          <div className="legal-task-mobile-meta">
+            <span>{task.due_at ? new Date(task.due_at).toLocaleDateString("ar-YE", { timeZone: "Asia/Aden" }) : "دون موعد"}</span>
+            <span>{labels[task.status] ?? task.status}</span>
+          </div>
+        </div>
+        <details className="legal-task-mobile-details"><summary>التفاصيل والأولوية</summary>
+          {task.reason && <p className="legal-preserve">{task.reason}</p>}
+          <p className="legal-preserve">{task.body}</p>
+          {owner && <LegalTaskPriorityControl task={task} />}
+        </details>
+      </article>)}
+    </div>
     <div className="legal-task-scroll"><table className="legal-task-table" aria-label="المهام حسب الأولوية">
       <thead><tr><th scope="col">#</th><th scope="col">الأولوية</th><th scope="col">المهمة</th><th scope="col">القضية</th><th scope="col">الموعد</th><th scope="col">الحالة</th>{owner && <th scope="col">تعديل</th>}</tr></thead>
       <tbody>{tasks.map((task, index) => <tr key={task.id}>
