@@ -1,4 +1,4 @@
--- Explicit manual request: 20,000 additional raw invoices only.
+-- Explicit manual request: 20,000 additional raw invoices only; recognized migration filename.
 -- Existing copied/posted identities are excluded by the shared transfer function.
 -- Application jobs, statistics, stock and accounting remain paused.
 DO $manual_copy$
