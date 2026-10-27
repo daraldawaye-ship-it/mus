@@ -24,8 +24,10 @@ Live metadata inspection before this change found only `plpgsql` and `pg_trgm` e
 
 To restore database-side behavior after explicit user instruction, the database owner can call `restore_database_automation()` in a controlled transaction. It restores each exact saved function and trigger mode and marks the pause restored; it does not execute calculations, start import jobs or restart application workers. Review the required one-time rebuild separately. Do not simply enable every trigger or lose modes that were disabled before maintenance.
 
+Verified after Render deployment `acbfd5eca7354678cbb01c0736964158b5684d42`: database pause true; 28 recorded triggers disabled; 19 recorded functions paused; zero disabled integrity/history/FK guards. HTTP health is 200 and application/MCP requests are 503 `automation_paused`.
+
 Restore only on explicit user request:
-1. Review this inventory and the unfinished import; do not resume an old import automatically.
-2. Change the central pause constant to false, validate, publish to `preview/render-2026-10-23`, manually deploy the existing Render service and verify live/health.
-3. Recheck overdue notification/reminder/attendance queues before enabling execution: previously due tasks can catch up. Keep the historical import paused unless separately requested.
-4. Rebuild required item/account statistics once, only under the user's requested scope. Do not replay imports or duplicate stock/journals.
+1. Review this inventory, unfinished import and overdue notification/reminder/attendance queues while the application remains paused. Previously due tasks can catch up; do not resume an old import automatically.
+2. Restore database-side behavior using the saved owner-only recovery function above, only if explicitly requested. Keep the application paused during restoration and verification.
+3. Only after deciding which queued work is authorized, change the central pause constant to false, validate, publish to `preview/render-2026-10-23`, manually deploy the existing Render service and verify live/health. Keep the historical import paused unless separately requested.
+4. Rebuild required item/account statistics once, only under the user's requested scope. Do not replay imports or duplicate stock/journals. Company import-maintenance isolation remains until a separate explicit decision; restoration alone does not change its state.
