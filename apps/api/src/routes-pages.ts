@@ -241,7 +241,7 @@ export function pageRoutes(pool: Pool): Router {
           [key,companyId,action,principalType,principalValue,effect,user.id]
         );
       }
-      await audit(client,user,"pages.grants","pageAccess",0,null,{key,companyId,action,principalType,principalValue,effect},companyId??undefined);
+      await audit(client,user,"page.settings","pageAccess",0,null,{key,companyId,action,principalType,principalValue,effect},companyId??undefined);
       return {saved:true};
     });
     res.json(result);
