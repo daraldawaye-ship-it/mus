@@ -33,6 +33,7 @@ import { centralAccessRoutes } from "./routes-central-access.ts";
 import { configurationAdministrationRoutes } from "./routes-configuration-admin.ts";
 import { transactionResetRoutes } from "./routes-transaction-reset.ts";
 import { transactionImportRoutes } from "./routes-transaction-import.ts";
+import { legacyImportRunRoutes } from "./routes-legacy-import-runs.ts";
 import { importSourceDateRoutes } from "./routes-import-source-dates.ts";
 
 /** Shared by browser and OAuth MCP: one set of domain policies and transactions. */
@@ -43,6 +44,7 @@ export function businessRoutes(pool: Pool): Router {
     shortcutRoutes(pool),
     transactionResetRoutes(pool),
     transactionImportRoutes(pool),
+    legacyImportRunRoutes(pool),
     importSourceDateRoutes(pool),
     pageAvailabilityGate(pool),
     publicRoutes(pool),

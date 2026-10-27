@@ -5,6 +5,7 @@ import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
 import { startPushNotifications } from "./services/web-push.ts";
 import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-sale-ranking-worker.ts";
+import { startLegacyImportWorker } from "./services/legacy-import-worker.ts";
 
 // Private previews fail closed unless public access is explicitly configured.
 const previewGate = process.env.NODE_ENV === "production" &&
@@ -40,10 +41,12 @@ server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
 const stopNotifications = startAttendanceNotifications(application.pool);
 const stopPush = startPushNotifications(application.pool,application.config.appOrigin);
 const stopItemSaleRankings = startItemSaleRankings(application.pool);
+const stopLegacyImport = startLegacyImportWorker(application.pool);
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
+  const importStopped = stopLegacyImport();
   server.closeIdleConnections();
   await new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
@@ -51,6 +54,7 @@ async function shutdown(): Promise<void> {
   await stopNotifications();
   await stopPush();
   await stopItemSaleRankings();
+  await importStopped;
   await vite?.close();
   await application.close();
 }

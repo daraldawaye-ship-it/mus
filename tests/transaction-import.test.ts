@@ -1093,11 +1093,11 @@ test("a 100-voucher historical batch posts balanced documents atomically and ret
       await f.owner.request(
         "POST",
         importPath(s),
-        batch([...input.documents, source("voucher", voucher(s))]),
+        batch([...input.documents, ...Array.from({length:201},()=>source("voucher",voucher(s)))]),
       )
     ).status,
     400,
-    "The batch remains bounded at 100 documents",
+    "The batch remains bounded at 300 documents",
   );
 });
 

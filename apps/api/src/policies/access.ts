@@ -60,6 +60,14 @@ export async function companyAccess(
   );
   const row = employee.rows[0];
   if (!actor.owner && !row) deny("ليس لديك وصول إلى هذه الشركة");
+  // Derived caches are intentionally incomplete during a bulk import. Only
+  // the owner-controlled run/status transactions carry this local context.
+  const importing = await db.query(`SELECT 1 FROM legacy_import_runs
+    WHERE company_id=$1 AND status<>'completed'
+      AND idempotency_key::text IS DISTINCT FROM current_setting('alraesy.legacy_import_run',true)
+    LIMIT 1`,[companyId]);
+  if(importing.rowCount)
+    throw new HttpError(409,"import_in_progress","الشركة في وضع ترحيل جماعي؛ تُستأنف العمليات بعد إكمال حساب المخزون والأرصدة.");
   const general = actor.owner || Boolean(row?.is_general_manager);
   // Keep the old employee grants as the base. Rule assignments never touch
   // employees.permissions and never extend another company's permissions.

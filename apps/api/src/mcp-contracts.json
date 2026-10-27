@@ -7705,5 +7705,62 @@
   "GET /legal/cases/:id/ai-export": {
     "queryFields": [],
     "source": "routes-legal-cases.ts"
+  },
+  "POST /companies/:companyId/transaction-import/bulk": {
+    "queryFields": [],
+    "bodyContract": "bulkImportSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "sourceSystem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "roundUnitPrices": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "sourceSystem",
+        "roundUnitPrices"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legacy-import-runs.ts"
+  },
+  "GET /companies/:companyId/transaction-import/bulk/:idempotencyKey": {
+    "queryFields": [],
+    "source": "routes-legacy-import-runs.ts"
+  },
+  "POST /companies/:companyId/transaction-import/bulk/:idempotencyKey/actions": {
+    "queryFields": [],
+    "bodyContract": "bulkImportActionSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "pause",
+            "resume",
+            "finish"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legacy-import-runs.ts"
   }
 }

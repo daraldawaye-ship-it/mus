@@ -112,7 +112,11 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
         await refreshNotificationReminders(client, companyId);
         if (await pageEnabled(client, companyId, "company.attendance"))
           await attendanceEvents(client, companyId);
-        await scanInventoryNotifications(client, companyId);
+        const importing = await client.query(
+          "SELECT 1 FROM legacy_import_runs WHERE company_id=$1 AND status<>'completed' LIMIT 1",
+          [companyId],
+        );
+        if(!importing.rowCount)await scanInventoryNotifications(client, companyId);
       });
     } catch (error) {
       // One broken company must not delay notifications for every other company.
