@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import "./LegalTaskBoard.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, useScopeGuard, useSession } from "../api";
 import { Button, Card, Field, Notice, Select } from "../ui";
