@@ -69,3 +69,13 @@ or external infrastructure is introduced. Verify paused progress, exact trigger/
 restoration and website health before a separate explicit resume action. Raw voucher
 intake is not financial posting of receipt/payment vouchers. Unposted future source
 history is not yet reflected in live reports during ongoing import.
+
+Verified live restoration: runtime commit `3fadaf609aaab42e53f9c2d9f957144b5512c07e`,
+Render deploy `dep-dbgfd5cs728c739kvdlg`. Production readback: database pause false,
+28/28 exact original trigger modes and 19/19 exact original function definitions
+restored, dirty items zero, run paused with 15,231 completed source invoices and
+`defer_projections=false`. Frontend/health/OAuth discovery returned200; anonymous
+private API returned401. The owner API resume then returned200/running, and progress
+advanced by53 additional invoices (run imported15175 to15228). Authenticated company2
+items read returned200 during the resumed run. All unrelated workers are enabled by
+the restored central flag. Failed source documents remain deferred for manual repair.
