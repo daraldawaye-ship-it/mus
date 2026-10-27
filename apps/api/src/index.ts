@@ -46,8 +46,8 @@ const noWorker = async (): Promise<void> => {};
 const stopNotifications = AUTOMATIONS_PAUSED ? noWorker : startAttendanceNotifications(application.pool);
 const stopPush = AUTOMATIONS_PAUSED ? noWorker : startPushNotifications(application.pool,application.config.appOrigin);
 const stopItemSaleRankings = AUTOMATIONS_PAUSED ? noWorker : startItemSaleRankings(application.pool);
-// Explicit 2026-10-27 authorization: only this invoice run may post during maintenance.
-// All other workers, HTTP access and database projections remain paused.
+// Explicit 2026-10-27 restoration: all recorded workers are enabled again.
+// Invoice posting stays scoped to the authorized run and its persisted status.
 const stopLegacyImport = startLegacyImportWorker(application.pool, {
   companyId: 2, idempotencyKey: "f03ead4a-40d9-4713-811c-6a366b7ec6c8",
 });

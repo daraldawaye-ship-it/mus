@@ -113,7 +113,7 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
         if (await pageEnabled(client, companyId, "company.attendance"))
           await attendanceEvents(client, companyId);
         const importing = await client.query(
-          "SELECT 1 FROM legacy_import_runs WHERE company_id=$1 AND status<>'completed' LIMIT 1",
+          "SELECT 1 FROM legacy_import_runs WHERE company_id=$1 AND status<>'completed' AND (defer_projections OR status='rebuilding') LIMIT 1",
           [companyId],
         );
         if(!importing.rowCount)await scanInventoryNotifications(client, companyId);

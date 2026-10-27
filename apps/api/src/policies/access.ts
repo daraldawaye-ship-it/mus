@@ -60,10 +60,12 @@ export async function companyAccess(
   );
   const row = employee.rows[0];
   if (!actor.owner && !row) deny("ليس لديك وصول إلى هذه الشركة");
-  // Derived caches are intentionally incomplete during a bulk import. Only
+  // Deferred/rebuilding runs have incomplete caches. Nondeferred runs retain
+  // normal company access, permissions and transaction locks. Only
   // the owner-controlled run/status transactions carry this local context.
   const importing = await db.query(`SELECT 1 FROM legacy_import_runs
     WHERE company_id=$1 AND status<>'completed'
+      AND (defer_projections OR status='rebuilding')
       AND idempotency_key::text IS DISTINCT FROM current_setting('alraesy.legacy_import_run',true)
     LIMIT 1`,[companyId]);
   if(importing.rowCount)

@@ -48,3 +48,24 @@ posting onto existing valuation history, not a replay/revaluation of already pos
 history. Raw vouchers are not yet mapped to balanced receipt/payment journal requests.
 Do not claim vouchers posted or historical costs fully reconciled based on invoice
 posting progress. Restore/rebuild and voucher execution require their own verified steps.
+
+## Owner-requested full restoration and website reopening — 2026-10-27
+
+The owner explicitly requested stopping invoice posting, restoring **all** recorded
+automation, reopening the website, then resuming posting. Migration139 takes the
+worker lock, waits for its atomic batch, pauses the authorized run, restores the
+saved database functions/trigger modes, reconciles its recorded dirty item scopes
+without creating source documents, and leaves the run **paused**. It also invalidates
+account caches using the existing finalizer. `defer_projections=false` selects normal
+per-document statistics and integrity checks when this run resumes. The default
+remains true for other bulk runs; rebuilding always uses its trusted context.
+
+`AUTOMATIONS_PAUSED=false` restores the website, startup voucher intake (already
+staged data deduplicates), startup/periodic rankings, attendance, notifications,
+memo reminders, forgotten-close processing, push delivery, and the scoped historical
+worker. Nondeferred runs allow normal company access and inventory notification scans,
+with all original permissions and company transaction locks retained. No new scheduler
+or external infrastructure is introduced. Verify paused progress, exact trigger/function
+restoration and website health before a separate explicit resume action. Raw voucher
+intake is not financial posting of receipt/payment vouchers. Unposted future source
+history is not yet reflected in live reports during ongoing import.

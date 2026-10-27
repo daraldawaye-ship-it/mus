@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import test, { type TestContext } from "node:test";
 import { Pool } from "pg";
@@ -44,7 +45,9 @@ class Client {
 async function fixture(t:TestContext, keepDatabasePaused=false){
   const schema=`bulk_import_${randomUUID().replaceAll("-","")}`;
   const runtime=await createApp({databaseUrl,schema,appOrigin:origin,production:false,serveStatic:false});
-  if (!keepDatabasePaused) await runtime.pool.query("SELECT restore_database_automation()");
+  if (keepDatabasePaused) await runtime.pool.query(await readFile(
+    new URL("../apps/api/migrations/133_pause_database_automation.sql",import.meta.url),"utf8"));
+  else await runtime.pool.query("SELECT restore_database_automation()");
   const server:Server=runtime.app.listen(0,"127.0.0.1");
   await new Promise<void>((resolve,reject)=>{server.once("listening",resolve);server.once("error",reject);});
   const address=server.address();assert(address&&typeof address!=="string");
@@ -65,7 +68,7 @@ async function fixture(t:TestContext, keepDatabasePaused=false){
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 
-async function setup(f:Fixture){
+async function setup(f:Fixture, options:{sourceSystem?:string;runKey?:string}={}){
   const company=await f.company(),base=`/companies/${company.id}`;
   const currency=(await f.owner.ok<Page<CompanyCurrency>>("GET",base+"/currencies")).items.find(x=>x.code==="YER")!;
   const branch=(await f.owner.ok<Page<Branch>>("GET",base+"/branches")).items[0]!;
@@ -79,7 +82,7 @@ async function setup(f:Fixture){
     factor2:1,factor3:1,purchaseFactor:1,salePrice1:"20",salePrice2:"20",salePrice3:"20",
     purchasePrice:"10",hasExpiry:false,currencyId:currency.id,
   },201)).item;
-  const sourceSystem="bulk-disposable-source";
+  const sourceSystem=options.sourceSystem??"bulk-disposable-source";
   function source(sourceId:string,date:string,quantity="2",unitPrice="10"){
     return {type:"invoice" as const,sourceId,sourceDocumentNumber:"OLD-"+sourceId,
       sourceCreatedAt:date+"T08:12:13.123+03:00",sourceCreators:["Original operator"],
@@ -94,7 +97,7 @@ async function setup(f:Fixture){
     return f.owner.ok("POST",base+"/transaction-import/stage",{idempotencyKey:randomUUID(),sourceSystem,
       postingDate:documents[0]!.payload.documentDate,preserveDocumentDates:true,documents});
   }
-  const start={idempotencyKey:randomUUID(),sourceSystem,roundUnitPrices:true};
+  const start={idempotencyKey:options.runKey??randomUUID(),sourceSystem,roundUnitPrices:true};
   const bulkPath=base+"/transaction-import/bulk";
   const status=async()=> (await f.owner.ok<{run:Run}>("GET",bulkPath+"/"+start.idempotencyKey)).run;
   return {company,base,currency,branch,location,counterparty,item,sourceSystem,source,stage,start,bulkPath,status};
@@ -229,4 +232,70 @@ test("authorized posting during database pause stops before rebuilding and prese
   assert.deepEqual(snapshot.rows[0],{phase:"awaiting_reconciliation",paused:true,sources:2,unbalanced:0,dirty:1,daily:0});
   await runLegacyImportStep(f.pool);
   assert.equal((await s.status()).imported,2);
+});
+
+
+test("restoring automation catches up posted invoices without replay, then resumes live projections and access",async t=>{
+  const f=await fixture(t,true);
+  // Production restoration is deliberately scoped to this verified company/run.
+  await f.company("Other company");
+  const s=await setup(f,{
+    sourceSystem:"dar-aldawa-legacy-2026-10",
+    runKey:"f03ead4a-40d9-4713-811c-6a366b7ec6c8",
+  });
+  assert.equal(s.company.id,2);
+  await s.stage([s.source("restore-01","2026-10-01"),s.source("restore-02","2026-10-02","3")]);
+  await f.owner.ok("POST",s.bulkPath,s.start,202);
+  await runLegacyImportStep(f.pool);
+  assert.equal((await s.status()).imported,1);
+  const before=(await f.pool.query(`SELECT
+    (SELECT count(*)::integer FROM invoices WHERE company_id=$1) AS invoices,
+    (SELECT count(*)::integer FROM financial_documents WHERE company_id=$1) AS journals,
+    (SELECT count(*)::integer FROM stock_movements WHERE company_id=$1) AS movements,
+    (SELECT count(*)::integer FROM transaction_source_imports WHERE company_id=$1) AS sources`,[s.company.id])).rows[0];
+  const {readdir}=await import("node:fs/promises");
+  const migrationDirectory=new URL("../apps/api/migrations/",import.meta.url);
+  const restoration=(await readdir(migrationDirectory)).find(name=>/^139_[a-z_]+\.sql$/.test(name));
+  assert(restoration,"production automation restoration migration must exist");
+  await f.pool.query(await readFile(new URL(restoration,migrationDirectory),"utf8"));
+  const after=(await f.pool.query(`SELECT
+    (SELECT count(*)::integer FROM invoices WHERE company_id=$1) AS invoices,
+    (SELECT count(*)::integer FROM financial_documents WHERE company_id=$1) AS journals,
+    (SELECT count(*)::integer FROM stock_movements WHERE company_id=$1) AS movements,
+    (SELECT count(*)::integer FROM transaction_source_imports WHERE company_id=$1) AS sources`,[s.company.id])).rows[0];
+  assert.deepEqual(after,before,"restoration must not post or replay any invoice");
+  const restored=(await f.pool.query(`SELECT
+    (SELECT paused FROM automation_database_pause WHERE singleton) AS database_paused,
+    (SELECT status FROM legacy_import_runs WHERE company_id=$1) AS status,
+    (SELECT defer_projections FROM legacy_import_runs WHERE company_id=$1) AS deferred,
+    (SELECT count(*)::integer FROM legacy_import_staging WHERE company_id=$1 AND status='pending') AS pending,
+    (SELECT count(*)::integer FROM legacy_import_dirty_items WHERE company_id=$1) AS dirty,
+    (SELECT stock_total::text FROM item_statistics WHERE company_id=$1 AND item_id=$2) AS projected,
+    (SELECT sum(purchase_quantity)::text FROM item_daily_activity WHERE company_id=$1 AND item_id=$2) AS purchases`,[s.company.id,s.item.id])).rows[0];
+  assert.deepEqual(restored,{database_paused:false,status:"paused",deferred:false,pending:1,dirty:0,projected:"2",purchases:"2"});
+  const mismatches=(await f.pool.query(`SELECT count(*)::integer AS count
+    FROM automation_paused_triggers saved
+    JOIN pg_namespace n ON n.nspname=saved.schema_name
+    JOIN pg_class c ON c.relnamespace=n.oid AND c.relname=saved.table_name
+    JOIN pg_trigger t ON t.tgrelid=c.oid AND t.tgname=saved.trigger_name
+    WHERE t.tgenabled::text<>saved.original_enabled`)).rows[0].count;
+  assert.equal(mismatches,0,"every saved trigger mode must be restored exactly");
+  await f.owner.ok("GET",s.base+"/items");
+  await runLegacyImportStep(f.pool);
+  assert.equal((await s.status()).imported,1,"restoration leaves the import stopped");
+  await f.owner.ok("POST",s.bulkPath+"/"+s.start.idempotencyKey+"/actions",{action:"resume"});
+  await runLegacyImportStep(f.pool);
+  assert.equal((await s.status()).imported,2);
+  assert.equal((await s.status()).status,"running");
+  await f.owner.ok("GET",s.base+"/items");
+  const current=(await f.pool.query(`SELECT
+    (SELECT stock_total::text FROM item_statistics WHERE company_id=$1 AND item_id=$2) AS projected,
+    (SELECT sum(purchase_quantity)::text FROM item_daily_activity WHERE company_id=$1 AND item_id=$2) AS purchases,
+    (SELECT count(*)::integer FROM financial_documents WHERE company_id=$1 AND (total_debit<>total_credit OR total_base_debit<>total_base_credit)) AS unbalanced`,[s.company.id,s.item.id])).rows[0];
+  assert.deepEqual(current,{projected:"5",purchases:"5",unbalanced:0},"projections must update while import remains running");
+  for(let attempt=0;attempt<3&&(await s.status()).status!=="completed";attempt++)await runLegacyImportStep(f.pool);
+  assert.equal((await s.status()).status,"completed");
+  assert.equal((await s.status()).imported,2);
+  await runLegacyImportStep(f.pool);
+  assert.equal((await f.pool.query("SELECT count(*)::integer AS count FROM transaction_source_imports WHERE company_id=$1",[s.company.id])).rows[0].count,2);
 });
