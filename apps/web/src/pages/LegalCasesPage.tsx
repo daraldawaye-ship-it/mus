@@ -72,6 +72,7 @@ export function LegalCasesPage() {
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
  const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [activePanel,setActivePanel]=useState<"cases"|"tasks">("cases");
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
@@ -115,7 +116,7 @@ export function LegalCasesPage() {
   reader.onerror=()=>setError("تعذر قراءة الصورة");reader.readAsDataURL(file);
  };
  return <div className="legal-workspace">
- <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
+ <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setActivePanel("cases");setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
  <nav className="legal-directory-tabs" aria-label="قوائم متابعة القضايا">
  <Link className="button button-secondary" to="/explanations/topics?group=mustafa-cases">شرح قضايا مصطفى — العناوين المرتبة</Link>
@@ -171,11 +172,14 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- <LegalTaskBoard key={user?.id} owner={owner} onOpenCase={id=>{
+ <nav className="legal-directory-tabs" aria-label="اختر قائمة القضايا أو المهام">
+  <Button variant={activePanel==="cases"?"primary":"secondary"} aria-pressed={activePanel==="cases"} onClick={()=>setActivePanel("cases")}>قائمة القضايا</Button>
+  <Button variant={activePanel==="tasks"?"primary":"secondary"} aria-pressed={activePanel==="tasks"} onClick={()=>setActivePanel("tasks")}>قائمة المهام</Button>
+ </nav>
+ {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner} onOpenCase={id=>{
   setCaseEdit(false);setCaseNew(false);setEntryEdit(null);setLinkAfterSave(null);setFocus(null);
-  setParams({case:String(id),tab:"task"});
- }}/>
- <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+  setActivePanel("cases");setParams({case:String(id),tab:"task"});
+ }}/> : <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
  <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":c.status==="active"?"فعالة":"غير محددة"} · أولوية {c.priority}</small></button>)}</div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
@@ -238,5 +242,5 @@ export function LegalCasesPage() {
  {tab==="unlinked"&&owner&&all.data&&<div className="legal-actions"><Button variant="secondary" disabled={unlinkedPage<=1} onClick={()=>{setUnlinkedPage(p=>p-1);setFocus(null);}}>السابق</Button><span>{unlinkedPage} / {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</span><Button variant="secondary" disabled={unlinkedPage*all.data.pageSize>=all.data.total} onClick={()=>{setUnlinkedPage(p=>p+1);setFocus(null);}}>التالي</Button></div>}
  </Card>}
  </>:<Card title="اختر قضية"><p>اختر قضية من القائمة لعرض سجلاتها ومعطياتها ومستنداتها وتقاريرها.</p></Card>}
- </div></div></>}</div>;
+ </div></div>}</>}</div>;
 }
