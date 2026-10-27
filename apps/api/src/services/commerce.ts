@@ -854,7 +854,9 @@ export async function createInvoice(
         invoiceId,
         invoiceLineId: lineId,
         allowExpired: line.quantity < 0n,
-        allowInactive: line.quantity < 0n,
+        // Trusted historical posting can record inactive legacy products; regular
+        // invoice creation still requires active items.
+        allowInactive: line.quantity < 0n || importContext?.allowHistoricalInactiveItems === true,
         allowUnknownExpiry: importContext?.allowUnknownExpiry,
         allowHistoricalChronology: importContext?.allowHistoricalStockChronology,
       });
