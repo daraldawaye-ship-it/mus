@@ -4,6 +4,16 @@ async function check(base,origin) {
   const health=await fetch(base+"/api/health",options);
   if(health.status!==200||(await health.json()).ok!==true)throw new Error("HEALTH_FAILED");
   const root=await fetch(base+"/",{...options,signal:AbortSignal.timeout(10000)});
+  if(root.status===503 && (await root.json()).error?.code==="automation_paused") {
+    const statuses=[];
+    for(const path of ["/api/companies","/mcp"]){
+      const blocked=await fetch(base+path,{...options,signal:AbortSignal.timeout(10000)});
+      if(blocked.status!==503 || (await blocked.json()).error?.code!=="automation_paused")
+        throw new Error("MAINTENANCE_GATE_FAILED");
+      statuses.push(blocked.status);
+    }
+    return {health:health.status,maintenance:503,private_api:statuses[0],mcp:statuses[1]};
+  }
   if(root.status!==200 || !(await root.text()).includes("/assets/"))throw new Error("FRONTEND_FAILED");
   const privateApi=await fetch(base+"/api/companies",{...options,signal:AbortSignal.timeout(10000)});
   if(privateApi.status!==401)throw new Error("PRIVATE_API_AUTH_FAILED");
