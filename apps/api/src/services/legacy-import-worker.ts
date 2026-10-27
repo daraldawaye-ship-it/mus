@@ -26,6 +26,7 @@ type Run = {
   round_unit_prices: boolean;
   status: "running" | "rebuilding";
 };
+type RunScope = { companyId: number; idempotencyKey: string };
 type StagedRow = {
   source_id: string;
   posting_date: string;
@@ -145,10 +146,14 @@ async function importChunk(client: PoolClient, run: Run, user: User): Promise<vo
   );
   const rows = selected.rows;
   if (!rows.length) {
+    const paused = (await client.query<{paused:boolean}>(
+      "SELECT paused FROM automation_database_pause WHERE singleton",
+    )).rows[0]?.paused === true;
     await client.query(
-      `UPDATE legacy_import_runs SET status='rebuilding',phase='rebuilding',
+      `UPDATE legacy_import_runs SET status=$3,phase=$4,
        updated_at=clock_timestamp() WHERE company_id=$1 AND idempotency_key=$2`,
-      [run.company_id, run.idempotency_key],
+      [run.company_id, run.idempotency_key, paused ? "paused" : "rebuilding",
+        paused ? "awaiting_reconciliation" : "rebuilding"],
     );
     return;
   }
@@ -284,10 +289,14 @@ async function rebuild(client: PoolClient, run: Run, user: User): Promise<void> 
     run.company_id);
 }
 
-async function step(pool: Pool): Promise<boolean> {
+async function step(pool: Pool, scope?: RunScope): Promise<boolean> {
   const candidate = (await pool.query<Run>(
     `SELECT company_id,idempotency_key FROM legacy_import_runs
-     WHERE status IN ('running','rebuilding') ORDER BY updated_at,company_id LIMIT 1`,
+     WHERE status IN ('running','rebuilding')
+       AND ($1::integer IS NULL OR company_id=$1)
+       AND ($2::uuid IS NULL OR idempotency_key=$2)
+     ORDER BY updated_at,company_id LIMIT 1`,
+    [scope?.companyId ?? null, scope?.idempotencyKey ?? null],
   )).rows[0];
   if (!candidate) return false;
   return transaction(pool, async client => {
@@ -320,7 +329,16 @@ async function step(pool: Pool): Promise<boolean> {
         await client.query("RELEASE SAVEPOINT legacy_import_step");
         return false;
       }
-      if (run.status === "rebuilding") await rebuild(client, run, user);
+      if (run.status === "rebuilding") {
+        const paused = (await client.query<{paused:boolean}>(
+          "SELECT paused FROM automation_database_pause WHERE singleton",
+        )).rows[0]?.paused === true;
+        if (paused) await client.query(
+          "UPDATE legacy_import_runs SET status='paused',phase='awaiting_reconciliation',updated_at=clock_timestamp() WHERE company_id=$1 AND idempotency_key=$2",
+          [run.company_id,run.idempotency_key],
+        );
+        else await rebuild(client, run, user);
+      }
       else await importChunk(client, run, user);
       await client.query("RELEASE SAVEPOINT legacy_import_step");
     } catch (error) {
@@ -344,14 +362,14 @@ export async function runLegacyImportStep(pool: Pool): Promise<void> {
 }
 
 /** Durable running/rebuilding rows resume after restart; no unrequested run is created. */
-export function startLegacyImportWorker(pool: Pool): () => Promise<void> {
+export function startLegacyImportWorker(pool: Pool, scope?: RunScope): () => Promise<void> {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let current: Promise<void> | null = null;
   const tick = () => {
     if (stopped || current) return;
     let worked = false;
-    current = step(pool)
+    current = step(pool, scope)
       .then(result => { worked = result; })
       .catch((error: unknown) => console.error("Legacy import worker failed", errorCode(error)))
       .finally(() => {

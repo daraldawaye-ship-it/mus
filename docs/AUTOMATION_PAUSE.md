@@ -31,3 +31,20 @@ Restore only on explicit user request:
 2. Restore database-side behavior using the saved owner-only recovery function above, only if explicitly requested. Keep the application paused during restoration and verification.
 3. Only after deciding which queued work is authorized, change the central pause constant to false, validate, publish to `preview/render-2026-10-23`, manually deploy the existing Render service and verify live/health. Keep the historical import paused unless separately requested.
 4. Rebuild required item/account statistics once, only under the user's requested scope. Do not replay imports or duplicate stock/journals. Company import-maintenance isolation remains until a separate explicit decision; restoration alone does not change its state.
+
+## Explicit invoice posting exception — 2026-10-27
+
+The user authorized accounting posting after confirming invoices generate their own
+journals and raw vouchers are separate receipt/payment documents. Migration138
+resumes only company2's existing invoice run
+`f03ead4a-40d9-4713-811c-6a366b7ec6c8`. Startup starts only that scoped worker;
+all HTTP access, unrelated workers, 28 derived triggers and 19 calculation functions
+remain paused. Source deduplication, atomic journals and operational stock valuation
+are retained. Already completed invoices are not replayed; failed documents remain
+recorded for manual correction. Pending invoices are selected in posting-date order.
+The worker stops in `paused / awaiting_reconciliation` when intake is exhausted,
+without silently rebuilding projections while their functions are paused. This is
+posting onto existing valuation history, not a replay/revaluation of already posted
+history. Raw vouchers are not yet mapped to balanced receipt/payment journal requests.
+Do not claim vouchers posted or historical costs fully reconciled based on invoice
+posting progress. Restore/rebuild and voucher execution require their own verified steps.

@@ -41,9 +41,10 @@ class Client {
   }
 }
 
-async function fixture(t:TestContext){
+async function fixture(t:TestContext, keepDatabasePaused=false){
   const schema=`bulk_import_${randomUUID().replaceAll("-","")}`;
   const runtime=await createApp({databaseUrl,schema,appOrigin:origin,production:false,serveStatic:false});
+  if (!keepDatabasePaused) await runtime.pool.query("SELECT restore_database_automation()");
   const server:Server=runtime.app.listen(0,"127.0.0.1");
   await new Promise<void>((resolve,reject)=>{server.once("listening",resolve);server.once("error",reject);});
   const address=server.address();assert(address&&typeof address!=="string");
@@ -206,4 +207,26 @@ test("only the current owner controls bulk jobs and explicit partial finish rest
     if(run.status==="completed")break;
   }
   assert.equal((await f.pool.query("SELECT count(*)::integer AS n FROM transaction_source_imports WHERE company_id=$1",[s.company.id])).rows[0].n,2);
+});
+
+
+test("authorized posting during database pause stops before rebuilding and preserves source identities",async t=>{
+  const f=await fixture(t,true),s=await setup(f);
+  await s.stage([s.source("paused-01","2026-10-01"),s.source("paused-02","2026-10-02")]);
+  await f.owner.ok("POST",s.bulkPath,s.start,202);
+  await runLegacyImportStep(f.pool);
+  await runLegacyImportStep(f.pool);
+  await runLegacyImportStep(f.pool);
+  const run=await s.status();
+  assert.equal(run.imported,2);assert.equal(run.status,"paused");
+  const snapshot=await f.pool.query(`SELECT
+    (SELECT phase FROM legacy_import_runs WHERE company_id=$1) AS phase,
+    (SELECT paused FROM automation_database_pause WHERE singleton) AS paused,
+    (SELECT count(*)::integer FROM transaction_source_imports WHERE company_id=$1) AS sources,
+    (SELECT count(*)::integer FROM financial_documents WHERE company_id=$1 AND total_debit<>total_credit) AS unbalanced,
+    (SELECT count(*)::integer FROM legacy_import_dirty_items WHERE company_id=$1) AS dirty,
+    (SELECT count(*)::integer FROM item_daily_activity WHERE company_id=$1) AS daily`,[s.company.id]);
+  assert.deepEqual(snapshot.rows[0],{phase:"awaiting_reconciliation",paused:true,sources:2,unbalanced:0,dirty:1,daily:0});
+  await runLegacyImportStep(f.pool);
+  assert.equal((await s.status()).imported,2);
 });
