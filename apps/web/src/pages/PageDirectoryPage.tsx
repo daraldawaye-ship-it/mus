@@ -367,61 +367,75 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
   );
 }
 
-type CardPermissionDefinition = {key:string;pageKey:string;action:string;name:string;active:boolean;ruleRole:string};
-type CardEmployee = {id:number;name:string;active:boolean;generalManager:boolean;owner:boolean};
-type CardRule = {id:number;employeeId:number;permissionKey:string;effect:"allow"|"deny";active:boolean;revision:number};
-type CardDirectory = {definitions:CardPermissionDefinition[];employees:CardEmployee[];employeeRules:CardRule[]};
-function PagePermissionCard({pageKey,companyId}:{pageKey:string;companyId:number}) {
+type PageGrant = {id:number;action:string;principalType:"kind"|"monitor"|"position"|"user";principalValue:string;effect:"allow"|"deny"};
+type GrantUser = {id:number;name:string;kind:string;monitor:boolean};
+type GrantsResponse = {grants:PageGrant[];users:GrantUser[];positions:string[]};
+function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number}) {
   const {user}=useSession();
   const client=useQueryClient();
-  const [employeeId,setEmployeeId]=useState(0);
-  const [busy,setBusy]=useState<string|null>(null);
+  const [principalType,setPrincipalType]=useState<"kind"|"monitor"|"position"|"user">("user");
+  const [principalValue,setPrincipalValue]=useState("");
+  const [action,setAction]=useState<PageAction>("view");
+  const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
-  const directory=useQuery({
-    queryKey:["page-permission-card",user?.id,companyId],
-    queryFn:({signal})=>api<CardDirectory>(`/companies/${companyId}/configuration/directory`,{signal}),
+  const grants=useQuery({
+    queryKey:["page-grants",user?.id,entry.key,companyId??null],
+    queryFn:({signal})=>api<GrantsResponse>(
+      `/page-catalog/${encodeURIComponent(entry.key)}/grants${companyId?`?companyId=${companyId}`:""}`,{signal}),
   });
-  const definitions=(directory.data?.definitions??[]).filter(d=>d.active&&d.pageKey===pageKey&&d.ruleRole==="permissions");
-  const employees=(directory.data?.employees??[]).filter(e=>e.active&&!e.owner&&!e.generalManager);
-  const selected=employees.find(e=>e.id===employeeId);
-  async function change(def:CardPermissionDefinition,effect:"allow"|"deny"|null) {
-    if(!selected||busy)return;
-    setBusy(def.key);setError("");setMessage("");
-    const prior=directory.data?.employeeRules.find(r=>r.employeeId===selected.id&&r.permissionKey===def.key);
-    try {
-      await api(`/companies/${companyId}/configuration/employee-rules`,{
-        method:"PUT",
-        body:{employeeId:selected.id,permissionKey:def.key,effect,revision:prior?.revision??null},
+  const chosen=grants.data?.grants.find(g=>g.action===action&&g.principalType===principalType&&g.principalValue===principalValue);
+  async function save(effect:"allow"|"deny"|null) {
+    if(!principalValue||busy)return;
+    setBusy(true);setError("");setMessage("");
+    try{
+      await api(`/page-catalog/${encodeURIComponent(entry.key)}/grants`,{
+        method:"PUT",body:{companyId:companyId??null,action,principalType,principalValue,effect}
       });
-      await directory.refetch();
+      await grants.refetch();
       await client.invalidateQueries({queryKey:["page-directory"]});
-      setMessage("تم حفظ صلاحيات الموظف على هذه الصفحة.");
-    }catch(cause){setError(errorMessage(cause));}
-    finally{setBusy(null);}
+      setMessage("حُفظت صلاحية الصفحة للمستفيد المحدد.");
+    }catch(e){setError(errorMessage(e));}
+    finally{setBusy(false);}
   }
   return <section className="page-directory-settings" aria-label="منح صلاحيات الصفحة">
     <strong><ShieldCheck size={15}/> منح صلاحيات هذه الصفحة</strong>
-    <p className="muted">اختر الموظف واضبط أذون العرض والإضافة والتعديل من كرت الصفحة مباشرة. الاستثناء الفردي يعلو على سماح الدور، ولا يلغي شروط صلاحيات البيانات الأخرى.</p>
-    {directory.isPending&&<Notice>جارٍ تحميل الموظفين والصلاحيات…</Notice>}
-    {directory.error&&<Notice tone="error">{errorMessage(directory.error)}</Notice>}
-    {directory.data&&<Select label="الموظف" value={employeeId} onChange={event=>{setEmployeeId(Number(event.target.value));setMessage("");setError("");}}>
-      <option value={0}>اختر موظفًا</option>
-      {employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+    <p className="muted">اختر المستفيد والإجراء ثم امنح سماحًا أو منعًا. المنح للمستخدم المحدد أقوى من المنح حسب الصفة أو نوع الحساب. الإذن بالصفحة لا يكشف بيانات قضية أو مستند محمي دون صلاحياته الخاصة.</p>
+    {grants.isPending&&<Notice>جارٍ تحميل الأذون…</Notice>}
+    {grants.error&&<Notice tone="error">{errorMessage(grants.error)}</Notice>}
+    <Select label="طريقة المنح" value={principalType} onChange={e=>{setPrincipalType(e.target.value as typeof principalType);setPrincipalValue("");}}>
+      <option value="user">مستخدم محدد بالاسم أو الرقم</option>
+      <option value="kind">حسب نوع الحساب</option>
+      <option value="monitor">المراقب العام</option>
+      {companyId&&<option value="position">حسب صفة الموظف في الشركة</option>}
+    </Select>
+    {principalType==="user"&&<>
+      <Field label="رقم المستخدم" type="number" value={principalValue} onChange={e=>setPrincipalValue(e.target.value)} placeholder="أدخل رقم المستخدم"/>
+      {grants.data&&<Select label="أو اختر المستخدم بالاسم" value={principalValue} onChange={e=>setPrincipalValue(e.target.value)}>
+        <option value="">اختر مستخدمًا</option>
+        {grants.data.users.map(p=><option key={p.id} value={String(p.id)}>{p.name} — {p.id}</option>)}
+      </Select>}
+    </>}
+    {principalType==="kind"&&<Select label="نوع الحساب" value={principalValue} onChange={e=>setPrincipalValue(e.target.value)}>
+      <option value="">اختر النوع</option><option value="admin">إداري</option>
+      <option value="supervisor">مشرف</option><option value="member">عضو</option>
     </Select>}
-    {selected&&definitions.length===0&&<Notice>لا توجد أذون قابلة للتفويض الفردي لهذه الصفحة من هذا القسم.</Notice>}
-    {selected&&definitions.map(def=>{
-      const rule=directory.data?.employeeRules.find(r=>r.employeeId===employeeId&&r.permissionKey===def.key&&r.active);
-      const value=rule?.effect??"default";
-      return <div className="page-directory-permission-row" key={def.key}>
-        <strong>{pageActionLabels[def.action as PageAction]??def.name}</strong>
-        <Select label={def.name} value={value} disabled={busy!==null} onChange={event=>void change(def,event.target.value==="default"?null:event.target.value as "allow"|"deny")}>
-          <option value="default">بحسب الدور</option>
-          <option value="allow">سماح</option>
-          <option value="deny">منع</option>
-        </Select>
-      </div>;
-    })}
+    {principalType==="monitor"&&<Select label="المراقب" value={principalValue} onChange={e=>setPrincipalValue(e.target.value)}>
+      <option value="">اختر</option><option value="true">الحسابات المعرّفة كمراقب عام</option>
+    </Select>}
+    {principalType==="position"&&<Select label="الصفة في الشركة" value={principalValue} onChange={e=>setPrincipalValue(e.target.value)}>
+      <option value="">اختر الصفة</option>
+      {(grants.data?.positions??[]).map(p=><option key={p} value={p}>{p}</option>)}
+    </Select>}
+    <Select label="الإجراء" value={action} onChange={e=>setAction(e.target.value as PageAction)}>
+      {pageActions.filter(a=>entry.actions[a]).map(a=><option key={a} value={a}>{pageActionLabels[a]}</option>)}
+    </Select>
+    <p className="muted">الحالة المحددة: {chosen?chosen.effect==="allow"?"مسموح صراحة":"ممنوع صراحة":"لا يوجد استثناء — حسب الصلاحيات الأصلية"}</p>
+    <div className="actions">
+      <Button disabled={!principalValue||busy} onClick={()=>void save("allow")}>سماح</Button>
+      <Button variant="secondary" disabled={!principalValue||busy} onClick={()=>void save("deny")}>منع</Button>
+      <Button variant="secondary" disabled={!chosen||busy} onClick={()=>void save(null)}>إزالة الاستثناء</Button>
+    </div>
     {error&&<Notice tone="error">{error}</Notice>}
     {message&&<Notice tone="success">{message}</Notice>}
   </section>;
@@ -600,8 +614,8 @@ function PageDetails({
             : " اطلب من مالك المنصة أو المدير العام مراجعة صلاحياتك."}
         </Notice>
       )}
-      {companyId && entry.scope==="company" && canManagePermissions && (
-        <PagePermissionCard pageKey={entry.key} companyId={companyId}/>
+      {(user?.owner || (companyId && canManagePermissions)) && (
+        <PagePermissionCard entry={entry} companyId={companyId}/>
       )}
       {entry.key==="public.legal-cases" && user?.owner && (
         <Notice>صلاحيات إدارة القضايا تُمنح لكل قضية مستقلة لحماية بقية الملفات. افتح القضية من إدارة قضايا مصطفى ثم تبويب «الصلاحيات» لتفويض المستخدم.</Notice>
