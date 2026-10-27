@@ -213,7 +213,7 @@ export function pageRoutes(pool: Pool): Router {
       throw new HttpError(400,"invalid_principal","حدد نوع المستفيد وقيمته");
     if(principalType==="kind"&&!["admin","supervisor","member"].includes(principalValue)||
        principalType==="monitor"&&principalValue!=="true"||
-       principalType==="user"&&!/^[1-9]\\d*$/.test(principalValue)||
+       principalType==="user"&&!/^[1-9]\d*$/.test(principalValue)||
        principalType==="position"&&!companyId)
       throw new HttpError(400,"invalid_principal","المستفيد غير صالح");
     if(effect!==null&&!["allow","deny"].includes(effect))
