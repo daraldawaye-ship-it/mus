@@ -198,6 +198,30 @@ export async function directoryEntries(
       (!definition.parentKey || enabled(definition.parentKey))
     );
   };
+  // Evaluate personal, role and employee-position grants in one batch.
+  // Explicit user rules win over position rules, which win over account kinds.
+  const grantsResult = await db.query(
+    "SELECT page_key, company_id, action, principal_type, principal_value, effect FROM page_access_grants WHERE company_id IS NULL OR company_id=$1",
+    [companyId],
+  );
+  const userPositions = new Set(baseContext?.employee?.positions ?? []);
+  const resolveGrant = (key: string, action: PageAction): "allow" | "deny" | null => {
+    const matches = grantsResult.rows.filter((g) =>
+      g.page_key === key && g.action === action &&
+      (g.company_id === null || g.company_id === companyId) &&
+      (g.principal_type === "user" && g.principal_value === String(user.id) ||
+       g.principal_type === "kind" && g.principal_value === user.kind ||
+       g.principal_type === "monitor" && g.principal_value === "true" && user.monitor ||
+       g.principal_type === "position" && userPositions.has(g.principal_value))
+    );
+    if (!matches.length) return null;
+    const rank = (g: typeof matches[number]) => (
+      (g.principal_type === "user" ? 30 : g.principal_type === "position" ? 20 : 10) +
+      (g.company_id === companyId && companyId !== null ? 1 : 0)
+    );
+    matches.sort((a,b)=>rank(b)-rank(a) || (a.effect === "deny" ? -1 : 1));
+    return matches[0].effect;
+  };
   return pageDefinitions.map((definition) => {
     const globalSetting = global.get(definition.key),
       localSetting =
@@ -231,17 +255,16 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
+            (user.owner || resolveGrant(definition.key, action) !== "deny") &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
             (definition.key !== "public.explanations-reader" || explanationRead) &&
             (definition.key !== "public.explanations-editor" || explanationEdit) &&
-            directoryActionAllowed(
-              definition,
-              action,
-              user,
-              baseContext,
-              effects,
-            ),
+            (user.owner ||
+              resolveGrant(definition.key, action) === "allow" ||
+              directoryActionAllowed(
+                definition, action, user, baseContext, effects,
+              )),
         ]),
       ) as Record<PageAction, boolean>,
     };
