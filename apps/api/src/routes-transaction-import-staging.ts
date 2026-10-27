@@ -116,7 +116,38 @@ export function transactionImportStagingRoutes(pool: Pool, batchSchema: z.ZodTyp
          count(*) FILTER (WHERE status='failed')::integer AS failed,
          count(*)::integer AS total
          FROM legacy_import_staging WHERE company_id=$1`,[companyId]);
-      return r.rows[0];
+      if (req.query.sourceSystem === undefined) return r.rows[0];
+      const sourceSystem = parse(z.string().trim().min(1).max(100), req.query.sourceSystem);
+      const dateFrom = parse(z.iso.date(), req.query.dateFrom ?? "0001-01-01");
+      const dateTo = parse(z.iso.date(), req.query.dateTo ?? "9999-12-31");
+      const page = parse(z.coerce.number().int().min(1).max(1000000), req.query.page ?? 1);
+      const pageSize = parse(z.coerce.number().int().min(1).max(1000), req.query.pageSize ?? 500);
+      if (dateFrom > dateTo) throw new HttpError(400,"invalid_query","بداية الفترة تتجاوز نهايتها");
+      await assertRequestPagesEnabled(client, req);
+      const sources = `WITH sources AS (
+        SELECT s.source_kind, s.source_id, i.kind, 'posted'::text AS status,
+          i.document_date::text AS document_date, s.request_hash
+        FROM transaction_source_imports s JOIN invoices i
+          ON i.company_id=s.company_id AND i.id=s.invoice_id
+        WHERE s.company_id=$1 AND s.source_system=$2 AND s.source_kind='invoice'
+          AND i.document_date BETWEEN $3::date AND $4::date
+        UNION ALL
+        SELECT s.source_kind, s.source_id, s.source_document->'payload'->>'kind' AS kind,
+          ('staged:'||s.status)::text AS status, s.posting_date::text AS document_date, s.request_hash
+        FROM legacy_import_staging s
+        WHERE s.company_id=$1 AND s.source_system=$2 AND s.source_kind='invoice'
+          AND s.posting_date BETWEEN $3::date AND $4::date
+      )`;
+      const values = [companyId,sourceSystem,dateFrom,dateTo];
+      const count = await client.query(sources+" SELECT count(*)::integer AS total FROM sources",values);
+      const items = await client.query(sources+`
+        SELECT source_kind AS "sourceKind",source_id AS "sourceId",kind,status,
+          document_date AS "documentDate",request_hash AS "requestHash"
+        FROM sources ORDER BY document_date,source_id,status LIMIT $5 OFFSET $6`,
+        [...values,pageSize,(page-1)*pageSize]);
+      res.setHeader("Cache-Control","private, no-store");
+      return {...r.rows[0],sources:{sourceSystem,dateFrom,dateTo,total:count.rows[0].total,
+        page,pageSize,items:items.rows}};
     });
     res.json(result);
   }));
