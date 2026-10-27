@@ -1,0 +1,58 @@
+/* Mobile-only legal task cards. Keep the desktop table unchanged. */
+.legal-task-mobile{display:none}
+@media(max-width:700px){
+  .legal-task-scroll{display:none}
+  .legal-task-mobile{
+    display:grid;grid-template-columns:minmax(0,1fr);gap:10px;
+    width:100%;max-width:100%;min-width:0;box-sizing:border-box;direction:rtl;
+  }
+  .legal-task-mobile-card{
+    display:grid;grid-template-columns:minmax(0,1fr);gap:9px;
+    width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+    border:1px solid var(--border,#b8bcc4);border-radius:11px;
+    padding:10px;background:var(--surface-muted,rgba(128,128,128,.04));
+    overflow-wrap:anywhere;word-break:break-word;
+  }
+  .legal-task-mobile-main,.legal-task-mobile-secondary{
+    display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;
+    width:100%;max-width:100%;min-width:0;gap:8px;box-sizing:border-box;
+  }
+  .legal-task-mobile-title{
+    flex:1 1 180px;min-width:0;max-width:100%;font-size:14px;line-height:1.6;
+    white-space:normal;overflow-wrap:anywhere;word-break:break-word;
+  }
+  .legal-task-mobile-priority{
+    flex:0 1 auto;max-width:100%;border:1px solid var(--border,#b8bcc4);
+    border-radius:7px;padding:3px 6px;font-size:11px;line-height:1.5;
+    white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;
+  }
+  .legal-task-mobile-cases{
+    flex:1 1 160px;display:flex;min-width:0;max-width:100%;flex-wrap:wrap;
+    gap:5px;align-items:center;
+  }
+  .legal-task-mobile-cases button,.legal-task-mobile-cases .button{
+    flex:0 1 auto;min-width:0;max-width:100%;height:auto!important;
+    white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;
+    line-height:1.5;text-align:start;
+  }
+  .legal-task-mobile-meta{
+    display:flex;flex:0 1 auto;min-width:0;max-width:100%;gap:6px;
+    flex-wrap:wrap;align-items:center;font-size:11px;line-height:1.6;opacity:.85;
+  }
+  .legal-task-mobile-details{
+    display:block;min-width:0;max-width:100%;width:100%;box-sizing:border-box;
+    border-top:1px solid var(--border,#b8bcc4);padding-top:7px;font-size:13px;
+  }
+  .legal-task-mobile-details summary{cursor:pointer;overflow-wrap:anywhere}
+  .legal-task-mobile-details .legal-preserve{
+    max-width:100%;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .legal-task-mobile-details .legal-priority-control,
+  .legal-task-mobile-details .legal-priority-edit{
+    min-width:0;max-width:100%;width:100%;box-sizing:border-box;
+  }
+  .legal-task-mobile-details input,.legal-task-mobile-details select{
+    max-width:100%;box-sizing:border-box;
+  }
+}
