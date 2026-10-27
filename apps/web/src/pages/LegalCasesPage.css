@@ -66,3 +66,29 @@
     box-sizing:border-box;min-width:0;max-width:100%;
   }
 }
+
+/* Mobile: actions expand within the normal document flow. No floating dropdown
+   can escape the viewport, including with RTL or browser zoom. */
+@media(max-width:700px){
+  .legal-main-navigation{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+    width:100%;max-width:100%;overflow:visible;
+  }
+  .legal-main-navigation>.legal-actions-menu[open]{
+    grid-column:1 / -1;grid-row:auto;width:100%;max-width:100%;
+    box-sizing:border-box;
+  }
+  .legal-main-navigation>.legal-actions-menu[open]>summary{
+    width:100%;box-sizing:border-box;
+  }
+  .legal-main-navigation .legal-actions-menu-items{
+    position:static!important;inset:auto!important;
+    top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;
+    width:100%!important;min-width:0!important;max-width:100%!important;
+    box-sizing:border-box;margin-top:7px;
+    box-shadow:none;transform:none;
+  }
+  .legal-main-navigation .legal-actions-menu-items>*{
+    width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+  }
+}
