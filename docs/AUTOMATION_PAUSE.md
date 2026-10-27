@@ -16,6 +16,14 @@ Production HTTP maintenance runs BEFORE sessions, OAuth, MCP and business APIs. 
 
 PostgreSQL itself remains running. Its internal engine maintenance, platform backups and startup schema-version checks are not disabled. No database-native scheduler was configured by this change; do not claim external schedules were stopped without inspecting them.
 
+## Database-side pause
+
+Migration133 saves and disables 28 derived statistics/supplier-update table triggers and pauses 19 direct calculation/invalidation SQL functions. Exact original trigger modes and function definitions are stored in `automation_paused_triggers` and `automation_paused_functions`. The persistent switch is `automation_database_pause.paused`. FK, accounting/stock integrity, source snapshots, immutable history and permission protection are kept enabled. No business rows are changed or deleted by the pause.
+
+Live metadata inspection before this change found only `plpgsql` and `pg_trgm` extensions and no `cron`, `pgagent` or `timescaledb_information` schemas. No database-native scheduler was found.
+
+To restore database-side behavior after explicit user instruction, the database owner can call `restore_database_automation()` in a controlled transaction. It restores each exact saved function and trigger mode and marks the pause restored; it does not execute calculations, start import jobs or restart application workers. Review the required one-time rebuild separately. Do not simply enable every trigger or lose modes that were disabled before maintenance.
+
 Restore only on explicit user request:
 1. Review this inventory and the unfinished import; do not resume an old import automatically.
 2. Change the central pause constant to false, validate, publish to `preview/render-2026-10-23`, manually deploy the existing Render service and verify live/health.
