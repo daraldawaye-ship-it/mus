@@ -48,7 +48,7 @@
 
 ## 12. الدليل والمجموعات والشروح
 
-الجداول explanation_groups وexplanation_nodes وexplanation_assets وexplanation_links، ومسارات apps/api/src/routes-explanations.ts. واجهة القراءة apps/web/src/pages/ExplanationsReader.tsx. كل مجموعة دليل مستقل، وكل فصل عنوان من المستوى الأعلى. طلب /explanations/groups لا يعيد محتوى كل الفصول، وGET /explanations/groups/:groupId/topics يعيد العناوين فقط، وGET /explanations/topics/:topicId يعيد فصلًا واحدًا مع فروعه. لا تستخدم document?all=true للقراءة العادية؛ كانت تستخدم للطباعة المتصلة. دليلا المستخدم والمطور مفتوحان للقراءة للحسابات النشطة دون منح إضافي، بينما تحريرهما للمالك ما لم يغير حقوقهما.
+الجداول explanation_groups وexplanation_nodes وexplanation_assets وexplanation_links، ومسارات apps/api/src/routes-explanations.ts. واجهة القراءة apps/web/src/pages/ExplanationsReader.tsx. كل مجموعة دليل مستقل، وكل فصل عنوان من المستوى الأعلى. طلب /explanations/groups لا يعيد محتوى كل الفصول، وGET /explanations/groups/:groupId/topics يعيد العناوين فقط، وGET /explanations/topics/:topicId يعيد فصلًا واحدًا مع فروعه إذا استُخدم رابط الفصل. القراءة الرئيسية في /explanations/topics تعرض جميع فصول المجموعة المختارة متصلة عبر GET /explanations/groups/:groupId/document?offset=0 ثم جلب 50 سجلًا إضافيًا عند التمرير. زر طباعة الملف كاملًا يستدعي document?all=true للمجموعة المختارة فقط، وليس لجميع المجموعات. دليلا المستخدم والمطور مفتوحان للقراءة للحسابات النشطة دون منح إضافي، بينما تحريرهما للمالك ما لم يغير حقوقهما.
 
 ## 13. قاعدة بيانات الأرشيف والمرفقات
 
