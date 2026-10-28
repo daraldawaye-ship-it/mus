@@ -52,16 +52,42 @@ async function access(client: PoolClient, req: Request, section: "questions" | "
   if (write) await assertRequestPagesEnabled(client,req,true);
   return { companyId,user,manager:companyId === null ? user.owner : !!context?.general };
 }
+// Count each other user's most recent answer once, even if they answered repeatedly.
+// The requesting user's own votes are excluded from every option count.
+async function otherOptionCounts(client: PoolClient, questionIds: number[], userId: number): Promise<Map<number,number[]>> {
+  const counts=new Map<number,number[]>();
+  if (!questionIds.length) return counts;
+  const result=await client.query(`
+    SELECT question_id,selected_answer,count(*)::int AS total FROM (
+      SELECT DISTINCT ON (question_id,user_id) question_id,user_id,selected_answer
+      FROM question_answers WHERE question_id=ANY($1::integer[]) AND user_id<>$2
+      ORDER BY question_id,user_id,answered_at DESC,id DESC
+    ) latest
+    GROUP BY question_id,selected_answer
+  `,[questionIds,userId]);
+  for (const row of result.rows) {
+    const values=counts.get(row.question_id)??[0,0,0,0];
+    values[row.selected_answer-1]=row.total;
+    counts.set(row.question_id,values);
+  }
+  return counts;
+}
+
 const questionOutput = (row: QueryResultRow, manager: boolean) => ({
   id: row.id, companyId: row.company_id, category: row.category,
   priority: row.priority, question: row.question,
   options: [row.answer1,row.answer2,row.answer3,row.answer4].filter((v):v is string=>typeof v==="string"),
-  optionCount:row.option_count,correctAnswer: manager ? row.correct_answer : null, points: row.points,
+  optionCount:row.option_count,correctAnswer: manager || row.my_last_selected_answer !== null ? row.correct_answer : null, points: row.points,
   active: row.active, revision: row.revision, createdBy: row.created_by,
   creatorName: row.creator_name, createdAt: row.created_at.toISOString(),
   answerCount: row.answer_count, respondentCount: row.respondent_count,
   myAnswerCount: row.my_answer_count,
   myLastAnsweredAt: row.my_last_answered_at?.toISOString() ?? null,
+  myLastSelectedAnswer: row.my_last_selected_answer ?? null,
+  myLastCorrect: row.my_last_correct ?? null,
+  myLastPoints: row.my_last_points ?? null,
+  myLastComment: row.my_last_comment ?? null,
+  otherOptionCounts: row.my_last_selected_answer === null ? null : row.other_option_counts,
 });
 
 export function questionRoutes(pool: Pool): Router {
@@ -81,15 +107,28 @@ export function questionRoutes(pool: Pool): Router {
         (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id) AS answer_count,
         (SELECT count(DISTINCT a.user_id)::int FROM question_answers a WHERE a.question_id=q.id) AS respondent_count,
         (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) AS my_answer_count,
-        (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) AS my_last_answered_at
+        mine.answered_at AS my_last_answered_at,
+        mine.selected_answer AS my_last_selected_answer,
+        mine.is_correct AS my_last_correct,
+        mine.awarded_points AS my_last_points,
+        mine.comment AS my_last_comment
         FROM questions q JOIN users creator ON creator.id=q.created_by
+        LEFT JOIN LATERAL (
+          SELECT a.answered_at,a.selected_answer,a.is_correct,a.awarded_points,a.comment
+          FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2
+          ORDER BY a.answered_at DESC,a.id DESC LIMIT 1
+        ) mine ON TRUE
         WHERE ${condition}
         ORDER BY (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) IS NOT NULL ASC,
           CASE WHEN NOT EXISTS (SELECT 1 FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) THEN q.priority END ASC,
           (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) ASC,
           q.id ASC LIMIT $5 OFFSET $6
       `, [...args,p.pageSize,p.offset]);
-      return { items:rows.rows.map(row=>questionOutput(row,manager)),total:count.rows[0].total,page:p.page,pageSize:p.pageSize };
+      const counts=await otherOptionCounts(client,
+        rows.rows.filter(row=>row.my_last_selected_answer !== null).map(row=>row.id),user.id);
+      return { items:rows.rows.map(row=>questionOutput({
+        ...row,other_option_counts:(counts.get(row.id)??[0,0,0,0]).slice(0,row.option_count)
+      },manager)),total:count.rows[0].total,page:p.page,pageSize:p.pageSize };
     });
     res.json(result);
   }));
@@ -139,7 +178,13 @@ export function questionRoutes(pool: Pool): Router {
       if(existing){
         if(existing.question_id!==questionId || existing.selected_answer!==input.selectedAnswer || existing.comment!==comment)
           throw new HttpError(409,"conflict","مفتاح المحاولة مرتبط بإجابة أخرى");
-        return {id:String(existing.id),correct:existing.is_correct,points:existing.awarded_points,replayed:true};
+        const original=(await client.query("SELECT correct_answer,option_count FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2",[questionId,companyId])).rows[0];
+        if (!original) missing();
+        const counts=await otherOptionCounts(client,[questionId],user.id);
+        return {id:String(existing.id),selectedAnswer:existing.selected_answer,
+          correct:existing.is_correct,correctAnswer:existing.question_snapshot.correctAnswer,
+          points:existing.awarded_points,firstAttempt:false,
+          otherOptionCounts:(counts.get(questionId)??[0,0,0,0]).slice(0,original.option_count),replayed:true};
       }
       const question=(await client.query("SELECT * FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2 FOR SHARE",[questionId,companyId])).rows[0];
       if(!question || !question.active) missing("السؤال غير موجود أو غير متاح");
@@ -162,7 +207,11 @@ export function questionRoutes(pool: Pool): Router {
       await audit(client,user,"question.answer","question-answer",Number(inserted.id),null,{
         questionId,selectedAnswer:input.selectedAnswer,correct,firstAttempt,points:awardedPoints,comment,
       },companyId);
-      return {id:String(inserted.id),correct,points:awardedPoints,firstAttempt,replayed:false};
+      const counts=await otherOptionCounts(client,[questionId],user.id);
+      return {id:String(inserted.id),selectedAnswer:input.selectedAnswer,correct,
+        correctAnswer:question.correct_answer,points:awardedPoints,firstAttempt,
+        otherOptionCounts:(counts.get(questionId)??[0,0,0,0]).slice(0,question.option_count),
+        replayed:false};
     });
     res.status(result.replayed?200:201).json(result);
   }));
