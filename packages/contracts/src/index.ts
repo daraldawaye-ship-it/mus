@@ -148,6 +148,8 @@ export const auditActionLabels = {
   "manager.appoint": "تعيين مدير عام",
   "manager.remove": "سحب صفة مدير عام",
   "manager.userArchived": "أرشفة حساب مدير عام من المالك",
+  "saleCustomer.create": "إضافة كرت عميل",
+  "saleCustomer.update": "تعديل كرت عميل",
   "account.create": "إنشاء حساب",
   "account.update": "تعديل حساب",
   "accountBalance.followup": "تسجيل متابعة رصيد الحساب",
