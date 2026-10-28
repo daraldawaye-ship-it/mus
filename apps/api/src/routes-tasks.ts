@@ -62,13 +62,16 @@ async function companyTasks(client:PoolClient,user:User,companyId:number,withAll
  const results=[];
  for(const kind of kinds) {
   const config=settingsOf(kind,settings.find(r=>r.task_key===kind));
-  const permitted=!!pages.find(p=>p.key===defaults[kind].source)?.actionAccess.view;
+  const source=pages.find(p=>p.key===defaults[kind].source);
+  const permitted=!!source?.actionAccess.view;
+  const executable=kind==="memo_required"?permitted:
+    kind==="composition_review"?!!source?.actionAccess.edit:!!source?.actionAccess.create;
   const assigned=context.general || (!config.assignedEmployeeIds.length ||
     (context.employee!==null&&config.assignedEmployeeIds.includes(context.employee.id)));
   const follows=context.general || (context.employee!==null&&config.followerEmployeeIds.includes(context.employee.id));
   if(!assigned&&!follows) continue;
   // A task does not bypass authorization on its underlying records or actions.
-  if(!permitted) continue;
+  if(!permitted || (!executable&&!follows)) continue;
   let completed=0,required=0,available=0;
   if(kind==="memo_required") {
    const row=(await client.query(`SELECT count(*)::integer AS total FROM memos
@@ -101,7 +104,7 @@ async function companyTasks(client:PoolClient,user:User,companyId:number,withAll
    companyId,enabled:config.enabled,completed,required,available,
    visible,targetCount:config.targetCount,periodDays:config.periodDays,
    assignedEmployeeIds:config.assignedEmployeeIds,followerEmployeeIds:config.followerEmployeeIds,
-   revision:config.revision,canControl:context.general,canFollow:follows,canExecute:assigned});
+   revision:config.revision,canControl:context.general,canFollow:follows,canExecute:assigned&&executable});
  }
  return results;
 }
