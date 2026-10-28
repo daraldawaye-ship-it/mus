@@ -126,6 +126,7 @@ export function LegalCasesPage() {
    <summary>إجراءات</summary>
    <div className="legal-actions-menu-items">
     <Link className="button button-secondary" to="/explanations/topics?group=mustafa-cases">شرح قضايا مصطفى</Link>
+     {owner&&<Link className="button button-secondary" to="/archive?legal=1">أرشيف مرفقات القضايا</Link>}
     {globalLists.map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={()=>openGlobal(item.id)}>{item.label}</Button>)}
    </div>
   </details>
