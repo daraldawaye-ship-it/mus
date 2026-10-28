@@ -121,6 +121,9 @@ const NotificationTemplatesPage = lazy(() =>
     default: module.NotificationTemplatesPage,
   })),
 );
+const AutomaticTasksPage = lazy(() =>
+  import("./pages/AutomaticTasksPage").then((module) => ({default:module.AutomaticTasksPage})),
+);
 const MemosPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemosPage })),
 );
@@ -235,6 +238,7 @@ const companySections = [
   "notification-templates",
   "memos",
   "memo-detail",
+  "tasks",
   "attendance",
   "wallet",
   "reward-tasks",
@@ -301,6 +305,8 @@ function Navigation({
     "public.general-table": <TableProperties size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
+    "public.tasks": <FileClock size={17} />,
+    "company.tasks": <FileClock size={17} />,
     "public.notification-templates": <Settings2 size={17} />,
     "company.overview": <LayoutDashboard size={17} />,
     "company.configuration": <ShieldCheck size={17} />,
@@ -442,6 +448,8 @@ function CompanyContent({
   section: CompanySection;
 }) {
   switch (section) {
+    case "tasks":
+      return <Suspense fallback={<Notice>جارٍ تحميل المهام…</Notice>}><AutomaticTasksPage key={context.company.id} context={context}/></Suspense>;
     case "memos":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل المذكرات…</Notice>}>
@@ -891,6 +899,7 @@ function Workspace() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<AuthPage mode="login" />} />
+              <Route path="/tasks" element={<Protected><PageRouteGuard pageKey="public.tasks"><Suspense fallback={<Notice>جارٍ تحميل المهام…</Notice>}><AutomaticTasksPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route
                 path="/notifications"
