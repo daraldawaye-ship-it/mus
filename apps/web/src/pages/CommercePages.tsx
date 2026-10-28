@@ -237,7 +237,9 @@ function InvoiceList({
         header: "الطبيب أو الجهة",
         size: 175,
         enableSorting: false,
-        cell: ({row}) => <ValueCell>{row.original.doctorName || "—"}</ValueCell>,
+        cell: ({row}) => row.original.doctorName && row.original.doctorId
+          ? <Link to={`/companies/${companyId}/doctors?focus=${row.original.doctorId}`}>{row.original.doctorName}</Link>
+          : <ValueCell>{row.original.doctorName || "—"}</ValueCell>,
       } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
@@ -2985,7 +2987,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             aria-activedescendant={doctorActiveIndex >= 0 && doctorResults[doctorActiveIndex]
               ? `invoice-doctor-option-${doctorResults[doctorActiveIndex]!.id}` : undefined}
             maxLength={240}
-            placeholder="ابحث أو اكتب اسمًا جديدًا دون إضافته للكروت"
+            placeholder="ابحث أو اكتب اسمًا جديدًا لإضافته تلقائيًا للكروت"
             onChange={event=>{
               setDoctorQuery(event.target.value);
               setDoctorSelected(null);
@@ -3029,7 +3031,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               }
             }}/>
           </div>
-          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل وحفظه دون إنشاء كرت.</small>
+          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل؛ عند حفظ الفاتورة يُنشأ كرت دون فئة ويُرسل تنبيه للمتابعة.</small>
           <div id="invoice-doctor-options" ref={doctorOptionsRef} className="invoice-doctor-options"
             role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
@@ -3046,10 +3048,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 doctorField.current?.focus();
               }}>
               <strong>{doctor.name}</strong>
-              <small>{doctor.kind==="doctor"?"طبيب":doctor.kind==="nurse"?"ممرض":"جهة"}{doctor.department?" · "+doctor.department:""}</small>
+              <small>{doctor.kind==="doctor"?"طبيب":doctor.kind==="nurse"?"ممرض":doctor.kind==="entity"?"جهة":"بدون فئة"}{doctor.department?" · "+doctor.department:""}</small>
             </button>)}
             {!doctorChoices.isLoading&&doctorChoices.data?.items.length===0&&<small>
-              لا يوجد اسم مطابق في الكروت. يمكنك حفظ الاسم المكتوب مباشرة دون معرّف.
+              لا يوجد اسم مطابق في الكروت. يمكنك حفظ الاسم المكتوب، وسيُنشأ كرت جديد تلقائيًا دون فئة.
             </small>}
           </div>
           <div className="form-actions">
@@ -3284,7 +3286,9 @@ function InvoiceViewer({
             </span>
           )}
           {invoice.kind === "sale" && invoice.doctorName && (
-            <span>الطبيب أو الجهة: {invoice.doctorName}</span>
+            <span>الطبيب أو الجهة: {invoice.doctorId
+              ? <Link to={`/companies/${companyId}/doctors?focus=${invoice.doctorId}`}>{invoice.doctorName}</Link>
+              : invoice.doctorName}</span>
           )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
