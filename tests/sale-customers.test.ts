@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { invoiceSchema } from "../packages/contracts/src/commerce.ts";
+import { invoiceSchema, normalizeSaleCustomer } from "../packages/contracts/src/commerce.ts";
 import { saleCustomerInputSchema } from "../packages/contracts/src/sale-customers.ts";
 
 const input={
@@ -28,8 +28,9 @@ test("name without number does not block invoice and is discarded",()=>{
   const result=invoiceSchema.safeParse({...input,saleCustomerName:"عميل بلا رقم"});
   assert.equal(result.success,true);
   if(result.success){
-    assert.equal(result.data.saleCustomerNumber,"");
-    assert.equal(result.data.saleCustomerName,"");
+    const persisted = normalizeSaleCustomer(result.data);
+    assert.equal(persisted.saleCustomerNumber,"");
+    assert.equal(persisted.saleCustomerName,"");
   }
 });
 test("customer number without name can be saved and resolved by the backend",()=>{
