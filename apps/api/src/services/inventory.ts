@@ -245,6 +245,8 @@ export function stockBalanceDTO(row: QueryResultRow): StockBalance {
   };
 }
 export const stockMovementFrom = `FROM stock_movements m
+  LEFT JOIN invoices doctor_invoice
+    ON doctor_invoice.company_id=m.company_id AND doctor_invoice.id=m.invoice_id
   LEFT JOIN stock_movement_supplier_hints supplier_hint
     ON supplier_hint.company_id=m.company_id AND supplier_hint.movement_id=m.id
   JOIN items i ON i.company_id=m.company_id AND i.id=m.item_id
@@ -254,7 +256,9 @@ export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_tex
   COALESCE(m.supplier_account_id,supplier_hint.supplier_account_id) AS effective_supplier_account_id,
   COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) AS effective_supplier_account_code,
   COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) AS effective_supplier_account_name,
-  supplier_hint.inference_source AS supplier_inference_source ${stockMovementFrom}`;
+  supplier_hint.inference_source AS supplier_inference_source,
+  doctor_invoice.doctor_id AS referral_doctor_id,
+  doctor_invoice.doctor_name AS referral_doctor_name ${stockMovementFrom}`;
 export function stockMovementDTO(row: QueryResultRow): StockMovement {
   return {
     id: row.id,
@@ -266,6 +270,8 @@ export function stockMovementDTO(row: QueryResultRow): StockMovement {
     supplierAccountCode: row.effective_supplier_account_code ?? null,
     supplierAccountName: row.effective_supplier_account_name ?? null,
     supplierInferenceSource: row.supplier_inference_source ?? null,
+    doctorId: row.referral_doctor_id ?? null,
+    doctorName: row.referral_doctor_name ?? null,
     locationId: row.location_id,
     locationName: row.location_name,
     branchId: row.branch_id,

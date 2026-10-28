@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
-  doctorKinds,doctorKindLabels,doctorInputSchema,
+  doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,
   type Doctor,type DoctorKind,type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import { api,usePagedQuery,useScopeGuard } from "../api";
@@ -16,7 +16,7 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
   const companyId=context.company.id;
   const guard=useScopeGuard(`company:${companyId}:doctor:${doctor?.id??"new"}`);
   const [name,setName]=useState(doctor?.name??"");
-  const [kind,setKind]=useState<DoctorKind>(doctor?.kind??"doctor");
+  const [kind,setKind]=useState<DoctorKind|"">(doctor?.kind??(doctor?"":"doctor"));
   const [department,setDepartment]=useState(doctor?.department??"");
   const [phone,setPhone]=useState(doctor?.phone??"");
   const [searchKeys,setSearchKeys]=useState(doctor?.searchKeys??"");
@@ -31,7 +31,8 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
   async function save(event:FormEvent) {
     event.preventDefault();
     if(saving)return;
-    const parsed=doctorInputSchema.safeParse({name,kind,department,phone,searchKeys,notes,active});
+    const schema = doctor ? doctorPatchSchema : doctorInputSchema;
+    const parsed=schema.safeParse({name,kind:kind||null,department,phone,searchKeys,notes,active});
     if(!parsed.success){setError(parsed.error.issues[0]?.message??"تحقق من الحقول");return;}
     setSaving(true);setError("");
     try {
@@ -51,8 +52,9 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
       {error&&<Notice tone="error">{error}</Notice>}
       <Field label="اسم الطبيب أو الجهة" value={name} autoFocus required maxLength={240}
         disabled={saving} onChange={event=>setName(event.target.value)}/>
-      <Select label="النوع" value={kind} disabled={saving}
-        onChange={event=>setKind(event.target.value as DoctorKind)}>
+      <Select label="الفئة" value={kind} disabled={saving}
+        onChange={event=>setKind(event.target.value as DoctorKind|"")}>
+        <option value="" disabled={!doctor}>بدون فئة — يحتاج مراجعة</option>
         {doctorKinds.map(type=><option key={type} value={type}>{doctorKindLabels[type]}</option>)}
       </Select>
       <Field label="الجهة / القسم" value={department} list="doctor-department-suggestions"
@@ -74,6 +76,9 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
         onChange={event=>setActive(event.target.value==="true")}>
         <option value="true">فعّال</option><option value="false">مؤرشف</option>
       </Select>
+      {doctor && <Link className="button button-secondary" to={`/companies/${companyId}/stock-movements?doctorId=${doctor.id}`}>
+        عرض حركات الأصناف للطبيب أو الجهة
+      </Link>}
       <div className="form-actions">
         <Button type="submit" disabled={saving}>{saving?"جارٍ الحفظ…":"حفظ"}</Button>
         <Button variant="secondary" disabled={saving} onClick={onClose}>العودة</Button>
@@ -93,9 +98,28 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   );
   const [editing,setEditing]=useState<Doctor|"new"|null>(null);
   const [notice,setNotice]=useState("");
+  // Notifications open the existing card; saving the review closes it.
+  const focusId = Number(params.get("focus"));
+  const focus = Number.isSafeInteger(focusId) && focusId > 0 ? focusId : null;
+  const focused = useQuery({
+    queryKey:["doctor-notification-focus",companyId,focus],
+    enabled:mayManage && focus!==null,
+    queryFn:({signal})=>api<{doctor:Doctor}>(`/companies/${companyId}/doctors/${focus}`,{signal}),
+  });
+  useEffect(()=>{
+    if(focused.data?.doctor)setEditing(focused.data.doctor);
+  },[focused.data?.doctor?.id,focused.data?.doctor?.revision]);
+  function closeCard(){
+    setEditing(null);
+    if(focus!==null)setParams(previous=>{
+      const next=new URLSearchParams(previous);
+      next.delete("focus");
+      return next;
+    });
+  }
   const columns:ColumnDef<Doctor,unknown>[]=[
     {accessorKey:"name",header:"اسم الطبيب أو الجهة",cell:({row})=><ValueCell>{row.original.name}</ValueCell>},
-    {accessorKey:"kind",header:"النوع",cell:({row})=>doctorKindLabels[row.original.kind]},
+    {accessorKey:"kind",header:"الفئة",cell:({row})=>row.original.kind ? doctorKindLabels[row.original.kind] : "بدون فئة — مراجعة"},
     {accessorKey:"department",header:"الجهة",cell:({row})=><ValueCell>{row.original.department||"—"}</ValueCell>},
     {accessorKey:"phone",header:"رقم الهاتف",enableSorting:false,cell:({row})=><ValueCell>{row.original.phone||"—"}</ValueCell>},
     {accessorKey:"searchKeys",header:"مفاتيح البحث",enableSorting:false,cell:({row})=><ValueCell>{row.original.searchKeys||"—"}</ValueCell>},
@@ -110,6 +134,8 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
     <PageHeader title="كرت الأطباء والجهات" description="الأطباء والممرضون والجهات، دون إنشاء حساب محاسبي."
       actions={mayManage?<Button onClick={()=>setEditing("new")}>إضافة كرت</Button>:undefined}/>
     {notice&&<Notice tone="success">{notice}</Notice>}
+    {focus!==null && !mayManage && <Notice tone="warning">فتح هذا الكرت للتعديل يحتاج صلاحية إدارة الأطباء والجهات.</Notice>}
+    {focused.isError && <Notice tone="error">{errorMessage(focused.error)}</Notice>}
     <Card title="الأطباء والجهات">
       <div className="table-filters">
         <Field label="بحث" type="search" value={list.query}
@@ -130,8 +156,8 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
     </Card>
     {mayManage&&editing!==null&&<DoctorCard key={editing==="new"?"new":editing.id}
       context={context} doctor={editing==="new"?null:editing}
-      onClose={()=>setEditing(null)} onSaved={()=>{
-        setEditing(null);setNotice("تم حفظ كرت الطبيب أو الجهة.");
+      onClose={closeCard} onSaved={()=>{
+        closeCard();setNotice("تم حفظ كرت الطبيب أو الجهة.");
         void list.refetch();
       }}/>}
   </>;
