@@ -9,10 +9,11 @@ import { Button, Dialog, Notice } from "../ui";
 import { ChatGroupDetailsDialog } from "./ChatGroupDialogs";
 import { ChatAvatar } from "./ChatAvatar";
 import { ChatEmojiPicker } from "./ChatEmojiPicker";
+import { ChatImagePicker, type ChatAttachedImage } from "./ChatImagePicker";
 
-interface GroupProps { user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
+interface GroupProps { allowImages: boolean; user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
 interface GroupDetail { group: ChatGroup; members: ChatGroupMember[]; }
-interface PendingGroupMessage { clientMessageId: string; text: string; membershipRevision: number; createdAt: string; }
+interface PendingGroupMessage { clientMessageId: string; text: string; imageId?: string; membershipRevision: number; createdAt: string; }
 interface GroupDraft { text: string; membershipRevision: number | null; }
 interface GroupLocalState { draft: GroupDraft; pending: PendingGroupMessage[]; }
 const emptyLocal = (): GroupLocalState => ({ draft: { text: "", membershipRevision: null }, pending: [] });
@@ -43,7 +44,8 @@ function readLocal(key: string): GroupLocalState {
     return {
       draft: typeof value.draft?.text === "string" && value.draft.text.length <= 4_000 && (value.draft.membershipRevision === null || Number.isInteger(value.draft.membershipRevision)) ? value.draft : emptyLocal().draft,
       pending: (Array.isArray(value.pending) ? value.pending : []).filter(message =>
-        !!message && typeof message.text === "string" && message.text.length > 0 && message.text.length <= 4_000 &&
+        !!message && typeof message.text === "string" && message.text.length <= 4_000 &&
+        (message.text.length > 0 || (typeof message.imageId === "string" && /^[a-f0-9-]{36}$/i.test(message.imageId))) &&
         typeof message.clientMessageId === "string" && /^[a-f0-9-]{36}$/i.test(message.clientMessageId) &&
         Number.isInteger(message.membershipRevision) && message.membershipRevision > 0 && Number.isFinite(Date.parse(message.createdAt)),
       ),
@@ -71,7 +73,7 @@ export function GroupChatPanel(props: GroupProps) {
   </>;
 }
 
-function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBack, onDetails }: GroupProps & { detail: GroupDetail; onDetails: () => void; }) {
+function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBack, onDetails, allowImages }: GroupProps & { detail: GroupDetail; onDetails: () => void; }) {
   const { group, members } = detail;
   const client = useQueryClient();
   const active = useActivePage();
@@ -94,6 +96,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
   const olderScroll = useRef<{ height: number; top: number } | null>(null);
   const [newMessages, setNewMessages] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachment, setAttachment] = useState<ChatAttachedImage | null>(null);
   const [receiptMessageId, setReceiptMessageId] = useState<number | null>(null);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [restorePending, setRestorePending] = useState<PendingGroupMessage | null>(null);
@@ -181,7 +184,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
     sendingRef.current.add(message.clientMessageId); setSending(new Set(sendingRef.current));
     setSendErrors(previous => ({ ...previous, [message.clientMessageId]: { text: "", rejected: false } }));
     try {
-      const result = await api<{ message: ChatGroupMessage }>(`/chat/groups/${groupId}/messages`, { method: "POST", signal: guard.signal, body: { ...contextBody(scope, companyId), clientMessageId: message.clientMessageId, text: message.text, membershipRevision: message.membershipRevision } });
+      const result = await api<{ message: ChatGroupMessage }>(`/chat/groups/${groupId}/messages`, { method: "POST", signal: guard.signal, body: { ...contextBody(scope, companyId), clientMessageId: message.clientMessageId, text: message.text, ...(message.imageId ? {imageId:message.imageId} : {}), membershipRevision: message.membershipRevision } });
       if (!guard.isCurrent()) return;
       client.setQueryData<InfiniteData<ChatPage<ChatGroupMessage>>>(messageKey, previous => {
         if (!previous) return { pages: [{ items: [result.message], nextCursor: null }], pageParams: [null] };
@@ -205,9 +208,10 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
   const restoredText = restorePending ? [local.draft.text, restorePending.text].filter(Boolean).join("\n") : "";
   const submit = (event?: FormEvent) => {
     event?.preventDefault(); const draft = localRef.current.draft;
-    if (!draft.text.trim() || draft.text.length > 4_000 || inaccessible || messages.isPending) return;
-    if (draft.membershipRevision !== group.membershipRevision) { setAudienceOpen(true); return; }
-    const message: PendingGroupMessage = { clientMessageId: crypto.randomUUID(), text: draft.text.trim(), membershipRevision: draft.membershipRevision, createdAt: new Date().toISOString() };
+    if ((!draft.text.trim() && !attachment) || draft.text.length > 4_000 || inaccessible || messages.isPending || (!!attachment && !allowImages)) return;
+    if (draft.membershipRevision !== null && draft.membershipRevision !== group.membershipRevision) { setAudienceOpen(true); return; }
+    const message: PendingGroupMessage = { clientMessageId: crypto.randomUUID(), text: draft.text.trim(), ...(attachment ? {imageId:attachment.id} : {}), membershipRevision: draft.membershipRevision ?? group.membershipRevision, createdAt: new Date().toISOString() };
+    setAttachment(null);
     updateLocal(previous => ({ draft: { text: "", membershipRevision: null }, pending: [...previous.pending, message] }));
     nearBottom.current = true; void sendPending(message);
   };
@@ -225,11 +229,11 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
         const own = message.senderId === user.id; const ownReceipt = message.receipts.find(row => row.userId === user.id);
         return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message chat-group-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-group-message-id={message.id} data-chat-group-unread={ownReceipt && !ownReceipt.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : message.senderName}: ${message.text}`}>
           <div className="chat-group-sender"><ChatAvatar name={message.senderName} avatarUrl={message.senderAvatarUrl} size="tiny" /><strong>{own ? "أنت" : message.senderName}</strong></div>
-          <p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <span className="chat-receipt">تم الإرسال</span>}</div>
+          <p dir="auto">{message.text}</p>{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer" aria-label="فتح صورة المجموعة"><img className="chat-inline-image" src={message.imageUrl} alt="صورة مرفقة بالمجموعة" loading="lazy"/></a>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <span className="chat-receipt">تم الإرسال</span>}</div>
           {own && <button className={`chat-group-receipt-button ${message.recipientCount > 0 && message.readCount === message.recipientCount ? "chat-receipt-read" : ""}`} aria-label="تفاصيل استلام الرسالة وعرضها" onClick={() => setReceiptMessageId(message.id)}><CheckCheck size={14} /><span>تم الاستلام {message.deliveredCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span><span>تم العرض {message.readCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span></button>}
         </article></div>;
       })}
-      {!inaccessible && pending.map(message => <article key={message.clientMessageId} className="chat-message chat-message-own chat-message-pending" data-chat-group-pending-id={message.clientMessageId}><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time><span className="chat-receipt">{sending.has(message.clientMessageId) ? <><Clock3 size={13} />جارٍ الإرسال…</> : <><CircleAlert size={13} />لم يتأكد الإرسال</>}</span></div>{!sending.has(message.clientMessageId) && <div className="chat-send-error"><span>{sendErrors[message.clientMessageId]?.text || "إعادة المحاولة تحفظ الرسالة وأعضاءها المقصودين."}</span><Button variant="ghost" size="compact" aria-label="إعادة إرسال رسالة المجموعة" onClick={() => void sendPending(message)}><RefreshCw size={13} />إعادة الإرسال</Button>{sendErrors[message.clientMessageId]?.rejected && <Button variant="ghost" size="compact" onClick={() => setRestorePending(message)}>نقل النص إلى المسودة</Button>}</div>}</article>)}
+      {!inaccessible && pending.map(message => <article key={message.clientMessageId} className="chat-message chat-message-own chat-message-pending" data-chat-group-pending-id={message.clientMessageId}><p dir="auto">{message.text}</p>{message.imageId && <small>📷 صورة مرفقة</small>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time><span className="chat-receipt">{sending.has(message.clientMessageId) ? <><Clock3 size={13} />جارٍ الإرسال…</> : <><CircleAlert size={13} />لم يتأكد الإرسال</>}</span></div>{!sending.has(message.clientMessageId) && <div className="chat-send-error"><span>{sendErrors[message.clientMessageId]?.text || "إعادة المحاولة تحفظ الرسالة وأعضاءها المقصودين."}</span><Button variant="ghost" size="compact" aria-label="إعادة إرسال رسالة المجموعة" onClick={() => void sendPending(message)}><RefreshCw size={13} />إعادة الإرسال</Button>{sendErrors[message.clientMessageId]?.rejected && <Button variant="ghost" size="compact" onClick={() => setRestorePending(message)}>نقل النص إلى المسودة</Button>}</div>}</article>)}
     </div>{newMessages && <Button className="chat-jump-latest" variant="secondary" size="compact" onClick={scrollToBottom}><ArrowDown size={14} />أحدث الرسائل</Button>}</div>
     <form className="chat-composer" onSubmit={submit}>{draftChanged && <Notice tone="warning">تغيّر أعضاء المجموعة. راجع الأعضاء قبل الإرسال.<Button variant="ghost" size="compact" onClick={() => setAudienceOpen(true)}>مراجعة الأعضاء</Button></Notice>}<div className="chat-composer-row"><textarea ref={composer} aria-label="نص رسالة المجموعة" placeholder="اكتب رسالة للمجموعة…" dir="auto" rows={2} maxLength={4_000} value={local.draft.text} disabled={inaccessible} onChange={event => {
       const text = event.target.value;
@@ -240,7 +244,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
           membershipRevision: text ? previous.draft.text ? previous.draft.membershipRevision : group.membershipRevision : null,
         },
       }));
-    }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }} /><ChatEmojiPicker textareaRef={composer} value={local.draft.text} disabled={inaccessible} obscured={obscured || !!selectedReceipt || audienceOpen || !!restorePending} onOpenChange={setEmojiOpen} onChange={text => updateLocal(previous => ({ ...previous, draft: { text, membershipRevision: text ? previous.draft.text ? previous.draft.membershipRevision : group.membershipRevision : null } }))} /><Button type="submit" className="chat-send-button" disabled={!local.draft.text.trim() || inaccessible || messages.isPending} aria-label="إرسال رسالة المجموعة" title="إرسال رسالة المجموعة"><Send size={19} /></Button></div><div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span><span>إلى أعضاء المجموعة الحاليين</span></div></form>
+    }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }} /><ChatImagePicker scope={scope} companyId={companyId} enabled={allowImages} disabled={inaccessible || messages.isPending} value={attachment} onChange={setAttachment}/><ChatEmojiPicker textareaRef={composer} value={local.draft.text} disabled={inaccessible} obscured={obscured || !!selectedReceipt || audienceOpen || !!restorePending} onOpenChange={setEmojiOpen} onChange={text => updateLocal(previous => ({ ...previous, draft: { text, membershipRevision: text ? previous.draft.text ? previous.draft.membershipRevision : group.membershipRevision : null } }))} /><Button type="submit" className="chat-send-button" disabled={(!local.draft.text.trim() && !attachment) || inaccessible || messages.isPending} aria-label="إرسال رسالة المجموعة" title="إرسال رسالة المجموعة"><Send size={19} /></Button></div><div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span><span>إلى أعضاء المجموعة الحاليين</span></div></form>
     <Dialog open={!!selectedReceipt} onClose={() => setReceiptMessageId(null)} title="تفاصيل استلام الرسالة وعرضها" className="chat-group-dialog"><p className="muted chat-group-receipt-hint">المستلمون المثبتون عند إرسال هذه الرسالة؛ مغادرة المجموعة لا تغيّر عددهم.</p><div className="chat-group-receipt-list">{selectedReceipt?.receipts.map(receipt => <div key={receipt.userId} className="chat-group-receipt-row"><ChatAvatar name={receipt.name} avatarUrl={receipt.avatarUrl} size="small" /><strong>{receipt.name}</strong><div><span>{receipt.deliveredAt ? `تم الاستلام · ${timeFormat.format(new Date(receipt.deliveredAt))}` : "لم يُؤكد الاستلام"}</span><span className={receipt.readAt ? "chat-receipt-read" : "muted"}>{receipt.readAt ? `تم العرض · ${timeFormat.format(new Date(receipt.readAt))}` : "لم يُؤكد العرض"}</span></div></div>)}{selectedReceipt?.recipientCount === 0 && <p className="muted">لا يوجد مستلم آخر لهذه الرسالة.</p>}</div></Dialog>
     <Dialog open={audienceOpen} onClose={() => setAudienceOpen(false)} title="مراجعة أعضاء الرسالة" footer={<><Button variant="secondary" onClick={() => setAudienceOpen(false)}>رجوع</Button><Button onClick={() => { updateLocal(previous => ({ ...previous, draft: { ...previous.draft, membershipRevision: group.membershipRevision } })); setAudienceOpen(false); }}>اعتماد الأعضاء الحاليين</Button></>}><p className="muted">ستُرسل المسودة عند تأكيد الإرسال إلى الأعضاء الحاليين:</p><ul className="chat-group-audience-list">{members.filter(member => member.id !== user.id).map(member => <li key={member.id}>{member.name}</li>)}</ul></Dialog>
     <Dialog open={!!restorePending} onClose={() => setRestorePending(null)} title="نقل النص إلى المسودة" footer={<><Button variant="secondary" onClick={() => setRestorePending(null)}>رجوع</Button><Button disabled={restoredText.length > 4_000} onClick={() => { if (!restorePending || restoredText.length > 4_000) return; const frozen = restorePending; updateLocal(previous => ({ draft: { text: [previous.draft.text, frozen.text].filter(Boolean).join("\n"), membershipRevision: null }, pending: previous.pending.filter(message => message.clientMessageId !== frozen.clientMessageId) })); setRestorePending(null); setAudienceOpen(true); }}>نقل النص ومراجعة الأعضاء</Button></>}><p>رفض الخادم هذه المحاولة. سيُنقل النص إلى مسودة جديدة لمراجعة الأعضاء قبل الإرسال.</p>{local.draft.text && <Notice tone={restoredText.length > 4_000 ? "error" : "warning"}>{restoredText.length > 4_000 ? "تتجاوز المسودة مع الرسالة حد ٤٬٠٠٠ محرف. احتفظ بمسودتك أو أرسلها أولًا قبل نقل الرسالة." : "توجد مسودة حالية؛ سيُضاف نص الرسالة إليها."}</Notice>}</Dialog>
