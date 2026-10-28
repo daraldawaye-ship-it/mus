@@ -6,6 +6,7 @@ import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
+import { takeReadingSlice } from "./explanation-reading-pagination.ts";
 
 const integer = z.number().int().positive().max(2147483647);
 const acl = z.object({
@@ -152,8 +153,9 @@ export function explanationRoutes(pool:Pool):Router {
   }));
 
 
-  // Continuous reader: return a stable, permission-filtered document in
-  // sequential 50-record slices. Printing explicitly requests all visible rows.
+  // Continuous reader: return permission-filtered slices of about 50 text lines,
+  // not 50 whole nodes. A single guide chapter can contain dozens of wrapped lines.
+  // Printing still retrieves all visible records for the selected group.
   router.get("/explanations/groups/:groupId/document",handler(async(req,res)=>{
     const user=actor(req),group=await groupById(pool,id(req.params.groupId));
     const base=groupGrant(user,group);
@@ -163,7 +165,12 @@ export function explanationRoutes(pool:Pool):Router {
       all:z.enum(["true","false"]).optional(),
     }).strict(),req.query);
     const rows=(await pool.query(
-      "SELECT id,parent_id,position,kind,title,body,evidence,color,font_size,read_acl,edit_acl FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",
+      "SELECT id,parent_id,position,kind,title,color,font_size,read_acl,edit_acl, "+
+      "char_length(body) AS body_chars, "+
+      "(char_length(body)-char_length(replace(body,chr(10),''))) AS body_breaks, "+
+      "char_length(evidence) AS evidence_chars, "+
+      "(char_length(evidence)-char_length(replace(evidence,chr(10),''))) AS evidence_breaks "+
+      "FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",
       [group.id])).rows as NodeRow[];
     const children=new Map<number|null,NodeRow[]>();
     for(const node of rows){
@@ -189,8 +196,12 @@ export function explanationRoutes(pool:Pool):Router {
     const printing=query.all==="true";
     if(printing&&ordered.length>10000)
       throw new HttpError(413,"document_too_large","الملف يتجاوز سعة الطباعة الكاملة");
-    const slice=printing?ordered:ordered.slice(query.offset,query.offset+50);
+    const slice=printing?ordered:takeReadingSlice(ordered,query.offset);
     const ids=slice.map(({row})=>row.id);
+    // Fetch long text only for this page, not for every chapter in the collection.
+    const contents=ids.length?(await pool.query(
+      "SELECT id,body,evidence FROM explanation_nodes WHERE id=ANY($1::integer[])",[ids])).rows:[];
+    const contentsById=new Map<number,QueryResultRow>(contents.map(r=>[r.id as number,r]));
     const files=ids.length?(await pool.query(
       'SELECT id,node_id,filename,display_name AS "displayName",mime_type AS "mimeType" FROM explanation_assets WHERE node_id=ANY($1::integer[]) ORDER BY created_at,id',
       [ids])).rows:[];
@@ -206,7 +217,7 @@ export function explanationRoutes(pool:Pool):Router {
       hasMore:!printing&&query.offset+slice.length<ordered.length,
       nodes:slice.map(({row,depth,ordinal,parentKind})=>({
         id:row.id,parentId:row.parent_id,depth,ordinal,parentKind,
-        kind:row.kind,title:row.title,body:row.body,evidence:row.evidence,
+        kind:row.kind,title:row.title,body:contentsById.get(row.id)?.body??"",evidence:contentsById.get(row.id)?.evidence??"",
         color:row.color,fontSize:row.font_size,assets:byNode.get(row.id)??[],
       })),
     });
