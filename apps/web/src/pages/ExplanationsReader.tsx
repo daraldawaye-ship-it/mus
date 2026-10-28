@@ -39,10 +39,10 @@ export function ExplanationsTopicIndex() {
  const {user}=useSession();
  const navigate=useNavigate();
  const [params,setParams]=useSearchParams();
- const slug=params.get("group")||"mustafa-cases";
+ const slug=params.get("group")||"";
  const groups=useQuery({queryKey:["explanations","groups",user?.id],
    queryFn:()=>api<{items:Group[]}>("/explanations/groups"),enabled:!!user});
- const group=groups.data?.items.find(g=>g.slug===slug)??groups.data?.items[0];
+ const group=slug?groups.data?.items.find(g=>g.slug===slug):undefined;
  const topics=useQuery({queryKey:["explanations","topics",user?.id,group?.id],
    queryFn:()=>api<TopicIndex>("/explanations/groups/"+group!.id+"/topics"),enabled:!!group});
  return <section className="explain-reader-index" dir="rtl">
@@ -53,10 +53,12 @@ export function ExplanationsTopicIndex() {
   {groups.data?.items.length===0&&<Notice>ليست لديك صلاحية قراءة مجموعات الشروح.</Notice>}
   {groups.data&&groups.data.items.length>0&&<div className="explain-reader-choose">
    <label htmlFor="reader-group">اختر الموضوع</label>
-   <select id="reader-group" value={group?.slug??""} onChange={e=>setParams({group:e.target.value})}>
+   <select id="reader-group" value={group?.slug??""} onChange={e=>setParams(e.target.value?{group:e.target.value}:{})}>
+    <option value="">— اختر الموضوع —</option>
     {groups.data.items.map(g=><option key={g.id} value={g.slug}>{g.title}</option>)}
    </select>
   </div>}
+  {!group&&!groups.isPending&&<Notice>اختر موضوعًا من القائمة أعلاه لعرض فصوله دون تحميل باقي المواضيع.</Notice>}
   {topics.error&&<Notice tone="error">{errorMessage(topics.error)}</Notice>}
   {topics.isPending&&group&&<Notice>جارٍ تحميل قائمة العناوين…</Notice>}
   {topics.data&&<div className="explain-reader-list">
