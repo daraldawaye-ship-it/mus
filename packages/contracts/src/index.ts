@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { employeePositionListSchema, type EmployeePosition } from "./employee-positions.ts";
 export * from "./employee-positions.ts";
+export * from "./sale-customers.ts";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
 import { itemCatalog } from "./items.ts";
