@@ -11,6 +11,8 @@ type Question = {
   options:string[]; optionCount:number; correctAnswer:number|null; points:number;
   active:boolean; revision:number; creatorName:string; createdAt:string;
   answerCount:number; respondentCount:number; myAnswerCount:number; myLastAnsweredAt:string|null;
+  myLastSelectedAnswer:number|null; myLastCorrect:boolean|null; myLastPoints:number|null;
+  myLastComment:string|null; otherOptionCounts:number[]|null;
 };
 type Answer = {
   id:string; questionId:number; userId:number; userName:string; question:string;
@@ -23,6 +25,10 @@ type Draft={
   correctAnswer:number;points:number;active:boolean;
 };
 type Submission = {selectedAnswer:number;comment:string|null;idempotencyKey:string};
+type AnswerOutcome = {
+  selectedAnswer:number;correct:boolean;correctAnswer:number|null;
+  points:number;firstAttempt?:boolean;comment:string|null;otherOptionCounts:number[];
+};
 const blank=():Draft=>({category:"",priority:1,question:"",options:["","","",""],correctAnswer:1,points:1,active:true});
 const date=(value:string|null)=>value
   ? new Intl.DateTimeFormat("ar-YE",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Aden"}).format(new Date(value))
@@ -60,6 +66,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [order,setOrder]=useState<number[]>([]);
   const [comment,setComment]=useState("");
   const [pendingAnswer,setPendingAnswer]=useState<Submission|null>(null);
+  const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
   const [sending,setSending]=useState(false);
   const [draft,setDraft]=useState<Draft|null>(null);
   const [editing,setEditing]=useState<Question|null>(null);
@@ -78,6 +85,15 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   });
   const questions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
+  function outcomeFor(question:Question): AnswerOutcome|null {
+    if (savedAnswers[question.id]) return savedAnswers[question.id]!;
+    if (question.myLastSelectedAnswer===null || question.myLastCorrect===null) return null;
+    return {
+      selectedAnswer:question.myLastSelectedAnswer,correct:question.myLastCorrect,
+      correctAnswer:question.correctAnswer,points:question.myLastPoints??0,
+      comment:question.myLastComment,otherOptionCounts:question.otherOptionCounts??[],
+    };
+  }
   function openAnswer(question:Question) {
     setOpened(prev=>prev===question.id?null:question.id);
     setOrder(shuffled(question.options.length));setChosen(null);setComment("");setPendingAnswer(null);
@@ -85,23 +101,21 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   }
   async function submitAnswer(event:FormEvent,question:Question) {
     event.preventDefault();
-    if(sending||!canAnswer)return;
+    if(sending||!canAnswer||outcomeFor(question))return;
     const payload=pendingAnswer??(chosen===null?null:{
       selectedAnswer:chosen,comment:comment.trim()||null,idempotencyKey:crypto.randomUUID()
     });
     if(!payload){setError("اختر إجابة من الخيارات المتاحة");return;}
     setPendingAnswer(payload);setSending(true);setError("");setMessage("");
     try{
-      const result=await api<{correct:boolean;points:number;firstAttempt?:boolean}>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
-      setPendingAnswer(null);setOpened(null);setComment("");setChosen(null);
-      setMessage(result.correct
-        ? result.firstAttempt
-          ? `إجابة صحيحة من المحاولة الأولى؛ حصلت على ${result.points} نقطة.`
-          : "إجابة صحيحة؛ لا تُمنح نقاط إضافية بعد المحاولة الأولى."
-        : result.firstAttempt
-          ? "سُجلت المحاولة الأولى؛ الإجابة غير صحيحة ولا نقاط لهذه المحاولة."
-          : "تم تسجيل الإجابة الجديدة دون نقاط إضافية.");
-      void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
+      const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
+      setSavedAnswers(prev=>({...prev,[question.id]:{
+        ...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment
+      }}));
+      setPendingAnswer(null);setComment("");setChosen(null);
+      // Keep this question in place; refetching the list here would reorder answered
+      // questions to the bottom and make the just-answered question disappear.
+      // Other tabs or later visits refetch normally.
     }catch(cause){setError(errorMessage(cause));}
     finally{setSending(false);}
   }
@@ -181,41 +195,59 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       </div>
       {list.isFetching&&!list.data&&<Notice>جارٍ تحميل السجلات…</Notice>}
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
-      {tab==="questions"&&questions.map(question=><article key={question.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
+      {tab==="questions"&&questions.map(question=>{
+        const answered=outcomeFor(question);
+        return <article key={question.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>;
         <div className="page-actions" style={{justifyContent:"space-between",flexWrap:"wrap"}}>
           <strong>{question.question}</strong>
           <span>{question.category||"بدون فئة"} · الأولوية {question.priority} · {question.options.length} خيارات</span>
         </div>
         <p>أنشئ بواسطة: {question.creatorName} · {date(question.createdAt)} · نقاط الجواب: {question.points}</p>
         <p>الإجابات: {question.answerCount} · المستخدمون: {question.respondentCount} · إجاباتك: {question.myAnswerCount} · آخر إجابة لك: {date(question.myLastAnsweredAt)}</p>
-        <small>تُمنح نقاط الإجابة الصحيحة في أول محاولة فقط؛ إعادة الإجابة متاحة دون نقاط إضافية.</small>
+        <small>تُمنح نقاط الإجابة الصحيحة في أول محاولة فقط. بعد الإجابة تُقفل الخيارات ويظهر تقييمها.</small>
         {canEdit&&<div className="page-actions">
           <Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>
           {!question.active&&<span>السؤال غير فعال</span>}
         </div>}
-        {question.active&&canAnswer&&<Button variant="secondary" size="compact"
-          onClick={()=>openAnswer(question)}>{opened===question.id?"إغلاق":"الإجابة عن السؤال"}</Button>}
+        {question.active&&(canAnswer||answered)&&<Button variant="secondary" size="compact"
+          onClick={()=>openAnswer(question)}>{opened===question.id?"إخفاء التفاصيل":answered?"عرض إجابتي والنتائج":"الإجابة عن السؤال"}</Button>}
         {answersEntry?.actionAccess.view&&<Link className="button button-secondary button-compact" to={`${answersRoot}?questionId=${question.id}`}>عرض الإجابات</Link>}
         {opened===question.id&&question.active&&<form onSubmit={event=>void submitAnswer(event,question)} className="stack" style={{marginBlockStart:"0.8rem"}}>
-          <fieldset disabled={sending||!!pendingAnswer}>
-            <legend>اختر الإجابة الصحيحة</legend>
-            {order.map(i=><label key={i} style={{display:"block",marginBlock:"0.4rem"}}>
+          {answered&&<Notice tone={answered.correct?"success":"warning"}>
+            {answered.correct?"إجابتك صحيحة ✓":"إجابتك غير صحيحة ✗"}
+            {answered.points>0?` · حصلت على ${answered.points} نقطة`:" · لا توجد نقاط لهذه الإجابة"}
+          </Notice>}
+          <fieldset disabled={sending||!!pendingAnswer||!!answered}>
+            <legend>{answered?"الإجابة محفوظة ومقفلة":"اختر الإجابة الصحيحة"}</legend>
+            {order.map(i=><label key={i} style={{display:"block",marginBlock:"0.5rem",
+              padding:"0.5rem",borderRadius:"0.5rem",
+              border:answered&&answered.selectedAnswer===i+1?"1px solid currentColor":undefined}}>
               <input type="radio" name={`question-choice-${question.id}`}
-                checked={chosen===i+1} onChange={()=>setChosen(i+1)} />
+                checked={(answered?.selectedAnswer??chosen)===i+1} onChange={()=>setChosen(i+1)} />
               {" "}{question.options[i]}
+              {answered&&<span style={{marginInlineStart:"0.6rem"}}>
+                — {answered.otherOptionCounts[i]??0} من المستخدمين الآخرين
+                {answered.selectedAnswer===i+1?" · اختيارك":""}
+                {answered.correctAnswer===i+1?" · الإجابة الصحيحة":""}
+              </span>}
             </label>)}
           </fieldset>
-          <div className="field"><label htmlFor={`comment-${question.id}`}>تعليق (اختياري)</label>
-            <textarea id={`comment-${question.id}`} rows={3} maxLength={2000}
-              disabled={sending||!!pendingAnswer} value={comment}
-              placeholder="يمكنك توضيح سبب اختيارك أو إضافة ملاحظة"
-              onChange={e=>setComment(e.target.value)}/>
-          </div>
-          <Button type="submit" disabled={sending||chosen===null}>
-            {sending?"جارٍ التسجيل…":pendingAnswer?"إعادة إرسال المحاولة":"إرسال الإجابة"}
-          </Button>
+          {answered?<>
+            {answered.comment&&<p style={{whiteSpace:"pre-wrap"}}>تعليقك: {answered.comment}</p>}
+            <small>العدد لكل خيار يحسب آخر إجابة لكل مستخدم آخر، دون احتساب إجاباتك أو تكرار محاولاته.</small>
+          </>:<>
+            <div className="field"><label htmlFor={`comment-${question.id}`}>تعليق (اختياري)</label>
+              <textarea id={`comment-${question.id}`} rows={3} maxLength={2000}
+                disabled={sending||!!pendingAnswer} value={comment}
+                placeholder="يمكنك توضيح سبب اختيارك أو إضافة ملاحظة"
+                onChange={e=>setComment(e.target.value)}/>
+            </div>
+            <Button type="submit" disabled={sending||chosen===null}>
+              {sending?"جارٍ التسجيل…":pendingAnswer?"إعادة إرسال المحاولة":"إرسال الإجابة"}
+            </Button>
+          </>}
         </form>}
-      </article>)}
+      </article>;})}
       {tab==="answers"&&responses.map(answer=><article key={answer.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
         <div><strong>{answer.question}</strong></div>
         <p>{answer.userName} · {date(answer.answeredAt)} · السؤال #{answer.questionId}</p>
