@@ -507,6 +507,15 @@ page(
   { keywords: ["بيع", "مردود", "فاتورة"] },
 );
 page(
+  "company.sales-referrals",
+  "كروت الأطباء والجهات",
+  "الفواتير",
+  "/companies/:companyId/sales-referrals",
+  { view: permission("commerce.view"), edit: permission("commerce.manage") },
+  "كروت الأطباء والجهات من فواتير المبيعات؛ استكمال التصنيف والبيانات أو الأرشفة.",
+  { keywords: ["طبيب", "أطباء", "جهة", "جهات", "تصنيف", "أرشفة", "إحالة"] },
+);
+page(
   "company.purchases",
   "فواتير المشتريات",
   "الفواتير",
