@@ -32,7 +32,7 @@ test("228 public pharmacy questions are attributed to the verified Waleed accoun
 
   await runtime.pool.query(`
     INSERT INTO users(id,name,display_name,email,password_hash,kind)
-    VALUES (19,'Dr. Waleed Al-Sibakhi','Dr. Waleed Al-Sibakhi',
+    OVERRIDING SYSTEM VALUE VALUES (19,'Dr. Waleed Al-Sibakhi','Dr. Waleed Al-Sibakhi',
     'waleed-pharmacy-test@example.invalid','unused-test-only','member')`);
   await runtime.pool.query(sql);
   const result=await runtime.pool.query(`
