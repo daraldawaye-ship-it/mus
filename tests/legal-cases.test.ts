@@ -38,6 +38,12 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  const created=await owner.call("POST","/legal/cases",{title:"قضية اختبار ناتكو",priority:9});
  assert.equal(created.status,201,JSON.stringify(created.data));
  const caseId=created.data.record.id as number;
+ const urgentCase=await owner.call("POST","/legal/cases",{title:"قضية أولوية قصوى",priority:1});
+ const unrankedCase=await owner.call("POST","/legal/cases",{title:"قضية دون أولوية"});
+ assert.equal(urgentCase.status,201);
+ assert.equal(unrankedCase.status,201);
+ const sortedCases=await owner.call("GET","/legal/cases");
+ assert.deepEqual(sortedCases.data.items.map((c:{id:number})=>c.id).filter((i:number)=>[urgentCase.data.record.id,caseId,unrankedCase.data.record.id].includes(i)),[urgentCase.data.record.id,caseId,unrankedCase.data.record.id],"case priorities follow tasks: 1 first, 0 last");
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId+"/ai-export")).status,403);
  const beforeGrant=await reporter.call("GET","/legal/cases");
