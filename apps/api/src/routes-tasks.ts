@@ -14,7 +14,7 @@ type Kind = (typeof kinds)[number];
 const defaults: Record<Kind,{name:string;description:string;target:number;href:string;source:string}> = {
  memo_required: {name:"إنجاز المذكرات",description:"المذكرات المسندة إليك ولم يُعتمد إنجازها",target:1,href:"memos?box=required",source:"company.memos"},
  composition_review: {name:"مراجعة اختلاف التركيب",description:"تعديلات كرت الصنف أو كرت التركيب المسجلة باسمك خلال فترة التقييم",target:3,href:"item-compositions",source:"company.item-compositions"},
- stock_count: {name:"تسويات الأصناف",description:"تسوية الأصناف المستحقة للجرد وفق حركة المبيعات وآخر جرد للمعرض",target:10,href:"stock-adjustments",source:"company.stock-adjustments"},
+ stock_count: {name:"تسويات الأصناف",description:"تسوية الأصناف المستحقة للجرد وفق حركة المبيعات وآخر جرد للمعرض",target:10,href:"stock-adjustments?taskSource=required-count",source:"company.stock-adjustments"},
 };
 const change = z.object({
  revision:z.number().int().min(0),
@@ -45,6 +45,9 @@ const dueStockQuery=`
        >= ceil(240.0/(coalesce(sold.times,0)+5))
  ORDER BY interval_days,i.name,i.id
  `;
+export async function isItemDueForCount(client:PoolClient,companyId:number,itemId:number):Promise<boolean> {
+ return !!(await client.query("SELECT 1 FROM ("+dueStockQuery+") d WHERE d.id=$2 LIMIT 1",[companyId,itemId])).rowCount;
+}
 type Settings={enabled:boolean;targetCount:number;periodDays:number;assignedEmployeeIds:number[];followerEmployeeIds:number[];revision:number};
 function settingsOf(kind:Kind,row?:Record<string,any>):Settings {
  return {enabled:row?.enabled??true,targetCount:row?.target_count??defaults[kind].target,
@@ -85,8 +88,8 @@ async function companyTasks(client:PoolClient,user:User,companyId:number,withAll
    required=Math.max(config.targetCount-completed,0);
   }else{
    available=Number((await client.query("SELECT count(*)::integer AS total FROM ("+dueStockQuery+") d",[companyId])).rows[0].total);
-   completed=Number((await client.query(`SELECT count(*)::integer AS total FROM stock_operations
-     WHERE company_id=$1 AND kind='adjustment' AND created_by=$2
+   completed=Number((await client.query(`SELECT count(*)::integer AS total FROM automatic_task_count_events
+     WHERE company_id=$1 AND actor_user_id=$2
        AND created_at>=clock_timestamp()-($3::integer*interval '1 day')`,
      [companyId,user.id,config.periodDays])).rows[0].total);
    required=Math.max(config.targetCount-completed,0);
