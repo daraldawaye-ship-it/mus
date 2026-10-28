@@ -143,6 +143,8 @@ export function questionRoutes(pool: Pool): Router {
       }
       const question=(await client.query("SELECT * FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2 FOR SHARE",[questionId,companyId])).rows[0];
       if(!question || !question.active) missing("السؤال غير موجود أو غير متاح");
+      if (input.selectedAnswer > question.option_count)
+        throw new HttpError(400,"validation","اختر إجابة ضمن خيارات هذا السؤال");
       // currentActor(...,true) locks this user for the transaction; two devices
       // answering simultaneously cannot both earn the question's first reward.
       const firstAttempt=(await client.query(
