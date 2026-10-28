@@ -19,9 +19,15 @@ CREATE TABLE questions (
  question text NOT NULL CHECK (length(trim(question)) BETWEEN 1 AND 2000),
  answer1 text NOT NULL CHECK (length(trim(answer1)) BETWEEN 1 AND 1000),
  answer2 text NOT NULL CHECK (length(trim(answer2)) BETWEEN 1 AND 1000),
- answer3 text NOT NULL CHECK (length(trim(answer3)) BETWEEN 1 AND 1000),
- answer4 text NOT NULL CHECK (length(trim(answer4)) BETWEEN 1 AND 1000),
- correct_answer smallint NOT NULL CHECK (correct_answer BETWEEN 1 AND 4),
+ answer3 text CHECK (answer3 IS NULL OR length(trim(answer3)) BETWEEN 1 AND 1000),
+ answer4 text CHECK (answer4 IS NULL OR length(trim(answer4)) BETWEEN 1 AND 1000),
+ option_count smallint NOT NULL DEFAULT 4 CHECK (option_count BETWEEN 2 AND 4),
+ correct_answer smallint NOT NULL CHECK (correct_answer BETWEEN 1 AND option_count),
+ CHECK (
+   (option_count=2 AND answer3 IS NULL AND answer4 IS NULL)
+   OR (option_count=3 AND answer3 IS NOT NULL AND answer4 IS NULL)
+   OR (option_count=4 AND answer3 IS NOT NULL AND answer4 IS NOT NULL)
+ ),
  points integer NOT NULL DEFAULT 1 CHECK (points BETWEEN 0 AND 100000),
  active boolean NOT NULL DEFAULT true,
  created_by integer NOT NULL REFERENCES users(id),
