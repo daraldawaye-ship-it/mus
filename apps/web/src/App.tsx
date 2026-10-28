@@ -174,6 +174,7 @@ const MemoDetailPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
 );
 const DoctorsPage = lazy(() => import("./pages/DoctorsPage").then(module => ({ default: module.DoctorsPage })));
+const SaleCustomersPage = lazy(() => import("./pages/SaleCustomersPage").then(module => ({ default: module.SaleCustomersPage })));
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage").then((module) => ({
     default: module.AccountsPage,
@@ -425,6 +426,7 @@ function Navigation({
     "company.accounts": <BookOpen size={17} />,
     "company.account-statistics": <TrendingUp size={17} />,
     "company.doctors": <Users size={17} />,
+    "company.sale-customers": <Users size={17} />,
     "company.items": <Package size={17} />,
     "company.central-access": <Settings2 size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
@@ -689,6 +691,10 @@ function CompanyContent({
     case "doctors":
       return <Suspense fallback={<Notice>جارٍ تحميل الأطباء والجهات…</Notice>}>
         <DoctorsPage key={context.company.id} context={context} />
+      </Suspense>;
+    case "sale-customers":
+      return <Suspense fallback={<Notice>جارٍ تحميل كروت العملاء…</Notice>}>
+        <SaleCustomersPage key={context.company.id} context={context} />
       </Suspense>;
     case "accounts":
       return (
