@@ -89,11 +89,16 @@ export const invoiceSchema = z
         path: ["discount"],
         message: "خصم الفاتورة يخص السطور الموجبة فقط؛ خصم المردود المرتبط يؤخذ من الأصل",
       });
-  })
-  // A name entered without a customer number is merely unfinished search
-  // text, not a persisted customer reference or an invoice snapshot.
-  .transform(value=>value.kind==="sale" && !value.saleCustomerNumber
-    ? {...value,saleCustomerName:""} : value);
+  });
+/** Discard an unnumbered customer name before persisting a sale invoice. */
+export function normalizeSaleCustomer<T extends {
+  kind:"sale"|"purchase";
+  saleCustomerNumber:string;
+  saleCustomerName:string;
+}>(value:T):T {
+  return value.kind==="sale" && !value.saleCustomerNumber && value.saleCustomerName
+    ? {...value,saleCustomerName:""} : value;
+}
 export type InvoiceInput = z.input<typeof invoiceSchema>;
 export interface InvoiceLine {
   id: number;
