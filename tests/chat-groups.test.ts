@@ -332,9 +332,13 @@ test("image control exemption applies to a group only while the SITE owner is a 
   const f = await fixture(t);
   const alice = await f.actor("alice"), bob = await f.actor("bob");
   const imageData="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jaj0AAAAASUVORK5CYII=";
-  const upload = async () => (await alice.client.ok<{id:string}>("POST","/media",{
-    purpose:"chat",companyId:null,original:imageData,thumbnail:imageData,
-  })).id;
+  const upload = async () => {
+    const response=await alice.client.request<{id:string}>("POST","/media",{
+      purpose:"chat",companyId:null,original:imageData,thumbnail:imageData,
+    });
+    assert.equal(response.status,201,JSON.stringify(response.body));
+    return response.body.id;
+  };
   const regular = (await create(alice,[bob],"مجموعة بلا مالك الموقع")).group;
   const rejected = await alice.client.request("POST",`${path(regular.id)}/messages`,{
     ...globalChat,membershipRevision:regular.membershipRevision,clientMessageId:randomUUID(),
