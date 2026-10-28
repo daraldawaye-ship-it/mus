@@ -37,7 +37,8 @@ export function chatRoutes(pool: Pool): Router {
   router.get("/chat/image-settings",handler(async(req,res)=>{
     actor(req);
     const row=(await pool.query("SELECT * FROM chat_image_settings WHERE id=1")).rows[0];
-    res.json({allowGroupImages:row.allow_group_images,allowDirectImages:row.allow_direct_images,revision:row.revision});
+    const siteOwners=(await pool.query("SELECT id FROM users WHERE owner=true AND NOT archived AND NOT suspended ORDER BY id")).rows;
+    res.json({allowGroupImages:row.allow_group_images,allowDirectImages:row.allow_direct_images,revision:row.revision,siteOwnerIds:siteOwners.map(owner=>owner.id as number)});
   }));
   router.put("/chat/image-settings",handler(async(req,res)=>{
     const input=parse(settingsSchema,req.body);
