@@ -15,6 +15,7 @@ export async function awardPostedInvoice(
   kind: "sale" | "purchase",
   user: User,
   number: string,
+  customerReward: "new" | "existing" | null = null,
 ): Promise<void> {
   const employee = (
     await client.query(
@@ -26,10 +27,12 @@ export async function awardPostedInvoice(
   ).rows[0] as { id: number; name: string } | undefined;
   if (!employee) return;
 
-  const codes =
+  const codes: string[] =
     kind === "sale"
-      ? (["SALE_SAVED", "SALE_LINES"] as const)
-      : (["PURCHASE_SAVED", "PURCHASE_LINES"] as const);
+      ? ["SALE_SAVED", "SALE_LINES"]
+      : ["PURCHASE_SAVED", "PURCHASE_LINES"];
+  if (kind === "sale" && customerReward)
+    codes.push(customerReward === "new" ? "CUSTOMER_NEW" : "CUSTOMER_EXISTING");
   // The caller holds the company row's update lock throughout this transaction,
   // serializing changes to the task settings with posting for this company.
   const tasks = await client.query(
@@ -71,7 +74,11 @@ export async function awardPostedInvoice(
     const units = task.code.endsWith("_LINES") ? logicalLines : 1;
     const value = BigInt(task.points) * BigInt(units);
     if (value === 0n) continue; // An unset/zero-value task yields no empty entry.
-    const reason = `مكافأة ${task.code.endsWith("_LINES") ? "سطور" : "حفظ"} فاتورة ${kind === "sale" ? "مبيعات" : "مشتريات"} رقم ${number}`;
+    const reason = task.code === "CUSTOMER_NEW"
+      ? `مكافأة إضافة عميل جديد — فاتورة مبيعات رقم ${number}`
+      : task.code === "CUSTOMER_EXISTING"
+        ? `مكافأة إضافة عميل سابق — فاتورة مبيعات رقم ${number}`
+        : `مكافأة ${task.code.endsWith("_LINES") ? "سطور" : "حفظ"} فاتورة ${kind === "sale" ? "مبيعات" : "مشتريات"} رقم ${number}`;
     const snapshot = {
       source: "posted-invoice",
       invoiceId,
@@ -115,4 +122,94 @@ export async function awardPostedInvoice(
       companyId,
     );
   }
+}
+
+
+/** A new doctor/nurse is rewarded exactly once, never for ordinary edits. */
+export function isNewDoctorRewardEligible(
+  previousKind: string | null | undefined,
+  nextKind: string | null,
+): boolean {
+  return (previousKind === undefined || previousKind === null)
+    && (nextKind === "doctor" || nextKind === "nurse");
+}
+
+/**
+ * Credits the existing employee wallet from the doctor card transaction.
+ * The source doctor ID is uniquely linked to one immutable reward entry.
+ * A missing employee record (including site-wide owners) earns no points.
+ */
+export async function awardNewDoctor(
+  client: PoolClient,
+  companyId: number,
+  user: User,
+  doctorId: number,
+  doctorName: string,
+): Promise<void> {
+  const employee = (await client.query(
+    `SELECT e.id,e.name FROM employees e
+       JOIN users u ON u.id=e.user_id
+       WHERE e.company_id=$1 AND e.user_id=$2 AND e.active AND NOT u.archived
+       FOR SHARE OF e`,
+    [companyId,user.id],
+  )).rows[0] as { id:number;name:string } | undefined;
+  if (!employee) return;
+
+  const task = (await client.query(
+    `SELECT s.code,s.points::text,s.revision
+       FROM reward_task_settings s
+       JOIN reward_task_definitions d ON d.code=s.code
+       WHERE s.company_id=$1 AND s.code='DOCTOR_NEW'
+         AND s.enabled AND d.implemented AND s.points>0
+         AND s.repeat_rule='per-document'
+         AND (
+           NOT EXISTS(SELECT 1 FROM reward_task_roles r
+             WHERE r.company_id=s.company_id AND r.code=s.code)
+           OR EXISTS(
+             SELECT 1 FROM reward_task_roles r
+             JOIN employee_role_assignments a
+               ON a.company_id=r.company_id AND a.role_id=r.role_id
+             JOIN company_roles cr
+               ON cr.company_id=r.company_id AND cr.id=r.role_id
+             WHERE r.company_id=s.company_id AND r.code=s.code
+               AND a.employee_id=$2 AND a.active AND cr.active
+           )
+         )
+       FOR SHARE OF s`,
+    [companyId,employee.id],
+  )).rows[0] as {code:string;points:string;revision:number}|undefined;
+  if (!task) return;
+
+  // Once per doctor card across employees, even after further edits.
+  const previous = await client.query(
+    `SELECT 1 FROM employee_wallet_entries
+       WHERE company_id=$1 AND doctor_id=$2 AND task_code='DOCTOR_NEW'
+       FOR SHARE`,
+    [companyId,doctorId],
+  );
+  if (previous.rowCount) return;
+
+  const snapshot = {
+    source: "doctor-card-created-or-classified",
+    doctorId, doctorName, taskCode: task.code,
+    taskRevision: task.revision, pointsPerUnit: task.points,
+    units: 1, totalPoints: task.points,
+  };
+  const entry = await client.query(
+    `INSERT INTO employee_wallet_entries(
+       company_id,employee_id,employee_name,kind,points,reason,
+       doctor_id,task_code,task_revision,logical_line_count,
+       idempotency_key,request_payload,created_by,created_by_name)
+     VALUES($1,$2,$3,'automatic',$4,$5,$6,$7,$8,1,$9,$10,$11,$12)
+     ON CONFLICT DO NOTHING RETURNING id`,
+    [
+      companyId,employee.id,employee.name,task.points,
+      `مكافأة إضافة طبيب أو جهة — ${doctorName}`,
+      doctorId,task.code,task.revision,randomUUID(),JSON.stringify(snapshot),
+      user.id,user.displayName,
+    ],
+  );
+  if (!entry.rows[0]) return;
+  await audit(client,user,"wallet.auto-award","wallet-entry",
+    entry.rows[0].id,null,snapshot,companyId);
 }
