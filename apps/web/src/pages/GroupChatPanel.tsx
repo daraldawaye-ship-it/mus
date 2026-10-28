@@ -11,7 +11,7 @@ import { ChatAvatar } from "./ChatAvatar";
 import { ChatEmojiPicker } from "./ChatEmojiPicker";
 import { ChatImagePicker, type ChatAttachedImage } from "./ChatImagePicker";
 
-interface GroupProps { allowImages: boolean; user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
+interface GroupProps { allowImages: boolean; siteOwnerIds: number[]; user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
 interface GroupDetail { group: ChatGroup; members: ChatGroupMember[]; }
 interface PendingGroupMessage { clientMessageId: string; text: string; imageId?: string; membershipRevision: number; createdAt: string; }
 interface GroupDraft { text: string; membershipRevision: number | null; }
@@ -68,7 +68,7 @@ export function GroupChatPanel(props: GroupProps) {
   const joinedAt = detail.data?.members.find(member => member.id === user.id)?.joinedAt;
   const current = detail.error ? undefined : detail.data;
   return <>
-    {current && joinedAt ? <GroupHistory key={`${groupId}:${current.group.membershipRevision}:${joinedAt}`} {...props} detail={current} obscured={props.obscured || detailsOpen} onDetails={() => setDetailsOpen(true)} /> : <section className="chat-thread" aria-label="محادثة المجموعة"><header className="chat-thread-heading"><Button className="chat-mobile-back" variant="ghost" size="compact" aria-label="العودة إلى المحادثات" onClick={onBack}><ArrowRight size={20} /></Button><span className="chat-avatar"><Users size={20} /></span><h2>محادثة المجموعة</h2></header><div className="chat-thread-empty">{detail.error ? <Notice tone="error">{errorText(detail.error)}<Button variant="ghost" onClick={() => void detail.refetch()}>إعادة المحاولة</Button></Notice> : <><LoaderCircle className="chat-spinner" size={24} />جارٍ التحقق من عضوية المجموعة…</>}</div></section>}
+    {current && joinedAt ? <GroupHistory key={`${groupId}:${current.group.membershipRevision}:${joinedAt}`} {...props} allowImages={props.allowImages || current.members.some(member => props.siteOwnerIds.includes(member.id))} detail={current} obscured={props.obscured || detailsOpen} onDetails={() => setDetailsOpen(true)} /> : <section className="chat-thread" aria-label="محادثة المجموعة"><header className="chat-thread-heading"><Button className="chat-mobile-back" variant="ghost" size="compact" aria-label="العودة إلى المحادثات" onClick={onBack}><ArrowRight size={20} /></Button><span className="chat-avatar"><Users size={20} /></span><h2>محادثة المجموعة</h2></header><div className="chat-thread-empty">{detail.error ? <Notice tone="error">{errorText(detail.error)}<Button variant="ghost" onClick={() => void detail.refetch()}>إعادة المحاولة</Button></Notice> : <><LoaderCircle className="chat-spinner" size={24} />جارٍ التحقق من عضوية المجموعة…</>}</div></section>}
     <ChatGroupDetailsDialog open={detailsOpen} onClose={() => setDetailsOpen(false)} user={user} scope={scope} companyId={companyId} groupId={groupId} onLeft={onBack} />
   </>;
 }
