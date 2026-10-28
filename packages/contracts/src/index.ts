@@ -222,6 +222,7 @@ export const companyAuditActions: AuditAction[] = [
   "wallet.auto-award",
   "wallet.reverse",
   "wallet.task",
+  "automaticTask.settings",
   "wallet.policy",
   "wallet.account",
   "wallet.conversion.request",
