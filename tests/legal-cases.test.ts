@@ -45,8 +45,6 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  const sortedCases=await owner.call("GET","/legal/cases");
  assert.deepEqual(sortedCases.data.items.map((c:{id:number})=>c.id).filter((i:number)=>[urgentCase.data.record.id,caseId,unrankedCase.data.record.id].includes(i)),[urgentCase.data.record.id,caseId,unrankedCase.data.record.id],"case priorities follow tasks: 1 first, 0 last");
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
- assert.equal((await reporter.call("GET",commentsPath)).status,403);
- assert.equal((await reporter.call("POST",commentsPath,{body:"بعد سحب الصلاحية"})).status,403);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId+"/ai-export")).status,403);
  const beforeGrant=await reporter.call("GET","/legal/cases");
  assert.equal(beforeGrant.status,200);
@@ -192,6 +190,8 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  assert.ok(!visibleCase.data.items.some((x:{id:number})=>x.id===shared.id));
  assert.equal((await owner.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:null})).status,200);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
+ assert.equal((await reporter.call("GET",commentsPath)).status,403);
+ assert.equal((await reporter.call("POST",commentsPath,{body:"بعد سحب الصلاحية"})).status,403);
  const afterRevocation=await reporter.call("GET","/legal/cases");
  assert.equal(afterRevocation.status,200);
  assert.equal(afterRevocation.data.total,0);
