@@ -6,7 +6,7 @@ import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
-import { takeReadingSlice } from "./explanation-reading-pagination.ts";
+import { takeReadingSlice, type ReadingLength } from "./explanation-reading-pagination.ts";
 
 const integer = z.number().int().positive().max(2147483647);
 const acl = z.object({
@@ -171,13 +171,13 @@ export function explanationRoutes(pool:Pool):Router {
       "char_length(evidence) AS evidence_chars, "+
       "(char_length(evidence)-char_length(replace(evidence,chr(10),''))) AS evidence_breaks "+
       "FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",
-      [group.id])).rows as NodeRow[];
+      [group.id])).rows as (NodeRow & ReadingLength)[];
     const children=new Map<number|null,NodeRow[]>();
     for(const node of rows){
       const siblings=children.get(node.parent_id)??[];
       siblings.push(node);children.set(node.parent_id,siblings);
     }
-    const ordered:{row:NodeRow;depth:number;ordinal:number;parentKind:string|null}[]=[];
+    const ordered:{row:NodeRow & ReadingLength;depth:number;ordinal:number;parentKind:string|null}[]=[];
     const seen=new Set<number>();
     function collect(parentId:number|null,rights:{read:boolean;edit:boolean},depth:number,parentKind:string|null){
       if(depth>30)return;
