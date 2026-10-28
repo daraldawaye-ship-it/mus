@@ -6,6 +6,7 @@ import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
+import { HttpError } from "./errors.ts";
 import {
   acknowledgeChatMessages, chatConversations, chatDirectory, chatMessages,
   sendChatMessage, readChatAvatar,
@@ -43,7 +44,7 @@ export function chatRoutes(pool: Pool): Router {
     const result=await transaction(pool,async client=>{
       const user=await currentActor(client,actor(req));ownerOnly(user);
       const old=(await client.query("SELECT * FROM chat_image_settings WHERE id=1 FOR UPDATE")).rows[0];
-      if(old.revision!==input.revision)throw new Error("تغيرت إعدادات الدردشة؛ حدث الصفحة أولًا.");
+      if(old.revision!==input.revision)throw new HttpError(409,"conflict","تغيرت إعدادات الدردشة؛ حدث الصفحة أولًا.");
       const row=(await client.query("UPDATE chat_image_settings SET allow_group_images=$1,allow_direct_images=$2,revision=revision+1,updated_by=$3,updated_at=now() WHERE id=1 RETURNING *",
         [input.allowGroupImages,input.allowDirectImages,user.id])).rows[0];
       await audit(client,user,"chat.image.settings","chat_image_settings",1,
