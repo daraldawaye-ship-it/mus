@@ -325,7 +325,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
           </form>
         </article>;
       })}
-lock:"0.75rem",padding:"0.8rem"}}>
+      {tab==="answers"&&responses.map(answer=><article key={answer.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
         <div><strong>{answer.question}</strong></div>
         <p>{answer.userName} · {date(answer.answeredAt)} · السؤال #{answer.questionId}</p>
         <p>الجواب {answer.selectedAnswer}: {answer.selectedText} · {answer.correct?"صحيح":"غير صحيح"} · {answer.points} نقطة</p>
