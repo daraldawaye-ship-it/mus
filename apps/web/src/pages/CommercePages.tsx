@@ -1443,7 +1443,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   });
   const customerExact=useQuery<{customer:SaleCustomer|null}>({
     queryKey:["sale-customer-number",user?.id,companyId,saleCustomerNumber],
-    enabled:!!user&&doctorPromptOpen&&/^\\d{1,30}$/.test(saleCustomerNumber),
+    enabled:!!user&&doctorPromptOpen&&/^\d{1,30}$/.test(saleCustomerNumber),
     queryFn:({signal})=>api<{customer:SaleCustomer|null}>(
       `/companies/${companyId}/sale-customers/lookup?number=${encodeURIComponent(saleCustomerNumber)}`,{signal}),
   });
@@ -3092,7 +3092,19 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <input id="invoice-sale-customer-search" type="search"
               value={saleCustomerQuery} autoComplete="off"
               placeholder="اكتب رقم العميل أو اسمه للبحث"
-              onChange={event=>setSaleCustomerQuery(event.target.value)}/>
+              onChange={event=>{
+                const text=event.target.value;
+                setSaleCustomerQuery(text);
+                // A number typed in the search doubles as the customer number.
+                // The exact-number lookup fills the name when the card exists;
+                // otherwise this saves the cashier retyping a new number.
+                const number=normalizeDigits(text.trim());
+                if (/^\d{1,30}$/.test(number)) {
+                  setSaleCustomerNumber(number);
+                  setSaleCustomerName("");
+                  setSaleCustomerMatched(false);
+                }
+              }}/>
           </div>
           {saleCustomerQuery.trim()&&(
             <div className="invoice-doctor-options" role="listbox" aria-label="نتائج البحث عن العملاء">
