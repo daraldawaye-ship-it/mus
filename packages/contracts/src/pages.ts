@@ -153,6 +153,15 @@ page(
   "إدارة الحسابات العامة؛ لا تمنح عضوية في شركة.",
 );
 page(
+  "public.archive",
+  "أرشيف المستندات والمرفقات",
+  "الأرشيف",
+  "/archive",
+  {view:owner,create:owner,edit:owner},
+  "أرشيف عام مستقل؛ رفع صور وملفات وتعديل المحتوى ووجه الاستدلال لكل ملف مع إمكانية إظهار فئات للقضايا.",
+  { keywords: ["مرفقات","مستندات","أرشيف","صور","GIF","PDF"] },
+);
+page(
   "public.legal-cases",
   "إدارة قضايا مصطفى",
   "إدارة القضايا",
@@ -239,6 +248,15 @@ page(
   { view: member, edit: permission("pages.manage") },
   "دليل الصفحات في الشركة مع إتاحتها وصلاحيات حسابك.",
   { critical: true },
+);
+page(
+  "company.archive",
+  "أرشيف مستندات الشركة",
+  "الشركة",
+  "/companies/:companyId/archive",
+  {view:general,create:general,edit:general},
+  "ملفات الشركة الخاصة؛ رفع متعدد ومراجعة المحتوى والاستدلال مع صلاحيات صفحة مستقلة.",
+  { keywords: ["مرفقات","مستندات","صور","GIF","PDF"] },
 );
 page(
   "company.control",
