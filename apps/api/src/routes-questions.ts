@@ -75,7 +75,7 @@ export function questionRoutes(pool: Pool): Router {
       const {companyId,user,manager}=await access(client,req,"questions");
       const p=pagination(req), args=[companyId,user.id,searchPattern(p.q),manager];
       const condition="q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $4) AND (q.question ILIKE $3 OR q.category ILIKE $3)";
-      const count=await client.query(`SELECT count(*)::int total FROM questions q WHERE ${condition}`,args);
+      const count=await client.query("SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $3) AND (q.question ILIKE $2 OR q.category ILIKE $2)",[companyId,searchPattern(p.q),manager]);
       const rows=await client.query(`
         SELECT q.*,creator.display_name AS creator_name,
         (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id) AS answer_count,
