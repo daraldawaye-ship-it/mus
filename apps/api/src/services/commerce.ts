@@ -158,6 +158,8 @@ export async function invoiceDTOs(
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
     description: row.description,
+    doctorReferralId: row.doctor_referral_id ?? null,
+    entityReferralId: row.entity_referral_id ?? null,
     doctorName: row.doctor_name ?? "",
     entityName: row.entity_name ?? "",
     gross: normalizeRate(row.gross),
@@ -209,7 +211,7 @@ export async function createInvoice(
   input: InvoiceFields,
 ): Promise<Invoice> {
   const replay = await client.query(
-    "SELECT id,(creation_payload=$3::jsonb OR (NOT (creation_payload ? 'supplierAccountId') AND creation_payload=($3::jsonb - 'supplierAccountId') AND $3::jsonb->'supplierAccountId'='null'::jsonb)) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+    "SELECT id,((creation_payload - 'supplierAccountId' - 'doctorName' - 'entityName')=($3::jsonb - 'supplierAccountId' - 'doctorName' - 'entityName') AND COALESCE(creation_payload->'supplierAccountId','null'::jsonb)=COALESCE($3::jsonb->'supplierAccountId','null'::jsonb) AND COALESCE(creation_payload->>'doctorName','')=COALESCE($3::jsonb->>'doctorName','') AND COALESCE(creation_payload->>'entityName','')=COALESCE($3::jsonb->>'entityName','')) AS same_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
     [companyId, input.idempotencyKey, JSON.stringify(input)],
   );
   if (replay.rows[0]) {
