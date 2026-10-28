@@ -4,6 +4,8 @@ import { z } from "zod";
 import { chatReceiptSchema, chatSendSchema } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
+import { currentActor, ownerOnly } from "./policies/access.ts";
+import { audit } from "./services/audit.ts";
 import {
   acknowledgeChatMessages, chatConversations, chatDirectory, chatMessages,
   sendChatMessage, readChatAvatar,
@@ -30,6 +32,26 @@ const avatarQuerySchema = z.object({
 
 export function chatRoutes(pool: Pool): Router {
   const router = Router();
+  const settingsSchema=z.object({allowGroupImages:z.boolean(),allowDirectImages:z.boolean(),revision:z.number().int().positive()}).strict();
+  router.get("/chat/image-settings",handler(async(req,res)=>{
+    actor(req);
+    const row=(await pool.query("SELECT * FROM chat_image_settings WHERE id=1")).rows[0];
+    res.json({allowGroupImages:row.allow_group_images,allowDirectImages:row.allow_direct_images,revision:row.revision});
+  }));
+  router.put("/chat/image-settings",handler(async(req,res)=>{
+    const input=parse(settingsSchema,req.body);
+    const result=await transaction(pool,async client=>{
+      const user=await currentActor(client,actor(req));ownerOnly(user);
+      const old=(await client.query("SELECT * FROM chat_image_settings WHERE id=1 FOR UPDATE")).rows[0];
+      if(old.revision!==input.revision)throw new Error("تغيرت إعدادات الدردشة؛ حدث الصفحة أولًا.");
+      const row=(await client.query("UPDATE chat_image_settings SET allow_group_images=$1,allow_direct_images=$2,revision=revision+1,updated_by=$3,updated_at=now() WHERE id=1 RETURNING *",
+        [input.allowGroupImages,input.allowDirectImages,user.id])).rows[0];
+      await audit(client,user,"chat.image.settings","chat_image_settings",1,
+        {allowGroupImages:old.allow_group_images,allowDirectImages:old.allow_direct_images},
+        {allowGroupImages:row.allow_group_images,allowDirectImages:row.allow_direct_images});
+      return {allowGroupImages:row.allow_group_images,allowDirectImages:row.allow_direct_images,revision:row.revision};
+    });res.json(result);
+  }));
   router.get("/chat/avatars/:userId", handler(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const query = parse(avatarQuerySchema, req.query), userId = id(req.params.userId);
