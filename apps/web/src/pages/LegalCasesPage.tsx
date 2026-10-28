@@ -40,7 +40,7 @@ function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseFo
  <Select label="صورة الملف" value={value.fileCopyStatus} onChange={e=>set("fileCopyStatus",e.target.value)}><option value="unknown">لم تحدد</option><option value="yes">موجودة</option><option value="no">غير موجودة</option><option value="partial">ناقصة</option></Select>
  <Field label="تاريخ بداية القضية" type="date" value={value.startDate??""} onChange={e=>set("startDate",e.target.value||null)}/>
  <Field label="تاريخ الجلسة القادمة" type="date" value={value.nextHearing??""} onChange={e=>set("nextHearing",e.target.value||null)}/>
- <Field label="الأولوية 0–10" type="number" min={0} max={10} value={value.priority} onChange={e=>set("priority",Number(e.target.value))}/>
+ <Field label="أولوية القضية: 1 الأعلى، 10 الأقل، 0 غير محددة" type="number" min={0} max={10} value={value.priority} onChange={e=>set("priority",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label="ملخص القضية" value={value.summary} onChange={v=>set("summary",v)}/></div></div>;
 }
 function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordForm)=>void;people:Person[]}) {
