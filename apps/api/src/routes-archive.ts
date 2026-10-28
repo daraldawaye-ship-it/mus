@@ -52,9 +52,12 @@ function decodeFile(dataUrl:string){
   return {bytes,mime};
 }
 
-async function findFile(db:Pool|PoolClient,fileId:number) {
+async function findFile(db:Pool|PoolClient,fileId:number,withBytes=false) {
   const result=await db.query(
-    `SELECT f.*,c.name AS category_name,u.display_name AS creator_name
+    `SELECT f.id,f.company_id,f.category_id,f.title,f.original_filename,f.mime_type,
+       f.content_text,f.evidence_text,f.created_by,f.revision,f.created_at,f.updated_at,
+       ${withBytes?"f.file_bytes":"NULL::bytea AS file_bytes"},
+       c.name AS category_name,u.display_name AS creator_name
        FROM archive_files f JOIN archive_categories c ON c.id=f.category_id
          JOIN users u ON u.id=f.created_by WHERE f.id=$1`,[fileId]);
   if(!result.rows[0])missing();
@@ -138,7 +141,7 @@ export function archiveRoutes(pool:Pool):Router {
     res.json({record:serialFile(record,true)});
   }));
   router.get("/archive/files/:id/content",handler(async(req,res)=>{
-    const record=await findFile(pool,id(req.params.id));
+    const record=await findFile(pool,id(req.params.id),true);
     await ensureAccess(pool,actor(req),record.company_id,"view");
     res.setHeader("Cache-Control","private, no-store");
     res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");
