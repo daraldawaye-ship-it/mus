@@ -229,7 +229,8 @@ export function Dialog({
     <dialog
       ref={dialog}
       className={`dialog ${className}`}
-      aria-labelledby={heading}
+      aria-labelledby={title ? heading : undefined}
+      aria-label={title ? undefined : "نافذة اختيار الطبيب والعميل"}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -248,7 +249,7 @@ export function Dialog({
       }}
     >
       <div className="dialog-heading">
-        <h2 id={heading}>{title}</h2>
+        {title && <h2 id={heading}>{title}</h2>}
         <Button variant="ghost" aria-label="إغلاق النافذة" onClick={onClose}>
           <X size={17} />
         </Button>
