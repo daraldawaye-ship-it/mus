@@ -358,6 +358,19 @@ page(
   { view: signed, create: owner, edit: owner },
   "أسئلة الموقع العامة مع اختيار عدد الأجوبة ونقاط السؤال.",
 );
+page("public.medicine-market", "سوق الأدوية", "سوق الأدوية", "/medicine-market",
+  { view: rule("public", "متاح للجميع"), create: signed, edit: signed },
+  "دليل عام تشاركي للأصناف والتركيبات والجهات؛ مساهمات يدوية على مستوى الحقل.",
+  { keywords: ["دواء", "صيدلية", "وكيل", "تركيب", "سعر", "أدوية"] });
+page("public.medicine-market-review", "مصادقة السوق", "سوق الأدوية", "/medicine-market/review",
+  { view: admin, edit: admin }, "مراجعة مساهمات الحقول والتعليقات قبل اعتمادها.",
+  { parentKey: "public.medicine-market" });
+page("public.medicine-market-contributions", "مساهماتي في السوق", "سوق الأدوية", "/medicine-market/contributions",
+  { view: signed, create: signed }, "متابعة المساهمات ونقاطها المعتمدة.",
+  { parentKey: "public.medicine-market" });
+page("public.medicine-market-points", "نقاط حقول السوق", "سوق الأدوية", "/medicine-market/points",
+  { view: admin, edit: admin }, "تحديد نقاط الإضافة والتعديل لكل حقل ونوع كرت.",
+  { parentKey: "public.medicine-market" });
 page(
   "public.answers",
   "الإجابات",

@@ -83,6 +83,7 @@ import {
 const CentralAccessPage = lazy(() =>
   import("./pages/CentralAccessPage").then(m=>({default:m.CentralAccessPage})),
 );
+const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
 const PageDirectoryPage = lazy(() =>
   import("./pages/PageDirectoryPage").then((module) => ({
     default: module.PageDirectoryPage,
@@ -382,6 +383,10 @@ function Navigation({
     }));
   const icons: Record<string, React.ReactNode> = {
     "public.home": <Home size={17} />,
+    "public.medicine-market": <Package size={17} />,
+    "public.medicine-market-review": <ShieldCheck size={17} />,
+    "public.medicine-market-contributions": <ListChecks size={17} />,
+    "public.medicine-market-points": <Coins size={17} />,
     "public.profile": <CircleUserRound size={17} />,
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
@@ -1116,6 +1121,10 @@ function Workspace() {
               } />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
+              <Route path="/medicine-market" element={<PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل سوق الأدوية…</Notice>}><MedicineMarketPage key={user?.id ?? "guest"} /></Suspense></PageRouteGuard>} />
+              <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/medicine-market/points" element={<Protected><PageRouteGuard pageKey="public.medicine-market-points"><Suspense fallback={<Notice>جارٍ تحميل إعدادات النقاط…</Notice>}><MedicineMarketPage key={`${user?.id}:points`} tab="points" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/tasks" element={<Protected><PageRouteGuard pageKey="public.tasks"><Suspense fallback={<Notice>جارٍ تحميل المهام…</Notice>}><AutomaticTasksPage /></Suspense></PageRouteGuard></Protected>} />
               <Route
                 path="/chat"

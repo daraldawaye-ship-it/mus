@@ -442,7 +442,14 @@ export async function requestPageKeys(
     return {
       companyId: null,
       keys:
-        prefix === "notifications"
+        prefix === "medicine-market"
+          ? ["public.medicine-market", ...(
+              /\/policies(?:\/|$)/.test(path) ? ["public.medicine-market-points"] :
+              /\/(?:contributions|comments)\/[1-9]\d*\/review$/.test(path) ? ["public.medicine-market-review"] :
+              /\/(?:contributions|comments)$/.test(path) && req.method === "GET" && req.query.mine !== "true" ? ["public.medicine-market-review"] :
+              /\/me$/.test(path) || (path.endsWith("/contributions") && req.query.mine === "true") ? ["public.medicine-market-contributions"] : []
+            )]
+          : prefix === "notifications"
           ? ["public.notifications"]
           : prefix === "questions"
             ? ["public.questions"]

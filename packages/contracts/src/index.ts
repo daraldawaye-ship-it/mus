@@ -103,6 +103,14 @@ export const rolePermissionTemplates: Record<EmployeeRole, Permission[]> = {
   purchases: [],
 };
 export const auditActionLabels = {
+  "medicine-market.create": "إنشاء كرت في سوق الأدوية",
+  "medicine-market.contribute": "مساهمة في حقل سوق الأدوية",
+  "medicine-market.review": "مصادقة مساهمة سوق الأدوية",
+  "medicine-market.archive": "أرشفة كرت سوق الأدوية",
+  "medicine-market.policy": "تعديل نقاط حقول سوق الأدوية",
+  "medicine-market.comment": "تعليق سوق الأدوية ومراجعته",
+  "medicine-market.review-comment": "مصادقة تعليق سوق الأدوية",
+  "medicine-market.reaction": "تفاعل مع كرت سوق الأدوية",
   "chat.group.create": "إنشاء مجموعة دردشة خاصة",
   "chat.group.update": "تعديل إدارة أو أعضاء مجموعة دردشة",
   "chat.group.leave": "مغادرة مجموعة دردشة",
@@ -252,6 +260,14 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "medicine-market.create",
+  "medicine-market.contribute",
+  "medicine-market.review",
+  "medicine-market.archive",
+  "medicine-market.policy",
+  "medicine-market.comment",
+  "medicine-market.review-comment",
+  "medicine-market.reaction",
   "question.create",
   "question.update",
   "question.answer",

@@ -7,6 +7,7 @@ import { notificationRoutes } from "./routes-notifications.ts";
 import { memoFeatureRuleRoutes } from "./memoFeatureRuleRoutes.ts";
 import { memoRoutes } from "./routes-memos.ts";
 import { questionRoutes } from "./routes-questions.ts";
+import { medicineMarketRoutes } from "./routes-medicine-market.ts";
 import { taskRoutes } from "./routes-tasks.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
 import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
@@ -58,6 +59,7 @@ export function businessRoutes(pool: Pool): Router {
     notificationRoutes(pool),
     memoRoutes(pool),
     questionRoutes(pool),
+    medicineMarketRoutes(pool),
     taskRoutes(pool),
     memoFeatureRuleRoutes(pool),
     walletRoutes(pool),
