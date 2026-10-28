@@ -92,9 +92,15 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     if(!payload){setError("اختر إجابة من الخيارات المتاحة");return;}
     setPendingAnswer(payload);setSending(true);setError("");setMessage("");
     try{
-      const result=await api<{correct:boolean;points:number}>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
+      const result=await api<{correct:boolean;points:number;firstAttempt?:boolean}>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
       setPendingAnswer(null);setOpened(null);setComment("");setChosen(null);
-      setMessage(result.correct?`إجابة صحيحة، حصلت على ${result.points} نقطة.`:"تم تسجيل الإجابة. يمكنك الإجابة عن هذا السؤال مرة أخرى.");
+      setMessage(result.correct
+        ? result.firstAttempt
+          ? `إجابة صحيحة من المحاولة الأولى؛ حصلت على ${result.points} نقطة.`
+          : "إجابة صحيحة؛ لا تُمنح نقاط إضافية بعد المحاولة الأولى."
+        : result.firstAttempt
+          ? "سُجلت المحاولة الأولى؛ الإجابة غير صحيحة ولا نقاط لهذه المحاولة."
+          : "تم تسجيل الإجابة الجديدة دون نقاط إضافية.");
       void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
     }catch(cause){setError(errorMessage(cause));}
     finally{setSending(false);}
@@ -182,6 +188,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         </div>
         <p>أنشئ بواسطة: {question.creatorName} · {date(question.createdAt)} · نقاط الجواب: {question.points}</p>
         <p>الإجابات: {question.answerCount} · المستخدمون: {question.respondentCount} · إجاباتك: {question.myAnswerCount} · آخر إجابة لك: {date(question.myLastAnsweredAt)}</p>
+        <small>تُمنح نقاط الإجابة الصحيحة في أول محاولة فقط؛ إعادة الإجابة متاحة دون نقاط إضافية.</small>
         {canEdit&&<div className="page-actions">
           <Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>
           {!question.active&&<span>السؤال غير فعال</span>}
