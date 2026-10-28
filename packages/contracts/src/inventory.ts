@@ -190,6 +190,9 @@ export interface StockMovement {
   supplierAccountName: string | null;
   /** If populated from old history, records the provenance of the guess. */
   supplierInferenceSource: "invoice" | "prior_purchase" | "item_estimate" | null;
+  /** Doctor or entity recorded in this sale invoice, including new unclassified cards. */
+  doctorId: number | null;
+  doctorName: string | null;
   locationId: number;
   locationName: string;
   branchId: number;
