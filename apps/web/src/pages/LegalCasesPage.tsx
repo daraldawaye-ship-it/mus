@@ -180,7 +180,7 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}}/> : <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+ {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
  <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":c.status==="active"?"فعالة":"غير محددة"} · {c.priority===0?"الأولوية غير محددة":"الأولوية "+c.priority}</small></button>)}</div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
