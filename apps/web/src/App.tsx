@@ -328,6 +328,7 @@ const companySections = [
   "accounts",
   "account-statistics",
   "doctors",
+  "sale-customers",
   "currencies",
   "exchange-rates",
   "branches",
