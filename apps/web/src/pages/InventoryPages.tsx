@@ -570,7 +570,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "dateFrom", "dateTo"])
+  for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "doctorId", "dateFrom", "dateTo"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<StockMovement>(
     `/companies/${companyId}/stock-movements?${filters}`,
@@ -597,6 +597,19 @@ function MovementsList({ context }: { context: CompanyContext }) {
         header: "الصنف",
         size: 200,
         cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
+      },
+      {
+        accessorKey: "doctorName",
+        header: "الطبيب أو الجهة",
+        size: 170,
+        enableSorting: false,
+        cell: ({ row }) => row.original.doctorName
+          ? row.original.doctorId
+            ? <Link to={`/companies/${companyId}/doctors?focus=${row.original.doctorId}`}>
+                {row.original.doctorName}
+              </Link>
+            : <ValueCell>{row.original.doctorName}</ValueCell>
+          : "—",
       },
       {
         accessorKey: "supplierAccountName",
