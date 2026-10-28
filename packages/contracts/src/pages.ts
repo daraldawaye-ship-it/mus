@@ -145,6 +145,14 @@ page(
   { critical: true },
 );
 page(
+  "public.tasks",
+  "المهام الآلية",
+  "الموقع العام",
+  "/tasks",
+  { view: signed },
+  "مهام كل مستخدم المحسوبة آليًا من شركاته، دون إدخال يدوي.",
+);
+page(
   "public.users",
   "المستخدمون",
   "إدارة المنصة",
@@ -377,6 +385,14 @@ page(
   { view: member },
   "عرض المذكرة وردودها والمسؤول الحالي وسجل انتقالها وطلب الإنجاز واعتماده؛ فتح المذكرة لا ينجزها.",
   { parentKey: "company.memos", record: "memo", navigation: false },
+);
+page(
+  "company.tasks",
+  "المهام الآلية",
+  "الشركة",
+  "/companies/:companyId/tasks",
+  { view: member, edit: general },
+  "مهام آلية مع كنترول خاص للتكليف والمتابعة والعدد المطلوب لكل مستخدم.",
 );
 page(
   "company.wallet",
