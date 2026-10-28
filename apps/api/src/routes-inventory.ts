@@ -513,7 +513,7 @@ export function inventoryRoutes(pool: Pool): Router {
             input.locationId,
           );
           const settings = await requireInventorySettings(client, companyId);
-          const eligibleForTask = fromRequiredTask &&
+          const eligibleForTask = fromRequiredTask && !input.zeroLocation &&
             !!(await client.query("SELECT 1 FROM locations WHERE company_id=$1 AND id=$2 AND kind='showroom'",[companyId,input.locationId])).rowCount &&
             await isItemDueForCount(client,companyId,input.itemId);
           await assertStockChronology(
