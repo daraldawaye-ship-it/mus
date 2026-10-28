@@ -3087,6 +3087,43 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           doctorField.current?.focus();
         }}>
         <div className="form-stack">
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-search">بحث عن عميل بالرقم أو الاسم (اختياري)</label>
+            <input id="invoice-sale-customer-search" type="search"
+              value={saleCustomerQuery} autoComplete="off"
+              placeholder="اكتب رقم العميل أو اسمه للبحث"
+              onChange={event=>setSaleCustomerQuery(event.target.value)}/>
+          </div>
+          {saleCustomerQuery.trim()&&(
+            <div className="invoice-doctor-options" role="listbox" aria-label="نتائج البحث عن العملاء">
+              {customerSearch.isLoading&&<small>جارٍ البحث عن العميل…</small>}
+              {customerSearch.isError&&<small>تعذر البحث؛ يمكنك إدخال الرقم والاسم يدويًا.</small>}
+              {customerSearch.data?.items.map(customer=><button key={customer.id}
+                type="button" role="option" aria-selected={saleCustomerNumber===customer.customerNumber}
+                onClick={()=>selectSaleCustomer(customer)}>
+                <strong>{customer.customerNumber} — {customer.name}</strong>
+              </button>)}
+              {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. يمكنك إدخال رقم جديد واسم العميل.</small>}
+            </div>
+          )}
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-number">رقم العميل (اختياري)</label>
+            <input id="invoice-sale-customer-number" type="text" inputMode="numeric"
+              ref={customerField} maxLength={30} autoComplete="off"
+              value={saleCustomerNumber} placeholder="رقم العميل"
+              onChange={event=>{
+                setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
+                setSaleCustomerName("");
+                setSaleCustomerMatched(false);
+                setDoctorError("");
+              }}/>
+          </div>
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-name">اسم العميل (اختياري)</label>
+            <input id="invoice-sale-customer-name" type="text" maxLength={240}
+              value={saleCustomerName} placeholder="يظهر تلقائيًا للرقم الموجود؛ أو اكتبه للرقم الجديد"
+              readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
+          </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
           <div className="field floating-ready" data-label-raised="true">
             <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
@@ -3163,43 +3200,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             {!doctorChoices.isLoading&&doctorChoices.data?.items.length===0&&<small>
               لا يوجد اسم مطابق في الكروت. يمكنك حفظ الاسم المكتوب، وسيُنشأ كرت جديد تلقائيًا دون فئة.
             </small>}
-          </div>
-          <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-search">بحث عن عميل بالرقم أو الاسم (اختياري)</label>
-            <input id="invoice-sale-customer-search" type="search"
-              value={saleCustomerQuery} autoComplete="off"
-              placeholder="اكتب رقم العميل أو اسمه للبحث"
-              onChange={event=>setSaleCustomerQuery(event.target.value)}/>
-          </div>
-          {saleCustomerQuery.trim()&&(
-            <div className="invoice-doctor-options" role="listbox" aria-label="نتائج البحث عن العملاء">
-              {customerSearch.isLoading&&<small>جارٍ البحث عن العميل…</small>}
-              {customerSearch.isError&&<small>تعذر البحث؛ يمكنك إدخال الرقم والاسم يدويًا.</small>}
-              {customerSearch.data?.items.map(customer=><button key={customer.id}
-                type="button" role="option" aria-selected={saleCustomerNumber===customer.customerNumber}
-                onClick={()=>selectSaleCustomer(customer)}>
-                <strong>{customer.customerNumber} — {customer.name}</strong>
-              </button>)}
-              {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. يمكنك إدخال رقم جديد واسم العميل.</small>}
-            </div>
-          )}
-          <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-number">رقم العميل (اختياري)</label>
-            <input id="invoice-sale-customer-number" type="text" inputMode="numeric"
-              ref={customerField} maxLength={30} autoComplete="off"
-              value={saleCustomerNumber} placeholder="رقم العميل"
-              onChange={event=>{
-                setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
-                setSaleCustomerName("");
-                setSaleCustomerMatched(false);
-                setDoctorError("");
-              }}/>
-          </div>
-          <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-name">اسم العميل (اختياري)</label>
-            <input id="invoice-sale-customer-name" type="text" maxLength={240}
-              value={saleCustomerName} placeholder="يظهر تلقائيًا للرقم الموجود؛ أو اكتبه للرقم الجديد"
-              readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
           </div>
           <div className="form-actions">
             <Button disabled={saving} onClick={()=>{
@@ -3436,6 +3436,13 @@ function InvoiceViewer({
             <span>الطبيب أو الجهة: {invoice.doctorId
               ? <Link to={`/companies/${companyId}/doctors?focus=${invoice.doctorId}`}>{invoice.doctorName}</Link>
               : invoice.doctorName}</span>
+          )}
+          {invoice.kind === "sale" && invoice.saleCustomerNumber && (
+            <span>العميل: {invoice.saleCustomerId
+              ? <Link to={`/companies/${companyId}/sale-customers?focus=${invoice.saleCustomerId}`}>
+                  <bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}
+                </Link>
+              : <><bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}</>}</span>
           )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
