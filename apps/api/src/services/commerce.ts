@@ -629,8 +629,9 @@ export async function createInvoice(
       if(!result.rows[0])
         throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة مسجلة في كرت الأطباء والجهات.");
       const selected = result.rows[0] as {id:number;name:string;active:boolean};
-      doctor = {id:selected.id,name:selected.name};
-      if (!selected.active && !importContext) reusedArchivedDoctor = doctor;
+      const selectedDoctor = {id:selected.id,name:selected.name};
+      doctor = selectedDoctor;
+      if (!selected.active && !importContext) reusedArchivedDoctor = selectedDoctor;
     } else if (input.doctorName) {
       // A sale names an existing card or creates an unclassified one atomically.
       // Historical import requests remain snapshots and generate no new cards/alerts.
@@ -651,8 +652,9 @@ export async function createInvoice(
         );
         if (matching.rows[0]) {
           const existing = matching.rows[0] as { id: number; name: string; active: boolean };
-          doctor = { id: existing.id, name: existing.name };
-          if (!existing.active) reusedArchivedDoctor = doctor;
+          const existingDoctor = { id: existing.id, name: existing.name };
+          doctor = existingDoctor;
+          if (!existing.active) reusedArchivedDoctor = existingDoctor;
         } else {
           const created = await client.query(
             `INSERT INTO doctors(company_id,name,kind,department,created_by)
