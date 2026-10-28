@@ -1020,6 +1020,8 @@ function OperationEditor({
   onSaved?: (nearestExpiryDate: string | null) => void;
 }) {
   const companyId = context.company.id;
+  const [routeParams] = useSearchParams();
+  const fromRequiredTask = routeParams.get("taskSource") === "required-count";
   const { user } = useSession();
   const guard = useScopeGuard(`company:${companyId}:stock-operation`);
   const changed = useInventoryChanges(companyId);
@@ -1193,7 +1195,7 @@ function OperationEditor({
     setSaving(true);
     try {
       const response = await api<{ operation: StockOperation }>(
-        `/companies/${companyId}/${action === "transfer" ? "stock-transfers" : "stock-adjustments"}`,
+        `/companies/${companyId}/${action === "transfer" ? "stock-transfers" : "stock-adjustments"}${action === "adjustment" && fromRequiredTask ? "?taskSource=required-count" : ""}`,
         { method: "POST", body, signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
