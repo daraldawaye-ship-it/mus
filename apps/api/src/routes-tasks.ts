@@ -24,8 +24,8 @@ const change = z.object({
  assignedEmployeeIds:z.array(z.number().int().positive()).max(500),
  followerEmployeeIds:z.array(z.number().int().positive()).max(500),
 }).strict();
-const keyOf=(v:string|undefined):Kind=>{
- if(!kinds.includes(v as Kind)) throw new HttpError(404,"not_found","تعريف المهمة غير موجود");
+const keyOf=(v:string|string[]|undefined):Kind=>{
+ if(typeof v!=="string" || !kinds.includes(v as Kind)) throw new HttpError(404,"not_found","تعريف المهمة غير موجود");
  return v as Kind;
 };
 const dueStockQuery=`
