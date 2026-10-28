@@ -335,3 +335,35 @@ test("chat avatars serve only current owned profile thumbnails with current page
   await f.pool.query("UPDATE users SET suspended=true WHERE id=$1", [alice.user.id]);
   assert.equal((await alice.client.image(publicPhoto)).status, 403);
 });
+
+test("chat image defaults deny direct and group attachments; only participants can read uploaded images", async t => {
+  const f = await fixture(t);
+  const alice = await f.actor("alice"), bob = await f.actor("bob"), other = await f.actor("other");
+  const originalSettings = await alice.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("GET", "/chat/image-settings");
+  assert.equal(originalSettings.allowGroupImages,false);
+  assert.equal(originalSettings.allowDirectImages,false);
+  const asset = await alice.client.ok<{id:string;fullUrl:string}>("POST", "/media", {
+    purpose:"chat",companyId:null,original:CHAT_AVATAR_DATA_URL,thumbnail:CHAT_AVATAR_DATA_URL,
+  },201);
+  assert.equal((await alice.client.image(asset.fullUrl)).status,404,"Unsent image must stay private even from its uploader");
+  const key = randomUUID();
+  const payload = {...globalChat,clientMessageId:key,text:"",imageId:asset.id};
+  assert.equal((await alice.client.request("POST",messagesPath(bob.user.id),payload)).status,403);
+  assert.equal((await alice.client.request("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true})).status,403);
+  const enabled = await f.owner.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true});
+  assert.equal(enabled.allowDirectImages,true);
+  assert.equal(enabled.allowGroupImages,false);
+  const received = await alice.client.ok<{message:ChatMessage}>("POST",messagesPath(bob.user.id),payload);
+  assert.equal(received.message.text,"");
+  assert.equal(received.message.imageUrl,asset.fullUrl);
+  assert.equal((await alice.client.image(asset.fullUrl)).status,200);
+  assert.equal((await bob.client.image(asset.fullUrl)).status,200);
+  assert.notEqual((await other.client.image(asset.fullUrl)).status,200);
+  assert.notEqual((await f.owner.client.image(asset.fullUrl)).status,200);
+  await f.owner.client.ok("PUT","/chat/image-settings",{...enabled,allowDirectImages:false});
+  const retry = await alice.client.ok<{message:ChatMessage}>("POST",messagesPath(bob.user.id),payload);
+  assert.equal(retry.message.id,received.message.id,"Acknowledging a previously accepted UUID survives changes to settings");
+  assert.equal((await alice.client.request("POST",messagesPath(bob.user.id),{
+    ...globalChat,clientMessageId:randomUUID(),text:"",imageId:asset.id
+  })).status,403);
+});
