@@ -1,3 +1,4 @@
+import "./ChatImagePicker.css";
 import { useRef, useState, type ChangeEvent } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { api } from "../api";
