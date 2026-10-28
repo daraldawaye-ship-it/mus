@@ -198,6 +198,17 @@ function InvoiceList({
           <ValueCell>{row.original.counterpartyAccountName}</ValueCell>
         ),
       },
+      ...(kind === "sale" ? [{
+        accessorKey: "doctorName",
+        header: "الطبيب",
+        size: 140,
+        enableSorting: false,
+      }, {
+        accessorKey: "entityName",
+        header: "الجهة",
+        size: 140,
+        enableSorting: false,
+      }] satisfies ColumnDef<Invoice, unknown>[] : []),
       ...(kind === "purchase" ? [{
         accessorKey: "supplierAccountName",
         header: "المورد الفعلي",
@@ -893,6 +904,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
   const defaultCashbox = useEmployeeCashbox(context);
   const accountManuallyChosen = useRef(false);
   const [description, setDescription] = useState("");
+  const [doctorName, setDoctorName] = useState("");
+  const [entityName, setEntityName] = useState("");
   const [discount, setDiscount] = useState("0");
   useEffect(() => {
     if (!defaultYer || currencyManuallyChosen.current) return;
@@ -1000,6 +1013,7 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
+    (kind === "sale" && (!!doctorName.trim() || !!entityName.trim())) ||
     (kind === "purchase" && !!supplier) ||
     accountManuallyChosen.current ||
     (!!account && account.id !== defaultCashbox?.id) ||
@@ -1406,6 +1420,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
     automaticBranchId.current = null;
     automaticLocationId.current = null;
     setDescription("");
+    setDoctorName("");
+    setEntityName("");
     setDiscount("0");
     setError("");
     setSavedInvoice(null);
@@ -1437,6 +1453,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
         counterpartyAccountId: account?.id,
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
         description,
+        doctorName: kind === "sale" ? doctorName : "",
+        entityName: kind === "sale" ? entityName : "",
         discount: hasPositiveLines ? discount : "0",
         lines: selectedLines.map((line) => ({
           itemId: line.itemId,
@@ -1477,6 +1495,8 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
       setShowOriginalPicker(false);
       setDocumentDate(today());
       setDescription("");
+      setDoctorName("");
+      setEntityName("");
       setDiscount("0");
       // Reuse currency, branch and stock location for efficient consecutive
       // invoices, but always clear the old customer/supplier.
@@ -1559,6 +1579,32 @@ function InvoiceEditor({ context }: { context: CompanyContext }) {
                     accept={(value) => (value.category === "asset" || value.category === "liability") && !value.cashOrBank}
                     disabled={locked || hasLinkedLines || creditPurchase}
                   />
+                )}
+                {kind === "sale" && (
+                  <>
+                    <Field
+                      label="الطبيب"
+                      value={doctorName}
+                      maxLength={160}
+                      placeholder="أدخل اسم طبيب أو اختر اسمًا معروفًا"
+                      disabled={locked}
+                      onChange={(event) => setDoctorName(event.target.value)}
+                    />
+                    <Field
+                      label="الجهة"
+                      value={entityName}
+                      maxLength={160}
+                      placeholder="أدخل اسم جهة أو اختر جهة معروفة"
+                      disabled={locked}
+                      onChange={(event) => setEntityName(event.target.value)}
+                    />
+                    <small className="muted">
+                      يُنشأ كرت للاسم الجديد دون فئة عند حفظ الفاتورة، مع تنبيه لاستكماله أو أرشفته.
+                    </small>
+                    <Link className="button button-secondary commerce-list-link" to={`/companies/${companyId}/sales-referrals`}>
+                      كروت الأطباء والجهات
+                    </Link>
+                  </>
                 )}
                 <Link
                   className="button button-secondary commerce-list-link"
@@ -2407,6 +2453,26 @@ function InvoiceViewer({
             <bdi>{invoice.counterpartyAccountCode}</bdi> —{" "}
             {invoice.counterpartyAccountName}
           </span>
+          {invoice.kind === "sale" && (
+            <>
+              <span>
+                الطبيب: {invoice.doctorName || "غير محدد"}{" "}
+                {invoice.doctorReferralId && (
+                  <Link to={`/companies/${companyId}/sales-referrals?focus=${invoice.doctorReferralId}`}>
+                    فتح الكرت / تحديد الفئة أو الأرشفة
+                  </Link>
+                )}
+              </span>
+              <span>
+                الجهة: {invoice.entityName || "غير محددة"}{" "}
+                {invoice.entityReferralId && (
+                  <Link to={`/companies/${companyId}/sales-referrals?focus=${invoice.entityReferralId}`}>
+                    فتح الكرت / تحديد الفئة أو الأرشفة
+                  </Link>
+                )}
+              </span>
+            </>
+          )}
           {invoice.kind === "purchase" && (
             <span>
               المورد:{" "}
