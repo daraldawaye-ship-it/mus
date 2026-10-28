@@ -282,7 +282,7 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   const members = await currentMembers(client, groupId);
   if (members.length < 2) throw new HttpError(409, "group_needs_recipient", "أضف عضوًا آخر قبل إرسال رسالة للمجموعة");
   await eligible(client, current, members.map(member => member.user_id).sort((a, b) => a - b), true);
-  if (input.imageId) { await checkChatImageAllowed(client, "group"); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
+  if (input.imageId) { await checkChatImageAllowed(client, "group", members.map(member => member.user_id)); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
   const recipientMembers = members.filter(member => member.user_id !== current.user.id);
   const created = (await client.query(`INSERT INTO chat_group_messages(group_id,scope_id,client_message_id,sender_id,
     sender_membership_id,sender_name,membership_revision,intended_membership_ids,text,image_id)
