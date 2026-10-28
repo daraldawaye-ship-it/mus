@@ -326,3 +326,31 @@ test("queued group sends and receipts recheck membership after a concurrent remo
   const receipt = find(messages, original.id).receipts.find(item => item.userId === bob.user.id)!;
   assert.equal(receipt.deliveredAt, null); assert.equal(receipt.readAt, null);
 });
+
+
+test("image control exemption applies to a group only while the SITE owner is a member", async t => {
+  const f = await fixture(t);
+  const alice = await f.actor("alice"), bob = await f.actor("bob");
+  const imageData="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jaj0AAAAASUVORK5CYII=";
+  const upload = async () => (await alice.client.ok<{id:string}>("POST","/media",{
+    purpose:"chat",companyId:null,original:imageData,thumbnail:imageData,
+  })).id;
+  const regular = (await create(alice,[bob],"مجموعة بلا مالك الموقع")).group;
+  const rejected = await alice.client.request("POST",`${path(regular.id)}/messages`,{
+    ...globalChat,membershipRevision:regular.membershipRevision,clientMessageId:randomUUID(),
+    text:"",imageId:await upload(),
+  });
+  assert.equal(rejected.status,403,"Company/group manager is not the site owner");
+  let ownerGroup = (await create(alice,[bob,f.owner],"مجموعة مع مالك الموقع")).group;
+  const sent = await alice.client.ok<{message:ChatGroupMessage}>("POST",`${path(ownerGroup.id)}/messages`,{
+    ...globalChat,membershipRevision:ownerGroup.membershipRevision,clientMessageId:randomUUID(),
+    text:"",imageId:await upload(),
+  });
+  assert(sent.message.imageUrl,"Any member may send a photo while the platform owner participates");
+  ownerGroup = (await update(alice,ownerGroup,{removeMemberIds:[f.owner.user.id]})).group;
+  const blocked = await alice.client.request("POST",`${path(ownerGroup.id)}/messages`,{
+    ...globalChat,membershipRevision:ownerGroup.membershipRevision,clientMessageId:randomUUID(),
+    text:"",imageId:await upload(),
+  });
+  assert.equal(blocked.status,403,"Removing site owner restores default image prohibition");
+});
