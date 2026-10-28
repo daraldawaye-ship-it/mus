@@ -13,17 +13,14 @@ const questionFields = z.object({
   category: z.string().trim().max(120).default(""),
   priority: z.number().int().min(1).max(100).default(1),
   question: z.string().trim().min(1).max(2000),
-  options: z.tuple([
-    z.string().trim().min(1).max(1000),
-    z.string().trim().min(1).max(1000),
-    z.string().trim().min(1).max(1000),
-    z.string().trim().min(1).max(1000),
-  ]),
+  options: z.array(z.string().trim().min(1).max(1000)).min(2).max(4),
   correctAnswer: z.number().int().min(1).max(4),
   points: z.number().int().min(0).max(100000).default(1),
   active: z.boolean().default(true),
-}).strict();
-const editFields = questionFields.extend({ revision: z.number().int().positive() });
+}).strict().refine(input => input.correctAnswer <= input.options.length, {
+  path:["correctAnswer"],message:"اختر الإجابة الصحيحة ضمن الخيارات الموجودة"
+});
+const editFields = questionFields.safeExtend({ revision: z.number().int().positive() });
 const answerFields = z.object({
   selectedAnswer: z.number().int().min(1).max(4),
   comment: z.string().trim().max(2000).nullable().optional(),
@@ -58,8 +55,8 @@ async function access(client: PoolClient, req: Request, section: "questions" | "
 const questionOutput = (row: QueryResultRow, manager: boolean) => ({
   id: row.id, companyId: row.company_id, category: row.category,
   priority: row.priority, question: row.question,
-  options: [row.answer1,row.answer2,row.answer3,row.answer4],
-  correctAnswer: manager ? row.correct_answer : null, points: row.points,
+  options: [row.answer1,row.answer2,row.answer3,row.answer4].filter((v):v is string=>typeof v==="string"),
+  optionCount:row.option_count,correctAnswer: manager ? row.correct_answer : null, points: row.points,
   active: row.active, revision: row.revision, createdBy: row.created_by,
   creatorName: row.creator_name, createdAt: row.created_at.toISOString(),
   answerCount: row.answer_count, respondentCount: row.respondent_count,
@@ -102,8 +99,8 @@ export function questionRoutes(pool: Pool): Router {
     const result=await transaction(pool,async client=>{
       const {companyId,user}=await access(client,req,"questions","create",true);
       const found=await client.query(
-        "INSERT INTO questions(company_id,category,priority,question,answer1,answer2,answer3,answer4,correct_answer,points,active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
-        [companyId,input.category,input.priority,input.question,...input.options,input.correctAnswer,input.points,input.active,user.id]);
+        "INSERT INTO questions(company_id,category,priority,question,answer1,answer2,answer3,answer4,option_count,correct_answer,points,active,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
+        [companyId,input.category,input.priority,input.question,input.options[0],input.options[1],input.options[2]??null,input.options[3]??null,input.options.length,input.correctAnswer,input.points,input.active,user.id]);
       const row=found.rows[0];
       await audit(client,user,"question.create","question",row.id,null,{
         question:input.question,category:input.category,priority:input.priority,points:input.points,active:input.active,
@@ -122,8 +119,8 @@ export function questionRoutes(pool: Pool): Router {
       if(!old) missing();
       if(old.revision !== input.revision) throw new HttpError(409,"conflict","تم تعديل السؤال؛ أعد تحميله");
       const updated=(await client.query(
-        "UPDATE questions SET category=$1,priority=$2,question=$3,answer1=$4,answer2=$5,answer3=$6,answer4=$7,correct_answer=$8,points=$9,active=$10,updated_by=$11,revision=revision+1,updated_at=now() WHERE id=$12 RETURNING *",
-        [input.category,input.priority,input.question,...input.options,input.correctAnswer,input.points,input.active,user.id,questionId],
+        "UPDATE questions SET category=$1,priority=$2,question=$3,answer1=$4,answer2=$5,answer3=$6,answer4=$7,option_count=$8,correct_answer=$9,points=$10,active=$11,updated_by=$12,revision=revision+1,updated_at=now() WHERE id=$13 RETURNING *",
+        [input.category,input.priority,input.question,input.options[0],input.options[1],input.options[2]??null,input.options[3]??null,input.options.length,input.correctAnswer,input.points,input.active,user.id,questionId],
       )).rows[0];
       await audit(client,user,"question.update","question",questionId,{
         question:old.question,options:[old.answer1,old.answer2,old.answer3,old.answer4],correctAnswer:old.correct_answer,points:old.points,
@@ -147,7 +144,7 @@ export function questionRoutes(pool: Pool): Router {
       const question=(await client.query("SELECT * FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2 FOR SHARE",[questionId,companyId])).rows[0];
       if(!question || !question.active) missing("السؤال غير موجود أو غير متاح");
       const correct=input.selectedAnswer===question.correct_answer;
-      const snapshot={question:question.question,options:[question.answer1,question.answer2,question.answer3,question.answer4],correctAnswer:question.correct_answer,points:question.points,revision:question.revision};
+      const snapshot={question:question.question,options:[question.answer1,question.answer2,question.answer3,question.answer4].slice(0,question.option_count),correctAnswer:question.correct_answer,points:question.points,revision:question.revision};
       const inserted=(await client.query(
         "INSERT INTO question_answers(question_id,user_id,selected_answer,is_correct,awarded_points,comment,question_snapshot,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,idempotency_key) DO NOTHING RETURNING *",
         [questionId,user.id,input.selectedAnswer,correct,correct?question.points:0,comment,JSON.stringify(snapshot),input.idempotencyKey],
