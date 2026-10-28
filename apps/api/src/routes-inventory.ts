@@ -13,6 +13,7 @@ import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError } from "./errors.ts";
 import { audit } from "./services/audit.ts";
+import { isItemDueForCount } from "./routes-tasks.ts";
 import { conflict, masterPage, mutateMaster } from "./services/masters.ts";
 import {
   checkQuantum,
@@ -487,6 +488,7 @@ export function inventoryRoutes(pool: Pool): Router {
     `${base}/stock-adjustments`,
     handler(async (req, res) => {
       const input = parse(stockAdjustmentSchema, req.body);
+      const fromRequiredTask = req.query.taskSource === "required-count";
       const result = await mutateMaster(
         pool,
         req,
@@ -511,6 +513,9 @@ export function inventoryRoutes(pool: Pool): Router {
             input.locationId,
           );
           const settings = await requireInventorySettings(client, companyId);
+          const eligibleForTask = fromRequiredTask && !input.zeroLocation &&
+            !!(await client.query("SELECT 1 FROM locations WHERE company_id=$1 AND id=$2 AND kind='showroom'",[companyId,input.locationId])).rowCount &&
+            await isItemDueForCount(client,companyId,input.itemId);
           await assertStockChronology(
             client,
             companyId,
@@ -660,6 +665,10 @@ export function inventoryRoutes(pool: Pool): Router {
             user,
             "adjustment",
             input,
+          );
+          if (eligibleForTask) await client.query(
+            "INSERT INTO automatic_task_count_events(company_id,operation_id,item_id,actor_user_id) VALUES($1,$2,$3,$4)",
+            [companyId,operationId,input.itemId,user.id],
           );
           if (delta !== 0n) {
             let cost: bigint | undefined;

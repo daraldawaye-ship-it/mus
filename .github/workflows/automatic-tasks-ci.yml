@@ -1,0 +1,45 @@
+name: Automatic task board checks
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/144_automatic_tasks.sql'
+      - 'apps/api/src/routes-tasks.ts'
+      - 'apps/api/src/routes-inventory.ts'
+      - 'apps/web/src/pages/AutomaticTasksPage.tsx'
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'packages/contracts/src/pages.ts'
+      - 'tests/automatic-tasks.test.ts'
+      - '.github/workflows/automatic-tasks-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tasks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/automatic-tasks.test.ts
