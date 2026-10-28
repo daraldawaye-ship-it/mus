@@ -23,9 +23,11 @@ export const chatContextSchema = z.object(contextFields).strict().refine(
 export const chatSendSchema = z.object({
   ...contextFields,
   clientMessageId: z.uuid().transform(value => value.toLowerCase()),
-  text: z.string().trim().min(1).max(4_000)
+  text: z.string().trim().max(4_000)
     .refine(value => !value.includes("\u0000"), "النص يحتوي على محرف غير صالح"),
-}).strict().refine(validContext, "حدد الشركة لدردشة الشركة فقط");
+  imageId: z.uuid().optional(),
+}).strict().refine(validContext, "حدد الشركة لدردشة الشركة فقط")
+  .refine(value => !!value.text || !!value.imageId, "اكتب رسالة أو أرفق صورة");
 const messageIds = z.array(chatId).max(100)
   .transform(values => [...new Set(values)].sort((a, b) => a - b));
 /** Acknowledgments name exact messages. Opening a list never implies reading. */
@@ -47,6 +49,7 @@ export interface ChatMessage {
   senderId: number;
   recipientId: number;
   text: string;
+  imageUrl: string | null;
   createdAt: string;
   deliveredAt: string | null;
   readAt: string | null;
