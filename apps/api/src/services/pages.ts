@@ -444,6 +444,10 @@ export async function requestPageKeys(
       keys:
         prefix === "notifications"
           ? ["public.notifications"]
+          : prefix === "questions"
+            ? ["public.questions"]
+            : prefix === "answers"
+              ? ["public.answers"]
           : prefix === "notification-templates"
             ? ["public.notification-templates"]
             : prefix === "users"
@@ -472,6 +476,8 @@ export async function requestPageKeys(
     "wallet-conversions": "wallet-conversions",
     notifications: "notifications",
     memos: "memos",
+    questions: "questions",
+    answers: "answers",
     "notification-templates": "notification-templates",
     users: "employees",
     accounts: "accounts",
@@ -585,6 +591,8 @@ export async function requestPageKeys(
       keys.splice(0, keys.length, "company.attendance");
     else keys.push("company.attendance");
   }
+  if (resource === "questions" && /^questions\/[1-9]\d*\/answers$/.test(rest))
+    keys.push("company.answers");
   if (
     resource === "memos" &&
     /^memos\/[1-9]\d*(?:\/(?:read|actions))?$/.test(rest)
