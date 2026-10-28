@@ -58,7 +58,7 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
  (n.company_id IS NULL AND COALESCE((SELECT enabled FROM page_settings WHERE company_id IS NULL AND page_key='public.notifications'),true)) OR n.company_id=$2::integer)
  AND (n.company_id IS NULL OR $4::boolean OR n.assigned
  OR (COALESCE(s.notify_subject,true) AND n.subject_employee_id=$3::integer)
- OR (n.code='SALES_DOCTOR_REVIEW' AND s.id IS NULL AND EXISTS(
+ OR (n.code IN ('SALES_DOCTOR_REVIEW','SALES_ARCHIVED_DOCTOR_USED') AND s.id IS NULL AND EXISTS(
        SELECT 1 FROM employees reviewer
        WHERE reviewer.company_id=n.company_id AND reviewer.user_id=$1
          AND reviewer.active AND reviewer.id=$3::integer
@@ -179,7 +179,7 @@ export async function emitNotification(
       ).rowCount
     )
       throw new Error("Invalid notification subject");
-    recipients = input.code === "SALES_DOCTOR_REVIEW" && template.revision === null
+    recipients = ["SALES_DOCTOR_REVIEW", "SALES_ARCHIVED_DOCTOR_USED"].includes(input.code) && template.revision === null
       ? (await client.query(
           `SELECT DISTINCT u.id FROM users u
              LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active

@@ -32,6 +32,7 @@ import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
 import { controlValue } from "./control-values.ts";
 import { emitNotification } from "./notifications.ts";
+import { archivedDoctorSaleNotice } from "./sales-doctor-notification.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -614,6 +615,7 @@ export async function createInvoice(
   assertAmount(total);
   let doctor: {id:number|null;name:string} | null = null;
   let newlyCreatedDoctor: { id: number; name: string } | null = null;
+  let reusedArchivedDoctor: { id: number; name: string } | null = null;
   if (input.kind === "sale") {
     const limit = await controlValue(client, companyId, "sales_doctor_threshold");
     const threshold = BigInt(typeof limit === "number" ? limit : 1000) * 1000000n;
@@ -621,12 +623,14 @@ export async function createInvoice(
       throw new HttpError(400,"doctor_required","اكتب اسم الطبيب أو الممرض أو الجهة، أو اختره من القائمة قبل حفظ الفاتورة.");
     if (input.doctorId !== null) {
       const result = await client.query(
-        "SELECT id,name FROM doctors WHERE company_id=$1 AND id=$2 AND active FOR SHARE",
+        "SELECT id,name,active FROM doctors WHERE company_id=$1 AND id=$2 FOR SHARE",
         [companyId,input.doctorId],
       );
       if(!result.rows[0])
-        throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة فعالة من كرت الأطباء والجهات.");
-      doctor = result.rows[0] as {id:number;name:string};
+        throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة مسجلة في كرت الأطباء والجهات.");
+      const selected = result.rows[0] as {id:number;name:string;active:boolean};
+      doctor = {id:selected.id,name:selected.name};
+      if (!selected.active && !importContext) reusedArchivedDoctor = doctor;
     } else if (input.doctorName) {
       // A sale names an existing card or creates an unclassified one atomically.
       // Historical import requests remain snapshots and generate no new cards/alerts.
@@ -640,13 +644,15 @@ export async function createInvoice(
           [companyId, name],
         );
         const matching = await client.query(
-          `SELECT id,name FROM doctors WHERE company_id=$1
+          `SELECT id,name,active FROM doctors WHERE company_id=$1
              AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower($2)
              ORDER BY active DESC,id ASC LIMIT 1 FOR SHARE`,
           [companyId, name],
         );
         if (matching.rows[0]) {
-          doctor = matching.rows[0] as { id: number; name: string };
+          const existing = matching.rows[0] as { id: number; name: string; active: boolean };
+          doctor = { id: existing.id, name: existing.name };
+          if (!existing.active) reusedArchivedDoctor = doctor;
         } else {
           const created = await client.query(
             `INSERT INTO doctors(company_id,name,kind,department,created_by)
@@ -1069,6 +1075,22 @@ export async function createInvoice(
       message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
       href: `/companies/${companyId}/doctors?focus=${newlyCreatedDoctor.id}`,
     });
+  }
+  if (reusedArchivedDoctor) {
+    // The template migration may not have run yet: register the immutable
+    // notification type in this same sale transaction, without any card changes.
+    await client.query(
+      `INSERT INTO notification_templates
+         (code,name,category,scope,description,implemented,can_disable,
+          default_importance,default_notify_managers)
+       VALUES ('SALES_ARCHIVED_DOCTOR_USED',
+               'استخدام طبيب أو جهة مؤرشفة في المبيعات','مبيعات','company',
+               'استخدام اسم طبيب أو جهة مؤرشفة في فاتورة مبيعات مع بقاء الكرت مؤرشفًا.',
+               true,true,'medium',false)
+       ON CONFLICT (code) DO NOTHING`,
+    );
+    await emitNotification(client,
+      archivedDoctorSaleNotice(companyId, reusedArchivedDoctor, invoiceId, number));
   }
   if (!importContext?.suppressRewards) {
     await awardPostedInvoice(
