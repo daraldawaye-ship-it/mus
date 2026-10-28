@@ -20,6 +20,7 @@ type Answer = {
   comment:string|null; answeredAt:string;
 };
 type Page<T>={items:T[];total:number;page:number;pageSize:number};
+type CategoryList={items:{category:string;count:number}[]};
 type Draft={
   category:string;priority:number;question:string;options:string[];
   correctAnswer:number;points:number;active:boolean;
@@ -57,7 +58,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const canCreate=!!questionsEntry?.enabled && !!questionsEntry.actionAccess.create;
   const canAnswer=!!answersEntry?.enabled && !!answersEntry.actionAccess.create;
   const visible=tab==="questions"?questionsEntry:answersEntry;
-  const [params]=useSearchParams();
+  const [params,setParams]=useSearchParams();
+  const selectedCategory=params.get("category");
+  const categorySelected=selectedCategory!==null;
   const [query,setQuery]=useState(params.get("q")??"");
   const [page,setPage]=useState(1);
   const questionId=params.get("questionId");
@@ -74,15 +77,22 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [saving,setSaving]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
+  const categories=useQuery({
+    queryKey:["question-categories",user?.id,scope],
+    queryFn:({signal})=>api<CategoryList>(`${root}/categories`,{signal}),
+    enabled:tab==="questions" && !!user && !!questionsEntry?.enabled && !!questionsEntry.actionAccess.view,
+  });
   const url=useMemo(()=>{
     const search=new URLSearchParams({page:String(page),pageSize:"20",q:query});
+    if(tab==="questions" && selectedCategory!==null) search.set("category",selectedCategory);
     if(tab==="answers"&&questionId)search.set("questionId",questionId);
     return `${tab==="questions"?root:answersRoot}?${search}`;
-  },[page,query,root,answersRoot,tab,questionId]);
+  },[page,query,root,answersRoot,tab,questionId,selectedCategory]);
   const list=useQuery({
     queryKey:["questions-module",user?.id,scope,tab,url],
     queryFn:({signal})=>api<Page<Question> | Page<Answer>>(url,{signal}),
-    enabled:!!user && !!visible?.enabled && !!visible.actionAccess.view,
+    enabled:!!user && !!visible?.enabled && !!visible.actionAccess.view &&
+      (tab==="answers" || categorySelected),
   });
   const liveQuestions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
   // Retain current-page order even if focus-triggered/background refetch sorts answered
@@ -91,6 +101,17 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old)
     : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
+  function selectCategory(category:string|null){
+    setPage(1);setQuery("");setOpened(null);setChosen(null);setOrder([]);
+    setPendingAnswer(null);setFrozenQuestions(null);setError("");setMessage("");
+    setParams(current=>{
+      const next=new URLSearchParams(current);
+      if(category===null)next.delete("category");
+      else next.set("category",category);
+      next.delete("q");
+      return next;
+    });
+  }
   function outcomeFor(question:Question): AnswerOutcome|null {
     if (savedAnswers[question.id]) return savedAnswers[question.id]!;
     if (question.myLastSelectedAnswer===null || question.myLastCorrect===null) return null;
@@ -142,8 +163,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       await api(editing?`${root}/${editing.id}`:root,{
         method:editing?"PUT":"POST",body:editing?{...draft,revision:editing.revision}:draft,
       });
-      setDraft(null);setEditing(null);setFrozenQuestions(null);setMessage("تم حفظ السؤال بنجاح");
-      await client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
+      const savedCategory=draft.category.trim();
+      setDraft(null);setEditing(null);
+      selectCategory(savedCategory);
+      setMessage("تم حفظ السؤال بنجاح");
+      await Promise.all([
+        client.invalidateQueries({queryKey:["question-categories",user?.id,scope]}),
+        client.invalidateQueries({queryKey:["questions-module",user?.id,scope]})
+      ]);
     }catch(cause){setError(errorMessage(cause));}
     finally{setSaving(false);}
   }
@@ -157,6 +184,23 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         {answersEntry?.actionAccess.view && <Link to={answersRoot} className="button button-secondary button-compact">آخر الإجابات</Link>}
         {tab==="questions"&&canCreate&&<Button onClick={()=>startEdit(null)}>إضافة سؤال</Button>}
       </>} />
+    {tab==="questions"&&<Card title="قائمة الأسئلة" description="اختر فئة لعرض أسئلتها فقط؛ الفئات الجديدة تظهر هنا تلقائيًا.">
+      {categories.isLoading&&<Notice>جارٍ تحميل قائمة الفئات…</Notice>}
+      {categories.error&&<Notice tone="error">{errorMessage(categories.error)}</Notice>}
+      <div className="page-actions" style={{justifyContent:"flex-start",flexWrap:"wrap",gap:"0.5rem"}}>
+        {categories.data?.items.map(item=><Button key={item.category}
+          variant={selectedCategory===item.category?"primary":"secondary"} size="compact"
+          aria-pressed={selectedCategory===item.category}
+          onClick={()=>selectCategory(item.category)}>
+          {item.category||"بدون فئة"} ({item.count})
+        </Button>)}
+      </div>
+      {categories.data?.items.length===0&&<Notice>لا توجد فئات أسئلة حتى الآن.</Notice>}
+      {categorySelected&&<div className="page-actions" style={{marginBlockStart:"0.5rem"}}>
+        <strong>الفئة المختارة: {selectedCategory||"بدون فئة"}</strong>
+        <Button variant="ghost" size="compact" onClick={()=>selectCategory(null)}>عودة إلى قائمة الفئات</Button>
+      </div>}
+    </Card>}
     {message&&<Notice tone="success">{message}</Notice>}
     {error&&<Notice tone="error">{error}</Notice>}
     {draft&&tab==="questions"&&<Card title={editing?"تعديل كرت السؤال":"كرت سؤال جديد"}>
@@ -193,10 +237,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         </div>
       </form>
     </Card>}
-    <Card title={tab==="questions"?"قائمة الأسئلة وتفاصيلها":"آخر الإجابات والتعليقات"}>
+    {(tab==="answers"||categorySelected)&&<Card title={tab==="questions"?"أسئلة "+(selectedCategory||"بدون فئة"):"آخر الإجابات والتعليقات"}>
       <div className="table-filters">
         <Field type="search" label="بحث" value={query}
-          placeholder={tab==="questions"?"السؤال أو الفئة":"السؤال أو المستخدم أو التعليق"}
+          placeholder={tab==="questions"?"ابحث في أسئلة الفئة المحددة":"السؤال أو المستخدم أو التعليق"}
           onChange={e=>{setQuery(e.target.value);setPage(1);}} />
       </div>
       {list.isFetching&&!list.data&&<Notice>جارٍ تحميل السجلات…</Notice>}
@@ -266,6 +310,6 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         <Button variant="secondary" size="compact" disabled={page<=1} onClick={()=>setPage(v=>v-1)}>السابق</Button>
         <Button variant="secondary" size="compact" disabled={page*20>=list.data.total} onClick={()=>setPage(v=>v+1)}>التالي</Button>
       </div>}
-    </Card>
+    </Card>}
   </div>;
 }
