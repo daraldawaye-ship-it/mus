@@ -145,6 +145,9 @@ export async function invoiceDTOs(
     supplierReceiptNumber: row.supplier_receipt_number ?? "",
     doctorId: row.doctor_id ?? null,
     doctorName: row.doctor_name ?? null,
+    saleCustomerId: row.sale_customer_id ?? null,
+    saleCustomerNumber: row.sale_customer_number ?? null,
+    saleCustomerName: row.sale_customer_name ?? null,
     description: row.description,
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
@@ -216,6 +219,8 @@ export async function createInvoice(
     const oldPayload = {...replay.rows[0].creation_payload} as Record<string,unknown>;
     if (!("doctorId" in oldPayload)) oldPayload.doctorId = null;
     if (!("doctorName" in oldPayload)) oldPayload.doctorName = "";
+    if (!("saleCustomerNumber" in oldPayload)) oldPayload.saleCustomerNumber = "";
+    if (!("saleCustomerName" in oldPayload)) oldPayload.saleCustomerName = "";
     if (!("supplierAccountId" in oldPayload)) oldPayload.supplierAccountId = null;
     if (!("supplierReceiptNumber" in oldPayload)) oldPayload.supplierReceiptNumber = "";
     // JSONB is order-insensitive even for nested object keys, unlike JS
@@ -669,6 +674,34 @@ export async function createInvoice(
       }
     }
   }
+  // Optional sales customer directory; the invoice keeps a stable snapshot.
+  // It is independent of the accounting counterparty and creates no notifications.
+  let saleCustomer: {id:number;customer_number:string;name:string}|null = null;
+  if (input.kind === "sale" && input.saleCustomerNumber && !importContext) {
+    const customerNumber = input.saleCustomerNumber;
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext($2::text))",
+      [companyId, "sale-customer:" + customerNumber],
+    );
+    const found = await client.query(
+      "SELECT id,customer_number,name FROM sale_customers WHERE company_id=$1 AND customer_number=$2 FOR SHARE",
+      [companyId, customerNumber],
+    );
+    if (found.rows[0]) {
+      saleCustomer = found.rows[0] as {id:number;customer_number:string;name:string};
+    } else {
+      if (!input.saleCustomerName)
+        throw new HttpError(400, "sale_customer_name_required", "هذا رقم عميل جديد؛ أدخل اسم العميل قبل الحفظ.");
+      const created = await client.query(
+        `INSERT INTO sale_customers(company_id,customer_number,name,created_by)
+          VALUES($1,$2,$3,$4) RETURNING id,customer_number,name`,
+        [companyId,customerNumber,input.saleCustomerName,user.id],
+      );
+      saleCustomer = created.rows[0] as {id:number;customer_number:string;name:string};
+      await audit(client,user,"saleCustomer.create","saleCustomer",saleCustomer.id,
+        null,{id:saleCustomer.id,customerNumber:saleCustomer.customer_number,name:saleCustomer.name,source:"sale"},companyId);
+    }
+  }
   const baseMagnitude = convertedUnits(
     moneyString(abs(total)),
     rate,
@@ -712,7 +745,7 @@ export async function createInvoice(
   );
   const number = counter.rows[0].number.padStart(10, "0");
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number,doctor_id,doctor_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,supplier_receipt_number,doctor_id,doctor_name,sale_customer_id,sale_customer_number,sale_customer_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37) RETURNING id",
     [
       companyId,
       number,
@@ -748,6 +781,9 @@ export async function createInvoice(
       input.supplierReceiptNumber,
       doctor?.id ?? null,
       doctor?.name ?? null,
+      saleCustomer?.id ?? null,
+      saleCustomer?.customer_number ?? (input.kind==="sale" && importContext ? input.saleCustomerNumber || null : null),
+      saleCustomer?.name ?? (input.kind==="sale" && importContext ? input.saleCustomerName || null : null),
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
