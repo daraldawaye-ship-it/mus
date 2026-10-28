@@ -16,6 +16,7 @@ import { searchPattern } from "./lists.ts";
 import type { ChatListQuery } from "./chat.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
 import { notifyChatRecipient } from "./chat-notifications.ts";
+import { checkChatImage, checkChatImageAllowed } from "./chat-images.ts";
 
 interface Access { user: User; companyId: number | null; scopeId: number; }
 async function access(client: PoolClient, actor: User, context: ChatContext,
@@ -102,6 +103,7 @@ async function messageDTOs(client: PoolClient, rows: QueryResultRow[]): Promise<
     return {
       id: row.id, groupId: row.group_id, clientMessageId: row.client_message_id,
       senderId: row.sender_id, senderName: row.sender_name, senderAvatarUrl: avatars.get(row.sender_id) ?? null, text: row.text,
+      imageUrl: row.image_id ? `/api/media/${row.image_id}/full` : null,
       createdAt: row.created_at.toISOString(), membershipRevision: row.membership_revision,
       recipientCount, deliveredCount: delivered.length, readCount: read.length,
       deliveredAt: recipientCount > 0 && delivered.length === recipientCount ? latest(delivered.map(receipt => receipt.deliveredAt!)) : null,
@@ -270,7 +272,7 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chat-group-send:${current.scopeId}:${input.clientMessageId}`]);
   const accepted = (await client.query("SELECT * FROM chat_group_messages WHERE scope_id=$1 AND client_message_id=$2", [current.scopeId, input.clientMessageId])).rows[0];
   if (accepted) {
-    if (accepted.group_id !== groupId || accepted.sender_id !== current.user.id || accepted.text !== input.text || accepted.membership_revision !== input.membershipRevision)
+    if (accepted.group_id !== groupId || accepted.sender_id !== current.user.id || accepted.text !== input.text || (accepted.image_id ?? null) !== (input.imageId ?? null) || accepted.membership_revision !== input.membershipRevision)
       throw new HttpError(409, "idempotency_conflict", "استُخدم معرّف الرسالة لطلب مختلف");
     if (accepted.id <= row.own_cutoff || accepted.sender_membership_id !== row.own_membership_id) missing("الرسالة خارج فترة عضويتك الحالية");
     return (await messageDTOs(client, [accepted]))[0]!;
@@ -280,12 +282,13 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   const members = await currentMembers(client, groupId);
   if (members.length < 2) throw new HttpError(409, "group_needs_recipient", "أضف عضوًا آخر قبل إرسال رسالة للمجموعة");
   await eligible(client, current, members.map(member => member.user_id).sort((a, b) => a - b), true);
+  if (input.imageId) { await checkChatImageAllowed(client, "group"); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
   const recipientMembers = members.filter(member => member.user_id !== current.user.id);
   const created = (await client.query(`INSERT INTO chat_group_messages(group_id,scope_id,client_message_id,sender_id,
-    sender_membership_id,sender_name,membership_revision,intended_membership_ids,text)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [groupId, current.scopeId, input.clientMessageId,
+    sender_membership_id,sender_name,membership_revision,intended_membership_ids,text,image_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [groupId, current.scopeId, input.clientMessageId,
     current.user.id, row.own_membership_id, current.user.displayName, input.membershipRevision,
-    recipientMembers.map(member => member.id), input.text])).rows[0];
+    recipientMembers.map(member => member.id), input.text, input.imageId ?? null])).rows[0];
   for (const member of recipientMembers) await client.query(`INSERT INTO chat_group_receipts(message_id,group_id,membership_id,user_id,recipient_name)
     VALUES($1,$2,$3,$4,$5)`, [created.id, groupId, member.id, member.user_id, member.display_name]);
   await client.query("UPDATE chat_groups SET last_message_id=$2,updated_at=greatest(updated_at,$3) WHERE id=$1", [groupId, created.id, created.created_at]);
