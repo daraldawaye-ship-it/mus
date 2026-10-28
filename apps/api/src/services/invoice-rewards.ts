@@ -15,6 +15,8 @@ export async function awardPostedInvoice(
   kind: "sale" | "purchase",
   user: User,
   number: string,
+  customerReward: "new" | "existing" | null = null,
+  doctorReward = false,
 ): Promise<void> {
   const employee = (
     await client.query(
@@ -26,10 +28,13 @@ export async function awardPostedInvoice(
   ).rows[0] as { id: number; name: string } | undefined;
   if (!employee) return;
 
-  const codes =
+  const codes: string[] =
     kind === "sale"
-      ? (["SALE_SAVED", "SALE_LINES"] as const)
-      : (["PURCHASE_SAVED", "PURCHASE_LINES"] as const);
+      ? ["SALE_SAVED", "SALE_LINES"]
+      : ["PURCHASE_SAVED", "PURCHASE_LINES"];
+  if (kind === "sale" && customerReward)
+    codes.push(customerReward === "new" ? "CUSTOMER_NEW" : "CUSTOMER_EXISTING");
+  if (kind === "sale" && doctorReward) codes.push("DOCTOR_REFERRED");
   // The caller holds the company row's update lock throughout this transaction,
   // serializing changes to the task settings with posting for this company.
   const tasks = await client.query(
@@ -71,7 +76,13 @@ export async function awardPostedInvoice(
     const units = task.code.endsWith("_LINES") ? logicalLines : 1;
     const value = BigInt(task.points) * BigInt(units);
     if (value === 0n) continue; // An unset/zero-value task yields no empty entry.
-    const reason = `مكافأة ${task.code.endsWith("_LINES") ? "سطور" : "حفظ"} فاتورة ${kind === "sale" ? "مبيعات" : "مشتريات"} رقم ${number}`;
+    const reason = task.code === "CUSTOMER_NEW"
+      ? `مكافأة إضافة عميل جديد — فاتورة مبيعات رقم ${number}`
+      : task.code === "CUSTOMER_EXISTING"
+        ? `مكافأة إضافة عميل سابق — فاتورة مبيعات رقم ${number}`
+        : task.code === "DOCTOR_REFERRED"
+          ? `مكافأة إضافة طبيب أو جهة — فاتورة مبيعات رقم ${number}`
+          : `مكافأة ${task.code.endsWith("_LINES") ? "سطور" : "حفظ"} فاتورة ${kind === "sale" ? "مبيعات" : "مشتريات"} رقم ${number}`;
     const snapshot = {
       source: "posted-invoice",
       invoiceId,
@@ -116,3 +127,5 @@ export async function awardPostedInvoice(
     );
   }
 }
+
+

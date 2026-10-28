@@ -70,6 +70,9 @@ const invoiceTasks = new Set([
   "PURCHASE_SAVED",
   "SALE_LINES",
   "PURCHASE_LINES",
+  "CUSTOMER_NEW",
+  "CUSTOMER_EXISTING",
+  "DOCTOR_REFERRED",
 ]);
 const automaticLabels: Record<string, string> = {
   SALE_SAVED: "مكافأة فاتورة مبيعات",
@@ -80,6 +83,9 @@ const automaticLabels: Record<string, string> = {
   PAYMENT_PRINT: "مكافأة طلب طباعة سند صرف",
   PAGE_VISIT: "مكافأة زيارة صفحة",
   DAILY_LOGIN: "مكافأة دخول الشركة",
+  CUSTOMER_NEW: "مكافأة إضافة عميل جديد",
+  CUSTOMER_EXISTING: "مكافأة إضافة عميل سابق",
+  DOCTOR_REFERRED: "مكافأة إضافة طبيب أو جهة",
 };
 const repeatLabels: Record<RewardRepeatRule, string> = {
   "per-document": "لكل مستند",
@@ -1218,10 +1224,9 @@ export function RewardTasksPage({ context }: { context: CompanyContext }) {
             </div>
             {invoiceTasks.has(draft.code) && (
               <Notice>
-                تُحتسب هذه المهمة مرة لكل فاتورة جديدة بعد ترحيلها، ولا تتكرر
-                عند إعادة فتحها أو إرسال الطلب ذاته. يمكن تفعيل مكافأة حفظ
-                الفاتورة ومكافأة سطورها معًا؛ النقاط المحددة هنا للسطور هي لكل
-                سطر منطقي.
+                تُحتسب هذه المهمة مرة لكل فاتورة جديدة عند ترحيلها، ولا تتكرر
+                عند إعادة فتح الفاتورة أو إعادة إرسال الطلب. ويمكن تعديل قيمتها
+                أو إيقافها بحسب الصلاحيات.
               </Notice>
             )}
             {(draft.code === "RECEIPT_PRINT" ||
