@@ -3095,15 +3095,24 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               onChange={event=>{
                 const text=event.target.value;
                 setSaleCustomerQuery(text);
-                // A number typed in the search doubles as the customer number.
-                // The exact-number lookup fills the name when the card exists;
-                // otherwise this saves the cashier retyping a new number.
-                const number=normalizeDigits(text.trim());
-                if (/^\d{1,30}$/.test(number)) {
-                  setSaleCustomerNumber(number);
+                const normalized=normalizeDigits(text.trim());
+                if (/^\d{1,30}$/.test(normalized)) {
+                  // Pure numeric search: reuse the number on a new card and
+                  // resolve its saved name from the exact-number lookup.
+                  setSaleCustomerNumber(normalized);
                   setSaleCustomerName("");
-                  setSaleCustomerMatched(false);
+                } else if (text.trim()) {
+                  // Searching by a name also seeds the name field when
+                  // no matching customer exists. Selecting a result still
+                  // fills both fields from the existing customer card.
+                  setSaleCustomerName(text.trim());
+                  setSaleCustomerNumber("");
+                } else {
+                  setSaleCustomerNumber("");
+                  setSaleCustomerName("");
                 }
+                setSaleCustomerMatched(false);
+                setDoctorError("");
               }}/>
           </div>
           {saleCustomerQuery.trim()&&(
