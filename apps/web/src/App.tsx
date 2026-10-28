@@ -94,6 +94,7 @@ const AccountStatisticsReportPage = lazy(() =>
 );
 const LegacySalesImportPage = lazy(() => import("./pages/LegacySalesImportPage").then(m=>({default:m.LegacySalesImportPage})));
 const LegalCasesPage = lazy(() => import("./pages/LegalCasesPage").then(module => ({default:module.LegalCasesPage})));
+const ArchivePage = lazy(() => import("./pages/ArchivePage").then(module => ({default:module.ArchivePage})));
 const ExplanationsPage = lazy(() => import("./pages/ExplanationsPage").then(module => ({default:module.ExplanationsPage})));
 const ExplanationsAccessPage = lazy(() => import("./pages/ExplanationsAccessPage").then(module => ({default:module.ExplanationsAccessPage})));
 const ExplanationsTopicIndex = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicIndex})));
@@ -291,6 +292,7 @@ const InvoicePage = lazy(() =>
   })),
 );
 const companySections = [
+  "archive",
   "chat",
   "notifications",
   "notification-templates",
@@ -378,6 +380,8 @@ function Navigation({
     "public.explanations-editor": <FileText size={17}/>,
     "public.explanations-access": <ShieldCheck size={17}/>,
     "public.legal-cases": <Scale size={17} />,
+    "public.archive": <FileText size={17} />,
+    "company.archive": <FileText size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
     "public.chat": <MessageSquare size={17} />,
@@ -553,6 +557,8 @@ function CompanyContent({
 }) {
   const { user } = useSession();
   switch (section) {
+    case "archive":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأرشيف…</Notice>}><ArchivePage companyId={context.company.id}/></Suspense>;
     case "chat":
       return user ? (
         <Suspense fallback={<Notice>جارٍ تحميل الدردشة…</Notice>}>
@@ -1169,6 +1175,7 @@ function Workspace() {
               <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/access" element={<Protected><PageRouteGuard pageKey="public.explanations-access"><Suspense fallback={<Notice>جارٍ تحميل منح الصلاحيات…</Notice>}><ExplanationsAccessPage/></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/archive" element={<Protected><PageRouteGuard pageKey="public.archive"><Suspense fallback={<Notice>جارٍ تحميل أرشيف المستندات…</Notice>}><ArchivePage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/legal-cases" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل نظام القضايا…</Notice>}><PageRouteGuard pageKey="public.legal-cases"><LegalCasesPage /></PageRouteGuard></Suspense></Protected>} />
               <Route
                 path="/general-table"
