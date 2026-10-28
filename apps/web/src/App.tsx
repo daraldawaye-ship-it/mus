@@ -1171,7 +1171,7 @@ function Workspace() {
                   </Protected>
                 }
               />
-              <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsContinuousReader/></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsTopicIndex/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/access" element={<Protected><PageRouteGuard pageKey="public.explanations-access"><Suspense fallback={<Notice>جارٍ تحميل منح الصلاحيات…</Notice>}><ExplanationsAccessPage/></Suspense></PageRouteGuard></Protected>} />
