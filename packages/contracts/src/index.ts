@@ -166,6 +166,7 @@ export const auditActionLabels = {
   "wallet.auto-award": "احتساب مكافأة آلية",
   "wallet.reverse": "تصحيح حركة نقاط",
   "wallet.task": "إعداد مهمة مكافأة",
+  "automaticTask.settings": "إعداد كنترول مهمة آلية",
   "wallet.policy": "إعداد سياسة تحويل النقاط",
   "wallet.account": "ربط حساب محفظة الموظف",
   "wallet.conversion.request": "طلب تحويل النقاط",
