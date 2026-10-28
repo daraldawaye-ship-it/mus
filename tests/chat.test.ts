@@ -339,7 +339,7 @@ test("chat avatars serve only current owned profile thumbnails with current page
 test("chat image defaults deny direct and group attachments; only participants can read uploaded images", async t => {
   const f = await fixture(t);
   const alice = await f.actor("alice"), bob = await f.actor("bob"), other = await f.actor("other");
-  const originalSettings = await alice.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("GET", "/chat/image-settings");
+  const originalSettings = await alice.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number;siteOwnerIds:number[]}>("GET", "/chat/image-settings");
   assert.equal(originalSettings.allowGroupImages,false);
   assert.equal(originalSettings.allowDirectImages,false);
   const asset = await alice.client.ok<{id:string;fullUrl:string}>("POST", "/media", {
@@ -349,6 +349,24 @@ test("chat image defaults deny direct and group attachments; only participants c
   const key = randomUUID();
   const payload = {...globalChat,clientMessageId:key,text:"",imageId:asset.id};
   assert.equal((await alice.client.request("POST",messagesPath(bob.user.id),payload)).status,403);
+  // A conversation with the SITE owner is always exempt, in either direction.
+  assert(originalSettings.siteOwnerIds?.includes(f.owner.user.id));
+  const ownerImage = await alice.client.ok<{id:string;fullUrl:string}>("POST", "/media", {
+    purpose:"chat", companyId:null, original:CHAT_AVATAR_DATA_URL, thumbnail:CHAT_AVATAR_DATA_URL,
+  },201);
+  const withOwner = await alice.client.ok<{message:ChatMessage}>("POST",messagesPath(f.owner.user.id), {
+    ...globalChat,clientMessageId:randomUUID(),text:"",imageId:ownerImage.id,
+  });
+  assert.equal(withOwner.message.imageUrl,ownerImage.fullUrl);
+  assert.equal((await f.owner.client.image(ownerImage.fullUrl)).status,200);
+  const outboundImage = await f.owner.client.ok<{id:string;fullUrl:string}>("POST", "/media", {
+    purpose:"chat", companyId:null, original:CHAT_AVATAR_DATA_URL, thumbnail:CHAT_AVATAR_DATA_URL,
+  },201);
+  const fromOwner = await f.owner.client.ok<{message:ChatMessage}>("POST",messagesPath(bob.user.id), {
+    ...globalChat,clientMessageId:randomUUID(),text:"",imageId:outboundImage.id,
+  });
+  assert.equal(fromOwner.message.imageUrl,outboundImage.fullUrl);
+  assert.equal((await bob.client.image(outboundImage.fullUrl)).status,200);
   assert.equal((await alice.client.request("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true})).status,403);
   const enabled = await f.owner.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true});
   assert.equal(enabled.allowDirectImages,true);
