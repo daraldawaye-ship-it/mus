@@ -23,8 +23,11 @@ export const chatGroupLeaveSchema = z.object({ ...context, revision: id })
   .strict().refine(validContext, "حدد الشركة لدردشة الشركة فقط");
 export const chatGroupSendSchema = z.object({
   ...context, membershipRevision: id,
-  clientMessageId: z.uuid().transform(value => value.toLowerCase()), text: cleanText(4_000),
-}).strict().refine(validContext, "حدد الشركة لدردشة الشركة فقط");
+  clientMessageId: z.uuid().transform(value => value.toLowerCase()),
+  text: z.string().trim().max(4_000).refine(value => !value.includes("\u0000"), "النص يحتوي على محرف غير صالح"),
+  imageId: z.uuid().optional(),
+}).strict().refine(validContext, "حدد الشركة لدردشة الشركة فقط")
+  .refine(value => !!value.text || !!value.imageId, "اكتب رسالة أو أرفق صورة");
 export type ChatGroupCreateInput = z.infer<typeof chatGroupCreateSchema>;
 export type ChatGroupUpdateInput = z.infer<typeof chatGroupUpdateSchema>;
 export type ChatGroupLeaveInput = z.infer<typeof chatGroupLeaveSchema>;
@@ -36,7 +39,7 @@ export interface ChatGroupReceipt {
 }
 export interface ChatGroupMessage {
   id: number; groupId: number; clientMessageId: string; senderId: number; senderName: string; senderAvatarUrl: string | null;
-  text: string; createdAt: string; membershipRevision: number;
+  text: string; imageUrl: string | null; createdAt: string; membershipRevision: number;
   recipientCount: number; deliveredCount: number; readCount: number;
   deliveredAt: string | null; readAt: string | null;
   receipts: ChatGroupReceipt[];
