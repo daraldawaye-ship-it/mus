@@ -226,6 +226,40 @@ function ControlRow({
     </div>
   );
 }
+type ChatImageSettings = {allowGroupImages: boolean; allowDirectImages: boolean; revision: number};
+function ChatImageControlSettings() {
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: ["chat", "image-settings"],
+    queryFn: () => api<ChatImageSettings>("/chat/image-settings"),
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const change = async (key: "allowGroupImages" | "allowDirectImages", enabled: boolean) => {
+    if (!query.data || busy) return;
+    setBusy(true); setError("");
+    try {
+      await api("/chat/image-settings", {method:"PUT", body:{...query.data,[key]:enabled}});
+      await client.invalidateQueries({queryKey:["chat","image-settings"]});
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "تعذر حفظ إعداد الدردشة.");
+    } finally {setBusy(false);}
+  };
+  return <Card title="إرفاق الصور في الدردشة">
+    <p className="muted">الافتراضي منع إرفاق الصور للمجموعات وبين المستخدمين. تبقى الرسائل النصية متاحة، وتطبّق الإعدادات على دردشة الرئيسي ودردشة الشركات.</p>
+    {query.isLoading && <p>جارٍ تحميل إعدادات الدردشة…</p>}
+    {query.error && <Notice tone="error">{query.error.message}</Notice>}
+    {query.data && <div className="control-options">
+      <label className="control-toggle"><input type="checkbox" checked={query.data.allowGroupImages}
+        disabled={busy} onChange={event => void change("allowGroupImages",event.target.checked)} />
+        السماح بإرفاق الصور في المجموعات</label>
+      <label className="control-toggle"><input type="checkbox" checked={query.data.allowDirectImages}
+        disabled={busy} onChange={event => void change("allowDirectImages",event.target.checked)} />
+        السماح بإرفاق الصور بين المستخدمين</label>
+    </div>}
+    {error && <Notice tone="error">{error}</Notice>}
+  </Card>;
+}
 export function ControlPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const companyId = context.company.id;
@@ -273,7 +307,8 @@ export function ControlPage({ context }: { context: CompanyContext }) {
           )}
         </div>
       </Card>
-      {query.isLoading && <Notice>جارٍ تحميل خيارات الكنترول…</Notice>}
+      {user?.owner && <ChatImageControlSettings />}
+       {query.isLoading && <Notice>جارٍ تحميل خيارات الكنترول…</Notice>}
       {query.error && <Notice tone="error">{query.error.message}</Notice>}
       {scope === "employee" && data && !data.employeeId && (
         <Notice>اختر الموظف الذي تريد تعديل إعداداته.</Notice>
