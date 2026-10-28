@@ -8,6 +8,7 @@ import {
   type InvoiceLine,
   type User,
   type invoiceSchema,
+  normalizeSaleCustomer,
 } from "../../../../packages/contracts/src/index.ts";
 import type { Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
@@ -210,6 +211,7 @@ export async function createInvoice(
   input: InvoiceFields,
   importContext?: InvoiceImportContext,
 ): Promise<Invoice> {
+  input = normalizeSaleCustomer(input);
   // New optional doctor reference must not invalidate a legacy UUID retry.
   const replay = await client.query(
     "SELECT id,creation_payload FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
