@@ -67,6 +67,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [comment,setComment]=useState("");
   const [pendingAnswer,setPendingAnswer]=useState<Submission|null>(null);
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
+  const [frozenQuestions,setFrozenQuestions]=useState<{url:string;items:Question[]}|null>(null);
   const [sending,setSending]=useState(false);
   const [draft,setDraft]=useState<Draft|null>(null);
   const [editing,setEditing]=useState<Question|null>(null);
@@ -83,7 +84,12 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     queryFn:({signal})=>api<Page<Question> | Page<Answer>>(url,{signal}),
     enabled:!!user && !!visible?.enabled && !!visible.actionAccess.view,
   });
-  const questions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
+  const liveQuestions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
+  // Retain current-page order even if focus-triggered/background refetch sorts answered
+  // questions to a later page. New page/search navigation uses live server ordering.
+  const questions=frozenQuestions?.url===url
+    ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old)
+    : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
   function outcomeFor(question:Question): AnswerOutcome|null {
     if (savedAnswers[question.id]) return savedAnswers[question.id]!;
@@ -113,9 +119,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         ...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment
       }}));
       setPendingAnswer(null);setComment("");setChosen(null);
-      // Keep this question in place; refetching the list here would reorder answered
-      // questions to the bottom and make the just-answered question disappear.
-      // Other tabs or later visits refetch normally.
+      setFrozenQuestions({url,items:questions});
+      // Update totals and response counts without moving or unmounting the answered card.
+      void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
     }catch(cause){setError(errorMessage(cause));}
     finally{setSending(false);}
   }
@@ -136,7 +142,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       await api(editing?`${root}/${editing.id}`:root,{
         method:editing?"PUT":"POST",body:editing?{...draft,revision:editing.revision}:draft,
       });
-      setDraft(null);setEditing(null);setMessage("تم حفظ السؤال بنجاح");
+      setDraft(null);setEditing(null);setFrozenQuestions(null);setMessage("تم حفظ السؤال بنجاح");
       await client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
     }catch(cause){setError(errorMessage(cause));}
     finally{setSaving(false);}
