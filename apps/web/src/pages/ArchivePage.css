@@ -1,0 +1,28 @@
+.archive-workspace{display:grid;gap:12px;direction:rtl}
+.archive-upload-fields,.archive-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;align-items:end}
+.archive-upload-fields .field{min-width:0}
+.archive-upload-fields input[type=file]{max-width:100%;font-size:13px}
+.archive-upload-fields small,.archive-filename,.archive-detail-heading small{display:block;font-size:12px;opacity:.75}
+.archive-upload-count{margin:6px 0;font-size:13px}
+.archive-category-options{display:flex;flex-wrap:wrap;gap:8px 14px}
+.archive-category-toggle{display:inline-flex;gap:6px;align-items:center;font-size:14px;cursor:pointer}
+.archive-category-toggle input{accent-color:var(--accent,#477de2)}
+.archive-table-scroll{overflow-x:auto;width:100%}
+.archive-table{width:100%;border-collapse:collapse;font-size:13px;text-align:right}
+.archive-table th,.archive-table td{padding:7px 9px;border-bottom:1px solid var(--border-color,var(--border,#ddd));vertical-align:top}
+.archive-table th{white-space:nowrap}
+.archive-table td:nth-child(1),.archive-table td:nth-child(4){white-space:nowrap}
+.archive-table td:nth-child(2){min-width:140px}
+.archive-table .archive-preview-cell{max-width:260px;min-width:140px;white-space:pre-wrap;overflow-wrap:anywhere}
+.archive-pagination{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+.archive-detail{display:grid;gap:12px}
+.archive-detail-heading{display:flex;align-items:start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.archive-detail-actions{display:flex;flex-wrap:wrap;gap:6px}
+.archive-file-viewer{text-align:center;overflow:auto;max-height:650px}
+.archive-file-viewer img{max-width:100%;height:auto;object-fit:contain}
+.archive-file-viewer iframe{width:100%;min-height:550px;border:1px solid var(--border-color,var(--border,#ddd));border-radius:6px}
+.archive-text-fields{display:grid;gap:12px}
+.archive-text-fields label{display:grid;gap:6px;font-size:14px;font-weight:600}
+.archive-text-fields textarea{width:100%;min-height:130px;max-width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid var(--border-color,var(--border,#999));border-radius:6px;color:inherit;background:var(--input-bg,transparent)}
+.archive-text-fields p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;line-height:1.65}
+@media(max-width:650px){.archive-upload-fields,.archive-filters{grid-template-columns:1fr}.archive-table{min-width:850px}.archive-file-viewer iframe{min-height:420px}}
