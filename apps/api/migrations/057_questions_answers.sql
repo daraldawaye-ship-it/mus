@@ -53,6 +53,8 @@ CREATE TABLE question_answers (
  answered_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(user_id,idempotency_key)
 );
+-- Defensive guarantee: no user can earn positive points twice for one question.
+CREATE UNIQUE INDEX question_answers_one_reward ON question_answers(question_id,user_id) WHERE awarded_points > 0;
 CREATE INDEX question_answers_question ON question_answers(question_id,answered_at DESC,id DESC);
 CREATE INDEX question_answers_user ON question_answers(user_id,question_id,answered_at DESC);
 CREATE FUNCTION protect_question_answer() RETURNS trigger LANGUAGE plpgsql AS $$
