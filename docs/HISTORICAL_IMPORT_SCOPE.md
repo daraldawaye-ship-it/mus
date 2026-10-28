@@ -38,7 +38,7 @@ cumulative excluded total17,236 at resumption. Already posted old sales are reta
 because the request applies to the remaining queue only.
 
 
-## CURRENT: sales deferred, purchases-only manual completion — 2026-10-28
+## Sales deferred, purchases-only manual completion — 2026-10-28
 
 The owner explicitly stopped the general run and requested extracting remaining
 purchases only, deferring remaining sales into a separate file until further
@@ -65,3 +65,17 @@ Private output directory: `/workspace/outputs/paused-invoices-2026-10-28/`.
 `purchases-only.zip` includes the original41-source snapshot, Excel review and posting
 results. `deferred-sales.zip` includes all1,807 deferred sales in JSON/Excel, with exact
 raw source preservation and manifest checksums. Financial payloads stay out of Git.
+
+
+## CURRENT: explicit owner resumption of deferred sales — 2026-10-29 (Asia/Aden)
+
+The owner now explicitly authorized continuing the deferred October sales.
+The existing owner API action resumed the same run from paused to running; no new
+source data was loaded, no excluded old sale was restored, and failed documents
+remain for manual correction. Baseline deferred/pending sales:1,807; pending
+purchases:0. The previously posted38 manual purchases and3 manually failed purchases
+remain outside the per-worker counters, so overall totals must still come from staging.
+Worker baseline at resumption:imported65,912, existing5, failed2,159, excluded17,236.
+The original source identities, cutoff2026-07-18, deduplication, website access and
+restored automatic tasks remain intact. Prior sales hold is superseded by this
+explicit resumption. Receipt/payment voucher posting remains a separate unfinished step.
