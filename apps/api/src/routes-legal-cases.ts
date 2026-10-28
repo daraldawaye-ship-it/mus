@@ -167,7 +167,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const where="($1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2)) AND (c.title ILIKE $3 OR c.case_number ILIKE $3 OR c.agency ILIKE $3 OR c.summary ILIKE $3) AND ($4::text IS NULL OR c.status=$4)";
     const args=[user.owner,user.id,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",status??null];
     const [rows,count]=await Promise.all([
-      pool.query("SELECT c.* FROM legal_cases c WHERE "+where+" ORDER BY c.priority DESC,c.id DESC LIMIT $5 OFFSET $6",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT c.* FROM legal_cases c WHERE "+where+" ORDER BY (c.priority=0) ASC,c.priority ASC,c.id DESC LIMIT $5 OFFSET $6",[...args,limit,(page-1)*limit]),
       pool.query("SELECT count(*)::int AS total FROM legal_cases c WHERE "+where,args),
     ]);
     res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
