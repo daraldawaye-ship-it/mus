@@ -198,7 +198,7 @@ export function ExplanationsContinuousReader() {
   if(!sentinel||!more||fetching||!!printData)return;
   const observer=new IntersectionObserver(entries=>{
    if(entries.some(entry=>entry.isIntersecting))void loadNext();
-  },{rootMargin:"550px 0px"});
+  },{rootMargin:"120px 0px"});
   observer.observe(sentinel);
   return ()=>observer.disconnect();
  },[more,fetching,loadNext,printData,currentCount]);
@@ -313,7 +313,7 @@ export function ExplanationsContinuousReader() {
    </div>
   </article>}
   {group&&more&&!printData&&<div ref={loadingEnd} className="explain-flow-loading"
-   aria-live="polite">{fetching?"جارٍ تحميل ٥٠ سجلًا إضافيًا…":"يستكمل العرض تلقائيًا عند التمرير…"}</div>}
+   aria-live="polite">{fetching?"جارٍ تحميل المزيد من السطور…":"يستكمل العرض تلقائيًا عند التمرير…"}</div>}
   {pages.isFetchingNextPage&&pages.isError&&<Button variant="secondary"
    onClick={()=>void pages.fetchNextPage()}>إعادة تحميل السجلات</Button>}
   <ImageDialog asset={selected} onClose={()=>setSelected(null)}/>
