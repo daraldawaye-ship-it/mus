@@ -23,3 +23,17 @@ CREATE TABLE automatic_task_settings (
  CHECK(array_position(assigned_employee_ids,NULL) IS NULL),
  CHECK(array_position(follower_employee_ids,NULL) IS NULL)
 );
+
+-- Only counts started from the due-count task AND validated as due at posting time qualify.
+CREATE TABLE automatic_task_count_events (
+ company_id integer NOT NULL REFERENCES companies(id),
+ operation_id integer NOT NULL,
+ item_id integer NOT NULL,
+ actor_user_id integer NOT NULL REFERENCES users(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(company_id,operation_id),
+ FOREIGN KEY(company_id,operation_id) REFERENCES stock_operations(company_id,id),
+ FOREIGN KEY(company_id,item_id) REFERENCES items(company_id,id)
+);
+CREATE INDEX automatic_task_count_events_actor ON automatic_task_count_events(company_id,actor_user_id,created_at DESC);
+
