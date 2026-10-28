@@ -1,43 +1,41 @@
--- Customer and doctor creation rewards use the existing company task cards and wallet.
--- Each reward is committed atomically with the invoice or doctor card.
+-- Sales customer and doctor/referral rewards use the existing task cards and employee wallet.
+-- Credit only newly posted invoices, with immutable one-invoice/one-task protection.
 INSERT INTO reward_task_definitions
   (code,name,description,implemented,default_points,default_repeat_rule)
 VALUES
  ('CUSTOMER_NEW','إضافة عميل جديد',
-  '10 نقاط افتراضيًا عند حفظ فاتورة مبيعات تؤدي إلى إنشاء رقم عميل جديد. مرة لكل فاتورة وللموظف الذي حفظها.',true,10,'per-document'),
+  '10 نقاط افتراضيًا عند حفظ فاتورة تؤدي إلى إنشاء كرت عميل جديد. مرة واحدة للفاتورة.',true,10,'per-document'),
  ('CUSTOMER_EXISTING','إضافة عميل سابق',
-  '5 نقاط افتراضيًا عند اختيار رقم عميل مسجل سابقًا في فاتورة مبيعات جديدة. مرة لكل فاتورة.',true,5,'per-document'),
- ('DOCTOR_NEW','إضافة طبيب أو جهة',
-  '5 نقاط افتراضيًا عند إنشاء كرت طبيب أو ممرض جديد، أو استكمال تصنيف كرت جديد غير مصنف إلى طبيب أو ممرض. لا تُحتسب للجهة وحدها ولا عند تعديل الكرت لاحقًا.',true,5,'per-document')
+  '5 نقاط افتراضيًا عند حفظ فاتورة مرتبطة برقم عميل كان مسجلًا بالفعل.',true,5,'per-document'),
+ ('DOCTOR_REFERRED','إضافة طبيب أو جهة',
+  '5 نقاط افتراضيًا عند حفظ فاتورة باختيار طبيب أو ممرض مسجل، أو إنشاء اسم جديد بكرت غير مصنف. لا تشترط تصنيف الاسم الجديد، ولا تُحتسب عند تكرار اسم موجود غير مصنف أو جهة من نوع جهة.',true,5,'per-document')
 ON CONFLICT(code) DO NOTHING;
 
--- New rewards start enabled, while each company's existing chosen settings are preserved.
+-- Enable the three rewards with defaults for all current companies;
+-- edits and disabling in existing company reward cards are preserved.
 INSERT INTO reward_task_settings
   (company_id,code,points,repeat_rule,enabled,page_key,updated_by)
 SELECT c.id,d.code,d.default_points,d.default_repeat_rule,true,NULL,c.created_by
 FROM companies c JOIN reward_task_definitions d
-  ON d.code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING','DOCTOR_NEW')
+  ON d.code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING','DOCTOR_REFERRED')
 ON CONFLICT(company_id,code) DO NOTHING;
 
--- Seed newly created companies as well, without requiring manual activation.
+-- Give new companies the same editable reward cards.
 CREATE FUNCTION initialize_registration_rewards() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  INSERT INTO reward_task_settings
    (company_id,code,points,repeat_rule,enabled,page_key,updated_by)
  SELECT NEW.id,d.code,d.default_points,d.default_repeat_rule,true,NULL,NEW.created_by
  FROM reward_task_definitions d
- WHERE d.code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING','DOCTOR_NEW')
+ WHERE d.code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING','DOCTOR_REFERRED')
  ON CONFLICT(company_id,code) DO NOTHING;
  RETURN NEW;
 END $$;
 CREATE TRIGGER company_registration_rewards AFTER INSERT ON companies
  FOR EACH ROW EXECUTE FUNCTION initialize_registration_rewards();
 
--- A doctor reward has an immutable source card, like invoice rewards have an invoice.
-ALTER TABLE employee_wallet_entries ADD COLUMN doctor_id integer,
- ADD CONSTRAINT wallet_doctor_reward_reference
- FOREIGN KEY (company_id,doctor_id) REFERENCES doctors(company_id,id);
-
+-- Old wallet source rules are immutable. Extend them only for the three
+-- new positive automatic, invoice-attributed reward event codes.
 DO $$
 DECLARE old_guard text;
 BEGIN
@@ -50,24 +48,14 @@ BEGIN
   ALTER TABLE employee_wallet_entries ADD CONSTRAINT wallet_entry_source_check CHECK (
    (%s) OR
    (kind='automatic' AND points>0 AND money=0 AND reference_id IS NULL
-    AND invoice_id IS NOT NULL AND doctor_id IS NULL
-    AND financial_document_id IS NULL AND conversion_id IS NULL
-    AND attendance_entry_id IS NULL AND clearance_earning_id IS NULL
-    AND page_key IS NULL AND task_code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING')
-    AND task_revision>0 AND logical_line_count=1)
-   OR
-   (kind='automatic' AND points>0 AND money=0 AND reference_id IS NULL
-    AND invoice_id IS NULL AND doctor_id IS NOT NULL
-    AND financial_document_id IS NULL AND conversion_id IS NULL
-    AND attendance_entry_id IS NULL AND clearance_earning_id IS NULL
-    AND page_key IS NULL AND task_code='DOCTOR_NEW'
+    AND invoice_id IS NOT NULL AND financial_document_id IS NULL
+    AND conversion_id IS NULL AND attendance_entry_id IS NULL
+    AND clearance_earning_id IS NULL AND page_key IS NULL
+    AND task_code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING','DOCTOR_REFERRED')
     AND task_revision>0 AND logical_line_count=1)
   )
  $sql$,old_guard);
 END $$;
-CREATE UNIQUE INDEX wallet_doctor_reward_once
- ON employee_wallet_entries(company_id,doctor_id,task_code)
- WHERE kind='automatic' AND doctor_id IS NOT NULL;
-CREATE UNIQUE INDEX wallet_customer_reward_once
- ON employee_wallet_entries(company_id,invoice_id,task_code)
- WHERE kind='automatic' AND task_code IN ('CUSTOMER_NEW','CUSTOMER_EXISTING');
+
+-- The existing wallet_auto_once_per_invoice unique index enforces
+-- (company, employee, invoice, task code) exactly once, including these events.
