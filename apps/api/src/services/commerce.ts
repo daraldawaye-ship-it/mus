@@ -31,6 +31,7 @@ import { awardPostedInvoice } from "./invoice-rewards.ts";
 import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import {matchingMemoFeatureRules} from "./memo-feature-rules.ts";
 import { controlValue } from "./control-values.ts";
+import { emitNotification } from "./notifications.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
 const abs = (value: bigint) => (value < 0n ? -value : value);
@@ -612,6 +613,7 @@ export async function createInvoice(
   assertAmount(gross);
   assertAmount(total);
   let doctor: {id:number|null;name:string} | null = null;
+  let newlyCreatedDoctor: { id: number; name: string } | null = null;
   if (input.kind === "sale") {
     const limit = await controlValue(client, companyId, "sales_doctor_threshold");
     const threshold = BigInt(typeof limit === "number" ? limit : 1000) * 1000000n;
@@ -626,8 +628,37 @@ export async function createInvoice(
         throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة فعالة من كرت الأطباء والجهات.");
       doctor = result.rows[0] as {id:number;name:string};
     } else if (input.doctorName) {
-      // An unlisted name remains an invoice snapshot, not an unverified directory card.
-      doctor = {id:null,name:input.doctorName};
+      // A sale names an existing card or creates an unclassified one atomically.
+      // Historical import requests remain snapshots and generate no new cards/alerts.
+      const name = input.doctorName.trim().replace(/\s+/g, " ");
+      if (importContext) {
+        doctor = { id: null, name };
+      } else {
+        // Serialize same-company/name sales, including concurrent cashiers.
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtext($1::text),hashtext(lower($2::text)))",
+          [companyId, name],
+        );
+        const matching = await client.query(
+          `SELECT id,name FROM doctors WHERE company_id=$1
+             AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower($2)
+             ORDER BY active DESC,id ASC LIMIT 1 FOR SHARE`,
+          [companyId, name],
+        );
+        if (matching.rows[0]) {
+          doctor = matching.rows[0] as { id: number; name: string };
+        } else {
+          const created = await client.query(
+            `INSERT INTO doctors(company_id,name,kind,department,created_by)
+               VALUES($1,$2,NULL,'',$3) RETURNING id,name`,
+            [companyId, name, user.id],
+          );
+          newlyCreatedDoctor = created.rows[0] as { id: number; name: string };
+          doctor = newlyCreatedDoctor;
+          await audit(client, user, "doctor.create", "doctor",
+            doctor.id, null, { ...doctor, kind: null, source: "sales" }, companyId);
+        }
+      }
     }
   }
   const baseMagnitude = convertedUnits(
@@ -1028,6 +1059,17 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
+  if (newlyCreatedDoctor) {
+    await emitNotification(client, {
+      code: "SALES_DOCTOR_REVIEW",
+      companyId,
+      subjectKey: `doctor:${newlyCreatedDoctor.id}`,
+      eventKey: `doctor:new:${newlyCreatedDoctor.id}`,
+      title: "اسم طبيب أو جهة جديد يحتاج مراجعة",
+      message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
+      href: `/companies/${companyId}/doctors?focus=${newlyCreatedDoctor.id}`,
+    });
+  }
   if (!importContext?.suppressRewards) {
     await awardPostedInvoice(
       client,
