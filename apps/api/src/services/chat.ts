@@ -257,7 +257,7 @@ export async function sendChatMessage(
   }
   await access(client, actor, input, "create", true);
   await peer(client, current, peerId, true);
-  if (input.imageId) { await checkChatImageAllowed(client, "direct"); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
+  if (input.imageId) { await checkChatImageAllowed(client, "direct", [current.user.id, peerId]); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
   const thread = (await client.query(
     `INSERT INTO chat_conversations(company_id,user_low_id,user_high_id,created_at,updated_at)
      VALUES($1,least($2::integer,$3::integer),greatest($2::integer,$3::integer),
