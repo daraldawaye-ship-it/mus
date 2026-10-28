@@ -169,7 +169,7 @@ export async function directoryEntries(
   // Explanation groups are private until the owner grants read/edit access.
   // The page catalog must reflect the same group ACLs checked by the API.
   const explanationGroups=(await db.query(
-    "SELECT default_read,default_edit FROM explanation_groups"
+    "SELECT slug,default_read,default_edit FROM explanation_groups"
   )).rows;
   const granted=(rule:unknown)=>{
     if(!rule || typeof rule!=="object")return false;
@@ -179,7 +179,8 @@ export async function directoryEntries(
   };
   const explanationEdit=user.owner || explanationGroups.some(g=>granted(g.default_edit));
   const explanationRead=explanationEdit ||
-    explanationGroups.some(g=>granted(g.default_read));
+    explanationGroups.some(g=>granted(g.default_read) ||
+      (!user.suspended && (g.slug==='site-user-guide'||g.slug==='site-developer-guide')));
   const rows = await db.query(
     "SELECT * FROM page_settings WHERE company_id IS NULL OR company_id=$1",
     [companyId],
