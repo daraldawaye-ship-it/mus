@@ -1,5 +1,6 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Info } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
@@ -64,14 +65,15 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [query,setQuery]=useState(params.get("q")??"");
   const [page,setPage]=useState(1);
   const questionId=params.get("questionId");
-  const [opened,setOpened]=useState<number|null>(null);
-  const [chosen,setChosen]=useState<number|null>(null);
-  const [order,setOrder]=useState<number[]>([]);
-  const [comment,setComment]=useState("");
-  const [pendingAnswer,setPendingAnswer]=useState<Submission|null>(null);
+  const [infoId,setInfoId]=useState<number|null>(null);
+  const infoWrap=useRef<HTMLDivElement|null>(null);
+  const optionOrders=useRef<Map<number,number[]>>(new Map());
+  const [chosenAnswers,setChosenAnswers]=useState<Record<number,number>>({});
+  const [comments,setComments]=useState<Record<number,string>>({});
+  const [pendingAnswers,setPendingAnswers]=useState<Record<number,Submission>>({});
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
   const [frozenQuestions,setFrozenQuestions]=useState<{url:string;items:Question[]}|null>(null);
-  const [sending,setSending]=useState(false);
+  const [sendingQuestionId,setSendingQuestionId]=useState<number|null>(null);
   const [draft,setDraft]=useState<Draft|null>(null);
   const [editing,setEditing]=useState<Question|null>(null);
   const [saving,setSaving]=useState(false);
@@ -101,9 +103,31 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old)
     : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
+  useEffect(()=>{
+    if(infoId===null)return;
+    const dismiss=(event:PointerEvent)=>{
+      if(!infoWrap.current?.contains(event.target as Node))setInfoId(null);
+    };
+    const escape=(event:KeyboardEvent)=>{
+      if(event.key==="Escape")setInfoId(null);
+    };
+    document.addEventListener("pointerdown",dismiss);
+    document.addEventListener("keydown",escape);
+    return ()=>{
+      document.removeEventListener("pointerdown",dismiss);
+      document.removeEventListener("keydown",escape);
+    };
+  },[infoId]);
+  function optionOrder(question:Question){
+    const existing=optionOrders.current.get(question.id);
+    if(existing&&existing.length===question.options.length)return existing;
+    const next=shuffled(question.options.length);
+    optionOrders.current.set(question.id,next);
+    return next;
+  }
   function selectCategory(category:string|null){
-    setPage(1);setQuery("");setOpened(null);setChosen(null);setOrder([]);
-    setPendingAnswer(null);setFrozenQuestions(null);setError("");setMessage("");
+    setPage(1);setQuery("");setInfoId(null);
+    setPendingAnswers({});setFrozenQuestions(null);setError("");setMessage("");
     setParams(current=>{
       const next=new URLSearchParams(current);
       if(category===null)next.delete("category");
@@ -121,30 +145,28 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       comment:question.myLastComment,otherOptionCounts:question.otherOptionCounts??[],
     };
   }
-  function openAnswer(question:Question) {
-    setOpened(prev=>prev===question.id?null:question.id);
-    setOrder(shuffled(question.options.length));setChosen(null);setComment("");setPendingAnswer(null);
-    setError("");setMessage("");
-  }
   async function submitAnswer(event:FormEvent,question:Question) {
     event.preventDefault();
-    if(sending||!canAnswer||outcomeFor(question))return;
-    const payload=pendingAnswer??(chosen===null?null:{
-      selectedAnswer:chosen,comment:comment.trim()||null,idempotencyKey:crypto.randomUUID()
+    if(sendingQuestionId!==null||!canAnswer||outcomeFor(question))return;
+    const selected=chosenAnswers[question.id];
+    const payload=pendingAnswers[question.id]??(selected===undefined?null:{
+      selectedAnswer:selected,comment:comments[question.id]?.trim()||null,
+      idempotencyKey:crypto.randomUUID()
     });
     if(!payload){setError("اختر إجابة من الخيارات المتاحة");return;}
-    setPendingAnswer(payload);setSending(true);setError("");setMessage("");
+    setPendingAnswers(prev=>({...prev,[question.id]:payload}));
+    setSendingQuestionId(question.id);setError("");setMessage("");
     try{
       const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
       setSavedAnswers(prev=>({...prev,[question.id]:{
         ...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment
       }}));
-      setPendingAnswer(null);setComment("");setChosen(null);
+      setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
       setFrozenQuestions({url,items:questions});
-      // Update totals and response counts without moving or unmounting the answered card.
+      // Keep the just-answered card visible even if background refresh reorders questions.
       void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
     }catch(cause){setError(errorMessage(cause));}
-    finally{setSending(false);}
+    finally{setSendingQuestionId(null);}
   }
   function startEdit(question:Question|null) {
     setEditing(question);
@@ -152,7 +174,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       category:question.category,priority:question.priority,question:question.question,
       options:[...question.options],correctAnswer:question.correctAnswer??1,points:question.points,active:question.active
     }:blank());
-    setError("");setMessage("");
+    setInfoId(null);setError("");setMessage("");
   }
   async function saveQuestion(event:FormEvent){
     event.preventDefault();
@@ -178,29 +200,21 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   if(!visible?.enabled||!visible.actionAccess.view)return <Notice tone="warning">هذه الصفحة غير متاحة لصلاحيات حسابك.</Notice>;
   return <div>
     <PageHeader title={tab==="questions"?"الأسئلة والخيارات":"سجل الإجابات"}
-      description={companyId===null?"أسئلة الموقع العام":"أسئلة هذه الشركة فقط، مستقلة عن الشركات الأخرى"}
       actions={<>
-        <Link to={root} className="button button-secondary button-compact">قائمة الأسئلة</Link>
-        {answersEntry?.actionAccess.view && <Link to={answersRoot} className="button button-secondary button-compact">آخر الإجابات</Link>}
+        {tab==="answers"&&<Link to={root} className="button button-secondary button-compact">الأسئلة</Link>}
         {tab==="questions"&&canCreate&&<Button onClick={()=>startEdit(null)}>إضافة سؤال</Button>}
       </>} />
-    {tab==="questions"&&<Card title="قائمة الأسئلة" description="اختر فئة لعرض أسئلتها فقط؛ الفئات الجديدة تظهر هنا تلقائيًا.">
-      {categories.isLoading&&<Notice>جارٍ تحميل قائمة الفئات…</Notice>}
+    {tab==="questions"&&<div className="question-category-list" role="group" aria-label="فئات الأسئلة">
+      {categories.isLoading&&<Notice>جارٍ تحميل الفئات…</Notice>}
       {categories.error&&<Notice tone="error">{errorMessage(categories.error)}</Notice>}
-      <div className="page-actions" style={{justifyContent:"flex-start",flexWrap:"wrap",gap:"0.5rem"}}>
-        {categories.data?.items.map(item=><Button key={item.category}
-          variant={selectedCategory===item.category?"primary":"secondary"} size="compact"
-          aria-pressed={selectedCategory===item.category}
-          onClick={()=>selectCategory(item.category)}>
-          {item.category||"بدون فئة"} ({item.count})
-        </Button>)}
-      </div>
+      {categories.data?.items.map(item=><Button key={item.category}
+        variant={selectedCategory===item.category?"primary":"secondary"} size="compact"
+        aria-pressed={selectedCategory===item.category}
+        onClick={()=>selectCategory(item.category)}>
+        {item.category||"بدون فئة"} ({item.count})
+      </Button>)}
       {categories.data?.items.length===0&&<Notice>لا توجد فئات أسئلة حتى الآن.</Notice>}
-      {categorySelected&&<div className="page-actions" style={{marginBlockStart:"0.5rem"}}>
-        <strong>الفئة المختارة: {selectedCategory||"بدون فئة"}</strong>
-        <Button variant="ghost" size="compact" onClick={()=>selectCategory(null)}>عودة إلى قائمة الفئات</Button>
-      </div>}
-    </Card>}
+    </div>}
     {message&&<Notice tone="success">{message}</Notice>}
     {error&&<Notice tone="error">{error}</Notice>}
     {draft&&tab==="questions"&&<Card title={editing?"تعديل كرت السؤال":"كرت سؤال جديد"}>
@@ -237,68 +251,81 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         </div>
       </form>
     </Card>}
-    {(tab==="answers"||categorySelected)&&<Card title={tab==="questions"?"أسئلة "+(selectedCategory||"بدون فئة"):"آخر الإجابات والتعليقات"}>
-      <div className="table-filters">
-        <Field type="search" label="بحث" value={query}
-          placeholder={tab==="questions"?"ابحث في أسئلة الفئة المحددة":"السؤال أو المستخدم أو التعليق"}
-          onChange={e=>{setQuery(e.target.value);setPage(1);}} />
+    {(tab==="answers"||categorySelected)&&<section className="question-results">
+      <div className="question-search">
+        <Field className="question-search-field" type="search" label="بحث" value={query}
+          onChange={e=>{setQuery(e.target.value);setPage(1);setFrozenQuestions(null);}} />
       </div>
       {list.isFetching&&!list.data&&<Notice>جارٍ تحميل السجلات…</Notice>}
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
       {tab==="questions"&&questions.map(question=>{
         const answered=outcomeFor(question);
-        return <article key={question.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>;
-        <div className="page-actions" style={{justifyContent:"space-between",flexWrap:"wrap"}}>
-          <strong>{question.question}</strong>
-          <span>{question.category||"بدون فئة"} · الأولوية {question.priority} · {question.options.length} خيارات</span>
-        </div>
-        <p>أنشئ بواسطة: {question.creatorName} · {date(question.createdAt)} · نقاط الجواب: {question.points}</p>
-        <p>الإجابات: {question.answerCount} · المستخدمون: {question.respondentCount} · إجاباتك: {question.myAnswerCount} · آخر إجابة لك: {date(question.myLastAnsweredAt)}</p>
-        <small>تُمنح نقاط الإجابة الصحيحة في أول محاولة فقط. بعد الإجابة تُقفل الخيارات ويظهر تقييمها.</small>
-        {canEdit&&<div className="page-actions">
-          <Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>
-          {!question.active&&<span>السؤال غير فعال</span>}
-        </div>}
-        {question.active&&(canAnswer||answered)&&<Button variant="secondary" size="compact"
-          onClick={()=>openAnswer(question)}>{opened===question.id?"إخفاء التفاصيل":answered?"عرض إجابتي والنتائج":"الإجابة عن السؤال"}</Button>}
-        {answersEntry?.actionAccess.view&&<Link className="button button-secondary button-compact" to={`${answersRoot}?questionId=${question.id}`}>عرض الإجابات</Link>}
-        {opened===question.id&&question.active&&<form onSubmit={event=>void submitAnswer(event,question)} className="stack" style={{marginBlockStart:"0.8rem"}}>
-          {answered&&<Notice tone={answered.correct?"success":"warning"}>
-            {answered.correct?"إجابتك صحيحة ✓":"إجابتك غير صحيحة ✗"}
-            {answered.points>0?` · حصلت على ${answered.points} نقطة`:" · لا توجد نقاط لهذه الإجابة"}
-          </Notice>}
-          <fieldset disabled={sending||!!pendingAnswer||!!answered}>
-            <legend>{answered?"الإجابة محفوظة ومقفلة":"اختر الإجابة الصحيحة"}</legend>
-            {order.map(i=><label key={i} style={{display:"block",marginBlock:"0.5rem",
-              padding:"0.5rem",borderRadius:"0.5rem",
-              border:answered&&answered.selectedAnswer===i+1?"1px solid currentColor":undefined}}>
-              <input type="radio" name={`question-choice-${question.id}`}
-                checked={(answered?.selectedAnswer??chosen)===i+1} onChange={()=>setChosen(i+1)} />
-              {" "}{question.options[i]}
-              {answered&&<span style={{marginInlineStart:"0.6rem"}}>
-                — {answered.otherOptionCounts[i]??0} من المستخدمين الآخرين
-                {answered.selectedAnswer===i+1?" · اختيارك":""}
-                {answered.correctAnswer===i+1?" · الإجابة الصحيحة":""}
-              </span>}
-            </label>)}
-          </fieldset>
-          {answered?<>
-            {answered.comment&&<p style={{whiteSpace:"pre-wrap"}}>تعليقك: {answered.comment}</p>}
-            <small>العدد لكل خيار يحسب آخر إجابة لكل مستخدم آخر، دون احتساب إجاباتك أو تكرار محاولاته.</small>
-          </>:<>
-            <div className="field"><label htmlFor={`comment-${question.id}`}>تعليق (اختياري)</label>
-              <textarea id={`comment-${question.id}`} rows={3} maxLength={2000}
-                disabled={sending||!!pendingAnswer} value={comment}
-                placeholder="يمكنك توضيح سبب اختيارك أو إضافة ملاحظة"
-                onChange={e=>setComment(e.target.value)}/>
+        const isSending=sendingQuestionId===question.id;
+        const isInfoOpen=infoId===question.id;
+        return <article key={question.id} className="card question-card">
+          <div className="question-card-heading">
+            <strong>{question.question}</strong>
+            <div className="question-info-wrap" ref={isInfoOpen?infoWrap:undefined}>
+              <button type="button" className="question-info-button" aria-label="معلومات السؤال"
+                aria-expanded={isInfoOpen} aria-haspopup="dialog"
+                onClick={()=>setInfoId(prev=>prev===question.id?null:question.id)}>
+                <Info size={18}/>
+              </button>
+              {isInfoOpen&&<div className="question-info-popover" role="dialog" aria-label="معلومات السؤال">
+                <p><strong>الفئة:</strong> {question.category||"بدون فئة"}</p>
+                <p><strong>الأولوية:</strong> {question.priority} · <strong>الخيارات:</strong> {question.optionCount}</p>
+                <p><strong>النقاط:</strong> {question.points} · <strong>الحالة:</strong> {question.active?"فعال":"غير فعال"}</p>
+                <p><strong>أُنشئ بواسطة:</strong> {question.creatorName}</p>
+                <p><strong>تاريخ الإنشاء:</strong> {date(question.createdAt)}</p>
+                <p><strong>الإجابات:</strong> {question.answerCount} · <strong>المستخدمون:</strong> {question.respondentCount}</p>
+                <p><strong>إجاباتك:</strong> {question.myAnswerCount} · <strong>آخر إجابة:</strong> {date(question.myLastAnsweredAt)}</p>
+                <p className="question-info-note">نقاط الإجابة الصحيحة تُمنح في المحاولة الأولى فقط.</p>
+                {canEdit&&<Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>}
+              </div>}
             </div>
-            <Button type="submit" disabled={sending||chosen===null}>
-              {sending?"جارٍ التسجيل…":pendingAnswer?"إعادة إرسال المحاولة":"إرسال الإجابة"}
-            </Button>
-          </>}
-        </form>}
-      </article>;})}
-      {tab==="answers"&&responses.map(answer=><article key={answer.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
+          </div>
+          {answered&&<p className="question-result" role="status">
+            <strong>{answered.correct?"✓ إجابة صحيحة":"✗ إجابة غير صحيحة"}</strong>
+            {answered.points>0?` · +${answered.points} نقطة`:""}
+          </p>}
+          <form className="question-answer-form" onSubmit={event=>void submitAnswer(event,question)}>
+            <fieldset className="question-options" disabled={!!answered||!canAnswer||!question.active||isSending}>
+              <legend className="sr-only">اختر إجابة السؤال</legend>
+              {optionOrder(question).map(i=><label key={i}
+                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}`}>
+                <input type="radio" name={`question-choice-${question.id}`}
+                  checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
+                  onChange={()=>{
+                    setChosenAnswers(prev=>({...prev,[question.id]:i+1}));
+                    setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
+                  }}/>
+                <span className="question-choice-content">
+                  <span>{question.options[i]}</span>
+                  {answered&&<span className="question-choice-stat">
+                    {answered.otherOptionCounts[i]??0} من الآخرين
+                    {answered.selectedAnswer===i+1?" · اختيارك":""}
+                    {answered.correctAnswer===i+1?" · ✓ الصحيح":""}
+                  </span>}
+                </span>
+              </label>)}
+            </fieldset>
+            {answered?<>
+              {answered.comment&&<p className="question-saved-comment">تعليقك: {answered.comment}</p>}
+            </>:canAnswer&&question.active?<>
+              <details className="question-comment">
+                <summary>إضافة تعليق (اختياري)</summary>
+                <textarea rows={2} maxLength={2000} aria-label="تعليق على الإجابة"
+                  disabled={isSending} value={comments[question.id]??""}
+                  onChange={e=>setComments(prev=>({...prev,[question.id]:e.target.value}))}/>
+              </details>
+              <Button type="submit" size="compact" disabled={sendingQuestionId!==null||chosenAnswers[question.id]===undefined}>
+                {isSending?"جارٍ التسجيل…":pendingAnswers[question.id]?"إعادة إرسال الإجابة":"تسجيل الإجابة"}
+              </Button>
+            </>:null}
+          </form>
+        </article>;
+      })}
+lock:"0.75rem",padding:"0.8rem"}}>
         <div><strong>{answer.question}</strong></div>
         <p>{answer.userName} · {date(answer.answeredAt)} · السؤال #{answer.questionId}</p>
         <p>الجواب {answer.selectedAnswer}: {answer.selectedText} · {answer.correct?"صحيح":"غير صحيح"} · {answer.points} نقطة</p>
@@ -310,6 +337,6 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         <Button variant="secondary" size="compact" disabled={page<=1} onClick={()=>setPage(v=>v-1)}>السابق</Button>
         <Button variant="secondary" size="compact" disabled={page*20>=list.data.total} onClick={()=>setPage(v=>v+1)}>التالي</Button>
       </div>}
-    </Card>}
+    </section>}
   </div>;
 }
