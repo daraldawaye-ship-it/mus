@@ -1443,7 +1443,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   });
   const customerExact=useQuery<{customer:SaleCustomer|null}>({
     queryKey:["sale-customer-number",user?.id,companyId,saleCustomerNumber],
-    enabled:!!user&&doctorPromptOpen&&/^\\d{1,30}$/.test(saleCustomerNumber),
+    enabled:!!user&&doctorPromptOpen&&/^\d{1,30}$/.test(saleCustomerNumber),
     queryFn:({signal})=>api<{customer:SaleCustomer|null}>(
       `/companies/${companyId}/sale-customers/lookup?number=${encodeURIComponent(saleCustomerNumber)}`,{signal}),
   });
@@ -3092,7 +3092,28 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <input id="invoice-sale-customer-search" type="search"
               value={saleCustomerQuery} autoComplete="off"
               placeholder="اكتب رقم العميل أو اسمه للبحث"
-              onChange={event=>setSaleCustomerQuery(event.target.value)}/>
+              onChange={event=>{
+                const text=event.target.value;
+                setSaleCustomerQuery(text);
+                const normalized=normalizeDigits(text.trim());
+                if (/^\d{1,30}$/.test(normalized)) {
+                  // Pure numeric search: reuse the number on a new card and
+                  // resolve its saved name from the exact-number lookup.
+                  setSaleCustomerNumber(normalized);
+                  setSaleCustomerName("");
+                } else if (text.trim()) {
+                  // Searching by a name also seeds the name field when
+                  // no matching customer exists. Selecting a result still
+                  // fills both fields from the existing customer card.
+                  setSaleCustomerName(text.trim());
+                  setSaleCustomerNumber("");
+                } else {
+                  setSaleCustomerNumber("");
+                  setSaleCustomerName("");
+                }
+                setSaleCustomerMatched(false);
+                setDoctorError("");
+              }}/>
           </div>
           {saleCustomerQuery.trim()&&(
             <div className="invoice-doctor-options" role="listbox" aria-label="نتائج البحث عن العملاء">
