@@ -86,6 +86,19 @@ export function doctorRoutes(pool: Pool): Router {
            WHERE company_id=$8 AND id=$9 RETURNING *`,
         [input.name,input.kind,input.department,input.phone,input.searchKeys,input.notes,input.active,companyId,doctorId]);
       const updated=dto(result.rows[0]);
+      // Completion is shared by all review recipients, including the owner.
+      if (updated.kind !== null || !updated.active) {
+        await client.query(
+          `UPDATE notifications
+             SET completed_at=clock_timestamp(),
+                 read_at=COALESCE(read_at,clock_timestamp()),
+                 snoozed_until=NULL,next_reminder_at=NULL,
+                 revision=revision+1,updated_at=clock_timestamp()
+           WHERE company_id=$1 AND code='SALES_DOCTOR_REVIEW'
+             AND subject_key=$2 AND completed_at IS NULL`,
+          [companyId, `doctor:${doctorId}`],
+        );
+      }
       await audit(client,user,"doctor.update","doctor",doctorId,dto(old.rows[0]),updated,companyId);
       return updated;
     });
