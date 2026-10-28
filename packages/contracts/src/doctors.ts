@@ -16,13 +16,14 @@ export const doctorInputSchema = z.object({
   active: z.boolean().default(true),
 }).strict();
 export const doctorPatchSchema = doctorInputSchema.extend({
+  kind: z.enum(doctorKinds).nullable(),
   revision: z.number().int().positive(),
 });
 export interface Doctor {
   id: number;
   companyId: number;
   name: string;
-  kind: DoctorKind;
+  kind: DoctorKind | null;
   department: string;
   phone: string;
   searchKeys: string;
