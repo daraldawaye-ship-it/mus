@@ -73,7 +73,7 @@ export function LegalCasesPage() {
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
  const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
- const [activePanel,setActivePanel]=useState<"cases"|"tasks">("cases");
+ const [activePanel,setActivePanel]=useState<"cases"|"tasks">(caseId>0?"cases":"tasks");
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
