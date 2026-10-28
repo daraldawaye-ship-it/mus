@@ -521,6 +521,15 @@ page(
   "مواقع المخزون وإتاحتها داخل الفروع.",
 );
 page(
+  "company.sale-customers",
+  "العملاء",
+  "المبيعات",
+  "/companies/:companyId/sale-customers",
+  { view: permission("commerce.view"), create: permission("commerce.manage"), edit: permission("commerce.manage") },
+  "كروت عملاء المبيعات بأرقامهم وأسمائهم، مستقلة عن الحسابات المالية.",
+  { keywords: ["عميل","زبون","رقم العميل","اسم العميل"] },
+);
+page(
   "company.doctors",
   "الأطباء والجهات",
   "المبيعات",

@@ -31,6 +31,7 @@ import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { shortcutRoutes } from "./routes-shortcuts.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { doctorRoutes } from "./routes-doctors.ts";
+import { saleCustomerRoutes } from "./routes-sale-customers.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { controlRoutes } from "./routes-control.ts";
 import { centralAccessRoutes } from "./routes-central-access.ts";
@@ -83,6 +84,7 @@ export function businessRoutes(pool: Pool): Router {
     inventoryRoutes(pool),
     commerceOptionRoutes(pool),
     doctorRoutes(pool),
+    saleCustomerRoutes(pool),
     commerceRoutes(pool),
   );
   return router;

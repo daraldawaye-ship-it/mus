@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { employeePositionListSchema, type EmployeePosition } from "./employee-positions.ts";
 export * from "./employee-positions.ts";
+export * from "./sale-customers.ts";
 import { masterCatalog } from "./masters.ts";
 import { financeCatalog } from "./finance.ts";
 import { itemCatalog } from "./items.ts";
@@ -147,6 +148,8 @@ export const auditActionLabels = {
   "manager.appoint": "تعيين مدير عام",
   "manager.remove": "سحب صفة مدير عام",
   "manager.userArchived": "أرشفة حساب مدير عام من المالك",
+  "saleCustomer.create": "إضافة كرت عميل",
+  "saleCustomer.update": "تعديل كرت عميل",
   "account.create": "إنشاء حساب",
   "account.update": "تعديل حساب",
   "accountBalance.followup": "تسجيل متابعة رصيد الحساب",

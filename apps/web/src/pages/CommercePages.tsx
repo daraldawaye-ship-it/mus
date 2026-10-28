@@ -35,6 +35,7 @@ import {
   type CompanyContext,
   type CompanyCurrency,
   type Doctor,
+  type SaleCustomer,
   type Invoice,
   type InvoiceInput,
   type InvoiceKind,
@@ -280,6 +281,15 @@ function InvoiceList({
         cell: ({row}) => row.original.doctorName && row.original.doctorId
           ? <Link to={`/companies/${companyId}/doctors?focus=${row.original.doctorId}`}>{row.original.doctorName}</Link>
           : <ValueCell>{row.original.doctorName || "—"}</ValueCell>,
+      } satisfies ColumnDef<Invoice,unknown>,{
+        id:"saleCustomer",
+        header:"العميل",
+        size:170,
+        enableSorting:false,
+        cell:({row})=>row.original.saleCustomerId
+          ? <Link to={`/companies/${companyId}/sale-customers?focus=${row.original.saleCustomerId}`}>
+              {row.original.saleCustomerNumber} — {row.original.saleCustomerName}
+            </Link> : "—",
       } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
@@ -1420,9 +1430,44 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [doctorActiveIndex,setDoctorActiveIndex]=useState(-1);
   const doctorOptionsRef=useRef<HTMLDivElement>(null);
   const [doctorError,setDoctorError]=useState("");
+  const [saleCustomerQuery,setSaleCustomerQuery]=useState("");
+  const [saleCustomerNumber,setSaleCustomerNumber]=useState("");
+  const [saleCustomerName,setSaleCustomerName]=useState("");
+  const [saleCustomerMatched,setSaleCustomerMatched]=useState(false);
+  const customerField=useRef<HTMLInputElement>(null);
+  const customerSearch=useQuery<Page<SaleCustomer>>({
+    queryKey:["sale-customer-search",user?.id,companyId,saleCustomerQuery],
+    enabled:!!user&&doctorPromptOpen&&saleCustomerQuery.trim().length>0,
+    queryFn:({signal})=>api<Page<SaleCustomer>>(
+      `/companies/${companyId}/sale-customers?q=${encodeURIComponent(saleCustomerQuery)}&page=1&pageSize=10`,{signal}),
+  });
+  const customerExact=useQuery<{customer:SaleCustomer|null}>({
+    queryKey:["sale-customer-number",user?.id,companyId,saleCustomerNumber],
+    enabled:!!user&&doctorPromptOpen&&/^\\d{1,30}$/.test(saleCustomerNumber),
+    queryFn:({signal})=>api<{customer:SaleCustomer|null}>(
+      `/companies/${companyId}/sale-customers/lookup?number=${encodeURIComponent(saleCustomerNumber)}`,{signal}),
+  });
+  useEffect(()=>{
+    if(!doctorPromptOpen||!saleCustomerNumber||!customerExact.data)return;
+    if(customerExact.data.customer){
+      setSaleCustomerName(customerExact.data.customer.name);
+      setSaleCustomerMatched(true);
+    } else {
+      setSaleCustomerMatched(false);
+    }
+  },[doctorPromptOpen,saleCustomerNumber,customerExact.data]);
+  function selectSaleCustomer(customer:SaleCustomer){
+    setSaleCustomerNumber(customer.customerNumber);
+    setSaleCustomerName(customer.name);
+    setSaleCustomerMatched(true);
+    setSaleCustomerQuery("");
+  }
   const doctorField=useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if(doctorPromptOpen) doctorField.current?.focus();
+    if (!doctorPromptOpen) return;
+    // showModal() may steal focus from a regular effect; schedule after it opens.
+    const frame=requestAnimationFrame(()=>doctorField.current?.focus());
+    return ()=>cancelAnimationFrame(frame);
   },[doctorPromptOpen]);
   const doctorChoices=useQuery({
     queryKey:["invoice-doctors",user?.id,companyId,doctorQuery],
@@ -1988,6 +2033,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setDoctorQuery("");
     setDoctorPromptOpen(false);
     setDoctorError("");
+    setSaleCustomerQuery("");
+    setSaleCustomerNumber("");
+    setSaleCustomerName("");
+    setSaleCustomerMatched(false);
     setError("");
     setSavedInvoice(null);
     setItemNotice("");
@@ -1997,6 +2046,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
     const enteredDoctorName = freeTextDoctorName.trim();
+    if (doctorPromptOpen && saleCustomerNumber && !saleCustomerMatched && !saleCustomerName.trim()) {
+      setDoctorError("رقم العميل جديد؛ أدخل اسم العميل، أو اترك الرقم فارغًا.");
+      customerField.current?.focus();
+      return;
+    }
     if (doctorPromptOpen && !selectedDoctorId && !enteredDoctorName) {
       setDoctorError("اكتب اسم الطبيب أو الجهة، أو اختره من النتائج.");
       doctorField.current?.focus();
@@ -2039,6 +2093,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         supplierAccountId: kind === "purchase" ? selectedSupplier?.id ?? null : null,
         doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
         doctorName: kind === "sale" ? enteredDoctorName : "",
+        saleCustomerNumber: kind === "sale" ? saleCustomerNumber : "",
+        saleCustomerName: kind === "sale" ? saleCustomerName.trim() : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
@@ -2090,6 +2146,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setDoctorActiveIndex(-1);
       setDoctorQuery("");
       setDoctorError("");
+      setSaleCustomerQuery("");
+      setSaleCustomerNumber("");
+      setSaleCustomerName("");
+      setSaleCustomerMatched(false);
       // Reuse currency, branch and stock location for efficient consecutive
       // invoices, but always clear the old customer/supplier.
       currencyManuallyChosen.current = false;
@@ -3020,15 +3080,50 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         </div>
       </Dialog>
       <Dialog open={doctorPromptOpen}
-        title="اختيار الطبيب أو الجهة لفاتورة المبيعات"
+        title=""
         onClose={() => {
           // Choosing a doctor is mandatory; use the explicit Back button
           // to return to the unsaved invoice instead of silently dismissing.
           doctorField.current?.focus();
         }}>
         <div className="form-stack">
-          <Notice>صافي الفاتورة يتجاوز الحد المحدد في الكنترول ({formatMoney(doctorThreshold)}).
-            اختر طبيبًا أو ممرضًا أو جهة من الكروت المسجلة للمتابعة.</Notice>
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-search">بحث عن عميل بالرقم أو الاسم (اختياري)</label>
+            <input id="invoice-sale-customer-search" type="search"
+              value={saleCustomerQuery} autoComplete="off"
+              placeholder="اكتب رقم العميل أو اسمه للبحث"
+              onChange={event=>setSaleCustomerQuery(event.target.value)}/>
+          </div>
+          {saleCustomerQuery.trim()&&(
+            <div className="invoice-doctor-options" role="listbox" aria-label="نتائج البحث عن العملاء">
+              {customerSearch.isLoading&&<small>جارٍ البحث عن العميل…</small>}
+              {customerSearch.isError&&<small>تعذر البحث؛ يمكنك إدخال الرقم والاسم يدويًا.</small>}
+              {customerSearch.data?.items.map(customer=><button key={customer.id}
+                type="button" role="option" aria-selected={saleCustomerNumber===customer.customerNumber}
+                onClick={()=>selectSaleCustomer(customer)}>
+                <strong>{customer.customerNumber} — {customer.name}</strong>
+              </button>)}
+              {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. يمكنك إدخال رقم جديد واسم العميل.</small>}
+            </div>
+          )}
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-number">رقم العميل (اختياري)</label>
+            <input id="invoice-sale-customer-number" type="text" inputMode="numeric"
+              ref={customerField} maxLength={30} autoComplete="off"
+              value={saleCustomerNumber} placeholder="رقم العميل"
+              onChange={event=>{
+                setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
+                setSaleCustomerName("");
+                setSaleCustomerMatched(false);
+                setDoctorError("");
+              }}/>
+          </div>
+          <div className="field floating-ready" data-label-raised="true">
+            <label htmlFor="invoice-sale-customer-name">اسم العميل (اختياري)</label>
+            <input id="invoice-sale-customer-name" type="text" maxLength={240}
+              value={saleCustomerName} placeholder="يظهر تلقائيًا للرقم الموجود؛ أو اكتبه للرقم الجديد"
+              readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
+          </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
           <div className="field floating-ready" data-label-raised="true">
             <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
@@ -3341,6 +3436,13 @@ function InvoiceViewer({
             <span>الطبيب أو الجهة: {invoice.doctorId
               ? <Link to={`/companies/${companyId}/doctors?focus=${invoice.doctorId}`}>{invoice.doctorName}</Link>
               : invoice.doctorName}</span>
+          )}
+          {invoice.kind === "sale" && invoice.saleCustomerNumber && (
+            <span>العميل: {invoice.saleCustomerId
+              ? <Link to={`/companies/${companyId}/sale-customers?focus=${invoice.saleCustomerId}`}>
+                  <bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}
+                </Link>
+              : <><bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}</>}</span>
           )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
