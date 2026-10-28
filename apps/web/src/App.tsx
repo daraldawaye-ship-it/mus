@@ -18,6 +18,7 @@ import {
   Coins,
   FileClock,
   FileText,
+  ListChecks,
   HandCoins,
   Landmark,
   Wallet,
@@ -165,6 +166,9 @@ const MemoFeatureRulesPage = lazy(() =>
 const MemoReportPage = lazy(() =>
   import("./pages/MemoReportPage").then(module=>({default:module.MemoReportPage})),
 );
+const QuestionsPage = lazy(() =>
+  import("./pages/QuestionsPage").then((module) => ({ default: module.QuestionsPage })),
+);
 const MemoDetailPage = lazy(() =>
   import("./pages/MemosPage").then((module) => ({ default: module.MemoDetailPage })),
 );
@@ -300,6 +304,8 @@ const companySections = [
   "notifications",
   "notification-templates",
   "memos",
+  "questions",
+  "answers",
   "tasks",
   "memo-report",
   "memo-feature-rules",
@@ -405,6 +411,10 @@ function Navigation({
     "company.chat": <MessageSquare size={17} />,
     "company.notification-templates": <Settings2 size={17} />,
     "company.memos": <FileText size={17} />,
+    "company.questions": <ListChecks size={17} />,
+    "company.answers": <ListChecks size={17} />,
+    "public.questions": <ListChecks size={17} />,
+    "public.answers": <ListChecks size={17} />,
     "company.settings": <Settings2 size={17} />,
     "company.letterhead": <FileText size={17} />,
     "company.accounts": <BookOpen size={17} />,
@@ -563,6 +573,11 @@ function CompanyContent({
 }) {
   const { user } = useSession();
   switch (section) {
+    case "questions":
+    case "answers":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأسئلة…</Notice>}>
+        <QuestionsPage key={context.company.id} companyId={context.company.id} tab={section} />
+      </Suspense>;
     case "archive":
       return <Suspense fallback={<Notice>جارٍ تحميل الأرشيف…</Notice>}><ArchivePage companyId={context.company.id}/></Suspense>;
     case "chat":
@@ -1114,6 +1129,8 @@ function Workspace() {
                   </Protected>
                 }
               />
+              <Route path="/questions" element={<Protected><PageRouteGuard pageKey="public.questions"><Suspense fallback={<Notice>جارٍ تحميل الأسئلة…</Notice>}><QuestionsPage /></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/answers" element={<Protected><PageRouteGuard pageKey="public.answers"><Suspense fallback={<Notice>جارٍ تحميل الإجابات…</Notice>}><QuestionsPage tab="answers" /></Suspense></PageRouteGuard></Protected>} />
               <Route
                 path="/notifications"
                 element={
