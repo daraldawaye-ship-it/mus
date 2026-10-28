@@ -145,6 +145,14 @@ page(
   { critical: true },
 );
 page(
+  "public.tasks",
+  "المهام الآلية",
+  "الموقع العام",
+  "/tasks",
+  { view: signed },
+  "قائمة مهام المستخدم التي تستنتج تلقائيًا من الشركات المصرح له بها.",
+);
+page(
   "public.users",
   "المستخدمون",
   "إدارة المنصة",
@@ -278,6 +286,14 @@ page(
   { view: member },
   "عرض المذكرة وردودها والمسؤول الحالي وسجل انتقالها وطلب الإنجاز واعتماده؛ فتح المذكرة لا ينجزها.",
   { parentKey: "company.memos", record: "memo", navigation: false },
+);
+page(
+  "company.tasks",
+  "المهام الآلية",
+  "الشركة",
+  "/companies/:companyId/tasks",
+  { view: member, edit: general },
+  "مهام تنشأ تلقائيًا من البيانات، ولكل مهمة كنترول العدد والتكليف والمتابعة.",
 );
 page(
   "company.wallet",
