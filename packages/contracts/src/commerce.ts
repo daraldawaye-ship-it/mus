@@ -56,8 +56,6 @@ export const invoiceSchema = z
   .superRefine((value, context) => {
     if (value.kind === "purchase" && (value.saleCustomerNumber || value.saleCustomerName))
       context.addIssue({ code: "custom", path: ["saleCustomerNumber"], message: "بيانات كرت العميل مخصصة للمبيعات فقط" });
-    if (value.kind === "sale" && value.saleCustomerName && !value.saleCustomerNumber)
-      context.addIssue({ code: "custom", path: ["saleCustomerNumber"], message: "أدخل رقم العميل أو اختره من نتائج البحث" });
     if (value.kind === "purchase" && (value.doctorId !== null || value.doctorName))
       context.addIssue({ code: "custom", path: ["doctorId"], message: "اختيار الطبيب أو الجهة مخصص للمبيعات" });
     if (value.kind === "sale" && value.supplierReceiptNumber)
@@ -91,7 +89,11 @@ export const invoiceSchema = z
         path: ["discount"],
         message: "خصم الفاتورة يخص السطور الموجبة فقط؛ خصم المردود المرتبط يؤخذ من الأصل",
       });
-  });
+  })
+  // A name entered without a customer number is merely unfinished search
+  // text, not a persisted customer reference or an invoice snapshot.
+  .transform(value=>value.kind==="sale" && !value.saleCustomerNumber
+    ? {...value,saleCustomerName:""} : value);
 export type InvoiceInput = z.input<typeof invoiceSchema>;
 export interface InvoiceLine {
   id: number;

@@ -2046,11 +2046,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     event?.preventDefault();
     if (saving || editingItem || !guard.isCurrent()) return;
     const enteredDoctorName = freeTextDoctorName.trim();
-    if (doctorPromptOpen && saleCustomerNumber && !saleCustomerMatched && !saleCustomerName.trim()) {
-      setDoctorError("رقم العميل جديد؛ أدخل اسم العميل، أو اترك الرقم فارغًا.");
-      customerField.current?.focus();
-      return;
-    }
     if (doctorPromptOpen && !selectedDoctorId && !enteredDoctorName) {
       setDoctorError("اكتب اسم الطبيب أو الجهة، أو اختره من النتائج.");
       doctorField.current?.focus();
@@ -2094,7 +2089,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
         doctorName: kind === "sale" ? enteredDoctorName : "",
         saleCustomerNumber: kind === "sale" ? saleCustomerNumber : "",
-        saleCustomerName: kind === "sale" ? saleCustomerName.trim() : "",
+        saleCustomerName: kind === "sale" && saleCustomerNumber ? saleCustomerName.trim() : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount: hasPositiveLines ? discount : "0",
@@ -3124,7 +3119,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 onClick={()=>selectSaleCustomer(customer)}>
                 <strong>{customer.customerNumber} — {customer.name}</strong>
               </button>)}
-              {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. يمكنك إدخال رقم جديد واسم العميل.</small>}
+              {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. أدخل رقمًا جديدًا، ويمكن ترك الاسم ليُحفظ «بدون».</small>}
             </div>
           )}
           <div className="field floating-ready" data-label-raised="true">
@@ -3142,7 +3137,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           <div className="field floating-ready" data-label-raised="true">
             <label htmlFor="invoice-sale-customer-name">اسم العميل (اختياري)</label>
             <input id="invoice-sale-customer-name" type="text" maxLength={240}
-              value={saleCustomerName} placeholder="يظهر تلقائيًا للرقم الموجود؛ أو اكتبه للرقم الجديد"
+              value={saleCustomerName} placeholder="يظهر للرقم الموجود؛ وللرقم الجديد بدون اسم يُحفظ «بدون»"
               readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
           </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}

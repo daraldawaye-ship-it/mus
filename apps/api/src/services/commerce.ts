@@ -690,12 +690,13 @@ export async function createInvoice(
     if (found.rows[0]) {
       saleCustomer = found.rows[0] as {id:number;customer_number:string;name:string};
     } else {
-      if (!input.saleCustomerName)
-        throw new HttpError(400, "sale_customer_name_required", "هذا رقم عميل جديد؛ أدخل اسم العميل قبل الحفظ.");
+      // Unnamed new customers remain searchable by number and may be
+      // renamed later in their card. Never overwrite an existing card's name.
+      const customerName = input.saleCustomerName || "بدون";
       const created = await client.query(
         `INSERT INTO sale_customers(company_id,customer_number,name,created_by)
           VALUES($1,$2,$3,$4) RETURNING id,customer_number,name`,
-        [companyId,customerNumber,input.saleCustomerName,user.id],
+        [companyId,customerNumber,customerName,user.id],
       );
       saleCustomer = created.rows[0] as {id:number;customer_number:string;name:string};
       await audit(client,user,"saleCustomer.create","saleCustomer",saleCustomer.id,

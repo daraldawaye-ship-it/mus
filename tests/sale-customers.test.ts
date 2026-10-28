@@ -24,8 +24,21 @@ test("sales customer fields are optional",()=>{
 test("new customer may have number and name",()=>{
   assert.equal(invoiceSchema.safeParse({...input,saleCustomerNumber:"123",saleCustomerName:"عميل جديد"}).success,true);
 });
-test("name cannot be saved without a customer number",()=>{
-  assert.equal(invoiceSchema.safeParse({...input,saleCustomerName:"عميل بلا رقم"}).success,false);
+test("name without number does not block invoice and is discarded",()=>{
+  const result=invoiceSchema.safeParse({...input,saleCustomerName:"عميل بلا رقم"});
+  assert.equal(result.success,true);
+  if(result.success){
+    assert.equal(result.data.saleCustomerNumber,"");
+    assert.equal(result.data.saleCustomerName,"");
+  }
+});
+test("customer number without name can be saved and resolved by the backend",()=>{
+  const result=invoiceSchema.safeParse({...input,saleCustomerNumber:"000123",saleCustomerName:""});
+  assert.equal(result.success,true);
+  if(result.success){
+    assert.equal(result.data.saleCustomerNumber,"000123");
+    assert.equal(result.data.saleCustomerName,"");
+  }
 });
 test("purchase invoice rejects sale customer fields",()=>{
   assert.equal(invoiceSchema.safeParse({...input,kind:"purchase",saleCustomerNumber:"12",saleCustomerName:"عميل"}).success,false);
