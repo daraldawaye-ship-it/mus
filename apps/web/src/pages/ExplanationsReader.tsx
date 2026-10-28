@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, useSession } from "../api";
 import { Button, Notice, PageHeader } from "../ui";
 import { errorMessage } from "../phase2";
@@ -37,6 +37,7 @@ function ImageDialog({asset,onClose}:{asset:Asset|null;onClose:()=>void}) {
 
 export function ExplanationsTopicIndex() {
  const {user}=useSession();
+ const navigate=useNavigate();
  const [params,setParams]=useSearchParams();
  const slug=params.get("group")||"mustafa-cases";
  const groups=useQuery({queryKey:["explanations","groups",user?.id],
@@ -45,13 +46,13 @@ export function ExplanationsTopicIndex() {
  const topics=useQuery({queryKey:["explanations","topics",user?.id,group?.id],
    queryFn:()=>api<TopicIndex>("/explanations/groups/"+group!.id+"/topics"),enabled:!!group});
  return <section className="explain-reader-index" dir="rtl">
-  <PageHeader title="مكتبة الشروح" description="اختر عنوانًا رئيسيًا لقراءته كورقة مستقلة وطباعته."
+  <PageHeader title="مكتبة الشروح" description="اختر الموضوع ثم فصله؛ لا تُحمَّل باقي الفصول أو الموضوعات."
    actions={group?.canEdit?<Link className="button button-secondary" to={"/explanations?group="+encodeURIComponent(group.slug)}>إضافة وتعديل الشروح</Link>:undefined}/>
   {groups.isPending&&<Notice>جارٍ تحميل الشروح…</Notice>}
   {groups.error&&<Notice tone="error">{errorMessage(groups.error)}</Notice>}
   {groups.data?.items.length===0&&<Notice>ليست لديك صلاحية قراءة مجموعات الشروح.</Notice>}
-  {groups.data&&groups.data.items.length>1&&<div className="explain-reader-choose">
-   <label htmlFor="reader-group">مجموعة الشرح</label>
+  {groups.data&&groups.data.items.length>0&&<div className="explain-reader-choose">
+   <label htmlFor="reader-group">اختر الموضوع</label>
    <select id="reader-group" value={group?.slug??""} onChange={e=>setParams({group:e.target.value})}>
     {groups.data.items.map(g=><option key={g.id} value={g.slug}>{g.title}</option>)}
    </select>
@@ -60,10 +61,13 @@ export function ExplanationsTopicIndex() {
   {topics.isPending&&group&&<Notice>جارٍ تحميل قائمة العناوين…</Notice>}
   {topics.data&&<div className="explain-reader-list">
    <h2>{topics.data.group.title}</h2>
-   {topics.data.topics.map((t,i)=><Link className="explain-reader-topic-link" key={t.id} to={"/explanations/topic/"+t.id}>
-    <span className="topic-index-number">{arabic(i+1)}</span><span>{t.title}</span><span aria-hidden="true">‹</span>
-   </Link>)}
-   {topics.data.topics.length===0&&<p>لم تُسجل عناوين متاحة للقراءة بعد.</p>}
+   <label htmlFor="reader-chapter">اختر الفصل</label>
+   <select id="reader-chapter" className="explain-chapter-selector" value="" onChange={event=>{if(event.target.value)navigate("/explanations/topic/"+event.target.value);}}>
+    <option value="">— اختر الفصل لقراءته —</option>
+    {topics.data.topics.map((t,i)=><option key={t.id} value={t.id}>{arabic(i+1)} — {t.title}</option>)}
+   </select>
+   {topics.data.topics.length===0&&<p>لم تُسجل فصول متاحة لهذا الموضوع بعد.</p>}
+   <small>لا يتم تحميل أي فصل قبل اختياره. كل فصل قابل للطباعة بشكل مستقل.</small>
   </div>}
  </section>;
 }
