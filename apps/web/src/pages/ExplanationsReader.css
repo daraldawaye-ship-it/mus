@@ -157,3 +157,7 @@
 @media print{
  .explain-paragraph-detail,.explain-paragraph-detail strong{color:#111!important;background:#fff!important}
 }
+
+.explain-chapter-selector{width:100%;max-width:100%;box-sizing:border-box;min-height:44px;padding:9px 12px;border:1px solid var(--border,#cbd5e1);border-radius:8px;background:var(--surface,#fff);color:var(--text,inherit);font:inherit;direction:rtl;}
+.explain-reader-index .explain-reader-list label{font-weight:650;font-size:14px;}
+.explain-reader-index .explain-reader-list small{color:var(--muted,#64748b);font-size:12px;}
