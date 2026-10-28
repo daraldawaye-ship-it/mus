@@ -47,6 +47,7 @@ import { ChatGroupCreateDialog } from "./ChatGroupDialogs";
 import { GroupChatPanel } from "./GroupChatPanel";
 import { ChatAvatar, ownChatAvatarUrl } from "./ChatAvatar";
 import { ChatEmojiPicker } from "./ChatEmojiPicker";
+import { ChatImagePicker, type ChatAttachedImage } from "./ChatImagePicker";
 
 interface ChatProps {
   scope: ChatScope;
@@ -56,6 +57,7 @@ interface ChatProps {
 interface PendingMessage {
   clientMessageId: string;
   text: string;
+  imageId?: string;
   peer: ChatUser;
   createdAt: string;
 }
@@ -81,7 +83,8 @@ function readSavedChat(key: string): SavedChat {
           !!message && typeof message === "object" &&
           typeof message.clientMessageId === "string" &&
           /^[a-f0-9-]{36}$/i.test(message.clientMessageId) &&
-          typeof message.text === "string" && message.text.length > 0 && message.text.length <= 4_000 &&
+          typeof message.text === "string" && message.text.length <= 4_000 &&
+          (message.text.length > 0 || (typeof message.imageId === "string" && /^[a-f0-9-]{36}$/i.test(message.imageId))) &&
           typeof message.createdAt === "string" && Number.isFinite(Date.parse(message.createdAt)) &&
           Number.isInteger(message.peer?.id) && typeof message.peer?.name === "string",
       ),
@@ -173,6 +176,7 @@ function ChatScopePicker({ user, scope, companyId }: ChatProps) {
 
 function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   const active = usePageActivity();
+  const imageSettings = useQuery({ queryKey:["chat","image-settings"], queryFn:()=>api<{allowGroupImages:boolean;allowDirectImages:boolean}>("/chat/image-settings"), refetchInterval:10_000 });
   const guard = useScopeGuard(`chat:${scope}:${companyId ?? "public"}`);
   const [peer, setPeer] = useState<ChatUser | null>(null);
   const [group, setGroup] = useState<ChatGroup | null>(null);
@@ -336,7 +340,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
           </div>
           <div className="chat-sidebar-footer"><ShieldCheck size={14} /><span>المحادثات خاصة بالمشاركين فيها</span></div>
         </aside>
-        {group ? <GroupChatPanel key={group.id} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : selectedPeer ? <ConversationPanel key={selectedPeer.id} user={user} scope={scope} companyId={companyId} peer={selectedPeer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
+        {group ? <GroupChatPanel key={group.id} allowImages={!!imageSettings.data?.allowGroupImages} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : selectedPeer ? <ConversationPanel key={selectedPeer.id} allowImages={!!imageSettings.data?.allowDirectImages} user={user} scope={scope} companyId={companyId} peer={selectedPeer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
           <section className="chat-welcome" aria-label="اختر محادثة">
             <span className="chat-welcome-icon"><MessageCircle size={38} strokeWidth={1.5} /></span>
             <span className="chat-eyebrow">تواصل أوضح، وعمل أقرب</span>
@@ -362,7 +366,8 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   );
 }
 
-function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, obscured, onBack }: ChatProps & {
+function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, obscured, onBack, allowImages }: ChatProps & {
+  allowImages: boolean;
   peer: ChatUser;
   saved: SavedChat;
   updateSaved: (update: (previous: SavedChat) => SavedChat) => void;
@@ -381,6 +386,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
   const olderScroll = useRef<{ height: number; top: number } | null>(null);
   const [newMessages, setNewMessages] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachment, setAttachment] = useState<ChatAttachedImage | null>(null);
   const [sendingIds, setSendingIds] = useState<Set<string>>(() => new Set());
   const sendingRef = useRef(new Set<string>());
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({});
@@ -499,7 +505,7 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
     try {
       const result = await api<{ message: ChatMessage }>(`/chat/conversations/${peer.id}/messages`, {
         method: "POST", signal: guard.signal,
-        body: { scope, ...(scope === "company" ? { companyId } : {}), clientMessageId: message.clientMessageId, text: message.text },
+        body: { scope, ...(scope === "company" ? { companyId } : {}), clientMessageId: message.clientMessageId, text: message.text, ...(message.imageId ? {imageId:message.imageId} : {}) },
       });
       if (!guard.isCurrent()) return;
       client.setQueryData<InfiniteData<ChatResultPage<ChatMessage>>>(messageKey, previous => {
@@ -521,8 +527,9 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const currentDraft = draftRef.current;
-    if (!currentDraft.trim() || currentDraft.length > 4_000 || denied || messages.isPending) return;
-    const message: PendingMessage = { clientMessageId: crypto.randomUUID(), text: currentDraft.trim(), peer, createdAt: new Date().toISOString() };
+    if ((!currentDraft.trim() && !attachment) || currentDraft.length > 4_000 || denied || messages.isPending || (!!attachment && !allowImages)) return;
+    const message: PendingMessage = { clientMessageId: crypto.randomUUID(), text: currentDraft.trim(), ...(attachment ? {imageId:attachment.id} : {}), peer, createdAt: new Date().toISOString() };
+    setAttachment(null);
     draftRef.current = "";
     // Persist the frozen UUID/payload before starting the request so an uncertain response is retryable.
     updateSaved(previous => ({ drafts: { ...previous.drafts, [peer.id]: "" }, pending: [...previous.pending, message] }));
@@ -559,9 +566,9 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
             const showDay = day !== previousDay;
             previousDay = day;
             const own = message.senderId === user.id;
-            return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-message-id={message.id} data-chat-unread={!own && !message.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : peer.name}: ${message.text}`}><div className="chat-message-sender"><ChatAvatar name={own ? user.displayName || user.name : peer.name} avatarUrl={own ? ownAvatarUrl : peer.avatarUrl} size="tiny" /><strong>{own ? "أنت" : peer.name}</strong></div><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <Receipt message={message} />}</div></article></div>;
+            return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-message-id={message.id} data-chat-unread={!own && !message.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : peer.name}: ${message.text}`}><div className="chat-message-sender"><ChatAvatar name={own ? user.displayName || user.name : peer.name} avatarUrl={own ? ownAvatarUrl : peer.avatarUrl} size="tiny" /><strong>{own ? "أنت" : peer.name}</strong></div><p dir="auto">{message.text}</p>{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer" aria-label="فتح الصورة"><img className="chat-inline-image" src={message.imageUrl} alt="صورة مرفقة بالرسالة" loading="lazy"/></a>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <Receipt message={message} />}</div></article></div>;
           })}
-          {!denied && pending.map(message => <article key={message.clientMessageId} className="chat-message chat-message-own chat-message-pending" data-chat-pending-id={message.clientMessageId}><p dir="auto">{message.text}</p><div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time><span className="chat-receipt">{sendingIds.has(message.clientMessageId) ? <><Clock3 size={13} />جارٍ الإرسال…</> : <><CircleAlert size={13} />لم يتأكد الإرسال</>}</span></div>{!sendingIds.has(message.clientMessageId) && <div className="chat-send-error"><span>{sendErrors[message.clientMessageId] || "يمكنك إعادة المحاولة بنفس الرسالة."}</span><Button variant="ghost" size="compact" aria-label="إعادة إرسال الرسالة" onClick={() => void sendPending(message)}><RefreshCw size={13} />إعادة الإرسال</Button></div>}</article>)}
+          {!denied && pending.map(message => <article key={message.clientMessageId} className="chat-message chat-message-own chat-message-pending" data-chat-pending-id={message.clientMessageId}><p dir="auto">{message.text}</p>{message.imageId && <small>📷 صورة مرفقة</small>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time><span className="chat-receipt">{sendingIds.has(message.clientMessageId) ? <><Clock3 size={13} />جارٍ الإرسال…</> : <><CircleAlert size={13} />لم يتأكد الإرسال</>}</span></div>{!sendingIds.has(message.clientMessageId) && <div className="chat-send-error"><span>{sendErrors[message.clientMessageId] || "يمكنك إعادة المحاولة بنفس الرسالة."}</span><Button variant="ghost" size="compact" aria-label="إعادة إرسال الرسالة" onClick={() => void sendPending(message)}><RefreshCw size={13} />إعادة الإرسال</Button></div>}</article>)}
         </div>
         {newMessages && <Button className="chat-jump-latest" variant="secondary" size="compact" onClick={scrollToBottom}><ArrowDown size={14} />أحدث الرسائل</Button>}
       </div>
@@ -572,10 +579,10 @@ function ConversationPanel({ user, scope, companyId, peer, saved, updateSaved, o
           updateSaved(previous => ({ ...previous, drafts: { ...previous.drafts, [peer.id]: value } }));
         }} onKeyDown={event => {
           if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); }
-        }} /><ChatEmojiPicker textareaRef={composer} value={draft} disabled={denied} obscured={obscured} onOpenChange={setEmojiOpen} onChange={text => {
+        }} /><ChatImagePicker scope={scope} companyId={companyId} enabled={allowImages} disabled={denied || messages.isPending} value={attachment} onChange={setAttachment}/><ChatEmojiPicker textareaRef={composer} value={draft} disabled={denied} obscured={obscured} onOpenChange={setEmojiOpen} onChange={text => {
           draftRef.current = text;
           updateSaved(previous => ({ ...previous, drafts: { ...previous.drafts, [peer.id]: text } }));
-        }} /><Button type="submit" className="chat-send-button" disabled={!draft.trim() || denied || messages.isPending} aria-label="إرسال الرسالة" title="إرسال الرسالة"><Send size={19} /></Button></div>
+        }} /><Button type="submit" className="chat-send-button" disabled={(!draft.trim() && !attachment) || denied || messages.isPending} aria-label="إرسال الرسالة" title="إرسال الرسالة"><Send size={19} /></Button></div>
         <div className="chat-composer-hint"><span>Enter للإرسال · Shift + Enter لسطر جديد</span>{draft.length > 3_500 && <span>{draft.length.toLocaleString("ar")} / ٤٬٠٠٠</span>}</div>
       </form>
     </section>
