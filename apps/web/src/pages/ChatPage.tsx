@@ -176,7 +176,7 @@ function ChatScopePicker({ user, scope, companyId }: ChatProps) {
 
 function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   const active = usePageActivity();
-  const imageSettings = useQuery({ queryKey:["chat","image-settings"], queryFn:()=>api<{allowGroupImages:boolean;allowDirectImages:boolean}>("/chat/image-settings"), refetchInterval:10_000 });
+  const imageSettings = useQuery({ queryKey:["chat","image-settings"], queryFn:()=>api<{allowGroupImages:boolean;allowDirectImages:boolean;siteOwnerIds:number[]}>("/chat/image-settings"), refetchInterval:10_000 });
   const guard = useScopeGuard(`chat:${scope}:${companyId ?? "public"}`);
   const [peer, setPeer] = useState<ChatUser | null>(null);
   const [group, setGroup] = useState<ChatGroup | null>(null);
@@ -340,7 +340,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
           </div>
           <div className="chat-sidebar-footer"><ShieldCheck size={14} /><span>المحادثات خاصة بالمشاركين فيها</span></div>
         </aside>
-        {group ? <GroupChatPanel key={group.id} allowImages={!!imageSettings.data?.allowGroupImages} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : selectedPeer ? <ConversationPanel key={selectedPeer.id} allowImages={!!imageSettings.data?.allowDirectImages} user={user} scope={scope} companyId={companyId} peer={selectedPeer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
+        {group ? <GroupChatPanel key={group.id} siteOwnerIds={imageSettings.data?.siteOwnerIds??[]} allowImages={!!imageSettings.data?.allowGroupImages || user.owner} user={user} scope={scope} companyId={companyId} groupId={group.id} obscured={directoryOpen || createGroupOpen} onBack={() => setGroup(null)} /> : selectedPeer ? <ConversationPanel key={selectedPeer.id} allowImages={!!imageSettings.data?.allowDirectImages || user.owner || !!imageSettings.data?.siteOwnerIds?.includes(selectedPeer.id)} user={user} scope={scope} companyId={companyId} peer={selectedPeer} saved={saved} updateSaved={updateSaved} obscured={directoryOpen || createGroupOpen} onBack={() => setPeer(null)} /> : (
           <section className="chat-welcome" aria-label="اختر محادثة">
             <span className="chat-welcome-icon"><MessageCircle size={38} strokeWidth={1.5} /></span>
             <span className="chat-eyebrow">تواصل أوضح، وعمل أقرب</span>
