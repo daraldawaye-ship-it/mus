@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Pool, PoolClient } from "pg";
 import {
   documentDateSchema,
@@ -18,6 +19,7 @@ import {
 } from "./services/commerce.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { mutateMaster } from "./services/masters.ts";
+import { audit } from "./services/audit.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -210,6 +212,76 @@ export function commerceRoutes(pool: Pool): Router {
       );
       res.status(201).json({ invoice });
     }),
+  );
+
+  const referralEdit = z.object({
+    revision: z.number().int().positive(),
+    category: z.string().trim().max(100).nullable(),
+    phone: z.string().trim().max(50).nullable(),
+    details: z.string().trim().max(2000),
+    archived: z.boolean(),
+  }).strict();
+  const selectReferral = 'SELECT id,company_id AS "companyId",kind,name,category,phone,details,archived,revision,created_at AS "createdAt",updated_at AS "updatedAt" FROM invoice_referrals';
+  router.get(
+    `${base}/sales-referrals`,
+    handler(async (req,res) => {
+      const kind = req.query.kind;
+      const status = req.query.status ?? "pending";
+      const q = req.query.q ?? "";
+      const page = req.query.page === undefined ? 1 : Number(req.query.page);
+      if ((kind !== undefined && kind !== "doctor" && kind !== "entity") ||
+          !["pending","all","archived"].includes(String(status)) ||
+          typeof q !== "string" || q.length > 120 ||
+          !Number.isSafeInteger(page) || page < 1 || page > 100000)
+        throw new HttpError(400,"invalid_query","بحث كروت الأطباء والجهات غير صالح");
+      res.json(await readCommerce(pool,req,async (client,companyId) => {
+        const params = [companyId,kind ?? null,status,searchPattern(q)];
+        const where = "company_id=$1 AND ($2::text IS NULL OR kind=$2) AND ($3::text='all' OR ($3='pending' AND archived=false AND category IS NULL) OR ($3='archived' AND archived=true)) AND name ILIKE $4";
+        const total = await client.query(`SELECT count(*)::integer AS total FROM invoice_referrals WHERE ${where}`,params);
+        const items = await client.query(`${selectReferral} WHERE ${where} ORDER BY id DESC LIMIT 100 OFFSET $5`,[...params,(page-1)*100]);
+        return {items:items.rows,total:total.rows[0].total,page,pageSize:100};
+      }));
+    })
+  );
+  router.get(
+    `${base}/sales-referrals/:referralId`,
+    handler(async(req,res) => {
+      const referral = await readCommerce(pool,req,async(client,companyId) => (
+        await client.query(`${selectReferral} WHERE company_id=$1 AND id=$2`,[companyId,id(req.params.referralId)])
+      ).rows[0]);
+      if (!referral) throw new HttpError(404,"not_found","الكرت غير موجود");
+      res.json({referral});
+    })
+  );
+  router.patch(
+    `${base}/sales-referrals/:referralId`,
+    handler(async(req,res) => {
+      const input = parse(referralEdit,req.body);
+      const referralId = id(req.params.referralId);
+      const referral = await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
+        const previous = (await client.query(
+          "SELECT * FROM invoice_referrals WHERE company_id=$1 AND id=$2 FOR UPDATE",[companyId,referralId],
+        )).rows[0];
+        if (!previous) throw new HttpError(404,"not_found","الكرت غير موجود");
+        if (Number(previous.revision) !== input.revision)
+          throw new HttpError(409,"conflict","تم تعديل الكرت من مستخدم آخر؛ حدث الصفحة أولًا");
+        const updated = (await client.query(
+          `UPDATE invoice_referrals SET category=$3,phone=$4,details=$5,archived=$6,revision=revision+1,updated_at=clock_timestamp()
+           WHERE company_id=$1 AND id=$2 RETURNING id`,
+          [companyId,referralId,input.category || null,input.phone || null,input.details,input.archived],
+        )).rows[0];
+        if (input.archived || !!input.category) {
+          await client.query(
+            `UPDATE notifications SET completed_at=clock_timestamp(),read_at=COALESCE(read_at,clock_timestamp()),next_reminder_at=NULL,snoozed_until=NULL,revision=revision+1,updated_at=clock_timestamp()
+             WHERE company_id=$1 AND code='SALES_REFERRAL_NEEDS_REVIEW' AND subject_key=$2 AND completed_at IS NULL`,
+            [companyId,`${previous.kind}:${referralId}`],
+          );
+        }
+        await audit(client,user,"sales-referral.update","invoice-referral",referralId,previous,{...input},companyId);
+        return (await client.query(`${selectReferral} WHERE company_id=$1 AND id=$2`,[companyId,updated.id])).rows[0];
+      });
+      res.json({referral});
+    })
   );
   return router;
 }
