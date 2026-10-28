@@ -52,7 +52,9 @@ async function groupById(db:Pool|PoolClient,groupId:number) {
 }
 function groupGrant(user:User,group:QueryResultRow) {
   const edit=user.owner || match(user,group.default_edit as Rule,false);
-  const read=user.owner || edit || match(user,group.default_read as Rule,false);
+  // Guides are open to every active signed-in account without explicit grants.
+  const openGuide=group.slug==='site-user-guide'||group.slug==='site-developer-guide';
+  const read=user.owner || edit || (!user.suspended && openGuide) || match(user,group.default_read as Rule,false);
   return {read,edit};
 }
 async function nodeAccess(db:Pool|PoolClient,user:User,nodeId:number) {
