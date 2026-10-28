@@ -136,6 +136,8 @@ export interface Invoice {
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
   description: string;
+  doctorReferralId: number | null;
+  entityReferralId: number | null;
   doctorName: string;
   entityName: string;
   gross: string;
