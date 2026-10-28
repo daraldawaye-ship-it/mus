@@ -44,11 +44,15 @@ export const invoiceSchema = z
     counterpartyAccountId: id,
     supplierAccountId: id.nullable().default(null),
     description: z.string().trim().max(1000).default(""),
+    doctorName: z.string().trim().max(160).default(""),
+    entityName: z.string().trim().max(160).default(""),
     discount: amountSchema.default("0"),
     lines: z.array(invoiceLineSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.kind === "purchase" && (value.doctorName || value.entityName))
+      context.addIssue({ code: "custom", path: ["doctorName"], message: "الطبيب والجهة يخصان المبيعات فقط" });
     if (value.kind === "sale" && value.supplierAccountId !== null)
       context.addIssue({
         code: "custom",
@@ -132,6 +136,8 @@ export interface Invoice {
   supplierAccountCode: string | null;
   supplierAccountName: string | null;
   description: string;
+  doctorName: string;
+  entityName: string;
   gross: string;
   discount: string;
   total: string;
