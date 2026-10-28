@@ -95,13 +95,42 @@ export function questionRoutes(pool: Pool): Router {
   const roots = ["/questions","/companies/:companyId/questions"];
   const answerRoots = ["/answers","/companies/:companyId/answers"];
 
+  // Lightweight category index: fetch only names and counts on first opening
+  // the questions page; do not load questions from every category.
+  router.get(roots.map(root=>root+"/categories"),handler(async(req,res)=>{
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const {companyId,manager}=await access(client,req,"questions");
+      const rows=await client.query(`
+        SELECT category,count(*)::int AS count
+        FROM questions
+        WHERE company_id IS NOT DISTINCT FROM $1 AND (active OR $2)
+        GROUP BY category
+        ORDER BY CASE category
+          WHEN 'أسئلة للأطفال' THEN 0
+          WHEN 'معلومات صيدلانية' THEN 1
+          ELSE 2 END,
+          category COLLATE "C"
+      `,[companyId,manager]);
+      return {items:rows.rows.map(row=>({category:row.category,count:row.count}))};
+    });
+    res.json(result);
+  }));
+
   router.get(roots,handler(async(req,res)=>{
     const result=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const {companyId,user,manager}=await access(client,req,"questions");
-      const p=pagination(req), args=[companyId,user.id,searchPattern(p.q),manager];
-      const condition="q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $4) AND (q.question ILIKE $3 OR q.category ILIKE $3)";
-      const count=await client.query("SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $3) AND (q.question ILIKE $2 OR q.category ILIKE $2)",[companyId,searchPattern(p.q),manager]);
+      const p=pagination(req);
+      const category=req.query.category;
+      if(category!==undefined && (typeof category!=="string" || category.length>120))
+        throw new HttpError(400,"invalid_query","فئة الأسئلة غير صالحة");
+      const categoryFilter=category===undefined?null:category;
+      const args=[companyId,user.id,searchPattern(p.q),manager,categoryFilter];
+      const condition="q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $4) AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($5::text IS NULL OR q.category=$5)";
+      const count=await client.query(
+        "SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $3) AND (q.question ILIKE $2 OR q.category ILIKE $2) AND ($4::text IS NULL OR q.category=$4)",
+        [companyId,searchPattern(p.q),manager,categoryFilter]);
       const rows=await client.query(`
         SELECT q.*,creator.display_name AS creator_name,
         (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id) AS answer_count,
@@ -122,7 +151,7 @@ export function questionRoutes(pool: Pool): Router {
         ORDER BY (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) IS NOT NULL ASC,
           CASE WHEN NOT EXISTS (SELECT 1 FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) THEN q.priority END ASC,
           (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) ASC,
-          q.id ASC LIMIT $5 OFFSET $6
+          q.id ASC LIMIT $6 OFFSET $7
       `, [...args,p.pageSize,p.offset]);
       const counts=await otherOptionCounts(client,
         rows.rows.filter(row=>row.my_last_selected_answer !== null).map(row=>row.id),user.id);
