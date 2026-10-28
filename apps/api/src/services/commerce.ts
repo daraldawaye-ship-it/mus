@@ -28,8 +28,28 @@ import {
 } from "./inventory.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { awardPostedInvoice } from "./invoice-rewards.ts";
+import { emitNotification } from "./notifications.ts";
 
 type InvoiceFields = z.output<typeof invoiceSchema>;
+type ReferralKind = "doctor" | "entity";
+async function findOrCreateReferral(
+  client: PoolClient, companyId: number, userId: number,
+  kind: ReferralKind, rawName: string,
+): Promise<{ id: number; name: string; created: boolean } | null> {
+  const name = rawName.trim().replace(/\\s+/g, " ");
+  if (!name) return null;
+  const inserted = await client.query(
+    "INSERT INTO invoice_referrals(company_id,kind,name,created_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id,name",
+    [companyId, kind, name, userId],
+  );
+  if (inserted.rows[0]) return { ...inserted.rows[0], created: true };
+  const existing = await client.query(
+    "SELECT id,name FROM invoice_referrals WHERE company_id=$1 AND kind=$2 AND lower(name)=lower($3)",
+    [companyId, kind, name],
+  );
+  if (!existing.rows[0]) throw new Error("Referral identity disappeared");
+  return { ...existing.rows[0], created: false };
+}
 const abs = (value: bigint) => (value < 0n ? -value : value);
 const maximumMoney = 10n ** 28n - 1n;
 function assertAmount(value: bigint): void {
@@ -138,6 +158,8 @@ export async function invoiceDTOs(
     supplierAccountCode: row.supplier_account_code ?? null,
     supplierAccountName: row.supplier_account_name ?? null,
     description: row.description,
+    doctorName: row.doctor_name ?? "",
+    entityName: row.entity_name ?? "",
     gross: normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
     total: normalizeRate(row.total),
@@ -571,8 +593,10 @@ export async function createInvoice(
     [companyId],
   );
   const number = counter.rows[0].number.padStart(10, "0");
+  const doctor = input.kind === "sale" ? await findOrCreateReferral(client, companyId, user.id, "doctor", input.doctorName) : null;
+  const entity = input.kind === "sale" ? await findOrCreateReferral(client, companyId, user.id, "entity", input.entityName) : null;
   const inserted = await client.query(
-    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING id",
+    "INSERT INTO invoices(company_id,number,kind,document_date,currency_id,currency_code,currency_name,decimal_places,base_currency_id,base_currency_code,base_decimal_places,exchange_rate,branch_id,branch_name,location_id,location_name,counterparty_account_id,counterparty_account_code,counterparty_account_name,description,gross,discount,total,base_total,created_by,idempotency_key,creation_payload,is_return,supplier_account_id,supplier_account_code,supplier_account_name,doctor_referral_id,entity_referral_id,doctor_name,entity_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35) RETURNING id",
     [
       companyId,
       number,
@@ -605,6 +629,10 @@ export async function createInvoice(
       supplier?.id ?? null,
       supplier?.code ?? null,
       supplier?.name ?? null,
+      doctor?.id ?? null,
+      entity?.id ?? null,
+      doctor?.name ?? "",
+      entity?.name ?? "",
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
@@ -887,6 +915,19 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
+  for (const referral of [doctor && { ...doctor, kind: "doctor" }, entity && { ...entity, kind: "entity" }]) {
+    if (!referral || !referral.created) continue;
+    const label = referral.kind === "doctor" ? "طبيب" : "جهة";
+    await emitNotification(client, {
+      companyId,
+      code: "SALES_REFERRAL_NEEDS_REVIEW",
+      subjectKey: `${referral.kind}:${referral.id}`,
+      eventKey: `sales-referral:${referral.kind}:${referral.id}`,
+      title: `إضافة ${label} جديد دون فئة`,
+      message: `أضيف ${label} «${referral.name}» من فاتورة المبيعات ${number}. حدد الفئة وأكمل بيانات الكرت أو أرشفه.`,
+      href: `/companies/${companyId}/sales-referrals?focus=${referral.id}`,
+    });
+  }
   await awardPostedInvoice(
     client,
     companyId,
