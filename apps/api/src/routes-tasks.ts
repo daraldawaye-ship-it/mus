@@ -39,11 +39,14 @@ const dueStockQuery=`
    ceil(($2::numeric*30)/(coalesce(sold.times,0)+5))::integer AS interval_days
  FROM items i JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
  LEFT JOIN sold ON sold.item_id=i.id
- WHERE i.company_id=$1 AND i.active AND s.stock_showroom<>0
-   AND (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date -
+ WHERE i.company_id=$1 AND i.active AND
+   ((s.stock_showroom<>0 AND
+      (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date -
        COALESCE((s.last_showroom_adjustment_at AT TIME ZONE 'Asia/Aden')::date,
                 (i.created_at AT TIME ZONE 'Asia/Aden')::date)
-       >= ceil(($2::numeric*30)/(coalesce(sold.times,0)+5))
+       >= ceil(($2::numeric*30)/(coalesce(sold.times,0)+5)))
+    OR (i.stocktake_required_at IS NOT NULL AND
+        (s.last_showroom_adjustment_at IS NULL OR i.stocktake_required_at>s.last_showroom_adjustment_at)))
  ORDER BY interval_days,i.name,i.id
  `;
 export async function isItemDueForCount(client:PoolClient,companyId:number,itemId:number):Promise<boolean> {
