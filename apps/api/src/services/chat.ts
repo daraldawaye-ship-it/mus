@@ -13,6 +13,7 @@ import { searchPattern } from "./lists.ts";
 import { pagePermissionAliases, permissionRuleEffects } from "./permission-rules.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
 import { notifyChatRecipient } from "./chat-notifications.ts";
+import { checkChatImage, checkChatImageAllowed } from "./chat-images.ts";
 
 export interface ChatListQuery extends ChatContext {
   search: string;
@@ -30,6 +31,7 @@ const messageDTO = (row: QueryResultRow): ChatMessage => ({
   senderId: row.sender_id,
   recipientId: row.recipient_id,
   text: row.text,
+  imageUrl: row.image_id ? `/api/media/${row.image_id}/full` : null,
   createdAt: row.created_at.toISOString(),
   deliveredAt: row.delivered_at?.toISOString() ?? null,
   readAt: row.read_at?.toISOString() ?? null,
@@ -249,12 +251,13 @@ export async function sendChatMessage(
     [current.scopeId, input.clientMessageId],
   )).rows[0];
   if (accepted) {
-    if (accepted.sender_id !== current.user.id || accepted.recipient_id !== peerId || accepted.text !== input.text)
+    if (accepted.sender_id !== current.user.id || accepted.recipient_id !== peerId || accepted.text !== input.text || (accepted.image_id ?? null) !== (input.imageId ?? null))
       throw new HttpError(409, "idempotency_conflict", "استُخدم معرّف الرسالة لطلب مختلف");
     return messageDTO(accepted);
   }
   await access(client, actor, input, "create", true);
   await peer(client, current, peerId, true);
+  if (input.imageId) { await checkChatImageAllowed(client, "direct"); await checkChatImage(client, input.imageId, current.user.id, current.companyId); }
   const thread = (await client.query(
     `INSERT INTO chat_conversations(company_id,user_low_id,user_high_id,created_at,updated_at)
      VALUES($1,least($2::integer,$3::integer),greatest($2::integer,$3::integer),
@@ -264,9 +267,9 @@ export async function sendChatMessage(
     [current.companyId, current.user.id, peerId],
   )).rows[0];
   const row = (await client.query(
-    `INSERT INTO chat_messages(conversation_id,scope_id,client_message_id,sender_id,recipient_id,text,created_at)
-     VALUES($1,$2,$3,$4,$5,$6,date_trunc('milliseconds',clock_timestamp())) RETURNING *`,
-    [thread.id, current.scopeId, input.clientMessageId, current.user.id, peerId, input.text],
+    `INSERT INTO chat_messages(conversation_id,scope_id,client_message_id,sender_id,recipient_id,text,image_id,created_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,date_trunc('milliseconds',clock_timestamp())) RETURNING *`,
+    [thread.id, current.scopeId, input.clientMessageId, current.user.id, peerId, input.text, input.imageId ?? null],
   )).rows[0];
   await client.query("UPDATE chat_conversations SET updated_at=greatest(updated_at,$2) WHERE id=$1", [thread.id, row.created_at]);
   await notifyChatRecipient(client,{
