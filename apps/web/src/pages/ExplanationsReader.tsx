@@ -170,10 +170,10 @@ const markerFor=(node:FlowNode)=>node.parentKind==="paragraph"&&node.depth>=2
 export function ExplanationsContinuousReader() {
  const {user}=useSession();
  const [params,setParams]=useSearchParams();
- const requested=params.get("group")||"mustafa-cases";
+ const requested=params.get("group")||"";
  const groups=useQuery({queryKey:["explanations","groups",user?.id],
   queryFn:()=>api<{items:Group[]}>("/explanations/groups"),enabled:!!user});
- const group=groups.data?.items.find(g=>g.slug===requested)??groups.data?.items[0];
+ const group=requested?groups.data?.items.find(g=>g.slug===requested):undefined;
  const groupId=group?.id??0;
  const pages=useInfiniteQuery({
   queryKey:["explanations","flow",user?.id,groupId],
@@ -259,13 +259,15 @@ export function ExplanationsContinuousReader() {
      {printBusy?"جارٍ تجهيز الملف…":"طباعة الملف كاملًا"}
     </Button>
    </div>
-   {groups.data&&groups.data.items.length>1&&<div className="explain-reader-choose">
-    <label htmlFor="flow-group">المجموعة</label>
+   {groups.data&&groups.data.items.length>0&&<div className="explain-reader-choose">
+    <label htmlFor="flow-group">اختر الموضوع</label>
     <select id="flow-group" value={group?.slug??""}
-     onChange={event=>setParams({group:event.target.value})}>
+     onChange={event=>setParams(event.target.value?{group:event.target.value}:{})}>
+     <option value="">— اختر الموضوع —</option>
      {groups.data.items.map(g=><option key={g.id} value={g.slug}>{g.title}</option>)}
     </select>
    </div>}
+   {!group&&!groups.isPending&&groups.data?.items.length!==0&&<Notice>اختر موضوعًا لعرض جميع فصوله متصلة، ويستكمل تحميلها عند النزول. الطباعة تشمل الموضوع المختار كاملًا.</Notice>}
    {printData&&<Button variant="secondary" onClick={()=>window.print()}>
     إعادة فتح الطباعة
    </Button>}
