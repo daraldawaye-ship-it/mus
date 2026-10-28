@@ -348,7 +348,13 @@ export function inventoryRoutes(pool: Pool): Router {
           );
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
           let where =
-            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) ILIKE $2 OR COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) ILIKE $2)";
+            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) ILIKE $2 OR COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) ILIKE $2 OR COALESCE(doctor_invoice.doctor_name,'') ILIKE $2)";
+          if (req.query.doctorId !== undefined) {
+            if (typeof req.query.doctorId !== "string")
+              throw new HttpError(400, "invalid_query", "معرف الطبيب أو الجهة غير صالح");
+            parameters.push(id(req.query.doctorId));
+            where += ` AND doctor_invoice.doctor_id=${parameters.length}`;
+          }
           for (const key of [
             "itemId",
             "locationId",
