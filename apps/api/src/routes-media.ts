@@ -7,11 +7,12 @@ import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, missing } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
+import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 
 // JSON image uploads intentionally contain small browser-resized raster files.
 // Keeping originals and thumbnails in PostgreSQL makes them survive Railway redeploys.
 const uploadSchema = z.object({
-  purpose: z.enum(["avatar", "item", "letterhead"]),
+  purpose: z.enum(["avatar", "item", "letterhead", "chat"]),
   companyId: z.number().int().positive().nullable(),
   original: z.string().max(3_100_000),
   thumbnail: z.string().max(300_000),
@@ -37,7 +38,8 @@ export function mediaRoutes(pool: Pool): Router {
   const router = Router();
   router.post("/media",handler(async(req,res) => {
     const input = parse(uploadSchema,req.body);
-    if ((input.purpose!=="avatar") !== (input.companyId !== null))
+    if ((input.purpose==="avatar" && input.companyId!==null) ||
+        ((input.purpose==="item" || input.purpose==="letterhead") && input.companyId===null))
       throw new HttpError(400,"invalid_scope","تحديد نطاق الصورة غير صالح");
     const original = readRaster(input.original,2_000_000);
     const thumbnail = readRaster(input.thumbnail,150_000);
@@ -45,6 +47,7 @@ export function mediaRoutes(pool: Pool): Router {
     await transaction(pool,async(client)=>{
       const user=await currentActor(client,actor(req));
       if(input.purpose==="item") await companyAccess(client,user,input.companyId!,"items.manage");
+      if(input.purpose==="chat" && input.companyId!==null) await companyAccess(client,user,input.companyId);
       if(input.purpose==="letterhead") {
         const access=await companyAccess(client,user,input.companyId!,undefined,true);
         if(!user.owner && access.company.createdBy!==user.id)
@@ -78,15 +81,31 @@ export function mediaRoutes(pool: Pool): Router {
       if(!record)missing();
       if(record.purpose==="avatar"){
         if(record.uploaded_by!==user.id)missing();
+      }else if(record.purpose==="chat"){
+        if(user.suspended) missing();
+        if(record.company_id!==null) await companyAccess(client,user,record.company_id);
+        const key=record.company_id===null?"public.chat":"company.chat";
+        const entry=(await directoryEntries(client,user,record.company_id)).find(value=>value.key===key);
+        if(!entry) missing();
+        assertDirectoryAccess(entry,"view");
+        const permitted=(await client.query(`SELECT
+          EXISTS(SELECT 1 FROM chat_messages m JOIN chat_conversations c ON c.id=m.conversation_id
+            WHERE m.image_id=$1 AND (m.sender_id=$2 OR m.recipient_id=$2)
+              AND c.company_id IS NOT DISTINCT FROM $3::integer)
+          OR EXISTS(SELECT 1 FROM chat_group_messages m JOIN chat_groups g ON g.id=m.group_id
+            JOIN chat_group_members membership ON membership.group_id=g.id
+            WHERE m.image_id=$1 AND membership.user_id=$2 AND membership.left_at IS NULL
+              AND m.id>membership.joined_after_message_id
+              AND g.company_id IS NOT DISTINCT FROM $3::integer) AS allowed`,
+          [imageId,user.id,record.company_id])).rows[0]?.allowed;
+        if(!permitted) missing("الصورة غير متاحة خارج المحادثة");
       }else{
-        await companyAccess(
-          client,user,record.company_id,
-          record.purpose==="item"?"items.view":undefined,
-        );
+        await companyAccess(client,user,record.company_id,
+          record.purpose==="item"?"items.view":undefined);
       }
       return record;
     });
-    res.setHeader("Cache-Control","private, max-age=86400");
+    res.setHeader("Cache-Control",image.purpose==="chat"?"private, no-store":"private, max-age=86400");
     res.setHeader("Content-Security-Policy","default-src 'none'; sandbox");
     res.type(size==="full"?image.original_mime:image.thumbnail_mime);
     res.send(size==="full"?image.original_bytes:image.thumbnail_bytes);
