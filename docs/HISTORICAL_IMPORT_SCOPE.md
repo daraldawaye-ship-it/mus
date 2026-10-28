@@ -20,3 +20,19 @@ worker selection handles only `pending`, so excluded sources cannot create journ
 or stock. The owner API resumes the same run after deployment verification. The
 website and all restored automatic tasks remain enabled. Historical accounting
 posting of raw receipt/payment vouchers is a separate unfinished step.
+
+## Narrower remaining-sales scope — 2026-10-28
+
+The owner changed the remaining-sales window again to **three calendar months and
+ten days**. The new fixed inclusive cutoff is **2026-07-18**. Migration146 excludes
+only additional pending sales before this cutoff, leaving every pending purchase,
+previously completed/failed invoice, and previously excluded source untouched. It
+preserves source hashes, JSON, dates, and posted accounting/stock history; exclusions
+are cumulative and idempotent. The same run is paused during deployment/readback,
+then resumed through the owner API. Website and automatic tasks remain enabled.
+
+Paused snapshot before this narrowing: 53,435 completed, 1,199 failed, 12,971 already
+excluded. Additional pending old sales: 4,265. Retained pending purchases: 1,198;
+retained pending sales from2026-07-18: 14,143. Expected eligible total15,341 and
+cumulative excluded total17,236 at resumption. Already posted old sales are retained
+because the request applies to the remaining queue only.
