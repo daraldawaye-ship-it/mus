@@ -111,6 +111,35 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  assert.equal(initialBoard.data.items.find((x:{id:number})=>x.id===shared.id).priority,4,"all linked case titles contribute to urgency");
  const visibleBoard=await reporter.call("GET","/legal/tasks");
  assert.equal(visibleBoard.status,200);
+ // A task comment is an attributed, append-only progress note. Readers may
+ // comment on tasks they can see, but not tasks in inaccessible/partial cases.
+ const commentsPath="/legal/tasks/"+ordinary.id+"/comments";
+ assert.equal((await reporter.call("GET",commentsPath)).status,200);
+ assert.equal((await reporter.call("POST",commentsPath,{body:"  "})).status,400);
+ assert.equal((await reporter.call("POST",commentsPath,{body:"x".repeat(2001)})).status,400);
+ const firstComment=await reporter.call("POST",commentsPath,{body:"تمت مراجعة المحكمة وتسليم المذكرة"});
+ assert.equal(firstComment.status,201,JSON.stringify(firstComment.data));
+ assert.equal(firstComment.data.comment.user_id,reportUserId);
+ assert.equal(firstComment.data.comment.user_name,"Yemen");
+ const ownerComment=await owner.call("POST",commentsPath,{body:"تم توجيه المحامي للمتابعة"});
+ assert.equal(ownerComment.status,201,JSON.stringify(ownerComment.data));
+ const commentList=await reporter.call("GET",commentsPath);
+ assert.equal(commentList.status,200,JSON.stringify(commentList.data));
+ assert.equal(commentList.data.total,2);
+ assert.deepEqual(commentList.data.items.map((x:{body:string})=>x.body),
+   ["تم توجيه المحامي للمتابعة","تمت مراجعة المحكمة وتسليم المذكرة"]);
+ assert.equal(commentList.data.items[1].user_name,"Yemen");
+ assert.equal((await reporter.call("GET",commentsPath+"?page=0")).status,400);
+ assert.equal((await reporter.call("GET","/legal/tasks/"+shared.id+"/comments")).status,403);
+ assert.equal((await reporter.call("POST","/legal/tasks/"+shared.id+"/comments",{body:"محجوب"})).status,403);
+ assert.equal((await reporter.call("GET","/legal/tasks/"+unlinked.id+"/comments")).status,403);
+ assert.equal((await reporter.call("POST","/legal/tasks/"+reportId+"/comments",{body:"ليس مهمة"})).status,400);
+ const withComments=await owner.call("GET","/legal/tasks");
+ assert.equal(withComments.data.items.find((r:{id:number})=>r.id===ordinary.id).comment_count,2);
+ const commentAudit=await run.pool.query(
+   "SELECT count(*)::int AS n FROM audit_events WHERE action='legal.task.comment' AND target_type='legalTask' AND target_id=$1",
+   [ordinary.id]);
+ assert.equal(commentAudit.rows[0].n,2);
  for(const hidden of [shared.id,unlinked.id,escaped.id])
   assert.ok(!visibleBoard.data.items.some((x:{id:number})=>x.id===hidden),"partial case access must not expose task or priority facts");
  const currentCase=await owner.call("GET","/legal/cases/"+caseId+"/records");
@@ -161,6 +190,8 @@ test("case archive migration, owner, delegated reports, links and AI export",asy
  assert.ok(!visibleCase.data.items.some((x:{id:number})=>x.id===shared.id));
  assert.equal((await owner.call("PUT","/legal/cases/"+caseId+"/access",{userId:reportUserId,role:null})).status,200);
  assert.equal((await reporter.call("GET","/legal/cases/"+caseId)).status,403);
+ assert.equal((await reporter.call("GET",commentsPath)).status,403);
+ assert.equal((await reporter.call("POST",commentsPath,{body:"بعد سحب الصلاحية"})).status,403);
  const afterRevocation=await reporter.call("GET","/legal/cases");
  assert.equal(afterRevocation.status,200);
  assert.equal(afterRevocation.data.total,0);

@@ -14,6 +14,7 @@ type LegalTaskRow = QueryResultRow & TaskPriorityInput & {
 };
 
 const positive = z.number().int().positive().max(2147483647);
+const legalTaskCommentSchema=z.object({body:z.string().trim().min(1).max(2000)}).strict();
 const legalTaskPrioritySchema=z.object({
   priority:z.number().int().min(1).max(10).nullable(),
   revision:positive,
@@ -81,6 +82,7 @@ export const mcpBodySchemas = {
   legalRecordTaskStatusSchema,
   legalRecordImageSchema,
   legalTaskPrioritySchema,
+  legalTaskCommentSchema,
 };
 // This action intentionally reads no body; keep that explicit in the catalog
 // without adding a different validator or workflow to the existing API route.
@@ -269,6 +271,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const rows=await pool.query<LegalTaskRow>(
       `SELECT r.id,r.kind,r.title,r.body,r.status,r.due_at,r.assigned_to,r.sort_order,
         r.revision,r.task_priority,r.task_priority_reason,r.created_at,r.updated_at,
+        (SELECT count(*)::int FROM legal_task_comments tc WHERE tc.task_id=r.id) AS comment_count,
         COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'next_hearing',c.next_hearing)
           ORDER BY c.id) FILTER(WHERE c.id IS NOT NULL),'[]'::json) AS cases,
         MIN(c.next_hearing)::text AS next_hearing,
@@ -296,6 +299,43 @@ export function legalCaseRoutes(pool:Pool):Router {
       ...row,...calculateLegalTaskPriority(row,now),
     })).sort(compareLegalTasks);
     res.json({items,total:items.length});
+  }));
+  // The same access rule as viewing a legal task applies to reading and recording
+  // progress comments. A user must have permission for every linked case.
+  router.get("/legal/tasks/:id/comments",handler(async(req,res)=>{
+    const taskId=number(req.params.id),user=actor(req);
+    await canRecord(pool,user,taskId);
+    const task=(await pool.query("SELECT kind FROM legal_records WHERE id=$1",[taskId])).rows[0];
+    if(task?.kind!=="task")throw new HttpError(400,"invalid_kind","هذا السجل ليس مهمة");
+    const pageValue=Number(req.query.page??1);
+    if(!Number.isInteger(pageValue)||pageValue<1||pageValue>100000)
+      throw new HttpError(400,"invalid_query","رقم الصفحة غير صالح");
+    const pageSize=50;
+    const [items,total]=await Promise.all([
+      pool.query(
+        "SELECT c.id,c.task_id,c.user_id,u.display_name AS user_name,c.body,c.created_at FROM legal_task_comments c JOIN users u ON u.id=c.user_id WHERE c.task_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT $2 OFFSET $3",
+        [taskId,pageSize,(pageValue-1)*pageSize]),
+      pool.query("SELECT count(*)::int AS total FROM legal_task_comments WHERE task_id=$1",[taskId]),
+    ]);
+    res.json({items:items.rows,total:total.rows[0].total,page:pageValue,pageSize});
+  }));
+  router.post("/legal/tasks/:id/comments",handler(async(req,res)=>{
+    const taskId=number(req.params.id),input=parse(legalTaskCommentSchema,req.body);
+    const comment=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      if(user.suspended)throw new HttpError(403,"forbidden","الحساب موقوف");
+      await canRecord(db,user,taskId);
+      await forbidIfDisabled(db);
+      const task=(await db.query("SELECT kind FROM legal_records WHERE id=$1",[taskId])).rows[0];
+      if(task?.kind!=="task")throw new HttpError(400,"invalid_kind","هذا السجل ليس مهمة");
+      const next=(await db.query(
+        "INSERT INTO legal_task_comments(task_id,user_id,body) VALUES($1,$2,$3) RETURNING id,task_id,user_id,body,created_at",
+        [taskId,user.id,input.body])).rows[0];
+      await audit(db,user,"legal.task.comment","legalTask",taskId,null,
+        {commentId:String(next.id),body:next.body});
+      return {...next,id:String(next.id),user_name:user.displayName};
+    });
+    res.status(201).json({comment});
   }));
   router.put("/legal/tasks/:id/priority",handler(async(req,res)=>{
     const recordId=number(req.params.id);

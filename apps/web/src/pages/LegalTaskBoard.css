@@ -67,3 +67,19 @@
 .legal-actions-menu-items{position:absolute;top:calc(100% + 5px);right:0;z-index:25;display:grid;gap:6px;padding:9px;min-width:190px;max-width:min(90vw,310px);border:1px solid var(--border,#b8bcc4);border-radius:10px;background:var(--card-bg,var(--surface,#1b2836));box-shadow:0 8px 24px rgba(0,0,0,.22)}
 .legal-actions-menu-items>.button,.legal-actions-menu-items>button{width:100%;text-align:start;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:700px){.legal-main-navigation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;width:100%;gap:6px}.legal-main-navigation>.button,.legal-main-navigation>button{min-width:0;height:auto;white-space:normal;padding:8px 5px;font-size:12px}.legal-actions-menu>summary{padding:8px;font-size:12px;white-space:nowrap}}
+
+
+/* Legal task quick actions: only the numeric priority, then comment and history. */
+.legal-task-quick-actions{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;min-width:0}
+.legal-task-quick-actions>.button{min-width:0;flex:0 0 auto}
+.legal-task-quick-actions>.button:first-child{min-width:32px;font-weight:700;font-variant-numeric:tabular-nums}
+.legal-task-quick-actions>.button small{font-size:10px;font-variant-numeric:tabular-nums}
+.legal-task-popup-body{display:grid;gap:9px;min-width:0;max-height:min(70dvh,600px);overflow-y:auto}
+.legal-task-popup-body>p{margin:0;overflow-wrap:anywhere}
+.legal-task-popup-body .legal-preserve{white-space:pre-wrap;overflow-wrap:anywhere}
+.legal-task-popup-body textarea{width:100%;min-height:100px;resize:vertical}
+.legal-task-popup-body details{border-bottom:1px solid var(--border);padding:5px 0}
+.legal-task-popup-body summary{cursor:pointer;overflow-wrap:anywhere}
+.legal-task-comment-entry{border:1px solid var(--border);border-radius:8px;padding:9px}
+.legal-task-comment-entry p{margin:5px 0 0}
+@media(max-width:700px){.legal-task-mobile .legal-task-quick-actions{flex:0 1 auto}.legal-task-mobile .legal-task-quick-actions>.button{padding-inline:7px}}
