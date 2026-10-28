@@ -172,7 +172,7 @@ export function explanationRoutes(pool:Pool):Router {
       "(char_length(evidence)-char_length(replace(evidence,chr(10),''))) AS evidence_breaks "+
       "FROM explanation_nodes WHERE group_id=$1 ORDER BY position,id",
       [group.id])).rows as (NodeRow & ReadingLength)[];
-    const children=new Map<number|null,NodeRow[]>();
+    const children=new Map<number|null,(NodeRow & ReadingLength)[]>();
     for(const node of rows){
       const siblings=children.get(node.parent_id)??[];
       siblings.push(node);children.set(node.parent_id,siblings);
