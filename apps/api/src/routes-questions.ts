@@ -143,17 +143,24 @@ export function questionRoutes(pool: Pool): Router {
       }
       const question=(await client.query("SELECT * FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2 FOR SHARE",[questionId,companyId])).rows[0];
       if(!question || !question.active) missing("السؤال غير موجود أو غير متاح");
+      // currentActor(...,true) locks this user for the transaction; two devices
+      // answering simultaneously cannot both earn the question's first reward.
+      const firstAttempt=(await client.query(
+        "SELECT NOT EXISTS (SELECT 1 FROM question_answers WHERE question_id=$1 AND user_id=$2) AS first",
+        [questionId,user.id],
+      )).rows[0].first as boolean;
       const correct=input.selectedAnswer===question.correct_answer;
+      const awardedPoints=correct && firstAttempt ? question.points : 0;
       const snapshot={question:question.question,options:[question.answer1,question.answer2,question.answer3,question.answer4].slice(0,question.option_count),correctAnswer:question.correct_answer,points:question.points,revision:question.revision};
       const inserted=(await client.query(
         "INSERT INTO question_answers(question_id,user_id,selected_answer,is_correct,awarded_points,comment,question_snapshot,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,idempotency_key) DO NOTHING RETURNING *",
-        [questionId,user.id,input.selectedAnswer,correct,correct?question.points:0,comment,JSON.stringify(snapshot),input.idempotencyKey],
+        [questionId,user.id,input.selectedAnswer,correct,awardedPoints,comment,JSON.stringify(snapshot),input.idempotencyKey],
       )).rows[0];
       if(!inserted) throw new HttpError(409,"conflict","المحاولة محفوظة مسبقًا؛ أعد تحديث الصفحة");
       await audit(client,user,"question.answer","question-answer",Number(inserted.id),null,{
-        questionId,selectedAnswer:input.selectedAnswer,correct,points:correct?question.points:0,comment,
+        questionId,selectedAnswer:input.selectedAnswer,correct,firstAttempt,points:awardedPoints,comment,
       },companyId);
-      return {id:String(inserted.id),correct,points:correct?question.points:0,replayed:false};
+      return {id:String(inserted.id),correct,points:awardedPoints,firstAttempt,replayed:false};
     });
     res.status(result.replayed?200:201).json(result);
   }));
