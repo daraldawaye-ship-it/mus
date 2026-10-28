@@ -174,13 +174,53 @@ function InvoiceList({
     const timer = window.setTimeout(() => setShowSaved(false), 4000);
     return () => window.clearTimeout(timer);
   }, [saved, navigation]);
+  // Only query the selected day on opening Sales; "allDates" deliberately
+  // distinguishes requesting history from the initial, date-free URL.
+  const salesAllDates = kind === "sale" && params.get("allDates") === "1";
+  const salesDefaultToday = kind === "sale" && !salesAllDates &&
+    !params.has("dateFrom") && !params.has("dateTo");
+  const dateFrom = params.get("dateFrom") ?? (salesDefaultToday ? today() : "");
+  const dateTo = params.get("dateTo") ?? (salesDefaultToday ? today() : "");
   const filters = new URLSearchParams({ kind });
-  for (const key of ["dateFrom", "dateTo", "branchId", "locationId", "supplierQ", "payerQ"])
+  if (dateFrom) filters.set("dateFrom", dateFrom);
+  if (dateTo) filters.set("dateTo", dateTo);
+  for (const key of ["branchId", "locationId", "supplierQ", "payerQ"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<Invoice>(
     `/companies/${companyId}/invoices?${filters}`,
     `company:${companyId}:invoices:${kind}`,
+    kind === "sale" ? "id:desc" : "id:asc",
   );
+  function setSaleDate(key: "dateFrom" | "dateTo", value: string) {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      const from = previous.get("dateFrom") ?? (previous.get("allDates") === "1" ? "" : today());
+      const to = previous.get("dateTo") ?? (previous.get("allDates") === "1" ? "" : today());
+      next.delete("allDates");
+      const updatedFrom = key === "dateFrom" ? value : from;
+      const updatedTo = key === "dateTo" ? value : to;
+      updatedFrom ? next.set("dateFrom", updatedFrom) : next.delete("dateFrom");
+      updatedTo ? next.set("dateTo", updatedTo) : next.delete("dateTo");
+      next.delete("page");
+      return next;
+    });
+  }
+  function setSalesDateMode(mode: "today" | "all") {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (mode === "today") {
+        next.delete("allDates");
+        next.set("dateFrom", today());
+        next.set("dateTo", today());
+      } else {
+        next.set("allDates", "1");
+        next.delete("dateFrom");
+        next.delete("dateTo");
+      }
+      next.delete("page");
+      return next;
+    });
+  }
   const columns = useMemo<ColumnDef<Invoice, unknown>[]>(
     () => [
       {
@@ -333,19 +373,31 @@ function InvoiceList({
           <Field
             label="من تاريخ"
             type="date"
-            value={params.get("dateFrom") ?? ""}
+            value={dateFrom}
             onChange={(event) =>
-              filter(setParams, "dateFrom", event.target.value)
+              kind === "sale" ? setSaleDate("dateFrom", event.target.value)
+                : filter(setParams, "dateFrom", event.target.value)
             }
           />
           <Field
             label="إلى تاريخ"
             type="date"
-            value={params.get("dateTo") ?? ""}
+            value={dateTo}
             onChange={(event) =>
-              filter(setParams, "dateTo", event.target.value)
+              kind === "sale" ? setSaleDate("dateTo", event.target.value)
+                : filter(setParams, "dateTo", event.target.value)
             }
           />
+          {kind === "sale" && (
+            <div className="form-actions">
+              <Button variant="secondary" size="compact" onClick={() => setSalesDateMode("today")}>
+                فواتير اليوم
+              </Button>
+              <Button variant="secondary" size="compact" onClick={() => setSalesDateMode("all")}>
+                جميع التواريخ
+              </Button>
+            </div>
+          )}
         </div>
         {list.error && (
           <Notice tone="error">
