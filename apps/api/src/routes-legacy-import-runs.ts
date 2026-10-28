@@ -20,6 +20,7 @@ export async function loadLegacyImportRun(client:PoolClient,companyId:number,key
   const row=(await client.query(`SELECT idempotency_key AS "idempotencyKey",
     company_id AS "companyId",source_system AS "sourceSystem",status,phase,
     initial_pending AS "initialPending",imported,existing,failed_documents AS "failedDocuments",
+    excluded_documents AS "excludedDocuments",sales_from_date::text AS "salesFromDate",
     rounded,last_posting_date::text AS "lastPostingDate",last_source_id AS "lastSourceId",
     error_message AS "errorMessage",created_at AS "createdAt",updated_at AS "updatedAt",
     finished_at AS "finishedAt" FROM legacy_import_runs WHERE company_id=$1 AND idempotency_key=$2`,
