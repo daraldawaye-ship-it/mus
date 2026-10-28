@@ -623,6 +623,7 @@ export async function createInvoice(
   let doctor: {id:number|null;name:string} | null = null;
   let newlyCreatedDoctor: { id: number; name: string } | null = null;
   let reusedArchivedDoctor: { id: number; name: string } | null = null;
+  let doctorRewardEligible = false;
   if (input.kind === "sale") {
     const limit = await controlValue(client, companyId, "sales_doctor_threshold");
     const threshold = BigInt(typeof limit === "number" ? limit : 1000) * 1000000n;
@@ -630,12 +631,13 @@ export async function createInvoice(
       throw new HttpError(400,"doctor_required","اكتب اسم الطبيب أو الممرض أو الجهة، أو اختره من القائمة قبل حفظ الفاتورة.");
     if (input.doctorId !== null) {
       const result = await client.query(
-        "SELECT id,name,active FROM doctors WHERE company_id=$1 AND id=$2 FOR SHARE",
+        "SELECT id,name,kind,active FROM doctors WHERE company_id=$1 AND id=$2 FOR SHARE",
         [companyId,input.doctorId],
       );
       if(!result.rows[0])
         throw new HttpError(400,"invalid_doctor","اختر طبيبًا أو ممرضًا أو جهة مسجلة في كرت الأطباء والجهات.");
-      const selected = result.rows[0] as {id:number;name:string;active:boolean};
+      const selected = result.rows[0] as {id:number;name:string;kind:string|null;active:boolean};
+      doctorRewardEligible = !importContext && (selected.kind === "doctor" || selected.kind === "nurse");
       const selectedDoctor = {id:selected.id,name:selected.name};
       doctor = selectedDoctor;
       if (!selected.active && !importContext) reusedArchivedDoctor = selectedDoctor;
@@ -652,13 +654,14 @@ export async function createInvoice(
           [companyId, name],
         );
         const matching = await client.query(
-          `SELECT id,name,active FROM doctors WHERE company_id=$1
+          `SELECT id,name,kind,active FROM doctors WHERE company_id=$1
              AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower($2)
              ORDER BY active DESC,id ASC LIMIT 1 FOR SHARE`,
           [companyId, name],
         );
         if (matching.rows[0]) {
-          const existing = matching.rows[0] as { id: number; name: string; active: boolean };
+          const existing = matching.rows[0] as { id: number; name: string; kind: string | null; active: boolean };
+          doctorRewardEligible = existing.kind === "doctor" || existing.kind === "nurse";
           const existingDoctor = { id: existing.id, name: existing.name };
           doctor = existingDoctor;
           if (!existing.active) reusedArchivedDoctor = existingDoctor;
@@ -670,6 +673,7 @@ export async function createInvoice(
           );
           newlyCreatedDoctor = created.rows[0] as { id: number; name: string };
           doctor = newlyCreatedDoctor;
+          doctorRewardEligible = true; // New unclassified doctor/organization card.
           await audit(client, user, "doctor.create", "doctor",
             doctor.id, null, { ...doctor, kind: null, source: "sales" }, companyId);
         }
@@ -679,6 +683,7 @@ export async function createInvoice(
   // Optional sales customer directory; the invoice keeps a stable snapshot.
   // It is independent of the accounting counterparty and creates no notifications.
   let saleCustomer: {id:number;customer_number:string;name:string}|null = null;
+  let customerRewardKind: "new" | "existing" | null = null;
   if (input.kind === "sale" && input.saleCustomerNumber && !importContext) {
     const customerNumber = input.saleCustomerNumber;
     await client.query(
@@ -691,6 +696,7 @@ export async function createInvoice(
     );
     if (found.rows[0]) {
       saleCustomer = found.rows[0] as {id:number;customer_number:string;name:string};
+      customerRewardKind = "existing";
     } else {
       // Unnamed new customers remain searchable by number and may be
       // renamed later in their card. Never overwrite an existing card's name.
@@ -701,6 +707,7 @@ export async function createInvoice(
         [companyId,customerNumber,customerName,user.id],
       );
       saleCustomer = created.rows[0] as {id:number;customer_number:string;name:string};
+      customerRewardKind = "new";
       await audit(client,user,"saleCustomer.create","saleCustomer",saleCustomer.id,
         null,{id:saleCustomer.id,customerNumber:saleCustomer.customer_number,name:saleCustomer.name,source:"sale"},companyId);
     }
@@ -1141,6 +1148,8 @@ export async function createInvoice(
       input.kind,
       user,
       number,
+      customerRewardKind,
+      doctorRewardEligible,
     );
     if (input.kind === "sale")
       await accrueInvoiceClearance(client, companyId, invoiceId, user);
