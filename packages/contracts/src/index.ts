@@ -151,6 +151,9 @@ export const auditActionLabels = {
   "notification.assign": "إسناد متابعة تنبيه",
   "notification.remind": "تكرار تنبيه",
   "notification.settings": "إعداد نوع تنبيه",
+  "question.create": "إنشاء سؤال",
+  "question.update": "تعديل سؤال",
+  "question.answer": "الإجابة عن سؤال",
   "memo.create": "إنشاء مذكرة",
   "memo.read": "قراءة مذكرة",
   "memo.reply": "رد على مذكرة",
@@ -194,6 +197,9 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "question.create",
+  "question.update",
+  "question.answer",
   "notification.create",
   "notification.follow",
   "notification.assign",
@@ -217,6 +223,9 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "question.create",
+  "question.update",
+  "question.answer",
   "wallet.award",
   "wallet.auto-award",
   "wallet.reverse",

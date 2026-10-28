@@ -262,6 +262,38 @@ page(
   "إعداد أنواع التنبيهات الآلية والأهمية والأدوار والمتابعين والتكرار.",
 );
 page(
+  "public.questions",
+  "الأسئلة",
+  "الموقع العام",
+  "/questions",
+  { view: signed, create: owner, edit: owner },
+  "أسئلة الموقع العامة مع خيارين أو ثلاثة أو أربعة وخانات الإجابة.",
+);
+page(
+  "public.answers",
+  "الإجابات",
+  "الموقع العام",
+  "/answers",
+  { view: signed, create: signed },
+  "إجاباتك وتعليقاتك، ويعرض المالك إجابات المستخدمين كافة.",
+);
+page(
+  "company.questions",
+  "الأسئلة",
+  "الشركة",
+  "/companies/:companyId/questions",
+  { view: member, create: general, edit: general },
+  "أسئلة الشركة وخياراتها ونقاطها وأولوياتها، مستقلة عن كل شركة أخرى.",
+);
+page(
+  "company.answers",
+  "الإجابات",
+  "الشركة",
+  "/companies/:companyId/answers",
+  { view: member, create: member },
+  "إجابات مستخدمي الشركة وتعليقاتهم، بإشراف مديرها العام.",
+);
+page(
   "company.memos",
   "المذكرات",
   "الشركة",
