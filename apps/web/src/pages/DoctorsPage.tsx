@@ -31,14 +31,17 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
   async function save(event:FormEvent) {
     event.preventDefault();
     if(saving)return;
-    const schema = doctor ? doctorPatchSchema : doctorInputSchema;
-    const parsed=schema.safeParse({name,kind:kind||null,department,phone,searchKeys,notes,active});
+    const data = {name,kind:kind||null,department,phone,searchKeys,notes,active};
+    // The revision must be included BEFORE validating an existing card.
+    const parsed = doctor
+      ? doctorPatchSchema.safeParse({...data,revision:doctor.revision})
+      : doctorInputSchema.safeParse(data);
     if(!parsed.success){setError(parsed.error.issues[0]?.message??"تحقق من الحقول");return;}
     setSaving(true);setError("");
     try {
       await api(`/companies/${companyId}/doctors${doctor?"/"+doctor.id:""}`,{
         method:doctor?"PATCH":"POST",
-        body:doctor?{...parsed.data,revision:doctor.revision}:parsed.data,
+        body:parsed.data,
         signal:guard.signal,
       });
       if(guard.isCurrent())onSaved();
