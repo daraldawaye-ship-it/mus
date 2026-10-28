@@ -36,3 +36,32 @@ excluded. Additional pending old sales: 4,265. Retained pending purchases: 1,198
 retained pending sales from2026-07-18: 14,143. Expected eligible total15,341 and
 cumulative excluded total17,236 at resumption. Already posted old sales are retained
 because the request applies to the remaining queue only.
+
+
+## CURRENT: sales deferred, purchases-only manual completion — 2026-10-28
+
+The owner explicitly stopped the general run and requested extracting remaining
+purchases only, deferring remaining sales into a separate file until further
+instruction. Then the owner explicitly authorized posting the purchases only.
+The general run remains **paused**. Do not resume sales without a NEW explicit request.
+The website and unrelated restored automatic tasks remain enabled.
+
+At pause (`2026-10-28T20:24:45.852Z`) there were41 pending purchases and1,807 pending
+sales. Full source exports were saved privately outside Git, with original hashes
+verified for all1,848 documents. Purchases had475 lines; deferred sales had6,156.
+Using the existing owner transaction-import API (not the general worker),38 purchases
+posted successfully in5 original-date batches. Three invalid whole purchase documents
+were retained for manual correction; quantities were never rounded. Three documents
+used the already authorized half-up unit-price policy, with original values retained.
+The owner stage-ack API marked38 completed and3 failed. No sales were submitted.
+
+Verified production source status afterward:66,006 completed,2,162 failed,17,236
+previously excluded sales,1,807 pending sales, **zero pending purchases**, total87,211.
+The general run still reports paused. Its per-worker imported/failed counters exclude
+these38/3 manually processed purchases; read actual staging status for overall totals.
+Do not derive overall pending/completed totals solely from those old run counters.
+
+Private output directory: `/workspace/outputs/paused-invoices-2026-10-28/`.
+`purchases-only.zip` includes the original41-source snapshot, Excel review and posting
+results. `deferred-sales.zip` includes all1,807 deferred sales in JSON/Excel, with exact
+raw source preservation and manifest checksums. Financial payloads stay out of Git.
