@@ -64,6 +64,12 @@ test("questions: variable options, comments, first-answer rewards and company sc
   assert.equal(list.items[0]?.optionCount,2);
   assert.deepEqual(list.items[0]?.options,["خطأ","صحيح"]);
   assert.equal((await owner.ok<{total:number}>("GET",`/companies/${companyTwo}/questions`)).total,0);
+  const companyCategories=await owner.ok<{items:{category:string;count:number}[]}>("GET",base+"/questions/categories");
+  assert.deepEqual(companyCategories.items,[{category:"مراجعة",count:1}]);
+  const emptyCompanyCategories=await owner.ok<{items:unknown[]}>("GET",`/companies/${companyTwo}/questions/categories`);
+  assert.deepEqual(emptyCompanyCategories.items,[]);
+  assert.equal((await owner.ok<{total:number}>("GET",base+"/questions?category="+encodeURIComponent("مراجعة"))).total,1);
+  assert.equal((await owner.ok<{total:number}>("GET",base+"/questions?category="+encodeURIComponent("معلومات صيدلانية"))).total,0);
   assert.equal((await owner.request("POST",`${base}/questions/${two}/answers`,
     {selectedAnswer:3,idempotencyKey:randomUUID()})).status,400);
 
@@ -88,6 +94,16 @@ test("questions: variable options, comments, first-answer rewards and company sc
     category:"اختبار",priority:1,question:"سؤال من أربعة",
     options:["أ","ب","ج","د"],correctAnswer:4,points:5,active:true,
   },201)).id;
+  const twoCompanyCategories=await owner.ok<{items:{category:string;count:number}[]}>("GET",base+"/questions/categories");
+  assert.deepEqual(twoCompanyCategories.items,[
+    {category:"اختبار",count:1},{category:"مراجعة",count:1}
+  ]);
+  const onlyTest=await owner.ok<{total:number;items:{id:number}[]}>(
+    "GET",base+"/questions?category="+encodeURIComponent("اختبار"));
+  assert.equal(onlyTest.total,1);
+  assert.equal(onlyTest.items[0]?.id,four);
+  assert.equal((await owner.request("GET",base+"/questions?category="+("x".repeat(121)))).status,400);
+
   const rewarded=await owner.ok<{points:number;firstAttempt:boolean}>(
     "POST",`${base}/questions/${four}/answers`,
     {selectedAnswer:4,idempotencyKey:randomUUID()},201);
@@ -109,13 +125,41 @@ test("questions: variable options, comments, first-answer rewards and company sc
   const publicList=await owner.ok<{items:{id:number;optionCount:number}[]}>("GET","/questions");
   assert(publicList.items.some(q=>q.id===publicQuestion&&q.optionCount===3));
   assert.equal((await owner.ok<{total:number}>("GET","/answers")).total,0);
+  const publicCategories=await owner.ok<{items:{category:string;count:number}[]}>("GET","/questions/categories");
+  assert.deepEqual(publicCategories.items,[{category:"عام",count:1}]);
+  assert.equal((await owner.ok<{total:number}>("GET","/questions?category="+encodeURIComponent("عام"))).total,1);
+  assert.equal((await owner.ok<{total:number}>("GET","/questions?category="+encodeURIComponent("مراجعة"))).total,0);
+  // Newly created categories appear without hardcoding menu entries.
+  await owner.ok("POST","/questions",{
+    category:"معلومات صيدلانية",priority:2,question:"دواء تجريبي",options:["نعم","لا"],
+    correctAnswer:1,points:1,active:true,
+  },201);
+  await owner.ok("POST","/questions",{
+    category:"فئة مستقبلية",priority:2,question:"سؤال مؤجل",
+    options:["نعم","لا"],correctAnswer:1,points:1,active:false,
+  },201);
+  const expandedCategories=await owner.ok<{items:{category:string;count:number}[]}>("GET","/questions/categories");
+  assert.deepEqual(expandedCategories.items,[
+    {category:"معلومات صيدلانية",count:1},
+    {category:"عام",count:1},
+    {category:"فئة مستقبلية",count:1},
+  ]);
+  const publicPharmacy=await owner.ok<{items:{category:string;question:string}[];total:number}>(
+    "GET","/questions?category="+encodeURIComponent("معلومات صيدلانية"));
+  assert.equal(publicPharmacy.total,1);
+  assert.equal(publicPharmacy.items[0]?.question,"دواء تجريبي");
 
   const member=new Client(owner.base);
   await member.ok("POST","/auth/register",{
     name:"Question member",displayName:"Member",email:"member@questions.test",phone:"",password,
   },201);
+  const memberCategories=await member.ok<{items:{category:string;count:number}[]}>("GET","/questions/categories");
+  assert.deepEqual(memberCategories.items,[
+    {category:"معلومات صيدلانية",count:1},{category:"عام",count:1}
+  ]);
+  assert.equal((await member.request("GET",base+"/questions/categories")).status,403);
   const ownPublic=await member.ok<{items:{correctAnswer:number|null}[]}>("GET","/questions");
-  assert.equal(ownPublic.items[0]?.correctAnswer,null);
+  assert(ownPublic.items.every(item=>item.correctAnswer===null));
   assert.equal((await member.request("POST","/questions",{
     question:"غير مصرح",options:["1","2"],correctAnswer:1,
   })).status,403);
