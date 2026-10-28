@@ -203,7 +203,6 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
           onClick={() => setCaseId(c.id)}>{c.title}</Button>) : "غير مرتبطة"}</td>
         <td>{task.due_at ? new Date(task.due_at).toLocaleDateString("ar-YE", { timeZone: "Asia/Aden" }) : "غير محدد"}</td>
         <td>{labels[task.status] ?? task.status}</td>
-}
       </tr>)}</tbody>
     </table></div>
     <Dialog open={caseId!==null} onClose={()=>setCaseId(null)}
