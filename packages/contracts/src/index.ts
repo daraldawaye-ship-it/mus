@@ -110,6 +110,7 @@ export const auditActionLabels = {
   "chat.group.receipt": "تأكيد استلام أو عرض رسالة مجموعة",
   "chat.send": "إرسال رسالة دردشة خاصة",
   "chat.receipt": "تأكيد استلام أو عرض رسالة دردشة",
+  "chat.image.settings": "تعديل إعدادات إرفاق صور الدردشة",
   "owner.create": "إنشاء مالك المنصة",
   "user.register": "إنشاء حساب عام",
   "auth.login": "تسجيل الدخول",
@@ -243,6 +244,7 @@ export const auditActionLabels = {
 } as const;
 export type AuditAction = keyof typeof auditActionLabels;
 export const publicAuditActions: AuditAction[] = [
+  "chat.image.settings",
   "chat.group.create", "chat.group.update", "chat.group.leave", "chat.group.send", "chat.group.receipt",
   "chat.send",
   "chat.receipt",
