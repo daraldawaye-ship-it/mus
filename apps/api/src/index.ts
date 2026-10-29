@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
 import { stageNineNewOctoberPurchasesOnce } from "./services/stage-nine-new-oct-purchases.ts";
+import { stagePrivateOctoberSalesFileOnce } from "./services/stage-private-october-sales.ts";
 import { importLegacyVouchersOnce } from "./services/import-legacy-vouchers-once.ts";
 import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
@@ -24,6 +25,18 @@ if (!AUTOMATIONS_PAUSED) {
     await stageNineNewOctoberPurchasesOnce(application.pool);
   } catch (error) {
     console.error("OCT2026_NINE_PURCHASES_INITIAL_STAGING_FAILED",
+      error instanceof Error ? error.message : String(error));
+  }
+}
+// Strictly initial-only intake from the owner's مب.xlsx file. The source is
+// SHA-256 verified, checked against both staged and posted identities and
+// persisted only to legacy_import_staging. This does NOT start the paused
+// 807-invoice recovery worker, or post any account/stock transactions.
+if (!AUTOMATIONS_PAUSED) {
+  try {
+    await stagePrivateOctoberSalesFileOnce(application.pool);
+  } catch (error) {
+    console.error("PRIVATE_OCTOBER_SALES_INITIAL_STAGE_FAILED",
       error instanceof Error ? error.message : String(error));
   }
 }
