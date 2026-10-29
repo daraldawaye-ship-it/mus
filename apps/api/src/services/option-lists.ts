@@ -63,11 +63,18 @@ export async function optionListPlan(
       .filter((d) => d.showInList)
       .map((d) => [`option.${d.id}`, typed(d)]),
   );
+  const query = req.query;
+  const searchTerm = typeof query.q === "string" ? query.q.trim() : "";
+  // Boolean option labels are only "نعم"/"لا". Applying their CASE
+  // expressions to every unrelated item-name lookup defeats indexed searches.
+  // Preserve boolean search when the actual text can match a label.
   const search = definitions
-    .filter((d) => d.searchable)
+    .filter((d) => d.searchable && (
+      d.valueType !== "boolean" ||
+      (searchTerm.length > 0 && ["نعم", "لا"].some(value => value.includes(searchTerm)))
+    ))
     .map((d) => `${label(d)} ILIKE $2`)
     .join(" OR ");
-  const query = req.query;
   let selected: OptionDefinition | undefined;
   let operator: string | undefined;
   let value: OptionScalar = null;
