@@ -1,7 +1,6 @@
 import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import { HttpError } from "../errors.ts";
-import { stagedDailyActivitySql } from "./staged-activity-sql.ts";
 import { directoryEntries } from "./pages.ts";
 
 /**
@@ -12,14 +11,10 @@ import { directoryEntries } from "./pages.ts";
 export const itemSaleTimesJoinSql = ` LEFT JOIN item_sale_rankings sale_rank
  ON sale_rank.company_id=i.company_id AND sale_rank.item_id=i.id
  AND sale_rank.as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
- LEFT JOIN (
-   SELECT x.company_id,x.item_id,SUM(x.sale_invoices-x.sale_return_invoices) AS staged_net
-   FROM (${stagedDailyActivitySql(
-     "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date",
-     "((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - INTERVAL '1 month' + INTERVAL '1 day')::date"
-   )}) x GROUP BY x.company_id,x.item_id
- ) staged_rank ON staged_rank.company_id=i.company_id AND staged_rank.item_id=i.id`;
-export const itemSaleTimesOrderSql = "COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.staged_net,0)";
+ LEFT JOIN staged_item_sale_rankings staged_rank
+ ON staged_rank.company_id=i.company_id AND staged_rank.item_id=i.id
+ AND staged_rank.as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date`;
+export const itemSaleTimesOrderSql = "COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)";
 
 export async function assertItemSaleRankingsReady(client: PoolClient): Promise<void> {
   const ready = await client.query(
@@ -27,6 +22,11 @@ export async function assertItemSaleRankingsReady(client: PoolClient): Promise<v
   );
   if (!ready.rowCount)
     throw new HttpError(503, "search_updating", "البحث قيد التحديث، حاول مجددًا بعد لحظات");
+  const stagedReady = await client.query(
+    "SELECT 1 FROM staged_item_sale_ranking_days WHERE as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date",
+  );
+  if (!stagedReady.rowCount)
+    throw new HttpError(503, "search_updating", "إحصاءات الفواتير الأولية قيد التحديث");
 }
 
 /** Hide sales-based ranking when the invoice/sales pages are not visible. */
