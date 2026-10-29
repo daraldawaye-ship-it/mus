@@ -639,7 +639,7 @@ function ItemSearch({
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder="اكتب 3 أحرف على الأقل: اسم الصنف أو التركيب أو الرمز أو الباركود…"
+        placeholder="3 أحرف على الأقل: اسم الصنف بالعربي أو الإنجليزي، التركيب، الرمز، الباركود…"
         role="combobox"
         aria-expanded={expanded}
         aria-controls={expanded ? `${id}-results` : undefined}
@@ -738,8 +738,9 @@ function ItemSearch({
                       title={item.availableSmallest === null ? "الرصيد غير متاح بحسب الصلاحيات" : "المتوفر بالوحدة الأولى"}>
                       {invoiceSearchStock(item)}
                     </bdi>
-                    <span className="commerce-search-item-name" title={item.name}>
+                    <span className="commerce-search-item-name" title={item.englishName ? `${item.name} / ${item.englishName}` : item.name}>
                       {item.name}
+                      {item.englishName && <small className="muted" dir="ltr" style={{display:"block",textAlign:"start"}}>{item.englishName}</small>}
                       {invoiceKind === "sale" && (() => {
                         const rate = saleClearanceRate(item, documentDate);
                         return rate ? (
