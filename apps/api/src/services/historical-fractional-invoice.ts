@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "../errors.ts";
-import { moneyString, moneyUnits } from "./finance.ts";
+import { moneyString, moneyUnits, quantum } from "./finance.ts";
 
 const SCALE = 1_000_000n;
 type HistoricalLine = {
@@ -17,11 +17,14 @@ type UnitFactors = { id: number; factor2: number; factor3: number; unit2_name: s
  * integer quantity of a genuine smaller unit, at the correspondingly reduced
  * price. Both quantity and gross value must be exactly conserved.
  *
- * Never round a fractional item or manufacture stock. Unrepresentable source
- * quantities must stay unposted pending native decimal-stock support.
+ * Exact conversions are preferred. In the explicit owner-authorized
+ * October 2026 recovery only, a nonrepresentable source fraction can post
+ * as one signed inventory unit with a repriced line that preserves its
+ * original extended amount to the currency's supported precision. Original
+ * quantities remain unchanged in the staged provenance record.
  */
 export function convertHistoricalFractionalLine<T extends HistoricalLine>(
-  line: T, item: UnitFactors,
+  line: T, item: UnitFactors, inventoryVariance?: { currencyDecimals: number },
 ): T {
   if (!line.quantity.includes(".")) return line;
   if (!/^-?\d{1,22}\.\d{1,6}$/.test(line.quantity))
@@ -58,15 +61,40 @@ export function convertHistoricalFractionalLine<T extends HistoricalLine>(
       unitPrice: moneyString(convertedPrice),
     } as T;
   }
+  if (inventoryVariance) {
+    if (price < 0n) throw new HttpError(409, "historical_negative_price",
+      "سعر كمية المصدر سالب، ويلزم مراجعة الفاتورة");
+    const step = quantum(inventoryVariance.currencyDecimals);
+    // quantity and price both have six decimal places. Keep their product
+    // to the nearest valid monetary quantum, rather than rounding stock
+    // quantity to zero or changing the item's unit conversion factors.
+    const magnitude = original < 0n ? -original : original;
+    const denominator = SCALE * step;
+    const newUnitPrice = ((magnitude * price + denominator / 2n) / denominator) * step;
+    return { ...line,
+      quantity: original < 0n ? "-1" : "1",
+      unitPrice: moneyString(newUnitPrice),
+    } as T;
+  }
   throw new HttpError(409, "historical_fractional_stock",
     "لا توجد وحدة أصغر تحقق كمية المصدر وسعرها بدقة؛ يتطلب الصنف دعم مخزون كسري");
 }
 
 export async function normalizeHistoricalInvoiceFractions<T extends HistoricalLine>(
-  client: PoolClient, companyId: number, lines: T[],
+  client: PoolClient, companyId: number, lines: T[], varianceCurrencyId?: number,
 ): Promise<{ lines: T[]; converted: boolean }> {
   const fractional = lines.filter(line => line.quantity.includes("."));
   if (!fractional.length) return { lines, converted: false };
+  let inventoryVariance: { currencyDecimals: number } | undefined;
+  if (varianceCurrencyId !== undefined) {
+    const currency = await client.query<{ decimal_places: number }>(
+      "SELECT decimal_places FROM company_currencies WHERE company_id=$1 AND id=$2 AND active",
+      [companyId, varianceCurrencyId],
+    );
+    if (!currency.rows[0]) throw new HttpError(409, "historical_currency_missing",
+      "عملة ترحيل الفاتورة غير متاحة");
+    inventoryVariance = { currencyDecimals: currency.rows[0].decimal_places };
+  }
   const ids = [...new Set(fractional.map(line => line.itemId))];
   const found = await client.query<UnitFactors>(
     "SELECT id,factor2,factor3,unit2_name,unit3_name FROM items WHERE company_id=$1 AND id=ANY($2::integer[])",
@@ -79,7 +107,7 @@ export async function normalizeHistoricalInvoiceFractions<T extends HistoricalLi
     if (!item)
       throw new HttpError(409, "historical_missing_item",
         "لا يمكن تحويل كمية كسرية لصنف غير موجود في الشركة");
-    return convertHistoricalFractionalLine(line, item);
+    return convertHistoricalFractionalLine(line, item, inventoryVariance);
   });
   return { lines: transformed, converted: transformed.some((line, i) =>
     line.quantity !== lines[i]!.quantity || line.unit !== lines[i]!.unit) };
