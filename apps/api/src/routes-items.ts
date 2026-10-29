@@ -80,6 +80,7 @@ const itemColumns = {
   englishName: "i.english_name",
   productForm: "i.product_form",
   barcode: "i.barcode",
+  shortcut: "i.shortcut",
   legacyId: "i.legacy_id",
   agentId: "i.agent_id",
   supplierAccountId: "i.supplier_account_id",
@@ -961,7 +962,7 @@ export function itemRoutes(pool: Pool): Router {
           const fieldLabels: Record<string, string> = {
             name: "اسم الصنف", englishName: "الاسم بالإنجليزية",
             shelf: "الرف الحالي", shelfId: "ربط الرف",
-            imageId: "الصورة", barcode: "الباركود",
+            imageId: "الصورة", barcode: "الباركود", shortcut: "الاختصارات",
             legacyId: "المعرف في النظام السابق", agentId: "وكيل الصنف",
             supplierAccountId: "مورد الصنف", compositionId: "التركيب",
             unit1Name: "الوحدة الأولى", unit2Name: "الوحدة الثانية",
