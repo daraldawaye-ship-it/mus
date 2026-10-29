@@ -916,6 +916,7 @@ export function itemRoutes(pool: Pool): Router {
           }
           const fields = {
             ...input,
+            shortcut: input.shortcut ?? before.shortcut,
             legacyId: input.legacyId ?? before.legacyId,
             defaultSaleUnit: input.defaultSaleUnit ?? before.defaultSaleUnit,
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
