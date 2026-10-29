@@ -41,6 +41,7 @@ export const batchSchema = z
     idempotencyKey: z.uuid(),
     sourceSystem: z.string().trim().min(1).max(100),
     postingDate: documentDateSchema,
+    preserveDocumentDates: z.boolean().optional(),
     documents: z.array(importedDocumentSchema).min(1).max(300),
   })
   .strict()
@@ -55,7 +56,7 @@ export const batchSchema = z
           message: "هوية المصدر مكررة داخل الدفعة",
         });
       seen.add(key);
-      if (doc.payload.documentDate !== value.postingDate)
+      if (!value.preserveDocumentDates && doc.payload.documentDate !== value.postingDate)
         context.addIssue({
           code: "custom",
           path: ["documents", index, "payload", "documentDate"],
