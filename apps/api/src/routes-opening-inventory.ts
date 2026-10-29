@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Pool } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
@@ -23,6 +23,7 @@ const prepareSchema = z.object({
   expectedCount: z.number().int().positive().max(20000),
 }).strict();
 const requestId = z.string().uuid();
+const activeWorkers = new Map<string, { stopped: boolean }>();
 type Target = { legacyId: string; smallest: string; approximate: boolean };
 function fail(message: string): never {
   throw new HttpError(400, "invalid_opening_inventory", message);
@@ -95,7 +96,8 @@ function statusRow(row: Record<string, unknown>) {
     cursor: row.cursor, changedCount: row.changed_count,
     unchangedCount: row.unchanged_count, roundedCount: row.rounded_count,
     failureCount: row.failure_count, failures: (row.failures as unknown[]).slice(0, 40),
-    status: row.status, createdAt: row.created_at, completedAt: row.completed_at,
+    status: row.status, lastError: row.last_error ?? null,
+    createdAt: row.created_at, completedAt: row.completed_at,
   };
 }
 
@@ -176,9 +178,7 @@ export function openingInventoryRoutes(pool: Pool): Router {
     if (!query.rows[0]) throw new HttpError(404, "not_found", "عملية الافتتاحية غير موجودة");
     res.json({ run: statusRow(query.rows[0]) });
   }));
-  router.post(base + "/:runId/apply", handler(async (req, res) => {
-    const runId = requestId.parse(req.params.runId);
-    const body = z.object({ expectedCursor: z.number().int().nonnegative() }).strict().parse(req.body);
+  const applyChunk = async (req: Request, runId: string, expectedCursor: number) => {
     const result = await mutateMaster(pool, req, "inventory.post", async (client, user, companyId) => {
       await companyAccess(client, user, companyId, "finance.post");
       if (!user.owner) conflict("إدخال الرصيد الافتتاحي الجماعي مخصص لمالك الموقع");
@@ -188,7 +188,7 @@ export function openingInventoryRoutes(pool: Pool): Router {
       );
       const run = found.rows[0];
       if (!run) throw new HttpError(404, "not_found", "عملية الافتتاحية غير موجودة");
-      if (Number(run.cursor) !== body.expectedCursor)
+      if (Number(run.cursor) !== expectedCursor)
         return { run: statusRow(run), cursorChanged: true };
       if (run.status === "completed") return { run: statusRow(run), cursorChanged: false };
       const inventory = await requireInventorySettings(client, companyId);
@@ -208,7 +208,7 @@ export function openingInventoryRoutes(pool: Pool): Router {
       const docDate = new Date(run.document_date).toISOString().slice(0, 10);
       const failures = run.failures as { legacyId: string; reason: string }[];
       let changed = 0, unchanged = 0, signedTotal = 0n;
-      const operationIds: number[] = [];
+      let sharedOperationId: number | null = null;
       // Read current balances once for the batch. Zero in both source and
       // showroom remains untouched: no valuation, operation or journal row.
       const currentRows = await client.query(
@@ -233,6 +233,7 @@ export function openingInventoryRoutes(pool: Pool): Router {
           continue;
         }
         await client.query("SAVEPOINT opening_inventory_item");
+        const previousOperationId = sharedOperationId;
         try {
           const itemResult = await client.query(
             "SELECT id,code,name,factor2,factor3,purchase_price,currency_id,has_expiry FROM items WHERE company_id=$1 AND legacy_id=$2 FOR SHARE",
@@ -288,20 +289,19 @@ export function openingInventoryRoutes(pool: Pool): Router {
             ? batches.rows.find((b: { quantity_smallest: string; batch_key: string }) =>
               BigInt(b.quantity_smallest) > 0n && Boolean(b.batch_key))
             : undefined;
-          const operationId = await createStockOperation(client,companyId,user,"adjustment",{
-            documentDate:docDate,
-            description:"أرصدة افتتاحية للمعرض - المصدر " + run.source_file_id + " - معرف " + target.legacyId,
-            idempotencyKey:randomUUID(),
-          });
+          if (sharedOperationId === null) {
+            sharedOperationId = await createStockOperation(client,companyId,user,"adjustment",{
+              documentDate:docDate,
+              description:"أرصدة افتتاحية للمعرض - المصدر " + run.source_file_id
+                + " - الدفعة " + String(Math.floor(Number(run.cursor) / 100) + 1),
+              idempotencyKey:randomUUID(),
+            });
+          }
           const movement = await applyStock(client,companyId,user.id,{
             itemId:item.id,locationId:run.location_id,quantitySmallest:delta,
             costBase:cost,kind:delta > 0n ? "adjustment_surplus" : "adjustment_shortage",
-            documentDate:docDate,expiryDate:batch?.batch_key ?? null,operationId,
+            documentDate:docDate,expiryDate:batch?.batch_key ?? null,operationId:sharedOperationId,
             allowExpired:true,allowInactive:true,allowUnknownExpiry:true,
-          });
-          await auditStockOperation(client,companyId,user,operationId,{
-            itemId:item.id,locationId:run.location_id,quantitySmallest:current.toString(),
-            sourceLegacyId:target.legacyId,sourceRunId:runId,
           });
           const check = await client.query(
             "SELECT COALESCE(sum(quantity_smallest),0)::text AS total FROM stock_balances WHERE company_id=$1 AND location_id=$2 AND item_id=$3",
@@ -310,17 +310,22 @@ export function openingInventoryRoutes(pool: Pool): Router {
           if (check.rows[0].total !== target.smallest)
             conflict("الرصيد الناتج لم يطابق الملف");
           signedTotal += movement.costBase;
-          operationIds.push(operationId);
           changed++;
           await client.query("RELEASE SAVEPOINT opening_inventory_item");
         } catch (error) {
           await client.query("ROLLBACK TO SAVEPOINT opening_inventory_item");
+          sharedOperationId = previousOperationId;
           await client.query("RELEASE SAVEPOINT opening_inventory_item");
           failures.push({
             legacyId:target.legacyId,
             reason:(error instanceof Error ? error.message : String(error)).slice(0,250),
           });
         }
+      }
+      if (sharedOperationId !== null) {
+        await auditStockOperation(client,companyId,user,sharedOperationId,{
+          sourceRunId:runId,locationId:run.location_id,sourceCursor:Number(run.cursor),
+        });
       }
       if (signedTotal !== 0n) {
         const amount = moneyString(signedTotal > 0n ? signedTotal : -signedTotal);
@@ -338,8 +343,8 @@ export function openingInventoryRoutes(pool: Pool): Router {
           ],
         });
         await client.query(
-          "UPDATE stock_operations SET financial_document_id=$1 WHERE company_id=$2 AND id=ANY($3::integer[])",
-          [documentId,companyId,operationIds],
+          "UPDATE stock_operations SET financial_document_id=$1 WHERE company_id=$2 AND id=$3",
+          [documentId,companyId,sharedOperationId],
         );
       }
       const completed = end === targets.length;
@@ -350,7 +355,68 @@ export function openingInventoryRoutes(pool: Pool): Router {
       );
       return { run:statusRow(updated.rows[0]),cursorChanged:false };
     });
-    res.json(result);
+    return result;
+  };
+  router.post(base + "/:runId/apply", handler(async (req, res) => {
+    const runId = requestId.parse(req.params.runId);
+    const body = z.object({ expectedCursor: z.number().int().nonnegative() }).strict().parse(req.body);
+    res.json(await applyChunk(req,runId,body.expectedCursor));
+  }));
+  router.post(base + "/:runId/start", handler(async (req, res) => {
+    const runId = requestId.parse(req.params.runId);
+    const companyId = await readMaster(pool,req,"inventory.post");
+    if (!actor(req).owner) conflict("عملية الافتتاحية محصورة بمالك الموقع");
+    const found = await pool.query(
+      "SELECT cursor,status FROM opening_inventory_runs WHERE id=$1 AND company_id=$2",
+      [runId,companyId],
+    );
+    if (!found.rows[0]) throw new HttpError(404,"not_found","عملية الافتتاحية غير موجودة");
+    const active = activeWorkers.get(runId);
+    if (active) { res.status(202).json({ running:true, cursor:found.rows[0].cursor }); return; }
+    if (found.rows[0].status === "completed") {
+      res.json({ running:false,completed:true,cursor:found.rows[0].cursor });return;
+    }
+    const worker = { stopped:false };
+    activeWorkers.set(runId,worker);
+    // Preserve the verified acting user after the MCP dispatch restores its req.
+    const workReq = Object.assign(Object.create(Object.getPrototypeOf(req)),req,{
+      auth:req.auth ? { ...req.auth } : undefined,
+      params: { ...req.params },
+    }) as Request;
+    res.status(202).json({ running:true,cursor:found.rows[0].cursor });
+    setImmediate(() => {
+      void (async () => {
+        try {
+          let cursor = Number(found.rows[0].cursor);
+          while (!worker.stopped) {
+            const outcome = await applyChunk(workReq,runId,cursor);
+            const next = Number(outcome.run.cursor);
+            if (outcome.run.status === "completed") break;
+            if (next === cursor) throw new Error("Opening batch did not advance cursor");
+            cursor = next;
+            // Yield between batches so other website requests are served.
+            await new Promise<void>(resolve => setImmediate(resolve));
+          }
+        } catch(error) {
+          const message = error instanceof Error ? error.message : String(error);
+          try {
+            await pool.query(
+              "UPDATE opening_inventory_runs SET last_error=$1,updated_at=now() WHERE id=$2 AND company_id=$3",
+              [message.slice(0,1000),runId,companyId],
+            );
+          } catch(e) { console.error("OPENING_STOCK_ERROR_UPDATE",e); }
+          console.error("OPENING_STOCK_PROCESSING_FAILED",message);
+        } finally { activeWorkers.delete(runId); }
+      })();
+    });
+  }));
+  router.post(base + "/:runId/stop", handler(async (req,res) => {
+    await readMaster(pool,req,"inventory.post");
+    if(!actor(req).owner) conflict("إيقاف العملية محصور بمالك الموقع");
+    const runId=requestId.parse(req.params.runId);
+    const worker=activeWorkers.get(runId);
+    if(worker) worker.stopped=true;
+    res.json({stopRequested:Boolean(worker)});
   }));
   return router;
 }
