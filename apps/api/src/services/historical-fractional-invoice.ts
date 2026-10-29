@@ -56,7 +56,7 @@ export function convertHistoricalFractionalLine<T extends HistoricalLine>(
       unit: choice.unit,
       quantity: (targetQuantity / SCALE).toString(),
       unitPrice: moneyString(convertedPrice),
-    };
+    } as T;
   }
   throw new HttpError(409, "historical_fractional_stock",
     "لا توجد وحدة أصغر تحقق كمية المصدر وسعرها بدقة؛ يتطلب الصنف دعم مخزون كسري");
