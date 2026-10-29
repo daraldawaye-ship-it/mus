@@ -146,8 +146,8 @@ const itemFields = z
     shelfId: id.nullable().default(null),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     shortcut: z.string().trim().toUpperCase().transform(normalizeDigits).refine(
-      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
-      "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام، أو يُترك فارغًا",
+      value => value === "" || (/^[^\s\p{C}]{1,2}$/u.test(value) && value !== "0"),
+      "الاختصار خانة أو خانتان من حروف أو أرقام أو رموز؛ الرقم 0 وحده محجوز لإنهاء إدخال المبيعات",
     ).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
@@ -234,8 +234,8 @@ export const itemPatchSchema = itemFields
   .extend({
     revision,
     shortcut: z.string().trim().toUpperCase().transform(normalizeDigits).refine(
-      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
-      "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام، أو يُترك فارغًا",
+      value => value === "" || (/^[^\s\p{C}]{1,2}$/u.test(value) && value !== "0"),
+      "الاختصار خانة أو خانتان من حروف أو أرقام أو رموز؛ الرقم 0 وحده محجوز لإنهاء إدخال المبيعات",
     ).optional(),
     legacyId: z.string().trim().max(100).optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
