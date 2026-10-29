@@ -6096,7 +6096,8 @@
                               ]
                             },
                             "quantity": {
-                              "type": "string"
+                              "type": "string",
+                              "pattern": "^-?\\d{1,22}(?:\\.\\d{1,6})?$"
                             },
                             "unitPrice": {
                               "type": "string"
