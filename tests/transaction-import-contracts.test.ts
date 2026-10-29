@@ -74,3 +74,11 @@ test("stage acknowledgement has a strict, published contract", () => {
   assert.deepEqual(ack.bodySchema.required, ["sourceSystem", "completed", "failed"]);
   assert.equal(ack.bodySchema.properties.completed.maxItems, 300);
 });
+
+test("mixed historical posting dates require an explicit preserveDocumentDates flag", () => {
+  const mixed = { ...batch, postingDate: "2026-10-29" };
+  assert.equal(batchSchema.safeParse(mixed).success, false);
+  assert.equal(batchSchema.safeParse({ ...mixed, preserveDocumentDates: false }).success, false);
+  assert.equal(batchSchema.safeParse({ ...mixed, preserveDocumentDates: true }).success, true);
+  assert.equal(contracts["POST " + root + "/batch"].bodySchema.properties.preserveDocumentDates.type, "boolean");
+});
