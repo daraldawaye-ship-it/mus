@@ -2569,6 +2569,53 @@ ul {
   overflow: hidden;
   white-space: nowrap;
 }
+
+/* Mobile keeps its existing stacked Arabic/English search labels. */
+.commerce-search-item-english {
+  display: block;
+  text-align: start;
+}
+
+/* Laptop/desktop only: one compact row, with Arabic wrapping only when long.
+ * Keep stock and price columns fixed and preserve mobile rendering unchanged. */
+@media (min-width: 900px) {
+  .commerce-search-results .button.commerce-search-item-row {
+    min-height: 30px;
+    padding-block: 3px;
+  }
+  .commerce-search-item-name {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 10px;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  .commerce-search-item-arabic {
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    line-height: 1.32;
+  }
+  .commerce-search-item-arabic:only-child {
+    grid-column: 1 / -1;
+  }
+  .commerce-search-item-english {
+    min-width: 0;
+    max-width: 100%;
+    display: block;
+    align-self: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.25;
+    font-size: 0.82em;
+  }
+}
 .commerce-document-meta {
   display: flex;
   flex-wrap: wrap;
