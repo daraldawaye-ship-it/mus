@@ -61,8 +61,8 @@ export function commerceOptionRoutes(pool: Pool): Router {
           const shortcut = req.query.shortcut;
           const normalized = typeof shortcut === "string"
             ? normalizeDigits(shortcut.trim().toUpperCase()) : "";
-          if (!/^[\p{L}\p{N}]{2}$/u.test(normalized))
-            throw new HttpError(400, "invalid_shortcut", "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام");
+          if (!/^[^\s\p{C}]{1,2}$/u.test(normalized) || normalized === "0")
+            throw new HttpError(400, "invalid_shortcut", "الاختصار خانة أو خانتان من حروف أو أرقام أو رموز؛ 0 وحده مخصص لإنهاء المبيعات");
           const includeInactive = req.query.includeInactive === "1";
           const canShowStock = await canReadItemStock(client,user,companyId);
           const stockFrom = itemFrom + (canShowStock
