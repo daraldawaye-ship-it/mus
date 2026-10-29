@@ -233,7 +233,7 @@ export function openingInventoryRoutes(pool: Pool): Router {
           continue;
         }
         await client.query("SAVEPOINT opening_inventory_item");
-        const previousOperationId = sharedOperationId;
+        const previousOperationId: number | null = sharedOperationId;
         try {
           const itemResult = await client.query(
             "SELECT id,code,name,factor2,factor3,purchase_price,currency_id,has_expiry FROM items WHERE company_id=$1 AND legacy_id=$2 FOR SHARE",
