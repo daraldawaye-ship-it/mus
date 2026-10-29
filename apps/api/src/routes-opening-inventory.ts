@@ -204,13 +204,30 @@ export function openingInventoryRoutes(pool: Pool): Router {
       );
       if (!account.rows[0]) conflict("حساب الافتتاحية غير متاح");
       const targets = run.source_items as Target[];
-      const end = Math.min(Number(run.cursor) + 150, targets.length);
+      const end = Math.min(Number(run.cursor) + 100, targets.length);
       const docDate = new Date(run.document_date).toISOString().slice(0, 10);
       const failures = run.failures as { legacyId: string; reason: string }[];
       let changed = 0, unchanged = 0, signedTotal = 0n;
       const operationIds: number[] = [];
+      // Read current balances once for the batch. Zero in both source and
+      // showroom remains untouched: no valuation, operation or journal row.
+      const currentRows = await client.query(
+        `SELECT i.legacy_id, COALESCE(SUM(s.quantity_smallest),0)::text AS quantity
+         FROM items i LEFT JOIN stock_balances s
+           ON s.company_id=i.company_id AND s.item_id=i.id AND s.location_id=$2
+         WHERE i.company_id=$1 AND i.legacy_id=ANY($3::text[])
+         GROUP BY i.legacy_id`,
+        [companyId,run.location_id,targets.slice(Number(run.cursor),end).map(t => t.legacyId)],
+      );
+      const currentByLegacyId = new Map<string,string>(
+        currentRows.rows.map(row => [String(row.legacy_id),String(row.quantity)]),
+      );
       for (let pos = Number(run.cursor); pos < end; pos++) {
         const target = targets[pos];
+        if (currentByLegacyId.get(target.legacyId) === target.smallest) {
+          unchanged++;
+          continue;
+        }
         if (target.approximate) {
           failures.push({ legacyId: target.legacyId, reason: "الكسر لا يمثل عددًا صحيحًا من أصغر وحدة للصنف" });
           continue;
