@@ -93,6 +93,7 @@ export type ItemFields = Pick<
   | "orderQuantity"
   | "reserveQuantity"
   | "searchKeys"
+  | "shortcut"
   | "purchaseNotes"
   | "orderStoppedUntil"
   | "hasExpiry"
@@ -116,6 +117,13 @@ export async function checkItemReferences(
   if(input.imageId){
     const image=await db.query("SELECT 1 FROM media_assets WHERE id=$1 AND company_id=$2 AND purpose='item'",[input.imageId,companyId]);
     if(!image.rowCount)conflict("اختر صورة مرفوعة لهذه الشركة فقط");
+  }
+  if(input.shortcut){
+    const duplicate=await db.query(
+      "SELECT 1 FROM items WHERE company_id=$1 AND lower(shortcut)=lower($2) AND id<>$3 LIMIT 1",
+      [companyId,input.shortcut,previous?.id??0],
+    );
+    if(duplicate.rowCount)throw new HttpError(409,"shortcut_taken","هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا");
   }
   if(input.legacyId){
     const duplicate=await db.query("SELECT 1 FROM items WHERE company_id=$1 AND legacy_id=$2 AND id<>$3",[companyId,input.legacyId,previous?.id??0]);
@@ -223,6 +231,7 @@ export const itemFieldColumns = [
   ["orderQuantity", "order_quantity"],
   ["reserveQuantity", "reserve_quantity"],
   ["searchKeys", "search_keys"],
+  ["shortcut", "shortcut"],
   ["purchaseNotes", "purchase_notes"],
   ["saleNotes", "sale_notes"],
   ["productForm", "product_form"],
