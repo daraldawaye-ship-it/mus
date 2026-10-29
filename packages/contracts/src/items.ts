@@ -145,9 +145,9 @@ const itemFields = z
     shelf: z.string().trim().max(100).default(""),
     shelfId: id.nullable().default(null),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
-    shortcut: z.string().trim().toUpperCase().refine(
-      value => value === "" || /^\p{L}{2}$/u.test(value),
-      "الاختصار يجب أن يتكون من حرفين فقط، أو يُترك فارغًا",
+    shortcut: z.string().trim().toUpperCase().transform(normalizeDigits).refine(
+      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
+      "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام، أو يُترك فارغًا",
     ).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
@@ -233,9 +233,9 @@ export const itemSchema = itemFields
 export const itemPatchSchema = itemFields
   .extend({
     revision,
-    shortcut: z.string().trim().toUpperCase().refine(
-      value => value === "" || /^\p{L}{2}$/u.test(value),
-      "الاختصار يجب أن يتكون من حرفين فقط، أو يُترك فارغًا",
+    shortcut: z.string().trim().toUpperCase().transform(normalizeDigits).refine(
+      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
+      "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام، أو يُترك فارغًا",
     ).optional(),
     legacyId: z.string().trim().max(100).optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
