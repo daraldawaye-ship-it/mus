@@ -441,3 +441,83 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
   );
   assert.equal(legacy.total, 12, "Normal list endpoints retain exact totals");
 });
+
+
+test("raw-only source invoices affect item search and monthly/yearly occurrences without stock, then yield to posting", async t => {
+  const f = await fixture(t), c = await f.company(), currency = await f.currency(c.id);
+  const product = await f.item(c.id, currency.id, { name: "صنف تاريخي مؤقت" });
+  const day = (await f.pool.query<{ day: string }>(
+    "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS day",
+  )).rows[0]!.day;
+  const ownerId = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM users WHERE email='owner@rank.test'",
+  )).rows[0]!.id;
+  const legacy = "test-provisional", sourceId = "historical-sale-1";
+  const source = {
+    type: "invoice", sourceId, payload: {
+      kind: "sale", lines: [
+        { itemId: product.id, quantity: "1", unit: 1 },
+        { itemId: product.id, quantity: "2", unit: 1 },
+      ],
+    },
+  };
+  await f.pool.query(
+    `INSERT INTO legacy_import_staging
+       (company_id,source_system,source_kind,source_id,posting_date,source_document,request_hash,created_by)
+       VALUES($1,$2,'invoice',$3,$4::date,$5::jsonb,$6,$7)`,
+    [c.id, legacy, sourceId, day, JSON.stringify(source), "test-raw-hash", ownerId],
+  );
+  assert.equal(await cached(f.pool,c.id,product.id,day), "1",
+    "The same raw invoice is one occurrence even when its item has several lines");
+  const reportUrl = `/companies/${c.id}/item-statistics-report`;
+  const report = await f.owner.ok<{ report: {
+    rows: Array<{itemId:number;saleTimes:{oneMonth:string;twelveMonths:string}}>
+  } }>("GET", reportUrl);
+  const row = report.report.rows.find(value => value.itemId === product.id)!;
+  assert.equal(row.saleTimes.oneMonth,"1");
+  assert.equal(row.saleTimes.twelveMonths,"1");
+  assert.equal((await f.pool.query(
+    "SELECT count(*)::integer AS n FROM stock_movements WHERE company_id=$1",
+    [c.id],
+  )).rows[0]!.n,0,"Saving a raw invoice must never change inventory");
+  const lookup = await f.owner.ok<Page<Item>>(
+    "GET",`/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent(product.name)}`,
+  );
+  assert.equal(lookup.items[0]?.id,product.id,"The raw-only sale item remains searchable");
+
+  const branch = (await f.owner.ok<Page<Branch>>("GET",`/companies/${c.id}/branches`)).items[0]!;
+  const location = (await f.owner.ok<Page<Location>>("GET",`/companies/${c.id}/locations`)).items[0]!;
+  const customer = (await f.owner.ok<{ account:Account }>(
+    "POST",`/companies/${c.id}/accounts`,{
+      name:"Raw sale mapping customer",kind:"posting",category:"asset",normalSide:"debit",parentId:null,
+    },201)).account;
+  const base={currencyId:currency.id,branchId:branch.id,locationId:location.id,
+    counterpartyAccountId:customer.id,documentDate:day,discount:"0"};
+  await f.owner.ok("POST",`/companies/${c.id}/invoices`,{
+    ...base,idempotencyKey:randomUUID(),kind:"purchase",lines:[
+      {itemId:product.id,unit:1,quantity:"10",unitPrice:"2",expiryDate:null},
+    ],
+  },201);
+  const posted=(await f.owner.ok<{invoice:Invoice}>(
+    "POST",`/companies/${c.id}/invoices`,{
+      ...base,idempotencyKey:randomUUID(),kind:"sale",lines:[
+        {itemId:product.id,unit:1,quantity:"1",expiryDate:null},
+      ],
+    },201)).invoice;
+  assert.equal(await cached(f.pool,c.id,product.id,day),"2",
+    "Before the source mapping, separate recorded and raw sales are distinct");
+  await f.pool.query(
+    `INSERT INTO transaction_source_imports
+       (company_id,source_system,source_kind,source_id,created_by,request_hash,source_metadata,invoice_id)
+       VALUES($1,$2,'invoice',$3,$4,$5,'{}'::jsonb,$6)`,
+    [c.id,legacy,sourceId,ownerId,"test-raw-hash",posted.id],
+  );
+  assert.equal(await cached(f.pool,c.id,product.id,day),"1",
+    "Source mapping removes the provisional count in the same transaction");
+  const after = await f.owner.ok<{report:{rows:Array<{itemId:number;saleTimes:{oneMonth:string;twelveMonths:string}}>} }>(
+    "GET",reportUrl,
+  );
+  const final = after.report.rows.find(value=>value.itemId===product.id)!;
+  assert.equal(final.saleTimes.oneMonth,"1");
+  assert.equal(final.saleTimes.twelveMonths,"1");
+});
