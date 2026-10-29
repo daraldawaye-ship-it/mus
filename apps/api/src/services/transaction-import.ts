@@ -6,6 +6,7 @@ import type { batchSchema } from "../routes-transaction-import-schemas.ts";
 import { HttpError } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { createInvoice, loadInvoice } from "./commerce.ts";
+import { normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
 import {
   assertBalanced,
   checkDocumentReferences,
@@ -151,11 +152,20 @@ export async function importTransactionBatch(
       ).slice(0, 1000);
       let summary: ImportSummary;
       if (source.type === "invoice") {
+        const normalized = await normalizeHistoricalInvoiceFractions(
+          client, companyId, source.payload.lines,
+        );
         const invoice = await createInvoice(
           client,
           companyId,
           user,
-          { ...source.payload, description },
+          {
+            ...source.payload,
+            lines: normalized.lines,
+            description: (description + (normalized.converted
+              ? " | كمية المصدر الكسرية محفوظة في مرجع الترحيل؛ حُوّلت بدقة إلى وحدة أصغر"
+              : "")).slice(0, 1000),
+          },
           {
             allowHistoricalPrice: true,
             allowUnknownExpiry: true,
