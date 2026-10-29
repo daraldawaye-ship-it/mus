@@ -37,6 +37,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
 import { ExpiryMonthField } from "../ExpiryMonthField";
+import { StagedMovementsPanel } from "../StagedInvoiceViews";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { firstUnitStockText } from "../sale-stock-quantity";
@@ -715,6 +716,11 @@ function MovementsList({ context }: { context: CompanyContext }) {
           ariaLabel="حركات المخزون"
         />
       </Card>
+      <StagedMovementsPanel companyId={companyId} q={list.query}
+        dateFrom={params.get("dateFrom")??""} dateTo={params.get("dateTo")??""}
+        itemId={params.get("itemId")??""} locationId={params.get("locationId")??""}
+        kind={params.get("kind")??""} supplierAccountId={params.get("supplierAccountId")??""}
+        doctorId={params.get("doctorId")??""} />
     </>
   );
 }
