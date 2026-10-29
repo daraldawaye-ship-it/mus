@@ -1,0 +1,31 @@
+name: Historical fractional invoice validation
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/services/historical-fractional-invoice.ts"
+      - "apps/api/src/services/transaction-import.ts"
+      - "apps/api/src/routes-transaction-import-schemas.ts"
+      - "apps/api/src/mcp-contracts.json"
+      - "tests/historical-fractional-invoice.test.ts"
+      - "tests/legacy-voucher-batch.test.ts"
+      - ".github/workflows/historical-fractions-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-historical-fractions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx tsx --test tests/historical-fractional-invoice.test.ts tests/legacy-voucher-batch.test.ts

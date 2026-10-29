@@ -29,7 +29,7 @@ test("preserve raw identity and date and balance historical payment", () => {
     { accountId: 400, debit: "0", credit: "30000" },
     { accountId: 2241, debit: "30000", credit: "0" },
   ]);
-  assert.equal(doc.sourceRows[0]["رقم_السند"], sample.source_payload["رقم_السند"]);
+  assert.equal((doc.sourceRows[0] as Record<string, string>)["رقم_السند"], sample.source_payload["رقم_السند"]);
   assert.equal(doc.sourceRows[0]["__excel_row"], "120");
   assert.deepEqual(doc, prepareRawVoucher(sample, 7, 2));
   assert.equal(batchSchema.safeParse({
