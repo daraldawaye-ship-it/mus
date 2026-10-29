@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   convertItemQuantity,
+  normalizeDigits,
   itemSchema,
   itemPatchSchema,
   itemAgentSchema,
@@ -1176,10 +1177,10 @@ function ItemEditor({
   // Exact availability check, including archived cards. This is read-only
   // and never invokes the normal item-search dropdown.
   const shortcutCheck = useQuery({
-    queryKey: ["item-shortcut-check", user?.id, companyId, fields.shortcut.trim().toUpperCase()],
+    queryKey: ["item-shortcut-check", user?.id, companyId, normalizeDigits(fields.shortcut.trim().toUpperCase())],
     queryFn: ({ signal }) => api<{items: Item[]}>(
       `/companies/${companyId}/commerce-options?`+
-      new URLSearchParams({ type: "items", shortcut: fields.shortcut.trim().toUpperCase(), includeInactive: "1" }),
+      new URLSearchParams({ type: "items", shortcut: normalizeDigits(fields.shortcut.trim().toUpperCase()), includeInactive: "1" }),
       {signal},
     ),
     enabled: !!user && Array.from(fields.shortcut.trim()).length === 2,
@@ -1590,21 +1591,21 @@ function ItemEditor({
               onChange={(event) => edit("englishName", event.target.value)}
             />
             <div className="field">
-              <label htmlFor="item-shortcut">الاختصارات (حرفان)</label>
+              <label htmlFor="item-shortcut">الاختصارات (خانتان)</label>
               <input id="item-shortcut" type="text" maxLength={2}
                 autoComplete="off" dir="ltr" disabled={disabled}
                 value={fields.shortcut}
                 aria-invalid={shortcutDuplicate}
                 aria-describedby={shortcutDuplicate ? "item-shortcut-error" : undefined}
-                placeholder="مثل AB أو أب"
-                onChange={event => edit("shortcut", Array.from(event.target.value.toUpperCase()).slice(0,2).join(""))}
+                placeholder="مثل AB أو 12 أو A1 أو أب"
+                onChange={event => edit("shortcut", Array.from(normalizeDigits(event.target.value.toUpperCase())).slice(0,2).join(""))}
               />
               {shortcutDuplicate && <small id="item-shortcut-error" role="alert"
                 style={{ color: "#e53935", fontWeight: 700 }}>
                 هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.
               </small>}
               {shortcutCheck.isFetching && <small className="muted">جارٍ التحقق من الاختصار…</small>}
-              <small className="muted">اختصار فريد للصنف داخل الشركة؛ اكتب الحرفين ثم Enter في الفاتورة.</small>
+              <small className="muted">اختصار فريد من خانتين (حروف أو أرقام أو مزيج)؛ اكتبه ثم اضغط Enter في الفاتورة.</small>
             </div>
             <div className="field">
               <div className="item-reference-field">
