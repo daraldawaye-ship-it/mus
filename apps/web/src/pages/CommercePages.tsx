@@ -701,16 +701,16 @@ function ItemSearch({
               onConfirmSelected();
               return;
             }
-            // Two letters + Enter means one exact item shortcut lookup.
-            // No typeahead search is run for these two letters.
-            const directShortcut = query.trim();
-            if (/^\p{L}{2}$/u.test(directShortcut)) {
+            // Two characters (letters, numbers, or a mix) + Enter:
+            // use one exact shortcut lookup, never a typeahead search.
+            const directShortcut = normalizeDigits(query.trim().toUpperCase());
+            if (/^[\p{L}\p{N}]{2}$/u.test(directShortcut)) {
               const attempt = ++shortcutAttempt.current;
               setShortcutError("");
               setShortcutBusy(true);
               void api<{ items: Item[] }>(
                 `/companies/${companyId}/commerce-options?` +
-                new URLSearchParams({ type: "items", shortcut: directShortcut.toUpperCase() }),
+                new URLSearchParams({ type: "items", shortcut: directShortcut }),
               ).then(response => {
                 if (attempt !== shortcutAttempt.current || currentInput.current !== query) return;
                 const match = response.items[0];
