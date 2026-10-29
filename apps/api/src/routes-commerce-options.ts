@@ -54,6 +54,34 @@ export function commerceOptionRoutes(pool: Pool): Router {
             await companyAccess(client, user, companyId, "items.view");
           }
         }
+        // Shortcut lookup is an exact, unique indexed read, not a typeahead
+        // search. The item editor also uses includeInactive=1 to prevent
+        // assigning a code belonging to an archived card.
+        if (req.query.type === "items" && req.query.shortcut !== undefined) {
+          const shortcut = req.query.shortcut;
+          if (typeof shortcut !== "string" || !/^[\p{L}\p{N}]{2}$/u.test(shortcut.trim()))
+            throw new HttpError(400, "invalid_shortcut", "الاختصار يجب أن يتكون من حرفين فقط");
+          const normalized = shortcut.trim().toUpperCase();
+          const includeInactive = req.query.includeInactive === "1";
+          const canShowStock = await canReadItemStock(client,user,companyId);
+          const stockFrom = itemFrom + (canShowStock
+            ? " LEFT JOIN item_statistics lookup_stock ON lookup_stock.company_id=i.company_id AND lookup_stock.item_id=i.id" : "");
+          const stockSelect = canShowStock
+            ? ",COALESCE(lookup_stock.stock_total,0)::text AS available_smallest "
+            : ",NULL::text AS available_smallest ";
+          const rows = await client.query(
+            `${itemSelect.replace(itemFrom, stockSelect + stockFrom)}
+             WHERE i.company_id=$1 AND lower(i.shortcut)=lower($2)
+               AND i.shortcut<>'' ${includeInactive ? "" : "AND i.active"}
+             LIMIT 1`,
+            [companyId, normalized],
+          );
+          return {
+            items: rows.rows.map(itemDTO),
+            total: rows.rowCount ?? 0,
+            hasMore: false, page: 1, pageSize: 1,
+          };
+        }
         // Keep typeahead responsive with bounded result pages, but preserve
         // the same monthly sales-frequency order for EVERY search length.
         const fastItemLookup = req.query.type === "items" && req.query.fast === "1" &&
