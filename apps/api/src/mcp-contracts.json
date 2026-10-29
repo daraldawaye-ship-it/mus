@@ -8152,5 +8152,23 @@
       ],
       "additionalProperties": false
     }
+  },
+  "POST /companies/:companyId/opening-stock-imports/:runId/start": {
+    "queryFields": [],
+    "source": "routes-opening-inventory.ts",
+    "bodySchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  "POST /companies/:companyId/opening-stock-imports/:runId/stop": {
+    "queryFields": [],
+    "source": "routes-opening-inventory.ts",
+    "bodySchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
   }
 }
