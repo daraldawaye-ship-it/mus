@@ -67,6 +67,7 @@ export function itemDTO(row: QueryResultRow): Item {
     shelf: row.shelf ?? "",
     shelfId: row.shelf_id ?? null,
     barcode: row.barcode,
+    shortcut: row.shortcut ?? "",
     legacyId: row.legacy_id,
     agentId: row.agent_id,
     supplierAccountId: row.supplier_account_id ?? null,
