@@ -139,7 +139,16 @@ export async function createApp(options: AppOptions = {}) {
         .json({ error: { code: error.code, message: error.message } });
       return;
     }
-    const pgError = error as { code?: string; type?: string; status?: number };
+    const pgError = error as { code?: string; type?: string; status?: number; constraint?: string };
+    if (pgError.code === "23505" && pgError.constraint === "items_company_shortcut_unique") {
+      res.status(409).json({
+        error: {
+          code: "shortcut_taken",
+          message: "هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا",
+        },
+      });
+      return;
+    }
     if (pgError.code === "23505") {
       res.status(409).json({
         error: {
