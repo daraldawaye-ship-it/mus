@@ -701,10 +701,11 @@ function ItemSearch({
               onConfirmSelected();
               return;
             }
-            // Two characters (letters, numbers, or a mix) + Enter:
-            // use one exact shortcut lookup, never a typeahead search.
+            // A single symbol/letter/digit or two characters + Enter:
+            // resolve the exact indexed shortcut without invoking typeahead.
+            // Sales keeps the existing lone "0" finish-entry behavior above.
             const directShortcut = normalizeDigits(query.trim().toUpperCase());
-            if (/^[\p{L}\p{N}]{2}$/u.test(directShortcut)) {
+            if (/^[^\s\p{C}]{1,2}$/u.test(directShortcut) && directShortcut !== "0") {
               const attempt = ++shortcutAttempt.current;
               setShortcutError("");
               setShortcutBusy(true);
