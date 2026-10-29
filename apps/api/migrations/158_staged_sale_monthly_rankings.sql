@@ -42,23 +42,34 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   as_of date := (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date;
   diff bigint;
+  activity_date date;
+  activity_company integer;
+  activity_item integer;
 BEGIN
   IF TG_OP='INSERT' THEN
     diff := NEW.sale_invoices-NEW.sale_return_invoices;
+    activity_date := NEW.document_date;
+    activity_company := NEW.company_id;
+    activity_item := NEW.item_id;
   ELSIF TG_OP='DELETE' THEN
     diff := -(OLD.sale_invoices-OLD.sale_return_invoices);
+    activity_date := OLD.document_date;
+    activity_company := OLD.company_id;
+    activity_item := OLD.item_id;
   ELSE
     diff := (NEW.sale_invoices-NEW.sale_return_invoices)
           - (OLD.sale_invoices-OLD.sale_return_invoices);
+    activity_date := NEW.document_date;
+    activity_company := NEW.company_id;
+    activity_item := NEW.item_id;
   END IF;
   IF diff=0 OR NOT EXISTS (SELECT 1 FROM staged_item_sale_ranking_days WHERE as_of_date=as_of)
     THEN RETURN NULL; END IF;
-  IF COALESCE(NEW.document_date,OLD.document_date)
+  IF activity_date
       BETWEEN (as_of-interval '1 month'+interval '1 day')::date AND as_of THEN
     INSERT INTO staged_item_sale_rankings AS ranking
       (company_id,item_id,as_of_date,net_sale_invoices)
-    VALUES (COALESCE(NEW.company_id,OLD.company_id),
-      COALESCE(NEW.item_id,OLD.item_id),as_of,diff)
+    VALUES (activity_company,activity_item,as_of,diff)
     ON CONFLICT(company_id,item_id,as_of_date) DO UPDATE
       SET net_sale_invoices=ranking.net_sale_invoices+EXCLUDED.net_sale_invoices;
   END IF;
