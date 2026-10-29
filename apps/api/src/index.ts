@@ -6,6 +6,7 @@ import { startAttendanceNotifications } from "./services/attendance-notification
 import { startPushNotifications } from "./services/web-push.ts";
 import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-sale-ranking-worker.ts";
 import { startLegacyImportWorker } from "./services/legacy-import-worker.ts";
+import { OCTOBER_2026_SALES_RUN_ID, prepareOctober2026SalesRecovery } from "./services/october-2026-sales-recovery.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 
 // Private previews fail closed unless public access is explicitly configured.
@@ -15,6 +16,15 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+let resumeOctoberSales = false;
+if (!AUTOMATIONS_PAUSED) {
+  try {
+    resumeOctoberSales = await prepareOctober2026SalesRecovery(application.pool);
+  } catch (error) {
+    console.error("OCT2026_SALES_RECOVERY_NOT_STARTED",
+      error instanceof Error ? error.message : String(error));
+  }
+}
 if (!AUTOMATIONS_PAUSED) {
 try {
   await importLegacyVouchersOnce(application.pool);
@@ -51,6 +61,10 @@ const stopItemSaleRankings = AUTOMATIONS_PAUSED ? noWorker : startItemSaleRankin
 const stopLegacyImport = startLegacyImportWorker(application.pool, {
   companyId: 2, idempotencyKey: "f03ead4a-40d9-4713-811c-6a366b7ec6c8",
 });
+const stopOctoberSales = resumeOctoberSales
+  ? startLegacyImportWorker(application.pool, {
+      companyId: 2, idempotencyKey: OCTOBER_2026_SALES_RUN_ID,
+    }) : noWorker;
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
