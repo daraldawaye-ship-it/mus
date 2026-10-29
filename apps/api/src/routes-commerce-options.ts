@@ -59,7 +59,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
         // assigning a code belonging to an archived card.
         if (req.query.type === "items" && req.query.shortcut !== undefined) {
           const shortcut = req.query.shortcut;
-          if (typeof shortcut !== "string" || !/^[\p{L}\p{N}]{2}$/u.test(shortcut.trim()))
+          if (typeof shortcut !== "string" || !/^\p{L}{2}$/u.test(shortcut.trim()))
             throw new HttpError(400, "invalid_shortcut", "الاختصار يجب أن يتكون من حرفين فقط");
           const normalized = shortcut.trim().toUpperCase();
           const includeInactive = req.query.includeInactive === "1";
