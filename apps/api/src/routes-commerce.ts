@@ -163,23 +163,78 @@ export function commerceRoutes(pool: Pool): Router {
           throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
         if (type === "purchase" || type === "sale") {
           const result = await client.query(
-            `SELECT il.id AS "lineId", i.id AS "documentId",
-               i.document_date::text AS "documentDate",
-               CASE WHEN i.kind='purchase'
-                 THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
-                 ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
-               END AS "partyName",
-               round(il.smallest_quantity::numeric /
-                 (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
-               round(il.unit_price::numeric * CASE il.unit
-                 WHEN 1 THEN 1 WHEN 2 THEN il.factor2
-                 ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
-               i.currency_code AS "currencyCode"
-             FROM invoice_lines il
-             JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
-             WHERE il.company_id=$1 AND il.item_id=$2
-               AND i.kind=$3 AND il.smallest_quantity>0
-             ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+            `SELECT "lineId","documentId","documentDate","partyName",
+                "quantityFirstUnit","unitPriceFirstUnit","currencyCode","isStaged"
+             FROM (
+               SELECT il.id::text AS "lineId",i.id::text AS "documentId",
+                 i.document_date::text AS "documentDate",
+                 CASE WHEN i.kind='purchase'
+                   THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
+                   ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
+                 END AS "partyName",
+                 round(il.smallest_quantity::numeric /
+                   (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
+                 round(il.unit_price::numeric * CASE il.unit
+                   WHEN 1 THEN 1 WHEN 2 THEN il.factor2
+                   ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
+                 i.currency_code AS "currencyCode",
+                 false AS "isStaged",i.id AS "sortId",
+                 NULL::text AS "sourceId",il.line_number AS "sortLine"
+               FROM invoice_lines il
+               JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
+               WHERE il.company_id=$1 AND il.item_id=$2
+                 AND i.kind=$3 AND il.smallest_quantity>0
+               UNION ALL
+               SELECT ('staged:'||s.source_system||':'||s.source_id||':'||
+                   source_line.ordinality::text) AS "lineId",
+                 s.source_id AS "documentId",
+                 s.posting_date::text AS "documentDate",
+                 COALESCE(NULLIF(CASE WHEN $3='purchase' THEN supplier.name
+                   ELSE payer.name END,''),'غير محدد') AS "partyName",
+                 round((source_line.value->>'quantity')::numeric *
+                   CASE (source_line.value->>'unit')::integer
+                     WHEN 1 THEN 1::numeric
+                     WHEN 2 THEN 1::numeric/item.factor2::numeric
+                     ELSE 1::numeric/(item.factor2::numeric*item.factor3::numeric)
+                   END,6)::text AS "quantityFirstUnit",
+                 round((source_line.value->>'unitPrice')::numeric *
+                   CASE (source_line.value->>'unit')::integer
+                     WHEN 1 THEN 1::numeric
+                     WHEN 2 THEN item.factor2::numeric
+                     ELSE item.factor2::numeric*item.factor3::numeric
+                   END,2)::text AS "unitPriceFirstUnit",
+                 cur.code AS "currencyCode",true AS "isStaged",
+                 NULL::integer AS "sortId",s.source_id AS "sourceId",
+                 source_line.ordinality::integer AS "sortLine"
+               FROM legacy_import_staging s
+               CROSS JOIN LATERAL jsonb_array_elements(
+                 s.source_document->'payload'->'lines'
+               ) WITH ORDINALITY AS source_line(value,ordinality)
+               JOIN items item ON item.company_id=s.company_id AND item.id=$2
+               LEFT JOIN accounts payer ON payer.company_id=s.company_id
+                 AND payer.id=(s.source_document->'payload'->>'counterpartyAccountId')::integer
+               LEFT JOIN accounts supplier ON supplier.company_id=s.company_id
+                 AND supplier.id=(s.source_document->'payload'->>'supplierAccountId')::integer
+               LEFT JOIN company_currencies cur ON cur.company_id=s.company_id
+                 AND cur.id=(s.source_document->'payload'->>'currencyId')::integer
+               WHERE s.company_id=$1 AND s.source_kind='invoice'
+                 AND s.status IN ('pending','failed','excluded')
+                 AND s.source_document->>'type'='invoice'
+                 AND s.source_document->'payload'->>'kind'=$3
+                 AND s.source_document->'payload'->'lines' @>
+                   jsonb_build_array(jsonb_build_object('itemId',$2::integer))
+                 AND source_line.value->>'itemId'=$2::text
+                 AND (source_line.value->>'quantity')::numeric>0
+                 AND NOT EXISTS (
+                   SELECT 1 FROM transaction_source_imports posted
+                   WHERE posted.company_id=s.company_id
+                     AND posted.source_system=s.source_system
+                     AND posted.source_kind=s.source_kind
+                     AND posted.source_id=s.source_id
+                 )
+             ) history
+             ORDER BY "documentDate" DESC,"isStaged" ASC,
+               "sortId" DESC NULLS LAST,"sourceId" DESC NULLS LAST,"sortLine" DESC
              LIMIT $4 OFFSET $5`,
             [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
           );
