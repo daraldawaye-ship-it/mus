@@ -35,7 +35,8 @@ export function transactionImportRoutes(pool: Pool): Router {
         await companyAccess(client, user, companyId, undefined, true);
         await assertRequestPagesEnabled(client, req, true);
         return postNextRawVoucherBatch(client, user, companyId, input.afterRow,
-          input.limit, () => assertRequestPagesEnabled(client, req, true));
+          input.limit, documents => assertRequestPagesEnabled(client,
+            Object.assign(Object.create(req), { body: { documents } }), true));
       });
       res.json(result);
     }),
