@@ -19,6 +19,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
+import { StagedInvoicesPanel } from "../StagedInvoiceViews";
 import { InvoicePrintSheet } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
@@ -431,6 +432,10 @@ function InvoiceList({
           selectionMode="single"
         />
       </Card>
+      <StagedInvoicesPanel companyId={companyId} kind={kind} q={list.query}
+        dateFrom={dateFrom} dateTo={dateTo}
+        supplierQ={params.get("supplierQ")??""} payerQ={params.get("payerQ")??""}
+        branchId={params.get("branchId")??""} locationId={params.get("locationId")??""} />
     </>
   );
 }
