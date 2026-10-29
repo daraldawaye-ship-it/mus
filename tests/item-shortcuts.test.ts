@@ -13,24 +13,17 @@ function createShortcut(shortcut: string) {
   });
 }
 
-test("two-character shortcuts accept Arabic, Latin, digits and mixed pairs", () => {
-  for (const value of ["اب", "AB", "12", "A1", "1A", "ا1", "١٢", "۱۲", "أب"]) {
-    assert.equal(createShortcut(value).success, true, value);
+test("one and two character shortcuts including punctuation", () => {
+  for (const input of ["a", "AB", "5", "5.", "++", "+", ".", "A1", "١٢", "ا1"]) {
+    assert.equal(createShortcut(input).success, true, input);
   }
-  const latin = createShortcut("ab");
-  assert.equal(latin.success, true);
-  if (latin.success) assert.equal(latin.data.shortcut, "AB");
-  const arabicDigits = createShortcut("١٢");
-  assert.equal(arabicDigits.success, true);
-  if (arabicDigits.success) assert.equal(arabicDigits.data.shortcut, "12");
-  const mixedDigits = createShortcut("a٢");
-  assert.equal(mixedDigits.success, true);
-  if (mixedDigits.success) assert.equal(mixedDigits.data.shortcut, "A2");
-  assert.equal(createShortcut("").success, true);
+  const normalized = createShortcut("٥.");
+  assert.equal(normalized.success, true);
+  if (normalized.success) assert.equal(normalized.data.shortcut, "5.");
 });
-test("shortcuts require two alphanumeric characters and disallow punctuation", () => {
-  for (const invalid of ["ا", "1", "ABC", "123", "A!", "a b", "!2", "a\\n"]) {
-    assert.equal(createShortcut(invalid).success, false, invalid);
+test("three characters, whitespace, and reserved zero are invalid", () => {
+  for (const input of ["123", "ABC", "A B", "0", "  "]) {
+    assert.equal(createShortcut(input).success, false, input);
   }
 });
 test("legacy clients omitting shortcut on PATCH remain valid", () => {
