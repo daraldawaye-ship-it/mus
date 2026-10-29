@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 /** Only missing dates are built; already prepared counts are kept current by triggers. */
 export async function prepareItemSaleRankings(pool: Pool): Promise<void> {
   await pool.query("SELECT prepare_item_sale_rankings()");
+  await pool.query("SELECT prepare_staged_item_sale_rankings()");
 }
 
 /** Prepares tomorrow independently of notifications and waits on graceful shutdown. */
