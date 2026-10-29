@@ -145,6 +145,10 @@ const itemFields = z
     shelf: z.string().trim().max(100).default(""),
     shelfId: id.nullable().default(null),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
+    shortcut: z.string().trim().toUpperCase().refine(
+      value => value === "" || /^[\\p{L}\\p{N}]{2}$/u.test(value),
+      "الاختصار يجب أن يكون حرفين أو رقمين فقط، أو يُترك فارغًا",
+    ).default(""),
     legacyId: z.string().trim().max(100).default(""),
     agentId: id.nullable().default(null),
     supplierAccountId: id.nullable().default(null),
@@ -266,6 +270,7 @@ export interface Item extends ItemIdentity {
   shelf: string;
   shelfId: number | null;
   barcode: string;
+  shortcut: string;
   legacyId: string;
   agentId: number | null;
   supplierAccountId: number | null;
