@@ -6,7 +6,7 @@ import { formatMoney } from "./format-money";
 import { Button, Card, Notice } from "./ui";
 
 type Paged<T> = {items:T[];total:number;page:number;pageSize:number};
-type StageStatus = "pending" | "failed";
+type StageStatus = "pending" | "failed" | "excluded";
 type StagedInvoice = {
   sourceSystem:string;sourceId:string;number:string;kind:"sale"|"purchase";
   documentDate:string;stageStatus:StageStatus;supplierReceiptNumber:string|null;
@@ -28,7 +28,8 @@ type StagedMovement = {
 };
 const pageSize = 20;
 const label = (status: StageStatus) =>
-  status === "failed" ? "محفوظة أوليًا — تعذّر الترحيل" : "محفوظة أوليًا";
+  status === "failed" ? "محفوظة أوليًا — تعذّر الترحيل" :
+  status === "excluded" ? "محفوظة أوليًا — مستبعدة من الترحيل" : "محفوظة أوليًا";
 const css = {overflowX:"auto" as const};
 const tableClass = "data-table";
 const cell = (value:string|null|undefined) => value || "—";
