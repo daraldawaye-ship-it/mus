@@ -28,7 +28,13 @@ const sortMetric=(metric:ItemActivityReportMetric,period:ItemActivityReportPerio
    twelveMonths:"TwelveMonths",allTime:"AllTime"}[period];
  return metric+periodKey;
 };
-const asQuantity=(s:string)=>BigInt(s).toLocaleString("en-US");
+const asQuantity=(s:string)=> {
+ const match=/^(-?)(\d+)(?:\.(\d+))?$/.exec(s);
+ if(!match)return s;
+ const integer=BigInt(match[2]!).toLocaleString("en-US");
+ const fraction=match[3]?.replace(/0+$/,"");
+ return (match[1]??"")+integer+(fraction?"."+fraction:"");
+};
 export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
  const companyId=context.company.id;
  const {user}=useSession();
@@ -208,7 +214,7 @@ export function ItemStatisticsReportPage({context}:{context:CompanyContext}){
        مرات البيع = عدد فواتير بيع الصنف − عدد فواتير مرتجعه (ولو ظهر الناتج سالبًا).
        أما الكميات فتُعرض بالوحدة الصغرى، ولا تُجمع كميات أصناف مختلفة.
        المتوفر يجمع كل المواقع والدفعات ويحوّل أصغر وحدات الصنف إلى الوحدة الأولى مع تقريب العرض إلى ثلاث منازل.
-       تُحتسب الفترات من الفواتير المُرحّلة حتى اليوم. انقر اسم الصنف لعرض التفاصيل.
+       تُحتسب الفترات من الفواتير المُرحّلة والفواتير المحفوظة أوليًا دون تكرار، ولا تُضاف البيانات الأولية إلى المخزون أو الحسابات. انقر اسم الصنف لعرض التفاصيل.
      </small>
    </Card>
  </div>;
