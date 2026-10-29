@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import { HttpError } from "../errors.ts";
+import { stagedDailyActivitySql } from "./staged-activity-sql.ts";
 import { directoryEntries } from "./pages.ts";
 
 /**
@@ -10,8 +11,15 @@ import { directoryEntries } from "./pages.ts";
  */
 export const itemSaleTimesJoinSql = ` LEFT JOIN item_sale_rankings sale_rank
  ON sale_rank.company_id=i.company_id AND sale_rank.item_id=i.id
- AND sale_rank.as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date`;
-export const itemSaleTimesOrderSql = "COALESCE(sale_rank.net_sale_invoices,0)";
+ AND sale_rank.as_of_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+ LEFT JOIN (
+   SELECT x.company_id,x.item_id,SUM(x.sale_invoices-x.sale_return_invoices) AS staged_net
+   FROM (${stagedDailyActivitySql(
+     "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date",
+     "((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - INTERVAL '1 month' + INTERVAL '1 day')::date"
+   )}) x GROUP BY x.company_id,x.item_id
+ ) staged_rank ON staged_rank.company_id=i.company_id AND staged_rank.item_id=i.id`;
+export const itemSaleTimesOrderSql = "COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.staged_net,0)";
 
 export async function assertItemSaleRankingsReady(client: PoolClient): Promise<void> {
   const ready = await client.query(
