@@ -322,11 +322,6 @@ export function openingInventoryRoutes(pool: Pool): Router {
           });
         }
       }
-      if (sharedOperationId !== null) {
-        await auditStockOperation(client,companyId,user,sharedOperationId,{
-          sourceRunId:runId,locationId:run.location_id,sourceCursor:Number(run.cursor),
-        });
-      }
       if (signedTotal !== 0n) {
         const amount = moneyString(signedTotal > 0n ? signedTotal : -signedTotal);
         const increase = signedTotal > 0n;
@@ -346,6 +341,11 @@ export function openingInventoryRoutes(pool: Pool): Router {
           "UPDATE stock_operations SET financial_document_id=$1 WHERE company_id=$2 AND id=$3",
           [documentId,companyId,sharedOperationId],
         );
+      }
+      if (sharedOperationId !== null) {
+        await auditStockOperation(client,companyId,user,sharedOperationId,{
+          sourceRunId:runId,locationId:run.location_id,sourceCursor:Number(run.cursor),
+        });
       }
       const completed = end === targets.length;
       const updated = await client.query(
