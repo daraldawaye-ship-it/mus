@@ -739,16 +739,18 @@ function ItemSearch({
                       {invoiceSearchStock(item)}
                     </bdi>
                     <span className="commerce-search-item-name" title={item.englishName ? `${item.name} / ${item.englishName}` : item.name}>
-                      {item.name}
-                      {item.englishName && <small className="muted" dir="ltr" style={{display:"block",textAlign:"start"}}>{item.englishName}</small>}
-                      {invoiceKind === "sale" && (() => {
-                        const rate = saleClearanceRate(item, documentDate);
-                        return rate ? (
-                          <>{" "}<span className="commerce-search-clearance-label">
-                            (تصريف {rate}%)
-                          </span></>
-                        ) : null;
-                      })()}
+                      <span className="commerce-search-item-arabic">
+                        {item.name}
+                        {invoiceKind === "sale" && (() => {
+                          const rate = saleClearanceRate(item, documentDate);
+                          return rate ? (
+                            <>{" "}<span className="commerce-search-clearance-label">
+                              (تصريف {rate}%)
+                            </span></>
+                          ) : null;
+                        })()}
+                      </span>
+                      {item.englishName && <small className="muted commerce-search-item-english" dir="ltr">{item.englishName}</small>}
                     </span>
                     <bdi className="commerce-search-item-price" title="سعر البيع بالوحدة الأولى">
                       {formatMoney(item.salePrice1)}
