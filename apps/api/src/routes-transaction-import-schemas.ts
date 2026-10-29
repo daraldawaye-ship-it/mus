@@ -6,8 +6,15 @@ import {
   financialDocumentSchema,
 } from "../../../packages/contracts/src/index.ts";
 
+// Historical owner-only posting accepts signed source quantities up to six
+// decimals. createInvoice remains integer-based: its import adapter may only
+// convert *exactly* to an available real smaller unit, never round stock.
+const stagedQuantitySchema = z.string().trim()
+  .regex(/^-?\\d{1,22}(?:\\.\\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
+  .refine(value => !/^-?0(?:\\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
+const stagedLineSchema = invoiceLineSchema.safeExtend({ quantity: stagedQuantitySchema });
 const importedInvoiceSchema = invoiceSchema.safeExtend({
-  lines: z.array(invoiceLineSchema).min(1).max(200),
+  lines: z.array(stagedLineSchema).min(1).max(200),
 });
 const sourceFields = {
   sourceId: z.string().min(1).max(100),
@@ -67,10 +74,6 @@ export const batchSchema = z
 // Initial historical intake is intentionally more permissive than normal invoice posting.
 // Its quantities may be fractional (up to six decimals). They are preserved
 // as historical source data and are NOT passed to stock or accounting yet.
-const stagedQuantitySchema = z.string().trim()
-  .regex(/^-?\d{1,22}(?:\.\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
-  .refine(value => !/^-?0(?:\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
-const stagedLineSchema = invoiceLineSchema.safeExtend({ quantity: stagedQuantitySchema });
 const stagedInvoiceSchema = z.object({
   ...invoiceSchema.shape,
   lines: z.array(stagedLineSchema).min(1).max(200),
