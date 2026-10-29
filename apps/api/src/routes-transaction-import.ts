@@ -10,10 +10,36 @@ import { HttpError } from "./errors.ts";
 import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { importTransactionBatch } from "./services/transaction-import.ts";
+import { postNextRawVoucherBatch } from "./services/legacy-voucher-batch.ts";
 
 export function transactionImportRoutes(pool: Pool): Router {
   const router = Router();
   router.use(transactionImportStagingRoutes(pool));
+  // Owner-only, bounded migration from the already preserved raw voucher archive.
+  // No arbitrary financial rows can be supplied by the caller.
+  router.post(
+    "/companies/:companyId/transaction-import/raw-vouchers/post-next",
+    handler(async (req, res) => {
+      const companyId = id(req.params.companyId);
+      const input = parse(
+        z.object({
+          afterRow: z.number().int().min(0).max(100000000).default(0),
+          limit: z.number().int().min(1).max(100).default(40),
+        }).strict(), req.body,
+      );
+      const result = await transaction(pool, async client => {
+        const user = await currentActor(client, actor(req));
+        ownerOnly(user);
+        if (user.suspended)
+          throw new HttpError(403, "forbidden", "الحساب موقوف");
+        await companyAccess(client, user, companyId, undefined, true);
+        await assertRequestPagesEnabled(client, req, true);
+        return postNextRawVoucherBatch(client, user, companyId, input.afterRow,
+          input.limit, () => assertRequestPagesEnabled(client, req, true));
+      });
+      res.json(result);
+    }),
+  );
   router.get(
     "/companies/:companyId/transaction-import/summary",
     handler(async (req, res) => {
