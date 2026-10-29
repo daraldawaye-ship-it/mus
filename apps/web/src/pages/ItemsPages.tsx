@@ -1591,13 +1591,13 @@ function ItemEditor({
               onChange={(event) => edit("englishName", event.target.value)}
             />
             <div className="field">
-              <label htmlFor="item-shortcut">الاختصارات (خانتان)</label>
+              <label htmlFor="item-shortcut">الاختصارات (خانة أو خانتان)</label>
               <input id="item-shortcut" type="text" maxLength={2}
                 autoComplete="off" dir="ltr" disabled={disabled}
                 value={fields.shortcut}
                 aria-invalid={shortcutDuplicate}
                 aria-describedby={shortcutDuplicate ? "item-shortcut-error" : undefined}
-                placeholder="مثل AB أو 12 أو A1 أو أب"
+                placeholder="مثل A أو 5. أو ++"
                 onChange={event => edit("shortcut", Array.from(normalizeDigits(event.target.value.toUpperCase())).slice(0,2).join(""))}
               />
               {shortcutDuplicate && <small id="item-shortcut-error" role="alert"
@@ -1605,7 +1605,7 @@ function ItemEditor({
                 هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.
               </small>}
               {shortcutCheck.isFetching && <small className="muted">جارٍ التحقق من الاختصار…</small>}
-              <small className="muted">اختصار فريد من خانتين (حروف أو أرقام أو مزيج)؛ اكتبه ثم اضغط Enter في الفاتورة.</small>
+              <small className="muted">اختصار فريد من خانة أو خانتين، ويمكن كتابة الرموز. اضغط Enter في الفاتورة. الرقم صفر وحده محجوز لإنهاء المبيعات.</small>
             </div>
             <div className="field">
               <div className="item-reference-field">
