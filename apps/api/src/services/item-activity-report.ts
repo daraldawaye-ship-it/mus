@@ -87,10 +87,25 @@ export async function readItemActivityReport(
             ${canViewStock ? "COALESCE(stock.stock_total,0)::numeric/(i.factor2::numeric*i.factor3)" : "NULL::numeric"} AS "availableUnit1"
      FROM items i ${canViewStock ? "LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id" : ""}
      WHERE ${predicate}
+   ), d AS (
+     SELECT company_id,item_id,document_date,sale_quantity,purchase_quantity,
+            sale_return_quantity,purchase_return_quantity,
+            sale_invoices::numeric AS sale_invoices,
+            sale_return_invoices::numeric AS sale_return_invoices
+       FROM item_daily_activity
+       WHERE company_id=$1 AND document_date<=$2::date
+     UNION ALL
+     SELECT company_id,item_id,document_date,
+            0::numeric AS sale_quantity,0::numeric AS purchase_quantity,
+            0::numeric AS sale_return_quantity,0::numeric AS purchase_return_quantity,
+            positive::integer::numeric AS sale_invoices,
+            negative::integer::numeric AS sale_return_invoices
+       FROM item_provisional_sale_occurrences
+       WHERE company_id=$1 AND document_date<=$2::date
    ), a AS (
      SELECT d.item_id, ${aggregates}
-       FROM item_daily_activity d JOIN candidate i ON i.id=d.item_id
-       WHERE d.company_id=$1 AND d.document_date<=$2::date GROUP BY d.item_id
+       FROM d JOIN candidate i ON i.id=d.item_id
+       GROUP BY d.item_id
    )
    SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
           i.factor2,i.factor3,i.available_smallest,${columns}
