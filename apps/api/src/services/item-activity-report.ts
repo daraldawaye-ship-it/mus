@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivityReport, ItemActivityReportSort, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { HttpError } from "../errors.ts";
+import { stagedDailyActivitySql,activityColumns } from "./staged-activity-sql.ts";
 import { addItemCoverageToPage, canReadItemCoverage, canReadItemStock, itemCoverageJoin, itemCoverageRedactedSelect, itemCoverageSelect } from "./item-coverage.ts";
 
 export interface ItemActivityReportFilters {
@@ -87,9 +88,16 @@ export async function readItemActivityReport(
             ${canViewStock ? "COALESCE(stock.stock_total,0)::numeric/(i.factor2::numeric*i.factor3)" : "NULL::numeric"} AS "availableUnit1"
      FROM items i ${canViewStock ? "LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id" : ""}
      WHERE ${predicate}
+   ), staged AS (
+     ${stagedDailyActivitySql("$2::date")}
+   ), activity AS (
+     SELECT ${activityColumns.join(",")} FROM item_daily_activity
+       WHERE company_id=$1 AND document_date<=$2::date
+     UNION ALL
+     SELECT ${activityColumns.join(",")} FROM staged
    ), a AS (
      SELECT d.item_id, ${aggregates}
-       FROM item_daily_activity d JOIN candidate i ON i.id=d.item_id
+       FROM activity d JOIN candidate i ON i.id=d.item_id
        WHERE d.company_id=$1 AND d.document_date<=$2::date GROUP BY d.item_id
    )
    SELECT i.id,i.code,i.name,i.active,i.unit1_name,i.unit2_name,i.unit3_name,
