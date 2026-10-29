@@ -8084,8 +8084,8 @@
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100,
-          "default": 40
+          "maximum": 300,
+          "default": 100
         }
       },
       "additionalProperties": false
