@@ -1091,6 +1091,7 @@ type ItemFields = {
   orderQuantity: string;
   reserveQuantity: string;
   searchKeys: string;
+  shortcut: string;
   purchaseNotes: string;
   saleNotes: string;
   productForm: ProductForm;
@@ -1129,6 +1130,7 @@ function initialItemFields(item: Item | null): ItemFields {
     orderQuantity: item?.orderQuantity ?? "0",
     reserveQuantity: item?.reserveQuantity ?? "0",
     searchKeys: item?.searchKeys ?? "",
+    shortcut: item?.shortcut ?? "",
     purchaseNotes: item?.purchaseNotes ?? "",
     saleNotes: item?.saleNotes ?? "",
     productForm: item?.productForm ?? "عام",
@@ -1171,6 +1173,20 @@ function ItemEditor({
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
   const changed = useItemChanges(companyId);
   const [fields, setFields] = useState(() => initialItemFields(item));
+  // Exact availability check, including archived cards. This is read-only
+  // and never invokes the normal item-search dropdown.
+  const shortcutCheck = useQuery({
+    queryKey: ["item-shortcut-check", user?.id, companyId, fields.shortcut.trim().toUpperCase()],
+    queryFn: ({ signal }) => api<{items: Item[]}>(
+      `/companies/${companyId}/commerce-options?`+
+      new URLSearchParams({ type: "items", shortcut: fields.shortcut.trim().toUpperCase(), includeInactive: "1" }),
+      {signal},
+    ),
+    enabled: !!user && Array.from(fields.shortcut.trim()).length === 2,
+    staleTime: 0,
+  });
+  const shortcutDuplicate = (shortcutCheck.data?.items ?? []).some(entry => entry.id !== item?.id);
+
   const [detailsItemKey,setDetailsItemKey]=useState<string|null>(null);
   const [currency, setCurrency] = useState<SelectedCurrency | null>(
     item
@@ -1295,6 +1311,10 @@ function ItemEditor({
   async function save(event?: FormEvent) {
     event?.preventDefault();
     if (readOnly || !manage || savingRequest.current || (item && (!dirty || conflict))) return;
+    if (shortcutDuplicate) {
+      setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
+      return;
+    }
     setError("");
     const body = {
       ...fields,
@@ -1355,7 +1375,8 @@ function ItemEditor({
       if (guard.isCurrent()) {
         if (!item && (!(reason instanceof ApiFailure) || reason.status >= 500))
           setUnknownCreation(true);
-        if (item && reason instanceof ApiFailure && reason.status === 409)
+        if (item && reason instanceof ApiFailure && reason.status === 409 &&
+            !String(errorMessage(reason)).includes("الاختصار"))
           setConflict(true);
         setError(errorMessage(reason));
       }
@@ -1568,6 +1589,23 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("englishName", event.target.value)}
             />
+            <div className="field">
+              <label htmlFor="item-shortcut">الاختصارات (حرفان)</label>
+              <input id="item-shortcut" type="text" maxLength={2}
+                autoComplete="off" dir="ltr" disabled={disabled}
+                value={fields.shortcut}
+                aria-invalid={shortcutDuplicate}
+                aria-describedby={shortcutDuplicate ? "item-shortcut-error" : undefined}
+                placeholder="مثل AB أو أب"
+                onChange={event => edit("shortcut", Array.from(event.target.value.toUpperCase()).slice(0,2).join(""))}
+              />
+              {shortcutDuplicate && <small id="item-shortcut-error" role="alert"
+                style={{ color: "#e53935", fontWeight: 700 }}>
+                هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.
+              </small>}
+              {shortcutCheck.isFetching && <small className="muted">جارٍ التحقق من الاختصار…</small>}
+              <small className="muted">اختصار فريد للصنف داخل الشركة؛ اكتب الحرفين ثم Enter في الفاتورة.</small>
+            </div>
             <div className="field">
               <div className="item-reference-field">
                 <Field
