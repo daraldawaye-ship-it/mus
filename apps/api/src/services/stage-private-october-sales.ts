@@ -63,12 +63,24 @@ function sourceLocalTime(excelSerial:string):string{
     .toISOString().slice(0,19);
 }
 function sixDecimals(raw:string):string{
-  const match=/^(-?)(\d+)(?:\.(\d+))?$/.exec(raw.trim());
+  // Excel may serialize the same legitimate fractional quantity as either a
+  // decimal or scientific notation (for example -3.33333E-02).
+  // Keep exact decimal arithmetic with BigInt; do not use floating-point
+  // multiplication when rounding to the authorized six decimal places.
+  const match=/^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d{1,3}))?$/.exec(raw.trim());
   if(!match)throw new Error("Invalid source quantity");
   const fraction=match[3]??"";
-  let n=BigInt(match[2])*1_000_000n+
-    BigInt((fraction+"000000").slice(0,6));
-  if(fraction.length>6&&fraction[6]>="5")n+=1n;
+  const exponent=Number(match[4]??"0");
+  if(exponent>40||exponent< -40)throw new Error("Source quantity exponent exceeds allowed range");
+  const originalDigits=BigInt(match[2]+fraction);
+  const shift=6-fraction.length+exponent;
+  let n:bigint;
+  if(shift>=0){
+    n=originalDigits*10n**BigInt(shift);
+  }else{
+    const div=10n**BigInt(-shift);
+    n=(originalDigits+div/2n)/div;
+  }
   if(n===0n)throw new Error("Source quantity cannot round to zero");
   const digits=(n%1_000_000n).toString().padStart(6,"0").replace(/0+$/,"");
   return (match[1]==="-"?"-":"")+(n/1_000_000n).toString()+
