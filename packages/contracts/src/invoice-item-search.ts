@@ -4,5 +4,5 @@
  */
 export const MIN_INVOICE_ITEM_SEARCH_LENGTH = 3;
 export function canSearchInvoiceItem(value: string): boolean {
-  return Array.from(value.replace(/[\\s\\p{M}]/gu, "")).length >= MIN_INVOICE_ITEM_SEARCH_LENGTH;
+  return Array.from(value.replace(/[\s\p{M}]/gu, "")).length >= MIN_INVOICE_ITEM_SEARCH_LENGTH;
 }
