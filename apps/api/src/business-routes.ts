@@ -26,6 +26,7 @@ import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
 import { itemActivityReportRoutes } from "./routes-item-activity-report.ts";
 import { itemImportRoutes } from "./routes-item-import.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
+import { openingInventoryRoutes } from "./routes-opening-inventory.ts";
 import { commerceOptionRoutes } from "./routes-commerce-options.ts";
 import { pageRoutes, pageAvailabilityGate } from "./routes-pages.ts";
 import { shortcutRoutes } from "./routes-shortcuts.ts";
@@ -83,6 +84,7 @@ export function businessRoutes(pool: Pool): Router {
     itemActivityReportRoutes(pool),
     itemImportRoutes(pool),
     inventoryRoutes(pool),
+    openingInventoryRoutes(pool),
     commerceOptionRoutes(pool),
     doctorRoutes(pool),
     saleCustomerRoutes(pool),
