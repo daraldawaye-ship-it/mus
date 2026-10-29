@@ -117,7 +117,7 @@ export function stagedInvoiceReadRoutes(pool: Pool): Router {
       const sourceId=parse(z.string().min(1).max(100),req.params.sourceId);
       const header=await client.query(
         "SELECT s.source_system AS \"sourceSystem\",s.source_id AS \"sourceId\",s.source_document->>'sourceDocumentNumber' AS number,s.posting_date::text AS \"documentDate\",s.status AS \"stageStatus\",s.source_document->'payload' AS payload" +
-        unposted.slice(" FROM legacy_import_staging s".length) +
+        unposted +
         " AND s.source_system=$2 AND s.source_id=$3",
         [companyId,sourceSystem,sourceId]);
       if (!header.rowCount) throw new HttpError(404,"not_found","الفاتورة الأولية غير موجودة أو تم ترحيلها");
@@ -156,7 +156,8 @@ export function stagedInvoiceReadRoutes(pool: Pool): Router {
       const itemId=req.query.itemId===undefined?null:id(String(req.query.itemId));
       const locationId=req.query.locationId===undefined?null:id(String(req.query.locationId));
       const supplierAccountId=req.query.supplierAccountId===undefined?null:id(String(req.query.supplierAccountId));
-      const values=[companyId,searchPattern(page.q),kind,from,to,itemId,locationId,supplierAccountId];
+      const doctorId=req.query.doctorId===undefined?null:id(String(req.query.doctorId));
+      const values=[companyId,searchPattern(page.q),kind,from,to,itemId,locationId,supplierAccountId,doctorId];
       const joined=[
         " FROM legacy_import_staging s",
         " CROSS JOIN LATERAL jsonb_array_elements(s.source_document->'payload'->'lines')",
@@ -178,6 +179,7 @@ export function stagedInvoiceReadRoutes(pool: Pool): Router {
         " AND ($6::integer IS NULL OR (line.value->>'itemId')::integer=$6)",
         " AND ($7::integer IS NULL OR (s.source_document->'payload'->>'locationId')::integer=$7)",
         " AND ($8::integer IS NULL OR (s.source_document->'payload'->>'supplierAccountId')::integer=$8)",
+        " AND ($9::integer IS NULL OR (s.source_document->'payload'->>'doctorId')::integer=$9)",
       ].join(" ");
       const count=await client.query("SELECT count(*)::integer AS total"+joined+filters,values);
       const rows=await client.query([
@@ -193,9 +195,9 @@ export function stagedInvoiceReadRoutes(pool: Pool): Router {
         " CASE (line.value->>'unit')::integer WHEN 1 THEN item.factor2*item.factor3",
         " WHEN 2 THEN item.factor3 ELSE 1 END)::text AS \"quantitySmallest\",",
         " line.value->>'expiryDate' AS \"expiryDate\"",
-        joined,filters," ORDER BY "+page.order+",line.ordinality DESC LIMIT $9 OFFSET $10",
+        joined,filters," ORDER BY "+page.order+",line.ordinality DESC LIMIT $10 OFFSET $11",
       ].join(" "),[...values,page.pageSize,page.offset]);
-      return {items:rows.rows,total:count.rows[0].total,page:page.pageSize?page.page:1,pageSize:page.pageSize};
+      return {items:rows.rows,total:count.rows[0].total,page:page.page,pageSize:page.pageSize};
     });
     res.json(result);
   }));
