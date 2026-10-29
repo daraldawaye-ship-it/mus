@@ -704,7 +704,7 @@ function ItemSearch({
             // Two letters + Enter means one exact item shortcut lookup.
             // No typeahead search is run for these two letters.
             const directShortcut = query.trim();
-            if (/^[\\p{L}\\p{N}]{2}$/u.test(directShortcut)) {
+            if (/^[\p{L}\p{N}]{2}$/u.test(directShortcut)) {
               const attempt = ++shortcutAttempt.current;
               setShortcutError("");
               setShortcutBusy(true);
