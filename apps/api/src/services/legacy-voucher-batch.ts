@@ -66,7 +66,7 @@ export function prepareRawVoucher(row: RawVoucher, currencyId: number, branchId:
 /** Import only linked, active, verified cashbox vouchers; leave uncertain records untouched. */
 export async function postNextRawVoucherBatch(
   client: PoolClient, user: User, companyId: number,
-  afterRow: number, limit: number, assertPages: () => Promise<void>,
+  afterRow: number, limit: number, assertPages: (documents: unknown[]) => Promise<void>,
 ) {
   if (companyId !== 2)
     throw new HttpError(404, "not_found", "هذا الترحيل خاص بصيدلية دار الدواء");
@@ -139,7 +139,7 @@ export async function postNextRawVoucherBatch(
     preserveDocumentDates: true,
     documents: docs,
   });
-  const saved = await importTransactionBatch(client, user, companyId, batch, assertPages);
+  const saved = await importTransactionBatch(client, user, companyId, batch, () => assertPages(docs));
   return {
     afterRow,
     nextRow: candidates.rows.at(-1)!.source_row_number,
