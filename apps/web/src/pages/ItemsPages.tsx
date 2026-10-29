@@ -1183,7 +1183,7 @@ function ItemEditor({
       new URLSearchParams({ type: "items", shortcut: normalizeDigits(fields.shortcut.trim().toUpperCase()), includeInactive: "1" }),
       {signal},
     ),
-    enabled: !!user && Array.from(fields.shortcut.trim()).length === 2,
+    enabled: !!user && Array.from(fields.shortcut.trim()).length >= 1 && Array.from(fields.shortcut.trim()).length <= 2,
     staleTime: 0,
   });
   const shortcutDuplicate = (shortcutCheck.data?.items ?? []).some(entry => entry.id !== item?.id);
