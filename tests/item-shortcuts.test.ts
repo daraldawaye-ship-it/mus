@@ -13,15 +13,23 @@ function createShortcut(shortcut: string) {
   });
 }
 
-test("two-letter shortcuts accept Arabic and Latin and normalize Latin case", () => {
-  assert.equal(createShortcut("اب").success, true);
+test("two-character shortcuts accept Arabic, Latin, digits and mixed pairs", () => {
+  for (const value of ["اب", "AB", "12", "A1", "1A", "ا1", "١٢", "۱۲", "أب"]) {
+    assert.equal(createShortcut(value).success, true, value);
+  }
   const latin = createShortcut("ab");
   assert.equal(latin.success, true);
   if (latin.success) assert.equal(latin.data.shortcut, "AB");
+  const arabicDigits = createShortcut("١٢");
+  assert.equal(arabicDigits.success, true);
+  if (arabicDigits.success) assert.equal(arabicDigits.data.shortcut, "12");
+  const mixedDigits = createShortcut("a٢");
+  assert.equal(mixedDigits.success, true);
+  if (mixedDigits.success) assert.equal(mixedDigits.data.shortcut, "A2");
   assert.equal(createShortcut("").success, true);
 });
-test("shortcut must contain exactly two letters; no numbers, spaces or punctuation", () => {
-  for (const invalid of ["ا", "ABC", "A1", "12", "A!", "a b", "ا1", "a\n"]) {
+test("shortcuts require two alphanumeric characters and disallow punctuation", () => {
+  for (const invalid of ["ا", "1", "ABC", "123", "A!", "a b", "!2", "a\\n"]) {
     assert.equal(createShortcut(invalid).success, false, invalid);
   }
 });
