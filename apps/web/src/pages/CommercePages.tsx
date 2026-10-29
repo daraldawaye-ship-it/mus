@@ -526,6 +526,11 @@ function ItemSearch({
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(0);
   const [autoChoose, setAutoChoose] = useState("");
+  const [shortcutBusy, setShortcutBusy] = useState(false);
+  const [shortcutError, setShortcutError] = useState("");
+  const shortcutAttempt = useRef(0);
+  const currentInput = useRef(query);
+  currentInput.current = query;
   useEffect(() => {
     if (selected || !open || !canSearchInvoiceItem(query)) {
       setSearch("");
@@ -592,6 +597,9 @@ function ItemSearch({
   const resultsReady = searchCurrent && !result.isFetching && result.isSuccess;
   const items = resultsReady ? (result.data?.items ?? []) : [];
   function choose(item: Item) {
+    shortcutAttempt.current += 1;
+    setShortcutBusy(false);
+    setShortcutError("");
     onChoose(item);
     setOpen(false);
     setSearch("");
@@ -650,6 +658,9 @@ function ItemSearch({
         }
         onFocus={() => setOpen(true)}
         onChange={(event) => {
+          shortcutAttempt.current += 1;
+          setShortcutBusy(false);
+          setShortcutError("");
           onQueryChange(event.target.value);
           setOpen(true);
           setAutoChoose("");
@@ -690,6 +701,29 @@ function ItemSearch({
               onConfirmSelected();
               return;
             }
+            // Two letters + Enter means one exact item shortcut lookup.
+            // No typeahead search is run for these two letters.
+            const directShortcut = query.trim();
+            if (/^[\\p{L}\\p{N}]{2}$/u.test(directShortcut)) {
+              const attempt = ++shortcutAttempt.current;
+              setShortcutError("");
+              setShortcutBusy(true);
+              void api<{ items: Item[] }>(
+                `/companies/${companyId}/commerce-options?` +
+                new URLSearchParams({ type: "items", shortcut: directShortcut.toUpperCase() }),
+              ).then(response => {
+                if (attempt !== shortcutAttempt.current || currentInput.current !== query) return;
+                const match = response.items[0];
+                if (match) choose(match);
+                else setShortcutError("لا يوجد صنف بهذا الاختصار؛ اكتب ثلاثة أحرف للبحث العادي.");
+              }).catch(() => {
+                if (attempt === shortcutAttempt.current)
+                  setShortcutError("تعذر التحقق من الاختصار؛ حاول مرة أخرى.");
+              }).finally(() => {
+                if (attempt === shortcutAttempt.current) setShortcutBusy(false);
+              });
+              return;
+            }
             if (!result.isFetching && search === query.trim() && items[active])
               choose(items[active]);
             else if (canSearchInvoiceItem(query)) {
@@ -700,6 +734,8 @@ function ItemSearch({
           }
         }}
       />
+      {shortcutBusy && <small className="muted" role="status">جارٍ اختيار الصنف بالاختصار…</small>}
+      {shortcutError && <small role="alert" style={{color:"#e53935"}}>{shortcutError}</small>}
       {expanded &&
         createPortal(
           <div
