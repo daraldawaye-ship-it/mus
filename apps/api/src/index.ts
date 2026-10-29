@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
+import { stageNineNewOctoberPurchasesOnce } from "./services/stage-nine-new-oct-purchases.ts";
 import { importLegacyVouchersOnce } from "./services/import-legacy-vouchers-once.ts";
 import { previewAccessGuard } from "./preview-access.ts";
 import { startAttendanceNotifications } from "./services/attendance-notifications.ts";
@@ -16,6 +17,16 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+// Owner-authorized initial-only intake: exactly nine missing October purchases.
+// This never posts invoices or starts/resumes legacy accounting/stock workers.
+if (!AUTOMATIONS_PAUSED) {
+  try {
+    await stageNineNewOctoberPurchasesOnce(application.pool);
+  } catch (error) {
+    console.error("OCT2026_NINE_PURCHASES_INITIAL_STAGING_FAILED",
+      error instanceof Error ? error.message : String(error));
+  }
+}
 // The owner explicitly requested an immediate halt of the October 2026
 // 807-invoice recovery. Mark the persisted run paused (without deleting any
 // imported invoice or pending source data) and do not restart its worker.
