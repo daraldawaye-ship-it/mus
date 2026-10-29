@@ -25,6 +25,7 @@ import {
 } from "./services/item-sale-ranking.ts";
 import { canReadItemStock } from "./services/item-coverage.ts";
 import { itemLookupSearchPlan } from "./services/item-lookup-search.ts";
+import { canSearchInvoiceItem } from "../../../packages/contracts/src/invoice-item-search.ts";
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
@@ -57,8 +58,13 @@ export function commerceOptionRoutes(pool: Pool): Router {
         // the same monthly sales-frequency order for EVERY search length.
         const fastItemLookup = req.query.type === "items" && req.query.fast === "1" &&
           typeof req.query.q === "string" && !!req.query.q.trim();
-        const shortItemLookup = fastItemLookup &&
-          Array.from((req.query.q as string).trim()).length < 3;
+        // Keep old clients safe too: a fast invoice lookup with fewer than
+        // three characters must never trigger broad scans or ranking work.
+        if (fastItemLookup && !canSearchInvoiceItem(req.query.q as string)) {
+          return {
+            items: [], total: 0, page: 1, pageSize: 10, hasMore: false,
+          };
+        }
         const query = {
           ...req.query,
           ...(req.query.id === undefined ? { active: "true" } : {}),
@@ -96,7 +102,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
             "saleTimes:desc,code:asc",
             undefined,
             ["i.code","i.barcode"],
-            shortItemLookup ? undefined : itemLookupSearchPlan,
+            itemLookupSearchPlan,
             fastItemLookup,
           );
         }
