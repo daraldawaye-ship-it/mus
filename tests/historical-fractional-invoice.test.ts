@@ -52,3 +52,19 @@ test("staged and posted historical schema both accept signed six-place fractions
     }],
   }).success, false);
 });
+
+test("owner-scoped inventory variance keeps signed amount at currency precision", () => {
+  const unrepresentable = make("-0.04", "4000");
+  const converted = convertHistoricalFractionalLine(unrepresentable, item,
+    { currencyDecimals: 0 });
+  assert.equal(converted.unit, 1);
+  assert.equal(converted.quantity, "-1");
+  assert.equal(converted.unitPrice, "160");
+  // Default behavior remains strict outside the specifically authorized run.
+  assert.throws(() => convertHistoricalFractionalLine(unrepresentable, item),
+    /لا توجد وحدة أصغر/);
+  const odd = convertHistoricalFractionalLine(make("0.123456", "99"),
+    { ...item, factor2: 1, factor3: 1 }, { currencyDecimals: 0 });
+  assert.equal(odd.quantity, "1");
+  assert.equal(odd.unitPrice, "12");
+});
