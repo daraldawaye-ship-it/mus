@@ -10,8 +10,8 @@ import {
 // decimals. createInvoice remains integer-based: its import adapter may only
 // convert *exactly* to an available real smaller unit, never round stock.
 const stagedQuantitySchema = z.string().trim()
-  .regex(/^-?\\d{1,22}(?:\\.\\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
-  .refine(value => !/^-?0(?:\\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
+  .regex(/^-?\d{1,22}(?:\.\d{1,6})?$/, "الكمية حتى 6 منازل عشرية")
+  .refine(value => !/^-?0(?:\.0+)?$/.test(value), "الكمية لا تساوي صفرًا");
 const stagedLineSchema = invoiceLineSchema.safeExtend({ quantity: stagedQuantitySchema });
 const importedInvoiceSchema = invoiceSchema.safeExtend({
   lines: z.array(stagedLineSchema).min(1).max(200),
