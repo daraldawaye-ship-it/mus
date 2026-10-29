@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { ItemActivity, ItemActivityPeriod, User } from "../../../../packages/contracts/src/index.ts";
 import { directoryEntries } from "./pages.ts";
 import { missing } from "../errors.ts";
+import { stagedDailyActivitySql,activityColumns } from "./staged-activity-sql.ts";
 
 /** Date-scoped report; no invoice-table scan on each item-card read. */
 export async function readItemActivity(
@@ -26,6 +27,13 @@ export async function readItemActivity(
           ('fourMonths',($3::date-interval '4 months'+interval '1 day')::date),
           ('twelveMonths',($3::date-interval '12 months'+interval '1 day')::date),
           ('allTime',NULL::date)
+ ), staged AS (
+   ${stagedDailyActivitySql("$3::date")}
+ ), activity AS (
+   SELECT ${activityColumns.join(",")} FROM item_daily_activity
+     WHERE company_id=$1 AND item_id=$2 AND document_date<=$3::date
+   UNION ALL
+   SELECT ${activityColumns.join(",")} FROM staged WHERE item_id=$2
  )
  SELECT p.label,
    coalesce(sum(d.sale_invoices),0)::text AS "saleInvoices",
@@ -40,7 +48,7 @@ export async function readItemActivity(
    coalesce(sum(d.purchase_return_lines),0)::text AS "purchaseReturnLines",
    coalesce(sum(d.purchase_quantity),0)::text AS "purchaseQuantity",
    coalesce(sum(d.purchase_return_quantity),0)::text AS "purchaseReturnQuantity"
- FROM periods p LEFT JOIN item_daily_activity d
+ FROM periods p LEFT JOIN activity d
    ON d.company_id=$1 AND d.item_id=$2 AND d.document_date<=$3::date
    AND (p.start_date IS NULL OR d.document_date>=p.start_date)
  GROUP BY p.label`,
