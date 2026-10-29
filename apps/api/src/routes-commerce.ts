@@ -166,7 +166,7 @@ export function commerceRoutes(pool: Pool): Router {
           // Posted dates come from the incrementally maintained daily activity;
           // staged lines use their own indexed, incrementally maintained source cache.
           const result = await client.query(
-            \`SELECT "lineId","documentId","documentDate","partyName",
+            `SELECT "lineId","documentId","documentDate","partyName",
                  "quantityFirstUnit","unitPriceFirstUnit","currencyCode","isStaged"
              FROM (
                SELECT il.id::text AS "lineId",i.id::text AS "documentId",
@@ -225,7 +225,7 @@ export function commerceRoutes(pool: Pool): Router {
              ) history
              ORDER BY "documentDate" DESC,"isStaged" ASC,
                "sortId" DESC NULLS LAST,"sourceId" DESC NULLS LAST,"sortLine" DESC
-             LIMIT $4 OFFSET $5\`,
+             LIMIT $4 OFFSET $5`,
             [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
           );
           return result.rows;
