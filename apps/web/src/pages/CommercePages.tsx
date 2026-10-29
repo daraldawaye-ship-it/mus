@@ -925,8 +925,8 @@ function OriginalInvoicePicker({
 
 type ItemInfoView = "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
 type ItemInfoHistoryRow = {
-  lineId: number;
-  documentId: number;
+  lineId: string | number;
+  documentId: string | number;
   documentDate: string;
   partyName?: string;
   description?: string;
