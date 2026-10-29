@@ -1,3 +1,4 @@
+import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice-item-search.ts";
 import {
   lazy,
   Suspense,
@@ -526,7 +527,7 @@ function ItemSearch({
   const [active, setActive] = useState(0);
   const [autoChoose, setAutoChoose] = useState("");
   useEffect(() => {
-    if (selected || !open) {
+    if (selected || !open || !canSearchInvoiceItem(query)) {
       setSearch("");
       return;
     }
@@ -534,12 +535,12 @@ function ItemSearch({
       setSearch(query.trim());
       setPage(1);
       setActive(0);
-    }, 110);
+    }, 240);
     return () => window.clearTimeout(timer);
   }, [query, selected, open]);
-  // Open for the current input, not the last debounced search value.
-  // Never leave the previous query suggestions visible while typing the next.
-  const expanded = open && !!query.trim() && !selected && !disabled;
+  // Do not open a dropdown or send a request for the first two characters.
+  // Never leave previous-query suggestions visible while typing the next.
+  const expanded = open && canSearchInvoiceItem(query) && !selected && !disabled;
   const searchCurrent = search === query.trim();
   useLayoutEffect(() => {
     if (!expanded) return;
@@ -582,7 +583,7 @@ function ItemSearch({
         `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc", fast: "1" })}`,
         { signal },
       ),
-    enabled: !!user && expanded && searchCurrent && !!search,
+    enabled: !!user && expanded && searchCurrent && canSearchInvoiceItem(search),
     staleTime: 30_000,
   });
   // A cached or in-flight result belongs to the *previous* input until the
@@ -638,7 +639,7 @@ function ItemSearch({
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder="الاسم عربي/إنجليزي، التركيب، الرمز، الباركود أو المفاتيح…"
+        placeholder="اكتب 3 أحرف على الأقل: اسم الصنف أو التركيب أو الرمز أو الباركود…"
         role="combobox"
         aria-expanded={expanded}
         aria-controls={expanded ? `${id}-results` : undefined}
@@ -691,7 +692,7 @@ function ItemSearch({
             }
             if (!result.isFetching && search === query.trim() && items[active])
               choose(items[active]);
-            else if (query.trim()) {
+            else if (canSearchInvoiceItem(query)) {
               setSearch(query.trim());
               setPage(1);
               setAutoChoose(query.trim());
