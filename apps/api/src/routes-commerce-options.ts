@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import type { Pool } from "pg";
-import { accountCategories } from "../../../packages/contracts/src/index.ts";
+import { accountCategories, normalizeDigits } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
 import { actor, handler, id } from "./http.ts";
@@ -59,9 +59,10 @@ export function commerceOptionRoutes(pool: Pool): Router {
         // assigning a code belonging to an archived card.
         if (req.query.type === "items" && req.query.shortcut !== undefined) {
           const shortcut = req.query.shortcut;
-          if (typeof shortcut !== "string" || !/^\p{L}{2}$/u.test(shortcut.trim()))
-            throw new HttpError(400, "invalid_shortcut", "الاختصار يجب أن يتكون من حرفين فقط");
-          const normalized = shortcut.trim().toUpperCase();
+          const normalized = typeof shortcut === "string"
+            ? normalizeDigits(shortcut.trim().toUpperCase()) : "";
+          if (!/^[\p{L}\p{N}]{2}$/u.test(normalized))
+            throw new HttpError(400, "invalid_shortcut", "الاختصار يجب أن يتكون من خانتين، حروف أو أرقام");
           const includeInactive = req.query.includeInactive === "1";
           const canShowStock = await canReadItemStock(client,user,companyId);
           const stockFrom = itemFrom + (canShowStock
