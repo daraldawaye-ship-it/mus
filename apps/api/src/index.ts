@@ -16,8 +16,21 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+// The owner explicitly requested an immediate halt of the October 2026
+// 807-invoice recovery. Mark the persisted run paused (without deleting any
+// imported invoice or pending source data) and do not restart its worker.
+// This applies only to this specific run and leaves the website and all other
+// workers operational. A future resumption requires fresh owner approval.
+const octoberSalesPausedByOwner = true;
+if (octoberSalesPausedByOwner) {
+  const result = await application.pool.query(
+    "UPDATE legacy_import_runs SET status='paused',updated_at=clock_timestamp() WHERE company_id=$1 AND idempotency_key=$2 AND status IN ('running','rebuilding')",
+    [2, OCTOBER_2026_SALES_RUN_ID],
+  );
+  console.info("OCT2026_SALES_RECOVERY_PAUSED_BY_OWNER", result.rowCount);
+}
 let resumeOctoberSales = false;
-if (!AUTOMATIONS_PAUSED) {
+if (!AUTOMATIONS_PAUSED && !octoberSalesPausedByOwner) {
   try {
     resumeOctoberSales = await prepareOctober2026SalesRecovery(application.pool);
   } catch (error) {
