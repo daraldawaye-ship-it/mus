@@ -8092,5 +8092,65 @@
       "additionalProperties": false
     },
     "source": "routes-transaction-import.ts"
+  },
+  "POST /companies/:companyId/opening-stock-imports": {
+    "queryFields": [],
+    "source": "routes-opening-inventory.ts",
+    "bodyContract": "prepareSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "fileId": {
+          "type": "string"
+        },
+        "expectedSha256": {
+          "type": "string"
+        },
+        "locationId": {
+          "type": "integer"
+        },
+        "equityAccountId": {
+          "type": "integer"
+        },
+        "documentDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "expectedCount": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "fileId",
+        "expectedSha256",
+        "locationId",
+        "equityAccountId",
+        "documentDate",
+        "expectedCount"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "GET /companies/:companyId/opening-stock-imports/:runId": {
+    "queryFields": [],
+    "source": "routes-opening-inventory.ts"
+  },
+  "POST /companies/:companyId/opening-stock-imports/:runId/apply": {
+    "queryFields": [],
+    "source": "routes-opening-inventory.ts",
+    "bodyContract": "expectedCursor",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "expectedCursor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expectedCursor"
+      ],
+      "additionalProperties": false
+    }
   }
 }
