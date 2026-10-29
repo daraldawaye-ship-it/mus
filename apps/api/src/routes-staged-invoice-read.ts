@@ -29,7 +29,7 @@ async function readStaged<T>(
 const unposted = [
   " FROM legacy_import_staging s",
   " WHERE s.company_id=$1 AND s.source_kind='invoice'",
-  " AND s.status IN ('pending','failed')",
+  " AND s.status IN ('pending','failed','excluded')",
   " AND s.source_document->>'type'='invoice'",
   " AND NOT EXISTS (SELECT 1 FROM transaction_source_imports posted",
   " WHERE posted.company_id=s.company_id AND posted.source_system=s.source_system",
