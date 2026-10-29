@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
 import { stageNineNewOctoberPurchasesOnce } from "./services/stage-nine-new-oct-purchases.ts";
+import { postNonmarketPurchases2026Once } from "./services/post-2026-nonmarket-purchases.ts";
 import { stagePrivateOctoberSalesFileOnce } from "./services/stage-private-october-sales.ts";
 import { importLegacyVouchersOnce } from "./services/import-legacy-vouchers-once.ts";
 import { previewAccessGuard } from "./preview-access.ts";
@@ -89,6 +90,12 @@ const server = createServer(previewGate ? previewGate(application.app) : applica
 server.listen(port, process.env.HOST ?? "0.0.0.0", () =>
   console.log(`Alraesy listening on port ${port}`),
 );
+// Strictly owner-authorized one-shot posting of 2026 non-market purchases.
+// Never resumes the separate paused October sales recovery job.
+if (!AUTOMATIONS_PAUSED && process.env.ALRAESY_POST_2026_NONMARKET_PURCHASES_88 === "1") {
+  void postNonmarketPurchases2026Once(application.pool).catch(error =>
+    console.error("OWNER_88_NONMARKET_PURCHASES_FATAL", error instanceof Error ? error.message : String(error)));
+}
 const noWorker = async (): Promise<void> => {};
 const stopNotifications = AUTOMATIONS_PAUSED ? noWorker : startAttendanceNotifications(application.pool);
 const stopPush = AUTOMATIONS_PAUSED ? noWorker : startPushNotifications(application.pool,application.config.appOrigin);
