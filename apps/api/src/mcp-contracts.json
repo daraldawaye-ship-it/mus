@@ -8067,5 +8067,29 @@
   "GET /medicine-market/me": {
     "queryFields": [],
     "source": "routes-medicine-market.ts"
+  },
+  "POST /companies/:companyId/transaction-import/raw-vouchers/post-next": {
+    "queryFields": [],
+    "bodyContract": "rawVoucherPostNextSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "afterRow": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000000,
+          "default": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 40
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": "routes-transaction-import.ts"
   }
 }
