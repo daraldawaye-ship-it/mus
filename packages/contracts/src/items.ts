@@ -146,7 +146,7 @@ const itemFields = z
     shelfId: id.nullable().default(null),
     barcode: z.string().trim().max(80).transform(normalizeDigits).default(""),
     shortcut: z.string().trim().toUpperCase().refine(
-      value => value === "" || /^[\\p{L}\\p{N}]{2}$/u.test(value),
+      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
       "الاختصار يجب أن يكون حرفين أو رقمين فقط، أو يُترك فارغًا",
     ).default(""),
     legacyId: z.string().trim().max(100).default(""),
@@ -234,7 +234,7 @@ export const itemPatchSchema = itemFields
   .extend({
     revision,
     shortcut: z.string().trim().toUpperCase().refine(
-      value => value === "" || /^[\\p{L}\\p{N}]{2}$/u.test(value),
+      value => value === "" || /^[\p{L}\p{N}]{2}$/u.test(value),
       "الاختصار يجب أن يكون حرفين أو رقمين فقط، أو يُترك فارغًا",
     ).optional(),
     legacyId: z.string().trim().max(100).optional(),
