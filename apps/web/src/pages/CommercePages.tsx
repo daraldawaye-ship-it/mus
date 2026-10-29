@@ -933,6 +933,7 @@ type ItemInfoHistoryRow = {
   quantityFirstUnit: string;
   unitPriceFirstUnit?: string;
   currencyCode?: string;
+  isStaged?: boolean;
 };
 /** Format stock to exactly one displayed decimal, without losing conversion precision. */
 function alternativeFirstUnitText(
@@ -1083,7 +1084,10 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
                     </tr></thead>
                     <tbody>{history.data.items.map(row => (
                       <tr key={row.lineId}>
-                        <td dir="ltr">{row.documentDate}</td>
+                        <td dir="ltr" title={row.isStaged ? "فاتورة محفوظة أوليًا، دون ترحيل محاسبي أو مخزني" : undefined}>
+                          {row.documentDate}
+                          {row.isStaged && <small className="muted" style={{display:"block"}}>أوليًا</small>}
+                        </td>
                         {isInvoiceView ? <>
                           <td title={row.partyName ?? "—"}><button type="button"
                             className="invoice-item-options-link"
