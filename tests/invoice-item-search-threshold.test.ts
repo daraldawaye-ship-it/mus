@@ -18,5 +18,7 @@ test("invoice item suggestions begin only on the third visible character", () =>
 test("Unicode and whitespace do not trigger premature requests", () => {
   assert.equal(canSearchInvoiceItem("😀😀"), false);
   assert.equal(canSearchInvoiceItem("😀😀😀"), true);
-  assert.equal(canSearchInvoiceItem("  م ل "), true);
+  assert.equal(canSearchInvoiceItem("  م ل "), false);
+  assert.equal(canSearchInvoiceItem("  م ل ك "), true);
+  assert.equal(canSearchInvoiceItem("سُكَّ"), false);
 });
