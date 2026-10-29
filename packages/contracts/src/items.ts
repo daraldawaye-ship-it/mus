@@ -233,6 +233,10 @@ export const itemSchema = itemFields
 export const itemPatchSchema = itemFields
   .extend({
     revision,
+    shortcut: z.string().trim().toUpperCase().refine(
+      value => value === "" || /^[\\p{L}\\p{N}]{2}$/u.test(value),
+      "الاختصار يجب أن يكون حرفين أو رقمين فقط، أو يُترك فارغًا",
+    ).optional(),
     legacyId: z.string().trim().max(100).optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
     compositionId: id.nullable().optional(),
