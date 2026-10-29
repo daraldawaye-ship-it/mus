@@ -24,7 +24,7 @@ export function transactionImportRoutes(pool: Pool): Router {
       const input = parse(
         z.object({
           afterRow: z.number().int().min(0).max(100000000).default(0),
-          limit: z.number().int().min(1).max(100).default(40),
+          limit: z.number().int().min(1).max(300).default(100),
         }).strict(), req.body,
       );
       const result = await transaction(pool, async client => {
