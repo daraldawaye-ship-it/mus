@@ -77,21 +77,20 @@ test("offline sales, purchases, receipts and payments require a complete cached 
   const worker = readFileSync("apps/web/public/push-sw.js", "utf8");
   const install = readFileSync("apps/web/src/app-install.ts", "utf8");
   const main = readFileSync("apps/web/src/main.tsx", "utf8");
-  // Both invoice kinds import CommercePages, both voucher kinds FinancePages.
-  assert.match(worker, /CommercePages-/);
-  assert.match(worker, /FinancePages-/);
-  assert.match(worker, /offline-assets\\.json/);
-  assert.match(worker, /await Promise\\.all\\(assets\\.slice/);
-  assert.match(worker, /await cache\\.put\\("\\/", htmlResponse\\)/);
-  assert.match(worker, /await caches\\.delete\\(shellCache\\)/);
-  assert.match(worker, /if \\(warmingBundle\\) return warmingBundle/);
-  assert.match(worker, /assertStaticResponse\\(path, response\\)/);
-  assert.match(install, /alraesy:warm-static/);
-  assert.match(install, /addEventListener\\("online", warmStaticAssets\\)/);
-  assert.match(main, /errorElement: <RouteLoadError \\/>/);
-  // Authentication and financial API calls must not enter CacheStorage.
-  assert.match(worker, /url\\.pathname\\.startsWith\\("\\/api\\/"\\)/);
-  assert.doesNotMatch(worker, /method:\\s*["']POST/);
+  // The two invoice kinds use CommercePages, both voucher kinds FinancePages.
+  for (const expected of [
+    "CommercePages-", "FinancePages-", "offline-assets.json",
+    "await Promise.all(assets.slice", 'await cache.put("/", htmlResponse)',
+    "await caches.delete(shellCache)", "assertStaticResponse(path, response)",
+    "if (warmingBundle) return warmingBundle",
+  ]) assert.ok(worker.includes(expected), expected);
+  assert.ok(install.includes("alraesy:warm-static"));
+  assert.ok(install.includes('addEventListener("online", warmStaticAssets)'));
+  assert.ok(main.includes("errorElement: <RouteLoadError />"));
+  // No authenticated API responses or financial POSTs are ever stored.
+  assert.ok(worker.includes('url.pathname.startsWith("/api/")'));
+  assert.ok(worker.includes('request.method !== "GET"'));
+  assert.ok(!worker.includes('method: "POST"'));
 });
 
 test("only a recent unrevoked local identity can resume without network", () => {
