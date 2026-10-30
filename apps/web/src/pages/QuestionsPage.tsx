@@ -181,6 +181,18 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
             pages.push(snapshot.items);
           }
         }
+        // Private packs contain every question downloaded in advance,
+        // not just the 20 that happened to be opened before going offline.
+        const downloaded=user?.id?await loadOfflineQuestionPack(user.id,companyId):[];
+        const normalizedQuery=query.trim().toLocaleLowerCase();
+        const fromPack=downloaded.filter(item=>
+          item.active && statusFilter==="active" &&
+          (selectedCategory===null || item.category===selectedCategory) &&
+          (!normalizedQuery ||
+            item.question.toLocaleLowerCase().includes(normalizedQuery) ||
+            item.category.toLocaleLowerCase().includes(normalizedQuery))
+        ) as unknown as Question[];
+        if(fromPack.length) pages.unshift(fromPack);
         if(!pages.length && list.data?.items.length){
           pages.push(list.data.items as Question[]);
           firstCached=list.data as Page<Question>;
@@ -216,6 +228,13 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     setFrozenQuestions(null);
     void client.invalidateQueries({queryKey:["questions-module",user?.id,scope,tab]});
   }
+  // Opening a previously downloaded category with the network off should
+  // behave like pressing Update without making a new network request.
+  useEffect(() => {
+    if(!navigator.onLine && tab==="questions" && categorySelected && user?.id)
+      void refreshQuestions();
+    // Only initial offline entry/category change: not on every rerender.
+  },[tab,selectedCategory,user?.id,companyId]);
   // Retain current-page order even if focus-triggered/background refetch sorts answered
   // questions to a later page. New page/search navigation uses live server ordering.
   const questions=frozenQuestions?.url===url
