@@ -148,12 +148,12 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     if (!navigator.onLine) {
       // Read only previously authorized question pages from this user's
       // IndexedDB snapshots. No fake server update or new offline answers.
-      const firstPageUrl=url.replace(/([?&])page=\\d+/, "$1page=1");
+      const firstPageUrl=url.replace(/([?&])page=\d+/, "$1page=1");
       const pages: Question[][]=[];
       let firstCached:Page<Question>|null=null;
       if(tab==="questions"){
         for(let n=1;n<=5;n++){
-          const sourceUrl=firstPageUrl.replace(/([?&])page=\\d+/, "$1page="+n);
+          const sourceUrl=firstPageUrl.replace(/([?&])page=\d+/, "$1page="+n);
           const snapshot=await savedRead<Page<Question>>(sourceUrl).catch(()=>undefined)
             ?? client.getQueryData<Page<Question>>(
               ["questions-module",user?.id,scope,tab,sourceUrl]);
