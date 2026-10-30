@@ -42,3 +42,11 @@ test("new worker installation rotates only the static shell cache", () => {
   assert.match(worker,/alraesy-static-offline-20261030-v2/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
+
+test("worker refreshes only overview after upgrade, not unsaved invoice forms", () => {
+  const worker=readFileSync("apps/web/public/push-sw.js","utf8");
+  assert.match(worker,/client\.navigate\(url\.href\)/);
+  assert.match(worker,/url\.pathname !== "\/"/);
+  assert.match(worker,/companies/);
+  assert.doesNotMatch(worker,/caches\.delete\(.*alraesy-device-v1/);
+});
