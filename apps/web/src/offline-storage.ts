@@ -195,7 +195,7 @@ function allowedSnapshot(path: string): boolean {
     /^\/companies(?:\?|$)/.test(path) ||
     /^\/companies\/[1-9]\d*$/.test(path) ||
     /^\/page-catalog\?/.test(path) ||
-    /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
+    /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control|my-sales-cashbox)(?:[/?]|$)/.test(path)
     || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
     || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
 }
