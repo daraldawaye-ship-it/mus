@@ -5649,6 +5649,22 @@ a.notification-quick-title:hover { text-decoration: underline; }
   margin-block: 8px 12px;
 }
 .question-results { min-width: 0; }
+.question-pagination {
+  margin-block: 16px 24px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  justify-content: space-between;
+}
+.question-pagination .button-primary {
+  min-width: 112px;
+}
+@media (max-width: 520px) {
+  .question-pagination { gap: 8px; }
+  .question-pagination > span { flex-basis: 100%; }
+  .question-pagination .button { flex: 1; }
+}
 .question-search { margin-block: 4px 9px; }
 .question-search .question-search-field {
   position: relative;
