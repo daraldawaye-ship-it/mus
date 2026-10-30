@@ -226,4 +226,38 @@ test("questions: variable options, comments, first-answer rewards and company sc
   assert.deepEqual(updated.items.find(q=>q.id===publicQuestion)?.otherOptionCounts,[0,0,2]);
   const otherSees=await member.ok<{items:{id:number;otherOptionCounts:number[]|null}[]}>("GET","/questions");
   assert.deepEqual(otherSees.items.find(q=>q.id===publicQuestion)?.otherOptionCounts,[1,0,1]);
+
+  // Editing must save a question without dropping its existing answer history.
+  const editable=(await owner.ok<{items:{id:number;revision:number}[]}>("GET","/questions?category=عام")).items
+    .find(item=>item.id===publicQuestion);
+  assert(editable);
+  const edited=await owner.ok<{id:number;revision:number}>("PUT",`/questions/${publicQuestion}`,{
+    category:"عام",priority:1,question:"سؤال من ثلاثة — تم تصحيحه",options:["1","2","3"],
+    correctAnswer:1,points:1,active:true,revision:editable.revision
+  });
+  assert.equal(edited.revision,editable.revision+1);
+  assert.equal((await owner.ok<{items:{question:string}[]}>("GET","/questions?category=عام")).items[0]?.question,
+    "سؤال من ثلاثة — تم تصحيحه");
+
+  // Archive/restore use only active and revision; answers and points survive.
+  assert.equal((await member.request("PATCH",`/questions/${publicQuestion}/status`,
+    {active:false,revision:edited.revision})).status,403);
+  assert.equal((await owner.request("PATCH",`/questions/${publicQuestion}/status`,
+    {active:false,revision:edited.revision-1})).status,409);
+  const archived=await owner.ok<{revision:number;active:boolean}>("PATCH",
+    `/questions/${publicQuestion}/status`,{active:false,revision:edited.revision});
+  assert.equal(archived.active,false);
+  assert.equal((await owner.ok<{total:number}>("GET","/questions?category=عام&status=active")).total,0);
+  const archiveList=await owner.ok<{items:{id:number;active:boolean}[];total:number}>("GET",
+    "/questions?category=عام&status=archived");
+  assert.equal(archiveList.total,1);
+  assert.equal(archiveList.items[0]?.active,false);
+  assert.equal((await member.ok<{total:number}>("GET","/questions?category=عام&status=archived")).total,0);
+  assert.equal((await owner.ok<{total:number}>("GET","/answers?questionId="+publicQuestion)).total,3);
+  assert.equal((await member.request("POST",`/questions/${publicQuestion}/answers`,
+    {selectedAnswer:1,idempotencyKey:randomUUID()})).status,404);
+  const restored=await owner.ok<{active:boolean}>("PATCH",`/questions/${publicQuestion}/status`,
+    {active:true,revision:archived.revision});
+  assert.equal(restored.active,true);
+  assert.equal((await member.ok<{total:number}>("GET","/questions?category=عام")).total,1);
 });
