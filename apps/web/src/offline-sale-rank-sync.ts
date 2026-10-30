@@ -33,7 +33,8 @@ export async function refreshDailySaleRanks(userId:number,companyId:number):Prom
     const previous=await readSaleRankSnapshot(userId,companyId,"progress");
     const current=previous?.asOfDate===day
       ?previous:{asOfDate:day,afterId:0,scores:{} as Record<string,string>};
-    for(let i=0;i<6 && navigator.onLine && document.visibilityState!=="hidden";i++){
+    const canContinue=()=>navigator.onLine && document.visibilityState!=="hidden";
+    for(let i=0;i<6 && canContinue();i++){
       const page=await api<RankingBatch>(
         "/companies/"+companyId+"/item-sale-ranks?afterId="+current.afterId,
       );
