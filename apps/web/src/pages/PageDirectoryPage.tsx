@@ -367,7 +367,7 @@ export function PageDirectoryPage({ context }: { context?: CompanyContext }) {
   );
 }
 
-type PageGrant = {id:number;action:string;principalType:"kind"|"monitor"|"position"|"user";principalValue:string;effect:"allow"|"deny"};
+type PageGrant = {id:number|string;action:PageAction;principalType:"kind"|"monitor"|"position"|"user";principalValue:string;effect:"allow"|"deny"};
 type GrantUser = {id:number;name:string;kind:string;monitor:boolean};
 type GrantsResponse = {grants:PageGrant[];users:GrantUser[];positions:string[]};
 function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number}) {
@@ -385,6 +385,19 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
       `/page-catalog/${encodeURIComponent(entry.key)}/grants${companyId?`?companyId=${companyId}`:""}`,{signal}),
   });
   const chosen=grants.data?.grants.find(g=>g.action===action&&g.principalType===principalType&&g.principalValue===principalValue);
+  const explicitGrants=grants.data?.grants??[];
+  const permittedCount=explicitGrants.filter(grant=>grant.effect==="allow").length;
+  function principalName(grant:PageGrant):string {
+    if(grant.principalType==="user"){
+      const person=grants.data?.users.find(user=>String(user.id)===grant.principalValue);
+      return person?`${person.name} — #${person.id}`:`مستخدم #${grant.principalValue} (غير ظاهر في قائمة المستخدمين الفعالين)`;
+    }
+    if(grant.principalType==="kind")return `نوع الحساب: ${{
+      admin:"إداري",supervisor:"مشرف",member:"عضو"
+    }[grant.principalValue]??grant.principalValue}`;
+    if(grant.principalType==="monitor")return "المراقب العام";
+    return `صفة الموظف: ${grant.principalValue}`;
+  }
   async function save(effect:"allow"|"deny"|null) {
     if(!principalValue||busy)return;
     setBusy(true);setError("");setMessage("");
@@ -438,6 +451,32 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
     </div>
     {error&&<Notice tone="error">{error}</Notice>}
     {message&&<Notice tone="success">{message}</Notice>}
+    <div className="page-directory-grant-list" aria-label="التصاريح المسجلة للصفحة">
+      <strong>التصاريح المسجلة ({explicitGrants.length})</strong>
+      <p className="muted">المسموح لهم صراحة: {permittedCount} · الممنوعون صراحة: {explicitGrants.length-permittedCount}.</p>
+      <p className="muted">هذه التصاريح والاستثناءات المسجلة فقط، وقد يملك آخرون الوصول عبر الصلاحيات الافتراضية للصفحة أو أدوارهم. التصريح حسب نوع الحساب أو صفة الموظف يشمل كل من ينطبق عليه، وليس مستخدمًا واحدًا.</p>
+      {!grants.isPending&&!grants.error&&explicitGrants.length===0&&<Notice>لا توجد تصاريح صريحة لهذه الصفحة؛ الوصول بحسب الصلاحيات الافتراضية.</Notice>}
+      {explicitGrants.length>0&&<div className="page-directory-grants-scroll">
+        <table className="page-directory-permissions" aria-label="قائمة المستفيدين من صلاحيات الصفحة">
+          <thead><tr><th>المستفيد</th><th>الصلاحية</th><th>الحالة</th><th>إدارة</th></tr></thead>
+          <tbody>
+            {explicitGrants.map(grant=><tr key={grant.id}>
+              <td>{principalName(grant)}</td>
+              <td>{pageActionLabels[grant.action]??grant.action}</td>
+              <td>{grant.effect==="allow"?"سماح":"منع"}</td>
+              <td><Button variant="secondary" size="compact" disabled={busy}
+                onClick={()=>{
+                  setPrincipalType(grant.principalType);
+                  setPrincipalValue(grant.principalValue);
+                  setAction(grant.action);
+                  setError("");
+                  setMessage("تم تحديد التصريح؛ يمكنك تغييره من الأزرار أعلاه أو إزالة الاستثناء.");
+                }}>تحديد</Button></td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>}
+    </div>
   </section>;
 }
 
