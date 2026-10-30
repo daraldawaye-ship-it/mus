@@ -241,8 +241,8 @@ export async function saveSaleRankSnapshot(
  * drafts: the ranking came from a previously authorized stored server view.
  */
 export function compareItemsBySavedSales(
-  a:{id:number;code?:string;barcode?:string|null},
-  b:{id:number;code?:string;barcode?:string|null},
+  a:{id:unknown;code?:unknown;barcode?:unknown},
+  b:{id:unknown;code?:unknown;barcode?:unknown},
   scores:Record<string,string>,
   search="",
 ):number{
@@ -250,9 +250,9 @@ export function compareItemsBySavedSales(
   const exact=(item:typeof a)=>!!q&&[item.code,item.barcode].some(v=>
     typeof v==="string"&&v.toLocaleLowerCase()===q);
   if(exact(a)!==exact(b))return exact(a)?-1:1;
-  const left=BigInt(scores[a.id]??"0"),right=BigInt(scores[b.id]??"0");
+  const left=BigInt(scores[String(a.id)]??"0"),right=BigInt(scores[String(b.id)]??"0");
   if(left!==right)return left>right?-1:1;
-  return String(a.code??"").localeCompare(String(b.code??""),"en")||a.id-b.id;
+  return String(a.code??"").localeCompare(String(b.code??""),"en")||Number(a.id)-Number(b.id);
 }
 
 type LocalAppearance = import("../../../packages/contracts/src/index").AppearancePreference;
