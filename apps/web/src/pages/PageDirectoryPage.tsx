@@ -392,9 +392,10 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
       const person=grants.data?.users.find(user=>String(user.id)===grant.principalValue);
       return person?`${person.name} — #${person.id}`:`مستخدم #${grant.principalValue} (غير ظاهر في قائمة المستخدمين الفعالين)`;
     }
-    if(grant.principalType==="kind")return `نوع الحساب: ${{
-      admin:"إداري",supervisor:"مشرف",member:"عضو"
-    }[grant.principalValue]??grant.principalValue}`;
+    if(grant.principalType==="kind"){
+      const names:Record<string,string>={admin:"إداري",supervisor:"مشرف",member:"عضو"};
+      return `نوع الحساب: ${names[grant.principalValue]??grant.principalValue}`;
+    }
     if(grant.principalType==="monitor")return "المراقب العام";
     return `صفة الموظف: ${grant.principalValue}`;
   }
