@@ -19,7 +19,7 @@ export async function employeeSalesCashbox(
   }
   const response = await api<LinkedCashboxSnapshot>(path,{signal});
   if (signal?.aborted || offlineUser() !== userId) return null;
-  const account = ownActiveSalesCashbox(response,userId,companyId,employeeId,false);
+  const account = ownActiveSalesCashbox(response,userId,companyId,employeeId,Boolean(response.offlineIdentity));
   // An authenticated null reply also replaces an old linked cashbox.
   // Wait for the write: immediately disconnecting after opening the invoice
   // must not lose the employee's saved default.
