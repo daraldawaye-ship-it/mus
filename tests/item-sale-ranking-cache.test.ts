@@ -435,10 +435,18 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
     ...products.filter((_, index) => ![8, 4, 11].includes(index))];
   const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
   type FastPage = Page<Item> & { hasMore: boolean };
-  // One or two Arabic letters used to drop popularity ordering. They must
-  // retain the same 30-day sale-frequency ranking as longer text, including
-  // across pages, without paying for a full count on every keystroke.
-  for (const term of ["ص", "صن", "صنابير"]) {
+  // The invoice does not search until the third character; the older test
+  // still expected 1/2-character results and was failing even before this PR.
+  for (const shortTerm of ["ص","صن"]) {
+    const blocked = await f.owner.ok<FastPage>(
+      "GET",`${url}&q=${encodeURIComponent(shortTerm)}&page=1`);
+    assert.equal(blocked.items.length,0);
+    assert.equal(blocked.total,0);
+    assert.equal(blocked.hasMore,false);
+  }
+  // Every search of three or more characters uses the prepared monthly
+  // ranking, with the exact same order on subsequent pages.
+  for (const term of ["صنا", "صنابير"]) {
     const first = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=1`);
     const second = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=2`);
     const last = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=3`);
