@@ -4,6 +4,7 @@ import { api } from "./api";
 import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
+import { syncMyHistory } from "./offline-my-history";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
@@ -299,6 +300,17 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [userId, companyId]);
+  useEffect(() => {
+    if (!isAppWindow()) return;
+    const refresh = () => {
+      if (navigator.onLine && document.visibilityState !== "hidden")
+        void syncMyHistory(userId,companyId??null);
+    };
+    const timer = window.setInterval(refresh,120_000);
+    window.addEventListener("online",refresh);
+    refresh();
+    return () => { window.clearInterval(timer); window.removeEventListener("online",refresh); };
+  },[userId,companyId]);
   // Downloads and queued financial operations continue without any visible button.
   // Older render trees may still contain a toolbar; styling hides those as well.
   // Keep all existing UI logic mounted for backward compatibility.
