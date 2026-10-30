@@ -5776,7 +5776,31 @@ a.notification-quick-title:hover { text-decoration: underline; }
   background: var(--surface);
   cursor: pointer;
 }
-.question-choice input[type="radio"] { flex: 0 0 auto; margin-block: 4px 0; }
+.question-choice input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  opacity: 1;
+}
+.question-choice input[type="radio"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: scale(0);
+}
+.question-choice input[type="radio"]:checked::before { transform: scale(1); }
+.question-choice input[type="radio"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .question-choice-content {
   display: flex;
   flex-wrap: wrap;
@@ -5788,7 +5812,29 @@ a.notification-quick-title:hover { text-decoration: underline; }
   overflow-wrap: anywhere;
 }
 .question-choice-selected { border-color: var(--primary); }
-.question-choice-correct { outline: 1px solid var(--primary); outline-offset: -1px; }
+/* After answering, color both the full choice outline and its radio circle. */
+.question-choice-correct {
+  border: 2px solid #a3ff12;
+  padding: 6px 8px;
+  box-shadow: inset 0 0 0 1px rgba(163, 255, 18, 0.2);
+}
+.question-choice-wrong {
+  border: 2px solid #ff4b4b;
+  padding: 6px 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 75, 75, 0.2);
+}
+.question-choice-correct input[type="radio"],
+.question-choice-correct input[type="radio"]:disabled {
+  border-color: #a3ff12;
+  color: #a3ff12;
+  opacity: 1;
+}
+.question-choice-wrong input[type="radio"],
+.question-choice-wrong input[type="radio"]:disabled {
+  border-color: #ff4b4b;
+  color: #ff4b4b;
+  opacity: 1;
+}
 .question-options:disabled .question-choice { cursor: default; }
 .question-choice-stat { color: var(--muted); font-size: 11px; }
 .question-result { margin: 0 0 7px; font-size: 13px; }
