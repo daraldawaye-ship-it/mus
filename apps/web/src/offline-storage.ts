@@ -201,6 +201,60 @@ function allowedSnapshot(path: string): boolean {
 }
 
 
+export type SaleRankSnapshot = {
+  asOfDate: string;
+  scores: Record<string,string>;
+};
+export type SaleRankProgress = SaleRankSnapshot & {
+  afterId: number;
+};
+const saleRankPath = (companyId:number, stage:"complete"|"progress") =>
+  "/local-sale-ranks/" + companyId + "/" + stage;
+/** The rank is sales-private, unlike public item cards. Scope it to the
+ * current user and company, and retain the last complete snapshot offline.
+ */
+export async function readSaleRankSnapshot(
+  userId:number,companyId:number,stage:"complete"|"progress"="complete",
+):Promise<SaleRankProgress|null>{
+  if(activeUser!==userId) return null;
+  const path=saleRankPath(companyId,stage);
+  const row=await readOne<Snapshot>("snapshots",userId+":"+path);
+  if(!row?.value||typeof row.value!=="object")return null;
+  const value=row.value as SaleRankProgress;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value.asOfDate) ||
+      !value.scores||typeof value.scores!=="object")return null;
+  return value;
+}
+export async function saveSaleRankSnapshot(
+  userId:number,companyId:number,stage:"complete"|"progress",
+  snapshot:SaleRankProgress,
+):Promise<void>{
+  if(activeUser!==userId)throw new Error("تغير المستخدم أثناء تحديث ترتيب المبيعات");
+  const path=saleRankPath(companyId,stage);
+  await writeOne("snapshots",{
+    key:userId+":"+path,userId,path,
+    value:snapshot,savedAt:new Date().toISOString(),
+  } satisfies Snapshot);
+  if(stage==="complete")await deleteOne("snapshots",userId+":"+saleRankPath(companyId,"progress"));
+}
+/** Sorting a saved item lookup never derives sales data from the local sales
+ * drafts: the ranking came from a previously authorized stored server view.
+ */
+export function compareItemsBySavedSales(
+  a:{id:number;code?:string;barcode?:string|null},
+  b:{id:number;code?:string;barcode?:string|null},
+  scores:Record<string,string>,
+  search="",
+):number{
+  const q=search.trim().toLocaleLowerCase();
+  const exact=(item:typeof a)=>!!q&&[item.code,item.barcode].some(v=>
+    typeof v==="string"&&v.toLocaleLowerCase()===q);
+  if(exact(a)!==exact(b))return exact(a)?-1:1;
+  const left=BigInt(scores[a.id]??"0"),right=BigInt(scores[b.id]??"0");
+  if(left!==right)return left>right?-1:1;
+  return String(a.code??"").localeCompare(String(b.code??""),"en")||a.id-b.id;
+}
+
 type LocalAppearance = import("../../../packages/contracts/src/index").AppearancePreference;
 const appearanceDraftPath = (scope: string) =>
   "/pending-appearance?scope=" + encodeURIComponent(scope);
@@ -367,6 +421,10 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
     return ["name", "code", "barcode", "shortCode", "shortcut", "searchKeys", "englishName"]
       .some(key => String(item[key] ?? "").normalize("NFKC").toLocaleLowerCase().includes(q));
   });
+  if(type==="items" && qs.get("sort")?.startsWith("saleTimes:desc")) {
+    const rank=await readSaleRankSnapshot(userId,companyId);
+    if(rank) filtered.sort((a,b)=>compareItemsBySavedSales(a,b,rank.scores,qs.get("q")??""));
+  }
   const page = Math.max(1, Number(qs.get("page") ?? "1") || 1);
   const pageSize = Math.min(100, Math.max(1, Number(qs.get("pageSize") ?? "20") || 20));
   const offset = (page - 1) * pageSize;
