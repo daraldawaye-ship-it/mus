@@ -32,4 +32,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: App installation and push safety
-        run: node --import tsx --test tests/app-install.test.ts tests/web-push.test.ts tests/device-offline.test.ts tests/item-incremental-sync.test.ts tests/employee-sales-cashbox-offline.test.ts tests/invoice-account-default.test.ts
+        run: node --import tsx --test tests/app-install.test.ts tests/web-push.test.ts tests/device-offline.test.ts tests/item-incremental-sync.test.ts tests/employee-sales-cashbox-offline.test.ts tests/invoice-account-default.test.ts tests/connection-mode.test.ts
