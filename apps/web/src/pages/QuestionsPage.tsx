@@ -8,6 +8,7 @@ import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { correctOptionText, orderCachedQuestionCards, visibleQuestionResult, type QuestionResult } from "../question-result";
 import { gradeOfflineQuestion, loadOfflineQuestionPack, type OfflineQuestionCard } from "../offline-question-pack";
+import { isOfflineNow } from "../connection-mode";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Question = {
@@ -160,11 +161,11 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   });
   const liveQuestions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
   async function refreshQuestions(){
-    if (list.isFetching && navigator.onLine) return;
+    if (list.isFetching && !isOfflineNow()) return;
     setInfoId(null);
     setPage(1);
     window.scrollTo({top:0,behavior:"smooth"});
-    if (!navigator.onLine) {
+    if (isOfflineNow()) {
       // Read only previously authorized question pages from this user's
       // IndexedDB snapshots. No fake server update or new offline answers.
       const firstPageUrl=url.replace(/([?&])page=\d+/, "$1page=1");
@@ -231,14 +232,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   // Opening a previously downloaded category with the network off should
   // behave like pressing Update without making a new network request.
   useEffect(() => {
-    if(!navigator.onLine && tab==="questions" && categorySelected && user?.id)
+    if(isOfflineNow() && tab==="questions" && categorySelected && user?.id)
       void refreshQuestions();
     // Only initial offline entry/category change: not on every rerender.
   },[tab,selectedCategory,user?.id,companyId]);
   // Retain current-page order even if focus-triggered/background refetch sorts answered
   // questions to a later page. New page/search navigation uses live server ordering.
   const questions=frozenQuestions?.url===url
-    ? navigator.onLine ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old) : frozenQuestions.items
+    ? !isOfflineNow() ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old) : frozenQuestions.items
     : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
   useEffect(()=>{
@@ -295,7 +296,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     setPendingAnswers(prev=>({...prev,[question.id]:payload}));
     setSendingQuestionId(question.id);setError("");setMessage("");
     try{
-      if(!navigator.onLine) throw new TypeError("offline");
+      if(isOfflineNow()) throw new TypeError("offline");
       const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
       const confirmed={...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment};
       setConfirmedAnswers(prev=>({...prev,[question.id]:confirmed}));
@@ -533,8 +534,8 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       {list.data?.items.length===0&&<Notice>{statusFilter==="archived"&&tab==="questions"?"لا توجد أسئلة مؤرشفة في هذه الفئة.":"لا توجد سجلات مطابقة."}</Notice>}
       {!!list.data&&<div className="page-actions question-pagination">
         <span>إجمالي {list.data.total} · تُعرض 20 نتيجة في كل مرة</span>
-        <Button variant="primary" disabled={list.isFetching&&navigator.onLine} onClick={()=>void refreshQuestions()}>
-          {list.isFetching&&navigator.onLine?"جارٍ التحديث…":"تحديث"}
+        <Button variant="primary" disabled={list.isFetching&&!isOfflineNow()} onClick={()=>void refreshQuestions()}>
+          {list.isFetching&&!isOfflineNow()?"جارٍ التحديث…":"تحديث"}
         </Button>
       </div>}
     </section>}
