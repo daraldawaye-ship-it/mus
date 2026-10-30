@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 
@@ -202,7 +202,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             since: "1970-01-01T00:00:00.000Z", afterId: 0,
           };
           let complete = false;
-          for (let page = 0; page < 300; page++) {
+          for (let page = 0; page < 40; page++) {
             if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               since: cursor.since, afterId: String(cursor.afterId),
