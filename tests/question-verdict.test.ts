@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { gradeOfflineQuestion, type OfflineQuestionCard } from "../apps/web/src/offline-question-pack.ts";
 import test from "node:test";
 import { correctOptionText, orderCachedQuestionCards, visibleQuestionResult, type QuestionResultSnapshot, type QuestionResult } from "../apps/web/src/question-result.ts";
 
@@ -105,4 +106,39 @@ test("offline update uses existing user-scoped saved question lists, not a new s
   assert.match(page,/orderCachedQuestionCards\(pages,answeredIds,20\)/);
   assert.match(page,/client\.setQueryData\(/);
   assert.match(page,/تم تحديث وترتيب الأسئلة المحفوظة/);
+});
+
+test("offline answer is graded instantly from user-scoped cached keys, without awarding points", () => {
+  const key:OfflineQuestionCard={
+    id:42,companyId:null,category:"أسئلة للأطفال",priority:1,question:"كم عدد أيام الأسبوع؟",
+    options:["6","7","5","8"],optionCount:4,correctAnswer:2,revision:3,
+    active:true,points:1,
+  };
+  const rows=[key];
+  assert.deepEqual(gradeOfflineQuestion(key,rows,2),{
+    correct:true,correctAnswer:2,correctText:"7",
+  });
+  assert.deepEqual(gradeOfflineQuestion(key,rows,1),{
+    correct:false,correctAnswer:2,correctText:"7",
+  });
+  assert.equal(gradeOfflineQuestion({...key,revision:4},rows,2),null);
+  assert.equal(gradeOfflineQuestion({...key,options:["7","6","5","8"]},rows,1),null);
+  assert.equal(gradeOfflineQuestion({...key,id:43},rows,2),null);
+});
+
+test("offline answer feedback is explicitly provisional and pending entries retain idempotency", () => {
+  const page=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
+  const store=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const pack=readFileSync("apps/web/src/offline-question-pack.ts","utf8");
+  const shared=readFileSync("apps/web/src/offline-shared.ts","utf8");
+  const status=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  assert.match(page,/gradeOfflineQuestion\(question,keys,selectedAnswer\)/);
+  assert.match(page,/نتيجة محلية من النسخة المحفوظة/);
+  assert.match(page,/queueOfflineOperation\(user\.id,companyId,"answer"/);
+  assert.match(page,/new TypeError\("offline"\)/);
+  assert.match(store,/id: body\.idempotencyKey/);
+  assert.match(store,/await storePersonalAnswer\(userId/);
+  assert.match(shared,/questions\\\/offline-pack/);
+  assert.match(status,/syncOfflineQuestionPack\(userId,null\)/);
+  assert.match(pack,/await rememberRead\(url,data\)/);
 });
