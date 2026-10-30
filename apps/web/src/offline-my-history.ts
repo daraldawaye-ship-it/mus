@@ -16,7 +16,10 @@ export async function syncMyHistory(userId:number,companyId:number|null){
           await storePersonalAnswer(userId,scope,entry.questionId,entry,false);
           wrote=true;
         }
-        await saveCatalogProgress(userId,id,"answer-history",page+1,page*100>=data.total);
+        if(page>1 || page*100>=data.total || !old.complete)
+          await saveCatalogProgress(userId,id,"answer-history",
+            page===1 && page*100<data.total
+              ?Math.max(2,old.nextPage):page+1,page*100>=data.total);
         if(page*100>=data.total)break;
       }catch{break;}
     }
