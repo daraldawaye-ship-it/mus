@@ -7,6 +7,9 @@ export function sharedIdentity(userId: number | null) {
   identity = userId;
   grants.clear();
 }
+export function sharedItemsAllowed(companyId:number,userId:number):boolean {
+  return identity===userId && grants.has(userId+":"+companyId+":options:items");
+}
 function scope(path: string): string | null {
   const match = path.match(/^\/companies\/(\d+)\/(item-compositions|item-shelves|doctors|sale-customers|branches|locations|accounts)(?:[/?]|$)/);
   if (match) return match[1] + ":" + match[2];
@@ -48,8 +51,15 @@ function restricted(path: string, value: unknown): unknown {
 type Entry = { key:string; data:unknown };
 async function db(): Promise<IDBDatabase> {
   return new Promise((resolve,reject) => {
-    const r = indexedDB.open(dbName, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("entries", { keyPath: "key" });
+    const r = indexedDB.open(dbName, 2);
+    r.onupgradeneeded = () => {
+      if (!r.result.objectStoreNames.contains("entries"))
+        r.result.createObjectStore("entries", { keyPath: "key" });
+      if (!r.result.objectStoreNames.contains("itemCards")) {
+        const cards=r.result.createObjectStore("itemCards", { keyPath: "key" });
+        cards.createIndex("company","companyId");
+      }
+    };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
