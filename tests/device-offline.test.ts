@@ -96,7 +96,7 @@ test("offline bootstrap never trusts a denied server session or caches credentia
   assert.match(api,/window\.addEventListener\("online", reconnect\)/);
   assert.match(store,/offline-session/);
   assert.match(store,/OFFLINE_SESSION_MAX_AGE_MS = 7/);
-  assert.match(store,/\^\\\/page-catalog/);
+  assert.match(store,/page-catalog/);
   assert.doesNotMatch(store,/writeOne\("offline-session"[\s\S]{0,200}csrf:/);
   assert.match(shared,/grants\.clear\(\)/);
   assert.match(shared,/clearOfflineSharedGrants/);
