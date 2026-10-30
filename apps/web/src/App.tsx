@@ -916,6 +916,7 @@ function Workspace() {
     user,
     loading: sessionLoading,
     error: sessionError,
+    offlineMode,
     logout,
     pendingLogoutRedirect,
     acknowledgeLogoutRedirect,
@@ -1288,6 +1289,11 @@ function Workspace() {
                 }
               />
             </Routes>
+            {offlineMode && <Notice tone="warning">
+              وضع دون إنترنت: فُتحت جلسة هذا الجهاز المحفوظة مؤقتًا. يمكنك استخدام
+              البيانات المحلية وحفظ العمليات المسموحة؛ ستُراجع صلاحياتك وتُرسل
+              العمليات المعلقة عند عودة الاتصال.
+            </Notice>}
             {/* Device sync runs in the background; only installation help or
                 an actionable notification prompt can appear below page content. */}
             <AppSetup key={user?.id ?? "guest"} userId={user?.id}
