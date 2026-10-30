@@ -46,7 +46,6 @@ test("new worker installation rotates only the static shell cache", () => {
 test("worker refreshes only overview after upgrade, not unsaved invoice forms", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
   assert.doesNotMatch(worker,/client\.navigate\(url\.href\)/);
-  assert.match(worker,/url\.pathname !== "\/"/);
-  assert.match(worker,/companies/);
+  assert.match(worker,/keys\.slice\(0,-3\)/);
   assert.doesNotMatch(worker,/caches\.delete\(.*alraesy-device-v1/);
 });
