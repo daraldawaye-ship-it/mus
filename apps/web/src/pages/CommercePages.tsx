@@ -2093,6 +2093,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setError("");
     setSavedInvoice(null);
     setItemNotice("");
+    // Only after explicit confirmation: refresh changed names/prices before
+    // the next invoice, without downloading the whole item catalog.
+    window.dispatchEvent(new CustomEvent("alraesy-invoice-reset", {
+      detail: { companyId },
+    }));
     focus(lineInputId(first, "item-search"));
   }
   async function save(event?: FormEvent, selectedDoctorId?: number, freeTextDoctorName = "") {

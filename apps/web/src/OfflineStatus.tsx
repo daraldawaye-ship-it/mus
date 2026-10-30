@@ -42,6 +42,8 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
     if (!companyId) return;
     let stopped = false;
     let running = false;
+    let lastPollAt = 0;
+    let repeatAfterCurrent = false;
     const channel = typeof BroadcastChannel === "undefined" ? null :
       new BroadcastChannel("alraesy-items-" + userId + "-" + companyId);
     const invalidateItems = () => void client.invalidateQueries({
@@ -57,6 +59,7 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
     async function poll() {
       if (stopped || running || !navigator.onLine || document.visibilityState === "hidden") return;
       running = true;
+      lastPollAt = Date.now();
       try {
         let cursor: ItemChangeCursor | null = await itemChangeCursor(userId, companyId!);
         let changed = false;
@@ -84,11 +87,30 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
       } catch {
         // Network or permission failure is not evidence of an empty change feed.
         // Keep the last committed cursor and retry on focus/connection.
-      } finally { running = false; }
+      } finally {
+        running = false;
+        if (repeatAfterCurrent && !stopped) {
+          repeatAfterCurrent = false;
+          void poll();
+        }
+      }
     }
-    const connected = () => { void poll(); };
-    const timer = window.setInterval(connected, 20_000);
+    // Limit routine reads to once every two minutes. A confirmed invoice
+    // reset bypasses the interval because the next invoice needs fresh cards.
+    const connected = () => {
+      if (Date.now() - lastPollAt >= 120_000) void poll();
+    };
+    const afterInvoiceReset = (event: Event) => {
+      if (!(event instanceof CustomEvent) || Number(event.detail?.companyId) !== companyId) return;
+      if (running) {
+        repeatAfterCurrent = true;
+      } else {
+        void poll();
+      }
+    };
+    const timer = window.setInterval(connected, 120_000);
     window.addEventListener("online", connected);
+    window.addEventListener("alraesy-invoice-reset", afterInvoiceReset);
     window.addEventListener("focus", connected);
     document.addEventListener("visibilitychange", connected);
     void poll();
@@ -96,6 +118,7 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
       stopped = true;
       window.clearInterval(timer);
       window.removeEventListener("online", connected);
+      window.removeEventListener("alraesy-invoice-reset", afterInvoiceReset);
       window.removeEventListener("focus", connected);
       document.removeEventListener("visibilitychange", connected);
       channel?.close();
