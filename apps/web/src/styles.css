@@ -343,6 +343,46 @@ legend {
   gap: 10px;
   min-width: 0;
 }
+/* Explicit offline/online switch is always at the top, not below invoices. */
+.connection-mode-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  flex-shrink: 0;
+}
+.connection-mode-button {
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+.connection-mode-indicator {
+  color: #fca85a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.connection-mode-warning {
+  position: absolute;
+  top: calc(100% + 5px);
+  inset-inline-end: 0;
+  z-index: 55;
+  max-width: 320px;
+  min-width: 185px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px;
+  background: var(--surface);
+  font-size: 12px;
+}
+@media (max-width: 680px) {
+  .connection-mode-button { font-size: 10px; padding: 4px; }
+  .connection-mode-indicator { display: none; }
+}
+@media print { .connection-mode-control { display: none !important; } }
 @media (min-width: 681px) {
   .topbar-start {
     flex: 1;
