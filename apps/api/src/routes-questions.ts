@@ -133,7 +133,7 @@ export function questionRoutes(pool: Pool): Router {
       const args=[companyId,user.id,searchPattern(p.q),categoryFilter];
       const visibility=manager
         ? status==="archived" ? "NOT q.active" : "q.active"
-        : "q.active";
+        : status==="archived" ? "FALSE" : "q.active";
       const condition=`q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($4::text IS NULL OR q.category=$4)`;
       const count=await client.query(
         `SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $2 OR q.category ILIKE $2) AND ($3::text IS NULL OR q.category=$3)`,
