@@ -205,8 +205,8 @@ export async function applyItemChanges(
     for (const row of snapshots) {
       if (!row.path.startsWith("/companies/" + companyId + "/")) continue;
       const url = row.path;
-      const isItemDetail = /^\\/companies\\/\\d+\\/items\\/\\d+$/.test(url);
-      const isItemList = /^\\/companies\\/\\d+\\/items(?:\\?|$)/.test(url);
+      const isItemDetail = /^\/companies\/\d+\/items\/\d+$/.test(url);
+      const isItemList = /^\/companies\/\d+\/items(?:\?|$)/.test(url);
       const isOptions = url.includes("/commerce-options?") &&
         new URLSearchParams(url.split("?")[1]).get("type") === "items";
       if (!isItemDetail && !isItemList && !isOptions) continue;
