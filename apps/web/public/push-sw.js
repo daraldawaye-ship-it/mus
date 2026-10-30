@@ -142,14 +142,13 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
+    // waitUntil must be registered while this event is still dispatching.
+    event.waitUntil(warmCurrentBundle().catch(() => undefined));
     event.respondWith((async () => {
       try {
         const response = await fetch(request, {cache: "no-store"});
-        if (response.ok && response.headers.get("content-type")?.includes("text/html")) {
-          // Do not overwrite the saved HTML until the entire current bundle
-          // has been cached; keep serving online HTML immediately.
-          event.waitUntil(warmCurrentBundle().catch(() => undefined));
-        }
+        // The network response is usable immediately online. Only the
+        // separately verified warmup is allowed to replace cached HTML.
         return response;
       } catch {
         const shell = await caches.open(shellCache);
