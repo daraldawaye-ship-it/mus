@@ -1,6 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Account, CompanyContext } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
+import { offlineUser, rememberRead, savedRead } from "./offline-storage";
+import { ownActiveSalesCashbox, type LinkedCashboxSnapshot } from "./employee-cashbox-cache";
+
+/** Read the employee's *server-linked* sales cashbox, not an arbitrary account. */
+export async function employeeSalesCashbox(
+  userId: number, companyId: number, employeeId: number,
+  signal?: AbortSignal,
+): Promise<Account | null> {
+  if (offlineUser() !== userId) return null;
+  const path = `/companies/${companyId}/my-sales-cashbox`;
+  // Avoid a network request entirely while offline; browsers pause standard
+  // React Query queries, so callers must also use networkMode: "always".
+  if (!navigator.onLine) {
+    const cached = await savedRead<LinkedCashboxSnapshot>(path).catch(() => undefined);
+    return ownActiveSalesCashbox(cached,userId,companyId,employeeId,true);
+  }
+  const response = await api<LinkedCashboxSnapshot>(path,{signal});
+  if (signal?.aborted || offlineUser() !== userId) return null;
+  const account = ownActiveSalesCashbox(response,userId,companyId,employeeId,Boolean(response.offlineIdentity));
+  // An authenticated null reply also replaces an old linked cashbox.
+  // Wait for the write: immediately disconnecting after opening the invoice
+  // must not lose the employee's saved default.
+  await rememberRead(path,{
+    account,
+    offlineIdentity:{userId,companyId,employeeId},
+  } satisfies LinkedCashboxSnapshot).catch(() => {});
+  return account;
+}
 
 /** Only a linked, active sales cashbox belonging to this employee is eligible. */
 export function useEmployeeCashbox(context: CompanyContext): Account | null {
@@ -10,12 +38,9 @@ export function useEmployeeCashbox(context: CompanyContext): Account | null {
   const query = useQuery({
     queryKey: ["employee-sales-cashbox", user?.id, companyId, employeeId],
     enabled: Boolean(user && employeeId),
+    networkMode: "always",
     staleTime: 60_000,
-    queryFn: ({ signal }) =>
-      api<{ account: Account | null }>(
-        `/companies/${companyId}/my-sales-cashbox`,
-        { signal },
-      ),
+    queryFn: ({ signal }) => employeeSalesCashbox(user!.id,companyId,employeeId!,signal),
   });
-  return query.data?.account ?? null;
+  return query.data ?? null;
 }
