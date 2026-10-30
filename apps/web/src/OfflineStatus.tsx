@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { cacheItemCompositions } from "./offline-compositions";
@@ -35,6 +35,7 @@ export function OfflineStatus({ userId, companyId }: DeviceProps) {
 
 type CatalogUiState = { key: string; busy: boolean; progress: string; message: string };
 let activeCatalogDownload: Promise<void> | null = null;
+let catalogRetryTimer: number | null = null;
 let catalogUi: CatalogUiState = { key: "", busy: false, progress: "", message: "" };
 const CATALOG_EVENT = "alraesy-catalog-download-progress";
 function publishCatalogStatus(patch: Partial<CatalogUiState>) {
@@ -187,12 +188,22 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       setMessage(error instanceof Error ? error.message : "تعذرت المزامنة");
     } finally { setBusy(false); }
   }
+  function scheduleNextBatch() {
+    if (catalogRetryTimer !== null) return;
+    catalogRetryTimer = window.setTimeout(() => {
+      catalogRetryTimer = null;
+      if (offlineUser() === userId && navigator.onLine && isAppWindow() &&
+          document.visibilityState !== "hidden" &&
+          window.location.pathname.startsWith("/companies/" + companyId)) {
+        downloadCatalog();
+      }
+    }, 5_000);
+  }
   function downloadCatalog() {
-    if (!companyId || !navigator.onLine || activeCatalogDownload) return;
+    if (!companyId || !navigator.onLine || activeCatalogDownload || offlineUser() !== userId) return;
     const key = scopeKey;
-    let needsContinuation = false;
     publishCatalogStatus({ key, busy: true, progress: "", message: "" });
-    activeCatalogDownload = (async () => {
+    const transfer = async () => {
       let savedItems = 0;
       let otherRecords = 0;
       try {
@@ -222,7 +233,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
             if (!response.hasMore) { complete = true; break; }
           }
-          if (!complete) { window.setTimeout(() => downloadCatalog(), 5_000); return; }
+          if (!complete) { scheduleNextBatch(); return; }
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
@@ -251,7 +262,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
               finished = true; break;
             }
           }
-          if (!finished) { window.setTimeout(() => downloadCatalog(), 5000); return; }
+          if (!finished) { scheduleNextBatch(); return; }
         }
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
@@ -266,7 +277,17 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       } finally {
         publishCatalogStatus({ busy: false, progress: "" });
       }
-    })().finally(() => { activeCatalogDownload = null; });
+    };
+    // One company/user catalog download at a time across open app windows.
+    activeCatalogDownload = (async () => {
+      if ("locks" in navigator && navigator.locks) {
+        await navigator.locks.request("alraesy-catalog:" + key,
+          { ifAvailable: true }, async lock => { if (lock) await transfer(); });
+      } else await transfer();
+    })().finally(() => {
+      activeCatalogDownload = null;
+      publishCatalogStatus({ busy: false, progress: "" });
+    });
   }
   useEffect(() => {
     if (!companyId || !isAppWindow()) return;
@@ -280,6 +301,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     resume();
     return () => {
       window.clearInterval(timer);
+      if (catalogRetryTimer !== null) {
+        window.clearTimeout(catalogRetryTimer);
+        catalogRetryTimer = null;
+      }
       window.removeEventListener("online", resume);
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
