@@ -66,7 +66,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
       const page=rows.rows.slice(0,1000);
       return {asOfDate:day,items:page.map(row=>({
         itemId:row.item_id,saleTimes:row.total,
-      })),hasMore:more,afterId:more?page[page.length-1]!.itemId:0};
+      })),hasMore:more,afterId:more?page[page.length-1]!.item_id:0};
     });
     res.json(result);
   }));
