@@ -3,10 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiFailure, useSession } from "../api";
-import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, storePersonalAnswer } from "../offline-storage";
+import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, savedRead, storePersonalAnswer } from "../offline-storage";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
-import { visibleQuestionResult, type QuestionResult } from "../question-result";
+import { correctOptionText, visibleQuestionResult, type QuestionResult } from "../question-result";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Question = {
@@ -15,11 +15,11 @@ type Question = {
   active:boolean; revision:number; creatorName:string; createdAt:string;
   answerCount:number; respondentCount:number; myAnswerCount:number; myLastAnsweredAt:string|null;
   myLastSelectedAnswer:number|null; myLastCorrect:boolean|null; myLastPoints:number|null;
-  myLastComment:string|null; otherOptionCounts:number[]|null;
+  myLastComment:string|null; myLastCorrectText?:string|null; otherOptionCounts:number[]|null;
 };
 type Answer = {
   id:string; questionId:number; userId:number; userName:string; question:string;
-  selectedAnswer:number; selectedText:string; correct:boolean; points:number;
+  selectedAnswer:number; selectedText:string; correct:boolean;correctText?:string|null; points:number;
   comment:string|null; answeredAt:string;
 };
 type Page<T>={items:T[];total:number;page:number;pageSize:number};
@@ -345,6 +345,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
       {tab==="questions"&&questions.map(question=>{
         const answered=outcomeFor(question);
+        const correctText=correctOptionText(question.options,answered);
+        const correctChoiceIndex=answered && correctText
+          ? question.options.indexOf(correctText)+1 : null;
         const isSending=sendingQuestionId===question.id;
         const isInfoOpen=infoId===question.id;
         return <article key={question.id} className="card question-card">
@@ -379,16 +382,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
           {answered&&<div className={`question-result ${answered.correct?"question-result-correct":"question-result-wrong"}`}
             role="status" aria-live="polite">
             <strong>{answered.correct?"✓ إجابتك صحيحة":"✗ إجابتك خاطئة"}</strong>
-            {!answered.correct&&answered.correctAnswer!==null&&
-              question.options[answered.correctAnswer-1]&&
-              <span>الإجابة الصحيحة: {question.options[answered.correctAnswer-1]}</span>}
+            {correctText&&<span className="question-correct-answer-text">الإجابة الصحيحة: {correctText}</span>}
             {answered.points>0&&<span>+{answered.points} نقطة</span>}
           </div>}
           <div className="question-answer-form">
             <fieldset className="question-options" disabled={!!answered||!!queuedAnswers[question.id]||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
               {optionOrder(question).map(i=><label key={i}
-                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>
+                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered&&(correctChoiceIndex===i+1 || (!correctChoiceIndex&&answered.correctAnswer===i+1))?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>
                 <input type="radio" name={`question-choice-${question.id}`}
                   checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
                   onChange={()=>void submitAnswer(question,i+1)}
@@ -398,7 +399,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                   {answered&&<span className="question-choice-stat">
                     {answered.otherOptionCounts?.[i]??0} من الآخرين
                     {answered.selectedAnswer===i+1?" · اختيارك":""}
-                    {answered.correctAnswer===i+1?" · ✓ الإجابة الصحيحة":""}
+                    {correctChoiceIndex===i+1 || (!correctChoiceIndex&&answered.correctAnswer===i+1)?" · ✓ الإجابة الصحيحة":""}
                     {answered.selectedAnswer===i+1&&!answered.correct?" · ✗ إجابة خاطئة":""}
                   </span>}
                 </span>
@@ -426,6 +427,8 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         <p className={`question-result ${answer.correct?"question-result-correct":"question-result-wrong"}`}>
           <strong>{answer.correct?"✓ إجابة صحيحة":"✗ إجابة خاطئة"}</strong>
           <span>اختيار: {answer.selectedText}</span>
+          {(answer.correctText || (answer.correct ? answer.selectedText : null)) &&
+            <span>الإجابة الصحيحة: {answer.correctText || answer.selectedText}</span>}
           {answer.points>0&&<span>+{answer.points} نقطة</span>}
         </p>
         {answer.comment&&<p style={{whiteSpace:"pre-wrap"}}>التعليق: {answer.comment}</p>}
