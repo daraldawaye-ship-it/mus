@@ -25,15 +25,18 @@ function database(): Promise<IDBDatabase> {
   if (!("indexedDB" in window)) return Promise.reject(new Error("هذا المتصفح لا يدعم التخزين المحلي"));
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open(DB_NAME, 1);
-    open.onupgradeneeded = () => {
+    const open = indexedDB.open(DB_NAME, 2);
+    open.onupgradeneeded = (event) => {
       const db = open.result;
-      const snapshots = db.createObjectStore("snapshots", { keyPath: "key" });
-      snapshots.createIndex("user", "userId");
-      const pending = db.createObjectStore("pending", { keyPath: "id" });
-      pending.createIndex("user", "userId");
-      const catalog = db.createObjectStore("catalog", { keyPath: "key" });
-      catalog.createIndex("scope", ["userId", "companyId", "type"]);
+      if (event.oldVersion < 1) {
+        const snapshots = db.createObjectStore("snapshots", { keyPath: "key" });
+        snapshots.createIndex("user", "userId");
+        const pending = db.createObjectStore("pending", { keyPath: "id" });
+        pending.createIndex("user", "userId");
+        const catalog = db.createObjectStore("catalog", { keyPath: "key" });
+        catalog.createIndex("scope", ["userId", "companyId", "type"]);
+      }
+      if (event.oldVersion < 2) db.createObjectStore("item-sync", { keyPath: "key" });
     };
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error);
@@ -112,6 +115,17 @@ export async function rememberRead(path: string, value: unknown): Promise<void> 
     key: String(userId) + ":" + path, userId, path, value,
     savedAt: new Date().toISOString(),
   } satisfies Snapshot);
+  // A direct online item-card read must also refresh its offline search card.
+  const detail = path.match(/^\/companies\/(\d+)\/items\/(\d+)$/);
+  if (detail && value && typeof value === "object") {
+    const item = (value as { item?: Record<string, unknown> }).item;
+    if (item && item.id === Number(detail[2])) {
+      await writeCatalog([{
+        key: [userId, Number(detail[1]), "items", item.id].join(":"),
+        userId, companyId: Number(detail[1]), type: "items", value: item,
+      }]);
+    }
+  }
   const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
   if (!match || !value || typeof value !== "object") return;
   const type = new URLSearchParams(path.slice(path.indexOf("?") + 1)).get("type");
@@ -133,7 +147,15 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const userId = activeUser;
   if (userId === null || !allowedSnapshot(path)) return undefined;
   const snapshot = await readOne<Snapshot>("snapshots", String(userId) + ":" + path);
-  if (snapshot) return snapshot.value as T;
+  const card = path.match(/^\/companies\/(\d+)\/items\/(\d+)$/);
+  if (card) {
+    const entry = await readOne<CatalogEntry>("catalog",
+      [userId, Number(card[1]), "items", Number(card[2])].join(":"));
+    if (entry) return { item: entry.value } as T;
+  }
+  const itemQuery = /^\/companies\/\d+\/(?:commerce-options|financial-options)\?/.test(path) &&
+    new URLSearchParams(path.split("?")[1]).get("type") === "items";
+  if (snapshot && !itemQuery) return snapshot.value as T;
   const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
   if (!match) return undefined;
   const companyId = Number(match[1]);
@@ -141,7 +163,7 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const type = qs.get("type");
   if (!type || !["items", "accounts", "branches", "locations", "currencies"].includes(type)) return undefined;
   const records = await readIndex<CatalogEntry>("catalog", "scope", [userId, companyId, type]);
-  if (!records.length) return undefined;
+  if (!records.length) return snapshot?.value as T | undefined;
   const q = (qs.get("q") ?? "").normalize("NFKC").toLocaleLowerCase();
   const active = qs.get("active");
   const id = qs.get("id");
@@ -161,6 +183,78 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const offset = (page - 1) * pageSize;
   return { items: filtered.slice(offset, offset + pageSize), total: filtered.length, page, pageSize } as T;
 }
+
+export type ItemChangeCursor = { since: string; afterId: number };
+export async function itemChangeCursor(userId: number, companyId: number): Promise<ItemChangeCursor | null> {
+  if (activeUser !== userId) return null;
+  const key = userId + ":" + companyId;
+  const stored = await readOne<{ cursor: ItemChangeCursor }>("item-sync", key);
+  if (stored) return stored.cursor;
+  // Preexisting offline downloads may be older than this feature. Start at the
+  // earliest saved item read, not at "now", so edits made while offline are caught.
+  const snapshots = await readIndex<Snapshot>("snapshots", "user", userId);
+  const dates = snapshots.filter(row =>
+    row.path.startsWith("/companies/" + companyId + "/items") ||
+    (row.path.startsWith("/companies/" + companyId + "/commerce-options?") &&
+      new URLSearchParams(row.path.split("?")[1]).get("type") === "items"))
+    .map(row => Date.parse(row.savedAt)).filter(Number.isFinite);
+  if (!dates.length) return null;
+  return { since: new Date(Math.max(0, Math.min(...dates) - 60_000)).toISOString(), afterId: 0 };
+}
+export async function applyItemChanges(
+  userId: number, companyId: number,
+  items: Record<string, unknown>[], cursor: ItemChangeCursor,
+): Promise<void> {
+  if (activeUser !== userId) throw new Error("تغير الحساب أثناء مزامنة الأصناف");
+  const db = await database();
+  const snapshots = items.length ? await readIndex<Snapshot>("snapshots", "user", userId) : [];
+  if (activeUser !== userId) throw new Error("تغير الحساب أثناء مزامنة الأصناف");
+  const updated = new Map(items.map(item => [item.id, item]));
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(["catalog", "snapshots", "item-sync"], "readwrite");
+    for (const item of items) {
+      if (typeof item.id !== "number") continue;
+      tx.objectStore("catalog").put({
+        key: [userId, companyId, "items", item.id].join(":"),
+        userId, companyId, type: "items", value: item,
+      } satisfies CatalogEntry);
+    }
+    // Update already downloaded detail/list snapshots as well. Nothing from
+    // another user or company is touched; no financial data is modified.
+    for (const row of snapshots) {
+      if (!row.path.startsWith("/companies/" + companyId + "/")) continue;
+      const url = row.path;
+      const isItemDetail = /^\/companies\/\d+\/items\/\d+$/.test(url);
+      const isItemList = /^\/companies\/\d+\/items(?:\?|$)/.test(url);
+      const isOptions = url.includes("/commerce-options?") &&
+        new URLSearchParams(url.split("?")[1]).get("type") === "items";
+      if (!isItemDetail && !isItemList && !isOptions) continue;
+      const original = row.value as { item?: Record<string, unknown>; items?: Record<string, unknown>[] };
+      if (!original || typeof original !== "object") continue;
+      let changed = false;
+      let value = original;
+      if (isItemDetail && original.item && updated.has(original.item.id)) {
+        value = { ...value, item: updated.get(original.item.id) };
+        changed = true;
+      }
+      if (Array.isArray(original.items)) {
+        const nextItems = original.items.map(item => {
+          const next = updated.get(item.id);
+          if (next) { changed = true; return next; }
+          return item;
+        });
+        if (changed) value = { ...value, items: nextItems };
+      }
+      if (changed) tx.objectStore("snapshots").put({ ...row, value, savedAt: new Date().toISOString() });
+    }
+    tx.objectStore("item-sync").put({ key: userId + ":" + companyId, cursor });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+  if (items.length) changed();
+}
+
 export async function queueOfflineOperation(
   userId: number, companyId: number | null, kind: OfflineKind,
   path: string, body: { idempotencyKey: string },

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { offlineChanged, pendingForUser, rememberRead, syncPending } from "./offline-storage";
+import { applyItemChanges, itemChangeCursor, offlineChanged, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 
 export function OfflineStatus({ userId, companyId }: { userId: number; companyId?: number }) {
@@ -37,6 +37,70 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
       window.removeEventListener("offline", connected);
     };
   }, [userId, client]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let stopped = false;
+    let running = false;
+    const channel = typeof BroadcastChannel === "undefined" ? null :
+      new BroadcastChannel("alraesy-items-" + userId + "-" + companyId);
+    const invalidateItems = () => void client.invalidateQueries({
+      predicate: query => {
+        const key = query.queryKey;
+        return key.includes(userId) && key.includes(companyId) &&
+          /item|commerce|master/i.test(JSON.stringify(key));
+      },
+    });
+    if (channel) channel.onmessage = event => {
+      if (event.data === "changed") invalidateItems();
+    };
+    async function poll() {
+      if (stopped || running || !navigator.onLine || document.visibilityState === "hidden") return;
+      running = true;
+      try {
+        let cursor: ItemChangeCursor | null = await itemChangeCursor(userId, companyId!);
+        let changed = false;
+        for (let page = 0; page < 5 && !stopped; page++) {
+          const qs = new URLSearchParams();
+          if (cursor) {
+            qs.set("since", cursor.since);
+            qs.set("afterId", String(cursor.afterId));
+          }
+          const response = await api<{
+            items: Record<string, unknown>[];
+            cursor: ItemChangeCursor;
+            hasMore: boolean;
+          }>("/companies/" + companyId + "/item-changes" + (qs.size ? "?" + qs : ""));
+          if (stopped) break;
+          await applyItemChanges(userId, companyId!, response.items, response.cursor);
+          if (response.items.length) changed = true;
+          cursor = response.cursor;
+          if (!response.hasMore) break;
+        }
+        if (changed && !stopped) {
+          invalidateItems();
+          channel?.postMessage("changed");
+        }
+      } catch {
+        // Network or permission failure is not evidence of an empty change feed.
+        // Keep the last committed cursor and retry on focus/connection.
+      } finally { running = false; }
+    }
+    const connected = () => { void poll(); };
+    const timer = window.setInterval(connected, 20_000);
+    window.addEventListener("online", connected);
+    window.addEventListener("focus", connected);
+    document.addEventListener("visibilitychange", connected);
+    void poll();
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", connected);
+      window.removeEventListener("focus", connected);
+      document.removeEventListener("visibilitychange", connected);
+      channel?.close();
+    };
+  }, [companyId, userId, client]);
   async function sync() {
     if (busy || !navigator.onLine) return;
     setBusy(true);

@@ -29,6 +29,59 @@ import { canSearchInvoiceItem } from "../../../packages/contracts/src/invoice-it
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
+  // Small incremental feed: no private caching, no client-provided SQL, no full catalog reload.
+  // The cursor uses PostgreSQL microsecond precision to avoid skipping updates in one millisecond.
+  router.get("/companies/:companyId/item-changes", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const since = req.query.since;
+    const afterId = req.query.afterId;
+    if (since !== undefined && (typeof since !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}Z$/.test(since) ||
+        !Number.isFinite(Date.parse(since))))
+      throw new HttpError(400, "invalid_cursor", "مؤشر تحديث الأصناف غير صالح");
+    if (afterId !== undefined && (typeof afterId !== "string" ||
+        !/^(0|[1-9]\d{0,9})$/.test(afterId) || Number(afterId) > 2147483647))
+      throw new HttpError(400, "invalid_cursor", "مؤشر تحديث الأصناف غير صالح");
+    const result = await transaction(pool, async (client) => {
+      await client.query("SET TRANSACTION READ ONLY");
+      const user = await currentActor(client, actor(req), false);
+      let permitted = false;
+      for (const permission of ["commerce.view", "inventory.view", "items.view"] as const) {
+        try {
+          await companyAccess(client, user, companyId, permission);
+          permitted = true;
+          break;
+        } catch (error) {
+          if (!(error instanceof HttpError) || error.status !== 403) throw error;
+        }
+      }
+      if (!permitted) throw new HttpError(403, "forbidden", "لا تملك صلاحية عرض الأصناف");
+      const now = await client.query<{ timestamp: string }>(
+        `SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS timestamp`,
+      );
+      const timestamp = now.rows[0].timestamp;
+      if (since === undefined) return {
+        items: [], cursor: { since: timestamp, afterId: 0 }, hasMore: false,
+      };
+      const rows = await client.query(
+        `${itemSelect.replace("SELECT i.*,", `SELECT i.*,to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS sync_time,`)}
+         WHERE i.company_id=$1 AND (i.updated_at,i.id)>($2::timestamptz,$3::integer)
+           AND i.updated_at<=$4::timestamptz
+         ORDER BY i.updated_at ASC,i.id ASC LIMIT 101`,
+        [companyId, since, Number(afterId ?? 0), timestamp],
+      );
+      const hasMore = rows.rows.length > 100;
+      const page = rows.rows.slice(0, 100);
+      const last = page[page.length - 1];
+      return {
+        items: page.map(itemDTO),
+        cursor: hasMore ? { since: last.sync_time as string, afterId: last.id as number }
+          : { since: timestamp, afterId: 0 },
+        hasMore,
+      };
+    });
+    res.json(result);
+  }));
   router.get(
     "/companies/:companyId/commerce-options",
     handler(async (req, res) => {
