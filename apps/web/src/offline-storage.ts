@@ -1,0 +1,216 @@
+/**
+ * Device-local read snapshots and a durable, user-scoped outbox.
+ * This is not a second authoritative accounting database. Only the server
+ * posts documents and awards question points.
+ */
+export type OfflineKind = "invoice" | "voucher" | "answer";
+export type OfflinePending = {
+  id: string;
+  userId: number;
+  companyId: number | null;
+  kind: OfflineKind;
+  path: string;
+  body: unknown;
+  createdAt: string;
+  failure: string | null;
+};
+type Snapshot = { key: string; userId: number; path: string; value: unknown; savedAt: string };
+type CatalogEntry = { key: string; userId: number; companyId: number; type: string; value: Record<string, unknown> };
+let activeUser: number | null = null;
+let connection: Promise<IDBDatabase> | null = null;
+const DB_NAME = "alraesy-device-v1";
+const CHANGED = "alraesy-offline-changed";
+
+function database(): Promise<IDBDatabase> {
+  if (!("indexedDB" in window)) return Promise.reject(new Error("هذا المتصفح لا يدعم التخزين المحلي"));
+  if (connection) return connection;
+  connection = new Promise<IDBDatabase>((resolve, reject) => {
+    const open = indexedDB.open(DB_NAME, 1);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      const snapshots = db.createObjectStore("snapshots", { keyPath: "key" });
+      snapshots.createIndex("user", "userId");
+      const pending = db.createObjectStore("pending", { keyPath: "id" });
+      pending.createIndex("user", "userId");
+      const catalog = db.createObjectStore("catalog", { keyPath: "key" });
+      catalog.createIndex("scope", ["userId", "companyId", "type"]);
+    };
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
+  }).catch(error => { connection = null; throw error; });
+  return connection;
+}
+async function readOne<T>(store: string, key: IDBValidKey): Promise<T | undefined> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(store, "readonly").objectStore(store).get(key);
+    request.onsuccess = () => resolve(request.result as T | undefined);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function readIndex<T>(store: string, index: string, key: IDBValidKey): Promise<T[]> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(store, "readonly").objectStore(store).index(index).getAll(key);
+    request.onsuccess = () => resolve(request.result as T[]);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function writeOne(store: string, item: unknown): Promise<void> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+async function deleteOne(store: string, key: IDBValidKey): Promise<void> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+async function writeCatalog(entries: CatalogEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("catalog", "readwrite");
+    for (const entry of entries) tx.objectStore("catalog").put(entry);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+export function setOfflineUser(userId: number | null) {
+  activeUser = Number.isSafeInteger(userId) && Number(userId) > 0 ? userId : null;
+  window.dispatchEvent(new Event(CHANGED));
+}
+export function offlineUser() { return activeUser; }
+export function offlineChanged(listener: () => void) {
+  window.addEventListener(CHANGED, listener);
+  return () => window.removeEventListener(CHANGED, listener);
+}
+function changed() { window.dispatchEvent(new Event(CHANGED)); }
+function allowedSnapshot(path: string): boolean {
+  return /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
+    || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
+    || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
+}
+export async function rememberRead(path: string, value: unknown): Promise<void> {
+  const userId = activeUser;
+  if (userId === null || !allowedSnapshot(path)) return;
+  // Do not exhaust mobile storage with a single huge response.
+  const serialized = JSON.stringify(value);
+  if (!serialized || serialized.length > 800_000) return;
+  await writeOne("snapshots", {
+    key: String(userId) + ":" + path, userId, path, value,
+    savedAt: new Date().toISOString(),
+  } satisfies Snapshot);
+  const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
+  if (!match || !value || typeof value !== "object") return;
+  const type = new URLSearchParams(path.slice(path.indexOf("?") + 1)).get("type");
+  if (!type || !["items", "accounts", "branches", "locations", "currencies"].includes(type)) return;
+  const items = (value as { items?: unknown }).items;
+  if (!Array.isArray(items)) return;
+  const records: CatalogEntry[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id !== "number" || !Number.isSafeInteger(id)) continue;
+    const companyId = Number(match[1]);
+    const key = [userId, companyId, type, id].join(":");
+    records.push({ key, userId, companyId, type, value: item as Record<string, unknown> });
+  }
+  await writeCatalog(records);
+}
+export async function savedRead<T>(path: string): Promise<T | undefined> {
+  const userId = activeUser;
+  if (userId === null || !allowedSnapshot(path)) return undefined;
+  const snapshot = await readOne<Snapshot>("snapshots", String(userId) + ":" + path);
+  if (snapshot) return snapshot.value as T;
+  const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
+  if (!match) return undefined;
+  const companyId = Number(match[1]);
+  const qs = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+  const type = qs.get("type");
+  if (!type || !["items", "accounts", "branches", "locations", "currencies"].includes(type)) return undefined;
+  const records = await readIndex<CatalogEntry>("catalog", "scope", [userId, companyId, type]);
+  if (!records.length) return undefined;
+  const q = (qs.get("q") ?? "").normalize("NFKC").toLocaleLowerCase();
+  const active = qs.get("active");
+  const id = qs.get("id");
+  const shortcut = qs.get("shortcut");
+  const branchId = qs.get("branchId");
+  const filtered = records.map(record => record.value).filter(item => {
+    if (id && String(item.id) !== id) return false;
+    if (shortcut && String(item.shortcut ?? "").toUpperCase() !== shortcut.toUpperCase()) return false;
+    if (active === "true" && item.active === false) return false;
+    if (branchId && String(item.branchId) !== branchId) return false;
+    if (!q) return true;
+    return ["name", "code", "barcode", "shortCode", "shortcut", "searchKeys", "englishName"]
+      .some(key => String(item[key] ?? "").normalize("NFKC").toLocaleLowerCase().includes(q));
+  });
+  const page = Math.max(1, Number(qs.get("page") ?? "1") || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(qs.get("pageSize") ?? "20") || 20));
+  const offset = (page - 1) * pageSize;
+  return { items: filtered.slice(offset, offset + pageSize), total: filtered.length, page, pageSize } as T;
+}
+export async function queueOfflineOperation(
+  userId: number, companyId: number | null, kind: OfflineKind,
+  path: string, body: { idempotencyKey: string },
+): Promise<void> {
+  if (activeUser !== userId) throw new Error("تغير المستخدم؛ لا يمكن حفظ العملية لهذا الحساب");
+  if (!/^[0-9a-f-]{36}$/i.test(body.idempotencyKey))
+    throw new Error("مفتاح منع التكرار غير صالح");
+  const expected = kind === "answer"
+    ? /^\/(?:companies\/\d+\/)?questions\/\d+\/answers$/
+    : kind === "invoice"
+      ? /^\/companies\/\d+\/invoices$/
+      : /^\/companies\/\d+\/financial-documents$/;
+  if (!expected.test(path)) throw new Error("مسار العملية غير مسموح للحفظ المحلي");
+  await writeOne("pending", {
+    id: body.idempotencyKey, userId, companyId, kind, path,
+    body, createdAt: new Date().toISOString(), failure: null,
+  } satisfies OfflinePending);
+  changed();
+}
+export async function pendingForUser(userId: number): Promise<OfflinePending[]> {
+  const entries = await readIndex<OfflinePending>("pending", "user", userId);
+  return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+let syncing: Promise<{ saved: number; failed: number }> | null = null;
+export function syncPending(
+  userId: number, post: (path: string, body: unknown) => Promise<unknown>,
+): Promise<{ saved: number; failed: number }> {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    if (activeUser !== userId || !navigator.onLine) return { saved: 0, failed: 0 };
+    let saved = 0, failed = 0;
+    for (const row of await pendingForUser(userId)) {
+      if (activeUser !== userId || !navigator.onLine) break;
+      try {
+        // Backend revalidates company access and all data, and uses each
+        // original idempotency key atomically to avoid duplicate documents.
+        await post(row.path, row.body);
+        await deleteOne("pending", row.id);
+        saved++;
+        changed();
+      } catch (error) {
+        failed++;
+        row.failure = error instanceof Error ? error.message : "تعذر الترحيل؛ راجع العملية";
+        await writeOne("pending", row);
+        changed();
+        // Preserve ordering and stop on auth/validation/transport failures.
+        break;
+      }
+    }
+    return { saved, failed };
+  })().finally(() => { syncing = null; });
+  return syncing;
+}

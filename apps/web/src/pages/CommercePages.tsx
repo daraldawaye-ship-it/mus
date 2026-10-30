@@ -66,6 +66,7 @@ import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
+import { queueOfflineOperation } from "../offline-storage";
 import {
   Button,
   Card,
@@ -1473,6 +1474,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
+  const [localQueued, setLocalQueued] = useState(false);
   const pending = useRef<InvoiceInput | null>(null);
   const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
   const [doctorQuery,setDoctorQuery]=useState("");
@@ -2057,6 +2059,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     // Reset only this unsaved editor; posted invoices are never changed.
     const first = emptyLine();
     pending.current = null;
+    setLocalQueued(false);
     setHeaderItem(null);
     onChooseItem(null);
     setLines([first]);
@@ -2094,7 +2097,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   async function save(event?: FormEvent, selectedDoctorId?: number, freeTextDoctorName = "") {
     event?.preventDefault();
-    if (saving || editingItem || !guard.isCurrent()) return;
+    if (saving || editingItem || localQueued || !guard.isCurrent()) return;
     const enteredDoctorName = freeTextDoctorName.trim();
     if (doctorPromptOpen && !selectedDoctorId && !enteredDoctorName) {
       setDoctorError("اكتب اسم الطبيب أو الجهة، أو اختره من النتائج.");
@@ -2160,11 +2163,31 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       pending.current = payload;
     }
     if (!payload) return;
+    const submission = payload;
+    async function saveOnDevice(): Promise<boolean> {
+      if (!user?.id) return false;
+      try {
+        await queueOfflineOperation(user.id, companyId, "invoice",
+          "/companies/" + companyId + "/invoices", submission);
+        pending.current = null;
+        setUnknown(false);
+        setLocalQueued(true);
+        setError("تم حفظ الفاتورة على هذا الجهاز فقط، ولم تُرحّل محاسبيًا أو مخزنيًا. ستظهر في عداد المزامنة.");
+        return true;
+      } catch (reason) {
+        setError("تعذر حفظ النسخة المحلية: " + errorMessage(reason));
+        return false;
+      }
+    }
+    if (!navigator.onLine) {
+      await saveOnDevice();
+      return;
+    }
     setSaving(true);
     try {
       const response = await api<{ invoice: Invoice }>(
         `/companies/${companyId}/invoices`,
-        { method: "POST", body: payload, signal: guard.signal },
+        { method: "POST", body: submission, signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
       setUnknown(false);
@@ -2211,6 +2234,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
+      if (uncertain && await saveOnDevice()) return;
       setMemoBlocked(error instanceof ApiFailure && error.code==="memo_feature_block");
       if (error instanceof ApiFailure && error.code === "doctor_required") {
         setDoctorPromptOpen(true);
@@ -3038,9 +3062,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               >
                 تصفير الفاتورة
               </Button>
-              <Button id="invoice-save" type="submit" disabled={saving || !selectedLines.length}>
+              <Button id="invoice-save" type="submit" disabled={saving || localQueued || !selectedLines.length}>
                 {saving
                   ? "جارٍ الحفظ والترحيل…"
+                  : localQueued
+                    ? "محفوظة محليًا — بانتظار المزامنة"
                   : unknown
                     ? "تأكيد نتيجة الطلب نفسه"
                     : "حفظ وترحيل الفاتورة"}

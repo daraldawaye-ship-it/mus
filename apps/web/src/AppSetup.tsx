@@ -5,10 +5,11 @@ import {
   appleMobile, installInstructions, installSnapshot, observeInstall, requestInstall,
 } from "./app-install";
 import { Button, Card, Notice } from "./ui";
+import { OfflineStatus } from "./OfflineStatus";
 
 /** Always present until the applicable device steps actually succeed. There is
  * no saved dismissal or user preference hiding setup from subsequent visits. */
-export function AppSetup({ userId }: { userId?: number }) {
+export function AppSetup({ userId, companyId }: { userId?: number; companyId?: number }) {
   const install = useSyncExternalStore(observeInstall, installSnapshot);
   const [copyMessage, setCopyMessage] = useState("");
   const apple = appleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
@@ -35,6 +36,7 @@ export function AppSetup({ userId }: { userId?: number }) {
       {!install.prompt && <small className="muted">إذا لم تظهر نافذة تثبيت تلقائية، اتبع الخطوات أعلاه. عدم ظهورها لا يعني أن التطبيق مثبت.</small>}
       {copyMessage && <p role="status">{copyMessage}</p>}
     </Card>}
+    {userId && <OfflineStatus key={userId} userId={userId} companyId={companyId} />}
     {userId ? <DevicePushBootstrap key={userId} userId={userId} /> :
       !install.installed && <p className="muted">بعد تسجيل الدخول ستظهر خطوة تفعيل إشعارات العمل تلقائيًا.</p>}
   </section>;

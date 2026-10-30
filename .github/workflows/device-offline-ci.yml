@@ -1,0 +1,35 @@
+name: Device offline shell and outbox
+on:
+  push:
+    branches:
+      - codex/device-offline-2026-10-30
+    paths:
+      - 'apps/web/src/**'
+      - 'apps/web/public/**'
+      - 'apps/web/vite.config.ts'
+      - 'tests/**'
+      - '.github/workflows/device-offline-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/web/src/**'
+      - 'apps/web/public/**'
+      - 'apps/web/vite.config.ts'
+      - 'tests/**'
+      - '.github/workflows/device-offline-ci.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: App installation and push safety
+        run: node --import tsx --test tests/app-install.test.ts tests/web-push.test.ts
