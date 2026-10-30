@@ -7,6 +7,7 @@ import { isAppWindow } from "./app-install";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
+import { migrateExistingCatalog } from "./offline-shared-migrate";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
@@ -214,6 +215,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
           await api("/companies/" + companyId + "/item-changes");
           itemPermission = true;
         } catch { /* no item permission: do not read shared items */ }
+        if (itemPermission) await migrateExistingCatalog(userId, companyId).catch(() => {});
         const prior = itemPermission ?
           await readSharedItemProgress(userId, companyId) : { complete:true,count:0,
             cursor:{ since:"1970-01-01T00:00:00.000Z",afterId:0 } };
