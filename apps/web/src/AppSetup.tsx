@@ -50,20 +50,22 @@ export function AppSetup({ userId, companyId }: { userId?: number; companyId?: n
   }
   return <section className="app-device-setup" data-alraesy-setup="current"
     data-company-id={companyId ?? ""} aria-label="إعداد التطبيق والإشعارات">
-    {!install.installed && <Card title="ثبّت تطبيق الرئيسي على جهازك">
-      <p>لتصل إلى عملك مباشرة، أكمل التثبيت من هنا ثم فعّل إشعارات الجهاز.</p>
-      <div className="form-actions">
-        {install.prompt && <Button disabled={install.busy} onClick={() => void requestInstall()}>
-          <Download size={16} aria-hidden="true" />
-          {install.busy ? "جارٍ فتح التثبيت…" : "تثبيت التطبيق"}
-        </Button>}
-        <Button variant="secondary" onClick={() => void copyLink()}>نسخ الرابط لفتحه في المتصفح</Button>
-      </div>
-      {install.message && <Notice>{install.message}</Notice>}
-      <p>{installInstructions(apple, navigator.userAgent)}</p>
-      {!install.prompt && <small className="muted">إذا لم تظهر نافذة تثبيت تلقائية، اتبع الخطوات أعلاه. عدم ظهورها لا يعني أن التطبيق مثبت.</small>}
-      {copyMessage && <p role="status">{copyMessage}</p>}
-    </Card>}
+    {!install.installed && <details className="app-install-guide">
+      <summary>تثبيت تطبيق الرئيسي على الجهاز (اختياري)</summary>
+      <Card title="تثبيت التطبيق">
+        <p>المتصفح يعمل عبر الإنترنت دون تنزيل أصناف. لتنزيل البيانات للعمل دون إنترنت، افتح التطبيق المثبّت.</p>
+        <div className="form-actions">
+          {install.prompt && <Button disabled={install.busy} onClick={() => void requestInstall()}>
+            <Download size={16} aria-hidden="true" />
+            {install.busy ? "جارٍ فتح التثبيت…" : "تثبيت التطبيق"}
+          </Button>}
+          <Button variant="secondary" onClick={() => void copyLink()}>نسخ الرابط</Button>
+        </div>
+        {install.message && <Notice>{install.message}</Notice>}
+        <p>{installInstructions(apple, navigator.userAgent)}</p>
+        {copyMessage && <p role="status">{copyMessage}</p>}
+      </Card>
+    </details>}
     {userId && <OfflineStatus key={userId} userId={userId} companyId={companyId} />}
     {userId ? <DevicePushBootstrap key={userId} userId={userId} /> :
       !install.installed && <p className="muted">بعد تسجيل الدخول ستظهر خطوة تفعيل إشعارات العمل تلقائيًا.</p>}

@@ -48,7 +48,7 @@ self.addEventListener("notificationclick",event=>{
 
 /* Offline application shell. Only versioned static files are cached here;
  * API responses and financial documents are NEVER stored by the worker. */
-const shellCache = "alraesy-static-offline-20261030-v1";
+const shellCache = "alraesy-static-offline-20261030-v2";
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(shellCache);
@@ -73,6 +73,15 @@ self.addEventListener("activate", event => {
     await Promise.all(keys.filter(key => key.startsWith("alraesy-static-") && key !== shellCache)
       .map(key => caches.delete(key)));
     await self.clients.claim();
+    // Reload only overview windows after a new shell activates. Never
+    // interrupt invoice, payment or question editors with unsaved input.
+    const windows = await self.clients.matchAll({type:"window",includeUncontrolled:true});
+    await Promise.allSettled(windows.map(async client => {
+      const url = new URL(client.url);
+      if (url.origin !== self.location.origin) return;
+      if (url.pathname !== "/" && !/^\/companies\/\d+\/?$/.test(url.pathname)) return;
+      if (typeof client.navigate === "function") await client.navigate(url.href);
+    }));
   })());
 });
 self.addEventListener("fetch", event => {

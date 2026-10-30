@@ -27,10 +27,10 @@ export function installInstructions(apple: boolean, userAgent: string): string {
 }
 
 const listeners = new Set<() => void>();
-const standalone = () => ["standalone", "minimal-ui", "window-controls-overlay"]
+export const isAppWindow = () => ["standalone", "minimal-ui", "window-controls-overlay"]
   .some(mode => window.matchMedia(`(display-mode: ${mode})`).matches) ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
-let state: InstallState = { installed: standalone(), prompt: null, busy: false, message: "" };
+let state: InstallState = { installed: isAppWindow(), prompt: null, busy: false, message: "" };
 function update(patch: Partial<InstallState>) {
   state = { ...state, ...patch };
   listeners.forEach(listener => listener());
@@ -53,9 +53,9 @@ window.addEventListener("appinstalled", () => {
   update({ installed: true, prompt: null, busy: false, message: "" });
 });
 const displayMode = window.matchMedia("(display-mode: standalone)");
-displayMode.addEventListener?.("change", () => update({ installed: standalone() }));
+displayMode.addEventListener?.("change", () => update({ installed: isAppWindow() }));
 window.addEventListener("pageshow", () => {
-  if (standalone()) update({ installed: true, prompt: null });
+  if (isAppWindow()) update({ installed: true, prompt: null });
 });
 
 export async function requestInstall(): Promise<void> {
@@ -81,6 +81,8 @@ export async function requestInstall(): Promise<void> {
 export function prepareInstall(): void {
   if (window.isSecureContext && "serviceWorker" in navigator) {
     // This worker handles notifications only; it never caches private API data.
-    void navigator.serviceWorker.register("/push-sw.js", { scope: "/" }).catch(() => {});
+    void navigator.serviceWorker.register("/push-sw.js", {
+      scope: "/", updateViaCache: "none",
+    }).then(registration => registration.update()).catch(() => {});
   }
 }

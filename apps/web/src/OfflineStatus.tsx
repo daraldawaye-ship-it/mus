@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
+import { isAppWindow } from "./app-install";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
@@ -257,6 +258,9 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       }
     })().finally(() => { activeCatalogDownload = null; });
   }
+  // Keep item-delta polling and pending operations in both modes.
+  // Browser pages need no catalog download toolbar.
+  if (!isAppWindow()) return null;
   return <section className="offline-status" aria-label="العمل بدون إنترنت">
     <div className="form-actions">
       <span role="status">{online ? "متصل" : "بدون إنترنت"}</span>
