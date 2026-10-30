@@ -130,11 +130,11 @@ export function questionRoutes(pool: Pool): Router {
       const status=req.query.status??"active";
       if(status!=="active" && status!=="archived")
         throw new HttpError(400,"invalid_query","حالة الأرشيف غير صالحة");
-      const args=[companyId,user.id,searchPattern(p.q),manager,categoryFilter];
+      const args=[companyId,user.id,searchPattern(p.q),categoryFilter];
       const visibility=manager
         ? status==="archived" ? "NOT q.active" : "q.active"
         : "q.active";
-      const condition=`q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($5::text IS NULL OR q.category=$5)`;
+      const condition=`q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($4::text IS NULL OR q.category=$4)`;
       const count=await client.query(
         `SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $2 OR q.category ILIKE $2) AND ($3::text IS NULL OR q.category=$3)`,
         [companyId,searchPattern(p.q),categoryFilter]);
@@ -158,7 +158,7 @@ export function questionRoutes(pool: Pool): Router {
         ORDER BY (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) IS NOT NULL ASC,
           CASE WHEN NOT EXISTS (SELECT 1 FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) THEN q.priority END ASC,
           (SELECT max(a.answered_at) FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) ASC,
-          q.id ASC LIMIT $6 OFFSET $7
+          q.id ASC LIMIT $5 OFFSET $6
       `, [...args,p.pageSize,p.offset]);
       const counts=await otherOptionCounts(client,
         rows.rows.filter(row=>row.my_last_selected_answer !== null).map(row=>row.id),user.id);
