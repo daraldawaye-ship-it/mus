@@ -6,6 +6,8 @@ import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { cacheItemCompositions } from "./offline-compositions";
 import { cacheQuestionPages } from "./offline-questions";
+import { downloadSharedReferenceCards } from "./offline-shared-master";
+import { readSharedItemProgress, saveSharedItemBatch } from "./offline-shared-items";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
