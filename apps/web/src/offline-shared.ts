@@ -1,0 +1,105 @@
+// Device-local shared reference cache. Read access is granted only after
+// this signed-in user has successfully read the corresponding live endpoint.
+const dbName = "alraesy-shared-references-v1";
+let identity: number | null = null;
+const grants = new Set<string>();
+export function sharedIdentity(userId: number | null) {
+  identity = userId;
+  grants.clear();
+}
+function scope(path: string): string | null {
+  const match = path.match(/^\/companies\/(\d+)\/(item-compositions|item-shelves|doctors|sale-customers|branches|locations|accounts)(?:[/?]|$)/);
+  if (match) return match[1] + ":" + match[2];
+  const opt = path.match(/^\/companies\/(\d+)\/commerce-options\?/);
+  if (opt) {
+    const type = new URLSearchParams(path.split("?")[1]).get("type");
+    if (type && ["items","accounts","branches","locations","currencies"].includes(type))
+      return opt[1] + ":options:" + type;
+  }
+  const q = path.match(/^\/(?:companies\/(\d+)\/)?questions(?:[/?]|$)/);
+  if (q) return (q[1] || "public") + ":questions";
+  return null;
+}
+function restricted(path: string, value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const list = value as { items?: Record<string, unknown>[] };
+  if (!Array.isArray(list.items)) return value;
+  if (/\/questions(?:\?|$)/.test(path))
+    return { ...list, items: list.items.map(item => ({
+      id:item.id, companyId:item.companyId, category:item.category,
+      question:item.question, options:item.options, optionCount:item.optionCount,
+      priority:item.priority, points:item.points, active:item.active,
+    })) };
+  if (/\/accounts(?:\?|$)/.test(path) || /type=accounts(?:&|$)/.test(path))
+    return { ...list, items: list.items.map(item => ({
+      id:item.id, companyId:item.companyId, code:item.code, name:item.name,
+      parentId:item.parentId, kind:item.kind, category:item.category,
+      active:item.active, accountChoice:item.accountChoice,
+    })) };
+  if (/type=items(?:&|$)/.test(path))
+    return { ...list, items: list.items.map(item => {
+      const { availableSmallest, approximateCoverageDays, coverageAfterReserveDays, ...card } = item;
+      return card;
+    }) };
+  return value;
+}
+type Entry = { key:string; data:unknown };
+async function db(): Promise<IDBDatabase> {
+  return new Promise((resolve,reject) => {
+    const r = indexedDB.open(dbName, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("entries", { keyPath: "key" });
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function write(key:string,data:unknown) {
+  const database=await db();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=database.transaction("entries","readwrite");
+      tx.objectStore("entries").put({key,data} satisfies Entry);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error);
+    });
+  } finally { database.close(); }
+}
+async function read(key:string): Promise<unknown> {
+  const database=await db();
+  try {
+    return await new Promise((resolve,reject)=>{
+      const req=database.transaction("entries","readonly").objectStore("entries").get(key);
+      req.onsuccess=()=>resolve((req.result as Entry|undefined)?.data);
+      req.onerror=()=>reject(req.error);
+    });
+  } finally { database.close(); }
+}
+export async function shareAuthorizedRead(path:string,data:unknown):Promise<void> {
+  const group=scope(path);
+  if (identity===null || !group) return;
+  const current=identity;
+  const sanitized=restricted(path,data);
+  const serialized=JSON.stringify(sanitized);
+  if (!serialized || serialized.length>800_000) return;
+  if (current!==identity) return;
+  // A successful live GET is the authorization proof for this session.
+  grants.add(current+":"+group);
+  await write("snapshot:"+path,sanitized);
+}
+export async function reuseAuthorizedRead<T>(path:string):Promise<T|undefined> {
+  const group=scope(path);
+  if (identity===null || !group || !grants.has(identity+":"+group)) return undefined;
+  return await read("snapshot:"+path) as T|undefined;
+}
+export async function sharedProgress(
+  companyId:number,group:string,userId:number,
+):Promise<{page:number;complete:boolean}|null> {
+  if (identity!==userId || !grants.has(userId+":"+companyId+":"+group)) return null;
+  return (await read("progress:"+companyId+":"+group) as {page:number;complete:boolean}|undefined)??null;
+}
+export async function saveSharedProgress(
+  companyId:number,group:string,userId:number,page:number,complete:boolean,
+) {
+  if (identity!==userId || !grants.has(userId+":"+companyId+":"+group)) return;
+  await write("progress:"+companyId+":"+group,{page,complete});
+}
