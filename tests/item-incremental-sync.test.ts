@@ -40,3 +40,14 @@ test("device setup has one active offline panel and a resumable lightweight cata
   assert.match(storage, /writeCatalog\(entries\)/);
   assert.match(styles, /\.app-device-setup:has\(~ \.app-device-setup\)/);
 });
+
+
+test("only one device setup remains visible even when legacy mounts are in separate wrappers", () => {
+  const setup = readFileSync("apps/web/src/AppSetup.tsx", "utf8");
+  const status = readFileSync("apps/web/src/OfflineStatus.tsx", "utf8");
+  assert.match(setup, /document\.querySelectorAll<HTMLElement>\("\.app-device-setup"\)/);
+  assert.match(setup, /panel\.style\.setProperty\("display", "none", "important"\)/);
+  assert.match(setup, /panel\.dataset\.alraesySetup === "current"/);
+  assert.match(setup, /observer\.observe\(document\.body/);
+  assert.match(status, /observer\.observe\(document\.body/);
+});

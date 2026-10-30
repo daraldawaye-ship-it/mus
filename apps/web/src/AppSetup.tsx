@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Download } from "lucide-react";
 import { DevicePushBootstrap } from "./DeviceNotificationSettings";
 import {
@@ -12,6 +12,33 @@ import { OfflineStatus } from "./OfflineStatus";
 export function AppSetup({ userId, companyId }: { userId?: number; companyId?: number }) {
   const install = useSyncExternalStore(observeInstall, installSnapshot);
   const [copyMessage, setCopyMessage] = useState("");
+  useEffect(() => {
+    // A browser can retain older device-setup DOM from a previous application
+    // shell. Sibling-only CSS cannot hide copies mounted in separate wrappers.
+    // Elect ONE live setup across the entire document, preferring the latest
+    // instance with a known company. Do not remove React-managed nodes.
+    const reconcile = () => {
+      const panels = Array.from(document.querySelectorAll<HTMLElement>(".app-device-setup"));
+      const current = panels.filter(panel => panel.dataset.alraesySetup === "current");
+      const chosen = current.filter(panel => panel.dataset.companyId !== "").at(-1)
+        ?? current.at(-1) ?? panels.at(-1);
+      for (const panel of panels) {
+        if (panel === chosen) panel.style.removeProperty("display");
+        else panel.style.setProperty("display", "none", "important");
+      }
+    };
+    const observer = new MutationObserver(reconcile);
+    observer.observe(document.body, { childList: true, subtree: true });
+    reconcile();
+    return () => {
+      observer.disconnect();
+      // When the elected setup unmounts, a remaining setup can be shown.
+      queueMicrotask(() => {
+        const panels = Array.from(document.querySelectorAll<HTMLElement>(".app-device-setup"));
+        if (panels.length === 1) panels[0].style.removeProperty("display");
+      });
+    };
+  }, [userId, companyId]);
   const apple = appleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
   async function copyLink() {
     try {
@@ -21,7 +48,8 @@ export function AppSetup({ userId, companyId }: { userId?: number; companyId?: n
       setCopyMessage("انسخ الرابط من شريط العنوان وافتحه في متصفح هاتفك.");
     }
   }
-  return <section className="app-device-setup" aria-label="إعداد التطبيق والإشعارات">
+  return <section className="app-device-setup" data-alraesy-setup="current"
+    data-company-id={companyId ?? ""} aria-label="إعداد التطبيق والإشعارات">
     {!install.installed && <Card title="ثبّت تطبيق الرئيسي على جهازك">
       <p>لتصل إلى عملك مباشرة، أكمل التثبيت من هنا ثم فعّل إشعارات الجهاز.</p>
       <div className="form-actions">
