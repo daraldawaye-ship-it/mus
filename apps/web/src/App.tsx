@@ -1113,7 +1113,6 @@ function Workspace() {
             </div>
           </header>
           <main className="main-content" ref={main} tabIndex={-1}>
-            <AppSetup key={user?.id ?? "guest"} userId={user?.id} companyId={navigationContext?.company.id} />
             {sessionError && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}
             <Routes>
@@ -1289,6 +1288,10 @@ function Workspace() {
                 }
               />
             </Routes>
+            {/* Device sync runs in the background; only installation help or
+                an actionable notification prompt can appear below page content. */}
+            <AppSetup key={user?.id ?? "guest"} userId={user?.id}
+              companyId={navigationContext?.company.id} />
           </main>
           <footer className="workspace-footer">
             <span>الرئيسي</span>
