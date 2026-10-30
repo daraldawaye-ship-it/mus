@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { cacheItemCompositions } from "./offline-compositions";
@@ -35,6 +35,7 @@ export function OfflineStatus({ userId, companyId }: DeviceProps) {
 
 type CatalogUiState = { key: string; busy: boolean; progress: string; message: string };
 let activeCatalogDownload: Promise<void> | null = null;
+let catalogRetryTimer: number | null = null;
 let catalogUi: CatalogUiState = { key: "", busy: false, progress: "", message: "" };
 const CATALOG_EVENT = "alraesy-catalog-download-progress";
 function publishCatalogStatus(patch: Partial<CatalogUiState>) {
@@ -187,11 +188,22 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       setMessage(error instanceof Error ? error.message : "تعذرت المزامنة");
     } finally { setBusy(false); }
   }
+  function scheduleNextBatch() {
+    if (catalogRetryTimer !== null) return;
+    catalogRetryTimer = window.setTimeout(() => {
+      catalogRetryTimer = null;
+      if (offlineUser() === userId && navigator.onLine && isAppWindow() &&
+          document.visibilityState !== "hidden" &&
+          window.location.pathname.startsWith("/companies/" + companyId)) {
+        downloadCatalog();
+      }
+    }, 5_000);
+  }
   function downloadCatalog() {
-    if (!companyId || !navigator.onLine || activeCatalogDownload) return;
+    if (!companyId || !navigator.onLine || activeCatalogDownload || offlineUser() !== userId) return;
     const key = scopeKey;
     publishCatalogStatus({ key, busy: true, progress: "", message: "" });
-    activeCatalogDownload = (async () => {
+    const transfer = async () => {
       let savedItems = 0;
       let otherRecords = 0;
       try {
@@ -221,7 +233,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
             if (!response.hasMore) { complete = true; break; }
           }
-          if (!complete) throw new Error("وصل التنزيل إلى حد الدفعات؛ يمكنك الاستكمال بالضغط مجددًا");
+          if (!complete) { scheduleNextBatch(); return; }
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
@@ -250,7 +262,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
               finished = true; break;
             }
           }
-          if (!finished) throw new Error("لم يكتمل تنزيل " + type + "؛ اضغط مجددًا للاستكمال");
+          if (!finished) { scheduleNextBatch(); return; }
         }
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
@@ -265,7 +277,17 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       } finally {
         publishCatalogStatus({ busy: false, progress: "" });
       }
-    })().finally(() => { activeCatalogDownload = null; });
+    };
+    // One company/user catalog download at a time across open app windows.
+    activeCatalogDownload = (async () => {
+      if ("locks" in navigator && navigator.locks) {
+        await navigator.locks.request("alraesy-catalog:" + key,
+          { ifAvailable: true }, async lock => { if (lock) await transfer(); });
+      } else await transfer();
+    })().finally(() => {
+      activeCatalogDownload = null;
+      publishCatalogStatus({ busy: false, progress: "" });
+    });
   }
   useEffect(() => {
     if (!companyId || !isAppWindow()) return;
@@ -279,6 +301,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     resume();
     return () => {
       window.clearInterval(timer);
+      if (catalogRetryTimer !== null) {
+        window.clearTimeout(catalogRetryTimer);
+        catalogRetryTimer = null;
+      }
       window.removeEventListener("online", resume);
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
@@ -290,20 +316,5 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   // Keep item-delta polling and pending operations in both modes.
   // Browser pages need no catalog download toolbar.
   if (!isAppWindow()) return null;
-  return <section className="offline-status" aria-label="العمل بدون إنترنت">
-    <div className="form-actions">
-      <span role="status">{online ? "متصل" : "بدون إنترنت"}</span>
-      <span>بانتظار المزامنة: <strong>{pending}</strong></span>
-      {companyId && <Button variant="secondary" disabled={!online || downloading}
-        onClick={() => void downloadCatalog()}>
-        {downloading ? "جارٍ حفظ البيانات على الجهاز…" : "تنزيل/تحديث بيانات الجهاز"}
-      </Button>}
-      {pending > 0 && <Button variant="secondary" disabled={!online || busy} onClick={() => void sync()}>
-        {busy ? "جارٍ التحقق…" : "مزامنة المحفوظات"}
-      </Button>}
-    </div>
-    {progress && <small role="status">{progress}</small>}
-    {message && <Notice>{message}</Notice>}
-    {!online && <small className="muted">النسخة المحلية للعرض فقط؛ الأسعار والمخزون قد تتغير. السندات والفواتير غير مرحلة حتى إقرار الخادم.</small>}
-  </section>;
+  return null;
 }
