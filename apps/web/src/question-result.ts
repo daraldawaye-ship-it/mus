@@ -3,6 +3,8 @@ export type QuestionResult = {
   selectedAnswer: number;
   correct: boolean;
   correctAnswer: number | null;
+  /** Correct choice as recorded at the time of the answer, not after edits. */
+  correctText?: string | null;
   points: number;
   firstAttempt?: boolean;
   comment: string | null;
@@ -15,6 +17,7 @@ export type QuestionResultSnapshot = {
   correctAnswer: number | null;
   myLastPoints: number | null;
   myLastComment: string | null;
+  myLastCorrectText?: string | null;
   otherOptionCounts: number[] | null;
 };
 
@@ -36,10 +39,32 @@ export function visibleQuestionResult(
       selectedAnswer: question.myLastSelectedAnswer,
       correct: question.myLastCorrect,
       correctAnswer: question.correctAnswer,
+      correctText: question.myLastCorrectText ??
+        (saved?.selectedAnswer === question.myLastSelectedAnswer &&
+         saved?.correct === question.myLastCorrect ? saved?.correctText : null),
       points: question.myLastPoints ?? 0,
       comment: question.myLastComment,
       otherOptionCounts: question.otherOptionCounts ?? [],
     };
   }
   return isConfirmed(saved) ? saved : null;
+}
+
+/** Only reveal the correct choice after the user's answer is server-confirmed. */
+export function correctOptionText(
+  options: readonly string[],
+  outcome: QuestionResult | null,
+): string | null {
+  if (!outcome || typeof outcome.correct !== "boolean") return null;
+  if (typeof outcome.correctText === "string" && outcome.correctText.trim()) {
+    return outcome.correctText;
+  }
+  // Old cached answers may not include the correct index. When the answer
+  // was correct, the user's chosen option is necessarily the right answer.
+  const index = typeof outcome.correctAnswer === "number" &&
+    Number.isInteger(outcome.correctAnswer) ? outcome.correctAnswer :
+    outcome.correct ? outcome.selectedAnswer : null;
+  if (index === null || index < 1 || index > options.length) return null;
+  const text = options[index - 1];
+  return typeof text === "string" && text.trim() ? text : null;
 }
