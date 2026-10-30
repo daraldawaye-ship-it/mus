@@ -297,6 +297,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                 className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}`}>
                 <input type="radio" name={`question-choice-${question.id}`}
                   checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
+                  onChange={()=>void submitAnswer(question,i+1)}
                   onClick={()=>void submitAnswer(question,i+1)}/>
                 <span className="question-choice-content">
                   <span>{question.options[i]}</span>
