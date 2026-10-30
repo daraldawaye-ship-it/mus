@@ -225,6 +225,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
+        await cacheItemCompositions(userId, companyId).catch(() => {});
         // Small reference catalogs use their ordinary permitted endpoints.
         for (const type of ["accounts", "branches", "locations", "currencies"]) {
           const checkpoint = await readCatalogProgress(userId, companyId, "option:" + type);
