@@ -3101,6 +3101,33 @@ ul {
   align-items: center;
   gap: 6px;
 }
+.page-directory-grant-list {
+  min-width: 0;
+  margin-block-start: 10px;
+  padding-block-start: 12px;
+  border-top: 1px solid var(--border);
+}
+.page-directory-grant-list > p {
+  margin-block: 5px;
+  font-size: 12px;
+}
+.page-directory-grants-scroll {
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.page-directory-grants-scroll table {
+  min-width: 480px;
+}
+.page-directory-grants-scroll th {
+  position: sticky;
+  top: 0;
+}
+.page-directory-grants-scroll td:first-child {
+  overflow-wrap: anywhere;
+}
 .page-directory-settings-fields {
   display: grid;
   grid-template-columns: 1fr 1fr 120px;
