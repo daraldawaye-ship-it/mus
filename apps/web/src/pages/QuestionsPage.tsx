@@ -67,8 +67,6 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const questionId=params.get("questionId");
   const [infoId,setInfoId]=useState<number|null>(null);
   const infoWrap=useRef<HTMLDivElement|null>(null);
-  const resultsRef=useRef<HTMLElement|null>(null);
-  const scrollToResultsOnPageChange=useRef(false);
   const optionOrders=useRef<Map<number,number[]>>(new Map());
   const [chosenAnswers,setChosenAnswers]=useState<Record<number,number>>({});
   const [comments,setComments]=useState<Record<number,string>>({});
@@ -100,18 +98,13 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       (tab==="answers" || categorySelected),
   });
   const liveQuestions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
-  const totalPages=Math.max(1,Math.ceil((list.data?.total??0)/20));
-  useEffect(()=>{
-    if(!scrollToResultsOnPageChange.current)return;
-    scrollToResultsOnPageChange.current=false;
-    resultsRef.current?.scrollIntoView({behavior:"instant",block:"start"});
-  },[page]);
-  function goToPage(next:number){
-    if(!list.data||next<1||next>totalPages||next===page)return;
-    scrollToResultsOnPageChange.current=true;
+  function refreshQuestions(){
+    if(list.isFetching)return;
     setInfoId(null);
     setFrozenQuestions(null);
-    setPage(next);
+    setPage(1);
+    void client.invalidateQueries({queryKey:["questions-module",user?.id,scope,tab]});
+    window.scrollTo({top:0,behavior:"smooth"});
   }
   // Retain current-page order even if focus-triggered/background refetch sorts answered
   // questions to a later page. New page/search navigation uses live server ordering.
@@ -268,7 +261,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         </div>
       </form>
     </Card>}
-    {(tab==="answers"||categorySelected)&&<section ref={resultsRef} className="question-results">
+    {(tab==="answers"||categorySelected)&&<section className="question-results">
       <div className="question-search">
         <Field className="question-search-field" type="search" label="بحث" value={query}
           onChange={e=>{setQuery(e.target.value);setPage(1);setFrozenQuestions(null);}} />
@@ -347,13 +340,12 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         {answer.comment&&<p style={{whiteSpace:"pre-wrap"}}>التعليق: {answer.comment}</p>}
       </article>)}
       {list.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة.</Notice>}
-      {!!list.data&&<nav className="page-actions question-pagination" aria-label="التنقل بين صفحات الأسئلة">
-        <span>صفحة {page} من {totalPages} · إجمالي {list.data.total}</span>
-        <Button variant="secondary" size="compact" disabled={page<=1||list.isFetching} onClick={()=>goToPage(page-1)}>السابق</Button>
-        <Button variant="primary" disabled={page>=totalPages||list.isFetching} onClick={()=>goToPage(page+1)}>
-          {list.isFetching?"جارٍ التحميل…":"التالي"}
+      {!!list.data&&<div className="page-actions question-pagination">
+        <span>إجمالي {list.data.total} · تُعرض 20 نتيجة في كل مرة</span>
+        <Button variant="primary" disabled={list.isFetching} onClick={refreshQuestions}>
+          {list.isFetching?"جارٍ التحديث…":"تحديث"}
         </Button>
-      </nav>}
+      </div>}
     </section>}
   </div>;
 }
