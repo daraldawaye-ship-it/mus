@@ -5,6 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ListTree, Settings2, TablePrope
 import type { PageEntry, User, GeneralTableInput } from "../../../packages/contracts/src/index";
 import { generalTableSchema } from "../../../packages/contracts/src/index";
 import { api } from "./api";
+import { rememberRead } from "./offline-storage";
 import { usePageDirectory } from "./page-directory";
 import { useControls } from "./control";
 import { errorMessage } from "./phase2";
@@ -177,6 +178,7 @@ export function ShortcutEditor({user,companyId,open,onClose}:{
       const permitted=new Set(available.map(entry=>entry.key));
       const pageKeys=chosen.filter(key=>permitted.has(key));
       const updated=await api<Shortcuts>(url(companyId),{method:"PUT",body:{pageKeys}});
+      await rememberRead(url(companyId),updated);
       client.setQueryData(queryKey,updated);
       await client.invalidateQueries({queryKey});
       onClose();
