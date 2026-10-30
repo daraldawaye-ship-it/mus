@@ -7,6 +7,7 @@ import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOper
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { correctOptionText, orderCachedQuestionCards, visibleQuestionResult, type QuestionResult } from "../question-result";
+import { gradeOfflineQuestion, loadOfflineQuestionPack, type OfflineQuestionCard } from "../offline-question-pack";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Question = {
@@ -73,6 +74,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [comments,setComments]=useState<Record<number,string>>({});
   const [pendingAnswers,setPendingAnswers]=useState<Record<number,Submission>>({});
   const [queuedAnswers,setQueuedAnswers]=useState<Record<number,boolean>>({});
+  const [localOutcomes,setLocalOutcomes]=useState<Record<number,AnswerOutcome>>({});
   useEffect(() => {
     if (!user?.id) return;
     const refresh = () => {
@@ -85,11 +87,28 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
           if (match) queued[Number(match[1])] = true;
         }
         setQueuedAnswers(queued);
+        // Reconstruct locally graded answers after an offline restart.
+        void loadOfflineQuestionPack(user.id,companyId).then(keys => {
+          const offlineOutcomes:Record<number,AnswerOutcome>={};
+          for(const row of rows) {
+            const match=row.kind==="answer" && row.path.startsWith(prefix)
+              ? row.path.match(/\/(\d+)\/answers$/) : null;
+            const question=match?keys.find(item=>item.id===Number(match[1])):null;
+            const selected=(row.body as {selectedAnswer?:unknown}).selectedAnswer;
+            if(question && typeof selected==="number"){
+              const result=gradeOfflineQuestion(question,keys,selected);
+              if(result)offlineOutcomes[question.id]={
+                selectedAnswer:selected, ...result,points:0,comment:null,otherOptionCounts:[],
+              };
+            }
+          }
+          setLocalOutcomes(offlineOutcomes);
+        }).catch(()=>{});
       }).catch(() => {});
     };
     refresh();
     return offlineChanged(refresh);
-  }, [user?.id, root]);
+  }, [user?.id, root,companyId]);
 
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
   const [confirmedAnswers,setConfirmedAnswers]=useState<Record<number,AnswerOutcome>>({});
@@ -200,7 +219,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   // Retain current-page order even if focus-triggered/background refetch sorts answered
   // questions to a later page. New page/search navigation uses live server ordering.
   const questions=frozenQuestions?.url===url
-    ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old)
+    ? navigator.onLine ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old) : frozenQuestions.items
     : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
   useEffect(()=>{
@@ -230,7 +249,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   }
   function selectCategory(category:string|null){
     setPage(1);setQuery("");setInfoId(null);setStatusFilter("active");
-    setPendingAnswers({});setFrozenQuestions(null);setConfirmedAnswers({});setError("");setMessage("");
+    setPendingAnswers({});setFrozenQuestions(null);setConfirmedAnswers({});setLocalOutcomes({});setError("");setMessage("");
     setParams(current=>{
       const next=new URLSearchParams(current);
       if(category===null)next.delete("category");
@@ -240,7 +259,8 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     });
   }
   function outcomeFor(question:Question): AnswerOutcome|null {
-    return visibleQuestionResult(question,savedAnswers[question.id],confirmedAnswers[question.id]);
+    return visibleQuestionResult(question,savedAnswers[question.id],confirmedAnswers[question.id])
+      ?? (queuedAnswers[question.id] ? localOutcomes[question.id]??null : null);
   }
   async function submitAnswer(question:Question,selectedAnswer:number) {
     // The click is the submission: capture the choice directly, without waiting
@@ -256,6 +276,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     setPendingAnswers(prev=>({...prev,[question.id]:payload}));
     setSendingQuestionId(question.id);setError("");setMessage("");
     try{
+      if(!navigator.onLine) throw new TypeError("offline");
       const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
       const confirmed={...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment};
       setConfirmedAnswers(prev=>({...prev,[question.id]:confirmed}));
@@ -271,8 +292,17 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         try{
           await queueOfflineOperation(user.id,companyId,"answer",
             root+"/"+question.id+"/answers",payload);
+          const keys=await loadOfflineQuestionPack(user.id,companyId);
+          const provisional=gradeOfflineQuestion(question,keys,selectedAnswer);
+          if(provisional){
+            setLocalOutcomes(prev=>({...prev,[question.id]:{
+              selectedAnswer,...provisional,points:0,comment,otherOptionCounts:[],
+            }}));
+          }
           setQueuedAnswers(prev=>({...prev,[question.id]:true}));
-          setMessage("تم حفظ إجابتك على هذا الجهاز. لم تُحتسب النقاط حتى تأكيد الخادم عند المزامنة.");
+          setMessage(provisional
+            ? "ظهرت نتيجة الإجابة من بيانات الجهاز. ستُعتمد النقاط عند عودة الإنترنت."
+            : "حُفظت الإجابة للمزامنة؛ يلزم تنزيل أسئلة هذه الفئة متصلًا لإظهار التصحيح دون إنترنت.");
         }catch(localError){setError("تعذر الحفظ المحلي: "+errorMessage(localError));}
       }else setError(errorMessage(cause));
     }
@@ -426,7 +456,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
               </div>}
             </div>
           </div>
-          {queuedAnswers[question.id]&&<p role="status">الإجابة محفوظة محليًا، وتنتظر المزامنة ولا تُحسب نقاطها بعد.</p>}
+          {queuedAnswers[question.id]&&<p role="status" className="question-offline-pending">نتيجة محلية من النسخة المحفوظة — الإجابة بانتظار المزامنة وتأكيد النقاط من الخادم.</p>}
           {answered&&<div className={`question-result ${answered.correct?"question-result-correct":"question-result-wrong"}`}
             role="status" aria-live="polite">
             <strong>{answered.correct?"✓ إجابتك صحيحة":"✗ إجابتك خاطئة"}</strong>
