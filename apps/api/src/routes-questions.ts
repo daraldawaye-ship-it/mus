@@ -222,7 +222,7 @@ export function questionRoutes(pool: Pool): Router {
         "UPDATE questions SET active=$1,updated_by=$2,revision=revision+1,updated_at=now() WHERE id=$3 RETURNING revision,active",
         [input.active,user.id,questionId]
       )).rows[0];
-      await audit(client,user,input.active?"question.restore":"question.archive","question",questionId,
+      await audit(client,user,"question.update","question",questionId,
         {active:old.active},{active:updated.active},companyId);
       return {id:questionId,revision:updated.revision,active:updated.active};
     });
