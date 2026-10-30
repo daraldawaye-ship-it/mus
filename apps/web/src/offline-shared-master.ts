@@ -16,8 +16,9 @@ type Page = { items: Record<string,unknown>[];total?:number };
  */
 export async function downloadSharedReferenceCards(userId:number,companyId:number) {
   let remaining=20;
+  const interrupted=()=>!navigator.onLine||document.visibilityState==="hidden";
   for (const [group,resource] of sections) {
-    if (!navigator.onLine||document.visibilityState==="hidden"||remaining<=0) return;
+    if (interrupted()||remaining<=0) return;
     const pathAt=(page:number)=>{
       const search=new URLSearchParams(resource.split("?")[1]||"");
       search.set("page",String(page));
@@ -31,7 +32,7 @@ export async function downloadSharedReferenceCards(userId:number,companyId:numbe
       const previous=await sharedProgress(companyId,group,userId);
       if (previous?.complete) continue;
       for(let page=previous?.page??1;remaining>0;page++) {
-        if(!navigator.onLine||document.visibilityState==="hidden") return;
+        if(interrupted()) return;
         const path=pathAt(page);
         const data=page===1?first:await api<Page>(path);
         await shareAuthorizedRead(path,data);
