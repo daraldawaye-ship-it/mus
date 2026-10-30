@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { validOfflineSession } from "../apps/web/src/offline-storage.ts";
 
 test("push worker never caches API requests", () => {
   const text=readFileSync("apps/web/public/push-sw.js","utf8");
@@ -70,4 +71,33 @@ test("invoice and work routes render before nonblocking device setup", () => {
   assert.match(status,/window\.setInterval\(resume, 120_000\)/);
   assert.match(status,/scheduleNextBatch/);
   assert.match(status,/return null;/);
+});
+
+test("only a recent unrevoked local identity can resume without network", () => {
+  const now=Date.UTC(2026,9,30);
+  const previous={user:{id:7,suspended:false,archived:false},savedAt:now-3600000};
+  assert.equal(validOfflineSession(previous,now),true);
+  assert.equal(validOfflineSession({...previous,savedAt:now-8*86400000},now),false);
+  assert.equal(validOfflineSession({...previous,savedAt:now+1000},now),false);
+  assert.equal(validOfflineSession({...previous,user:{...previous.user,suspended:true}},now),false);
+  assert.equal(validOfflineSession({...previous,user:{...previous.user,archived:true}},now),false);
+  assert.equal(validOfflineSession({...previous,user:{...previous.user,id:0}},now),false);
+  assert.equal(validOfflineSession(null,now),false);
+});
+
+test("offline bootstrap never trusts a denied server session or caches credentials", () => {
+  const api=readFileSync("apps/web/src/api.tsx","utf8");
+  const store=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const shared=readFileSync("apps/web/src/offline-shared.ts","utf8");
+  assert.match(api,/readOfflineSession\(\)/);
+  assert.match(api,/restoreOfflineSharedGrants\(user\.id\)/);
+  assert.match(api,/error\.status === 401 \|\| error\.status === 403/);
+  assert.match(api,/clearOfflineSession\(\)/);
+  assert.match(api,/window\.addEventListener\("online", reconnect\)/);
+  assert.match(store,/offline-session/);
+  assert.match(store,/OFFLINE_SESSION_MAX_AGE_MS = 7/);
+  assert.match(store,/\^\\\/page-catalog/);
+  assert.doesNotMatch(store,/writeOne\("offline-session"[\s\S]{0,200}csrf:/);
+  assert.match(shared,/grants\.clear\(\)/);
+  assert.match(shared,/clearOfflineSharedGrants/);
 });
