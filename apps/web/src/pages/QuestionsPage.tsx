@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, useSession } from "../api";
+import { api, ApiFailure, useSession } from "../api";
+import { offlineChanged, pendingForUser, queueOfflineOperation } from "../offline-storage";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
@@ -73,6 +74,25 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [chosenAnswers,setChosenAnswers]=useState<Record<number,number>>({});
   const [comments,setComments]=useState<Record<number,string>>({});
   const [pendingAnswers,setPendingAnswers]=useState<Record<number,Submission>>({});
+  const [queuedAnswers,setQueuedAnswers]=useState<Record<number,boolean>>({});
+  useEffect(() => {
+    if (!user?.id) return;
+    const refresh = () => {
+      void pendingForUser(user.id).then(rows => {
+        const queued: Record<number, boolean> = {};
+        const prefix = root + "/";
+        for (const row of rows) {
+          if (row.kind !== "answer" || !row.path.startsWith(prefix)) continue;
+          const match = row.path.match(/\/(\d+)\/answers$/);
+          if (match) queued[Number(match[1])] = true;
+        }
+        setQueuedAnswers(queued);
+      }).catch(() => {});
+    };
+    refresh();
+    return offlineChanged(refresh);
+  }, [user?.id, root]);
+
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
   const [frozenQuestions,setFrozenQuestions]=useState<{url:string;items:Question[]}|null>(null);
   const [sendingQuestionId,setSendingQuestionId]=useState<number|null>(null);
@@ -164,7 +184,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   async function submitAnswer(question:Question,selectedAnswer:number) {
     // The click is the submission: capture the choice directly, without waiting
     // for React's state update or a separate confirmation button.
-    if(sendingQuestionRef.current!==null||!canAnswer||outcomeFor(question)||!question.active)return;
+    if(sendingQuestionRef.current!==null||!canAnswer||outcomeFor(question)||!question.active||queuedAnswers[question.id])return;
     const comment=comments[question.id]?.trim()||null;
     const previous=pendingAnswers[question.id];
     // A retry of the same choice must reuse its idempotency key.
@@ -182,7 +202,17 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
       setFrozenQuestions({url,items:questions});
       void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
-    }catch(cause){setError(errorMessage(cause));}
+    }catch(cause){
+      const uncertain=!(cause instanceof ApiFailure)||cause.status>=500;
+      if(uncertain && user?.id){
+        try{
+          await queueOfflineOperation(user.id,companyId,"answer",
+            root+"/"+question.id+"/answers",payload);
+          setQueuedAnswers(prev=>({...prev,[question.id]:true}));
+          setMessage("تم حفظ إجابتك على هذا الجهاز. لم تُحتسب النقاط حتى تأكيد الخادم عند المزامنة.");
+        }catch(localError){setError("تعذر الحفظ المحلي: "+errorMessage(localError));}
+      }else setError(errorMessage(cause));
+    }
     finally{sendingQuestionRef.current=null;setSendingQuestionId(null);}
   }
   function startEdit(question:Question|null) {
@@ -330,12 +360,13 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
               </div>}
             </div>
           </div>
+          {queuedAnswers[question.id]&&<p role="status">الإجابة محفوظة محليًا، وتنتظر المزامنة ولا تُحسب نقاطها بعد.</p>}
           {answered&&<p className="question-result" role="status">
             <strong>{answered.correct?"✓ إجابة صحيحة":"✗ إجابة غير صحيحة"}</strong>
             {answered.points>0?` · +${answered.points} نقطة`:""}
           </p>}
           <div className="question-answer-form">
-            <fieldset className="question-options" disabled={!!answered||!canAnswer||!question.active||isSending}>
+            <fieldset className="question-options" disabled={!!answered||!!queuedAnswers[question.id]||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
               {optionOrder(question).map(i=><label key={i}
                 className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>

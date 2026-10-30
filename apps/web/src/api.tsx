@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { rememberRead, savedRead, setOfflineUser } from "./offline-storage";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -33,16 +34,27 @@ export async function api<T>(
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const mutation = method !== "GET" && method !== "HEAD";
-  const response = await fetch(`/api${path}`, {
-    method,
-    credentials: "same-origin",
-    signal: options.signal,
-    headers: {
-      ...(mutation ? { "Content-Type": "application/json" } : {}),
-      ...(mutation && csrf ? { "X-CSRF-Token": csrf } : {}),
-    },
-    ...(mutation ? { body: JSON.stringify(options.body ?? {}) } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      credentials: "same-origin",
+      signal: options.signal,
+      headers: {
+        ...(mutation ? { "Content-Type": "application/json" } : {}),
+        ...(mutation && csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
+      ...(mutation ? { body: JSON.stringify(options.body ?? {}) } : {}),
+    });
+  } catch (error) {
+    // A network failure may use a saved read, never a cached authentication
+    // response or a simulated successful financial mutation.
+    if (method === "GET" && !options.signal?.aborted) {
+      const offline = await savedRead<T>(path).catch(() => undefined);
+      if (offline !== undefined) return offline;
+    }
+    throw error;
+  }
   const data: unknown = response.status === 204 ? {} : await response.json();
   if (!response.ok) {
     const error = (data as { error?: { message?: string; code?: string } })
@@ -53,6 +65,7 @@ export async function api<T>(
       error?.code ?? "unknown",
     );
   }
+  if (method === "GET") void rememberRead(path, data).catch(() => {});
   return data as T;
 }
 interface SessionValue {
@@ -84,6 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const result = await api<SessionResponse>("/auth/session");
     if (epoch.current !== request) return;
     csrf = result.csrf;
+    setOfflineUser(result.user?.id ?? null);
     setSession({ ...result, pendingLogoutRedirect: false });
     setError(null);
     setLoading(false);
@@ -95,6 +109,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .then((result) => {
         if (epoch.current === request) {
           csrf = result.csrf;
+          setOfflineUser(result.user?.id ?? null);
           setSession({ ...result, pendingLogoutRedirect: false });
           setLoading(false);
         }
@@ -117,6 +132,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     client.clear();
     ++epoch.current;
     csrf = null;
+    setOfflineUser(null);
     // Auth guards must share the logout destination until the router commits it.
     setSession({ user: null, csrf: null, pendingLogoutRedirect: true });
   };

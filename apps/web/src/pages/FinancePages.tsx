@@ -41,6 +41,7 @@ import { useControls } from "../control";
 import { formatMoney } from "../format-money";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { useEmployeeCashbox } from "../employee-cashbox";
+import { queueOfflineOperation } from "../offline-storage";
 import {
   Button,
   Card,
@@ -572,8 +573,10 @@ function DocumentEditor({
   const [picker, setPicker] = useState<Picker | null>(null);
   const [saving, setSaving] = useState(false);
   const [unknownCreation, setUnknownCreation] = useState(false);
+  const [localQueued, setLocalQueued] = useState(false);
+  const [localMessage, setLocalMessage] = useState("");
   const submittedCreate = useRef<FinancialDocumentInput | null>(null);
-  const canEdit = hasManageAccess && !unknownCreation;
+  const canEdit = hasManageAccess && !unknownCreation && !localQueued;
   const allowNavigation = useRef(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
@@ -633,7 +636,7 @@ function DocumentEditor({
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (saving || !hasManageAccess) return;
+    if (saving || !hasManageAccess || localQueued) return;
     setError("");
     // The personal-cashbox modal cannot submit a different cash account.
     const effectiveCash = lockedCashAccount ?? cash;
@@ -694,6 +697,26 @@ function DocumentEditor({
     // Saving a journal draft does not require balance; posting validates it.
     if (!document)
       submittedCreate.current = parsed.data as FinancialDocumentInput;
+    async function saveOnDevice(): Promise<boolean> {
+      if (document || (kind !== "receipt" && kind !== "payment") || !sessionUser?.id) return false;
+      try {
+        await queueOfflineOperation(sessionUser.id, companyId, "voucher",
+          "/companies/" + companyId + "/financial-documents",
+          parsed.data as FinancialDocumentInput);
+        setLocalQueued(true);
+        setDirty(false);
+        setUnknownCreation(false);
+        setLocalMessage("تم حفظ مسودة السند محليًا فقط. لن تؤثر على الحسابات قبل المزامنة ثم الترحيل على الخادم.");
+        return true;
+      } catch (reason) {
+        setError("تعذر حفظ المسودة محليًا: " + errorMessage(reason));
+        return false;
+      }
+    }
+    if (!navigator.onLine && !document && (kind === "receipt" || kind === "payment")) {
+      await saveOnDevice();
+      return;
+    }
     setSaving(true);
     try {
       const result = await api<{ document: FinancialDocument }>(
@@ -720,7 +743,9 @@ function DocumentEditor({
       void changed();
     } catch (reason) {
       if (guard.isCurrent()) {
-        if (!document && !(reason instanceof ApiFailure))
+        const uncertain = !(reason instanceof ApiFailure) || reason.status >= 500;
+        if (uncertain && await saveOnDevice()) return;
+        if (!document && uncertain)
           setUnknownCreation(true);
         setError(errorMessage(reason));
       }
@@ -967,6 +992,7 @@ function DocumentEditor({
             <span>رقم الوصل: <bdi>{(document?.supplierReceiptNumber ?? supplierReceiptNumber) || "—"}</bdi></span>
           )}
         </div>
+        {localMessage && <Notice>{localMessage}</Notice>}
         {error && (
           <div className="financial-no-print">
             <Notice tone="error">{error}</Notice>
@@ -1222,10 +1248,12 @@ function DocumentEditor({
             </div>
           )}
           <div className="form-actions financial-document-actions financial-no-print">
-            {(canEdit || unknownCreation) && (
-              <Button type="submit" disabled={saving || !currency}>
+            {(canEdit || unknownCreation || localQueued) && (
+              <Button type="submit" disabled={saving || localQueued || !currency}>
                 {saving
                   ? "جارٍ الحفظ…"
+                  : localQueued
+                    ? "محفوظ محليًا — بانتظار المزامنة"
                   : unknownCreation
                     ? "إعادة إرسال طلب الحفظ نفسه"
                     : "حفظ المسودة"}
