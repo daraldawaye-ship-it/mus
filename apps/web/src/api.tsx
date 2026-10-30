@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { rememberRead, savedRead, setOfflineUser } from "./offline-storage";
+import { clearOfflineSession, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineUser } from "./offline-storage";
 import { reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { offlineUser } from "./offline-storage";
@@ -83,6 +83,7 @@ export async function api<T>(
 }
 interface SessionValue {
   user: User | null;
+  offlineMode: boolean;
   csrf: string | null;
   loading: boolean;
   error: string | null;
@@ -104,42 +105,85 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [offlineMode, setOfflineMode] = useState(false);
   const epoch = useRef(0);
-  const reloadSession = async () => {
-    const request = ++epoch.current;
-    const result = await api<SessionResponse>("/auth/session");
+  // An offline restart can re-open only a previously authenticated user on
+  // this device. No password or CSRF token is stored; live API permissions
+  // remain authoritative for every mutation and upon reconnect.
+  async function applyLiveSession(result: SessionResponse, request: number) {
     if (epoch.current !== request) return;
     csrf = result.csrf;
+    if (result.user) await saveOfflineSession(result.user).catch(() => {});
+    else await clearOfflineSession().catch(() => {});
+    if (epoch.current !== request) return;
     setOfflineUser(result.user?.id ?? null);
     sharedIdentity(result.user?.id ?? null);
     setSession({ ...result, pendingLogoutRedirect: false });
+    setOfflineMode(false);
     setError(null);
     setLoading(false);
+  }
+  async function recoverOffline(error: unknown, request: number): Promise<boolean> {
+    // An HTTP auth rejection is NOT an offline condition. In particular, do
+    // not revive a removed/suspended user from IndexedDB after HTTP 401/403.
+    if (error instanceof ApiFailure) {
+      if (error.status === 401 || error.status === 403) {
+        await clearOfflineSession().catch(() => {});
+        if (epoch.current === request) {
+          csrf = null;
+          setOfflineUser(null);
+          sharedIdentity(null);
+          setSession({ user: null, csrf: null, pendingLogoutRedirect: false });
+          setOfflineMode(false);
+        }
+      }
+      return false;
+    }
+    if (navigator.onLine && !(error instanceof TypeError)) return false;
+    const user = await readOfflineSession().catch(() => null);
+    if (!user || epoch.current !== request) return false;
+    csrf = null;
+    setOfflineUser(user.id);
+    sharedIdentity(user.id);
+    setSession({ user, csrf: null, pendingLogoutRedirect: false });
+    setOfflineMode(true);
+    setError(null);
+    setLoading(false);
+    return true;
+  }
+  const reloadSession = async () => {
+    const request = ++epoch.current;
+    try {
+      const result = await api<SessionResponse>("/auth/session");
+      await applyLiveSession(result, request);
+    } catch (error) {
+      if (!(await recoverOffline(error, request))) throw error;
+    }
   };
   useEffect(() => {
     const controller = new AbortController();
     const request = ++epoch.current;
     void api<SessionResponse>("/auth/session", { signal: controller.signal })
-      .then((result) => {
-        if (epoch.current === request) {
-          csrf = result.csrf;
-          setOfflineUser(result.user?.id ?? null);
-    sharedIdentity(result.user?.id ?? null);
-          setSession({ ...result, pendingLogoutRedirect: false });
-          setLoading(false);
-        }
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setError(error instanceof Error ? error.message : "تعذر الاتصال");
-          setLoading(false);
-        }
+      .then(result => applyLiveSession(result, request))
+      .catch(async error => {
+        if (controller.signal.aborted || epoch.current !== request) return;
+        if (await recoverOffline(error, request)) return;
+        if (controller.signal.aborted || epoch.current !== request) return;
+        setError(error instanceof ApiFailure ? error.message :
+          "تعذر الاتصال. إذا لم تحفظ جلسة على هذا الجهاز، اتصل بالإنترنت وسجّل الدخول مرة واحدة.");
+        setLoading(false);
       });
     return () => {
       controller.abort();
       ++epoch.current;
     };
   }, []);
+  useEffect(() => {
+    if (!offlineMode) return;
+    const reconnect = () => { void reloadSession().catch(() => {}); };
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
+  }, [offlineMode]);
   const logout = async () => {
     ++epoch.current;
     await api("/auth/logout", { method: "POST" });
@@ -149,6 +193,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     csrf = null;
     setOfflineUser(null);
     sharedIdentity(null);
+    await clearOfflineSession().catch(() => {});
+    setOfflineMode(false);
     // Auth guards must share the logout destination until the router commits it.
     setSession({ user: null, csrf: null, pendingLogoutRedirect: true });
   };
@@ -163,6 +209,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     <SessionContext.Provider
       value={{
         ...session,
+        offlineMode,
         loading,
         error,
         reloadSession,
