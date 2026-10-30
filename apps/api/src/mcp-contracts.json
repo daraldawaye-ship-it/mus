@@ -5910,6 +5910,13 @@
     "queryFields": [],
     "source": "routes-transaction-import-staging.ts"
   },
+  "GET /companies/:companyId/transaction-import/sales-sign-audit": {
+    "queryFields": [
+      "afterSourceId",
+      "limit"
+    ],
+    "source": "routes-transaction-import.ts"
+  },
   "GET /companies/:companyId/transaction-import/summary": {
     "queryFields": [
       "sourceSystem"
