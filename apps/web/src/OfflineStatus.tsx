@@ -1,17 +1,63 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, itemChangeCursor, offlineChanged, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 
-export function OfflineStatus({ userId, companyId }: { userId: number; companyId?: number }) {
+type DeviceProps = { userId: number; companyId?: number };
+export function OfflineStatus({ userId, companyId }: DeviceProps) {
+  const holder = useRef<HTMLDivElement>(null);
+  const [primary, setPrimary] = useState(false);
+  useEffect(() => {
+    // Some old navigation render paths keep stale setup sections in the DOM.
+    // Elect one live panel; only that panel may poll or start downloads.
+    const choose = () => {
+      const entries = Array.from(document.querySelectorAll<HTMLElement>("[data-alraesy-offline-instance]"));
+      const chosen = entries.filter(entry => !!entry.dataset.companyId).at(-1) ?? entries.at(-1);
+      setPrimary(wasPrimary => {
+        const next = chosen === holder.current;
+        return wasPrimary === next ? wasPrimary : next;
+      });
+    };
+    const observer = new MutationObserver(choose);
+    observer.observe(document.querySelector(".main-content") ?? document.body,
+      { childList: true, subtree: true, attributes: true, attributeFilter: ["data-company-id"] });
+    choose();
+    return () => observer.disconnect();
+  }, [userId, companyId]);
+  return <div ref={holder} data-alraesy-offline-instance="" data-company-id={companyId ?? ""}>
+    {primary && <OfflineStatusBody userId={userId} companyId={companyId} />}
+  </div>;
+}
+
+type CatalogUiState = { key: string; busy: boolean; progress: string; message: string };
+let activeCatalogDownload: Promise<void> | null = null;
+let catalogUi: CatalogUiState = { key: "", busy: false, progress: "", message: "" };
+const CATALOG_EVENT = "alraesy-catalog-download-progress";
+function publishCatalogStatus(patch: Partial<CatalogUiState>) {
+  catalogUi = { ...catalogUi, ...patch };
+  window.dispatchEvent(new Event(CATALOG_EVENT));
+}
+function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   const client = useQueryClient();
   const [online, setOnline] = useState(navigator.onLine);
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [message, setMessage] = useState("");
+  const scopeKey = userId + ":" + (companyId ?? "");
+  const [downloading, setDownloading] = useState(catalogUi.key === scopeKey && catalogUi.busy);
+  const [progress, setProgress] = useState(catalogUi.key === scopeKey ? catalogUi.progress : "");
+  const [message, setMessage] = useState(catalogUi.key === scopeKey ? catalogUi.message : "");
+  useEffect(() => {
+    const update = () => {
+      if (catalogUi.key !== scopeKey) return;
+      setDownloading(catalogUi.busy);
+      setProgress(catalogUi.progress);
+      setMessage(catalogUi.message);
+    };
+    update();
+    window.addEventListener(CATALOG_EVENT, update);
+    return () => window.removeEventListener(CATALOG_EVENT, update);
+  }, [scopeKey]);
   useEffect(() => {
     const refresh = () => { void pendingForUser(userId).then(rows => setPending(rows.length)).catch(() => {}); };
     refresh();
@@ -138,39 +184,78 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
       setMessage(error instanceof Error ? error.message : "تعذرت المزامنة");
     } finally { setBusy(false); }
   }
-  async function downloadCatalog() {
-    if (!companyId || !navigator.onLine || downloading) return;
-    setDownloading(true);
-    setProgress("");
-    setMessage("");
-    let total = 0;
-    let complete = true;
-    for (const type of ["items", "accounts", "branches", "locations", "currencies"]) {
-      let page = 1;
-      while (page <= 200 && navigator.onLine) {
-        const params = new URLSearchParams({
-          type, active: "true", page: String(page), pageSize: "100",
-        });
-        const path = "/companies/" + companyId + "/commerce-options?" + params.toString();
-        try {
-          const result = await api<{ items: unknown[]; total?: number }>(path);
-          await rememberRead(path, result);
-          total += result.items.length;
-          setProgress("حُفظ محليًا: " + total + " سجل");
-          if (result.items.length < 100 ||
-            (typeof result.total === "number" && page * 100 >= result.total)) break;
-          page++;
-        } catch {
-          complete = false;
-          break; // Permission to view one kind is not permission to view another.
+  function downloadCatalog() {
+    if (!companyId || !navigator.onLine || activeCatalogDownload) return;
+    const key = scopeKey;
+    publishCatalogStatus({ key, busy: true, progress: "", message: "" });
+    activeCatalogDownload = (async () => {
+      let savedItems = 0;
+      let otherRecords = 0;
+      try {
+        const prior = await catalogDownloadState(userId, companyId);
+        savedItems = prior?.count ?? 0;
+        if (!prior?.complete) {
+          // Full initial item catalog goes through the indexed, cheap change
+          // feed, not the expensive invoice search/ranking endpoint.
+          let cursor: ItemChangeCursor = prior?.cursor ?? {
+            since: "1970-01-01T00:00:00.000Z", afterId: 0,
+          };
+          let complete = false;
+          for (let page = 0; page < 300; page++) {
+            if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
+            const params = new URLSearchParams({
+              since: cursor.since, afterId: String(cursor.afterId),
+            });
+            const response = await api<{
+              items: Record<string, unknown>[]; cursor: ItemChangeCursor; hasMore: boolean;
+            }>("/companies/" + companyId + "/item-changes?" + params.toString());
+            savedItems += response.items.length;
+            // The saved cursor makes a reload resume from the last committed batch.
+            await rememberCatalogBatch(
+              userId, companyId, response.items, response.cursor, savedItems, !response.hasMore,
+            );
+            cursor = response.cursor;
+            publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
+            if (!response.hasMore) { complete = true; break; }
+          }
+          if (!complete) throw new Error("وصل التنزيل إلى حد الدفعات؛ يمكنك الاستكمال بالضغط مجددًا");
+        } else {
+          publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
+        // Small reference catalogs use their ordinary permitted endpoints.
+        for (const type of ["accounts", "branches", "locations", "currencies"]) {
+          let finished = false;
+          for (let page = 1; page <= 200; page++) {
+            if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
+            const params = new URLSearchParams({
+              type, active: "true", page: String(page), pageSize: "100",
+            });
+            const path = "/companies/" + companyId + "/commerce-options?" + params.toString();
+            const response = await api<{ items: unknown[]; total?: number }>(path);
+            await rememberRead(path, response);
+            otherRecords += response.items.length;
+            publishCatalogStatus({ progress: "الأصناف: " + savedItems + "، الحسابات والخيارات: " + otherRecords });
+            if (response.items.length < 100 ||
+              (typeof response.total === "number" && page * 100 >= response.total)) {
+              finished = true; break;
+            }
+          }
+          if (!finished) throw new Error("لم يكتمل تنزيل " + type + "؛ اضغط مجددًا للاستكمال");
+        }
+        publishCatalogStatus({
+          message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
+            " سجل مساعد. ستتحدث أسماء الأصناف وأسعارها بالتغييرات اللاحقة.",
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "تعذر تنزيل البيانات";
+        publishCatalogStatus({
+          message: "لم يكتمل التنزيل؛ حُفظ " + savedItems +
+            " صنف حتى الآن، ويمكن استكمال البقية دون إعادة تنزيلها. السبب: " + reason,
+        });
+      } finally {
+        publishCatalogStatus({ busy: false, progress: "" });
       }
-      if (page > 200) complete = false;
-    }
-    setDownloading(false);
-    setProgress("");
-    setMessage((complete ? "اكتمل الحفظ المحلي لما أمكن قراءته: " : "حفظ جزئي: ") +
-      total + " سجل. النسخة لا تغيّر قاعدة البيانات الرئيسية.");
+    })().finally(() => { activeCatalogDownload = null; });
   }
   return <section className="offline-status" aria-label="العمل بدون إنترنت">
     <div className="form-actions">
@@ -178,7 +263,7 @@ export function OfflineStatus({ userId, companyId }: { userId: number; companyId
       <span>بانتظار المزامنة: <strong>{pending}</strong></span>
       {companyId && <Button variant="secondary" disabled={!online || downloading}
         onClick={() => void downloadCatalog()}>
-        {downloading ? "جارٍ تحديث النسخة المحلية…" : "تحديث الأصناف والحسابات لهذا الجهاز"}
+        {downloading ? "جارٍ حفظ البيانات على الجهاز…" : "تنزيل/تحديث بيانات الجهاز"}
       </Button>}
       {pending > 0 && <Button variant="secondary" disabled={!online || busy} onClick={() => void sync()}>
         {busy ? "جارٍ التحقق…" : "مزامنة المحفوظات"}
