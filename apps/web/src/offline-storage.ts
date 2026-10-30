@@ -107,6 +107,60 @@ type OfflineSessionRow = {
   savedAt: number;
 };
 const OFFLINE_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Keep the authenticated user's offline continuation independent of the
+// large catalog database. Other open tabs may hold an older catalog schema
+// and block its upgrade; that must not block saving a successful login.
+const RESUME_DB_NAME = "alraesy-offline-identity-v1";
+async function resumeDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request=indexedDB.open(RESUME_DB_NAME,1);
+    request.onupgradeneeded=()=>{
+      request.result.createObjectStore("verified",{keyPath:"key"});
+    };
+    request.onsuccess=()=>{
+      const db=request.result;
+      db.onversionchange=()=>db.close();
+      resolve(db);
+    };
+    request.onerror=()=>reject(request.error);
+    request.onblocked=()=>reject(new Error("تعذر الوصول إلى هوية الجهاز المحفوظة"));
+  });
+}
+async function resumeWrite(value:OfflineSessionRow):Promise<void> {
+  const db=await resumeDatabase();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=db.transaction("verified","readwrite");
+      tx.objectStore("verified").put(value);
+      tx.oncomplete=()=>resolve();
+      tx.onabort=()=>reject(tx.error);
+      tx.onerror=()=>reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+async function resumeRead():Promise<OfflineSessionRow|undefined> {
+  const db=await resumeDatabase();
+  try {
+    return await new Promise((resolve,reject)=>{
+      const request=db.transaction("verified","readonly").objectStore("verified").get("last");
+      request.onsuccess=()=>resolve(request.result as OfflineSessionRow|undefined);
+      request.onerror=()=>reject(request.error);
+    });
+  } finally { db.close(); }
+}
+async function resumeClear():Promise<void> {
+  const db=await resumeDatabase();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=db.transaction("verified","readwrite");
+      tx.objectStore("verified").delete("last");
+      tx.oncomplete=()=>resolve();
+      tx.onabort=()=>reject(tx.error);
+      tx.onerror=()=>reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+
 export function validOfflineSession(
   row: { user: { id:number; suspended:boolean; archived:boolean }; savedAt:number } | null | undefined,
   now = Date.now(),
@@ -122,18 +176,16 @@ export async function saveOfflineSession(
   if (!Number.isSafeInteger(user.id) || user.id <= 0 || user.suspended || user.archived) return;
   // An offline session is a limited, local continuation of an authenticated
   // session, not a password or CSRF token; financial writes still require API.
-  await writeOne("offline-session", {
-    key: "last", user, savedAt: Date.now(),
-  } satisfies OfflineSessionRow);
+  await resumeWrite({key:"last",user,savedAt:Date.now()});
 }
 export async function readOfflineSession():
   Promise<import("../../../packages/contracts/src/index").User | null> {
-  const row = await readOne<OfflineSessionRow>("offline-session", "last");
+  const row = await resumeRead();
   if (!validOfflineSession(row)) return null;
   return row!.user;
 }
 export async function clearOfflineSession(): Promise<void> {
-  await deleteOne("offline-session", "last");
+  await resumeClear();
 }
 function allowedSnapshot(path: string): boolean {
   // Cache only already-authorized server GET responses. The user key is
