@@ -25,7 +25,7 @@ function database(): Promise<IDBDatabase> {
   if (!("indexedDB" in window)) return Promise.reject(new Error("هذا المتصفح لا يدعم التخزين المحلي"));
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open(DB_NAME, 3);
+    const open = indexedDB.open(DB_NAME, 4);
     open.onupgradeneeded = (event) => {
       const db = open.result;
       if (event.oldVersion < 1) {
@@ -38,6 +38,7 @@ function database(): Promise<IDBDatabase> {
       }
       if (event.oldVersion < 2) db.createObjectStore("item-sync", { keyPath: "key" });
       if (event.oldVersion < 3) db.createObjectStore("catalog-download", { keyPath: "key" });
+      if (event.oldVersion < 4) db.createObjectStore("offline-session", { keyPath: "key" });
     };
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error);
@@ -101,8 +102,40 @@ export function offlineChanged(listener: () => void) {
   return () => window.removeEventListener(CHANGED, listener);
 }
 function changed() { window.dispatchEvent(new Event(CHANGED)); }
+type OfflineSessionRow = {
+  key: "last"; user: import("../../../packages/contracts/src/index").User;
+  savedAt: number;
+};
+const OFFLINE_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export async function saveOfflineSession(
+  user: import("../../../packages/contracts/src/index").User,
+): Promise<void> {
+  if (!Number.isSafeInteger(user.id) || user.id <= 0 || user.suspended || user.archived) return;
+  // An offline session is a limited, local continuation of an authenticated
+  // session, not a password or CSRF token; financial writes still require API.
+  await writeOne("offline-session", {
+    key: "last", user, savedAt: Date.now(),
+  } satisfies OfflineSessionRow);
+}
+export async function readOfflineSession():
+  Promise<import("../../../packages/contracts/src/index").User | null> {
+  const row = await readOne<OfflineSessionRow>("offline-session", "last");
+  if (!row || !row.user || !Number.isSafeInteger(row.user.id) ||
+      row.user.id <= 0 || row.user.suspended || row.user.archived ||
+      Date.now() < row.savedAt ||
+      Date.now() - row.savedAt > OFFLINE_SESSION_MAX_AGE_MS) return null;
+  return row.user;
+}
+export async function clearOfflineSession(): Promise<void> {
+  await deleteOne("offline-session", "last");
+}
 function allowedSnapshot(path: string): boolean {
-  return /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
+  // Cache only already-authorized server GET responses. The user key is
+  // separate per account; no authentication or password endpoints are cached.
+  return /^\/companies(?:\?|$)/.test(path) ||
+    /^\/companies\/[1-9]\d*$/.test(path) ||
+    /^\/page-catalog\?/.test(path) ||
+    /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
     || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
     || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
 }
