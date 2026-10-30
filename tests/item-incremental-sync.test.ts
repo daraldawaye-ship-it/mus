@@ -25,3 +25,18 @@ test("item deltas persist per user/company and keep offline outbox unchanged", (
   assert.match(commerce, /new CustomEvent\("alraesy-invoice-reset"/);
   assert.match(commerce, /function resetInvoice\(\)/);
 });
+
+
+test("device setup has one active offline panel and a resumable lightweight catalog", () => {
+  const ui = readFileSync("apps/web/src/OfflineStatus.tsx", "utf8");
+  const storage = readFileSync("apps/web/src/offline-storage.ts", "utf8");
+  const styles = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(ui, /data-alraesy-offline-instance/);
+  assert.match(ui, /primary && <OfflineStatusBody/);
+  assert.match(ui, /activeCatalogDownload/);
+  assert.match(ui, /rememberCatalogBatch/);
+  assert.match(ui, /"\/companies\/".*?"\/item-changes\?"/s);
+  assert.match(storage, /"catalog-download"/);
+  assert.match(storage, /writeCatalog\(entries\)/);
+  assert.match(styles, /\.app-device-setup:has\(~ \.app-device-setup\)/);
+});

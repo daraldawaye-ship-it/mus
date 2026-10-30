@@ -6011,3 +6011,14 @@ a.notification-quick-title:hover { text-decoration: underline; }
  .medicine-market-policy-row .button { padding-inline:4px; }
  .medicine-market-map-row { flex-wrap:wrap; }
 }
+
+
+/* Keep one offline panel even if an older navigation tree leaves stale setup
+   elements mounted. The latest mounted panel has the current company context. */
+.main-content > .app-device-setup:has(~ .app-device-setup) {
+  display: none !important;
+}
+.offline-status:has(~ .offline-status) {
+  display: none !important;
+}
+[data-alraesy-offline-instance]:empty { display: none; }

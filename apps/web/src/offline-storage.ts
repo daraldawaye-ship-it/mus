@@ -25,7 +25,7 @@ function database(): Promise<IDBDatabase> {
   if (!("indexedDB" in window)) return Promise.reject(new Error("هذا المتصفح لا يدعم التخزين المحلي"));
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open(DB_NAME, 2);
+    const open = indexedDB.open(DB_NAME, 3);
     open.onupgradeneeded = (event) => {
       const db = open.result;
       if (event.oldVersion < 1) {
@@ -37,6 +37,7 @@ function database(): Promise<IDBDatabase> {
         catalog.createIndex("scope", ["userId", "companyId", "type"]);
       }
       if (event.oldVersion < 2) db.createObjectStore("item-sync", { keyPath: "key" });
+      if (event.oldVersion < 3) db.createObjectStore("catalog-download", { keyPath: "key" });
     };
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error);
@@ -185,6 +186,39 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
 }
 
 export type ItemChangeCursor = { since: string; afterId: number };
+export type CatalogDownload = {
+  key: string;
+  userId: number;
+  companyId: number;
+  cursor: ItemChangeCursor;
+  count: number;
+  complete: boolean;
+};
+export async function catalogDownloadState(userId: number, companyId: number): Promise<CatalogDownload | undefined> {
+  if (activeUser !== userId) return undefined;
+  return readOne<CatalogDownload>("catalog-download", userId + ":" + companyId);
+}
+export async function rememberCatalogBatch(
+  userId: number, companyId: number, items: Record<string, unknown>[],
+  cursor: ItemChangeCursor, count: number, complete: boolean,
+): Promise<void> {
+  if (activeUser !== userId) throw new Error("تغير المستخدم أثناء التنزيل");
+  const entries: CatalogEntry[] = [];
+  for (const item of items) {
+    if (typeof item.id !== "number" || !Number.isSafeInteger(item.id)) continue;
+    entries.push({
+      key: [userId, companyId, "items", item.id].join(":"),
+      userId, companyId, type: "items", value: item,
+    });
+  }
+  // Write cards first, THEN the checkpoint. A refresh or interrupted download
+  // can replay a page safely without ever marking missing cards as saved.
+  await writeCatalog(entries);
+  await writeOne("catalog-download", {
+    key: userId + ":" + companyId, userId, companyId, cursor, count, complete,
+  } satisfies CatalogDownload);
+}
+
 export async function itemChangeCursor(userId: number, companyId: number): Promise<ItemChangeCursor | null> {
   if (activeUser !== userId) return null;
   const key = userId + ":" + companyId;
