@@ -16,10 +16,11 @@ export async function refreshSharedCompositions(userId:number,companyId:number) 
   await saveSharedProgress(companyId,"item-compositions",userId,page+1,complete);
 }
 export async function refreshSharedQuestions(userId:number,companyId:number) {
+  const interrupted=()=>!navigator.onLine||document.visibilityState==="hidden";
   for (const [id,root] of [
     [0,"/questions"],[companyId,"/companies/"+companyId+"/questions"],
   ] as const) {
-    if (!navigator.onLine||document.visibilityState==="hidden") return;
+    if (interrupted()) return;
     let categories: {items:{category:string}[]};
     try {
       categories=await api(root+"/categories");
