@@ -118,6 +118,42 @@ export function questionRoutes(pool: Pool): Router {
     res.json(result);
   }));
 
+  // Per-user history for offline recovery, irrespective of manager role.
+  // Never expose other users' responses through this endpoint.
+  router.get(roots.map(root=>root+"/my-history"),handler(async(req,res)=>{
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const {companyId,user}=await access(client,req,"questions");
+      const p=pagination(req);
+      const total=(await client.query(`
+        SELECT count(DISTINCT a.question_id)::int AS total
+        FROM question_answers a JOIN questions q ON q.id=a.question_id
+        WHERE a.user_id=$1 AND q.company_id IS NOT DISTINCT FROM $2
+      `,[user.id,companyId])).rows[0].total as number;
+      const rows=await client.query(`
+        SELECT * FROM (SELECT DISTINCT ON (a.question_id)
+          a.question_id,a.selected_answer,a.is_correct,a.awarded_points,
+          a.comment,a.answered_at,a.question_snapshot
+        FROM question_answers a JOIN questions q ON q.id=a.question_id
+        WHERE a.user_id=$1 AND q.company_id IS NOT DISTINCT FROM $2
+        ORDER BY a.question_id,a.answered_at DESC,a.id DESC
+        ) latest ORDER BY answered_at DESC,question_id DESC LIMIT $3 OFFSET $4
+      `,[user.id,companyId,p.pageSize,p.offset]);
+      return {
+        items:rows.rows.map(row=>({
+          questionId:row.question_id,selectedAnswer:row.selected_answer,
+          correct:row.is_correct,
+          correctAnswer:typeof row.question_snapshot?.correctAnswer==="number"
+            ?row.question_snapshot.correctAnswer:null,
+          points:row.awarded_points,comment:row.comment,otherOptionCounts:[],
+          answeredAt:row.answered_at.toISOString(),
+        })),
+        total,page:p.page,pageSize:p.pageSize,
+      };
+    });
+    res.json(result);
+  }));
+
   router.get(roots,handler(async(req,res)=>{
     const result=await transaction(pool,async client=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");

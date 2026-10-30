@@ -124,3 +124,40 @@ test("offline identity is independent of catalog upgrade and recovers from outag
   assert.match(session,/error\.status >= 500/);
   assert.match(session,/restoreOfflineSharedGrants/);
 });
+
+test("offline question history is private to user/scope and refreshed after synchronization", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const page=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
+  const sync=readFileSync("apps/web/src/offline-my-history.ts","utf8");
+  const routes=readFileSync("apps/api/src/routes-questions.ts","utf8");
+  assert.match(storage,/personalAnswerHistory/);
+  assert.match(storage,/activeUser !== userId/);
+  assert.match(storage,/answerHistoryPath\(scope, questionId\)/);
+  assert.match(storage,/rememberQuestionHistory/);
+  assert.match(storage,/row\.kind === "answer"/);
+  assert.match(page,/outcomeFor\(question/);
+  assert.match(page,/personalAnswerHistory\(currentUser, scope\)/);
+  assert.match(page,/storePersonalAnswer\(user\.id,scope/);
+  assert.match(sync,/\/questions\/my-history/);
+  assert.match(routes,/a\.user_id=\$1/);
+  assert.match(routes,/latest/i);
+});
+
+test("offline appearance, page directory and top shortcuts use user-scoped caches", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const theme=readFileSync("apps/web/src/theme.tsx","utf8");
+  const shortcuts=readFileSync("apps/web/src/UserShortcuts.tsx","utf8");
+  const menu=readFileSync("apps/web/src/UserShortcutMenuGrid.tsx","utf8");
+  const directory=readFileSync("apps/web/src/page-directory.tsx","utf8");
+  assert.match(storage,/\/appearance/);
+  assert.match(storage,/\/my-shortcuts/);
+  assert.match(storage,/\/page-catalog/);
+  assert.match(storage,/saveAppearanceDraft/);
+  assert.match(storage,/readAppearanceDraft/);
+  assert.match(theme,/readAppearanceDraft/);
+  assert.match(theme,/clearAppearanceDraft/);
+  assert.match(theme,/window\.addEventListener\("online",onOnline\)/);
+  assert.match(shortcuts,/rememberRead\(url\(companyId\),updated\)/);
+  assert.match(menu,/entry\.actionAccess\.view/);
+  assert.match(directory,/actionAccess\.view/);
+});

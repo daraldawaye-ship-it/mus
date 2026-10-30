@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiFailure, useSession } from "../api";
-import { offlineChanged, pendingForUser, queueOfflineOperation } from "../offline-storage";
+import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, storePersonalAnswer } from "../offline-storage";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
@@ -94,6 +94,25 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   }, [user?.id, root]);
 
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
+  useEffect(() => {
+    if (!user?.id) { setSavedAnswers({}); return; }
+    const currentUser = user.id;
+    let active = true;
+    const refresh = () => {
+      void personalAnswerHistory(currentUser, scope).then(rows => {
+        if (active) setSavedAnswers(rows);
+      }).catch(() => {});
+    };
+    refresh();
+    const onOnline = () => {
+      if (active) void client.invalidateQueries({
+        queryKey:["questions-module",currentUser,scope],
+      });
+    };
+    const off = offlineChanged(refresh);
+    window.addEventListener("online", onOnline);
+    return () => { active = false; off(); window.removeEventListener("online",onOnline); };
+  }, [user?.id,scope,client]);
   const [frozenQuestions,setFrozenQuestions]=useState<{url:string;items:Question[]}|null>(null);
   const [sendingQuestionId,setSendingQuestionId]=useState<number|null>(null);
   const sendingQuestionRef=useRef<number|null>(null);
@@ -173,8 +192,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     });
   }
   function outcomeFor(question:Question): AnswerOutcome|null {
-    if (savedAnswers[question.id]) return savedAnswers[question.id]!;
-    if (question.myLastSelectedAnswer===null || question.myLastCorrect===null) return null;
+    // A fresh server question overrides an older local snapshot, while a
+    // shared question with redacted personal fields can use this user's history.
+    if (typeof question.myLastSelectedAnswer!=="number" || typeof question.myLastCorrect!=="boolean")
+      return savedAnswers[question.id] ?? null;
     return {
       selectedAnswer:question.myLastSelectedAnswer,correct:question.myLastCorrect,
       correctAnswer:question.correctAnswer,points:question.myLastPoints??0,
@@ -196,9 +217,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     setSendingQuestionId(question.id);setError("");setMessage("");
     try{
       const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
-      setSavedAnswers(prev=>({...prev,[question.id]:{
-        ...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment
-      }}));
+      const confirmed={...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment};
+      setSavedAnswers(prev=>({...prev,[question.id]:confirmed}));
+      if (user?.id)
+        await storePersonalAnswer(user.id,scope,question.id,confirmed).catch(() => {});
       setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
       setFrozenQuestions({url,items:questions});
       void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
