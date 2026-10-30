@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Link, useSearchParams } from "react-router-dom";
@@ -373,6 +373,7 @@ type GrantsResponse = {grants:PageGrant[];users:GrantUser[];positions:string[]};
 function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number}) {
   const {user}=useSession();
   const client=useQueryClient();
+  const permissionEditorRef=useRef<HTMLElement|null>(null);
   const [principalType,setPrincipalType]=useState<"kind"|"monitor"|"position"|"user">("user");
   const [principalValue,setPrincipalValue]=useState("");
   const [action,setAction]=useState<PageAction>("view");
@@ -412,7 +413,7 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
     }catch(e){setError(errorMessage(e));}
     finally{setBusy(false);}
   }
-  return <section className="page-directory-settings" aria-label="منح صلاحيات الصفحة">
+  return <section ref={permissionEditorRef} className="page-directory-settings" aria-label="منح صلاحيات الصفحة">
     <strong><ShieldCheck size={15}/> منح صلاحيات هذه الصفحة</strong>
     <p className="muted">اختر المستفيد والإجراء ثم امنح سماحًا أو منعًا. المنح للمستخدم المحدد أقوى من المنح حسب الصفة أو نوع الحساب. الإذن بالصفحة لا يكشف بيانات قضية أو مستند محمي دون صلاحياته الخاصة.</p>
     {grants.isPending&&<Notice>جارٍ تحميل الأذون…</Notice>}
@@ -454,7 +455,7 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
     {message&&<Notice tone="success">{message}</Notice>}
     <div className="page-directory-grant-list" aria-label="التصاريح المسجلة للصفحة">
       <strong>التصاريح المسجلة ({explicitGrants.length})</strong>
-      <p className="muted">المسموح لهم صراحة: {permittedCount} · الممنوعون صراحة: {explicitGrants.length-permittedCount}.</p>
+      <p className="muted">تصاريح السماح: {permittedCount} · تصاريح المنع: {explicitGrants.length-permittedCount}.</p>
       <p className="muted">هذه التصاريح والاستثناءات المسجلة فقط، وقد يملك آخرون الوصول عبر الصلاحيات الافتراضية للصفحة أو أدوارهم. التصريح حسب نوع الحساب أو صفة الموظف يشمل كل من ينطبق عليه، وليس مستخدمًا واحدًا.</p>
       {!grants.isPending&&!grants.error&&explicitGrants.length===0&&<Notice>لا توجد تصاريح صريحة لهذه الصفحة؛ الوصول بحسب الصلاحيات الافتراضية.</Notice>}
       {explicitGrants.length>0&&<div className="page-directory-grants-scroll">
@@ -472,6 +473,7 @@ function PagePermissionCard({entry,companyId}:{entry:PageEntry;companyId?:number
                   setAction(grant.action);
                   setError("");
                   setMessage("تم تحديد التصريح؛ يمكنك تغييره من الأزرار أعلاه أو إزالة الاستثناء.");
+                  permissionEditorRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
                 }}>تحديد</Button></td>
             </tr>)}
           </tbody>
