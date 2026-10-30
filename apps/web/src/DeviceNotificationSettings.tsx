@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, useSession } from "./api";
 import { Button, Card, Notice } from "./ui";
 import { automaticPushPromptAllowed } from "./push-permission-policy";
+import { connectionSnapshot, isOfflineNow, subscribeConnection } from "./connection-mode";
 
 type Config = { enabled: boolean; publicKey: string | null };
 type Status = "loading" | "unsupported" | "ios-install" | "disabled" |
@@ -123,7 +124,7 @@ function useDevicePush(userId: number | null, automatic = false) {
     lifetime.current = run;
     const current = () => run.alive && currentUser.current === userId;
     run.check = async () => {
-      if (!userId || run.busy || !current()) return;
+      if (!userId || run.busy || !current() || isOfflineNow()) return;
       run.busy = true;
       setBusy(true);
       setError("");
@@ -145,8 +146,13 @@ function useDevicePush(userId: number | null, automatic = false) {
         if (current()) setState("active");
       } catch (cause) {
         if (current()) {
-          setState("error");
-          setError(cause instanceof Error ? cause.message : "تعذر التحقق من إشعارات الجهاز.");
+          if (isOfflineNow()) {
+            setState("loading");
+            setError("");
+          } else {
+            setState("error");
+            setError(cause instanceof Error ? cause.message : "تعذر التحقق من إشعارات الجهاز.");
+          }
         }
       } finally {
         run.busy = false;
@@ -158,12 +164,14 @@ function useDevicePush(userId: number | null, automatic = false) {
     void run.check();
     window.addEventListener("focus", refresh);
     window.addEventListener("online", refresh);
+    window.addEventListener("alraesy-network-restored", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       run.alive = false;
       run.controller.abort();
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);
+      window.removeEventListener("alraesy-network-restored", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [userId]);
@@ -268,9 +276,10 @@ export function DevicePushBootstrap({ userId, onReadyChange }: {
   onReadyChange?: (ready: boolean) => void;
 }) {
   const push = useDevicePush(userId, true);
+  const connection = useSyncExternalStore(subscribeConnection,connectionSnapshot,()=>"online");
   useEffect(() => onReadyChange?.(push.state === "active"), [push.state, onReadyChange]);
   // Keep a reminder and explicit retry visible after a dismissed native request.
-  if (push.state === "active" || push.state === "loading") return null;
+  if (connection !== "online" || push.state === "active" || push.state === "loading") return null;
   return <div className="device-push-invite" role="region" aria-label="إشعارات الجهاز">
     <strong>تفعيل إشعارات العمل</strong>
     <span role="status">{description[push.state]}</span>
