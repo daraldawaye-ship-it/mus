@@ -62,8 +62,8 @@ test("shared references are company-scoped and permission gated on every login",
   assert.match(cache,/grants\.clear\(\)/);
   assert.match(cache,/sharedIdentity/);
   assert.match(cache,/sharedProgress/);
-  assert.match(cache,/correctAnswer/);
-  assert.match(cache,/myLastSelectedAnswer/);
+  assert.doesNotMatch(cache,/correctAnswer:item\.correctAnswer/);
+  assert.doesNotMatch(cache,/myLastSelectedAnswer:item\.myLastSelectedAnswer/);
   assert.doesNotMatch(cache,/myLastSelectedAnswer:item\.myLastSelectedAnswer/);
   assert.match(cache,/accountChoice:item\.accountChoice/);
   assert.doesNotMatch(cache,/ownerPhone:item\.ownerPhone/);
