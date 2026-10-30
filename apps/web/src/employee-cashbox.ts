@@ -10,6 +10,7 @@ export function useEmployeeCashbox(context: CompanyContext): Account | null {
   const query = useQuery({
     queryKey: ["employee-sales-cashbox", user?.id, companyId, employeeId],
     enabled: Boolean(user && employeeId),
+    staleTime: 60_000,
     queryFn: ({ signal }) =>
       api<{ account: Account | null }>(
         `/companies/${companyId}/my-sales-cashbox`,
