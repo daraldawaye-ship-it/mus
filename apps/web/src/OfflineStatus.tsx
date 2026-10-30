@@ -251,7 +251,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
               finished = true; break;
             }
           }
-          if (!finished) { needsContinuation = true; return; }
+          if (!finished) { window.setTimeout(() => downloadCatalog(), 5000); return; }
         }
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
