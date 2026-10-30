@@ -263,6 +263,26 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       }
     })().finally(() => { activeCatalogDownload = null; });
   }
+  useEffect(() => {
+    if (!companyId || !isAppWindow()) return;
+    const resume = () => {
+      if (navigator.onLine && document.visibilityState !== "hidden") downloadCatalog();
+    };
+    const timer = window.setInterval(resume, 120_000);
+    window.addEventListener("online", resume);
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
+    resume();
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [userId, companyId]);
+  // Downloads and queued financial operations continue without any visible button.
+  // Older render trees may still contain a toolbar; styling hides those as well.
+  // Keep all existing UI logic mounted for backward compatibility.
   // Keep item-delta polling and pending operations in both modes.
   // Browser pages need no catalog download toolbar.
   if (!isAppWindow()) return null;
