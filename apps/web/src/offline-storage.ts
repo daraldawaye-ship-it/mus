@@ -238,6 +238,7 @@ function answerHistoryPath(scope: string, questionId: number): string {
 }
 export async function storePersonalAnswer(
   userId: number, scope: string, questionId: number, outcome: SavedQuestionOutcome,
+  notify = true,
 ): Promise<void> {
   if (activeUser !== userId || !Number.isSafeInteger(questionId) || questionId <= 0 ||
       !Number.isSafeInteger(outcome.selectedAnswer) || outcome.selectedAnswer <= 0) return;
@@ -246,8 +247,9 @@ export async function storePersonalAnswer(
     key: userId + ":" + path, userId, path,
     value: outcome, savedAt: new Date().toISOString(),
   } satisfies Snapshot);
-  changed();
+  if(notify) changed();
 }
+export function announcePersonalAnswerChanges(): void { changed(); }
 export async function personalAnswerHistory(
   userId: number, scope: string,
 ): Promise<Record<number, SavedQuestionOutcome>> {
