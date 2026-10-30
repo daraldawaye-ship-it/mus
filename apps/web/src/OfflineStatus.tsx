@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { cacheItemCompositions } from "./offline-compositions";
@@ -250,31 +250,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         }
         await cacheItemCompositions(userId, companyId).catch(() => {});
         await cacheQuestionPages(userId, companyId).catch(() => {});
-        // Small reference catalogs use their ordinary permitted endpoints.
-        for (const type of ["accounts", "branches", "locations", "currencies"]) {
-          const checkpoint = await readCatalogProgress(userId, companyId, "option:" + type);
-          if (checkpoint.complete) continue;
-          let finished = false;
-          for (let page = checkpoint.nextPage; page < checkpoint.nextPage + 40; page++) {
-            if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
-            const params = new URLSearchParams({
-              type, active: "true", page: String(page), pageSize: "100",
-            });
-            const path = "/companies/" + companyId + "/commerce-options?" + params.toString();
-            const response = await api<{ items: unknown[]; total?: number }>(path);
-            await rememberRead(path, response);
-            otherRecords += response.items.length;
-            const done = response.items.length < 100 ||
-              (typeof response.total === "number" && page * 100 >= response.total);
-            await saveCatalogProgress(userId, companyId, "option:" + type, page + 1, done);
-            publishCatalogStatus({ progress: "الأصناف: " + savedItems + "، الحسابات والخيارات: " + otherRecords });
-            if (response.items.length < 100 ||
-              (typeof response.total === "number" && page * 100 >= response.total)) {
-              finished = true; break;
-            }
-          }
-          if (!finished) { scheduleNextBatch(); return; }
-        }
+        await downloadSharedReferenceCards(userId, companyId);
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
             " سجل مساعد. ستتحدث أسماء الأصناف وأسعارها بالتغييرات اللاحقة.",
