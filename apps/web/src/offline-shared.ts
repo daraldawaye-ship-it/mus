@@ -128,6 +128,8 @@ async function read(key:string): Promise<unknown> {
   } finally { database.close(); }
 }
 export async function shareAuthorizedRead(path:string,data:unknown):Promise<void> {
+  // Answer keys downloaded for offline grading are private to one user.
+  if (/^\/(?:companies\/\d+\/)?questions\/offline-pack(?:\?|$)/.test(path)) return;
   const group=scope(path);
   if (identity===null || !group) return;
   const current=identity;
