@@ -8,6 +8,11 @@ on:
       - 'apps/api/src/routes-questions.ts'
       - 'apps/api/migrations/147_questions_answers.sql'
       - 'apps/web/src/pages/QuestionsPage.tsx'
+      - 'apps/web/src/question-result.ts'
+      - 'apps/web/src/styles.css'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/invoice-account-default.ts'
+      - 'tests/question-verdict.test.ts'
       - 'tests/questions.test.ts'
       - 'packages/contracts/src/pages.ts'
       - 'apps/web/src/App.tsx'
@@ -40,4 +45,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - run: node --import tsx --test tests/question-verdict.test.ts
       - run: npx tsx --test tests/questions.test.ts

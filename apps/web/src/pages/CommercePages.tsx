@@ -2285,7 +2285,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   resource={`/companies/${companyId}/commerce-options?type=accounts`}
                   label={
                     kind === "sale"
-                      ? "حساب العميل / النقد"
+                      ? "الحساب (صندوق مبيعات الموظف افتراضيًا)"
                       : "حساب السداد / الذمة"
                   }
                   value={account}
