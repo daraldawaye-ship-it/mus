@@ -209,7 +209,14 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       let savedItems = 0;
       let otherRecords = 0;
       try {
-        const prior = await catalogDownloadState(userId, companyId);
+        let itemPermission = false;
+        try {
+          await api("/companies/" + companyId + "/item-changes");
+          itemPermission = true;
+        } catch { /* no item permission: do not read shared items */ }
+        const prior = itemPermission ?
+          await readSharedItemProgress(userId, companyId) : { complete:true,count:0,
+            cursor:{ since:"1970-01-01T00:00:00.000Z",afterId:0 } };
         savedItems = prior?.count ?? 0;
         if (!prior?.complete) {
           // Full initial item catalog goes through the indexed, cheap change
