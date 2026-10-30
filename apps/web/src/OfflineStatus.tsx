@@ -251,7 +251,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
               finished = true; break;
             }
           }
-          if (!finished) throw new Error("لم يكتمل تنزيل " + type + "؛ اضغط مجددًا للاستكمال");
+          if (!finished) { needsContinuation = true; return; }
         }
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
