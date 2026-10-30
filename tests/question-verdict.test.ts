@@ -100,7 +100,7 @@ test("offline refresh reorders only downloaded questions, skips duplicates and p
 
 test("offline update uses existing user-scoped saved question lists, not a new server request", () => {
   const page=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
-  assert.match(page,/if \(!navigator\.onLine\) \{/);
+  assert.match(page,/if \(isOfflineNow\(\)\) \{/);
   assert.match(page,/savedRead<Page<Question>>\(sourceUrl\)/);
   assert.match(page,/personalAnswerHistory\(user\.id,scope\)/);
   assert.match(page,/orderCachedQuestionCards\(pages,answeredIds,20\)/);
