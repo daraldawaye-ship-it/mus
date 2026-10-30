@@ -12,7 +12,7 @@ export async function refreshSharedCompositions(userId:number,companyId:number) 
   const page=saved?.page??1;
   const response=page===1?first:await api<Page>(url(page));
   await shareAuthorizedRead(url(page),response);
-  const complete=response.items.length<100||page*100>=response.total;
+  const complete=response.items.length<100||(typeof response.total==="number"&&page*100>=response.total);
   await saveSharedProgress(companyId,"item-compositions",userId,page+1,complete);
 }
 export async function refreshSharedQuestions(userId:number,companyId:number) {
