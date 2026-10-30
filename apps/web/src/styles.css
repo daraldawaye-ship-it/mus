@@ -6026,3 +6026,13 @@ a.notification-quick-title:hover { text-decoration: underline; }
 /* The installed app now updates offline catalogs automatically; no download
    or duplicated connection bars should cover company screens. */
 .offline-status { display: none !important; }
+
+/* Device downloads and their progress are headless. After routing the setup
+   below page content, omit its flex item entirely when there is nothing
+   actionable (no install help and no notification-permission invitation).
+   The OfflineStatus React effects remain mounted even when display:none. */
+.app-device-setup:not(:has(> .app-install-guide, > .device-push-invite, > p)) {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
