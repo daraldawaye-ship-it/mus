@@ -35,7 +35,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
   router.get("/companies/:companyId/item-sale-ranks", handler(async (req,res)=>{
     const companyId=id(req.params.companyId);
     const afterId=req.query.afterId??"0";
-    if (typeof afterId!=="string" || !/^(0|[1-9]\\d{0,9})$/.test(afterId) ||
+    if (typeof afterId!=="string" || !/^(0|[1-9]\d{0,9})$/.test(afterId) ||
         Number(afterId)>2147483647)
       throw new HttpError(400,"invalid_cursor","مؤشر ترتيب الأصناف غير صالح");
     const result=await transaction(pool,async client=>{
