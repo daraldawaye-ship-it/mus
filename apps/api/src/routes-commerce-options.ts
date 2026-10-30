@@ -43,7 +43,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
         !/^(0|[1-9]\d{0,9})$/.test(afterId) || Number(afterId) > 2147483647))
       throw new HttpError(400, "invalid_cursor", "مؤشر تحديث الأصناف غير صالح");
     const result = await transaction(pool, async (client) => {
-      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      await client.query("SET TRANSACTION READ ONLY");
       const user = await currentActor(client, actor(req), false);
       let permitted = false;
       for (const permission of ["commerce.view", "inventory.view", "items.view"] as const) {
@@ -57,7 +57,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
       }
       if (!permitted) throw new HttpError(403, "forbidden", "لا تملك صلاحية عرض الأصناف");
       const now = await client.query<{ timestamp: string }>(
-        `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS timestamp`,
+        `SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS timestamp`,
       );
       const timestamp = now.rows[0].timestamp;
       if (since === undefined) return {
