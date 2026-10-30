@@ -5648,6 +5648,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
   gap: 6px;
   margin-block: 8px 12px;
 }
+.question-editor { scroll-margin-top: 96px; margin-block: 10px 16px; }
 .question-results { min-width: 0; }
 .question-pagination {
   margin-block: 16px 24px;
