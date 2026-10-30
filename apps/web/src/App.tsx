@@ -59,6 +59,7 @@ import { UserMenu } from "./UserMenu";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
+import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
 import { reportPrintLayout } from "./reportPrintLayout";
@@ -916,7 +917,6 @@ function Workspace() {
     user,
     loading: sessionLoading,
     error: sessionError,
-    offlineMode,
     logout,
     pendingLogoutRedirect,
     acknowledgeLogoutRedirect,
@@ -1066,6 +1066,7 @@ function Workspace() {
               </div>
             </div>
             <div className="topbar-actions">
+              {user && <ConnectionModeControl />}
               {user && inCompany && company.data && !company.isError && (
                 <WalletIndicator
                   key={`${user.id}:${scope}`}
@@ -1292,11 +1293,7 @@ function Workspace() {
                 }
               />
             </Routes>
-            {offlineMode && <Notice tone="warning">
-              وضع دون إنترنت: فُتحت جلسة هذا الجهاز المحفوظة مؤقتًا. يمكنك استخدام
-              البيانات المحلية وحفظ العمليات المسموحة؛ ستُراجع صلاحياتك وتُرسل
-              العمليات المعلقة عند عودة الاتصال.
-            </Notice>}
+
             {/* Device sync runs in the background; only installation help or
                 an actionable notification prompt can appear below page content. */}
             <AppSetup key={user?.id ?? "guest"} userId={user?.id}

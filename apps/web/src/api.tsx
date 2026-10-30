@@ -13,6 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { clearOfflineSession, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineUser } from "./offline-storage";
 import { clearOfflineSharedGrants, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
+import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
 import { offlineUser } from "./offline-storage";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
@@ -37,6 +38,23 @@ export async function api<T>(
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const mutation = method !== "GET" && method !== "HEAD";
+  // A manual offline switch uses the same user-authorized read cache as
+  // a physical outage. Never send new financial mutations while offline.
+  async function fallbackRead(): Promise<T | undefined> {
+    if (method !== "GET" || options.signal?.aborted) return undefined;
+    const offline = await savedRead<T>(path).catch(() => undefined);
+    if (offline !== undefined) return offline;
+    const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
+    if (reusable !== undefined) return reusable;
+    const id = offlineUser();
+    return id === null ? undefined :
+      lookupSharedItem<T>(path,id).catch(() => undefined);
+  }
+  if (isOfflineNow()) {
+    const saved = await fallbackRead();
+    if (saved !== undefined) return saved;
+    throw new TypeError("وضع دون إنترنت: هذه العملية غير متاحة حتى عودة الاتصال.");
+  }
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
@@ -50,21 +68,13 @@ export async function api<T>(
       ...(mutation ? { body: JSON.stringify(options.body ?? {}) } : {}),
     });
   } catch (error) {
-    // A network failure may use a saved read, never a cached authentication
-    // response or a simulated successful financial mutation.
-    if (method === "GET" && !options.signal?.aborted) {
-      const offline = await savedRead<T>(path).catch(() => undefined);
-      if (offline !== undefined) return offline;
-      const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
-      if (reusable !== undefined) return reusable;
-      const id=offlineUser();
-      if (id!==null) {
-        const item=await lookupSharedItem<T>(path,id).catch(()=>undefined);
-        if (item!==undefined) return item;
-      }
-    }
+    // A canceled query is not an outage. Only transport failures switch modes.
+    if (!options.signal?.aborted && error instanceof TypeError) markNetworkFailure();
+    const saved = await fallbackRead();
+    if (saved !== undefined) return saved;
     throw error;
   }
+  markNetworkSuccess();
   const data: unknown = response.status === 204 ? {} : await response.json();
   if (!response.ok) {
     const error = (data as { error?: { message?: string; code?: string } })

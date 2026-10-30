@@ -4,6 +4,7 @@ import { api } from "./api";
 import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
+import { isOfflineNow, subscribeConnection } from "./connection-mode";
 import { syncMyHistory } from "./offline-my-history";
 import { syncOfflineQuestionPack } from "./offline-question-pack";
 import { refreshDailySaleRanks } from "./offline-sale-rank-sync";
@@ -49,7 +50,7 @@ function publishCatalogStatus(patch: Partial<CatalogUiState>) {
 }
 function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   const client = useQueryClient();
-  const [online, setOnline] = useState(navigator.onLine);
+  const [online, setOnline] = useState(!isOfflineNow());
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
   const scopeKey = userId + ":" + (companyId ?? "");
@@ -72,8 +73,8 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     refresh();
     const detach = offlineChanged(refresh);
     const connected = () => {
-      setOnline(navigator.onLine);
-      if (navigator.onLine) void syncPending(userId,
+      setOnline(!isOfflineNow());
+      if (!isOfflineNow()) void syncPending(userId,
         (path, body) => api(path, { method: "POST", body }))
         .then(result => {
           if (result.saved) {
@@ -84,12 +85,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         }).catch(() => {});
     };
     connected();
-    window.addEventListener("online", connected);
-    window.addEventListener("offline", connected);
+    const unsubscribeConnection=subscribeConnection(connected);
     return () => {
       detach();
-      window.removeEventListener("online", connected);
-      window.removeEventListener("offline", connected);
+      unsubscribeConnection();
     };
   }, [userId, client]);
 
@@ -112,7 +111,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       if (event.data === "changed") invalidateItems();
     };
     async function poll() {
-      if (stopped || running || !navigator.onLine || document.visibilityState === "hidden") return;
+      if (stopped || running || isOfflineNow() || document.visibilityState === "hidden") return;
       running = true;
       lastPollAt = Date.now();
       try {
@@ -181,7 +180,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     };
   }, [companyId, userId, client]);
   async function sync() {
-    if (busy || !navigator.onLine) return;
+    if (busy || isOfflineNow()) return;
     setBusy(true);
     setMessage("");
     try {
@@ -198,7 +197,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     if (catalogRetryTimer !== null) return;
     catalogRetryTimer = window.setTimeout(() => {
       catalogRetryTimer = null;
-      if (offlineUser() === userId && navigator.onLine && isAppWindow() &&
+      if (offlineUser() === userId && !isOfflineNow() && isAppWindow() &&
           document.visibilityState !== "hidden" &&
           window.location.pathname.startsWith("/companies/" + companyId)) {
         downloadCatalog();
@@ -206,7 +205,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     }, 5_000);
   }
   function downloadCatalog() {
-    if (!companyId || !navigator.onLine || activeCatalogDownload || offlineUser() !== userId) return;
+    if (!companyId || isOfflineNow() || activeCatalogDownload || offlineUser() !== userId) return;
     const key = scopeKey;
     publishCatalogStatus({ key, busy: true, progress: "", message: "" });
     const transfer = async () => {
@@ -231,7 +230,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
           };
           let complete = false;
           for (let page = 0; page < 40; page++) {
-            if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
+            if (isOfflineNow()) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               since: cursor.since, afterId: String(cursor.afterId),
             });
@@ -284,7 +283,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if (!companyId || !isAppWindow()) return;
     const resume = () => {
-      if (navigator.onLine && document.visibilityState !== "hidden") downloadCatalog();
+      if (!isOfflineNow() && document.visibilityState !== "hidden") downloadCatalog();
     };
     const timer = window.setInterval(resume, 120_000);
     window.addEventListener("online", resume);
@@ -306,7 +305,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   // both in a browser and in the installed app for offline grading.
   useEffect(() => {
     const warm = () => {
-      if (!navigator.onLine || document.visibilityState === "hidden") return;
+      if (isOfflineNow() || document.visibilityState === "hidden") return;
       void syncOfflineQuestionPack(userId,null).catch(() => {});
       if (companyId) void syncOfflineQuestionPack(userId,companyId).catch(() => {});
     };
@@ -323,7 +322,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if (!isAppWindow()) return;
     const refresh = () => {
-      if (navigator.onLine && document.visibilityState !== "hidden")
+      if (!isOfflineNow() && document.visibilityState !== "hidden")
         void syncMyHistory(userId,companyId??null);
     };
     const timer = window.setInterval(refresh,120_000);
@@ -334,7 +333,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if(!companyId || !isAppWindow())return;
     const run=()=>{
-      if(navigator.onLine && document.visibilityState!=="hidden")
+      if(!isOfflineNow() && document.visibilityState!=="hidden")
         void refreshDailySaleRanks(userId,companyId);
     };
     run();

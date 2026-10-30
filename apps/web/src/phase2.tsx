@@ -165,6 +165,7 @@ export function ServerLookup<T extends { id: number }>({
       params.set("sort", sort);
       return api<Page<T>>(`${path}?${params}`, { signal });
     },
+    networkMode: "always",
     enabled: !!user,
   });
   const items = (result.data?.items ?? []).filter(

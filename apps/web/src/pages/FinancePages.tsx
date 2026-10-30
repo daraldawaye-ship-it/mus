@@ -42,6 +42,7 @@ import { formatMoney } from "../format-money";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { queueOfflineOperation } from "../offline-storage";
+import { isOfflineNow } from "../connection-mode";
 import {
   Button,
   Card,
@@ -713,7 +714,7 @@ function DocumentEditor({
         return false;
       }
     }
-    if (!navigator.onLine && !document && (kind === "receipt" || kind === "payment")) {
+    if (isOfflineNow() && !document && (kind === "receipt" || kind === "payment")) {
       await saveOnDevice();
       return;
     }

@@ -67,6 +67,7 @@ import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
+import { isOfflineNow } from "../connection-mode";
 import {
   Button,
   Card,
@@ -589,6 +590,7 @@ function ItemSearch({
         `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc", fast: "1" })}`,
         { signal },
       ),
+    networkMode: "always",
     enabled: !!user && expanded && searchCurrent && canSearchInvoiceItem(search),
     staleTime: 30_000,
   });
@@ -2184,7 +2186,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         return false;
       }
     }
-    if (!navigator.onLine) {
+    if (isOfflineNow()) {
       await saveOnDevice();
       return;
     }

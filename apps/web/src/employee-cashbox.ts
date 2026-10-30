@@ -3,6 +3,7 @@ import type { Account, CompanyContext } from "../../../packages/contracts/src/in
 import { api, useSession } from "./api";
 import { offlineUser, rememberRead, savedRead } from "./offline-storage";
 import { ownActiveSalesCashbox, type LinkedCashboxSnapshot } from "./employee-cashbox-cache";
+import { isOfflineNow } from "./connection-mode";
 
 /** Read the employee's *server-linked* sales cashbox, not an arbitrary account. */
 export async function employeeSalesCashbox(
@@ -13,7 +14,7 @@ export async function employeeSalesCashbox(
   const path = `/companies/${companyId}/my-sales-cashbox`;
   // Avoid a network request entirely while offline; browsers pause standard
   // React Query queries, so callers must also use networkMode: "always".
-  if (!navigator.onLine) {
+  if (isOfflineNow()) {
     const cached = await savedRead<LinkedCashboxSnapshot>(path).catch(() => undefined);
     return ownActiveSalesCashbox(cached,userId,companyId,employeeId,true);
   }
