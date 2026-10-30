@@ -115,6 +115,17 @@ export async function rememberRead(path: string, value: unknown): Promise<void> 
     key: String(userId) + ":" + path, userId, path, value,
     savedAt: new Date().toISOString(),
   } satisfies Snapshot);
+  // A direct online item-card read must also refresh its offline search card.
+  const detail = path.match(/^\/companies\/(\d+)\/items\/(\d+)$/);
+  if (detail && value && typeof value === "object") {
+    const item = (value as { item?: Record<string, unknown> }).item;
+    if (item && item.id === Number(detail[2])) {
+      await writeCatalog([{
+        key: [userId, Number(detail[1]), "items", item.id].join(":"),
+        userId, companyId: Number(detail[1]), type: "items", value: item,
+      }]);
+    }
+  }
   const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
   if (!match || !value || typeof value !== "object") return;
   const type = new URLSearchParams(path.slice(path.indexOf("?") + 1)).get("type");
@@ -136,7 +147,15 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const userId = activeUser;
   if (userId === null || !allowedSnapshot(path)) return undefined;
   const snapshot = await readOne<Snapshot>("snapshots", String(userId) + ":" + path);
-  if (snapshot) return snapshot.value as T;
+  const card = path.match(/^\/companies\/(\d+)\/items\/(\d+)$/);
+  if (card) {
+    const entry = await readOne<CatalogEntry>("catalog",
+      [userId, Number(card[1]), "items", Number(card[2])].join(":"));
+    if (entry) return { item: entry.value } as T;
+  }
+  const itemQuery = /^\/companies\/\d+\/(?:commerce-options|financial-options)\?/.test(path) &&
+    new URLSearchParams(path.split("?")[1]).get("type") === "items";
+  if (snapshot && !itemQuery) return snapshot.value as T;
   const match = path.match(/^\/companies\/(\d+)\/(?:commerce-options|financial-options)\?/);
   if (!match) return undefined;
   const companyId = Number(match[1]);
@@ -144,7 +163,7 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const type = qs.get("type");
   if (!type || !["items", "accounts", "branches", "locations", "currencies"].includes(type)) return undefined;
   const records = await readIndex<CatalogEntry>("catalog", "scope", [userId, companyId, type]);
-  if (!records.length) return undefined;
+  if (!records.length) return snapshot?.value as T | undefined;
   const q = (qs.get("q") ?? "").normalize("NFKC").toLocaleLowerCase();
   const active = qs.get("active");
   const id = qs.get("id");
