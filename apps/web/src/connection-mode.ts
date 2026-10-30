@@ -29,7 +29,6 @@ export function markNetworkFailure() {
   notify();
 }
 export function markNetworkSuccess() {
-  if (!failedTransport) return;
   failedTransport = false;
   notify();
 }
