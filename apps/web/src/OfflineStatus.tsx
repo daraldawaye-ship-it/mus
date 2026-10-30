@@ -303,9 +303,8 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     };
   }, [userId, companyId]);
   // Preload current user's own answer keys and question cards (not shared)
-  // so offline choices can be graded instantly and verified on reconnect.
+  // both in a browser and in the installed app for offline grading.
   useEffect(() => {
-    if (!isAppWindow()) return;
     const warm = () => {
       if (!navigator.onLine || document.visibilityState === "hidden") return;
       void syncOfflineQuestionPack(userId,null);
