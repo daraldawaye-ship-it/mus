@@ -302,7 +302,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
             <fieldset className="question-options" disabled={!!answered||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
               {optionOrder(question).map(i=><label key={i}
-                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}`}>
+                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>
                 <input type="radio" name={`question-choice-${question.id}`}
                   checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
                   onChange={()=>void submitAnswer(question,i+1)}
