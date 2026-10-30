@@ -40,7 +40,7 @@ test("browser shows no download controls and application detects its display mod
 });
 test("new worker installation rotates only the static shell cache", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v4/);
+  assert.match(worker,/alraesy-static-offline-20261030-v5/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
 
@@ -71,6 +71,27 @@ test("invoice and work routes render before nonblocking device setup", () => {
   assert.match(status,/window\.setInterval\(resume, 120_000\)/);
   assert.match(status,/scheduleNextBatch/);
   assert.match(status,/return null;/);
+});
+
+test("offline sales, purchases, receipts and payments require a complete cached release", () => {
+  const worker = readFileSync("apps/web/public/push-sw.js", "utf8");
+  const install = readFileSync("apps/web/src/app-install.ts", "utf8");
+  const main = readFileSync("apps/web/src/main.tsx", "utf8");
+  // Both invoice kinds import CommercePages, both voucher kinds FinancePages.
+  assert.match(worker, /CommercePages-/);
+  assert.match(worker, /FinancePages-/);
+  assert.match(worker, /offline-assets\\.json/);
+  assert.match(worker, /await Promise\\.all\\(assets\\.slice/);
+  assert.match(worker, /await cache\\.put\\("\\/", htmlResponse\\)/);
+  assert.match(worker, /await caches\\.delete\\(shellCache\\)/);
+  assert.match(worker, /if \\(warmingBundle\\) return warmingBundle/);
+  assert.match(worker, /assertStaticResponse\\(path, response\\)/);
+  assert.match(install, /alraesy:warm-static/);
+  assert.match(install, /addEventListener\\("online", warmStaticAssets\\)/);
+  assert.match(main, /errorElement: <RouteLoadError \\/>/);
+  // Authentication and financial API calls must not enter CacheStorage.
+  assert.match(worker, /url\\.pathname\\.startsWith\\("\\/api\\/"\\)/);
+  assert.doesNotMatch(worker, /method:\\s*["']POST/);
 });
 
 test("only a recent unrevoked local identity can resume without network", () => {
@@ -104,9 +125,9 @@ test("offline bootstrap never trusts a denied server session or caches credentia
 
 test("offline navigation refreshes latest shell instead of serving old cached login", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v4/);
+  assert.match(worker,/alraesy-static-offline-20261030-v5/);
   assert.match(worker,/fetch\(request, \{cache: "no-store"\}\)/);
-  assert.match(worker,/shell\.put\("\/", response\.clone\(\)\)/);
+  assert.match(worker,/cache\.put\("\/", htmlResponse\)/);
   assert.match(worker,/shell\.match\("\/"\)/);
   assert.doesNotMatch(worker,/return await caches\.match\("\/"\)/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
