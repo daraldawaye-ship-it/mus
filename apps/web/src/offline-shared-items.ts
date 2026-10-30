@@ -65,3 +65,11 @@ export async function lookupSharedItem<T>(path:string,userId:number):Promise<T|u
   return {items:filtered.slice((page-1)*pageSize,page*pageSize),
     total:filtered.length,page,pageSize} as T;
 }
+
+export async function refreshSharedItemCards(
+  userId:number,companyId:number,items:Record<string,unknown>[],
+) {
+  if (!items.length) return;
+  const state=await readSharedItemProgress(userId,companyId);
+  if (state) await saveSharedItemBatch(userId,companyId,items,state);
+}
