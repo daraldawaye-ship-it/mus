@@ -7,6 +7,7 @@ import { HttpError } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { createInvoice, loadInvoice } from "./commerce.ts";
 import { normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
+import { legacySaleInvoiceLines } from "./legacy-sales-quantity.ts";
 import {
   assertBalanced,
   checkDocumentReferences,
@@ -159,8 +160,12 @@ export async function importTransactionBatch(
           source.payload.kind === "sale" &&
           source.payload.documentDate >= "2026-10-01" &&
           source.payload.documentDate < "2026-11-01";
+        const directionSafeLines = legacySaleInvoiceLines(
+          companyId, input.sourceSystem, source.payload.kind,
+          source.payload.lines, source.sourceRows,
+        );
         const normalized = await normalizeHistoricalInvoiceFractions(
-          client, companyId, source.payload.lines,
+          client, companyId, directionSafeLines,
           octoberStockVariance ? source.payload.currencyId : undefined,
         );
         const invoice = await createInvoice(
