@@ -4,6 +4,7 @@ import { api } from "./api";
 import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
+import { cacheItemCompositions } from "./offline-compositions";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
