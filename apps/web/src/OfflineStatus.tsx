@@ -307,8 +307,8 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     const warm = () => {
       if (!navigator.onLine || document.visibilityState === "hidden") return;
-      void syncOfflineQuestionPack(userId,null);
-      if (companyId) void syncOfflineQuestionPack(userId,companyId);
+      void syncOfflineQuestionPack(userId,null).catch(() => {});
+      if (companyId) void syncOfflineQuestionPack(userId,companyId).catch(() => {});
     };
     warm();
     const interval=window.setInterval(warm,120_000);
