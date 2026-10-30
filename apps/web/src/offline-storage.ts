@@ -241,8 +241,8 @@ export async function saveSaleRankSnapshot(
  * drafts: the ranking came from a previously authorized stored server view.
  */
 export function compareItemsBySavedSales(
-  a:{id:unknown;code?:unknown;barcode?:unknown},
-  b:{id:unknown;code?:unknown;barcode?:unknown},
+  a:Record<string,unknown>,
+  b:Record<string,unknown>,
   scores:Record<string,string>,
   search="",
 ):number{
