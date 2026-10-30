@@ -941,6 +941,9 @@ function Workspace() {
     queryFn: ({ signal }) =>
       api<CompanyContext>(`/companies/${companyId}`, { signal }),
     enabled: !!user && inCompany,
+    // The company/employee context was saved after an authorized online GET.
+    // Permit the user-scoped savedRead fallback to execute without internet.
+    networkMode: "always",
     staleTime: 0,
   });
   // The backend persists the last accessible company for each user. Resolve it
