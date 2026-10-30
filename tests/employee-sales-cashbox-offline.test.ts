@@ -21,12 +21,13 @@ test("offline selection refuses another user, company or employee and missing pr
   assert.equal(ownActiveSalesCashbox(linked,userId,companyId+1,employeeId,true),null);
   assert.equal(ownActiveSalesCashbox(linked,userId,companyId,employeeId+1,true),null);
   assert.equal(ownActiveSalesCashbox({account},userId,companyId,employeeId,true),null);
-  assert.equal(ownActiveSalesCashbox({account:null,...linked},userId,companyId,employeeId,true),null);
+  assert.equal(ownActiveSalesCashbox({...linked,account:null},userId,companyId,employeeId,true),null);
 });
 test("only active company posting cash accounts are eligible",()=>{
-  for (const change of [
+  const invalidAccounts: Partial<Account>[] = [
     {active:false},{kind:"group"},{cashOrBank:false},{companyId:companyId+1},
-  ]) {
+  ];
+  for (const change of invalidAccounts) {
     assert.equal(ownActiveSalesCashbox({...linked,account:{...account,...change}},userId,companyId,employeeId,true),null);
   }
 });
