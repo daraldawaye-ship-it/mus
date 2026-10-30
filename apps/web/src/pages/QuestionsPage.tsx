@@ -74,6 +74,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
   const [frozenQuestions,setFrozenQuestions]=useState<{url:string;items:Question[]}|null>(null);
   const [sendingQuestionId,setSendingQuestionId]=useState<number|null>(null);
+  const sendingQuestionRef=useRef<number|null>(null);
   const [draft,setDraft]=useState<Draft|null>(null);
   const [editing,setEditing]=useState<Question|null>(null);
   const [saving,setSaving]=useState(false);
@@ -145,15 +146,17 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       comment:question.myLastComment,otherOptionCounts:question.otherOptionCounts??[],
     };
   }
-  async function submitAnswer(event:FormEvent,question:Question) {
-    event.preventDefault();
-    if(sendingQuestionId!==null||!canAnswer||outcomeFor(question))return;
-    const selected=chosenAnswers[question.id];
-    const payload=pendingAnswers[question.id]??(selected===undefined?null:{
-      selectedAnswer:selected,comment:comments[question.id]?.trim()||null,
-      idempotencyKey:crypto.randomUUID()
-    });
-    if(!payload){setError("اختر إجابة من الخيارات المتاحة");return;}
+  async function submitAnswer(question:Question,selectedAnswer:number) {
+    // The click is the submission: capture the choice directly, without waiting
+    // for React's state update or a separate confirmation button.
+    if(sendingQuestionRef.current!==null||!canAnswer||outcomeFor(question)||!question.active)return;
+    const comment=comments[question.id]?.trim()||null;
+    const previous=pendingAnswers[question.id];
+    // A retry of the same choice must reuse its idempotency key.
+    const payload:Submission=previous?.selectedAnswer===selectedAnswer&&previous.comment===comment
+      ? previous : {selectedAnswer,comment,idempotencyKey:crypto.randomUUID()};
+    sendingQuestionRef.current=question.id;
+    setChosenAnswers(prev=>({...prev,[question.id]:selectedAnswer}));
     setPendingAnswers(prev=>({...prev,[question.id]:payload}));
     setSendingQuestionId(question.id);setError("");setMessage("");
     try{
@@ -163,10 +166,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       }}));
       setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
       setFrozenQuestions({url,items:questions});
-      // Keep the just-answered card visible even if background refresh reorders questions.
       void client.invalidateQueries({queryKey:["questions-module",user?.id,scope]});
     }catch(cause){setError(errorMessage(cause));}
-    finally{setSendingQuestionId(null);}
+    finally{sendingQuestionRef.current=null;setSendingQuestionId(null);}
   }
   function startEdit(question:Question|null) {
     setEditing(question);
@@ -288,17 +290,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
             <strong>{answered.correct?"✓ إجابة صحيحة":"✗ إجابة غير صحيحة"}</strong>
             {answered.points>0?` · +${answered.points} نقطة`:""}
           </p>}
-          <form className="question-answer-form" onSubmit={event=>void submitAnswer(event,question)}>
+          <div className="question-answer-form">
             <fieldset className="question-options" disabled={!!answered||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
               {optionOrder(question).map(i=><label key={i}
                 className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}`}>
                 <input type="radio" name={`question-choice-${question.id}`}
                   checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
-                  onChange={()=>{
-                    setChosenAnswers(prev=>({...prev,[question.id]:i+1}));
-                    setPendingAnswers(prev=>{const next={...prev};delete next[question.id];return next;});
-                  }}/>
+                  onClick={()=>void submitAnswer(question,i+1)}/>
                 <span className="question-choice-content">
                   <span>{question.options[i]}</span>
                   {answered&&<span className="question-choice-stat">
@@ -318,11 +317,11 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                   disabled={isSending} value={comments[question.id]??""}
                   onChange={e=>setComments(prev=>({...prev,[question.id]:e.target.value}))}/>
               </details>
-              <Button type="submit" size="compact" disabled={sendingQuestionId!==null||chosenAnswers[question.id]===undefined}>
-                {isSending?"جارٍ التسجيل…":pendingAnswers[question.id]?"إعادة إرسال الإجابة":"تسجيل الإجابة"}
-              </Button>
+              <p className="question-info-note" role="status">
+                {isSending?"جارٍ تسجيل الإجابة…":pendingAnswers[question.id]?"تعذر التسجيل؛ اضغط على الاختيار مرة أخرى للمحاولة.":"اضغط على الإجابة لتسجيلها مباشرة."}
+              </p>
             </>:null}
-          </form>
+          </div>
         </article>;
       })}
       {tab==="answers"&&responses.map(answer=><article key={answer.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
