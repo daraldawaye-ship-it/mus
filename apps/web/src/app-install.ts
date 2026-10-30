@@ -81,8 +81,20 @@ export async function requestInstall(): Promise<void> {
 export function prepareInstall(): void {
   if (window.isSecureContext && "serviceWorker" in navigator) {
     // This worker handles notifications only; it never caches private API data.
+    const warmStaticAssets = () => {
+      if (!navigator.onLine || document.visibilityState === "hidden") return;
+      void navigator.serviceWorker.ready.then(registration => {
+        (registration.active ?? navigator.serviceWorker.controller)
+          ?.postMessage({ type: "alraesy:warm-static" });
+      }).catch(() => {});
+    };
     void navigator.serviceWorker.register("/push-sw.js", {
       scope: "/", updateViaCache: "none",
-    }).then(registration => registration.update()).catch(() => {});
+    }).then(async registration => {
+      await registration.update();
+      warmStaticAssets();
+    }).catch(() => {});
+    window.addEventListener("online", warmStaticAssets);
+    document.addEventListener("visibilitychange", warmStaticAssets);
   }
 }

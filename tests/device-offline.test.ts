@@ -40,7 +40,7 @@ test("browser shows no download controls and application detects its display mod
 });
 test("new worker installation rotates only the static shell cache", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v4/);
+  assert.match(worker,/alraesy-static-offline-20261030-v5/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
 
@@ -71,6 +71,26 @@ test("invoice and work routes render before nonblocking device setup", () => {
   assert.match(status,/window\.setInterval\(resume, 120_000\)/);
   assert.match(status,/scheduleNextBatch/);
   assert.match(status,/return null;/);
+});
+
+test("offline sales, purchases, receipts and payments require a complete cached release", () => {
+  const worker = readFileSync("apps/web/public/push-sw.js", "utf8");
+  const install = readFileSync("apps/web/src/app-install.ts", "utf8");
+  const main = readFileSync("apps/web/src/main.tsx", "utf8");
+  // The two invoice kinds use CommercePages, both voucher kinds FinancePages.
+  for (const expected of [
+    "CommercePages-", "FinancePages-", "offline-assets.json",
+    "await Promise.all(assets.slice", 'await cache.put("/", htmlResponse)',
+    "await caches.delete(shellCache)", "assertStaticResponse(path, response)",
+    "if (warmingBundle) return warmingBundle",
+  ]) assert.ok(worker.includes(expected), expected);
+  assert.ok(install.includes("alraesy:warm-static"));
+  assert.ok(install.includes('addEventListener("online", warmStaticAssets)'));
+  assert.ok(main.includes("errorElement: <RouteLoadError />"));
+  // No authenticated API responses or financial POSTs are ever stored.
+  assert.ok(worker.includes('url.pathname.startsWith("/api/")'));
+  assert.ok(worker.includes('request.method !== "GET"'));
+  assert.ok(!worker.includes('method: "POST"'));
 });
 
 test("only a recent unrevoked local identity can resume without network", () => {
@@ -104,9 +124,9 @@ test("offline bootstrap never trusts a denied server session or caches credentia
 
 test("offline navigation refreshes latest shell instead of serving old cached login", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v4/);
+  assert.match(worker,/alraesy-static-offline-20261030-v5/);
   assert.match(worker,/fetch\(request, \{cache: "no-store"\}\)/);
-  assert.match(worker,/shell\.put\("\/", response\.clone\(\)\)/);
+  assert.match(worker,/cache\.put\("\/", htmlResponse\)/);
   assert.match(worker,/shell\.match\("\/"\)/);
   assert.doesNotMatch(worker,/return await caches\.match\("\/"\)/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
