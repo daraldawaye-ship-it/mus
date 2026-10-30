@@ -49,3 +49,25 @@ test("worker refreshes only overview after upgrade, not unsaved invoice forms", 
   assert.match(worker,/keys\.slice\(0,-3\)/);
   assert.doesNotMatch(worker,/caches\.delete\(.*alraesy-device-v1/);
 });
+
+test("invoice and work routes render before nonblocking device setup", () => {
+  const app=readFileSync("apps/web/src/App.tsx","utf8");
+  const setup=readFileSync("apps/web/src/AppSetup.tsx","utf8");
+  const style=readFileSync("apps/web/src/styles.css","utf8");
+  const main=app.indexOf('<main className="main-content"');
+  const routes=app.indexOf("<Routes>",main);
+  const endRoutes=app.indexOf("</Routes>",routes);
+  const device=app.indexOf("<AppSetup",main);
+  const endMain=app.indexOf("</main>",main);
+  assert.ok(main>=0 && routes>main && endRoutes>routes);
+  assert.ok(device>endRoutes && endMain>device,
+    "Device download status must never reserve space above an invoice");
+  assert.match(style,/\.app-device-setup:not\(:has\(/);
+  assert.match(style,/display: none !important;/);
+  assert.match(setup,/<OfflineStatus/);
+  assert.match(setup,/<DevicePushBootstrap/);
+  const status=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  assert.match(status,/window\.setInterval\(resume, 120_000\)/);
+  assert.match(status,/scheduleNextBatch/);
+  assert.match(status,/return null;/);
+});
