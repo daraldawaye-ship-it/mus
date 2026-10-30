@@ -11,6 +11,8 @@ function scope(path: string): string | null {
   const match = path.match(/^\/companies\/(\d+)\/(item-compositions|item-shelves|doctors|sale-customers|branches|locations|accounts)(?:[/?]|$)/);
   if (match) return match[1] + ":" + match[2];
   const opt = path.match(/^\/companies\/(\d+)\/commerce-options\?/);
+  const delta = path.match(/^\/companies\/(\d+)\/item-changes(?:\?|$)/);
+  if (delta) return delta[1] + ":options:items";
   if (opt) {
     const type = new URLSearchParams(path.split("?")[1]).get("type");
     if (type && ["items","accounts","branches","locations","currencies"].includes(type))
