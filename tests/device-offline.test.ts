@@ -39,14 +39,13 @@ test("browser shows no download controls and application detects its display mod
 });
 test("new worker installation rotates only the static shell cache", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v2/);
+  assert.match(worker,/alraesy-static-offline-20261030-v3/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
 
 test("worker refreshes only overview after upgrade, not unsaved invoice forms", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/client\.navigate\(url\.href\)/);
-  assert.match(worker,/url\.pathname !== "\/"/);
-  assert.match(worker,/companies/);
+  assert.doesNotMatch(worker,/client\.navigate\(url\.href\)/);
+  assert.match(worker,/keys\.slice\(0,-3\)/);
   assert.doesNotMatch(worker,/caches\.delete\(.*alraesy-device-v1/);
 });

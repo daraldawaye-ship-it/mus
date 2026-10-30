@@ -102,7 +102,7 @@ export function offlineChanged(listener: () => void) {
 }
 function changed() { window.dispatchEvent(new Event(CHANGED)); }
 function allowedSnapshot(path: string): boolean {
-  return /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
+  return /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
     || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
     || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
 }
@@ -183,6 +183,21 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   const pageSize = Math.min(100, Math.max(1, Number(qs.get("pageSize") ?? "20") || 20));
   const offset = (page - 1) * pageSize;
   return { items: filtered.slice(offset, offset + pageSize), total: filtered.length, page, pageSize } as T;
+}
+
+type CatalogProgress = { key: string; nextPage: number; complete: boolean };
+export async function readCatalogProgress(userId: number, companyId: number, section: string) {
+  if (activeUser !== userId) throw new Error("تغير مستخدم الجهاز");
+  const row = await readOne<CatalogProgress>("catalog-download", userId + ":" + companyId + ":" + section);
+  return { nextPage: row?.nextPage ?? 1, complete: !!row?.complete };
+}
+export async function saveCatalogProgress(
+  userId: number, companyId: number, section: string, nextPage: number, complete: boolean,
+): Promise<void> {
+  if (activeUser !== userId) throw new Error("تغير مستخدم الجهاز");
+  await writeOne("catalog-download", {
+    key: userId + ":" + companyId + ":" + section, nextPage, complete,
+  } satisfies CatalogProgress);
 }
 
 export type ItemChangeCursor = { since: string; afterId: number };

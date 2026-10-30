@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
+import { cacheItemCompositions } from "./offline-compositions";
+import { cacheQuestionPages } from "./offline-questions";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
@@ -202,7 +204,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             since: "1970-01-01T00:00:00.000Z", afterId: 0,
           };
           let complete = false;
-          for (let page = 0; page < 300; page++) {
+          for (let page = 0; page < 40; page++) {
             if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               since: cursor.since, afterId: String(cursor.afterId),
@@ -223,10 +225,14 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
+        await cacheItemCompositions(userId, companyId).catch(() => {});
+        await cacheQuestionPages(userId, companyId).catch(() => {});
         // Small reference catalogs use their ordinary permitted endpoints.
         for (const type of ["accounts", "branches", "locations", "currencies"]) {
+          const checkpoint = await readCatalogProgress(userId, companyId, "option:" + type);
+          if (checkpoint.complete) continue;
           let finished = false;
-          for (let page = 1; page <= 200; page++) {
+          for (let page = checkpoint.nextPage; page < checkpoint.nextPage + 40; page++) {
             if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               type, active: "true", page: String(page), pageSize: "100",
@@ -235,6 +241,9 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             const response = await api<{ items: unknown[]; total?: number }>(path);
             await rememberRead(path, response);
             otherRecords += response.items.length;
+            const done = response.items.length < 100 ||
+              (typeof response.total === "number" && page * 100 >= response.total);
+            await saveCatalogProgress(userId, companyId, "option:" + type, page + 1, done);
             publishCatalogStatus({ progress: "الأصناف: " + savedItems + "، الحسابات والخيارات: " + otherRecords });
             if (response.items.length < 100 ||
               (typeof response.total === "number" && page * 100 >= response.total)) {
@@ -258,6 +267,26 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       }
     })().finally(() => { activeCatalogDownload = null; });
   }
+  useEffect(() => {
+    if (!companyId || !isAppWindow()) return;
+    const resume = () => {
+      if (navigator.onLine && document.visibilityState !== "hidden") downloadCatalog();
+    };
+    const timer = window.setInterval(resume, 120_000);
+    window.addEventListener("online", resume);
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
+    resume();
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [userId, companyId]);
+  // Downloads and queued financial operations continue without any visible button.
+  // Older render trees may still contain a toolbar; styling hides those as well.
+  // Keep all existing UI logic mounted for backward compatibility.
   // Keep item-delta polling and pending operations in both modes.
   // Browser pages need no catalog download toolbar.
   if (!isAppWindow()) return null;

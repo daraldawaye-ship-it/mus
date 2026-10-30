@@ -6022,3 +6022,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
   display: none !important;
 }
 [data-alraesy-offline-instance]:empty { display: none; }
+
+/* The installed app now updates offline catalogs automatically; no download
+   or duplicated connection bars should cover company screens. */
+.offline-status { display: none !important; }
