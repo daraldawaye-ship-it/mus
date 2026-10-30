@@ -195,7 +195,7 @@ export function AppearanceProvider({
     if (!user) return;
     const userId=user.id, path=`/appearance?scope=${encodeURIComponent(scope)}`;
     let stopped=false, running=false;
-    const refresh=async () => {
+    const refresh=async (onlyDraft=false) => {
       if(stopped || running || !navigator.onLine) return;
       running=true;
       try {
@@ -204,7 +204,7 @@ export function AppearanceProvider({
           await api("/appearance",{method:"PATCH",body:{scope,...draft}});
           await rememberRead(path,{preference:draft});
           await clearAppearanceDraft(userId,scope);
-        } else if(revision.current===savedRevision) {
+        } else if(!onlyDraft && revision.current===savedRevision) {
           const result=await api<{preference:AppearancePreference}>(path);
           if(!stopped && guard.isCurrent() && revision.current===savedRevision)
             updatePreference(result.preference);
@@ -216,6 +216,7 @@ export function AppearanceProvider({
     };
     const onOnline=()=>{void refresh();};
     window.addEventListener("online",onOnline);
+    void refresh(true);
     return ()=>{stopped=true;window.removeEventListener("online",onOnline);};
   }, [scope,user?.id,savedRevision]);
   useLayoutEffect(() => {
