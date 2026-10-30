@@ -64,9 +64,11 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const categorySelected=selectedCategory!==null;
   const [query,setQuery]=useState(params.get("q")??"");
   const [page,setPage]=useState(1);
+  const [statusFilter,setStatusFilter]=useState<"active"|"archived">("active");
   const questionId=params.get("questionId");
   const [infoId,setInfoId]=useState<number|null>(null);
   const infoWrap=useRef<HTMLDivElement|null>(null);
+  const editorRef=useRef<HTMLDivElement|null>(null);
   const optionOrders=useRef<Map<number,number[]>>(new Map());
   const [chosenAnswers,setChosenAnswers]=useState<Record<number,number>>({});
   const [comments,setComments]=useState<Record<number,string>>({});
@@ -78,6 +80,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const [draft,setDraft]=useState<Draft|null>(null);
   const [editing,setEditing]=useState<Question|null>(null);
   const [saving,setSaving]=useState(false);
+  const [statusBusyId,setStatusBusyId]=useState<number|null>(null);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
   const categories=useQuery({
@@ -88,9 +91,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   const url=useMemo(()=>{
     const search=new URLSearchParams({page:String(page),pageSize:"20",q:query});
     if(tab==="questions" && selectedCategory!==null) search.set("category",selectedCategory);
+    if(tab==="questions") search.set("status",statusFilter);
     if(tab==="answers"&&questionId)search.set("questionId",questionId);
     return `${tab==="questions"?root:answersRoot}?${search}`;
-  },[page,query,root,answersRoot,tab,questionId,selectedCategory]);
+  },[page,query,root,answersRoot,tab,questionId,selectedCategory,statusFilter]);
   const list=useQuery({
     queryKey:["questions-module",user?.id,scope,tab,url],
     queryFn:({signal})=>api<Page<Question> | Page<Answer>>(url,{signal}),
@@ -112,6 +116,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     ? frozenQuestions.items.map(old=>liveQuestions.find(item=>item.id===old.id)??old)
     : liveQuestions;
   const responses=tab==="answers"?(list.data?.items??[]) as Answer[]:[];
+  useEffect(()=>{
+    if(draft) editorRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+  },[!!draft,editing?.id]);
   useEffect(()=>{
     if(infoId===null)return;
     const dismiss=(event:PointerEvent)=>{
@@ -135,7 +142,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     return next;
   }
   function selectCategory(category:string|null){
-    setPage(1);setQuery("");setInfoId(null);
+    setPage(1);setQuery("");setInfoId(null);setStatusFilter("active");
     setPendingAnswers({});setFrozenQuestions(null);setError("");setMessage("");
     setParams(current=>{
       const next=new URLSearchParams(current);
@@ -186,6 +193,23 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     }:blank());
     setInfoId(null);setError("");setMessage("");
   }
+  async function updateQuestionStatus(question:Question,active:boolean){
+    if(!canEdit||statusBusyId!==null||question.active===active)return;
+    setStatusBusyId(question.id);setError("");setMessage("");
+    try {
+      await api(`${root}/${question.id}/status`,{
+        method:"PATCH",body:{active,revision:question.revision}
+      });
+      setInfoId(null);
+      setFrozenQuestions(null);
+      setMessage(active?"تمت استعادة السؤال من الأرشيف.":"تمت أرشفة السؤال مع الاحتفاظ بإجاباته.");
+      await Promise.all([
+        client.invalidateQueries({queryKey:["question-categories",user?.id,scope]}),
+        client.invalidateQueries({queryKey:["questions-module",user?.id,scope]})
+      ]);
+    }catch(cause){setError(errorMessage(cause));}
+    finally{setStatusBusyId(null);}
+  }
   async function saveQuestion(event:FormEvent){
     event.preventDefault();
     if(!draft||saving)return;
@@ -195,9 +219,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       await api(editing?`${root}/${editing.id}`:root,{
         method:editing?"PUT":"POST",body:editing?{...draft,revision:editing.revision}:draft,
       });
-      const savedCategory=draft.category.trim();
+      const savedCategory=draft.category.trim(), savedActive=draft.active;
       setDraft(null);setEditing(null);
       selectCategory(savedCategory);
+      if(!savedActive)setStatusFilter("archived");
       setMessage("تم حفظ السؤال بنجاح");
       await Promise.all([
         client.invalidateQueries({queryKey:["question-categories",user?.id,scope]}),
@@ -227,7 +252,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     </div>}
     {message&&<Notice tone="success">{message}</Notice>}
     {error&&<Notice tone="error">{error}</Notice>}
-    {draft&&tab==="questions"&&<Card title={editing?"تعديل كرت السؤال":"كرت سؤال جديد"}>
+    {draft&&tab==="questions"&&<div className="question-editor" ref={editorRef}><Card title={editing?"تعديل كرت السؤال":"كرت سؤال جديد"}>
       <form onSubmit={event=>void saveQuestion(event)} className="stack">
         <div className="form-grid">
           <Field label="الفئة" value={draft.category} maxLength={120} onChange={e=>setDraft({...draft,category:e.target.value})}/>
@@ -254,17 +279,22 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
           onChange={e=>setDraft({...draft,correctAnswer:Number(e.target.value)})}>
           {draft.options.map((_,i)=><option key={i} value={i+1}>الجواب {i+1}</option>)}
         </Select>
-        <label><input type="checkbox" checked={draft.active} onChange={e=>setDraft({...draft,active:e.target.checked})}/> السؤال فعال ويظهر للمستخدمين</label>
+        <label><input type="checkbox" checked={draft.active} onChange={e=>setDraft({...draft,active:e.target.checked})}/> السؤال فعال ويظهر للمستخدمين (إلغاء التفعيل ينقله للأرشيف)</label>
         <div className="page-actions">
           <Button type="submit" disabled={saving}>{saving?"جارٍ الحفظ…":"حفظ السؤال"}</Button>
           <Button variant="secondary" onClick={()=>{setDraft(null);setEditing(null);}}>إلغاء</Button>
         </div>
       </form>
-    </Card>}
+    </Card></div>}
     {(tab==="answers"||categorySelected)&&<section className="question-results">
       <div className="question-search">
         <Field className="question-search-field" type="search" label="بحث" value={query}
           onChange={e=>{setQuery(e.target.value);setPage(1);setFrozenQuestions(null);}} />
+        {tab==="questions"&&canEdit&&<Select label="عرض الأسئلة" value={statusFilter}
+          onChange={e=>{setStatusFilter(e.target.value as "active"|"archived");setPage(1);setInfoId(null);setFrozenQuestions(null);}}>
+          <option value="active">الأسئلة النشطة</option>
+          <option value="archived">أرشيف الأسئلة</option>
+        </Select>}
       </div>
       {list.isFetching&&!list.data&&<Notice>جارٍ تحميل السجلات…</Notice>}
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
@@ -290,7 +320,13 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                 <p><strong>الإجابات:</strong> {question.answerCount} · <strong>المستخدمون:</strong> {question.respondentCount}</p>
                 <p><strong>إجاباتك:</strong> {question.myAnswerCount} · <strong>آخر إجابة:</strong> {date(question.myLastAnsweredAt)}</p>
                 <p className="question-info-note">نقاط الإجابة الصحيحة تُمنح في المحاولة الأولى فقط.</p>
-                {canEdit&&<Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>}
+                {canEdit&&<div className="actions">
+                  <Button variant="secondary" size="compact" onClick={()=>startEdit(question)}>تعديل الكرت</Button>
+                  <Button variant="secondary" size="compact" disabled={statusBusyId!==null}
+                    onClick={()=>void updateQuestionStatus(question,!question.active)}>
+                    {statusBusyId===question.id?"جارٍ الحفظ…":question.active?"أرشفة السؤال":"استعادة من الأرشيف"}
+                  </Button>
+                </div>}
               </div>}
             </div>
           </div>
@@ -339,7 +375,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         <p>الجواب {answer.selectedAnswer}: {answer.selectedText} · {answer.correct?"صحيح":"غير صحيح"} · {answer.points} نقطة</p>
         {answer.comment&&<p style={{whiteSpace:"pre-wrap"}}>التعليق: {answer.comment}</p>}
       </article>)}
-      {list.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة.</Notice>}
+      {list.data?.items.length===0&&<Notice>{statusFilter==="archived"&&tab==="questions"?"لا توجد أسئلة مؤرشفة في هذه الفئة.":"لا توجد سجلات مطابقة."}</Notice>}
       {!!list.data&&<div className="page-actions question-pagination">
         <span>إجمالي {list.data.total} · تُعرض 20 نتيجة في كل مرة</span>
         <Button variant="primary" disabled={list.isFetching} onClick={refreshQuestions}>
