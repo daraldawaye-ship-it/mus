@@ -6,7 +6,7 @@ import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
-import { readSharedItemProgress, saveSharedItemBatch } from "./offline-shared-items";
+import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
@@ -127,6 +127,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
           }>("/companies/" + companyId + "/item-changes" + (qs.size ? "?" + qs : ""));
           if (stopped) break;
           await applyItemChanges(userId, companyId!, response.items, response.cursor);
+          await refreshSharedItemCards(userId, companyId!, response.items);
           if (response.items.length) changed = true;
           cursor = response.cursor;
           if (!response.hasMore) break;
