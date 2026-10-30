@@ -190,6 +190,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   function downloadCatalog() {
     if (!companyId || !navigator.onLine || activeCatalogDownload) return;
     const key = scopeKey;
+    let needsContinuation = false;
     publishCatalogStatus({ key, busy: true, progress: "", message: "" });
     activeCatalogDownload = (async () => {
       let savedItems = 0;
