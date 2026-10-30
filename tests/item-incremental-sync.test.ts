@@ -34,7 +34,9 @@ test("device setup has one active offline panel and a resumable lightweight cata
   assert.match(ui, /data-alraesy-offline-instance/);
   assert.match(ui, /primary && <OfflineStatusBody/);
   assert.match(ui, /activeCatalogDownload/);
-  assert.match(ui, /rememberCatalogBatch/);
+  assert.match(ui, /saveSharedItemBatch/);
+  assert.match(ui, /readSharedItemProgress/);
+  assert.match(ui, /downloadSharedReferenceCards/);
   assert.match(ui, /"\/companies\/".*?"\/item-changes\?"/s);
   assert.match(storage, /"catalog-download"/);
   assert.match(storage, /writeCatalog\(entries\)/);
@@ -50,4 +52,24 @@ test("only one device setup remains visible even when legacy mounts are in separ
   assert.match(setup, /panel\.dataset\.alraesySetup === "current"/);
   assert.match(setup, /observer\.observe\(document\.body/);
   assert.match(status, /observer\.observe\(document\.body/);
+});
+
+test("shared references are company-scoped and permission gated on every login", () => {
+  const cache=readFileSync("apps/web/src/offline-shared.ts","utf8");
+  const api=readFileSync("apps/web/src/api.tsx","utf8");
+  const items=readFileSync("apps/web/src/offline-shared-items.ts","utf8");
+  const downloader=readFileSync("apps/web/src/offline-shared-master.ts","utf8");
+  assert.match(cache,/grants\.clear\(\)/);
+  assert.match(cache,/sharedIdentity/);
+  assert.match(cache,/sharedProgress/);
+  assert.match(cache,/correctAnswer/);
+  assert.match(cache,/myLastSelectedAnswer/);
+  assert.doesNotMatch(cache,/myLastSelectedAnswer:item\.myLastSelectedAnswer/);
+  assert.match(cache,/accountChoice:item\.accountChoice/);
+  assert.doesNotMatch(cache,/ownerPhone:item\.ownerPhone/);
+  assert.match(api,/shareAuthorizedRead\(path, data\)/);
+  assert.match(api,/reuseAuthorizedRead<T>\(path\)/);
+  assert.match(items,/sharedItemsAllowed\(companyId,userId\)/);
+  assert.match(items,/"items:"\+companyId/);
+  assert.match(downloader,/sharedProgress\(companyId,group,userId\)/);
 });
