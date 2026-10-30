@@ -6,6 +6,7 @@ import { api, ApiFailure, useSession } from "../api";
 import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, storePersonalAnswer } from "../offline-storage";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
+import { visibleQuestionResult, type QuestionResult } from "../question-result";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Question = {
@@ -28,10 +29,7 @@ type Draft={
   correctAnswer:number;points:number;active:boolean;
 };
 type Submission = {selectedAnswer:number;comment:string|null;idempotencyKey:string};
-type AnswerOutcome = {
-  selectedAnswer:number;correct:boolean;correctAnswer:number|null;
-  points:number;firstAttempt?:boolean;comment:string|null;otherOptionCounts:number[];
-};
+type AnswerOutcome = QuestionResult;
 const blank=():Draft=>({category:"",priority:1,question:"",options:["","","",""],correctAnswer:1,points:1,active:true});
 const date=(value:string|null)=>value
   ? new Intl.DateTimeFormat("ar-YE",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Aden"}).format(new Date(value))
@@ -94,6 +92,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   }, [user?.id, root]);
 
   const [savedAnswers,setSavedAnswers]=useState<Record<number,AnswerOutcome>>({});
+  const [confirmedAnswers,setConfirmedAnswers]=useState<Record<number,AnswerOutcome>>({});
   useEffect(() => {
     if (!user?.id) { setSavedAnswers({}); return; }
     const currentUser = user.id;
@@ -145,6 +144,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     if(list.isFetching)return;
     setInfoId(null);
     setFrozenQuestions(null);
+    setConfirmedAnswers({});
     setPage(1);
     void client.invalidateQueries({queryKey:["questions-module",user?.id,scope,tab]});
     window.scrollTo({top:0,behavior:"smooth"});
@@ -182,7 +182,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   }
   function selectCategory(category:string|null){
     setPage(1);setQuery("");setInfoId(null);setStatusFilter("active");
-    setPendingAnswers({});setFrozenQuestions(null);setError("");setMessage("");
+    setPendingAnswers({});setFrozenQuestions(null);setConfirmedAnswers({});setError("");setMessage("");
     setParams(current=>{
       const next=new URLSearchParams(current);
       if(category===null)next.delete("category");
@@ -192,15 +192,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     });
   }
   function outcomeFor(question:Question): AnswerOutcome|null {
-    // A fresh server question overrides an older local snapshot, while a
-    // shared question with redacted personal fields can use this user's history.
-    if (typeof question.myLastSelectedAnswer!=="number" || typeof question.myLastCorrect!=="boolean")
-      return savedAnswers[question.id] ?? null;
-    return {
-      selectedAnswer:question.myLastSelectedAnswer,correct:question.myLastCorrect,
-      correctAnswer:question.correctAnswer,points:question.myLastPoints??0,
-      comment:question.myLastComment,otherOptionCounts:question.otherOptionCounts??[],
-    };
+    return visibleQuestionResult(question,savedAnswers[question.id],confirmedAnswers[question.id]);
   }
   async function submitAnswer(question:Question,selectedAnswer:number) {
     // The click is the submission: capture the choice directly, without waiting
@@ -218,6 +210,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
     try{
       const result=await api<AnswerOutcome>(`${root}/${question.id}/answers`,{method:"POST",body:payload});
       const confirmed={...result,selectedAnswer:payload.selectedAnswer,comment:payload.comment};
+      setConfirmedAnswers(prev=>({...prev,[question.id]:confirmed}));
       setSavedAnswers(prev=>({...prev,[question.id]:confirmed}));
       if (user?.id)
         await storePersonalAnswer(user.id,scope,question.id,confirmed).catch(() => {});
@@ -383,10 +376,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
             </div>
           </div>
           {queuedAnswers[question.id]&&<p role="status">الإجابة محفوظة محليًا، وتنتظر المزامنة ولا تُحسب نقاطها بعد.</p>}
-          {answered&&<p className="question-result" role="status">
-            <strong>{answered.correct?"✓ إجابة صحيحة":"✗ إجابة غير صحيحة"}</strong>
-            {answered.points>0?` · +${answered.points} نقطة`:""}
-          </p>}
+          {answered&&<div className={`question-result ${answered.correct?"question-result-correct":"question-result-wrong"}`}
+            role="status" aria-live="polite">
+            <strong>{answered.correct?"✓ إجابتك صحيحة":"✗ إجابتك خاطئة"}</strong>
+            {!answered.correct&&answered.correctAnswer!==null&&
+              question.options[answered.correctAnswer-1]&&
+              <span>الإجابة الصحيحة: {question.options[answered.correctAnswer-1]}</span>}
+            {answered.points>0&&<span>+{answered.points} نقطة</span>}
+          </div>}
           <div className="question-answer-form">
             <fieldset className="question-options" disabled={!!answered||!!queuedAnswers[question.id]||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
@@ -399,9 +396,10 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                 <span className="question-choice-content">
                   <span>{question.options[i]}</span>
                   {answered&&<span className="question-choice-stat">
-                    {answered.otherOptionCounts[i]??0} من الآخرين
+                    {answered.otherOptionCounts?.[i]??0} من الآخرين
                     {answered.selectedAnswer===i+1?" · اختيارك":""}
-                    {answered.correctAnswer===i+1?" · ✓ الصحيح":""}
+                    {answered.correctAnswer===i+1?" · ✓ الإجابة الصحيحة":""}
+                    {answered.selectedAnswer===i+1&&!answered.correct?" · ✗ إجابة خاطئة":""}
                   </span>}
                 </span>
               </label>)}
@@ -425,7 +423,11 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       {tab==="answers"&&responses.map(answer=><article key={answer.id} className="card" style={{marginBlock:"0.75rem",padding:"0.8rem"}}>
         <div><strong>{answer.question}</strong></div>
         <p>{answer.userName} · {date(answer.answeredAt)} · السؤال #{answer.questionId}</p>
-        <p>الجواب {answer.selectedAnswer}: {answer.selectedText} · {answer.correct?"صحيح":"غير صحيح"} · {answer.points} نقطة</p>
+        <p className={`question-result ${answer.correct?"question-result-correct":"question-result-wrong"}`}>
+          <strong>{answer.correct?"✓ إجابة صحيحة":"✗ إجابة خاطئة"}</strong>
+          <span>اختيار: {answer.selectedText}</span>
+          {answer.points>0&&<span>+{answer.points} نقطة</span>}
+        </p>
         {answer.comment&&<p style={{whiteSpace:"pre-wrap"}}>التعليق: {answer.comment}</p>}
       </article>)}
       {list.data?.items.length===0&&<Notice>{statusFilter==="archived"&&tab==="questions"?"لا توجد أسئلة مؤرشفة في هذه الفئة.":"لا توجد سجلات مطابقة."}</Notice>}
