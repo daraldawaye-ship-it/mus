@@ -288,8 +288,9 @@ async function rememberQuestionHistory(userId: number, path: string, value: unkn
       comment: typeof q.myLastComment === "string" ? q.myLastComment : null,
       otherOptionCounts: Array.isArray(q.otherOptionCounts)
         ? q.otherOptionCounts.filter((n):n is number => typeof n === "number") : [],
-    });
+    }, false);
   }
+  changed();
 }
 
 export async function rememberRead(path: string, value: unknown): Promise<void> {
