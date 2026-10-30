@@ -11,7 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { clearOfflineSession, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineUser } from "./offline-storage";
-import { reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
+import { clearOfflineSharedGrants, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { offlineUser } from "./offline-storage";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
@@ -114,7 +114,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (epoch.current !== request) return;
     csrf = result.csrf;
     if (result.user) await saveOfflineSession(result.user).catch(() => {});
-    else await clearOfflineSession().catch(() => {});
+    else {
+      const prior=offlineUser();
+      await clearOfflineSession().catch(() => {});
+      if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
+    }
     if (epoch.current !== request) return;
     setOfflineUser(result.user?.id ?? null);
     sharedIdentity(result.user?.id ?? null);
@@ -128,7 +132,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // not revive a removed/suspended user from IndexedDB after HTTP 401/403.
     if (error instanceof ApiFailure) {
       if (error.status === 401 || error.status === 403) {
+        const prior=offlineUser();
         await clearOfflineSession().catch(() => {});
+        if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
         if (epoch.current === request) {
           csrf = null;
           setOfflineUser(null);
@@ -145,6 +151,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     csrf = null;
     setOfflineUser(user.id);
     sharedIdentity(user.id);
+    await restoreOfflineSharedGrants(user.id).catch(() => {});
+    if(epoch.current!==request) return false;
     setSession({ user, csrf: null, pendingLogoutRedirect: false });
     setOfflineMode(true);
     setError(null);
@@ -191,9 +199,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     client.clear();
     ++epoch.current;
     csrf = null;
+    const prior=offlineUser();
     setOfflineUser(null);
     sharedIdentity(null);
     await clearOfflineSession().catch(() => {});
+    if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
     setOfflineMode(false);
     // Auth guards must share the logout destination until the router commits it.
     setSession({ user: null, csrf: null, pendingLogoutRedirect: true });
