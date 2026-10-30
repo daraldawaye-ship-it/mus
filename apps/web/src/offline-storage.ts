@@ -285,6 +285,7 @@ export async function clearAppearanceDraft(userId: number, scope: string): Promi
  */
 export type SavedQuestionOutcome = {
   selectedAnswer: number; correct: boolean; correctAnswer: number | null;
+  correctText?: string | null;
   points: number; comment: string | null; otherOptionCounts: number[];
 };
 function answerHistoryPath(scope: string, questionId: number): string {
@@ -338,6 +339,7 @@ async function rememberQuestionHistory(userId: number, path: string, value: unkn
     await storePersonalAnswer(userId, scope, q.id, {
       selectedAnswer: q.myLastSelectedAnswer, correct: q.myLastCorrect,
       correctAnswer: typeof q.correctAnswer === "number" ? q.correctAnswer : null,
+      correctText: typeof q.myLastCorrectText === "string" ? q.myLastCorrectText : null,
       points: typeof q.myLastPoints === "number" ? q.myLastPoints : 0,
       comment: typeof q.myLastComment === "string" ? q.myLastComment : null,
       otherOptionCounts: Array.isArray(q.otherOptionCounts)
@@ -598,6 +600,7 @@ export function syncPending(
               Number(match[2]), {
                 selectedAnswer: choice, correct: details.correct,
                 correctAnswer: typeof details.correctAnswer === "number" ? details.correctAnswer : null,
+                correctText: typeof details.correctText === "string" ? details.correctText : null,
                 points: typeof details.points === "number" ? details.points : 0,
                 comment: (row.body as {comment?: string|null}).comment ?? null,
                 otherOptionCounts: Array.isArray(details.otherOptionCounts)

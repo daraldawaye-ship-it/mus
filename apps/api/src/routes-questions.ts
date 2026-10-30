@@ -74,6 +74,17 @@ async function otherOptionCounts(client: PoolClient, questionIds: number[], user
   return counts;
 }
 
+/** Use the answer's recorded option, even when a question was edited later. */
+function snapshotCorrectText(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const value = snapshot as { options?: unknown; correctAnswer?: unknown };
+  if (!Array.isArray(value.options) || typeof value.correctAnswer !== "number" ||
+      !Number.isInteger(value.correctAnswer) || value.correctAnswer < 1 ||
+      value.correctAnswer > value.options.length) return null;
+  const text = value.options[value.correctAnswer - 1];
+  return typeof text === "string" && text.trim() ? text : null;
+}
+
 const questionOutput = (row: QueryResultRow, manager: boolean) => ({
   id: row.id, companyId: row.company_id, category: row.category,
   priority: row.priority, question: row.question,
@@ -88,6 +99,8 @@ const questionOutput = (row: QueryResultRow, manager: boolean) => ({
   myLastCorrect: row.my_last_correct ?? null,
   myLastPoints: row.my_last_points ?? null,
   myLastComment: row.my_last_comment ?? null,
+  myLastCorrectText: row.my_last_selected_answer === null
+    ? null : snapshotCorrectText(row.my_last_snapshot),
   otherOptionCounts: row.my_last_selected_answer === null ? null : row.other_option_counts,
 });
 
@@ -145,6 +158,7 @@ export function questionRoutes(pool: Pool): Router {
           correct:row.is_correct,
           correctAnswer:typeof row.question_snapshot?.correctAnswer==="number"
             ?row.question_snapshot.correctAnswer:null,
+          correctText:snapshotCorrectText(row.question_snapshot),
           points:row.awarded_points,comment:row.comment,otherOptionCounts:[],
           answeredAt:row.answered_at.toISOString(),
         })),
@@ -183,10 +197,11 @@ export function questionRoutes(pool: Pool): Router {
         mine.selected_answer AS my_last_selected_answer,
         mine.is_correct AS my_last_correct,
         mine.awarded_points AS my_last_points,
-        mine.comment AS my_last_comment
+        mine.comment AS my_last_comment,
+        mine.question_snapshot AS my_last_snapshot
         FROM questions q JOIN users creator ON creator.id=q.created_by
         LEFT JOIN LATERAL (
-          SELECT a.answered_at,a.selected_answer,a.is_correct,a.awarded_points,a.comment
+          SELECT a.answered_at,a.selected_answer,a.is_correct,a.awarded_points,a.comment,a.question_snapshot
           FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2
           ORDER BY a.answered_at DESC,a.id DESC LIMIT 1
         ) mine ON TRUE
@@ -279,6 +294,7 @@ export function questionRoutes(pool: Pool): Router {
         const counts=await otherOptionCounts(client,[questionId],user.id);
         return {id:String(existing.id),selectedAnswer:existing.selected_answer,
           correct:existing.is_correct,correctAnswer:existing.question_snapshot.correctAnswer,
+          correctText:snapshotCorrectText(existing.question_snapshot),
           points:existing.awarded_points,firstAttempt:false,
           otherOptionCounts:(counts.get(questionId)??[0,0,0,0]).slice(0,original.option_count),replayed:true};
       }
@@ -305,7 +321,9 @@ export function questionRoutes(pool: Pool): Router {
       },companyId);
       const counts=await otherOptionCounts(client,[questionId],user.id);
       return {id:String(inserted.id),selectedAnswer:input.selectedAnswer,correct,
-        correctAnswer:question.correct_answer,points:awardedPoints,firstAttempt,
+        correctAnswer:question.correct_answer,
+        correctText:snapshotCorrectText(snapshot),
+        points:awardedPoints,firstAttempt,
         otherOptionCounts:(counts.get(questionId)??[0,0,0,0]).slice(0,question.option_count),
         replayed:false};
     });
@@ -331,6 +349,7 @@ export function questionRoutes(pool: Pool): Router {
         question:row.question_snapshot.question,selectedAnswer:row.selected_answer,
         selectedText:row.question_snapshot.options[row.selected_answer-1],
         correct:row.is_correct,points:row.awarded_points,comment:row.comment,
+        correctText:snapshotCorrectText(row.question_snapshot),
         answeredAt:row.answered_at.toISOString(),
       })),total,page:p.page,pageSize:p.pageSize};
     });

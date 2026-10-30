@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { visibleQuestionResult, type QuestionResultSnapshot, type QuestionResult } from "../apps/web/src/question-result.ts";
+import { correctOptionText, orderCachedQuestionCards, visibleQuestionResult, type QuestionResultSnapshot, type QuestionResult } from "../apps/web/src/question-result.ts";
 
 const unanswered: QuestionResultSnapshot = {
   myLastSelectedAnswer: null, myLastCorrect: null, correctAnswer: null,
@@ -35,7 +35,7 @@ test("older answered questions show their own server-confirmed correct or incorr
     correctAnswer: 1, myLastPoints: 0, otherOptionCounts: [4, 2],
   };
   assert.deepEqual(visibleQuestionResult(row, correct, null), {
-    selectedAnswer: 2, correct: false, correctAnswer: 1, points: 0,
+    selectedAnswer: 2, correct: false, correctAnswer: 1, correctText: null, points: 0,
     comment: null, otherOptionCounts: [4, 2],
   });
 });
@@ -70,4 +70,39 @@ test("employee's own cashbox remains the default sales account", () => {
   assert.match(source, /initialInvoiceAccount\(kind, defaultCashbox, configuredPurchaseAccount\)/);
   assert.match(source, /صندوق مبيعات الموظف افتراضيًا/);
   assert.match(logic, /kind === "sale" \? employeeCashbox : configuredPurchaseAccount/);
+});
+
+test("correct-answer text is shown for both correct and incorrect submitted answers", () => {
+  assert.equal(correctOptionText(["الصحيح", "الخاطئ"], wrong), "الصحيح");
+  assert.equal(correctOptionText(["الصحيح", "الخاطئ"], correct), "الصحيح");
+  assert.equal(correctOptionText(["الصحيح", "الخاطئ"], null), null);
+  // Historical answer text wins over a question changed after answering.
+  assert.equal(correctOptionText(["نص جديد", "الخاطئ"], {
+    ...wrong, correctText: "النص الصحيح وقت الإجابة",
+  }), "النص الصحيح وقت الإجابة");
+  assert.equal(correctOptionText(["أ", "ب"], {
+    ...correct, correctAnswer: null, selectedAnswer: 2,
+  }), "ب");
+  assert.equal(correctOptionText(["أ", "ب"], {
+    ...wrong, correctAnswer: null,
+  }), null);
+});
+
+test("offline refresh reorders only downloaded questions, skips duplicates and prioritizes unanswered", () => {
+  const rows = orderCachedQuestionCards([
+    [{id:3, priority:4}, {id:1,priority:1}, {id:4,priority:3}],
+    [{id:1,priority:1}, {id:2,priority:2}, {id:5,priority:1}],
+  ],new Set([1,3]), 20);
+  assert.deepEqual(rows.map(row=>row.id), [5,2,4,1,3]);
+  assert.equal(orderCachedQuestionCards([[{id:1,priority:1}]],new Set([1])).length,1);
+});
+
+test("offline update uses existing user-scoped saved question lists, not a new server request", () => {
+  const page=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
+  assert.match(page,/if \(!navigator\.onLine\) \{/);
+  assert.match(page,/savedRead<Page<Question>>\(sourceUrl\)/);
+  assert.match(page,/personalAnswerHistory\(user\.id,scope\)/);
+  assert.match(page,/orderCachedQuestionCards\(pages,answeredIds,20\)/);
+  assert.match(page,/client\.setQueryData\(/);
+  assert.match(page,/تم تحديث وترتيب الأسئلة المحفوظة/);
 });

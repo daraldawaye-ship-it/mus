@@ -3,10 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiFailure, useSession } from "../api";
-import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, storePersonalAnswer } from "../offline-storage";
+import { offlineChanged, pendingForUser, personalAnswerHistory, queueOfflineOperation, savedRead, storePersonalAnswer } from "../offline-storage";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
-import { visibleQuestionResult, type QuestionResult } from "../question-result";
+import { correctOptionText, orderCachedQuestionCards, visibleQuestionResult, type QuestionResult } from "../question-result";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Question = {
@@ -15,11 +15,11 @@ type Question = {
   active:boolean; revision:number; creatorName:string; createdAt:string;
   answerCount:number; respondentCount:number; myAnswerCount:number; myLastAnsweredAt:string|null;
   myLastSelectedAnswer:number|null; myLastCorrect:boolean|null; myLastPoints:number|null;
-  myLastComment:string|null; otherOptionCounts:number[]|null;
+  myLastComment:string|null; myLastCorrectText?:string|null; otherOptionCounts:number[]|null;
 };
 type Answer = {
   id:string; questionId:number; userId:number; userName:string; question:string;
-  selectedAnswer:number; selectedText:string; correct:boolean; points:number;
+  selectedAnswer:number; selectedText:string; correct:boolean;correctText?:string|null; points:number;
   comment:string|null; answeredAt:string;
 };
 type Page<T>={items:T[];total:number;page:number;pageSize:number};
@@ -140,14 +140,62 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       (tab==="answers" || categorySelected),
   });
   const liveQuestions=tab==="questions"?(list.data?.items??[]) as Question[]:[];
-  function refreshQuestions(){
-    if(list.isFetching)return;
+  async function refreshQuestions(){
+    if (list.isFetching && navigator.onLine) return;
     setInfoId(null);
-    setFrozenQuestions(null);
-    setConfirmedAnswers({});
     setPage(1);
-    void client.invalidateQueries({queryKey:["questions-module",user?.id,scope,tab]});
     window.scrollTo({top:0,behavior:"smooth"});
+    if (!navigator.onLine) {
+      // Read only previously authorized question pages from this user's
+      // IndexedDB snapshots. No fake server update or new offline answers.
+      const firstPageUrl=url.replace(/([?&])page=\d+/, "$1page=1");
+      const pages: Question[][]=[];
+      let firstCached:Page<Question>|null=null;
+      if(tab==="questions"){
+        for(let n=1;n<=5;n++){
+          const sourceUrl=firstPageUrl.replace(/([?&])page=\d+/, "$1page="+n);
+          const snapshot=await savedRead<Page<Question>>(sourceUrl).catch(()=>undefined)
+            ?? client.getQueryData<Page<Question>>(
+              ["questions-module",user?.id,scope,tab,sourceUrl]);
+          if(snapshot?.items?.length){
+            if(n===1) firstCached=snapshot;
+            pages.push(snapshot.items);
+          }
+        }
+        if(!pages.length && list.data?.items.length){
+          pages.push(list.data.items as Question[]);
+          firstCached=list.data as Page<Question>;
+        }
+        if(pages.length){
+          const history=user?.id?await personalAnswerHistory(user.id,scope).catch(()=>({} as Record<number,AnswerOutcome>)):{};
+          setSavedAnswers(prev=>({...prev,...history}));
+          const answeredIds=new Set<number>(
+            [...Object.keys(history),...Object.keys(savedAnswers),...Object.keys(confirmedAnswers),
+              ...Object.keys(queuedAnswers).filter(key=>queuedAnswers[Number(key)])]
+              .map(Number),
+          );
+          for(const pageItems of pages)for(const item of pageItems){
+            if(typeof item.myLastCorrect==="boolean")answeredIds.add(item.id);
+          }
+          const items=orderCachedQuestionCards(pages,answeredIds,20);
+          const result={...(firstCached??list.data as Page<Question>),items,
+            page:1,pageSize:20};
+          client.setQueryData(["questions-module",user?.id,scope,tab,firstPageUrl],result);
+          setFrozenQuestions({url:firstPageUrl,items});
+          setMessage("تم تحديث وترتيب الأسئلة المحفوظة على الجهاز دون اتصال.");
+        } else setMessage("لا توجد أسئلة محفوظة لهذه الفئة على الجهاز. افتحها مرة واحدة عند توفر الإنترنت.");
+      } else {
+        const cached=await savedRead<Page<Answer>>(firstPageUrl).catch(()=>undefined);
+        if(cached){
+          client.setQueryData(["questions-module",user?.id,scope,tab,firstPageUrl],cached);
+          setMessage("تم عرض سجل الإجابات المحفوظ على الجهاز.");
+        }else setMessage("لا توجد إجابات محفوظة لهذا البحث على الجهاز.");
+      }
+      return;
+    }
+    setMessage("");
+    setFrozenQuestions(null);
+    void client.invalidateQueries({queryKey:["questions-module",user?.id,scope,tab]});
   }
   // Retain current-page order even if focus-triggered/background refetch sorts answered
   // questions to a later page. New page/search navigation uses live server ordering.
@@ -345,6 +393,9 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
       {tab==="questions"&&questions.map(question=>{
         const answered=outcomeFor(question);
+        const correctText=correctOptionText(question.options,answered);
+        const correctChoiceIndex=answered && correctText
+          ? question.options.indexOf(correctText)+1 : null;
         const isSending=sendingQuestionId===question.id;
         const isInfoOpen=infoId===question.id;
         return <article key={question.id} className="card question-card">
@@ -379,16 +430,14 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
           {answered&&<div className={`question-result ${answered.correct?"question-result-correct":"question-result-wrong"}`}
             role="status" aria-live="polite">
             <strong>{answered.correct?"✓ إجابتك صحيحة":"✗ إجابتك خاطئة"}</strong>
-            {!answered.correct&&answered.correctAnswer!==null&&
-              question.options[answered.correctAnswer-1]&&
-              <span>الإجابة الصحيحة: {question.options[answered.correctAnswer-1]}</span>}
+            {correctText&&<span className="question-correct-answer-text">الإجابة الصحيحة: {correctText}</span>}
             {answered.points>0&&<span>+{answered.points} نقطة</span>}
           </div>}
           <div className="question-answer-form">
             <fieldset className="question-options" disabled={!!answered||!!queuedAnswers[question.id]||!canAnswer||!question.active||isSending}>
               <legend className="sr-only">اختر إجابة السؤال</legend>
               {optionOrder(question).map(i=><label key={i}
-                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered?.correctAnswer===i+1?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>
+                className={`question-choice${answered?.selectedAnswer===i+1?" question-choice-selected":""}${answered&&(correctChoiceIndex===i+1 || (!correctChoiceIndex&&answered.correctAnswer===i+1))?" question-choice-correct":""}${answered&&!answered.correct&&answered.selectedAnswer===i+1?" question-choice-wrong":""}`}>
                 <input type="radio" name={`question-choice-${question.id}`}
                   checked={(answered?.selectedAnswer??chosenAnswers[question.id])===i+1}
                   onChange={()=>void submitAnswer(question,i+1)}
@@ -398,7 +447,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
                   {answered&&<span className="question-choice-stat">
                     {answered.otherOptionCounts?.[i]??0} من الآخرين
                     {answered.selectedAnswer===i+1?" · اختيارك":""}
-                    {answered.correctAnswer===i+1?" · ✓ الإجابة الصحيحة":""}
+                    {correctChoiceIndex===i+1 || (!correctChoiceIndex&&answered.correctAnswer===i+1)?" · ✓ الإجابة الصحيحة":""}
                     {answered.selectedAnswer===i+1&&!answered.correct?" · ✗ إجابة خاطئة":""}
                   </span>}
                 </span>
@@ -426,6 +475,8 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
         <p className={`question-result ${answer.correct?"question-result-correct":"question-result-wrong"}`}>
           <strong>{answer.correct?"✓ إجابة صحيحة":"✗ إجابة خاطئة"}</strong>
           <span>اختيار: {answer.selectedText}</span>
+          {(answer.correctText || (answer.correct ? answer.selectedText : null)) &&
+            <span>الإجابة الصحيحة: {answer.correctText || answer.selectedText}</span>}
           {answer.points>0&&<span>+{answer.points} نقطة</span>}
         </p>
         {answer.comment&&<p style={{whiteSpace:"pre-wrap"}}>التعليق: {answer.comment}</p>}
@@ -433,8 +484,8 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
       {list.data?.items.length===0&&<Notice>{statusFilter==="archived"&&tab==="questions"?"لا توجد أسئلة مؤرشفة في هذه الفئة.":"لا توجد سجلات مطابقة."}</Notice>}
       {!!list.data&&<div className="page-actions question-pagination">
         <span>إجمالي {list.data.total} · تُعرض 20 نتيجة في كل مرة</span>
-        <Button variant="primary" disabled={list.isFetching} onClick={refreshQuestions}>
-          {list.isFetching?"جارٍ التحديث…":"تحديث"}
+        <Button variant="primary" disabled={list.isFetching&&navigator.onLine} onClick={()=>void refreshQuestions()}>
+          {list.isFetching&&navigator.onLine?"جارٍ التحديث…":"تحديث"}
         </Button>
       </div>}
     </section>}
