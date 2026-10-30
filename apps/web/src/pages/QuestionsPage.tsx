@@ -194,7 +194,7 @@ export function QuestionsPage({companyId=null,tab="questions"}:{
   function outcomeFor(question:Question): AnswerOutcome|null {
     // A fresh server question overrides an older local snapshot, while a
     // shared question with redacted personal fields can use this user's history.
-    if (question.myLastSelectedAnswer===null || question.myLastCorrect===null)
+    if (typeof question.myLastSelectedAnswer!=="number" || typeof question.myLastCorrect!=="boolean")
       return savedAnswers[question.id] ?? null;
     return {
       selectedAnswer:question.myLastSelectedAnswer,correct:question.myLastCorrect,
