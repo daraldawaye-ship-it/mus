@@ -131,20 +131,16 @@ export function questionRoutes(pool: Pool): Router {
         WHERE a.user_id=$1 AND q.company_id IS NOT DISTINCT FROM $2
       `,[user.id,companyId])).rows[0].total as number;
       const rows=await client.query(`
-        SELECT DISTINCT ON (a.question_id)
+        SELECT * FROM (SELECT DISTINCT ON (a.question_id)
           a.question_id,a.selected_answer,a.is_correct,a.awarded_points,
           a.comment,a.answered_at,a.question_snapshot
         FROM question_answers a JOIN questions q ON q.id=a.question_id
         WHERE a.user_id=$1 AND q.company_id IS NOT DISTINCT FROM $2
         ORDER BY a.question_id,a.answered_at DESC,a.id DESC
-      `,[user.id,companyId]);
-      // This is deliberately user-only and bounded: the existing per-page
-      // question endpoint remains the source of live global choice counts.
-      const ordered=rows.rows.sort((a,b)=>
-        b.answered_at.getTime()-a.answered_at.getTime() ||
-          b.question_id-a.question_id);
+        ) latest ORDER BY answered_at DESC,question_id DESC LIMIT $3 OFFSET $4
+      `,[user.id,companyId,p.pageSize,p.offset]);
       return {
-        items:ordered.slice(p.offset,p.offset+p.pageSize).map(row=>({
+        items:rows.rows.map(row=>({
           questionId:row.question_id,selectedAnswer:row.selected_answer,
           correct:row.is_correct,
           correctAnswer:typeof row.question_snapshot?.correctAnswer==="number"
