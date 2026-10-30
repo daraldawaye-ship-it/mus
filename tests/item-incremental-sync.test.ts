@@ -16,6 +16,12 @@ test("item deltas persist per user/company and keep offline outbox unchanged", (
   assert.match(storage, /item-sync/);
   assert.match(storage, /applyItemChanges/);
   assert.match(storage, /"invoice" \| "voucher" \| "answer"/);
-  assert.match(status, /20_000/);
+  assert.match(status, /120_000/);
+  assert.doesNotMatch(status, /setInterval\(connected, 20_000\)/);
+  assert.match(status, /alraesy-invoice-reset/);
+  assert.match(status, /repeatAfterCurrent/);
   assert.match(status, /visibilitychange/);
+  const commerce = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
+  assert.match(commerce, /new CustomEvent\("alraesy-invoice-reset"/);
+  assert.match(commerce, /function resetInvoice\(\)/);
 });
