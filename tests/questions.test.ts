@@ -177,25 +177,27 @@ test("questions: variable options, comments, first-answer rewards and company sc
   assert.equal(targetBefore?.myLastSelectedAnswer,null);
 
   const memberFirst=await member.ok<{
-    selectedAnswer:number;correct:boolean;correctAnswer:number;
+    selectedAnswer:number;correct:boolean;correctAnswer:number;correctText:string|null;
     otherOptionCounts:number[];points:number
   }>("POST",`/questions/${publicQuestion}/answers`,{
     selectedAnswer:3,idempotencyKey:randomUUID(),comment:"أول مشاركة",
   },201);
   assert.equal(memberFirst.correct,false);
   assert.equal(memberFirst.correctAnswer,1);
+  assert.equal(memberFirst.correctText,"1");
   assert.equal(memberFirst.selectedAnswer,3);
   assert.deepEqual(memberFirst.otherOptionCounts,[0,0,0]);
 
   const afterMember=await member.ok<{items:{
     id:number;correctAnswer:number|null;otherOptionCounts:number[]|null;
     myLastSelectedAnswer:number|null;myLastCorrect:boolean|null;
-    myLastComment:string|null
+    myLastComment:string|null;myLastCorrectText:string|null
   }[]}>("GET","/questions");
   const targetAfter=afterMember.items.find(item=>item.id===publicQuestion);
   assert.equal(targetAfter?.correctAnswer,1);
   assert.equal(targetAfter?.myLastSelectedAnswer,3);
   assert.equal(targetAfter?.myLastCorrect,false);
+  assert.equal(targetAfter?.myLastCorrectText,"1");
   assert.equal(targetAfter?.myLastComment,"أول مشاركة");
   assert.deepEqual(targetAfter?.otherOptionCounts,[0,0,0]);
 
@@ -208,11 +210,15 @@ test("questions: variable options, comments, first-answer rewards and company sc
     selectedAnswer:2,idempotencyKey:randomUUID(),
   },201);
   const ownerResponse=await owner.ok<{
-    selectedAnswer:number;correct:boolean;correctAnswer:number;otherOptionCounts:number[]
+    selectedAnswer:number;correct:boolean;correctAnswer:number;correctText:string|null;otherOptionCounts:number[]
   }>("POST",`/questions/${publicQuestion}/answers`,{
     selectedAnswer:1,idempotencyKey:randomUUID(),
   },201);
   assert.equal(ownerResponse.correct,true);
+  assert.equal(ownerResponse.correctText,"1");
+  const history=await member.ok<{items:{questionId:number;correctText:string|null}[]}>(
+    "GET","/questions/my-history");
+  assert.equal(history.items.find(row=>row.questionId===publicQuestion)?.correctText,"1");
   assert.deepEqual(ownerResponse.otherOptionCounts,[0,1,1]);
   const ownerCurrent=await owner.ok<{items:{id:number;otherOptionCounts:number[]|null}[]}>("GET","/questions");
   assert.deepEqual(ownerCurrent.items.find(q=>q.id===publicQuestion)?.otherOptionCounts,[0,1,1]);
