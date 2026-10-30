@@ -143,9 +143,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setOfflineMode(false);
         }
       }
-      return false;
+      // A temporary server failure (for example an upstream 503 while
+      // Render restarts) is an outage, not an authentication rejection.
+      if (error.status < 500) return false;
     }
-    if (navigator.onLine && !(error instanceof TypeError)) return false;
+    if (navigator.onLine && !(error instanceof TypeError) &&
+        !(error instanceof ApiFailure && error.status >= 500)) return false;
     const user = await readOfflineSession().catch(() => null);
     if (!user || epoch.current !== request) return false;
     csrf = null;
