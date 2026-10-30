@@ -131,6 +131,52 @@ export function questionRoutes(pool: Pool): Router {
     res.json(result);
   }));
 
+  // Offline grading bundle: intentionally private to the signed-in user and
+  // restricted to users allowed both to view questions and submit answers.
+  // The correct index is readable on the user's device; reward points remain
+  // exclusively server-authoritative at POST time.
+  router.get(roots.map(root=>root+"/offline-pack"),handler(async(req,res)=>{
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const {companyId,user}=await access(client,req,"questions");
+      await access(client,req,"answers","create");
+      const p=pagination(req);
+      if(p.pageSize>100) throw new HttpError(400,"invalid_query","عدد الأسئلة كبير");
+      const total=(await client.query(
+        "SELECT count(*)::int AS total FROM questions WHERE company_id IS NOT DISTINCT FROM $1 AND active",
+        [companyId])).rows[0].total as number;
+      const rows=await client.query(`
+        SELECT q.*, creator.display_name AS creator_name,
+          mine.answered_at AS my_last_answered_at,
+          mine.selected_answer AS my_last_selected_answer,
+          mine.is_correct AS my_last_correct,
+          mine.awarded_points AS my_last_points,
+          mine.comment AS my_last_comment,
+          mine.question_snapshot AS my_last_snapshot,
+          (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id) AS answer_count,
+          (SELECT count(DISTINCT a.user_id)::int FROM question_answers a WHERE a.question_id=q.id) AS respondent_count,
+          (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2) AS my_answer_count
+        FROM questions q JOIN users creator ON creator.id=q.created_by
+        LEFT JOIN LATERAL (
+          SELECT a.answered_at,a.selected_answer,a.is_correct,a.awarded_points,a.comment,a.question_snapshot
+          FROM question_answers a WHERE a.question_id=q.id AND a.user_id=$2
+          ORDER BY a.answered_at DESC,a.id DESC LIMIT 1
+        ) mine ON TRUE
+        WHERE q.company_id IS NOT DISTINCT FROM $1 AND q.active
+        ORDER BY q.id ASC LIMIT $3 OFFSET $4
+      `,[companyId,user.id,p.pageSize,p.offset]);
+      return {
+        items:rows.rows.map(row=>questionOutput({
+          ...row,other_option_counts:[0,0,0,0].slice(0,row.option_count),
+        },true)),
+        total,page:p.page,pageSize:p.pageSize,
+      };
+    });
+    // An offline key must never be cached by shared workers or proxies.
+    res.set("Cache-Control","private, no-store");
+    res.json(result);
+  }));
+
   // Per-user history for offline recovery, irrespective of manager role.
   // Never expose other users' responses through this endpoint.
   router.get(roots.map(root=>root+"/my-history"),handler(async(req,res)=>{

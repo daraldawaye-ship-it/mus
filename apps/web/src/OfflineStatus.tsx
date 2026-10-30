@@ -5,6 +5,7 @@ import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendin
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { syncMyHistory } from "./offline-my-history";
+import { syncOfflineQuestionPack } from "./offline-question-pack";
 import { refreshDailySaleRanks } from "./offline-sale-rank-sync";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
@@ -301,6 +302,24 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [userId, companyId]);
+  // Preload current user's own answer keys and question cards (not shared)
+  // both in a browser and in the installed app for offline grading.
+  useEffect(() => {
+    const warm = () => {
+      if (!navigator.onLine || document.visibilityState === "hidden") return;
+      void syncOfflineQuestionPack(userId,null).catch(() => {});
+      if (companyId) void syncOfflineQuestionPack(userId,companyId).catch(() => {});
+    };
+    warm();
+    const interval=window.setInterval(warm,120_000);
+    window.addEventListener("online",warm);
+    document.addEventListener("visibilitychange",warm);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online",warm);
+      document.removeEventListener("visibilitychange",warm);
+    };
+  },[userId,companyId]);
   useEffect(() => {
     if (!isAppWindow()) return;
     const refresh = () => {

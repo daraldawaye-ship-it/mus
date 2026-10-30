@@ -171,6 +171,16 @@ test("questions: variable options, comments, first-answer rewards and company sc
     id:number;correctAnswer:number|null;otherOptionCounts:number[]|null;
     myLastSelectedAnswer:number|null;myLastCorrect:boolean|null
   }[]}>("GET","/questions");
+  const offlinePack=await member.ok<{items:{
+    id:number;correctAnswer:number;options:string[];revision:number;
+  }[];total:number}>("GET","/questions/offline-pack?page=1&pageSize=100");
+  const packed=offlinePack.items.find(item=>item.id===publicQuestion);
+  assert.equal(packed?.correctAnswer,1);
+  assert.equal(packed?.options[0],"1");
+  assert.ok(Number.isSafeInteger(packed?.revision));
+  assert.equal((await member.request("GET",base+"/questions/offline-pack?page=1&pageSize=100")).status,403);
+  assert.equal((await member.request("GET","/questions/offline-pack?page=1&pageSize=101")).status,400);
+  // The ordinary list must still hide the answer key before the first reply.
   const targetBefore=beforeMember.items.find(item=>item.id===publicQuestion);
   assert.equal(targetBefore?.correctAnswer,null);
   assert.equal(targetBefore?.otherOptionCounts,null);
