@@ -11,6 +11,7 @@ import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { importTransactionBatch } from "./services/transaction-import.ts";
 import { postNextRawVoucherBatch } from "./services/legacy-voucher-batch.ts";
+import { getLegacySalesSignAudit } from "./services/legacy-sales-sign-audit.ts";
 
 export function transactionImportRoutes(pool: Pool): Router {
   const router = Router();
@@ -39,6 +40,31 @@ export function transactionImportRoutes(pool: Pool): Router {
             Object.assign(Object.create(req), { body: { documents } }), true));
       });
       res.json(result);
+    }),
+  );
+  // Owner-only forensic audit: no financial or inventory mutation.
+  router.get(
+    "/companies/:companyId/transaction-import/sales-sign-audit",
+    handler(async (req, res) => {
+      const companyId = id(req.params.companyId);
+      if (companyId !== 2)
+        throw new HttpError(404, "not_found", "هذا التقرير خاص بترحيل دار الدواء.");
+      const query = parse(z.object({
+        afterSourceId: z.string().regex(/^[0-9]{0,20}$/).default(""),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      }).strict(), req.query);
+      const report = await transaction(pool, async client => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user = await currentActor(client, actor(req), false);
+        ownerOnly(user);
+        if (user.suspended)
+          throw new HttpError(403, "forbidden", "الحساب موقوف");
+        await companyAccess(client, user, companyId);
+        await assertRequestPagesEnabled(client, req);
+        return getLegacySalesSignAudit(client, companyId, query.afterSourceId, query.limit);
+      });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(report);
     }),
   );
   router.get(
