@@ -26,6 +26,8 @@ export async function downloadSharedReferenceCards(userId:number,companyId:numbe
       return "/companies/"+companyId+"/"+resource.split("?")[0]+"?"+search;
     };
     try {
+      const already=await sharedProgress(companyId,group,userId);
+      if (already?.complete) continue;
       const firstPath=pathAt(1);
       const first=await api<Page>(firstPath);
       await shareAuthorizedRead(firstPath,first);
