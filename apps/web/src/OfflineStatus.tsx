@@ -5,6 +5,7 @@ import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendin
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
 import { syncMyHistory } from "./offline-my-history";
+import { refreshDailySaleRanks } from "./offline-sale-rank-sync";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
@@ -310,6 +311,22 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     window.addEventListener("online",refresh);
     refresh();
     return () => { window.clearInterval(timer); window.removeEventListener("online",refresh); };
+  },[userId,companyId]);
+  useEffect(() => {
+    if(!companyId || !isAppWindow())return;
+    const run=()=>{
+      if(navigator.onLine && document.visibilityState!=="hidden")
+        void refreshDailySaleRanks(userId,companyId);
+    };
+    run();
+    const timer=window.setInterval(run,120_000);
+    window.addEventListener("online",run);
+    document.addEventListener("visibilitychange",run);
+    return ()=>{
+      window.clearInterval(timer);
+      window.removeEventListener("online",run);
+      document.removeEventListener("visibilitychange",run);
+    };
   },[userId,companyId]);
   // Downloads and queued financial operations continue without any visible button.
   // Older render trees may still contain a toolbar; styling hides those as well.
