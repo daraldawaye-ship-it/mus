@@ -48,7 +48,7 @@ self.addEventListener("notificationclick",event=>{
 
 /* Offline application shell. Only versioned static files are cached here;
  * API responses and financial documents are NEVER stored by the worker. */
-const shellCache = "alraesy-static-offline-20261030-v3";
+const shellCache = "alraesy-static-offline-20261030-v4";
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(shellCache);
@@ -85,10 +85,20 @@ self.addEventListener("fetch", event => {
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, {cache: "no-store"});
+        // Index HTML is public. Keep it in the CURRENT shell cache, not a
+        // previous installation's frozen version. /companies/... is an SPA
+        // navigation and should reuse the same HTML shell when offline.
+        if (response.ok && response.headers.get("content-type")?.includes("text/html")) {
+          const shell = await caches.open(shellCache);
+          await shell.put("/", response.clone());
+        }
         return response;
       } catch {
-        return await caches.match("/") ||
+        // caches.match("/") chooses the oldest matching cache. That ran old
+        // React code after updates, so it never restored offline sessions.
+        const shell = await caches.open(shellCache);
+        return await shell.match("/") ||
           new Response("لا توجد نسخة محلية بعد", {status: 503});
       }
     })());
