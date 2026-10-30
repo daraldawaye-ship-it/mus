@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { applyItemChanges, catalogDownloadState, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberCatalogBatch, rememberRead, readCatalogProgress, saveCatalogProgress, syncPending, type ItemChangeCursor } from "./offline-storage";
+import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
-import { cacheItemCompositions } from "./offline-compositions";
-import { cacheQuestionPages } from "./offline-questions";
+import { downloadSharedReferenceCards } from "./offline-shared-master";
+import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
+import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
+import { migrateExistingCatalog } from "./offline-shared-migrate";
 
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
@@ -126,6 +128,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
           }>("/companies/" + companyId + "/item-changes" + (qs.size ? "?" + qs : ""));
           if (stopped) break;
           await applyItemChanges(userId, companyId!, response.items, response.cursor);
+          await refreshSharedItemCards(userId, companyId!, response.items);
           if (response.items.length) changed = true;
           cursor = response.cursor;
           if (!response.hasMore) break;
@@ -207,7 +210,15 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       let savedItems = 0;
       let otherRecords = 0;
       try {
-        const prior = await catalogDownloadState(userId, companyId);
+        let itemPermission = false;
+        try {
+          await api("/companies/" + companyId + "/item-changes");
+          itemPermission = true;
+        } catch { /* no item permission: do not read shared items */ }
+        if (itemPermission) await migrateExistingCatalog(userId, companyId).catch(() => {});
+        const prior = itemPermission ?
+          await readSharedItemProgress(userId, companyId) : { complete:true,count:0,
+            cursor:{ since:"1970-01-01T00:00:00.000Z",afterId:0 } };
         savedItems = prior?.count ?? 0;
         if (!prior?.complete) {
           // Full initial item catalog goes through the indexed, cheap change
@@ -226,8 +237,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             }>("/companies/" + companyId + "/item-changes?" + params.toString());
             savedItems += response.items.length;
             // The saved cursor makes a reload resume from the last committed batch.
-            await rememberCatalogBatch(
-              userId, companyId, response.items, response.cursor, savedItems, !response.hasMore,
+            await saveSharedItemBatch(
+              userId, companyId, response.items, {
+                cursor:response.cursor,count:savedItems,complete:!response.hasMore,
+              },
             );
             cursor = response.cursor;
             publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
@@ -237,33 +250,9 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
-        await cacheItemCompositions(userId, companyId).catch(() => {});
-        await cacheQuestionPages(userId, companyId).catch(() => {});
-        // Small reference catalogs use their ordinary permitted endpoints.
-        for (const type of ["accounts", "branches", "locations", "currencies"]) {
-          const checkpoint = await readCatalogProgress(userId, companyId, "option:" + type);
-          if (checkpoint.complete) continue;
-          let finished = false;
-          for (let page = checkpoint.nextPage; page < checkpoint.nextPage + 40; page++) {
-            if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
-            const params = new URLSearchParams({
-              type, active: "true", page: String(page), pageSize: "100",
-            });
-            const path = "/companies/" + companyId + "/commerce-options?" + params.toString();
-            const response = await api<{ items: unknown[]; total?: number }>(path);
-            await rememberRead(path, response);
-            otherRecords += response.items.length;
-            const done = response.items.length < 100 ||
-              (typeof response.total === "number" && page * 100 >= response.total);
-            await saveCatalogProgress(userId, companyId, "option:" + type, page + 1, done);
-            publishCatalogStatus({ progress: "الأصناف: " + savedItems + "، الحسابات والخيارات: " + otherRecords });
-            if (response.items.length < 100 ||
-              (typeof response.total === "number" && page * 100 >= response.total)) {
-              finished = true; break;
-            }
-          }
-          if (!finished) { scheduleNextBatch(); return; }
-        }
+        await refreshSharedCompositions(userId, companyId).catch(() => {});
+        await refreshSharedQuestions(userId, companyId).catch(() => {});
+        await downloadSharedReferenceCards(userId, companyId);
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
             " سجل مساعد. ستتحدث أسماء الأصناف وأسعارها بالتغييرات اللاحقة.",
