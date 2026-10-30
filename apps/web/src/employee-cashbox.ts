@@ -2,30 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Account, CompanyContext } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
 import { offlineUser, rememberRead, savedRead } from "./offline-storage";
-
-export type LinkedCashboxSnapshot = {
-  account: Account | null;
-  // The server reply is authorized for the current user; attach this local
-  // identity binding when persisting it, never guess by number or name.
-  offlineIdentity?: { userId: number; companyId: number; employeeId: number };
-};
-
-export function ownActiveSalesCashbox(
-  response: LinkedCashboxSnapshot | undefined,
-  userId: number,
-  companyId: number,
-  employeeId: number,
-  requireIdentity: boolean,
-): Account | null {
-  if (!response || (requireIdentity && (
-    response.offlineIdentity?.userId !== userId ||
-    response.offlineIdentity?.companyId !== companyId ||
-    response.offlineIdentity?.employeeId !== employeeId
-  ))) return null;
-  const account = response.account;
-  return account?.companyId === companyId && account.active === true &&
-    account.kind === "posting" && account.cashOrBank === true ? account : null;
-}
+import { ownActiveSalesCashbox, type LinkedCashboxSnapshot } from "./employee-cashbox-cache";
 
 /** Read the employee's *server-linked* sales cashbox, not an arbitrary account. */
 export async function employeeSalesCashbox(
