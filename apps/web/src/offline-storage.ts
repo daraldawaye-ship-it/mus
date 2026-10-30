@@ -200,6 +200,32 @@ function allowedSnapshot(path: string): boolean {
     || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
 }
 
+
+type LocalAppearance = import("../../../packages/contracts/src/index").AppearancePreference;
+const appearanceDraftPath = (scope: string) =>
+  "/pending-appearance?scope=" + encodeURIComponent(scope);
+export async function saveAppearanceDraft(
+  userId: number, scope: string, preference: LocalAppearance,
+): Promise<void> {
+  if (activeUser !== userId) return;
+  if (!["light","dark"].includes(preference.mode) ||
+      !/^#[0-9a-f]{6}$/i.test(preference.color)) return;
+  const path=appearanceDraftPath(scope);
+  await writeOne("snapshots", {key:userId+":"+path,userId,path,
+    value:preference,savedAt:new Date().toISOString()} satisfies Snapshot);
+}
+export async function readAppearanceDraft(
+  userId: number, scope: string,
+): Promise<LocalAppearance | null> {
+  if (activeUser !== userId) return null;
+  const row=await readOne<Snapshot>("snapshots",userId+":"+appearanceDraftPath(scope));
+  return (row?.value as LocalAppearance|undefined)??null;
+}
+export async function clearAppearanceDraft(userId: number, scope: string): Promise<void> {
+  if (activeUser !== userId) return;
+  await deleteOne("snapshots",userId+":"+appearanceDraftPath(scope));
+}
+
 /** Question outcomes belong only to the signed-in user and original scope.
  * The shared question catalog must never contain answer keys or personal choices.
  */
