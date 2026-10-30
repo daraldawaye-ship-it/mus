@@ -12,6 +12,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { rememberRead, savedRead, setOfflineUser } from "./offline-storage";
 import { reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
+import { lookupSharedItem } from "./offline-shared-items";
+import { offlineUser } from "./offline-storage";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -55,6 +57,11 @@ export async function api<T>(
       if (offline !== undefined) return offline;
       const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
       if (reusable !== undefined) return reusable;
+      const id=offlineUser();
+      if (id!==null) {
+        const item=await lookupSharedItem<T>(path,id).catch(()=>undefined);
+        if (item!==undefined) return item;
+      }
     }
     throw error;
   }
