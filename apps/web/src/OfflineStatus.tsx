@@ -222,7 +222,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
             if (!response.hasMore) { complete = true; break; }
           }
-          if (!complete) throw new Error("وصل التنزيل إلى حد الدفعات؛ يمكنك الاستكمال بالضغط مجددًا");
+          if (!complete) { needsContinuation = true; return; }
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
