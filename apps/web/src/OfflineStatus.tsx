@@ -291,20 +291,5 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   // Keep item-delta polling and pending operations in both modes.
   // Browser pages need no catalog download toolbar.
   if (!isAppWindow()) return null;
-  return <section className="offline-status" aria-label="العمل بدون إنترنت">
-    <div className="form-actions">
-      <span role="status">{online ? "متصل" : "بدون إنترنت"}</span>
-      <span>بانتظار المزامنة: <strong>{pending}</strong></span>
-      {companyId && <Button variant="secondary" disabled={!online || downloading}
-        onClick={() => void downloadCatalog()}>
-        {downloading ? "جارٍ حفظ البيانات على الجهاز…" : "تنزيل/تحديث بيانات الجهاز"}
-      </Button>}
-      {pending > 0 && <Button variant="secondary" disabled={!online || busy} onClick={() => void sync()}>
-        {busy ? "جارٍ التحقق…" : "مزامنة المحفوظات"}
-      </Button>}
-    </div>
-    {progress && <small role="status">{progress}</small>}
-    {message && <Notice>{message}</Notice>}
-    {!online && <small className="muted">النسخة المحلية للعرض فقط؛ الأسعار والمخزون قد تتغير. السندات والفواتير غير مرحلة حتى إقرار الخادم.</small>}
-  </section>;
+  return null;
 }
