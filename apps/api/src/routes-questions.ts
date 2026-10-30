@@ -21,6 +21,7 @@ const questionFields = z.object({
   path:["correctAnswer"],message:"اختر الإجابة الصحيحة ضمن الخيارات الموجودة"
 });
 const editFields = questionFields.safeExtend({ revision: z.number().int().positive() });
+const statusFields = z.object({ revision:z.number().int().positive(),active:z.boolean() }).strict();
 const answerFields = z.object({
   selectedAnswer: z.number().int().min(1).max(4),
   comment: z.string().trim().max(2000).nullable().optional(),
@@ -126,11 +127,17 @@ export function questionRoutes(pool: Pool): Router {
       if(category!==undefined && (typeof category!=="string" || category.length>120))
         throw new HttpError(400,"invalid_query","فئة الأسئلة غير صالحة");
       const categoryFilter=category===undefined?null:category;
+      const status=req.query.status??"active";
+      if(status!=="active" && status!=="archived")
+        throw new HttpError(400,"invalid_query","حالة الأرشيف غير صالحة");
       const args=[companyId,user.id,searchPattern(p.q),manager,categoryFilter];
-      const condition="q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $4) AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($5::text IS NULL OR q.category=$5)";
+      const visibility=manager
+        ? status==="archived" ? "NOT q.active" : "q.active"
+        : "q.active";
+      const condition=`q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $3 OR q.category ILIKE $3) AND ($5::text IS NULL OR q.category=$5)`;
       const count=await client.query(
-        "SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND (q.active OR $3) AND (q.question ILIKE $2 OR q.category ILIKE $2) AND ($4::text IS NULL OR q.category=$4)",
-        [companyId,searchPattern(p.q),manager,categoryFilter]);
+        `SELECT count(*)::int total FROM questions q WHERE q.company_id IS NOT DISTINCT FROM $1 AND ${visibility} AND (q.question ILIKE $2 OR q.category ILIKE $2) AND ($3::text IS NULL OR q.category=$3)`,
+        [companyId,searchPattern(p.q),categoryFilter]);
       const rows=await client.query(`
         SELECT q.*,creator.display_name AS creator_name,
         (SELECT count(*)::int FROM question_answers a WHERE a.question_id=q.id) AS answer_count,
@@ -194,6 +201,30 @@ export function questionRoutes(pool: Pool): Router {
         question:old.question,options:[old.answer1,old.answer2,old.answer3,old.answer4],correctAnswer:old.correct_answer,points:old.points,
       },{question:updated.question,options:input.options,correctAnswer:updated.correct_answer,points:updated.points},companyId);
       return {id:updated.id,revision:updated.revision};
+    });
+    res.json(result);
+  }));
+
+  // Archive/restore without deleting prior answers or rewriting correct choices.
+  router.patch(roots.map(root=>root+"/:questionId/status"),handler(async(req,res)=>{
+    const input=parse(statusFields,req.body);
+    const result=await transaction(pool,async client=>{
+      const {companyId,user}=await access(client,req,"questions","edit",true);
+      const questionId=id(req.params.questionId);
+      const old=(await client.query(
+        "SELECT id,revision,active FROM questions WHERE id=$1 AND company_id IS NOT DISTINCT FROM $2 FOR UPDATE",
+        [questionId,companyId]
+      )).rows[0];
+      if(!old) missing();
+      if(old.revision!==input.revision) throw new HttpError(409,"conflict","تم تعديل السؤال؛ أعد تحميله");
+      if(old.active===input.active) return {id:questionId,revision:old.revision,active:old.active};
+      const updated=(await client.query(
+        "UPDATE questions SET active=$1,updated_by=$2,revision=revision+1,updated_at=now() WHERE id=$3 RETURNING revision,active",
+        [input.active,user.id,questionId]
+      )).rows[0];
+      await audit(client,user,input.active?"question.restore":"question.archive","question",questionId,
+        {active:old.active},{active:updated.active},companyId);
+      return {id:questionId,revision:updated.revision,active:updated.active};
     });
     res.json(result);
   }));
