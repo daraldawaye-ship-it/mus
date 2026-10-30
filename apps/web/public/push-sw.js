@@ -48,7 +48,7 @@ self.addEventListener("notificationclick",event=>{
 
 /* Offline application shell. Only versioned static files are cached here;
  * API responses and financial documents are NEVER stored by the worker. */
-const shellCache = "alraesy-static-offline-20261030-v1";
+const shellCache = "alraesy-static-offline-20261030-v2";
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(shellCache);

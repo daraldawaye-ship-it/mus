@@ -81,6 +81,8 @@ export async function requestInstall(): Promise<void> {
 export function prepareInstall(): void {
   if (window.isSecureContext && "serviceWorker" in navigator) {
     // This worker handles notifications only; it never caches private API data.
-    void navigator.serviceWorker.register("/push-sw.js", { scope: "/" }).catch(() => {});
+    void navigator.serviceWorker.register("/push-sw.js", {
+      scope: "/", updateViaCache: "none",
+    }).then(registration => registration.update()).catch(() => {});
   }
 }
