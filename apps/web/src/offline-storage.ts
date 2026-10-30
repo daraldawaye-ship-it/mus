@@ -107,6 +107,15 @@ type OfflineSessionRow = {
   savedAt: number;
 };
 const OFFLINE_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export function validOfflineSession(
+  row: { user: { id:number; suspended:boolean; archived:boolean }; savedAt:number } | null | undefined,
+  now = Date.now(),
+): boolean {
+  return !!row && !!row.user && Number.isSafeInteger(row.user.id) &&
+    row.user.id > 0 && !row.user.suspended && !row.user.archived &&
+    Number.isFinite(row.savedAt) && row.savedAt <= now &&
+    now - row.savedAt <= OFFLINE_SESSION_MAX_AGE_MS;
+}
 export async function saveOfflineSession(
   user: import("../../../packages/contracts/src/index").User,
 ): Promise<void> {
@@ -120,11 +129,8 @@ export async function saveOfflineSession(
 export async function readOfflineSession():
   Promise<import("../../../packages/contracts/src/index").User | null> {
   const row = await readOne<OfflineSessionRow>("offline-session", "last");
-  if (!row || !row.user || !Number.isSafeInteger(row.user.id) ||
-      row.user.id <= 0 || row.user.suspended || row.user.archived ||
-      Date.now() < row.savedAt ||
-      Date.now() - row.savedAt > OFFLINE_SESSION_MAX_AGE_MS) return null;
-  return row.user;
+  if (!validOfflineSession(row)) return null;
+  return row!.user;
 }
 export async function clearOfflineSession(): Promise<void> {
   await deleteOne("offline-session", "last");
