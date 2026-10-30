@@ -20,8 +20,8 @@ export function OfflineStatus({ userId, companyId }: DeviceProps) {
       });
     };
     const observer = new MutationObserver(choose);
-    observer.observe(document.querySelector(".main-content") ?? document.body,
-      { childList: true, subtree: true, attributes: true, attributeFilter: ["data-company-id"] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ["data-company-id"] });
     choose();
     return () => observer.disconnect();
   }, [userId, companyId]);
