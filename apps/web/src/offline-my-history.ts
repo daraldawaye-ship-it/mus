@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { storePersonalAnswer, announcePersonalAnswerChanges, readCatalogProgress, saveCatalogProgress } from "./offline-storage";
-type HistoryPage={items:{questionId:number;selectedAnswer:number;correct:boolean;correctAnswer:number|null;points:number;comment:string|null;otherOptionCounts:number[]}[];total:number};
+type HistoryPage={items:{questionId:number;selectedAnswer:number;correct:boolean;correctAnswer:number|null;correctText?:string|null;points:number;comment:string|null;otherOptionCounts:number[]}[];total:number};
 export async function syncMyHistory(userId:number,companyId:number|null){
   for(const id of companyId?[0,companyId]:[0]){
     if(!navigator.onLine)return;
