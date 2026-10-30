@@ -25,7 +25,7 @@ function scope(path: string): string | null {
   if (q) return (q[1] || "public") + ":questions";
   return null;
 }
-function restricted(path: string, value: unknown): unknown {
+export function sanitizeSharedReference(path: string, value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const list = value as { items?: Record<string, unknown>[] };
   if (!Array.isArray(list.items)) return value;
@@ -90,7 +90,7 @@ export async function shareAuthorizedRead(path:string,data:unknown):Promise<void
   const group=scope(path);
   if (identity===null || !group) return;
   const current=identity;
-  const sanitized=restricted(path,data);
+  const sanitized=sanitizeSharedReference(path,data);
   const serialized=JSON.stringify(sanitized);
   if (!serialized || serialized.length>800_000) return;
   if (current!==identity) return;
