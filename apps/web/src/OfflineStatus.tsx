@@ -225,8 +225,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         }
         // Small reference catalogs use their ordinary permitted endpoints.
         for (const type of ["accounts", "branches", "locations", "currencies"]) {
+          const checkpoint = await readCatalogProgress(userId, companyId, "option:" + type);
+          if (checkpoint.complete) continue;
           let finished = false;
-          for (let page = 1; page <= 200; page++) {
+          for (let page = checkpoint.nextPage; page < checkpoint.nextPage + 40; page++) {
             if (!navigator.onLine) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               type, active: "true", page: String(page), pageSize: "100",
@@ -235,6 +237,9 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             const response = await api<{ items: unknown[]; total?: number }>(path);
             await rememberRead(path, response);
             otherRecords += response.items.length;
+            const done = response.items.length < 100 ||
+              (typeof response.total === "number" && page * 100 >= response.total);
+            await saveCatalogProgress(userId, companyId, "option:" + type, page + 1, done);
             publishCatalogStatus({ progress: "الأصناف: " + savedItems + "، الحسابات والخيارات: " + otherRecords });
             if (response.items.length < 100 ||
               (typeof response.total === "number" && page * 100 >= response.total)) {
