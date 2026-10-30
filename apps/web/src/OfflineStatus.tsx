@@ -4,9 +4,8 @@ import { api } from "./api";
 import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
-import { cacheItemCompositions } from "./offline-compositions";
-import { cacheQuestionPages } from "./offline-questions";
 import { downloadSharedReferenceCards } from "./offline-shared-master";
+import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch } from "./offline-shared-items";
 
 type DeviceProps = { userId: number; companyId?: number };
@@ -248,8 +247,8 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
         } else {
           publishCatalogStatus({ progress: "الأصناف محفوظة: " + savedItems + " — جارٍ تحديث بقية البيانات…" });
         }
-        await cacheItemCompositions(userId, companyId).catch(() => {});
-        await cacheQuestionPages(userId, companyId).catch(() => {});
+        await refreshSharedCompositions(userId, companyId).catch(() => {});
+        await refreshSharedQuestions(userId, companyId).catch(() => {});
         await downloadSharedReferenceCards(userId, companyId);
         publishCatalogStatus({
           message: "اكتمل حفظ " + savedItems + " صنف و" + otherRecords +
