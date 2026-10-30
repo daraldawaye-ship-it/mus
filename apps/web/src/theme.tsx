@@ -12,7 +12,8 @@ import {
   DEFAULT_APPEARANCE,
   type AppearancePreference,
 } from "../../../packages/contracts/src/index";
-import { api, useScopeGuard, useSession } from "./api";
+import { api, ApiFailure, useScopeGuard, useSession } from "./api";
+import { clearAppearanceDraft, readAppearanceDraft, rememberRead, saveAppearanceDraft } from "./offline-storage";
 import { Button, Dialog, Field, Notice, Select } from "./ui";
 
 const rgb = (hex: string) =>
@@ -163,28 +164,60 @@ export function AppearanceProvider({
   };
   useEffect(() => {
     if (!user) return;
-    const captured = revision.current;
-    void api<{ preference: AppearancePreference }>(
-      `/appearance?scope=${encodeURIComponent(scope)}`,
-      { signal: guard.signal },
-    )
-      .then((result) => {
-        if (guard.isCurrent() && revision.current === captured) {
+    const currentUser=user.id;
+    const captured=revision.current;
+    const path=`/appearance?scope=${encodeURIComponent(scope)}`;
+    void (async () => {
+      try {
+        // Local unsynchronized changes win over an old server preference.
+        const pending=await readAppearanceDraft(currentUser,scope);
+        if (pending) {
+          if (guard.isCurrent() && revision.current===captured) {
+            updatePreference(pending);
+            setSavedRevision(captured);
+          }
+          return;
+        }
+        const result=await api<{ preference: AppearancePreference }>(path,{signal:guard.signal});
+        if (guard.isCurrent() && revision.current===captured) {
           updatePreference(result.preference);
           setSavedRevision(captured);
         }
-      })
-      .catch((error) => {
-        if (guard.isCurrent())
-          setNotice({
-            tone: "error",
-            text: error instanceof Error ? error.message : "تعذر تحميل المظهر",
-          });
-      })
-      .finally(() => {
-        if (guard.isCurrent()) setLoading(false);
-      });
-  }, [scope, user?.id]);
+      } catch (error) {
+        if (guard.isCurrent()) setNotice({tone:"error",
+          text:error instanceof Error?error.message:"تعذر تحميل المظهر"});
+      } finally {
+        if(guard.isCurrent()) setLoading(false);
+      }
+    })();
+  }, [scope,user?.id]);
+  useEffect(() => {
+    if (!user) return;
+    const userId=user.id, path=`/appearance?scope=${encodeURIComponent(scope)}`;
+    let stopped=false, running=false;
+    const refresh=async () => {
+      if(stopped || running || !navigator.onLine) return;
+      running=true;
+      try {
+        const draft=await readAppearanceDraft(userId,scope);
+        if(draft) {
+          await api("/appearance",{method:"PATCH",body:{scope,...draft}});
+          await rememberRead(path,{preference:draft});
+          await clearAppearanceDraft(userId,scope);
+        } else if(revision.current===savedRevision) {
+          const result=await api<{preference:AppearancePreference}>(path);
+          if(!stopped && guard.isCurrent() && revision.current===savedRevision)
+            updatePreference(result.preference);
+        }
+      } catch {
+        // Keep the local draft; retry on reconnection without overwriting
+        // the user's currently displayed appearance.
+      } finally {running=false;}
+    };
+    const onOnline=()=>{void refresh();};
+    window.addEventListener("online",onOnline);
+    return ()=>{stopped=true;window.removeEventListener("online",onOnline);};
+  }, [scope,user?.id,savedRevision]);
   useLayoutEffect(() => {
     const root = document.documentElement;
     const tokens = buildThemeTokens(preference.mode, preference.color);
@@ -207,6 +240,10 @@ export function AppearanceProvider({
         body: { scope, ...sent },
         signal: guard.signal,
       });
+      if(user?.id) {
+        await rememberRead(`/appearance?scope=${encodeURIComponent(scope)}`,{preference:sent});
+        await clearAppearanceDraft(user.id,scope);
+      }
       if (!guard.isCurrent()) return;
       setSavedRevision(sentRevision);
       if (revision.current === sentRevision && dialogVersion.current === sentVersion) {
@@ -220,11 +257,23 @@ export function AppearanceProvider({
         });
       }
     } catch (error) {
-      if (guard.isCurrent())
-        setNotice({
-          tone: "error",
-          text: error instanceof Error ? error.message : "تعذر حفظ المظهر",
-        });
+      const transient=!(error instanceof ApiFailure) || error.status>=500;
+      if (transient && user?.id) {
+        try {
+          await saveAppearanceDraft(user.id,scope,sent);
+          await rememberRead(`/appearance?scope=${encodeURIComponent(scope)}`,{preference:sent});
+          if (guard.isCurrent()) {
+            setSavedRevision(sentRevision);
+            if (revision.current===sentRevision && dialogVersion.current===sentVersion)
+              closeAppearance();
+          }
+        } catch(localError) {
+          if(guard.isCurrent()) setNotice({tone:"error",
+            text:localError instanceof Error?localError.message:"تعذر الحفظ المحلي"});
+        }
+      } else if(guard.isCurrent())
+        setNotice({tone:"error",
+          text:error instanceof Error?error.message:"تعذر حفظ المظهر"});
     } finally {
       if (guard.isCurrent()) setSaving(false);
     }
