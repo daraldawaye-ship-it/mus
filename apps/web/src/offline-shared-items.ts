@@ -1,4 +1,5 @@
 import { sharedItemsAllowed } from "./offline-shared";
+import { compareItemsBySavedSales, readSaleRankSnapshot } from "./offline-storage";
 type Cursor = { since:string;afterId:number };
 type Progress = { cursor:Cursor;count:number;complete:boolean };
 type Row = { key:string;companyId:number;value:Record<string,unknown> };
@@ -60,6 +61,11 @@ export async function lookupSharedItem<T>(path:string,userId:number):Promise<T|u
     (q.get("active")!=="true"||x.active!==false) &&
     (!search||["name","englishName","code","barcode","searchKeys"].some(k=>
       String(x[k]??"").toLowerCase().includes(search))));
+  if(q.get("sort")?.startsWith("saleTimes:desc")){
+    const snapshot=await readSaleRankSnapshot(userId,companyId);
+    if(snapshot)
+      filtered.sort((a,b)=>compareItemsBySavedSales(a,b,snapshot.scores,q.get("q")??""));
+  }
   const page=Math.max(1,Number(q.get("page"))||1);
   const pageSize=Math.min(100,Math.max(1,Number(q.get("pageSize"))||20));
   return {items:filtered.slice((page-1)*pageSize,page*pageSize),
