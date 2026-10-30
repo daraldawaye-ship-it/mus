@@ -68,3 +68,24 @@ export function correctOptionText(
   const text = options[index - 1];
   return typeof text === "string" && text.trim() ? text : null;
 }
+
+/** Reorder the already-downloaded questions without claiming new network data.
+ * Deduplicate pages and prefer questions without a confirmed or queued answer.
+ */
+export function orderCachedQuestionCards<T extends { id: number; priority: number }>(
+  pages: readonly (readonly T[])[],
+  answered: ReadonlySet<number>,
+  maxItems = 20,
+): T[] {
+  const seen = new Set<number>();
+  const items: T[] = [];
+  for (const page of pages) for (const question of page) {
+    if (!Number.isSafeInteger(question.id) || seen.has(question.id)) continue;
+    seen.add(question.id);
+    items.push(question);
+  }
+  return items.sort((a,b) =>
+    Number(answered.has(a.id)) - Number(answered.has(b.id)) ||
+    a.priority - b.priority ||
+    a.id - b.id).slice(0,maxItems);
+}
