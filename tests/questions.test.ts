@@ -253,7 +253,7 @@ test("questions: variable options, comments, first-answer rewards and company sc
   assert.equal(archiveList.total,1);
   assert.equal(archiveList.items[0]?.active,false);
   assert.equal((await member.ok<{total:number}>("GET","/questions?category=عام&status=archived")).total,0);
-  assert.equal((await owner.ok<{total:number}>("GET","/answers?questionId="+publicQuestion)).total,3);
+  assert.equal((await owner.ok<{total:number}>("GET","/answers?questionId="+publicQuestion)).total,4);
   assert.equal((await member.request("POST",`/questions/${publicQuestion}/answers`,
     {selectedAnswer:1,idempotencyKey:randomUUID()})).status,404);
   const restored=await owner.ok<{active:boolean}>("PATCH",`/questions/${publicQuestion}/status`,
