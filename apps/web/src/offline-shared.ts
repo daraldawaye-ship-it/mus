@@ -106,7 +106,7 @@ export async function reuseAuthorizedRead<T>(path:string):Promise<T|undefined> {
 export async function sharedProgress(
   companyId:number,group:string,userId:number,
 ):Promise<{page:number;complete:boolean}|null> {
-  if (identity!==userId || !grants.has(userId+":"+companyId+":"+group)) return null;
+  if (identity!==userId || !grants.has(userId+":"+(companyId===0?"public":companyId)+":"+group)) return null;
   return (await read("progress:"+companyId+":"+group) as {page:number;complete:boolean}|undefined)??null;
 }
 export async function saveSharedProgress(
