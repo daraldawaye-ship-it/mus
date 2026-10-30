@@ -235,8 +235,10 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
             }>("/companies/" + companyId + "/item-changes?" + params.toString());
             savedItems += response.items.length;
             // The saved cursor makes a reload resume from the last committed batch.
-            await rememberCatalogBatch(
-              userId, companyId, response.items, response.cursor, savedItems, !response.hasMore,
+            await saveSharedItemBatch(
+              userId, companyId, response.items, {
+                cursor:response.cursor,count:savedItems,complete:!response.hasMore,
+              },
             );
             cursor = response.cursor;
             publishCatalogStatus({ progress: "الأصناف المحفوظة: " + savedItems + " — جارٍ الاستكمال…" });
