@@ -190,13 +190,80 @@ export async function clearOfflineSession(): Promise<void> {
 function allowedSnapshot(path: string): boolean {
   // Cache only already-authorized server GET responses. The user key is
   // separate per account; no authentication or password endpoints are cached.
-  return /^\/companies(?:\?|$)/.test(path) ||
+  return /^\/appearance\?scope=(?:public|company%3A\d+|company:\d+)$/.test(path) ||
+    /^\/my-shortcuts(?:\?|$)/.test(path) ||
+    /^\/companies(?:\?|$)/.test(path) ||
     /^\/companies\/[1-9]\d*$/.test(path) ||
     /^\/page-catalog\?/.test(path) ||
     /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control)(?:[/?]|$)/.test(path)
     || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
     || /^\/companies\/[1-9]\d*\/(?:questions|answers)(?:[/?]|$)/.test(path);
 }
+
+/** Question outcomes belong only to the signed-in user and original scope.
+ * The shared question catalog must never contain answer keys or personal choices.
+ */
+export type SavedQuestionOutcome = {
+  selectedAnswer: number; correct: boolean; correctAnswer: number | null;
+  points: number; comment: string | null; otherOptionCounts: number[];
+};
+function answerHistoryPath(scope: string, questionId: number): string {
+  return "/my-answer-history/" + encodeURIComponent(scope) + "/" + questionId;
+}
+export async function storePersonalAnswer(
+  userId: number, scope: string, questionId: number, outcome: SavedQuestionOutcome,
+): Promise<void> {
+  if (activeUser !== userId || !Number.isSafeInteger(questionId) || questionId <= 0 ||
+      !Number.isSafeInteger(outcome.selectedAnswer) || outcome.selectedAnswer <= 0) return;
+  const path = answerHistoryPath(scope, questionId);
+  await writeOne("snapshots", {
+    key: userId + ":" + path, userId, path,
+    value: outcome, savedAt: new Date().toISOString(),
+  } satisfies Snapshot);
+  changed();
+}
+export async function personalAnswerHistory(
+  userId: number, scope: string,
+): Promise<Record<number, SavedQuestionOutcome>> {
+  if (activeUser !== userId) return {};
+  const prefix = "/my-answer-history/" + encodeURIComponent(scope) + "/";
+  const rows = await readIndex<Snapshot>("snapshots", "user", userId);
+  const result: Record<number, SavedQuestionOutcome> = {};
+  for (const row of rows) {
+    if (!row.path.startsWith(prefix)) continue;
+    const questionId = Number(row.path.slice(prefix.length));
+    const value = row.value as SavedQuestionOutcome;
+    if (Number.isSafeInteger(questionId) && questionId > 0 &&
+        Number.isSafeInteger(value?.selectedAnswer) && value.selectedAnswer > 0)
+      result[questionId] = value;
+  }
+  return result;
+}
+/** Server-confirmed answers from GET replace the local user-only history. */
+async function rememberQuestionHistory(userId: number, path: string, value: unknown) {
+  const questionList = /^\/(?:companies\/\d+\/)?questions\?/.test(path);
+  if (!questionList || !value || typeof value !== "object") return;
+  const scopeId = path.match(/^\/companies\/(\d+)\/questions\?/);
+  const scope = scopeId ? "company:" + scopeId[1] : "public";
+  const items = (value as {items?: unknown}).items;
+  if (!Array.isArray(items)) return;
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const q = raw as Record<string, unknown>;
+    if (typeof q.id !== "number" ||
+        typeof q.myLastSelectedAnswer !== "number" ||
+        typeof q.myLastCorrect !== "boolean") continue;
+    await storePersonalAnswer(userId, scope, q.id, {
+      selectedAnswer: q.myLastSelectedAnswer, correct: q.myLastCorrect,
+      correctAnswer: typeof q.correctAnswer === "number" ? q.correctAnswer : null,
+      points: typeof q.myLastPoints === "number" ? q.myLastPoints : 0,
+      comment: typeof q.myLastComment === "string" ? q.myLastComment : null,
+      otherOptionCounts: Array.isArray(q.otherOptionCounts)
+        ? q.otherOptionCounts.filter((n):n is number => typeof n === "number") : [],
+    });
+  }
+}
+
 export async function rememberRead(path: string, value: unknown): Promise<void> {
   const userId = activeUser;
   if (userId === null || !allowedSnapshot(path)) return;
@@ -207,6 +274,7 @@ export async function rememberRead(path: string, value: unknown): Promise<void> 
     key: String(userId) + ":" + path, userId, path, value,
     savedAt: new Date().toISOString(),
   } satisfies Snapshot);
+  await rememberQuestionHistory(userId, path, value);
   // A direct online item-card read must also refresh its offline search card.
   const detail = path.match(/^\/companies\/(\d+)\/items\/(\d+)$/);
   if (detail && value && typeof value === "object") {
@@ -431,7 +499,25 @@ export function syncPending(
       try {
         // Backend revalidates company access and all data, and uses each
         // original idempotency key atomically to avoid duplicate documents.
-        await post(row.path, row.body);
+        const confirmed = await post(row.path, row.body);
+        if (row.kind === "answer" && confirmed && typeof confirmed === "object") {
+          const details = confirmed as Record<string, unknown>;
+          const choice = (row.body as { selectedAnswer?: unknown }).selectedAnswer;
+          const match = row.path.match(/^\/(?:companies\/(\d+)\/)?questions\/(\d+)\/answers$/);
+          if (match && typeof choice === "number" &&
+              typeof details.correct === "boolean") {
+            // A saved server response, not the local draft, determines correctness.
+            await storePersonalAnswer(userId, match[1] ? "company:" + match[1] : "public",
+              Number(match[2]), {
+                selectedAnswer: choice, correct: details.correct,
+                correctAnswer: typeof details.correctAnswer === "number" ? details.correctAnswer : null,
+                points: typeof details.points === "number" ? details.points : 0,
+                comment: (row.body as {comment?: string|null}).comment ?? null,
+                otherOptionCounts: Array.isArray(details.otherOptionCounts)
+                  ? details.otherOptionCounts.filter((n):n is number => typeof n === "number") : [],
+              });
+          }
+        }
         await deleteOne("pending", row.id);
         saved++;
         changed();
