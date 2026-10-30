@@ -7,6 +7,47 @@ export function sharedIdentity(userId: number | null) {
   identity = userId;
   grants.clear();
 }
+const offlineGrantMaxAge = 7 * 24 * 60 * 60 * 1000;
+type OfflineGrant = { userId:number;group:string;savedAt:number };
+/** The grant is the last successful server-authorized GET for this exact
+ * user and module. It is not used to authorize online mutations. */
+export async function restoreOfflineSharedGrants(userId:number):Promise<void> {
+  if (identity!==userId) return;
+  const database=await db();
+  try {
+    const all=await new Promise<Entry[]>((resolve,reject)=>{
+      const req=database.transaction("entries","readonly").objectStore("entries").getAll();
+      req.onsuccess=()=>resolve(req.result as Entry[]);
+      req.onerror=()=>reject(req.error);
+    });
+    if (identity!==userId) return;
+    for(const entry of all) {
+      if (!entry.key.startsWith("grant:"+userId+":")) continue;
+      const grant=entry.data as OfflineGrant;
+      if(grant?.userId!==userId || typeof grant.group!=="string" ||
+         !Number.isFinite(grant.savedAt) || Date.now()<grant.savedAt ||
+         Date.now()-grant.savedAt>offlineGrantMaxAge) continue;
+      grants.add(userId+":"+grant.group);
+    }
+  } finally { database.close(); }
+}
+export async function clearOfflineSharedGrants(userId:number):Promise<void> {
+  const database=await db();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=database.transaction("entries","readwrite");
+      const request=tx.objectStore("entries").getAllKeys();
+      request.onsuccess=()=>{
+        for(const key of request.result) {
+          if(typeof key==="string" && key.startsWith("grant:"+userId+":"))
+            tx.objectStore("entries").delete(key);
+        }
+      };
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  } finally { database.close(); }
+}
 export function sharedItemsAllowed(companyId:number,userId:number):boolean {
   return identity===userId && grants.has(userId+":"+companyId+":options:items");
 }
@@ -95,7 +136,12 @@ export async function shareAuthorizedRead(path:string,data:unknown):Promise<void
   if (!serialized || serialized.length>800_000) return;
   if (current!==identity) return;
   // A successful live GET is the authorization proof for this session.
-  grants.add(current+":"+group);
+  if (!grants.has(current+":"+group)) {
+    grants.add(current+":"+group);
+    await write("grant:"+current+":"+group,{
+      userId:current,group,savedAt:Date.now(),
+    } satisfies OfflineGrant);
+  }
   await write("snapshot:"+path,sanitized);
 }
 export async function reuseAuthorizedRead<T>(path:string):Promise<T|undefined> {
