@@ -40,7 +40,7 @@ test("browser shows no download controls and application detects its display mod
 });
 test("new worker installation rotates only the static shell cache", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
-  assert.match(worker,/alraesy-static-offline-20261030-v3/);
+  assert.match(worker,/alraesy-static-offline-20261030-v4/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
 
@@ -100,4 +100,27 @@ test("offline bootstrap never trusts a denied server session or caches credentia
   assert.doesNotMatch(store,/writeOne\("offline-session"[\s\S]{0,200}csrf:/);
   assert.match(shared,/grants\.clear\(\)/);
   assert.match(shared,/clearOfflineSharedGrants/);
+});
+
+test("offline navigation refreshes latest shell instead of serving old cached login", () => {
+  const worker=readFileSync("apps/web/public/push-sw.js","utf8");
+  assert.match(worker,/alraesy-static-offline-20261030-v4/);
+  assert.match(worker,/fetch\(request, \{cache: "no-store"\}\)/);
+  assert.match(worker,/shell\.put\("\/", response\.clone\(\)\)/);
+  assert.match(worker,/shell\.match\("\/"\)/);
+  assert.doesNotMatch(worker,/return await caches\.match\("\/"\)/);
+  assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.doesNotMatch(worker,/client\.navigate\(url\.href\)/);
+});
+test("offline identity is independent of catalog upgrade and recovers from outages", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const session=readFileSync("apps/web/src/api.tsx","utf8");
+  assert.match(storage,/alraesy-offline-identity-v1/);
+  assert.match(storage,/resumeDatabase/);
+  assert.match(storage,/resumeWrite/);
+  assert.match(storage,/resumeRead/);
+  assert.match(storage,/resumeClear/);
+  assert.match(session,/error\.status === 401 \|\| error\.status === 403/);
+  assert.match(session,/error\.status >= 500/);
+  assert.match(session,/restoreOfflineSharedGrants/);
 });
