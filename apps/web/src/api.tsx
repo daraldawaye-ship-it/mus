@@ -11,6 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { rememberRead, savedRead, setOfflineUser } from "./offline-storage";
+import { reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -52,6 +53,8 @@ export async function api<T>(
     if (method === "GET" && !options.signal?.aborted) {
       const offline = await savedRead<T>(path).catch(() => undefined);
       if (offline !== undefined) return offline;
+      const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
+      if (reusable !== undefined) return reusable;
     }
     throw error;
   }
@@ -65,7 +68,10 @@ export async function api<T>(
       error?.code ?? "unknown",
     );
   }
-  if (method === "GET") void rememberRead(path, data).catch(() => {});
+  if (method === "GET") {
+    void rememberRead(path, data).catch(() => {});
+    void shareAuthorizedRead(path, data).catch(() => {});
+  }
   return data as T;
 }
 interface SessionValue {
@@ -98,6 +104,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (epoch.current !== request) return;
     csrf = result.csrf;
     setOfflineUser(result.user?.id ?? null);
+    sharedIdentity(result.user?.id ?? null);
     setSession({ ...result, pendingLogoutRedirect: false });
     setError(null);
     setLoading(false);
@@ -110,6 +117,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (epoch.current === request) {
           csrf = result.csrf;
           setOfflineUser(result.user?.id ?? null);
+    sharedIdentity(result.user?.id ?? null);
           setSession({ ...result, pendingLogoutRedirect: false });
           setLoading(false);
         }
@@ -133,6 +141,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ++epoch.current;
     csrf = null;
     setOfflineUser(null);
+    sharedIdentity(null);
     // Auth guards must share the logout destination until the router commits it.
     setSession({ user: null, csrf: null, pendingLogoutRedirect: true });
   };
