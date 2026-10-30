@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { sanitizeSharedReference } from "../apps/web/src/offline-shared.ts";
 
 test("item delta route checks company permissions, bounds pages and uses precise cursor", () => {
   const source = readFileSync("apps/api/src/routes-commerce-options.ts", "utf8");
@@ -72,4 +73,25 @@ test("shared references are company-scoped and permission gated on every login",
   assert.match(items,/sharedItemsAllowed\(companyId,userId\)/);
   assert.match(items,/"items:"\+companyId/);
   assert.match(downloader,/sharedProgress\(companyId,group,userId\)/);
+});
+
+test("shared snapshots remove personal question answers and financial balances", () => {
+  const question=sanitizeSharedReference("/companies/2/questions?page=1",{
+    total:1,items:[{id:1,question:"اختبار",options:["أ","ب"],
+      correctAnswer:2,myLastSelectedAnswer:1,myLastPoints:50,
+      myAnswerCount:2,points:5}],
+  }) as {items:Record<string,unknown>[]};
+  assert.equal(question.items[0].question,"اختبار");
+  assert.equal(question.items[0].correctAnswer,undefined);
+  assert.equal(question.items[0].myLastSelectedAnswer,undefined);
+  assert.equal(question.items[0].myLastPoints,undefined);
+  const account=sanitizeSharedReference("/companies/2/commerce-options?type=accounts",{
+    items:[{id:22,code:"100",name:"العملاء",balance:"999999",
+      ownerPhone:"777777",privacyLevel:4,accountLimit:"10000"}],
+  }) as {items:Record<string,unknown>[]};
+  assert.deepEqual(account.items[0],{
+    id:22,companyId:undefined,code:"100",name:"العملاء",
+    parentId:undefined,kind:undefined,category:undefined,
+    active:undefined,accountChoice:undefined,
+  });
 });
