@@ -279,6 +279,19 @@ test("item and invoice search read prepared ranks with exact-match precedence, p
     assert.equal(exact.items[0]!.id, products[2]!.id, "An exact barcode still beats a more popular partial match");
   }
   const reader = await f.member(c.id, ["items.view"]);
+  // The compact offline-device feed reads ONLY the prepared daily tables;
+  // it must not compute invoice lines or disclose rankings to item-card readers.
+  const rankFeed=await f.owner.ok<{
+    asOfDate:string;items:{itemId:number;saleTimes:string}[];
+    hasMore:boolean;afterId:number;
+  }>("GET",`/companies/${c.id}/item-sale-ranks?afterId=0`);
+  assert.equal(rankFeed.asOfDate,today);
+  assert.equal(rankFeed.items.find(row=>row.itemId===products[0]!.id)?.saleTimes,"100");
+  assert.equal(rankFeed.items.find(row=>row.itemId===products[1]!.id)?.saleTimes,"5");
+  assert.equal(rankFeed.items.find(row=>row.itemId===products[2]!.id)?.saleTimes,"-2");
+  assert.equal(rankFeed.hasMore,false);
+  assert.equal((await reader.request("GET",`/companies/${c.id}/item-sale-ranks`)).status,403);
+  assert.equal((await f.owner.request("GET",`/companies/${c.id}/item-sale-ranks?afterId=not-number`)).status,400);
   const restricted = await reader.ok<Page<Item>>("GET", `/companies/${c.id}/items?q=${encodeURIComponent("مشترك")}&sort=saleTimes:desc,code:asc`);
   assert.deepEqual(restricted.items.map(value => value.id), products.map(value => value.id), "Items-only access cannot infer hidden sales ranks");
   assert.equal((await reader.request("GET", `/companies/${other.id}/items`)).status, 403);
@@ -422,10 +435,18 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
     ...products.filter((_, index) => ![8, 4, 11].includes(index))];
   const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
   type FastPage = Page<Item> & { hasMore: boolean };
-  // One or two Arabic letters used to drop popularity ordering. They must
-  // retain the same 30-day sale-frequency ranking as longer text, including
-  // across pages, without paying for a full count on every keystroke.
-  for (const term of ["ص", "صن", "صنابير"]) {
+  // The invoice does not search until the third character; the older test
+  // still expected 1/2-character results and was failing even before this PR.
+  for (const shortTerm of ["ص","صن"]) {
+    const blocked = await f.owner.ok<FastPage>(
+      "GET",`${url}&q=${encodeURIComponent(shortTerm)}&page=1`);
+    assert.equal(blocked.items.length,0);
+    assert.equal(blocked.total,0);
+    assert.equal(blocked.hasMore,false);
+  }
+  // Every search of three or more characters uses the prepared monthly
+  // ranking, with the exact same order on subsequent pages.
+  for (const term of ["صنا", "صنابير"]) {
     const first = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=1`);
     const second = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=2`);
     const last = await f.owner.ok<FastPage>("GET", `${url}&q=${encodeURIComponent(term)}&page=3`);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { validOfflineSession } from "../apps/web/src/offline-storage.ts";
+import { validOfflineSession, compareItemsBySavedSales } from "../apps/web/src/offline-storage.ts";
 
 test("push worker never caches API requests", () => {
   const text=readFileSync("apps/web/public/push-sw.js","utf8");
@@ -160,4 +160,42 @@ test("offline appearance, page directory and top shortcuts use user-scoped cache
   assert.match(shortcuts,/rememberRead\(url\(companyId\),updated\)/);
   assert.match(menu,/entry\.actionAccess\.view/);
   assert.match(directory,/actionAccess\.view/);
+});
+
+test("saved monthly sale frequency sorts offline item cards without re-reading invoices", () => {
+  const month={ "11":"8","12":"3","13":"8","14":"-2" };
+  const cards=[
+    {id:12,code:"012",barcode:null},
+    {id:14,code:"014",barcode:null},
+    {id:13,code:"013",barcode:"EXACT"},
+    {id:11,code:"011",barcode:null},
+  ];
+  assert.deepEqual([...cards].sort((a,b)=>
+    compareItemsBySavedSales(a,b,month)).map(row=>row.id),[11,13,12,14]);
+  assert.equal([...cards].sort((a,b)=>
+    compareItemsBySavedSales(a,b,month,"EXACT"))[0]?.id,13);
+  const snapshot=readFileSync("apps/web/src/offline-sale-rank-sync.ts","utf8");
+  const local=readFileSync("apps/web/src/offline-shared-items.ts","utf8");
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const ui=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  assert.match(snapshot,/if\(complete\?\.asOfDate===day\)return/);
+  assert.match(snapshot,/saveSaleRankSnapshot/);
+  assert.match(snapshot,/for\(let i=0;i<6/);
+  assert.match(local,/readSaleRankSnapshot/);
+  assert.match(storage,/activeUser!==userId/);
+  assert.match(ui,/refreshDailySaleRanks/);
+});
+
+test("the default sales account uses only the logged in employee cashbox, including cached reads", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const cashbox=readFileSync("apps/web/src/employee-cashbox.ts","utf8");
+  const editor=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
+  const ranking=readFileSync("apps/api/src/services/item-sale-ranking.ts","utf8");
+  assert.match(storage,/my-sales-cashbox/);
+  assert.match(cashbox,/employeeId/);
+  assert.match(cashbox,/my-sales-cashbox/);
+  assert.match(editor,/initialInvoiceAccount\(kind, defaultCashbox, configuredPurchaseAccount\)/);
+  assert.match(editor,/accountManuallyChosen\.current/);
+  assert.match(ranking,/page\.key==="company\.sales"/);
+  assert.doesNotMatch(ranking,/\["company\.sales","company\.purchases","company\.invoice"\]/);
 });

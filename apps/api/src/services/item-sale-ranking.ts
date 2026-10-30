@@ -33,9 +33,10 @@ export async function assertItemSaleRankingsReady(client: PoolClient): Promise<v
 export async function canOrderItemsBySales(
  client:PoolClient,user:User,companyId:number
 ):Promise<boolean>{
+ if(user.owner) return true;
  const pages=await directoryEntries(client,user,companyId);
- return ["company.sales","company.purchases","company.invoice"].every(key=>{
-   const page=pages.find(p=>p.key===key);
-   return !!page?.enabled && !!page.actionAccess.view;
- });
+ // A salesperson does not need permission to the purchase or invoice-list
+ // pages merely to sort the items in the sales form by monthly popularity.
+ const salesPage=pages.find(page=>page.key==="company.sales");
+ return !!salesPage?.enabled && !!salesPage.actionAccess.view;
 }

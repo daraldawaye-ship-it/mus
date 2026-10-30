@@ -29,6 +29,47 @@ import { canSearchInvoiceItem } from "../../../packages/contracts/src/invoice-it
 
 export function commerceOptionRoutes(pool: Pool): Router {
   const router = Router();
+  // Read-only, permission-protected *stored* monthly ranking. Never aggregate
+  // invoice lines during typing. Paging allows devices to cache the snapshot
+  // once per Aden calendar day without downloading the full item cards again.
+  router.get("/companies/:companyId/item-sale-ranks", handler(async (req,res)=>{
+    const companyId=id(req.params.companyId);
+    const afterId=req.query.afterId??"0";
+    if (typeof afterId!=="string" || !/^(0|[1-9]\d{0,9})$/.test(afterId) ||
+        Number(afterId)>2147483647)
+      throw new HttpError(400,"invalid_cursor","مؤشر ترتيب الأصناف غير صالح");
+    const result=await transaction(pool,async client=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      await companyAccess(client,user,companyId,"commerce.view");
+      if (!(await canOrderItemsBySales(client,user,companyId)))
+        throw new HttpError(403,"forbidden","لا تملك صلاحية عرض إحصاءات المبيعات");
+      await assertItemSaleRankingsReady(client);
+      const today=await client.query<{day:string}>(
+        "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS day",
+      );
+      const day=today.rows[0]!.day;
+      const rows=await client.query<{item_id:number;total:string}>(`
+        WITH monthly AS (
+          SELECT item_id,net_sale_invoices FROM item_sale_rankings
+          WHERE company_id=$1 AND as_of_date=$2::date
+          UNION ALL
+          SELECT item_id,net_sale_invoices FROM staged_item_sale_rankings
+          WHERE company_id=$1 AND as_of_date=$2::date
+        )
+        SELECT item_id,SUM(net_sale_invoices)::text AS total
+        FROM monthly WHERE item_id>$3::integer
+        GROUP BY item_id HAVING SUM(net_sale_invoices)<>0
+        ORDER BY item_id ASC LIMIT 1001
+      `,[companyId,day,Number(afterId)]);
+      const more=rows.rows.length>1000;
+      const page=rows.rows.slice(0,1000);
+      return {asOfDate:day,items:page.map(row=>({
+        itemId:row.item_id,saleTimes:row.total,
+      })),hasMore:more,afterId:more?page[page.length-1]!.item_id:0};
+    });
+    res.json(result);
+  }));
   // Small incremental feed: no private caching, no client-provided SQL, no full catalog reload.
   // The cursor uses PostgreSQL microsecond precision to avoid skipping updates in one millisecond.
   router.get("/companies/:companyId/item-changes", handler(async (req, res) => {
