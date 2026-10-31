@@ -1,7 +1,11 @@
 import { Router } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
-import { actor, handler, parse } from "./http.ts";
+import { actor, handler, id, parse } from "./http.ts";
+import { itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
+import { transaction } from "./db.ts";
+import { companyAccess, currentActor } from "./policies/access.ts";
+import { audit } from "./services/audit.ts";
 import { HttpError } from "./errors.ts";
 import { readItems } from "./services/items.ts";
 import { directoryEntries } from "./services/pages.ts";
@@ -163,6 +167,42 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
 /** Read-only, company-scoped, server-paginated stock and sales filters. */
 export function itemOptionsListRoutes(pool: Pool): Router {
   const router = Router();
+  // Update only reserve quantity; respect card revision and audit every edit.
+  // Never send the full card on a row-level edit.
+  router.patch("/companies/:companyId/items/:itemId/reserve-quantity", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const itemId = id(req.params.itemId);
+    const input = parse(z.object({
+      revision: z.number().int().positive(),
+      reserveQuantity: itemWholeQuantitySchema,
+    }).strict(), req.body);
+    const result = await transaction(pool, async client => {
+      const user = await currentActor(client, actor(req));
+      await companyAccess(client, user, companyId, "items.manage");
+      const row = (await client.query(
+        "SELECT revision, reserve_quantity FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId, itemId],
+      )).rows[0];
+      if (!row) throw new HttpError(404, "item_not_found", "الصنف غير موجود");
+      if (Number(row.revision) !== input.revision)
+        throw new HttpError(409, "stale_item", "عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
+      if (String(row.reserve_quantity) === input.reserveQuantity)
+        return { itemId, revision: Number(row.revision), reserveQuantity: input.reserveQuantity };
+      const updated = (await client.query(
+        `UPDATE items SET reserve_quantity=$3::numeric,
+             revision=revision+1, updated_at=clock_timestamp()
+         WHERE company_id=$1 AND id=$2 AND revision=$4
+         RETURNING revision,reserve_quantity`,
+        [companyId, itemId, input.reserveQuantity, input.revision],
+      )).rows[0];
+      if (!updated) throw new HttpError(409, "stale_item", "تغيرت نسخة الصنف؛ حدّث القائمة.");
+      await audit(client, user, "item.field.update", "item", itemId,
+        { field: "reserveQuantity", value: String(row.reserve_quantity) },
+        { field: "reserveQuantity", value: String(updated.reserve_quantity) }, companyId);
+      return { itemId, revision: Number(updated.revision), reserveQuantity: String(updated.reserve_quantity) };
+    });
+    res.json({ result });
+  }));
   router.get("/companies/:companyId/item-options-list", handler(async (req, res) => {
     const options = parse(querySchema, req.query);
     const result = await readItems(pool, req,
