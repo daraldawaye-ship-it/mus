@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { processInvoicePostFollowup } from "../apps/api/src/services/invoice-post-followups.ts";
 import type {
   Account,
   AccountCategory,
@@ -481,14 +482,15 @@ async function invoice(
   body: InvoiceInput,
   client = f.owner,
 ) {
-  return (
-    await client.ok<{ invoice: Invoice }>(
-      "POST",
-      `${s.path}/invoices`,
-      body,
-      [200, 201],
-    )
-  ).invoice;
+  const { invoice: saved } = await client.ok<{ invoice: Invoice }>(
+    "POST", `${s.path}/invoices`, body, [200, 201],
+  );
+  // Unit test harness has no interval worker. Drain durable follow-ups
+  // explicitly before legacy tests inspect completed wallet projections.
+  for (let i = 0; i < 100; i++) {
+    if (!await processInvoicePostFollowup(f.pool)) break;
+  }
+  return saved;
 }
 
 async function stockSnapshot(f: Fixture, companyId: number) {
