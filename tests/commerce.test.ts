@@ -4389,7 +4389,7 @@ test("required stock-count reconciliations credit configured points once per new
       lines: [{ itemId: item.id, unit: 1, quantity: "2", unitPrice: "800", expiryDate: null }],
     }));
     await f.pool.query(
-      "UPDATE items SET stocktake_required_at=clock_timestamp() WHERE company_id=$1 AND id=$2",
+      "UPDATE items SET stocktake_required_at=clock_timestamp(),revision=revision+1 WHERE company_id=$1 AND id=$2",
       [s.company.id, item.id],
     );
     const body = {
