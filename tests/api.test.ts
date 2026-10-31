@@ -2796,6 +2796,7 @@ test("item statistics track finalized stock and last normal documents without le
     (await platform.client.ok<{ invoice: Invoice }>("POST", prefix + "/invoices", {
       idempotencyKey: randomUUID(), kind, documentDate: "2026-10-12", currencyId: currency.id,
       branchId: branch.id, locationId: showroom.id, counterpartyAccountId: counterparty.id,
+      supplierAccountId: kind === "purchase" ? counterparty.id : null,
       discount: "0", lines: [{ itemId: item.id, unit, quantity, unitPrice: kind === "purchase" ? "84" : undefined, originalLineId, expiryDate: null }],
     }, 201)).invoice;
   const purchase = await save("purchase", "2", 1);
@@ -3245,10 +3246,17 @@ test("six month purchase extremes compare units and original exchange rate safel
  },201);
  assert.equal((await read()).minimum?.invoiceId,second.invoice.id,
    "Purchase returns must not set purchase price extremes");
- const noSupplier=await purchase(yer.id,3,"12",null);
+ const missingSupplier = await platform.client.request("POST",root+"/invoices",{
+   idempotencyKey:randomUUID(),kind:"purchase",documentDate:day,currencyId:yer.id,
+   branchId:branch.id,locationId:showroom.id,counterpartyAccountId:account.id,
+   supplierAccountId:null,discount:"0",
+   lines:[{itemId:item.id,unit:3,quantity:"1",unitPrice:"12",expiryDate:null}],
+ });
+ assert.equal(missingSupplier.status,409,"Actual supplier is mandatory for new purchases");
+ const withSupplier=await purchase(yer.id,3,"12");
  const current=await read();
- assert.equal(current.latest?.invoiceId,noSupplier.invoice.id);
- assert.equal(current.latest?.supplierAccountName,null);
+ assert.equal(current.latest?.invoiceId,withSupplier.invoice.id);
+ assert.equal(current.latest?.supplierAccountName,"مورد الأسعار الفعلي");
  assert.equal(current.maximum?.priceBaseSmallest,"15");
  const another=await company(platform.client,"Unrelated price tenant");
  assert.equal((await platform.client.request("GET",
