@@ -26,11 +26,43 @@ test("offline cashbox movement replays the exact key and computes variance on th
   assert.ok(outbox.includes('existing.userId !== userId'));
   assert.ok(outbox.includes('sales/cashbox-operations'));
   assert.ok(commerce.includes('queueOfflineOperation(user.id,companyId,"cashbox",path,payload)'));
-  assert.ok(commerce.includes('if (isOfflineNow())'));
+  assert.ok(commerce.includes('if (isOfflineNow() || sessionRequiresLogin())'));
   assert.ok(commerce.includes('uncertain && await saveCashboxOnDevice()'));
   assert.ok(commerce.includes('سيؤكد الخادم الرصيد'));
   assert.ok(server.includes('idempotency_key=$2'));
   assert.ok(server.includes('variance=book-amount'));
+});
+
+test("invoice, vouchers and employee cashbox restore authorized defaults without network", () => {
+  const phase2=readFileSync("apps/web/src/phase2.tsx","utf8");
+  const commerce=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
+  const finance=readFileSync("apps/web/src/pages/FinancePages.tsx","utf8");
+  const controls=readFileSync("apps/web/src/control.ts","utf8");
+  const warm=readFileSync("apps/web/src/offline-shared-master.ts","utf8");
+  const status=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  assert.match(phase2,/useDefaultYerCurrency/);
+  assert.match(phase2,/useDefaultCompanyBranch/);
+  assert.match(phase2,/networkMode: "always"/);
+  assert.match(phase2,/for\(const code of \["HQ","MAIN"\]\)/);
+  assert.match(phase2,/\$\{resource\}\?type=branches/);
+  assert.match(controls,/networkMode: "always"/);
+  assert.match(commerce,/const defaultBranch = useDefaultCompanyBranch\(companyId\)/);
+  assert.match(commerce,/networkMode: "always"/);
+  assert.match(commerce,/kind === "purchase" \? showroomQuery\.data\.items\.find/);
+  assert.match(commerce,/purchaseDefaultId/);
+  assert.match(commerce,/sessionRequiresLogin\(\)/);
+  assert.match(finance,/useDefaultCompanyBranch\(companyId, "financial-options"\)/);
+  assert.match(finance,/useEmployeeCashbox\(context\)/);
+  assert.match(finance,/sessionRequiresLogin\(\)/);
+  assert.match(finance,/setBranch\(defaultBranch\)/);
+  assert.match(warm,/refreshOfflineDocumentDefaults/);
+  assert.match(warm,/await rememberRead\(path,result\)/);
+  assert.match(warm,/offlineUser\(\)!==userId/);
+  assert.match(status,/refreshOfflineDocumentDefaults\(userId,companyId\)/);
+  // Never guess IDs or set money amounts when the server provided no master card.
+  assert.doesNotMatch(commerce,/currencyId:\s*1,\s*branchId:\s*1/);
+  assert.match(commerce,/getFullYear\(\)/);
+  assert.match(finance,/getFullYear\(\)/);
 });
 
 test("only confirmed server responses can post financial documents", () => {

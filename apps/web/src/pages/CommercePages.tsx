@@ -55,7 +55,7 @@ import {
   useScopeGuard,
   useSession,
 } from "../api";
-import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { errorMessage, ServerLookup, useDefaultCompanyBranch, useDefaultYerCurrency } from "../phase2";
 import { useControls, isMobileDevice } from "../control";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
@@ -111,8 +111,10 @@ const itemLabel = (item: { code: string; name: string }) =>
 const amount = (value: string) => (
   <bdi className="financial-number">{formatMoney(value)}</bdi>
 );
-const today = () =>
-  new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
+const today = () => {
+  const date=new Date();
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+};
 function filter(
   setParams: ReturnType<typeof useSearchParams>[1],
   key: string,
@@ -1311,30 +1313,14 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const locationManuallyChosen = useRef(false);
   const automaticBranchId = useRef<number | null>(null);
   const automaticLocationId = useRef<number | null>(null);
-  const mainBranchQuery = useQuery({
-    queryKey: ["invoice-default-branch", user?.id, companyId],
-    enabled: !!user,
-    queryFn: async ({ signal }) => {
-      // HQ is the automatic main branch. Older companies may use MAIN.
-      for (const code of ["HQ", "MAIN"]) {
-        const page = await api<Page<Branch>>(
-          `/companies/${companyId}/commerce-options?type=branches&active=true&q=${code}&pageSize=20`,
-          { signal },
-        );
-        const exact = page.items.find(
-          (item) => item.active && item.code === code,
-        );
-        if (exact) return exact;
-      }
-      return null;
-    },
-  });
+  const defaultBranch = useDefaultCompanyBranch(companyId);
   const showroomQuery = useQuery({
-    queryKey: ["invoice-default-showroom", user?.id, companyId, branch?.id],
+    queryKey: ["invoice-default-showroom", user?.id, companyId, kind, branch?.id],
     enabled: !!user && !!branch,
+    networkMode: "always",
     queryFn: ({ signal }) =>
       api<Page<Location>>(
-        `/companies/${companyId}/commerce-options?type=locations&active=true&branchId=${branch!.id}&kind=showroom&pageSize=100`,
+        `/companies/${companyId}/commerce-options?type=locations&active=true&branchId=${branch!.id}${kind === "sale" ? "&kind=showroom" : ""}&pageSize=100`,
         { signal },
       ),
   });
@@ -1346,6 +1332,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       {signal},
     ),
     enabled:kind==="purchase" && purchaseDefaultId>0 && !!user,
+    networkMode:"always",
   });
   const configuredPurchaseAccount = configuredPurchaseAccountQuery.data?.items.find(entry=>
     entry.id===purchaseDefaultId && entry.active && entry.kind==="posting" &&
@@ -1384,11 +1371,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     }
   }, [showCurrency, defaultYer, currency]);
   useEffect(() => {
-    const main = mainBranchQuery.data;
+    const main = defaultBranch;
     if (!main || branchManuallyChosen.current || branch) return;
     automaticBranchId.current = main.id;
     setBranch(main);
-  }, [mainBranchQuery.data, branch]);
+  }, [defaultBranch, branch]);
   useEffect(() => {
     if (
       !branch ||
@@ -1412,7 +1399,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           entry.effectiveActive &&
           entry.branchId === branch.id &&
           entry.kind === "showroom",
-      );
+      ) ?? (kind === "purchase" ? showroomQuery.data.items.find(entry =>
+          entry.active && entry.effectiveActive && entry.branchId===branch.id &&
+          entry.kind==="warehouse") : undefined);
     if (!defaultShowroom) return;
     automaticLocationId.current = defaultShowroom.id;
     setLocation(defaultShowroom);
@@ -1592,7 +1581,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setCashboxBusy(true);
     setCashboxError("");
     try {
-      if (isOfflineNow()) {
+      if (isOfflineNow() || sessionRequiresLogin()) {
         await saveCashboxOnDevice();
         return;
       }
