@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { clearOfflineSession, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineUser } from "./offline-storage";
+import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, offlineLoginRequired, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineLoginRequired, setOfflineUser } from "./offline-storage";
 import { clearOfflineSharedGrants, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
@@ -32,6 +32,8 @@ export class ApiFailure extends Error {
   }
 }
 let csrf: string | null = null;
+let freshOnlineLoginRequired = false;
+export function sessionRequiresLogin(): boolean { return freshOnlineLoginRequired; }
 export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
@@ -49,6 +51,13 @@ export async function api<T>(
     const id = offlineUser();
     return id === null ? undefined :
       lookupSharedItem<T>(path,id).catch(() => undefined);
+  }
+  // A disconnected employee may switch locally, but the old employee\'s
+  // server cookie must never issue reads or writes on their behalf.
+  if (freshOnlineLoginRequired && path !== "/auth/login" && path !== "/auth/register") {
+    const saved = await fallbackRead();
+    if (saved !== undefined) return saved;
+    throw new TypeError("يرجى تسجيل الدخول عبر الإنترنت لاستعادة الاتصال ومزامنة العمليات.");
   }
   if (isOfflineNow()) {
     const saved = await fallbackRead();
@@ -98,6 +107,9 @@ interface SessionValue {
   loading: boolean;
   error: string | null;
   reloadSession: () => Promise<void>;
+  loginWithPassword: (login: string, password: string) => Promise<void>;
+  acceptRegistration: (result: SessionResponse) => Promise<void>;
+  requiresOnlineLogin: boolean;
   logout: () => Promise<void>;
   pendingLogoutRedirect: boolean;
   acknowledgeLogoutRedirect: () => void;
@@ -116,6 +128,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [requiresOnlineLogin, setRequiresOnlineLogin] = useState(false);
   const epoch = useRef(0);
   // An offline restart can re-open only a previously authenticated user on
   // this device. No password or CSRF token is stored; live API permissions
@@ -134,6 +147,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sharedIdentity(result.user?.id ?? null);
     setSession({ ...result, pendingLogoutRedirect: false });
     setOfflineMode(false);
+    setRequiresOnlineLogin(false);
     setError(null);
     setLoading(false);
   }
@@ -173,6 +187,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return true;
   }
   const reloadSession = async () => {
+    if (freshOnlineLoginRequired) throw new Error("يلزم تسجيل الدخول عبر الإنترنت لإتمام التبديل");
     const request = ++epoch.current;
     try {
       const result = await api<SessionResponse>("/auth/session");
@@ -184,16 +199,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
     const request = ++epoch.current;
-    void api<SessionResponse>("/auth/session", { signal: controller.signal })
-      .then(result => applyLiveSession(result, request))
-      .catch(async error => {
+    void (async () => {
+      const locked = await offlineLoginRequired().catch(() => true);
+      if (controller.signal.aborted || epoch.current !== request) return;
+      if (locked) {
+        freshOnlineLoginRequired = true;
+        const last = await readOfflineSession().catch(() => null);
+        if (controller.signal.aborted || epoch.current !== request) return;
+        csrf = null;
+        setOfflineUser(last?.id ?? null);
+        sharedIdentity(last?.id ?? null);
+        if (last) await restoreOfflineSharedGrants(last.id).catch(() => {});
+        if (controller.signal.aborted || epoch.current !== request) return;
+        setSession({user:last,csrf:null,pendingLogoutRedirect:false});
+        setRequiresOnlineLogin(!!last);
+        setOfflineMode(!!last);
+        setLoading(false);
+        return;
+      }
+      try {
+        const result = await api<SessionResponse>("/auth/session", { signal: controller.signal });
+        await applyLiveSession(result, request);
+      } catch (error) {
         if (controller.signal.aborted || epoch.current !== request) return;
         if (await recoverOffline(error, request)) return;
         if (controller.signal.aborted || epoch.current !== request) return;
         setError(error instanceof ApiFailure ? error.message :
           "تعذر الاتصال. إذا لم تحفظ جلسة على هذا الجهاز، اتصل بالإنترنت وسجّل الدخول مرة واحدة.");
         setLoading(false);
-      });
+      }
+    })();
     return () => {
       controller.abort();
       ++epoch.current;
@@ -201,13 +236,79 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     if (!offlineMode) return;
-    const reconnect = () => { void reloadSession().catch(() => {}); };
+    const reconnect = () => {
+      if (!freshOnlineLoginRequired) void reloadSession().catch(() => {});
+    };
     window.addEventListener("online", reconnect);
     return () => window.removeEventListener("online", reconnect);
   }, [offlineMode]);
+  async function adoptLiveAuthentication(result: SessionResponse): Promise<void> {
+    if (!result.user || !result.csrf) throw new Error("لم يؤكد الخادم جلسة المستخدم");
+    const request=++epoch.current;
+    await client.cancelQueries();
+    client.clear();
+    await setOfflineLoginRequired(false);
+    freshOnlineLoginRequired=false;
+    if (epoch.current !== request) return;
+    await applyLiveSession(result,request);
+  }
+  const acceptRegistration = async (result: SessionResponse) => {
+    await adoptLiveAuthentication(result);
+  };
+  const loginWithPassword = async (login: string, password: string) => {
+    const identity=login.trim();
+    if (!identity || !password) throw new Error("أدخل الحساب وكلمة المرور");
+    if (!isOfflineNow()) {
+      try {
+        const result=await api<SessionResponse>("/auth/login",{
+          method:"POST",body:{
+            ...(identity.includes("@") ? {email:identity} : {phone:identity}),password,
+          },
+        });
+        await adoptLiveAuthentication(result);
+        if (result.user) await enrollOfflineAccount(result.user,identity,password).catch(()=>{});
+        return;
+      } catch(error) {
+        if (!(error instanceof TypeError) &&
+            !(error instanceof ApiFailure && error.status >= 500)) throw error;
+      }
+    }
+    // An offline login authenticates only against a previous successful
+    // server login on this device; it never creates a server session.
+    const offlineUserRecord=await authenticateOfflineAccount(identity,password);
+    const request=++epoch.current;
+    freshOnlineLoginRequired=true;
+    await setOfflineLoginRequired(true);
+    await client.cancelQueries();
+    client.clear();
+    await saveOfflineSession(offlineUserRecord);
+    if (epoch.current!==request) return;
+    csrf=null;
+    setOfflineUser(offlineUserRecord.id);
+    sharedIdentity(offlineUserRecord.id);
+    await restoreOfflineSharedGrants(offlineUserRecord.id).catch(()=>{});
+    if (epoch.current!==request) return;
+    setSession({user:offlineUserRecord,csrf:null,pendingLogoutRedirect:false});
+    setRequiresOnlineLogin(true);
+    setOfflineMode(true);
+    setError(null);
+    setLoading(false);
+  };
   const logout = async () => {
     ++epoch.current;
-    await api("/auth/logout", { method: "POST" });
+    if (!isOfflineNow() && !freshOnlineLoginRequired) {
+      try {
+        await api("/auth/logout", { method: "POST" });
+      } catch (error) {
+        // HTTP auth/permission errors must not masquerade as connectivity loss.
+        if (!(error instanceof TypeError)) throw error;
+      }
+    }
+    // Commit local lock and remove the active identity atomically before
+    // showing the guest screen. Keep encrypted? No: the verifier is salted,
+    // not a reusable secret, and other previously verified employees remain.
+    freshOnlineLoginRequired=true;
+    await setOfflineLoginRequired(true,true);
     await client.cancelQueries();
     client.clear();
     ++epoch.current;
@@ -215,9 +316,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const prior=offlineUser();
     setOfflineUser(null);
     sharedIdentity(null);
-    await clearOfflineSession().catch(() => {});
     if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
     setOfflineMode(false);
+    setRequiresOnlineLogin(false);
     // Auth guards must share the logout destination until the router commits it.
     setSession({ user: null, csrf: null, pendingLogoutRedirect: true });
   };
@@ -236,6 +337,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         reloadSession,
+        loginWithPassword,
+        acceptRegistration,
+        requiresOnlineLogin,
         logout,
         acknowledgeLogoutRedirect,
       }}
