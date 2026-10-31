@@ -135,7 +135,7 @@ async function sourceMappings(client: PoolClient, groups: SourceGroup[]) {
   const byId=new Map(cash.rows.map(x=>[x.id,x]));
   for (const [key,accountId] of Object.entries(cashboxIds)) {
     const row=byId.get(accountId);
-    if(!row?.active || !row.cash_or_bank || !row.name.includes(creatorNames[key as Creator]) ||
+    if(!row?.active || !row.cash_or_bank || !row.name.includes(key==="O"?"اسامة":key==="D"?"عبدالله":creatorNames[key as Creator]) ||
        !row.name.includes("صندوق مبيعات")) conflict("صندوق مبيعات منشئ المصدر غير مطابق");
   }
   if(!byId.get(338)?.active || !byId.get(338)?.cash_or_bank)
