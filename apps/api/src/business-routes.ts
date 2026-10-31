@@ -24,6 +24,7 @@ import { financeRoutes } from "./routes-finance.ts";
 import { itemRoutes } from "./routes-items.ts";
 import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
 import { itemActivityReportRoutes } from "./routes-item-activity-report.ts";
+import { itemOptionsListRoutes } from "./routes-item-options-list.ts";
 import { itemImportRoutes } from "./routes-item-import.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
 import { openingInventoryRoutes } from "./routes-opening-inventory.ts";
@@ -86,6 +87,7 @@ export function businessRoutes(pool: Pool): Router {
     itemRoutes(pool),
     settlementFollowUpRoutes(pool),
     itemActivityReportRoutes(pool),
+    itemOptionsListRoutes(pool),
     itemImportRoutes(pool),
     inventoryRoutes(pool),
     openingInventoryRoutes(pool),
