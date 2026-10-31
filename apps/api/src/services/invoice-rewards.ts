@@ -4,7 +4,8 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import { audit } from "./audit.ts";
 
 /**
- * Award enabled invoice tasks inside the SAME database transaction as posting.
+ * Award enabled invoice tasks after posting, in the durable follow-up worker.
+ * Historical import batches may still call this inside their posting transaction.
  * No reward for an owner/general user without an active employee record.
  * Exactly one ledger entry per employee, invoice and task, protected by a unique index.
  */
