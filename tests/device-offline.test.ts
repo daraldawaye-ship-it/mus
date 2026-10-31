@@ -44,7 +44,7 @@ test("invoice, vouchers and employee cashbox restore authorized defaults without
   assert.match(phase2,/useDefaultCompanyBranch/);
   assert.match(phase2,/networkMode: "always"/);
   assert.match(phase2,/for\(const code of \["HQ","MAIN"\]\)/);
-  assert.match(phase2,/resource\}?type=branches/);
+  assert.match(phase2,/\$\{resource\}\?type=branches/);
   assert.match(controls,/networkMode: "always"/);
   assert.match(commerce,/const defaultBranch = useDefaultCompanyBranch\(companyId\)/);
   assert.match(commerce,/networkMode: "always"/);
