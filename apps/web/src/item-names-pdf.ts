@@ -104,21 +104,20 @@ function makePdf(pages: PdfPage[]): Blob {
   return new Blob([bytes.buffer], { type: "application/pdf" });
 }
 
-function canvasJpeg(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(async blob => {
-      if (!blob) {
-        reject(new Error("تعذر إنشاء صفحة PDF في متصفح الهاتف."));
-        return;
-      }
-      try {
-        resolve(new Uint8Array(await blob.arrayBuffer()));
-      } catch (reason) { reject(reason); }
-    }, "image/jpeg", 0.85);
-  });
+function canvasJpeg(canvas: HTMLCanvasElement): Uint8Array {
+  // Synchronous encoding keeps mobile browser user activation alive until the
+  // native share sheet is opened (iOS/Android installed app included).
+  const data = canvas.toDataURL("image/jpeg", 0.85);
+  const comma = data.indexOf(",");
+  if (!data.startsWith("data:image/jpeg;base64,") || comma < 0)
+    throw new Error("تعذر إنشاء صورة صفحة PDF على هذا الجهاز.");
+  const raw = atob(data.slice(comma + 1));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
 }
 
-export async function createTwoColumnItemNamesPdf(names: string[]): Promise<Blob> {
+export function createTwoColumnItemNamesPdf(names: string[]): Blob {
   const list = names.map(name => name.trim()).filter(Boolean);
   if (!list.length) throw new Error("لم يتم اختيار أي صنف.");
   const canvas = document.createElement("canvas");
@@ -140,8 +139,8 @@ export async function createTwoColumnItemNamesPdf(names: string[]): Promise<Blob
   drawBlank();
   let column = 0;
   let y = PAGE_MARGIN;
-  const flushPage = async () => {
-    pages.push({jpeg:await canvasJpeg(canvas),width:canvas.width,height:canvas.height});
+  const flushPage = () => {
+    pages.push({jpeg:canvasJpeg(canvas),width:canvas.width,height:canvas.height});
   };
   try {
     for (const name of list) {
@@ -151,7 +150,7 @@ export async function createTwoColumnItemNamesPdf(names: string[]): Promise<Blob
         column = 1;
         y = PAGE_MARGIN;
       } else if (y + height > PAGE_HEIGHT - PAGE_MARGIN) {
-        await flushPage();
+        flushPage();
         drawBlank();
         column = 0;
         y = PAGE_MARGIN;
@@ -165,7 +164,7 @@ export async function createTwoColumnItemNamesPdf(names: string[]): Promise<Blob
       }
       y += ITEM_GAP;
     }
-    await flushPage();
+    flushPage();
     return makePdf(pages);
   } finally {
     // Release canvas bitmap memory on low-RAM installed mobile apps.
