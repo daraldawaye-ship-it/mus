@@ -2217,10 +2217,20 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         pending.current = null;
         setUnknown(false);
         setLocalQueued(true);
-        setError("تم حفظ الفاتورة على هذا الجهاز فقط، ولم تُرحّل محاسبيًا أو مخزنيًا. ستظهر في عداد المزامنة.");
+        // A queued invoice must close the doctor picker; its success notice
+        // belongs on the underlying invoice, not a hidden error banner.
+        setDoctorPromptOpen(false);
+        setDoctorSelected(null);
+        setDoctorError("");
+        setDoctorActiveIndex(-1);
+        setDoctorQuery("");
+        setError("");
+        setItemNotice("تم حفظ الفاتورة على هذا الجهاز، وستُرحّل باسم هذا الموظف عند عودة الاتصال وتسجيل دخوله. لم تتغير الأرصدة أو المخزون بعد.");
         return true;
       } catch (reason) {
-        setError("تعذر حفظ النسخة المحلية: " + errorMessage(reason));
+        const message="تعذر حفظ النسخة المحلية: " + errorMessage(reason);
+        setError(message);
+        if (doctorPromptOpen) setDoctorError(message);
         return false;
       }
     }
