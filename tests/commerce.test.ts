@@ -3453,12 +3453,11 @@ test("purchase supplier is independent from cash settlement but matches credit l
     supplierAccountId: s.supplier.id,
   }))).status, 400);
 
-  const blankCash = await invoice(f, s, invoiceBody(s, product.id, {
+  const blankCash = await f.owner.request("POST", s.path + "/invoices", invoiceBody(s, product.id, {
     counterpartyAccountId: s.cash.id,
     supplierAccountId: null,
   }));
-  assert.equal(blankCash.supplierAccountId, null);
-  assert.equal(blankCash.supplierAccountName, null);
+  assert.equal(blankCash.status, 409, "A cash purchase cannot omit the actual supplier");
   const cashRetry = await invoice(f, s, cashPayload);
   assert.equal(cashRetry.id, cashInvoice.id);
   await assertBalanced(f, s.company.id);
