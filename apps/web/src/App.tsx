@@ -63,6 +63,7 @@ import { AppSetup } from "./AppSetup";
 import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
+import { ItemCardBottomSheetHost } from "./ItemCardBottomSheetHost";
 import { reportPrintLayout } from "./reportPrintLayout";
 import { CompanyLetterheadPage } from "./pages/CompanyLetterheadPage";
 import { useCompanyIdleLogout } from "./idle-logout";
@@ -1308,6 +1309,7 @@ function Workspace() {
               />
             </Routes>
 
+            <ItemCardBottomSheetHost context={inCompany && !company.isError ? company.data : undefined} />
             {/* Device sync runs in the background; only installation help or
                 an actionable notification prompt can appear below page content. */}
             <AppSetup key={user?.id ?? "guest"} userId={user?.id}
