@@ -4409,7 +4409,11 @@ test("required stock-count reconciliations credit configured points once per new
     const path = s.path + "/stock-adjustments" + (fromTask ? "?taskSource=required-count" : "");
     const first = await staff.client.ok<{ operation: { id: number } }>("POST", path, body, 201);
     await staff.client.ok("POST", path, body, 200);
-    assert.equal(await dueList(), false, "After counting, the item must leave the report's due-only list");
+    const diagnostic = (await f.pool.query(
+      "SELECT i.stocktake_required_at, s.stock_showroom, s.last_adjustment_operation_id, o.document_date, o.created_at AS last_count_at, clock_timestamp() AS now FROM items i LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id LEFT JOIN stock_operations o ON o.company_id=s.company_id AND o.id=s.last_adjustment_operation_id WHERE i.company_id=$1 AND i.id=$2",
+      [s.company.id,item.id],
+    )).rows[0];
+    assert.equal(await dueList(), false, "After count, item must leave due-only list: "+JSON.stringify(diagnostic));
     return {operationId:first.operation.id,body,path};
   };
   const {operationId:firstId} = await countItem(true);
