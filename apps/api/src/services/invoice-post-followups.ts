@@ -117,17 +117,19 @@ export function startInvoicePostFollowups(pool: Pool): () => Promise<void> {
   let stopped = false;
   let running: Promise<void> | null = null;
   const tick = () => {
-    if (stopped || running) return;
-    running = (async () => {
-      for (let i = 0; i < 4 && !stopped; i++) {
-        if (!await processInvoicePostFollowup(pool)) break;
-      }
-    })().catch(() => console.error("INVOICE_FOLLOWUP_WORKER_ERROR"))
+    // Rewards/clearance do not belong to the cashier's response time. On
+    // Render's small single-instance database/app budget, prefer foreground
+    // financial posting whenever a client is already waiting for a PG slot.
+    // One short job per tick avoids a four-job batch monopolizing the pool.
+    if (stopped || running || pool.waitingCount > 0) return;
+    running = processInvoicePostFollowup(pool).then(() => undefined)
+      .catch(() => console.error("INVOICE_FOLLOWUP_WORKER_ERROR"))
       .finally(() => { running = null; });
   };
-  const timer = setInterval(tick, 1_000);
+  // The durable queue is replayed after restart; no need to drain immediately
+  // during startup or compete with checkout requests every second.
+  const timer = setInterval(tick, 3_000);
   timer.unref();
-  tick();
   return async () => {
     stopped = true;
     clearInterval(timer);
