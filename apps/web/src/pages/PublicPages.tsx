@@ -177,7 +177,8 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
       } else {
         await loginWithPassword(loginId,draft.password);
       }
-      if (!guard.isCurrent()) return;
+      // A successful sign-in changes the user-scoped guard identity.
+      // The auth page must still navigate to the selected employee workspace.
       if (safeReturn) {
         // The OAuth approval page is a server route, not a React Router page.
         window.location.assign(safeReturn);
