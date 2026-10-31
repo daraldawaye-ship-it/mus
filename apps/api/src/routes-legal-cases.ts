@@ -292,12 +292,41 @@ export function legalCaseRoutes(pool:Pool):Router {
        GROUP BY r.id`,
       [user.owner,user.id,"%"+term.replace(/[%_\\]/g,"\\$&")+"%"],
     );
-    // Rank every visible task before returning it; a newer normal task must not
-    // hide an older urgent one behind a database fetch limit.
+    // Re-surface unresolved expired tasks on today's board as requests to enter
+    // the real outcome and next hearing/action. This is a read-time projection:
+    // original deadlines, historical hearing dates and record audit stay intact.
     const now=Date.now();
-    const items=rows.rows.map(row=>({
-      ...row,...calculateLegalTaskPriority(row,now),
-    })).sort(compareLegalTasks);
+    const adenOffset=3*60*60*1000;
+    const adenDay=(ms:number)=>new Date(ms+adenOffset).toISOString().slice(0,10);
+    const today=adenDay(now);
+    const asAdenDay=(value:string|Date|null|undefined)=>{
+      if(!value)return null;
+      if(typeof value==="string" && /^\d{4}-\d{2}-\d{2}$/.test(value))return value;
+      const time=value instanceof Date?value.getTime():Date.parse(value);
+      return Number.isFinite(time)?adenDay(time):null;
+    };
+    const items=rows.rows.map(row=>{
+      const closed=["verified","submitted","completed","superseded"].includes(row.status);
+      const oldDeadline=row.due_at?(row.due_at instanceof Date?row.due_at.getTime():Date.parse(row.due_at)):NaN;
+      const missedDeadline=Number.isFinite(oldDeadline)&&oldDeadline<now;
+      const hearingDay=asAdenDay(row.next_hearing);
+      const missedHearing=!!hearingDay&&hearingDay<=today;
+      const followUp=!closed&&(missedDeadline||missedHearing);
+      const reminder=followUp?{
+        title:row.title.startsWith("استكمال نتيجة — ")?row.title:`استكمال نتيجة — ${row.title}`,
+        body:row.body+"\n\nمتابعة مستحقة اليوم "+today+
+          ": أدخل الوقائع التي حدثت فعلًا ونتيجة المراجعة أو الجلسة وقرارها، "+
+          "وحدد موعد الجلسة القادمة أو الإجراء التالي، ثم حدّث بطاقة القضية وأرفق المحضر عند توفره. "+
+          "عدم معرفة النتيجة أو الموعد يُسجل صراحة ولا يُفترض حدوث الإجراء.",
+        due_at:today+"T23:59:00+03:00",
+        follow_up_required:true,
+        original_due_at:row.due_at,
+        original_next_hearing:row.next_hearing,
+      }:{
+        follow_up_required:false,
+      };
+      return {...row,...reminder,...calculateLegalTaskPriority(row,now)};
+    }).sort(compareLegalTasks);
     res.json({items,total:items.length});
   }));
   // The same access rule as viewing a legal task applies to reading and recording
