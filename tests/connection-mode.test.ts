@@ -47,7 +47,7 @@ test("offline-only recovery button does not remount invoices or trigger a manual
   const app=readFileSync("apps/web/src/App.tsx","utf8");
   const switcher=readFileSync("apps/web/src/ConnectionModeControl.tsx","utf8");
   assert.match(invoice,/if \(isOfflineNow\(\) \|\| sessionRequiresLogin\(\)\) \{\s*await saveOnDevice\(\)/);
-  assert.match(finance,/if \(isOfflineNow\(\) && !document/);
+  assert.match(finance,/if \(\(isOfflineNow\(\) \|\| sessionRequiresLogin\(\)\) && !document/);
   assert.match(questions,/if\(isOfflineNow\(\)\) throw new TypeError/);
   assert.match(invoice,/queueOfflineOperation\(user\.id, companyId, "invoice"/);
   assert.match(finance,/queueOfflineOperation\(sessionUser\.id, companyId, "voucher"/);
