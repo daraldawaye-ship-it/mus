@@ -130,8 +130,9 @@ function filter(
 function useCommerceChanges(companyId: number) {
   const client = useQueryClient();
   const { user } = useSession();
-  return () =>
+  return (refetchType: "active" | "none" = "active") =>
     client.invalidateQueries({
+      refetchType,
       predicate: ({ queryKey }) =>
         queryKey[1] === user?.id &&
         ((queryKey[0] === "commerce" && queryKey[2] === companyId) ||
@@ -142,6 +143,7 @@ function useCommerceChanges(companyId: number) {
           (queryKey[0] === "items" && queryKey[2] === companyId) ||
           (queryKey[0] === "master" && queryKey[2] === companyId) ||
           (queryKey[0] === "invoice-sale-alerts" && queryKey[2] === companyId) ||
+          (queryKey[0] === "sale-stock-preview" && queryKey[2] === companyId) ||
           (queryKey[0] === "wallet-summary" && queryKey[2] === companyId) ||
           (queryKey[0] === "list" &&
             String(queryKey[2]).startsWith(`company:${companyId}:`))),
@@ -1408,6 +1410,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }, [showroomQuery.data, branch, location]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
+  // Load a same-origin print document only on demand. Its own viewer waits
+  // for the stored letterhead image before printing, while the cashier stays
+  // inside this invoice editor and can continue entering the next invoice.
+  const [printJob, setPrintJob] = useState<{ invoiceId: number; sequence: number } | null>(null);
   // Track the actual invoice row because identical items may appear in several rows.
   const activeLineKey = useRef<string | null>(null);
   const [replacingClearance, setReplacingClearance] = useState(false);
@@ -2121,6 +2127,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setSaleCustomerMatched(false);
     setError("");
     setSavedInvoice(null);
+    setPrintJob(null);
     setItemNotice("");
     // Only after explicit confirmation: refresh changed names/prices before
     // the next invoice, without downloading the whole item catalog.
@@ -2239,11 +2246,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       );
       if (!guard.isCurrent()) return;
       setUnknown(false);
-      // Posting is confirmed. Refreshing independent lists, balances and
-      // caches must never hold the cashier's next invoice or success message.
-      // React Query handles the refresh separately (and reports failures in
-      // those queries); the posted invoice is already committed server-side.
-      void invalidate().catch(() => undefined);
+      // Mark cached list/stock/finance data stale without eagerly fetching
+      // every active query on the cashier's critical path. The next screen or
+      // item selection will fetch fresh data; all financial/stock posting has
+      // already committed atomically on the server.
+      void invalidate("none").catch(() => undefined);
       const next = emptyLine();
       pending.current = null;
       setHeaderItem(null);
@@ -2279,6 +2286,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         id: response.invoice.id,
         number: response.invoice.number,
       });
+      setPrintJob(null);
       focus(lineInputId(next, "item-search"));
     } catch (error) {
       if (!guard.isCurrent()) return;
@@ -3140,17 +3148,36 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           <div className="commerce-saved-confirmation">
             <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-            <Link
-              to={`${invoicePath(companyId, savedInvoice.id)}?print=1`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPrintJob(previous => ({
+                invoiceId: savedInvoice.id,
+                sequence: (previous?.sequence ?? 0) + 1,
+              }))}
             >
+              <Printer size={16} />
               طباعة الفاتورة المحفوظة
-            </Link>
+            </Button>
             </Notice>
           </div>
         )}
       </form>
+      {printJob && (
+        <iframe
+          key={`${printJob.invoiceId}:${printJob.sequence}`}
+          title="طباعة الفاتورة المحفوظة دون مغادرة شاشة الإدخال"
+          src={`${invoicePath(companyId, printJob.invoiceId)}?print=1`}
+          tabIndex={-1}
+          aria-hidden="true"
+          // Do not use display:none: browsers must lay out the frame's print
+          // document and company letterhead for reliable printing.
+          style={{
+            position: "fixed", top: 0, left: "-10000px", width: 1024,
+            height: 768, border: 0, pointerEvents: "none", opacity: 0,
+          }}
+        />
+      )}
       {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
       <Dialog open={cashboxDraft!==null}
         title={cashboxDraft?.kind==="pouch"?"ترحيل إلى الحافظة":cashboxDraft?.kind==="electronic"?
