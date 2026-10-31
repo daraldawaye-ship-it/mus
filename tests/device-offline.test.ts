@@ -290,6 +290,43 @@ test("offline question cache refreshes completed pages with correct public grant
   assert.match(pack,/item\.revision===question\.revision/);
 });
 
+test("offline invoices reuse downloaded doctors and calculate saved clearance rows", () => {
+  const shared=readFileSync("apps/web/src/offline-shared.ts","utf8");
+  const master=readFileSync("apps/web/src/offline-shared-master.ts","utf8");
+  const api=readFileSync("apps/web/src/api.tsx","utf8");
+  const commerce=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
+  const status=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  const alerts=readFileSync("apps/web/src/InvoiceSaleAlerts.tsx","utf8");
+  assert.match(shared,/lookupDownloadedDoctors/);
+  assert.match(shared,/grants\.has\(userId\+":"\+companyId\+":doctors"\)/);
+  assert.match(shared,/IDBKeyRange\.bound\(prefix,prefix/);
+  assert.match(master,/refreshSharedDoctorDirectory/);
+  assert.match(master,/sharedReferenceRefreshDue\(previous\)/);
+  assert.match(status,/refreshSharedDoctorDirectory\(userId,companyId\)/);
+  assert.match(api,/lookupDownloadedDoctors<T>\(path,id\)/);
+  assert.match(commerce,/networkMode:"always"/);
+  assert.match(commerce,/saleCustomerNumber: kind === "sale"/);
+  assert.match(commerce,/doctorName: kind === "sale"/);
+  assert.match(commerce,/if \(isOfflineNow\(\) \|\| sessionRequiresLogin\(\)\)/);
+  assert.match(commerce,/queueOfflineOperation\(user\.id, companyId, "invoice"/);
+  assert.match(commerce,/calculateInvoiceTotals/);
+  assert.match(commerce,/تصريف \{rate\}%/);
+  assert.match(alerts,/currentClearanceRate/);
+  assert.match(alerts,/networkMode:"always"/);
+});
+
+test("offline points show last confirmed wallet balance without granting unposted rewards", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const wallet=readFileSync("apps/web/src/WalletIndicator.tsx","utf8");
+  const directory=readFileSync("apps/web/src/page-directory.tsx","utf8");
+  assert.match(storage,/wallet\\\/summary/);
+  assert.match(storage,/sales-item-alerts/);
+  assert.match(wallet,/networkMode: "always"/);
+  assert.match(wallet,/آخر رصيد محفوظ دون إنترنت/);
+  assert.match(wallet,/Never add provisional invoice or question points/);
+  assert.match(directory,/networkMode: "always"/);
+});
+
 test("completed reference catalogs rescan daily, but not on every poll", () => {
   const day=24*60*60*1000;
   const now=Date.UTC(2026,9,31);
