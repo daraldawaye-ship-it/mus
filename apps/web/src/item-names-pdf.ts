@@ -4,16 +4,74 @@
  * each A4 page is embedded as a JPEG image in a small PDF 1.4 document.
  * No CDN, remote renderer, fonts download, or browser print dialog required.
  */
+// Same measurements as the .item-options-print-* @media print rules in styles.css.
+// A4 points (72 pt/in), 12 mm top/bottom, 10 mm sides, 7 mm column gap.
+const MM_TO_PT = 72 / 25.4;
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const SCALE = 2;
-const PAGE_MARGIN = 25;
-const COLUMN_GAP = 20;
-const COLUMN_WIDTH = (PAGE_WIDTH - PAGE_MARGIN * 2 - COLUMN_GAP) / 2;
-const LINE_HEIGHT = 14;
-const ITEM_GAP = 5;
+const PAGE_MARGIN_X = 10 * MM_TO_PT;
+const PAGE_MARGIN_Y = 12 * MM_TO_PT;
+const COLUMN_GAP = 7 * MM_TO_PT;
+const COLUMN_WIDTH = (PAGE_WIDTH - 2 * PAGE_MARGIN_X - COLUMN_GAP) / 2;
+const LINE_HEIGHT = 9 * 1.35; // print CSS font-size:9pt; line-height:1.35
+const ROW_PADDING = 1.2 * MM_TO_PT; // print CSS padding:1.2mm 0
+const ROW_BORDER = 0.5;
+const PAGE_CONTENT_HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN_Y;
 
 type PdfPage = { jpeg: Uint8Array; width: number; height: number };
+type PreparedRow = { lines: string[]; height: number };
+
+/**
+ * First fill up to two page-height columns, then balance that page by row
+ * height. This mirrors CSS column-fill: balance: even five selected items
+ * should begin in BOTH columns, not occupy only one tall column.
+ */
+export function balanceItemNamesColumns(
+  heights: readonly number[], capacity: number,
+): Array<{ start: number; split: number; end: number }> {
+  const pages: Array<{ start: number; split: number; end: number }> = [];
+  let start = 0;
+  while (start < heights.length) {
+    let end = start;
+    for (let col = 0; col < 2; col++) {
+      let used = 0;
+      while (end < heights.length &&
+        (used + heights[end] <= capacity || used === 0 && heights[end] > capacity)) {
+        used += heights[end];
+        end++;
+      }
+    }
+    if (end === start) end++;
+    let split = end;
+    if (end > start + 1) {
+      const sum = heights.slice(start, end).reduce((a, b) => a + b, 0);
+      let first = 0;
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = start + 1; i < end; i++) {
+        first += heights[i - 1];
+        const second = sum - first;
+        if (first > capacity || second > capacity) continue;
+        const score = Math.abs(first - second);
+        if (score < best) {
+          best = score;
+          split = i;
+        }
+      }
+      // Fallback to the original greedy first column if rows are unusually tall.
+      if (split === end) {
+        let used = 0;
+        for (let i = start; i < end; i++) {
+          if (used + heights[i] > capacity) { split = i; break; }
+          used += heights[i];
+        }
+      }
+    }
+    pages.push({ start, split, end });
+    start = end;
+  }
+  return pages;
+}
 
 function wrapName(
   ctx: CanvasRenderingContext2D, name: string, maxWidth: number,
@@ -131,40 +189,68 @@ export function createTwoColumnItemNamesPdf(names: string[]): Blob {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
     ctx.fillStyle = "#111";
-    ctx.font = '11px Tahoma, Arial, "Noto Naskh Arabic", sans-serif';
+    // Coordinates are already PDF points: 9 px on canvas = 9 pt in the PDF.
+    ctx.font = '9px Tahoma, Arial, "Noto Naskh Arabic", sans-serif';
     ctx.textAlign = "right";
     ctx.textBaseline = "top";
     ctx.direction = "rtl";
   };
-  drawBlank();
-  let column = 0;
-  let y = PAGE_MARGIN;
+  const drawColumn = (rows: PreparedRow[], isRight: boolean): number => {
+    const right = isRight
+      ? PAGE_WIDTH - PAGE_MARGIN_X
+      : PAGE_MARGIN_X + COLUMN_WIDTH;
+    const left = right - COLUMN_WIDTH;
+    let y = PAGE_MARGIN_Y;
+    for (const row of rows) {
+      let textY = y + ROW_PADDING;
+      for (const line of row.lines) {
+        ctx.fillStyle = "#111";
+        ctx.fillText(line, right, textY, COLUMN_WIDTH);
+        textY += LINE_HEIGHT;
+      }
+      y += row.height;
+      // Same subtle dotted line between items as the printed HTML rows.
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([1.3, 2.1]);
+      ctx.lineWidth = ROW_BORDER;
+      ctx.strokeStyle = "#bbb";
+      ctx.moveTo(left, y - ROW_BORDER / 2);
+      ctx.lineTo(right, y - ROW_BORDER / 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    return y;
+  };
   const flushPage = () => {
-    pages.push({jpeg:canvasJpeg(canvas),width:canvas.width,height:canvas.height});
+    pages.push({ jpeg: canvasJpeg(canvas), width: canvas.width, height: canvas.height });
   };
   try {
-    for (const name of list) {
-      const lines = wrapName(ctx, name, COLUMN_WIDTH - 6);
-      const height = lines.length * LINE_HEIGHT + ITEM_GAP;
-      if (y + height > PAGE_HEIGHT - PAGE_MARGIN && column === 0) {
-        column = 1;
-        y = PAGE_MARGIN;
-      } else if (y + height > PAGE_HEIGHT - PAGE_MARGIN) {
-        flushPage();
-        drawBlank();
-        column = 0;
-        y = PAGE_MARGIN;
+    drawBlank();
+    const prepared = list.map(name => {
+      const lines = wrapName(ctx, name, COLUMN_WIDTH);
+      return { lines, height: lines.length * LINE_HEIGHT + 2 * ROW_PADDING + ROW_BORDER };
+    });
+    const pageGroups = balanceItemNamesColumns(
+      prepared.map(row => row.height), PAGE_CONTENT_HEIGHT,
+    );
+    for (const [index, group] of pageGroups.entries()) {
+      if (index) drawBlank();
+      // Right-to-left reading order, identical to dir=rtl in the print sheet.
+      const rightBottom = drawColumn(prepared.slice(group.start, group.split), true);
+      const leftBottom = drawColumn(prepared.slice(group.split, group.end), false);
+      if (group.split < group.end) {
+        ctx.save();
+        ctx.strokeStyle = "#ddd";
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(PAGE_WIDTH / 2, PAGE_MARGIN_Y);
+        ctx.lineTo(PAGE_WIDTH / 2, Math.max(rightBottom, leftBottom));
+        ctx.stroke();
+        ctx.restore();
       }
-      const right = column === 0
-        ? PAGE_WIDTH - PAGE_MARGIN
-        : PAGE_WIDTH - PAGE_MARGIN - COLUMN_WIDTH - COLUMN_GAP;
-      for (const line of lines) {
-        ctx.fillText(line, right, y, COLUMN_WIDTH - 6);
-        y += LINE_HEIGHT;
-      }
-      y += ITEM_GAP;
+      flushPage();
     }
-    flushPage();
     return makePdf(pages);
   } finally {
     // Release canvas bitmap memory on low-RAM installed mobile apps.
