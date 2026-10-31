@@ -4402,12 +4402,17 @@ test("required stock-count reconciliations credit configured points once per new
       expiryDate: null,
       idempotencyKey: randomUUID(),
     };
+    const dueList = async () => (await f.owner.ok<{items:{id:number}[]}>(
+      "GET", s.path + "/settlement-follow-up?dueOnly=1&pageSize=100"
+    )).items.some(row => row.id === item.id);
+    assert.equal(await dueList(), true, "The item must appear under the report's due-only filter");
     const path = s.path + "/stock-adjustments" + (fromTask ? "?taskSource=required-count" : "");
     const first = await staff.client.ok<{ operation: { id: number } }>("POST", path, body, 201);
     await staff.client.ok("POST", path, body, 200);
-    return first.operation.id;
+    assert.equal(await dueList(), false, "After counting, the item must leave the report's due-only list");
+    return {operationId:first.operation.id,body,path};
   };
-  const firstId = await countItem(true);
+  const {operationId:firstId} = await countItem(true);
   assert.equal((await wallet()).points, "10");
   const firstEntry = await f.pool.query(
     "SELECT stock_operation_id,task_code,points::text AS points FROM employee_wallet_entries WHERE company_id=$1 AND stock_operation_id=$2",
@@ -4427,6 +4432,14 @@ test("required stock-count reconciliations credit configured points once per new
   });
   await countItem(true);
   assert.equal((await wallet()).points, "27", "The edited reward card applies only to later counts");
-  await countItem(false);
-  assert.equal((await wallet()).points, "27", "Ordinary stock adjustments do not qualify");
+  const outsideTask = await countItem(false);
+  assert.equal((await wallet()).points, "44",
+    "Any due item earns regardless of the navigation or taskSource parameter");
+  const noLongerDue = await staff.client.ok<{operation:{id:number}}>(
+    "POST", outsideTask.path,
+    {...outsideTask.body,idempotencyKey:randomUUID()},201,
+  );
+  assert(noLongerDue.operation.id > 0);
+  assert.equal((await wallet()).points, "44",
+    "A repeated count of a no-longer-due item earns no new reward");
 });
