@@ -12,6 +12,7 @@ import { rememberRecentEntity } from "../recent-entities";
 import { useTemporaryItemList } from "../temporary-item-list";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
+import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -63,6 +64,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
   const [showOrderDraft, setShowOrderDraft] = useState(false);
   const [printMode, setPrintMode] = useState<"selected" | "order">("selected");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const directory = usePageDirectory(companyId);
   const canView = !!directory.data?.find(row => row.key === "company.item-options-list")?.actionAccess.view;
@@ -121,6 +123,29 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     if (!list.length) return;
     flushSync(() => setPrintMode(mode));
     window.print();
+  }
+  async function exportSelectionPdf(mode: "selected" | "order") {
+    if (exportingPdf) return;
+    const list = mode === "selected" ? temporarySelection.items : temporaryOrder.items;
+    if (!list.length) return;
+    setExportingPdf(true);
+    setActionMessage("");
+    try {
+      // Real PDF bytes, not the browser's print-to-PDF dialog; Arabic lettering
+      // is shaped by the device and each A4 page has exactly two columns.
+      const pdf = await createTwoColumnItemNamesPdf(list.map(item => item.name));
+      const today = new Date().toLocaleDateString("en-CA");
+      const filename = `${mode === "selected" ? "selected-items" : "item-order-draft"}-${today}.pdf`;
+      const result = await exportPdfToDevice(pdf, filename);
+      if (result === "shared")
+        setActionMessage("أُنشئ PDF وتم تسليمه إلى مشاركة الجهاز. يمكنك حفظه في الملفات أو إرساله.");
+      else if (result === "downloaded")
+        setActionMessage("تم تجهيز ملف PDF وتنزيله عبر المتصفح. تحقق من مجلد التنزيلات.");
+    } catch (reason) {
+      setActionMessage(`تعذر تصدير PDF: ${errorMessage(reason)}`);
+    } finally {
+      setExportingPdf(false);
+    }
   }
   async function resetTemporarySelection() {
     if (!temporarySelection.items.length) return;
@@ -236,6 +261,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           disabled={!canView || !temporarySelection.items.length}>
           طباعة الأصناف المختارة ({temporarySelection.items.length})
         </Button>
+        <Button variant="secondary" onClick={() => void exportSelectionPdf("selected")}
+          disabled={!canView || exportingPdf || !temporarySelection.items.length}>
+          {exportingPdf ? "جارٍ تجهيز PDF…" : "تصدير PDF للمختارة"}
+        </Button>
         <Button variant="secondary" onClick={() => setOptionsCollapsed(value => !value)}>
           {optionsCollapsed ? "إظهار الخيارات" : "تصغير الخيارات"}
         </Button>
@@ -310,6 +339,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         <div className="form-actions">
           <Button disabled={!temporaryOrder.items.length}
             onClick={() => printSelection("order")}>طباعة مسودة الطلبية بعمودين</Button>
+          <Button variant="secondary" disabled={exportingPdf || !temporaryOrder.items.length}
+            onClick={() => void exportSelectionPdf("order")}>
+            {exportingPdf ? "جارٍ تجهيز PDF…" : "تصدير مسودة الطلبية PDF"}
+          </Button>
           <Button variant="secondary" disabled={!temporaryOrder.items.length}
             onClick={() => {
               if (window.confirm("هل تريد تصفير مسودة الطلبية المحفوظة على الجهاز؟")) temporaryOrder.clear();
