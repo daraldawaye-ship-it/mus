@@ -20,3 +20,11 @@ test("invalid or zero source quantities are not silently considered correctable"
     assert.equal(classifyLegacySaleSign(value,"-1"),"invalid");
   }
 });
+
+import { assertLegacy127Scope } from "../apps/api/src/services/legacy-sales-127-repair.ts";
+
+test("127 invoice repair scope rejects any unexpected batch", () => {
+  const scope = {companyId:2,sourceSystem:"dar-aldawa-legacy-2026-10",importDayUtc:"2026-10-30",importedInvoices:127,sales:126,purchasesUnchanged:1,saleLines:560,corrected:0,remaining:126};
+  assert.doesNotThrow(() => assertLegacy127Scope(scope));
+  assert.throws(() => assertLegacy127Scope({...scope,importedInvoices:128}));
+});
