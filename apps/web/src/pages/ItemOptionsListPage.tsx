@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
@@ -8,6 +9,7 @@ import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
+import { useTemporaryItemList } from "../temporary-item-list";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -53,6 +55,12 @@ const sortOptions = [
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const temporarySelection = useTemporaryItemList(companyId, user?.id, "selected");
+  const temporaryOrder = useTemporaryItemList(companyId, user?.id, "order");
+  const [optionsCollapsed, setOptionsCollapsed] = useState(false);
+  const [showOrderDraft, setShowOrderDraft] = useState(false);
+  const [printMode, setPrintMode] = useState<"selected" | "order">("selected");
+  const [actionMessage, setActionMessage] = useState("");
   const directory = usePageDirectory(companyId);
   const canView = !!directory.data?.find(row => row.key === "company.item-options-list")?.actionAccess.view;
   const [params, setParams] = useSearchParams();
@@ -78,6 +86,26 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   });
   const result = resultQuery.data?.result;
   const pages = Math.max(1, Math.ceil((result?.total ?? 0) / pageSize));
+  const selectedIds = new Set(temporarySelection.items.map(row => row.id));
+  const printItems = printMode === "selected" ? temporarySelection.items : temporaryOrder.items;
+  function printSelection(mode: "selected" | "order") {
+    const list = mode === "selected" ? temporarySelection.items : temporaryOrder.items;
+    if (!list.length) return;
+    flushSync(() => setPrintMode(mode));
+    window.print();
+  }
+  function resetTemporarySelection() {
+    if (!temporarySelection.items.length) return;
+    if (!window.confirm(`هل تريد تصفير جميع الاختيارات المؤقتة (${temporarySelection.items.length} صنف)؟ لا تُحذف مسودة الطلبية.`)) return;
+    if (temporarySelection.clear()) setActionMessage("تم تصفير جميع الاختيارات المؤقتة. يمكنك بدء مهمة جديدة.");
+  }
+  function addToOrderDraft() {
+    if (!temporarySelection.items.length) return;
+    if (temporaryOrder.addMany(temporarySelection.items)) {
+      setShowOrderDraft(true);
+      setActionMessage("أُضيفت الأصناف المختارة إلى مسودة طلبية على هذا الجهاز دون تكرار. لم تُنشأ طلبية شراء رسمية.");
+    }
+  }
   const change = (key: string, value: string) => {
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -160,6 +188,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     <PageHeader title="قائمة الأصناف"
       description="تصفية الأصناف حسب المتوفر ومرات المبيعات والكفاية — دون احتساب مخازن المرتجعات في المتوفر"
       actions={<>
+        <Button onClick={() => printSelection("selected")}
+          disabled={!canView || !temporarySelection.items.length}>
+          طباعة الأصناف المختارة ({temporarySelection.items.length})
+        </Button>
+        <Button variant="secondary" onClick={() => setOptionsCollapsed(value => !value)}>
+          {optionsCollapsed ? "إظهار الخيارات" : "تصغير الخيارات"}
+        </Button>
+        <Button variant="secondary" onClick={resetTemporarySelection}
+          disabled={!temporarySelection.items.length}>تصفير الاختيار المؤقت للكل</Button>
         <Link className="button button-secondary" to={`/companies/${companyId}/items`}>كروت الأصناف</Link>
         <Button variant="secondary" onClick={() => void resultQuery.refetch()}
           disabled={!canView || resultQuery.isFetching}>تحديث القائمة</Button>
@@ -167,7 +204,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     {directory.isPending && <Notice>جارٍ التحقق من صلاحيات القائمة…</Notice>}
     {!directory.isPending && !canView &&
       <Notice tone="warning">تحتاج الصفحة إلى صلاحيات الأصناف والمبيعات والمخزون والكفاية.</Notice>}
-    <Card title="خيارات قائمة الأصناف">
+    {actionMessage && <Notice>{actionMessage}</Notice>}
+    {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
+    {temporaryOrder.error && <Notice tone="error">{temporaryOrder.error}</Notice>}
+    {!optionsCollapsed && <Card title="خيارات قائمة الأصناف">
       <form onSubmit={apply}>
         <div className="form-grid">
           <Field label="بحث عن صنف بالاسم أو الرمز أو الباركود" type="search"
@@ -199,9 +239,34 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           <Button type="button" variant="secondary" onClick={reset}>إعادة الافتراضيات</Button>
         </div>
       </form>
-    </Card>
+    </Card>}
     {resultQuery.error && <Notice tone="error">{errorMessage(resultQuery.error)}</Notice>}
     <Card title="نتائج قائمة الأصناف">
+      <div className="item-options-selection-tools">
+        <span>المختار مؤقتًا: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
+        <Button variant="secondary" disabled={!temporarySelection.items.length}
+          onClick={addToOrderDraft}>إضافة المختارة إلى مسودة طلبية</Button>
+        <Button variant="secondary" onClick={() => setShowOrderDraft(value => !value)}>
+          {showOrderDraft ? "إخفاء مسودة الطلبية" : `مسودة الطلبية (${temporaryOrder.items.length})`}
+        </Button>
+      </div>
+      {showOrderDraft && <div className="item-options-order-draft">
+        <p className="muted">مسودة محفوظة على هذا المتصفح فقط، ليست طلبية شراء معتمدة.</p>
+        {temporaryOrder.items.map(item => <div key={item.id} className="item-options-order-row">
+          <span>{item.name}</span>
+          <Button size="compact" variant="ghost"
+            onClick={() => temporaryOrder.toggle(item, false)}>إزالة</Button>
+        </div>)}
+        {!temporaryOrder.items.length && <p>مسودة الطلبية فارغة.</p>}
+        <div className="form-actions">
+          <Button disabled={!temporaryOrder.items.length}
+            onClick={() => printSelection("order")}>طباعة مسودة الطلبية بعمودين</Button>
+          <Button variant="secondary" disabled={!temporaryOrder.items.length}
+            onClick={() => {
+              if (window.confirm("هل تريد تصفير مسودة الطلبية المحفوظة على الجهاز؟")) temporaryOrder.clear();
+            }}>تصفير مسودة الطلبية</Button>
+        </div>
+      </div>}
       {result && <p className="muted">
         إجمالي الأصناف المطابقة: <bdi>{result.total.toLocaleString("en-US")}</bdi>
         {" "}· التاريخ: <bdi>{result.asOf}</bdi>
@@ -230,7 +295,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>
               {!row.active && <span className="item-options-mobile-inactive"> (مؤرشف)</span>}
-              <span className="item-options-mobile-code">رمز <bdi>{row.code}</bdi></span>
+              <label className="item-options-mobile-select">
+                <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
+                  checked={selectedIds.has(row.itemId)}
+                  onChange={event => temporarySelection.toggle(
+                    { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
+                اختيار مؤقت
+              </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
               <div className="item-options-mobile-stat">
@@ -256,7 +327,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           aria-label="نتائج الأصناف حسب الخيارات">
         <table>
           <thead><tr>
-            {sortHeader("code", "رمز الصنف")}
+            <th scope="col">اختيار مؤقت</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
             {sortHeader("month", "مبيعات مرات في شهر")}
@@ -266,7 +337,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </tr></thead>
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}>
-              <td><bdi>{row.code}</bdi></td>
+              <td><label className="item-options-table-choice">
+                <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
+                  checked={selectedIds.has(row.itemId)}
+                  onChange={event => temporarySelection.toggle(
+                    { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
+                <span>اختيار</span>
+              </label></td>
               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
               <td><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
@@ -293,5 +370,17 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
       </small>
     </Card>
+    <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة الأصناف المختارة">
+      <header>
+        <h1>{printMode === "selected" ? "الأصناف المختارة مؤقتًا" : "مسودة طلبية أصناف"}</h1>
+        <p>{context.company.name} — عدد الأصناف: {printItems.length} — {new Date().toLocaleDateString("ar-YE")}</p>
+      </header>
+      <div className="item-options-print-columns">
+        {printItems.map((item, index) => <div className="item-options-print-row" key={item.id}>
+          <bdi>{index + 1}.</bdi>
+          <span>{item.name}</span>
+        </div>)}
+      </div>
+    </section>
   </div>;
 }
