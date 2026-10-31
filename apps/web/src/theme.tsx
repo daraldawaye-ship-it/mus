@@ -113,6 +113,32 @@ export function buildThemeTokens(
   return tokens;
 }
 const defaultPreference: AppearancePreference = DEFAULT_APPEARANCE;
+
+/** One-time per-account-and-scope upgrade of old offline light drafts.
+ * Existing server preferences are converted by the database migration, but
+ * IndexedDB drafts on previously installed phones must not restore light
+ * after that migration. Users may still explicitly choose light later.
+ */
+async function upgradeLegacyAppearance(
+  userId: number, scope: string, preference: AppearancePreference,
+): Promise<AppearancePreference> {
+  const marker = `alraesy:dark-default-v1:${userId}:${scope}`;
+  try {
+    if (window.localStorage.getItem(marker) === "1") return preference;
+  } catch {
+    // Private browsing may block localStorage; keep the app functional.
+  }
+  const next: AppearancePreference = preference.mode === "light"
+    ? { ...preference, mode: "dark" } : preference;
+  if (next !== preference) {
+    // A pending light draft is now a dark draft and must sync that way.
+    await saveAppearanceDraft(userId, scope, next).catch(() => {});
+    await rememberRead(`/appearance?scope=${encodeURIComponent(scope)}`,
+      { preference: next }).catch(() => {});
+  }
+  try { window.localStorage.setItem(marker, "1"); } catch { /* optional */ }
+  return next;
+}
 interface AppearanceValue {
   preference: AppearancePreference;
   setPreference: (value: AppearancePreference) => void;
@@ -172,15 +198,17 @@ export function AppearanceProvider({
         // Local unsynchronized changes win over an old server preference.
         const pending=await readAppearanceDraft(currentUser,scope);
         if (pending) {
+          const migrated=await upgradeLegacyAppearance(currentUser,scope,pending);
           if (guard.isCurrent() && revision.current===captured) {
-            updatePreference(pending);
+            updatePreference(migrated);
             setSavedRevision(captured);
           }
           return;
         }
         const result=await api<{ preference: AppearancePreference }>(path,{signal:guard.signal});
+        const migrated=await upgradeLegacyAppearance(currentUser,scope,result.preference);
         if (guard.isCurrent() && revision.current===captured) {
-          updatePreference(result.preference);
+          updatePreference(migrated);
           setSavedRevision(captured);
         }
       } catch (error) {
@@ -192,7 +220,9 @@ export function AppearanceProvider({
     })();
   }, [scope,user?.id]);
   useEffect(() => {
-    if (!user) return;
+    // Do not synchronize stale IndexedDB drafts until the one-time dark
+    // upgrade has finished reading and normalizing them.
+    if (!user || loading) return;
     const userId=user.id, path=`/appearance?scope=${encodeURIComponent(scope)}`;
     let stopped=false, running=false;
     const refresh=async (onlyDraft=false) => {
@@ -218,7 +248,7 @@ export function AppearanceProvider({
     window.addEventListener("online",onOnline);
     void refresh(true);
     return ()=>{stopped=true;window.removeEventListener("online",onOnline);};
-  }, [scope,user?.id,savedRevision]);
+  }, [scope,user?.id,savedRevision,loading]);
   useLayoutEffect(() => {
     const root = document.documentElement;
     const tokens = buildThemeTokens(preference.mode, preference.color);
