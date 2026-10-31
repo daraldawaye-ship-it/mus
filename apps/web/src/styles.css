@@ -6102,3 +6102,24 @@ a.notification-quick-title:hover { text-decoration: underline; }
   margin: 0 !important;
   padding: 0 !important;
 }
+
+
+/* Cashier receipt printing is in the SAME document, never an offscreen iframe.
+   No styles affect a normal invoice editor or the dedicated invoice viewer. */
+.invoice-inline-print { display: none !important; }
+@media print {
+  .commerce-document-page:has(> .invoice-inline-print) > :not(.invoice-inline-print) {
+    display: none !important;
+  }
+  .commerce-document-page > .invoice-inline-print {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: #111 !important;
+  }
+}
