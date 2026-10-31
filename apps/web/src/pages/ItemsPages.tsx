@@ -1522,7 +1522,7 @@ function ItemEditor({
       {item && <label className="item-card-temporary-choice">
         <input type="checkbox"
           checked={temporarySelection.items.some(entry => entry.id === item.id)}
-          disabled={!temporarySelection.enabled || temporarySelection.loading}
+          disabled={!temporarySelection.enabled || temporarySelection.loading || temporarySelection.pendingIds.has(item.id)}
           onChange={event => {
             temporarySelection.toggle({
               id: item.id, name: item.name, code: item.code,
@@ -1531,6 +1531,7 @@ function ItemEditor({
         <span>اختيار مؤقت</span>
         <small>هذه علامة مشتركة بين مستخدمي الشركة على جميع الأجهزة حتى تصفيرها.</small>
       </label>}
+      {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيار المشترك…</small>}
       {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
       <form ref={formElement} onSubmit={(event) => void save(event)}
         onBlurCapture={event => {
