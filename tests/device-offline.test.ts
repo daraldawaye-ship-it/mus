@@ -138,6 +138,41 @@ test("offline bootstrap never trusts a denied server session or caches credentia
   assert.match(shared,/clearOfflineSharedGrants/);
 });
 
+test("multiple employees can sign out and authenticate locally without leaking server sessions", () => {
+  const storage=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const session=readFileSync("apps/web/src/api.tsx","utf8");
+  const login=readFileSync("apps/web/src/pages/PublicPages.tsx","utf8");
+  const status=readFileSync("apps/web/src/OfflineStatus.tsx","utf8");
+  const security=readFileSync("apps/api/src/http.ts","utf8");
+  const app=readFileSync("apps/web/src/App.tsx","utf8");
+  assert.match(storage,/alraesy-offline-accounts-v1/);
+  assert.match(storage,/OFFLINE_PBKDF2_ITERATIONS = 350_000/);
+  assert.match(storage,/crypto\.subtle\.deriveBits/);
+  assert.match(storage,/authenticateOfflineAccount/);
+  assert.match(storage,/enrollOfflineAccount/);
+  assert.match(storage,/validOfflineSession\(\{user:account\.user,savedAt:account\.verifiedAt\},now\)/);
+  assert.match(storage,/lockedUntil=now\+60_000/);
+  assert.match(storage,/setOfflineLoginRequired\(required:boolean, clearActive=false\)/);
+  assert.match(storage,/if\(clearActive\) tx\.objectStore\("verified"\)\.delete\("last"\)/);
+  assert.match(session,/await setOfflineLoginRequired\(true,true\)/);
+  assert.match(session,/await authenticateOfflineAccount\(identity,password\)/);
+  assert.match(session,/await saveOfflineSession\(offlineUserRecord\)/);
+  assert.match(session,/freshOnlineLoginRequired && path !== "\/auth\/login"/);
+  assert.match(session,/if \(freshOnlineLoginRequired\) throw new Error/);
+  assert.match(session,/if \(!freshOnlineLoginRequired\) void reloadSession/);
+  assert.match(status,/function offlineForSession\(\) \{ return isOfflineNow\(\) \|\| sessionRequiresLogin\(\); \}/);
+  assert.match(status,/if \(!offlineForSession\(\)\) void syncPending/);
+  assert.match(status,/alraesy-auth-restored/);
+  assert.match(login,/await loginWithPassword\(loginId,draft\.password\)/);
+  assert.match(login,/if \(user && !requiresOnlineLogin\)/);
+  assert.match(app,/requiresOnlineLogin &&/);
+  // Existing cookie may belong to the last employee. Only credential-based
+  // login is exempt; Origin, JSON and all other mutation CSRF checks remain.
+  assert.match(security,/req\.headers\.origin !== origin/);
+  assert.match(security,/req\.path !== "\/auth\/login"/);
+  assert.match(security,/req\.headers\["x-csrf-token"\] !== req\.auth\.csrf/);
+});
+
 test("offline navigation refreshes latest shell instead of serving old cached login", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
   assert.match(worker,/alraesy-static-offline-20261030-v5/);
