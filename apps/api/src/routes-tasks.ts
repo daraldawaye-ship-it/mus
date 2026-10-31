@@ -37,7 +37,7 @@ const dueStockQuery=`
  )
  SELECT i.id,i.code,i.name,coalesce(sold.times,0)::integer AS sales,
    ceil(($2::numeric*30)/(coalesce(sold.times,0)+5))::integer AS interval_days
- FROM items i JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
+ FROM items i LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
  LEFT JOIN sold ON sold.item_id=i.id
  WHERE i.company_id=$1 AND i.active AND
    ((s.stock_showroom<>0 AND
