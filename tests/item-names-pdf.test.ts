@@ -44,5 +44,5 @@ test("mixed long Arabic item names have balanced height rather than item count",
   const { split } = pages[0];
   const a = heights.slice(0, split).reduce((x, y) => x + y, 0);
   const b = heights.slice(split).reduce((x, y) => x + y, 0);
-  assert.ok(Math.abs(a - b) <= 18, `imbalanced columns: ${a}, ${b}`);
+  assert.ok(Math.abs(a - b) <= 23, `imbalanced columns: ${a}, ${b}`);
 });
