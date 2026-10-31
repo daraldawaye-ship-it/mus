@@ -40,6 +40,7 @@ export function usePageDirectory(companyId?: number) {
       }
     },
     enabled: !!user,
+    networkMode: "always",
     staleTime: 10_000,
   });
 }
