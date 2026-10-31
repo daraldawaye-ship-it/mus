@@ -154,7 +154,9 @@ test("multiple employees can sign out and authenticate locally without leaking s
   assert.match(storage,/lockedUntil=now\+60_000/);
   assert.match(storage,/setOfflineLoginRequired\(required:boolean, clearActive=false\)/);
   assert.match(storage,/if\(clearActive\) tx\.objectStore\("verified"\)\.delete\("last"\)/);
-  assert.match(session,/await setOfflineLoginRequired\(true,true\)/);
+  assert.match(session,/serverSignedOut = true/);
+  assert.match(session,/freshOnlineLoginRequired = !serverSignedOut/);
+  assert.match(session,/await setOfflineLoginRequired\(!serverSignedOut,true\)/);
   assert.match(session,/await authenticateOfflineAccount\(identity,password\)/);
   assert.match(session,/await saveOfflineSession\(offlineUserRecord\)/);
   assert.match(session,/freshOnlineLoginRequired && path !== "\/auth\/login"/);
