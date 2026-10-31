@@ -920,6 +920,7 @@ function Workspace() {
     logout,
     pendingLogoutRedirect,
     acknowledgeLogoutRedirect,
+    requiresOnlineLogin,
   } = useSession();
   const match = useMatch("/companies/:companyId/*");
   const companyId = Number(match?.params.companyId);
@@ -1120,6 +1121,9 @@ function Workspace() {
           <main className="main-content" ref={main} tabIndex={-1}>
             {sessionError && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}
+            {requiresOnlineLogin && (
+              <Notice tone="warning">هذا الموظف دخل دون إنترنت. عند توفر الاتصال، <Link to="/login">سجّل دخوله مجددًا</Link> لإرسال عملياته المحفوظة باسمه؛ لن تُستخدم جلسة الموظف السابق.</Notice>
+            )}
             <Routes>
               <Route path="/" element={
                 user
