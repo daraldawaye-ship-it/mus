@@ -8,7 +8,7 @@ import { isOfflineNow, subscribeConnection } from "./connection-mode";
 import { syncMyHistory } from "./offline-my-history";
 import { syncOfflineQuestionPack } from "./offline-question-pack";
 import { refreshDailySaleRanks } from "./offline-sale-rank-sync";
-import { downloadSharedReferenceCards, refreshSharedDoctorDirectory } from "./offline-shared-master";
+import { downloadSharedReferenceCards, refreshSharedDoctorDirectory, refreshOfflineDocumentDefaults } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
 import { migrateExistingCatalog } from "./offline-shared-migrate";
@@ -306,6 +306,26 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [userId, companyId]);
+  // Prepare company/employee document choices independently of the large item
+  // catalog, so invoice, receipt and payment headers work while offline.
+  useEffect(()=>{
+    if(!companyId)return;
+    const warm=()=>{
+      if(!offlineForSession() && document.visibilityState!=="hidden")
+        void refreshOfflineDocumentDefaults(userId,companyId).catch(()=>{});
+    };
+    warm();
+    const timer=window.setInterval(warm,120_000);
+    window.addEventListener("online",warm);
+    window.addEventListener("alraesy-auth-restored",warm);
+    document.addEventListener("visibilitychange",warm);
+    return()=>{
+      window.clearInterval(timer);
+      window.removeEventListener("online",warm);
+      window.removeEventListener("alraesy-auth-restored",warm);
+      document.removeEventListener("visibilitychange",warm);
+    };
+  },[userId,companyId]);
   // The doctor/entity picker is required for sale invoices, and must work in
   // a regular browser as well as the installed app. Save bounded pages in
   // the background, separately from large inventory and account downloads.
