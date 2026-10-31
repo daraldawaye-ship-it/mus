@@ -78,6 +78,7 @@ test("notification permission reminder is hidden during an outage and retry resu
   assert.match(push,/isOfflineNow\(\)/);
   assert.match(push,/alraesy-network-restored/);
   assert.match(sync,/subscribeConnection\(connected\)/);
-  assert.match(sync,/if \(!isOfflineNow\(\)\) void syncPending\(userId/);
+  assert.match(sync,/if \(!offlineForSession\(\)\) void syncPending\(userId/);
+  assert.match(sync,/sessionRequiresLogin\(\)/);
   assert.doesNotMatch(sync,/window\.addEventListener\("offline", connected\)/);
 });
