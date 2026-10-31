@@ -10,6 +10,7 @@ import { startAttendanceNotifications } from "./services/attendance-notification
 import { startPushNotifications } from "./services/web-push.ts";
 import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-sale-ranking-worker.ts";
 import { startLegacyImportWorker } from "./services/legacy-import-worker.ts";
+import { startInvoicePostFollowups } from "./services/invoice-post-followups.ts";
 import { OCTOBER_2026_SALES_RUN_ID, prepareOctober2026SalesRecovery } from "./services/october-2026-sales-recovery.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 
@@ -106,6 +107,7 @@ const noWorker = async (): Promise<void> => {};
 const stopNotifications = AUTOMATIONS_PAUSED ? noWorker : startAttendanceNotifications(application.pool);
 const stopPush = AUTOMATIONS_PAUSED ? noWorker : startPushNotifications(application.pool,application.config.appOrigin);
 const stopItemSaleRankings = AUTOMATIONS_PAUSED ? noWorker : startItemSaleRankings(application.pool);
+const stopInvoiceFollowups = AUTOMATIONS_PAUSED ? noWorker : startInvoicePostFollowups(application.pool);
 // Explicit 2026-10-27 restoration: all recorded workers are enabled again.
 // Invoice posting stays scoped to the authorized run and its persisted status.
 const stopLegacyImport = startLegacyImportWorker(application.pool, {
@@ -127,6 +129,7 @@ async function shutdown(): Promise<void> {
   await stopNotifications();
   await stopPush();
   await stopItemSaleRankings();
+  await stopInvoiceFollowups();
   await importStopped;
   await vite?.close();
   await application.close();

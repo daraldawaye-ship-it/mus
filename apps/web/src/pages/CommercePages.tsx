@@ -19,7 +19,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { CompanyPrintHeader } from "../CompanyPrintHeader";
+import { CompanyPrintHeader, useCompanyLetterhead } from "../CompanyPrintHeader";
 import { StagedInvoicesPanel } from "../StagedInvoiceViews";
 import { InvoicePrintSheet } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
@@ -2239,10 +2239,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       );
       if (!guard.isCurrent()) return;
       setUnknown(false);
-      // A confirmed posting must not become "unknown" if refreshing a
-      // read-only query fails afterwards.
-      await invalidate().catch(() => undefined);
-      if (!guard.isCurrent()) return;
+      // Posting is confirmed. Refreshing independent lists, balances and
+      // caches must never hold the cashier's next invoice or success message.
+      // React Query handles the refresh separately (and reports failures in
+      // those queries); the posted invoice is already committed server-side.
+      void invalidate().catch(() => undefined);
       const next = emptyLine();
       pending.current = null;
       setHeaderItem(null);
@@ -3497,6 +3498,8 @@ function InvoiceViewer({
   const { user } = useSession();
   const [searchParams] = useSearchParams();
   const autoPrint = searchParams.get("print") === "1";
+  const letterhead = useCompanyLetterhead(companyId);
+  const printRequestedFor = useRef<number | null>(null);
   const result = useQuery({
     queryKey: ["commerce", user?.id, companyId, "invoice", invoiceId],
     queryFn: ({ signal }) =>
@@ -3508,10 +3511,42 @@ function InvoiceViewer({
   });
   const loadedInvoiceId = result.data?.invoice.id;
   useEffect(() => {
-    if (!autoPrint || loadedInvoiceId !== invoiceId) return;
-    const timer = window.setTimeout(() => window.print(), 250);
-    return () => window.clearTimeout(timer);
-  }, [autoPrint, invoiceId, loadedInvoiceId]);
+    if (!autoPrint || loadedInvoiceId !== invoiceId ||
+        letterhead.isPending || printRequestedFor.current === invoiceId) return;
+    // The image is a separate protected media request. Wait for its decode
+    // before opening the print dialog, otherwise the header prints blank.
+    const image = document.querySelector<HTMLImageElement>(
+      ".invoice-print-sheet .company-print-letterhead-image",
+    );
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const printWhenReady = async () => {
+      if (cancelled || printRequestedFor.current === invoiceId) return;
+      if (image && !image.complete) return;
+      if (image && image.naturalWidth > 0) {
+        try { await image.decode(); } catch { /* The image load state decides. */ }
+      }
+      if (cancelled || printRequestedFor.current === invoiceId) return;
+      // Give the print-only header and its image one layout frame.
+      timer = setTimeout(() => {
+        if (cancelled || printRequestedFor.current === invoiceId) return;
+        printRequestedFor.current = invoiceId;
+        window.print();
+      }, 75);
+    };
+    if (image && !image.complete) {
+      image.addEventListener("load", printWhenReady, { once: true });
+      image.addEventListener("error", printWhenReady, { once: true });
+    } else {
+      void printWhenReady();
+    }
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      image?.removeEventListener("load", printWhenReady);
+      image?.removeEventListener("error", printWhenReady);
+    };
+  }, [autoPrint, invoiceId, loadedInvoiceId, letterhead.isPending, letterhead.data?.imageUrl]);
   if (result.isPending) return <Notice>جارٍ تحميل الفاتورة…</Notice>;
   if (result.error)
     return (

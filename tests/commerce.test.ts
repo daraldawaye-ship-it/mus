@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
+import { processInvoicePostFollowup } from "../apps/api/src/services/invoice-post-followups.ts";
 import type {
   Account,
   AccountCategory,
@@ -481,14 +482,15 @@ async function invoice(
   body: InvoiceInput,
   client = f.owner,
 ) {
-  return (
-    await client.ok<{ invoice: Invoice }>(
-      "POST",
-      `${s.path}/invoices`,
-      body,
-      [200, 201],
-    )
-  ).invoice;
+  const { invoice: saved } = await client.ok<{ invoice: Invoice }>(
+    "POST", `${s.path}/invoices`, body, [200, 201],
+  );
+  // Unit test harness has no interval worker. Drain durable follow-ups
+  // explicitly before legacy tests inspect completed wallet projections.
+  for (let i = 0; i < 100; i++) {
+    if (!await processInvoicePostFollowup(f.pool)) break;
+  }
+  return saved;
 }
 
 async function stockSnapshot(f: Fixture, companyId: number) {
@@ -2755,6 +2757,46 @@ test("zero-net purchases and free sale returns finalize without dummy journals a
         error.code === "23514",
     );
   await assertBalanced(f, s.company.id);
+});
+
+test("invoice follow-ups are deferred, durable and processed exactly once after save", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Durable invoice followup company");
+  const product = await s.item();
+  const cashier = await f.member(s.company.id,
+    ["commerce.manage", "commerce.view", "finance.post"], 970);
+  const path = `${s.path}/wallet?employeeId=${cashier.employee.id}`;
+  const task = (await f.owner.ok<{tasks:{code:string;revision:number|null}[]}>(
+    "GET", `${s.path}/reward-tasks`
+  )).tasks.find(task => task.code === "PURCHASE_SAVED")!;
+  await f.owner.ok("PUT", `${s.path}/reward-tasks/PURCHASE_SAVED`, {
+    points:"12",repeatRule:"per-document",enabled:true,
+    roleIds:[],pageKey:null,revision:task.revision,
+  });
+  const body = invoiceBody(s, product.id);
+  const first = (await cashier.client.ok<{invoice:Invoice}>(
+    "POST", `${s.path}/invoices`, body, 201
+  )).invoice;
+  const pending = await f.pool.query(
+    "SELECT processed_at FROM invoice_post_followups WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id, first.id],
+  );
+  assert.equal(pending.rowCount, 1);
+  assert.equal(pending.rows[0].processed_at, null);
+  assert.equal((await f.owner.ok<{wallet:{points:string}}>("GET",path)).wallet.points,
+    "0", "The cashier receives success before deferred work runs");
+  assert.equal(await processInvoicePostFollowup(f.pool), true);
+  assert.equal((await f.owner.ok<{wallet:{points:string}}>("GET",path)).wallet.points,"12");
+  assert.equal((await f.pool.query(
+    "SELECT processed_at IS NOT NULL AS done FROM invoice_post_followups WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id,first.id],
+  )).rows[0].done,true);
+  assert.equal(await processInvoicePostFollowup(f.pool), false);
+  const replay = (await cashier.client.ok<{invoice:Invoice}>(
+    "POST", `${s.path}/invoices`, body, 201
+  )).invoice;
+  assert.equal(replay.id, first.id);
+  assert.equal((await f.owner.ok<{wallet:{points:string}}>("GET",path)).wallet.points,"12");
 });
 
 test("invoice reward tasks are opt-in, grouped by logical lines, idempotent and shared with posting", async (t) => {

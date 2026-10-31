@@ -1133,46 +1133,65 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  if (newlyCreatedDoctor) {
-    await emitNotification(client, {
-      code: "SALES_DOCTOR_REVIEW",
-      companyId,
-      subjectKey: `doctor:${newlyCreatedDoctor.id}`,
-      eventKey: `doctor:new:${newlyCreatedDoctor.id}`,
-      title: "اسم طبيب أو جهة جديد يحتاج مراجعة",
-      message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
-      href: `/companies/${companyId}/doctors?focus=${newlyCreatedDoctor.id}`,
-    });
-  }
-  if (reusedArchivedDoctor) {
-    // The template migration may not have run yet: register the immutable
-    // notification type in this same sale transaction, without any card changes.
+  if (!importContext) {
+    // Durable, committed with the invoice; slow post-processing is not part of
+    // the cashier's request. A worker will credit the EXISTING wallet, accrue
+    // clearance, and emit notifications, with retry after crash/failure.
     await client.query(
-      `INSERT INTO notification_templates
-         (code,name,category,scope,description,implemented,can_disable,
-          default_importance,default_notify_managers)
-       VALUES ('SALES_ARCHIVED_DOCTOR_USED',
-               'استخدام طبيب أو جهة مؤرشفة في المبيعات','مبيعات','company',
-               'استخدام اسم طبيب أو جهة مؤرشفة في فاتورة مبيعات مع بقاء الكرت مؤرشفًا.',
-               true,true,'medium',false)
-       ON CONFLICT (code) DO NOTHING`,
+      `INSERT INTO invoice_post_followups(
+         company_id,invoice_id,created_by,customer_reward_kind,
+         doctor_reward_eligible,new_doctor_id,new_doctor_name,
+         archived_doctor_id,archived_doctor_name)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(company_id,invoice_id) DO NOTHING`,
+      [companyId,invoiceId,user.id,customerRewardKind,doctorRewardEligible,
+       newlyCreatedDoctor?.id ?? null,newlyCreatedDoctor?.name ?? null,
+       reusedArchivedDoctor?.id ?? null,reusedArchivedDoctor?.name ?? null],
     );
-    await emitNotification(client,
-      archivedDoctorSaleNotice(companyId, reusedArchivedDoctor, invoiceId, number));
-  }
-  if (!importContext?.suppressRewards) {
-    await awardPostedInvoice(
-      client,
-      companyId,
-      invoiceId,
-      input.kind,
-      user,
-      number,
-      customerRewardKind,
-      doctorRewardEligible,
-    );
-    if (input.kind === "sale")
-      await accrueInvoiceClearance(client, companyId, invoiceId, user);
+  } else {
+    // Existing import batches keep their established atomic posting contract.
+    if (newlyCreatedDoctor) {
+      await emitNotification(client, {
+        code: "SALES_DOCTOR_REVIEW",
+        companyId,
+        subjectKey: `doctor:${newlyCreatedDoctor.id}`,
+        eventKey: `doctor:new:${newlyCreatedDoctor.id}`,
+        title: "اسم طبيب أو جهة جديد يحتاج مراجعة",
+        message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
+        href: `/companies/${companyId}/doctors?focus=${newlyCreatedDoctor.id}`,
+      });
+    }
+    if (reusedArchivedDoctor) {
+      // The template migration may not have run yet: register the immutable
+      // notification type in this same sale transaction, without any card changes.
+      await client.query(
+        `INSERT INTO notification_templates
+           (code,name,category,scope,description,implemented,can_disable,
+            default_importance,default_notify_managers)
+         VALUES ('SALES_ARCHIVED_DOCTOR_USED',
+                 'استخدام طبيب أو جهة مؤرشفة في المبيعات','مبيعات','company',
+                 'استخدام اسم طبيب أو جهة مؤرشفة في فاتورة مبيعات مع بقاء الكرت مؤرشفًا.',
+                 true,true,'medium',false)
+         ON CONFLICT (code) DO NOTHING`,
+      );
+      await emitNotification(client,
+        archivedDoctorSaleNotice(companyId, reusedArchivedDoctor, invoiceId, number));
+    }
+    if (!importContext?.suppressRewards) {
+      await awardPostedInvoice(
+        client,
+        companyId,
+        invoiceId,
+        input.kind,
+        user,
+        number,
+        customerRewardKind,
+        doctorRewardEligible,
+      );
+      if (input.kind === "sale")
+        await accrueInvoiceClearance(client, companyId, invoiceId, user);
+    }
+  
   }
   await audit(
     client,
