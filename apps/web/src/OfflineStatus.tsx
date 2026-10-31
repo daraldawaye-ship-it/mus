@@ -8,7 +8,7 @@ import { isOfflineNow, subscribeConnection } from "./connection-mode";
 import { syncMyHistory } from "./offline-my-history";
 import { syncOfflineQuestionPack } from "./offline-question-pack";
 import { refreshDailySaleRanks } from "./offline-sale-rank-sync";
-import { downloadSharedReferenceCards } from "./offline-shared-master";
+import { downloadSharedReferenceCards, refreshSharedDoctorDirectory } from "./offline-shared-master";
 import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-shared-extra";
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
 import { migrateExistingCatalog } from "./offline-shared-migrate";
@@ -306,6 +306,27 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       document.removeEventListener("visibilitychange", resume);
     };
   }, [userId, companyId]);
+  // The doctor/entity picker is required for sale invoices, and must work in
+  // a regular browser as well as the installed app. Save bounded pages in
+  // the background, separately from large inventory and account downloads.
+  useEffect(() => {
+    if (!companyId) return;
+    const refresh=()=>{
+      if (!offlineForSession() && document.visibilityState!=="hidden")
+        void refreshSharedDoctorDirectory(userId,companyId);
+    };
+    refresh();
+    const timer=window.setInterval(refresh,120_000);
+    window.addEventListener("online",refresh);
+    window.addEventListener("alraesy-auth-restored",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online",refresh);
+      window.removeEventListener("alraesy-auth-restored",refresh);
+      document.removeEventListener("visibilitychange",refresh);
+    };
+  },[userId,companyId]);
   // Preload current user's own answer keys and question cards (not shared)
   // both in a browser and in the installed app for offline grading.
   useEffect(() => {
