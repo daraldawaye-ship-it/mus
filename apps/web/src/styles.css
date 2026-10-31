@@ -6261,13 +6261,11 @@ a.notification-quick-title:hover { text-decoration: underline; }
     width: 100%; margin: 0; padding: 0; overflow: visible;
     direction: rtl;
   }
-  .item-options-print-sheet header {
-    text-align: center; margin-bottom: 5mm;
-    border-bottom: 1px solid #555; padding-bottom: 3mm;
-    break-after: avoid;
+  /* This printout contains the item names alone. The company letterhead,
+     report heading, item counts and numeric item prefixes are intentionally absent. */
+  .item-options-print-sheet .item-options-print-columns {
+    margin: 0; padding: 0;
   }
-  .item-options-print-sheet h1 { color: #111; font-size: 14pt; margin: 0 0 2mm; }
-  .item-options-print-sheet header p { color: #333; font-size: 9pt; margin: 0; }
   .item-options-print-columns {
     column-count: 2; column-gap: 7mm;
     column-rule: 1px solid #ddd;
@@ -6281,7 +6279,6 @@ a.notification-quick-title:hover { text-decoration: underline; }
     break-inside: avoid; page-break-inside: avoid;
     color: #111;
   }
-  .item-options-print-row bdi { flex: 0 0 23px; font-size: 8pt; }
   .item-options-print-row span { overflow-wrap: anywhere; white-space: normal; }
 }
 
