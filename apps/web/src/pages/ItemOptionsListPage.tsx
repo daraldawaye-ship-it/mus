@@ -10,6 +10,7 @@ import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
 import { useTemporaryItemList } from "../temporary-item-list";
+import { useSharedItemSelection } from "../shared-item-selection";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -55,7 +56,7 @@ const sortOptions = [
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
-  const temporarySelection = useTemporaryItemList(companyId, user?.id, "selected");
+  const temporarySelection = useSharedItemSelection(companyId, user?.id);
   const temporaryOrder = useTemporaryItemList(companyId, user?.id, "order");
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
   const [showOrderDraft, setShowOrderDraft] = useState(false);
@@ -113,16 +114,17 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     flushSync(() => setPrintMode(mode));
     window.print();
   }
-  function resetTemporarySelection() {
+  async function resetTemporarySelection() {
     if (!temporarySelection.items.length) return;
-    if (!window.confirm(`هل تريد تصفير جميع الاختيارات المؤقتة (${temporarySelection.items.length} صنف)؟ لا تُحذف مسودة الطلبية.`)) return;
-    if (temporarySelection.clear()) setActionMessage("تم تصفير جميع الاختيارات المؤقتة. يمكنك بدء مهمة جديدة.");
+    if (!window.confirm(`سيتم تصفير جميع الاختيارات المؤقتة (${temporarySelection.items.length} صنف) لكل مستخدمي الشركة وعلى جميع الأجهزة. هل تريد المتابعة؟ مسودات الطلبيات المحلية لن تُحذف.`)) return;
+    if (await temporarySelection.clear())
+      setActionMessage("تم تصفير الاختيارات المشتركة على مستوى الشركة، ويمكن بدء مهمة جديدة من أي جهاز.");
   }
   function addToOrderDraft() {
     if (!temporarySelection.items.length) return;
     if (temporaryOrder.addMany(temporarySelection.items)) {
       setShowOrderDraft(true);
-      setActionMessage("أُضيفت الأصناف المختارة إلى مسودة طلبية على هذا الجهاز دون تكرار. لم تُنشأ طلبية شراء رسمية.");
+      setActionMessage("نُسخت الأصناف المشتركة إلى مسودة الطلبية المحلية على هذا الجهاز دون تكرار؛ لم تُنشأ طلبية شراء رسمية.");
     }
   }
   const change = (key: string, value: string) => {
@@ -223,7 +225,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           {optionsCollapsed ? "إظهار الخيارات" : "تصغير الخيارات"}
         </Button>
         <Button variant="secondary" onClick={resetTemporarySelection}
-          disabled={!temporarySelection.items.length}>تصفير الاختيار المؤقت للكل</Button>
+          disabled={!temporarySelection.items.length || temporarySelection.updating}>تصفير الاختيار المؤقت للكل</Button>
         <Link className="button button-secondary" to={`/companies/${companyId}/items`}>كروت الأصناف</Link>
         <Button variant="secondary" onClick={() => void resultQuery.refetch()}
           disabled={!canView || resultQuery.isFetching}>تحديث القائمة</Button>
@@ -274,7 +276,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     </Notice>}
     <Card title="نتائج قائمة الأصناف">
       <div className="item-options-selection-tools">
-        <span>المختار مؤقتًا: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
+        <span>الاختيار المؤقت المشترك للشركة: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
         <Button variant="secondary" disabled={!temporarySelection.items.length}
           onClick={addToOrderDraft}>إضافة المختارة إلى مسودة طلبية</Button>
         <Button variant="secondary" onClick={() => setShowOrderDraft(value => !value)}>
@@ -329,7 +331,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <label className="item-options-mobile-select">
                 <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
-                  onChange={event => temporarySelection.toggle(
+                  disabled={!temporarySelection.enabled}
+                  onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
                 اختيار مؤقت
               </label>
@@ -371,7 +374,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><label className="item-options-table-choice">
                 <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
-                  onChange={event => temporarySelection.toggle(
+                  disabled={!temporarySelection.enabled}
+                  onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
                 <span>اختيار</span>
               </label></td>
