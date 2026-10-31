@@ -3139,10 +3139,13 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           <div className="commerce-saved-confirmation">
             <Notice tone="success">
             تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-            <Link to={invoicePath(companyId, savedInvoice.id)}>
-              عرض الفاتورة المحفوظة
+            <Link
+              to={`${invoicePath(companyId, savedInvoice.id)}?print=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              طباعة الفاتورة المحفوظة
             </Link>
-            . يمكنك إدخال الفاتورة التالية مباشرة.
             </Notice>
           </div>
         )}
@@ -3492,6 +3495,8 @@ function InvoiceViewer({
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const [searchParams] = useSearchParams();
+  const autoPrint = searchParams.get("print") === "1";
   const result = useQuery({
     queryKey: ["commerce", user?.id, companyId, "invoice", invoiceId],
     queryFn: ({ signal }) =>
@@ -3501,6 +3506,12 @@ function InvoiceViewer({
       ),
     enabled: !!user && Number.isSafeInteger(invoiceId) && invoiceId > 0,
   });
+  const loadedInvoiceId = result.data?.invoice.id;
+  useEffect(() => {
+    if (!autoPrint || loadedInvoiceId !== invoiceId) return;
+    const timer = window.setTimeout(() => window.print(), 250);
+    return () => window.clearTimeout(timer);
+  }, [autoPrint, invoiceId, loadedInvoiceId]);
   if (result.isPending) return <Notice>جارٍ تحميل الفاتورة…</Notice>;
   if (result.error)
     return (
