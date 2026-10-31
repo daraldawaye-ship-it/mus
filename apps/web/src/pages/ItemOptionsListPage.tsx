@@ -108,6 +108,37 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   }
   const coverage = (row: Row) => params.get("useReserve") === "false"
     ? row.approximateCoverageDays : row.coverageAfterReserveDays;
+  type SortColumn = (typeof sortOptions)[number][0];
+  const activeSort = params.get("sortBy") ?? "code";
+  const activeDirection = params.get("sortDir") ?? "asc";
+  function sortByColumn(column: SortColumn) {
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      const isSameColumn = (previous.get("sortBy") ?? "code") === column;
+      const currentDirection = previous.get("sortDir") ?? "asc";
+      const nextDirection = isSameColumn
+        ? (currentDirection === "asc" ? "desc" : "asc")
+        : (column === "code" || column === "name" ? "asc" : "desc");
+      next.set("sortBy", column);
+      next.set("sortDir", nextDirection);
+      next.delete("page");
+      return next;
+    });
+  }
+  function sortHeader(column: SortColumn, label: string) {
+    const selected = activeSort === column;
+    return <th key={column} aria-sort={selected
+      ? (activeDirection === "asc" ? "ascending" : "descending") : "none"}>
+      <button className="sort-button" type="button"
+        onClick={() => sortByColumn(column)}
+        title={selected ? "اضغط لعكس الترتيب" : "اضغط للترتيب حسب هذا العمود"}>
+        {label}{selected &&
+          <span className="sort-indicator" aria-hidden="true">
+            {activeDirection === "asc" ? " ▲" : " ▼"}
+          </span>}
+      </button>
+    </th>;
+  }
 
   return <div className="wallet-page">
     <PageHeader title="قائمة الأصناف"
@@ -178,10 +209,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {result && <div className="table-scroll" role="region" aria-label="نتائج الأصناف حسب الخيارات">
         <table>
           <thead><tr>
-            <th>رمز الصنف</th><th>اسم الصنف</th><th>المتوفر دون المرتجعات (الوحدة الأولى)</th>
-            <th>مبيعات مرات في شهر</th><th>مبيعات مرات في 4 أشهر</th>
-            <th>مبيعات مرات منذ البداية</th>
-            <th>الكفاية (يوم)</th>
+            {sortHeader("code", "رمز الصنف")}
+            {sortHeader("name", "اسم الصنف")}
+            {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
+            {sortHeader("month", "مبيعات مرات في شهر")}
+            {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
+            {sortHeader("allTime", "مبيعات مرات منذ البداية")}
+            {sortHeader("coverage", "الكفاية (يوم)")}
           </tr></thead>
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}>
