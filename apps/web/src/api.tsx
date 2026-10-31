@@ -11,7 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, offlineLoginRequired, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineLoginRequired, setOfflineUser } from "./offline-storage";
-import { clearOfflineSharedGrants, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
+import { clearOfflineSharedGrants, lookupDownloadedDoctors, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
 import { offlineUser } from "./offline-storage";
@@ -49,8 +49,10 @@ export async function api<T>(
     const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
     if (reusable !== undefined) return reusable;
     const id = offlineUser();
-    return id === null ? undefined :
-      lookupSharedItem<T>(path,id).catch(() => undefined);
+    if (id===null) return undefined;
+    const doctors=await lookupDownloadedDoctors<T>(path,id).catch(()=>undefined);
+    if(doctors!==undefined) return doctors;
+    return lookupSharedItem<T>(path,id).catch(() => undefined);
   }
   // A disconnected employee may switch locally, but the old employee\'s
   // server cookie must never issue reads or writes on their behalf.
