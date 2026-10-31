@@ -3,7 +3,8 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import { audit } from "./audit.ts";
 
 /**
- * Credit monetary clearance earnings atomically with new posted sales.
+ * Credit monetary clearance earnings after committed sales, atomically with
+ * the durable follow-up job. Historical imports may retain inline posting.
  * The staff member who saved the invoice is the beneficiary. A return never
  * reverses, reduces or changes an existing employee earning; it only queues
  * an administrative review linked to the original sale.
