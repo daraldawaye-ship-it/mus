@@ -522,7 +522,8 @@ export function inventoryRoutes(pool: Pool): Router {
           const settings = await requireInventorySettings(client, companyId);
           // The settlement follow-up's "due only" filter is the reward source.
           // Evaluate BEFORE posting; a count changes the last-count pointer.
-          const eligibleForReward = !input.zeroLocation && location.kind === "showroom" &&
+          const eligibleForReward = !input.zeroLocation &&
+            !!(await client.query("SELECT 1 FROM locations WHERE company_id=$1 AND id=$2 AND kind='showroom'",[companyId,input.locationId])).rowCount &&
             await isItemDueForCount(client,companyId,input.itemId);
           const eligibleForTask = fromRequiredTask && eligibleForReward;
           await assertStockChronology(
