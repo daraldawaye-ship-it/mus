@@ -28,25 +28,25 @@ export function InvoiceSaleAlerts({
   onChooseClearance?: (itemId:number)=>void;
   disableSelection?:boolean;
 }) {
-  const { data, isError }=useQuery<SaleAlerts>({
+  const { data }=useQuery<SaleAlerts>({
     queryKey:["sales-item-alerts",userId,companyId,itemId],
     queryFn:({signal})=>api<SaleAlerts>(`/companies/${companyId}/sales-item-alerts/${itemId}`,{signal}),
     enabled:!!userId && itemId!==null,
-    staleTime:60_000,refetchOnWindowFocus:false,
+    staleTime:60_000,refetchOnWindowFocus:false,networkMode:"always",
   });
-  if(!itemId || (!data && !isError))return null;
-  if(isError)return null; // Informative-only: sale entry must not be blocked.
-  if(!data)return null;
-  const hasNotes=!!data.saleNotes||!!data.compositionSaleNotes;
-  if(!hasNotes && !data.alternatives.length && !currentClearanceRate)return null;
+  if(!itemId)return null;
+  // The item card includes dated clearance rate. Display it even when
+  // the optional server alerts have never been downloaded on this device.
+  const hasNotes=!!data?.saleNotes||!!data?.compositionSaleNotes;
+  if(!hasNotes && !data?.alternatives.length && !currentClearanceRate)return null;
   return (
     <section className="invoice-sale-alerts invoice-sale-alerts-inline" aria-label="تنبيهات الصنف عند البيع">
       {[
         ...(currentClearanceRate?[<span key="current-clearance" className="invoice-sale-inline-clearance">تصريف {wholePercent(currentClearanceRate)}%</span>]:[]),
-        ...[data.saleNotes,data.compositionSaleNotes].filter(Boolean).map((note,index)=>(
-          <span key={`note-${index}`} className={index===0&&data.saleNotes?"invoice-sale-inline-note invoice-sale-item-note":"invoice-sale-inline-note"}>{note}</span>
+        ...[data?.saleNotes,data?.compositionSaleNotes].filter(Boolean).map((note,index)=>(
+          <span key={`note-${index}`} className={index===0&&data?.saleNotes?"invoice-sale-inline-note invoice-sale-item-note":"invoice-sale-inline-note"}>{note}</span>
         )),
-        ...data.alternatives.map(row=>{
+        ...(data?.alternatives??[]).map(row=>{
           const caption=<>
             {row.name}{row.clearance?` (تصريف ${wholePercent(row.clearanceRate)}%)`:""}
             {row.nearExpiry?` (انتهاء ${row.nearestExpiryDate?.slice(0,7)??"قريب"})`:""}
