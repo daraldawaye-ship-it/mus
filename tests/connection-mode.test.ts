@@ -40,7 +40,7 @@ test("manual offline mode keeps current work local until server-confirmed return
   }
 });
 
-test("invoice editor and other queued forms use selected offline mode without remounting",()=>{
+test("offline-only recovery button does not remount invoices or trigger a manual disconnect",()=>{
   const invoice=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
   const finance=readFileSync("apps/web/src/pages/FinancePages.tsx","utf8");
   const questions=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
@@ -55,7 +55,10 @@ test("invoice editor and other queued forms use selected offline mode without re
   assert.match(app,/<ConnectionModeControl \/>/);
   assert.match(switcher,/returnToOnline\(\)/);
   assert.match(switcher,/العودة إلى وضع الاتصال/);
-  assert.match(switcher,/وضع عدم الاتصال/);
+  assert.match(switcher,/if \(!offline\) return null/);
+  assert.doesNotMatch(switcher,/setManualOffline/);
+  assert.doesNotMatch(switcher,/وضع عدم الاتصال/);
+  assert.match(switcher,/connectionSnapshot, returnToOnline, subscribeConnection/);
   assert.doesNotMatch(switcher,/location\.reload|navigate\(/);
 });
 
