@@ -561,7 +561,8 @@ page(
   "قائمة الأصناف",
   "الأصناف والمخزون",
   "/companies/:companyId/item-options-list",
-  { view: permission("items.view", "commerce.view") },
+  { view: permission("items.view", "commerce.view"),
+    edit: permission("items.manage") },
   "قائمة أصناف قابلة للتصفية حسب الكمية المتوفرة دون المرتجعات، ومرات البيع والكفاية مع الاحتياطي أو بدونه.",
   { type: "report", keywords: ["قائمة", "الأصناف", "المتوفر", "المبيعات", "المرات", "الكفاية", "الاحتياطي"] },
 );
