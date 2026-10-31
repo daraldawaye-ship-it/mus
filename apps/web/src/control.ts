@@ -12,6 +12,7 @@ export function useControls(companyId: number, employeeId: number | null = null)
       { signal },
     ),
     enabled: !!user && companyId > 0,
+    networkMode: "always",
   });
   const value = (key: string): boolean | number | AccountChoice[] | undefined =>
     query.data?.options.find(row => row.key === key)?.value;
