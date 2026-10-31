@@ -414,6 +414,8 @@ function BalancesList({ context }: { context: CompanyContext }) {
   const list = usePagedQuery<StockBalance>(
     `/companies/${companyId}/stock-balances?${filters}`,
     `company:${companyId}:inventory:balances`,
+    "id:asc",
+    { pageSizes: [20, 50, 100], staleTime: 60_000 },
   );
   const columns = useMemo<ColumnDef<StockBalance, unknown>[]>(
     () => [
@@ -538,8 +540,10 @@ function BalancesList({ context }: { context: CompanyContext }) {
           columns={columns}
           data={list.data?.items ?? []}
           total={list.data?.total ?? 0}
+          totalKnown={list.dataLoaded}
           page={list.page}
           pageSize={list.pageSize}
+          pageSizeOptions={[20, 50, 100]}
           onPageChange={list.setPage}
           onPageSizeChange={list.setPageSize}
           sorting={list.sorting}

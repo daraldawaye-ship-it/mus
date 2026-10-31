@@ -393,14 +393,17 @@ export function usePagedQuery<T, Extra = Record<never, never>>(
   resource: string,
   scope: string,
   defaultSort = "id:asc",
+  options: { pageSizes?: readonly number[]; staleTime?: number } = {},
 ) {
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const page = Math.max(1, Number(params.get("page")) || 1);
-  const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
-    ? Number(params.get("pageSize"))
-    : 20;
+  const allowedPageSizes = options.pageSizes ?? [10, 20, 50, 100];
+  const requestedPageSize = Number(params.get("pageSize"));
+  const pageSize = allowedPageSizes.includes(requestedPageSize)
+    ? requestedPageSize
+    : allowedPageSizes.includes(20) ? 20 : allowedPageSizes[0];
   const sorting: SortingState = (params.get("sort") ?? defaultSort)
     .split(",")
     .filter(Boolean)
@@ -432,6 +435,9 @@ export function usePagedQuery<T, Extra = Record<never, never>>(
       return api<Page<T> & Extra>(`${pathname}?${fields}`, { signal });
     },
     enabled: !!user,
+    // Previously visited pages are available immediately until they become
+    // stale. Invalidation after a stock/accounting write still forces refresh.
+    staleTime: options.staleTime ?? 0,
   });
   const setSorting: OnChangeFn<SortingState> = (updater) => {
     const next = typeof updater === "function" ? updater(sorting) : updater;
@@ -446,6 +452,7 @@ export function usePagedQuery<T, Extra = Record<never, never>>(
   return {
     data: result.data,
     loading: result.isFetching,
+    dataLoaded: result.data !== undefined,
     error: result.error,
     query,
     page,
@@ -453,8 +460,10 @@ export function usePagedQuery<T, Extra = Record<never, never>>(
     sorting,
     setQuery: (value: string) => write({ q: value || null, page: null }),
     setPage: (value: number) => write({ page: String(value) }),
-    setPageSize: (value: number) =>
-      write({ pageSize: String(value), page: null }),
+    setPageSize: (value: number) => {
+      if (allowedPageSizes.includes(value))
+        write({ pageSize: String(value), page: null });
+    },
     setSorting,
     refetch: result.refetch,
   };
