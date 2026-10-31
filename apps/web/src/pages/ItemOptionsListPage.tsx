@@ -432,14 +432,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
       </small>
     </Card>
-    <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة الأصناف المختارة">
-      <header>
-        <h1>{printMode === "selected" ? "الأصناف المختارة مؤقتًا" : "مسودة طلبية أصناف"}</h1>
-        <p>{context.company.name} — عدد الأصناف: {printItems.length} — {new Date().toLocaleDateString("ar-YE")}</p>
-      </header>
+    <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أسماء الأصناف دون ترويسة أو ترقيم">
       <div className="item-options-print-columns">
-        {printItems.map((item, index) => <div className="item-options-print-row" key={item.id}>
-          <bdi>{index + 1}.</bdi>
+        {printItems.map(item => <div className="item-options-print-row" key={item.id}>
           <span>{item.name}</span>
         </div>)}
       </div>
