@@ -20,6 +20,9 @@ type Task = LegalTaskPriority & {
   body: string;
   status: string;
   due_at: string | null;
+  follow_up_required?: boolean;
+  original_due_at?: string | null;
+  original_next_hearing?: string | null;
   cases: { id: number; title: string; next_hearing: string | null }[];
   comment_count: number;
 };
@@ -141,7 +144,7 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
   const actionButtons=(task:Task)=><div className="legal-task-quick-actions">
     <Button variant="secondary" size="compact" aria-label={`تفاصيل الأولوية ${task.priority}`}
       onClick={()=>setPriorityTask(task)}>{task.priority}</Button>
-    <Button variant="secondary" size="compact" onClick={()=>openComments(task,"add")}>تعليق</Button>
+    <Button variant="secondary" size="compact" onClick={()=>openComments(task,"add")}>{task.follow_up_required?"إدخال الوقائع":"تعليق"}</Button>
     <Button variant="secondary" size="compact" title="عرض التعليقات"
       aria-label={`عرض تعليقات المهمة (${task.comment_count??0})`}
       onClick={()=>openComments(task,"view")}>
@@ -161,7 +164,7 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
     (!search || [task.title, task.body, ...task.cases.map(c => c.title)].join(" ").includes(search)),
   ), [query.data, query.error, filter, search]);
   return <Card title="جميع المهام — حسب الأولوية">
-    <p>تظهر المهام غير المنجزة أولًا، والأولوية 1 هي الأكثر استعجالًا. تُقيّم الأولوية تلقائيًا من المواعيد والمعطيات المسجلة. يمكنك تحديد أولوية لمهمة واحدة أو إعادتها إلى التقييم التلقائي.</p>
+    <p>تظهر المهام غير المنجزة أولًا، والأولوية 1 هي الأكثر استعجالًا. تُقيّم الأولوية تلقائيًا من المواعيد والمعطيات المسجلة. المهمة التي يفوت موعدها دون إثبات إنجاز تعود تلقائيًا إلى متابعة اليوم لإدخال ما حدث وتحديد الموعد القادم، مع حفظ تاريخها الأصلي. يمكنك تحديد أولوية لمهمة واحدة أو إعادتها إلى التقييم التلقائي.</p>
     <div className="legal-actions">
       <Field label="بحث في المهام" value={search} onChange={event => setSearch(event.target.value)} />
       <Select label="تصفية المهام" value={filter} onChange={event => setFilter(event.target.value)}>
@@ -236,10 +239,10 @@ export function LegalTaskBoard({ owner }: { owner: boolean }) {
     <Dialog open={discussion!==null} onClose={()=>setDiscussion(null)}
       title={discussion?.task.title??"تعليقات المهمة"}>
       {discussion?.mode==="add"&&<form className="legal-task-popup-body" onSubmit={e=>void saveComment(e)}>
-        <label htmlFor="legal-task-comment-input">ماذا تم في هذه المهمة؟</label>
+        <label htmlFor="legal-task-comment-input">{discussion.task.follow_up_required?"ما الوقائع التي حدثت؟ وما القرار والموعد القادم؟":"ماذا تم في هذه المهمة؟"}</label>
         <textarea id="legal-task-comment-input" maxLength={2000} rows={4} required
           value={commentText} onChange={e=>setCommentText(e.target.value)}
-          placeholder="مثال: تمت مراجعة المحكمة وتسليم المذكرة…"/>
+          placeholder={discussion.task.follow_up_required?"أدخل ما حدث فعلًا، وقرار الجلسة أو نتيجة الإجراء، وتاريخ الجلسة التالية إن عُرف؛ حدّث موعد القضية من بطاقتها.":"مثال: تمت مراجعة المحكمة وتسليم المذكرة…"}/>
         {commentError&&<Notice tone="error">{commentError}</Notice>}
         <div className="legal-task-quick-actions">
           <Button type="submit" disabled={commentBusy||!commentText.trim()}>
