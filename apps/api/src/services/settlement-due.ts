@@ -17,8 +17,21 @@ export function settlementFollowUpFrom(importanceParameter: string): string {
       ON c.company_id=i.company_id AND c.id=i.currency_id
     LEFT JOIN item_statistics stats
       ON stats.company_id=i.company_id AND stats.item_id=i.id
-    LEFT JOIN stock_operations last_count
-      ON last_count.company_id=stats.company_id AND last_count.id=stats.last_adjustment_operation_id AND last_count.kind='adjustment'
+    LEFT JOIN LATERAL (
+      -- Prefer the cached latest operation. Some imported/legacy items have
+      -- no statistics row: use the indexed immutable operation history then.
+      SELECT o.id,o.document_date,o.created_at
+      FROM stock_operations o
+      WHERE o.company_id=i.company_id AND o.kind='adjustment'
+        AND o.id=stats.last_adjustment_operation_id
+      UNION ALL
+      SELECT o.id,o.document_date,o.created_at
+      FROM stock_operations o
+      WHERE o.company_id=i.company_id AND o.kind='adjustment'
+        AND stats.last_adjustment_operation_id IS NULL
+        AND o.creation_payload->>'itemId'=i.id::text
+      ORDER BY id DESC LIMIT 1
+    ) last_count ON true
     LEFT JOIN LATERAL (
       SELECT sum(d.sale_invoices - d.sale_return_invoices) AS monthly_sales
       FROM item_daily_activity d
