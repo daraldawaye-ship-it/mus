@@ -66,6 +66,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
   const [search, setSearch] = useState(params.get("q") ?? "");
+  const [filterError, setFilterError] = useState("");
   const paramsKey = params.toString();
   useEffect(() => {
     setDraft(readDraft(new URLSearchParams(paramsKey)));
@@ -74,9 +75,27 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
   const pageSize = [20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize")) : 50;
-  const request = new URLSearchParams(params);
+  const numberPattern = /^-?\\d{1,15}(?:\\.\\d{1,6})?$/;
+  const active = (["active", "archived", "all"] as const).find(
+    value => value === params.get("active")) ?? "active";
+  const sortBy = sortOptions.find(([key]) => key === params.get("sortBy"))?.[0] ?? "code";
+  const sortDir = params.get("sortDir") === "desc" ? "desc" : "asc";
+  // Only forward fields supported by this list's API. URL parameters from
+  // navigation, older links, and other pages must never turn the list into a 400.
+  const request = new URLSearchParams();
   request.set("page", String(page));
   request.set("pageSize", String(pageSize));
+  request.set("active", active);
+  request.set("sortBy", sortBy);
+  request.set("sortDir", sortDir);
+  const q = params.get("q")?.trim();
+  if (q) request.set("q", q.slice(0, 120));
+  for (const { key } of ranges) {
+    const value = params.get(key)?.trim();
+    if (value && numberPattern.test(value)) request.set(key, value);
+  }
+  if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
+  if (params.get("useReserve") === "false") request.set("useReserve", "false");
   const resultQuery = useQuery({
     queryKey: ["item-options-list", user?.id, companyId, request.toString()],
     queryFn: ({ signal }) => api<Response>(
@@ -116,6 +135,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   };
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const invalid = ranges.find(({ key }) =>
+      draft[key].trim() && !numberPattern.test(draft[key].trim()));
+    if (invalid) {
+      setFilterError(`حقل «${invalid.label}» غير صالح. أدخل رقمًا حتى 6 منازل عشرية، أو اتركه فارغًا.`);
+      return;
+    }
+    setFilterError("");
     setParams(previous => {
       const next = new URLSearchParams(previous);
       for (const { key } of ranges) {
@@ -130,6 +156,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     });
   }
   function reset() {
+    setFilterError("");
     setDraft(readDraft(new URLSearchParams()));
     setSearch("");
     setParams(new URLSearchParams());
@@ -137,8 +164,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const coverage = (row: Row) => params.get("useReserve") === "false"
     ? row.approximateCoverageDays : row.coverageAfterReserveDays;
   type SortColumn = (typeof sortOptions)[number][0];
-  const activeSort = params.get("sortBy") ?? "code";
-  const activeDirection = params.get("sortDir") ?? "asc";
+  const activeSort = sortBy;
+  const activeDirection = sortDir;
   function selectSortColumn(column: SortColumn) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -211,8 +238,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       <form onSubmit={apply}>
         <div className="form-grid">
           <Field label="بحث عن صنف بالاسم أو الرمز أو الباركود" type="search"
-            value={search} onChange={event => setSearch(event.target.value)} />
-          <Select label="حالة الصنف" value={params.get("active") ?? "active"}
+            maxLength={120} value={search} onChange={event => setSearch(event.target.value)} />
+          <Select label="حالة الصنف" value={active}
             onChange={event => change("active", event.target.value)}>
             <option value="active">الفعال</option>
             <option value="archived">المؤرشف</option>
@@ -240,7 +267,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         </div>
       </form>
     </Card>}
-    {resultQuery.error && <Notice tone="error">{errorMessage(resultQuery.error)}</Notice>}
+    {filterError && <Notice tone="error">{filterError}</Notice>}
+    {resultQuery.error && <Notice tone="error">
+      {errorMessage(resultQuery.error)}
+      {" "}إذا استمرت المشكلة اضغط «إعادة الافتراضيات» ثم «تحديث القائمة».
+    </Notice>}
     <Card title="نتائج قائمة الأصناف">
       <div className="item-options-selection-tools">
         <span>المختار مؤقتًا: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
