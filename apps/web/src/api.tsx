@@ -314,10 +314,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     client.clear();
     ++epoch.current;
     csrf = null;
-    const prior=offlineUser();
     setOfflineUser(null);
     sharedIdentity(null);
-    if(prior!==null) await clearOfflineSharedGrants(prior).catch(()=>{});
+    // Keep previously authorized reference downloads for this account so it
+    // can be used again only after the employee proves their password locally.
+    // In-memory grants are cleared by sharedIdentity(null) above; a denied
+    // server session still revokes persisted grants in recoverOffline().
     setOfflineMode(false);
     setRequiresOnlineLogin(false);
     // Auth guards must share the logout destination until the router commits it.
