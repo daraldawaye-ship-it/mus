@@ -57,8 +57,8 @@ const doctorSyncing=new Set<string>();
  * permission; page one grants this group for that user only. */
 export async function refreshSharedDoctorDirectory(userId:number,companyId:number):Promise<void> {
   const key=userId+":"+companyId;
-  if(!userId || !companyId || !navigator.onLine || document.visibilityState==="hidden" ||
-     doctorSyncing.has(key)) return;
+  const interrupted=()=>!navigator.onLine || document.visibilityState==="hidden";
+  if(!userId || !companyId || interrupted() || doctorSyncing.has(key)) return;
   doctorSyncing.add(key);
   try {
     const root="/companies/"+companyId+"/doctors?";
@@ -71,7 +71,7 @@ export async function refreshSharedDoctorDirectory(userId:number,companyId:numbe
     if(!sharedReferenceRefreshDue(previous))return;
     let page=previous?.complete?1:(previous?.page??1);
     for(let budget=0;budget<6;budget++,page++) {
-      if(!navigator.onLine || document.visibilityState==="hidden")return;
+      if(interrupted())return;
       const result=page===1?first:await api<Page>(url(page));
       await shareAuthorizedRead(url(page),result);
       const complete=result.items.length<100 ||
