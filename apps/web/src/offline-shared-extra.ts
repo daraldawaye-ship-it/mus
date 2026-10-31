@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { shareAuthorizedRead, sharedProgress, saveSharedProgress } from "./offline-shared";
+import { shareAuthorizedRead, sharedProgress, saveSharedProgress, sharedReferenceRefreshDue } from "./offline-shared";
 
 type Page = { items:Record<string,unknown>[];total?:number };
 export async function refreshSharedCompositions(userId:number,companyId:number) {
@@ -8,8 +8,9 @@ export async function refreshSharedCompositions(userId:number,companyId:number) 
   const first=await api<Page>(url(1));
   await shareAuthorizedRead(url(1),first);
   const saved=await sharedProgress(companyId,"item-compositions",userId);
-  if (saved?.complete) return;
-  const page=saved?.page??1;
+  // Keep the first page fresh, and rescan remaining compositions once a day.
+  if (!sharedReferenceRefreshDue(saved)) return;
+  const page=saved?.complete?1:(saved?.page??1);
   const response=page===1?first:await api<Page>(url(page));
   await shareAuthorizedRead(url(page),response);
   const complete=response.items.length<100||(typeof response.total==="number"&&page*100>=response.total);

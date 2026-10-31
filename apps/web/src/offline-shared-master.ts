@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { sharedProgress, saveSharedProgress, shareAuthorizedRead } from "./offline-shared";
+import { sharedProgress, saveSharedProgress, shareAuthorizedRead, sharedReferenceRefreshDue } from "./offline-shared";
 const sections = [
   ["options:accounts","commerce-options?type=accounts"],
   ["options:branches","commerce-options?type=branches"],
@@ -26,14 +26,14 @@ export async function downloadSharedReferenceCards(userId:number,companyId:numbe
       return "/companies/"+companyId+"/"+resource.split("?")[0]+"?"+search;
     };
     try {
-      const already=await sharedProgress(companyId,group,userId);
-      if (already?.complete) continue;
+      // Revalidate the current user and refresh page one on each visible pass.
+      // Full catalog rescans remain limited to once per day.
       const firstPath=pathAt(1);
       const first=await api<Page>(firstPath);
       await shareAuthorizedRead(firstPath,first);
       const previous=await sharedProgress(companyId,group,userId);
-      if (previous?.complete) continue;
-      for(let page=previous?.page??1;remaining>0;page++) {
+      if (!sharedReferenceRefreshDue(previous)) continue;
+      for(let page=previous?.complete?1:(previous?.page??1);remaining>0;page++) {
         if(interrupted()) return;
         const path=pathAt(page);
         const data=page===1?first:await api<Page>(path);
