@@ -18,7 +18,7 @@ export function legacySales127RepairRoutes(pool: Pool): Router {
     const companyId = id(req.params.companyId);
     if (companyId !== 2)
       throw new HttpError(404, "not_found", "هذه العملية تخص دفعة دار الدواء المحددة فقط");
-    const user = await currentActor(client, actor(req), !writable);
+    const user = await currentActor(client, actor(req), writable);
     ownerOnly(user);
     if (user.suspended)
       throw new HttpError(403, "forbidden", "الحساب موقوف");
