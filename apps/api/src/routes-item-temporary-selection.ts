@@ -8,7 +8,11 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { readItems } from "./services/items.ts";
 import { audit } from "./services/audit.ts";
 
-/** Shared, company-scoped item checkmarks, independent of item-card revisions. */
+/**
+ * Shared company checklist kept in its own table. Never UPDATE items for
+ * checkmarks: protect_item_master_identity() rejects changes without a new
+ * revision, and bumping that revision would conflict with real card edits.
+ */
 export function itemTemporarySelectionRoutes(pool: Pool): Router {
   const router = Router();
   const base = "/companies/:companyId/item-temporary-selection";
@@ -16,9 +20,11 @@ export function itemTemporarySelectionRoutes(pool: Pool): Router {
   router.get(base, handler(async (req, res) => {
     const result = await readItems(pool, req, async (client, companyId) => {
       const selected = await client.query(
-        `SELECT id, code, name FROM items
-         WHERE company_id=$1 AND temporary_selected=true
-         ORDER BY name, id`, [companyId],
+        `SELECT i.id, i.code, i.name
+           FROM company_item_temporary_selections chosen
+           JOIN items i ON i.company_id=chosen.company_id AND i.id=chosen.item_id
+          WHERE chosen.company_id=$1 ORDER BY i.name, i.id`,
+        [companyId],
       );
       return selected.rows.map(row => ({
         id: Number(row.id), code: String(row.code), name: String(row.name),
@@ -35,19 +41,29 @@ export function itemTemporarySelectionRoutes(pool: Pool): Router {
       const user = await currentActor(client, actor(req));
       await companyAccess(client, user, companyId, "items.view");
       const found = await client.query(
-        `SELECT id,code,name,temporary_selected FROM items
-         WHERE company_id=$1 AND id=$2 FOR UPDATE`, [companyId, itemId],
+        "SELECT id, code, name FROM items WHERE company_id=$1 AND id=$2",
+        [companyId, itemId],
       );
       if (!found.rows[0])
         throw new HttpError(404, "item_not_found", "الصنف غير موجود في هذه الشركة");
-      const previous = Boolean(found.rows[0].temporary_selected);
-      if (previous !== checked) {
-        await client.query(
-          "UPDATE items SET temporary_selected=$3 WHERE company_id=$1 AND id=$2",
-          [companyId, itemId, checked],
-        );
+
+      const changed = checked
+        ? await client.query(
+            `INSERT INTO company_item_temporary_selections
+                 (company_id, item_id, selected_by)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (company_id, item_id) DO NOTHING
+               RETURNING item_id`,
+            [companyId, itemId, user.id],
+          )
+        : await client.query(
+            `DELETE FROM company_item_temporary_selections
+               WHERE company_id=$1 AND item_id=$2 RETURNING item_id`,
+            [companyId, itemId],
+          );
+      if (changed.rowCount) {
         await audit(client, user, "item.field.update", "item", itemId,
-          { field: "temporarySelected", value: previous },
+          { field: "temporarySelected", value: !checked },
           { field: "temporarySelected", value: checked }, companyId);
       }
       return { id: itemId, code: String(found.rows[0].code),
@@ -63,7 +79,7 @@ export function itemTemporarySelectionRoutes(pool: Pool): Router {
       const user = await currentActor(client, actor(req));
       await companyAccess(client, user, companyId, "items.view");
       const updated = await client.query(
-        "UPDATE items SET temporary_selected=false WHERE company_id=$1 AND temporary_selected=true",
+        "DELETE FROM company_item_temporary_selections WHERE company_id=$1",
         [companyId],
       );
       const cleared = updated.rowCount ?? 0;
