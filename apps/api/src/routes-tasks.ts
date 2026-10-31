@@ -9,6 +9,7 @@ import { audit } from "./services/audit.ts";
 import { directoryEntries, assertDirectoryAccess, assertRequestPagesEnabled } from "./services/pages.ts";
 import type { User } from "../../../packages/contracts/src/index.ts";
 import { controlValue } from "./services/control-values.ts";
+import { settlementDuePredicate, settlementFollowUpFrom } from "./services/settlement-due.ts";
 
 const kinds = ["memo_required","composition_review","stock_count"] as const;
 type Kind = (typeof kinds)[number];
@@ -30,25 +31,12 @@ const keyOf=(v:string|string[]|undefined):Kind=>{
  return v as Kind;
 };
 const dueStockQuery=`
- WITH sold AS (
-   SELECT item_id,sum(sale_invoices) AS times FROM item_daily_activity
-   WHERE company_id=$1 AND document_date>=(clock_timestamp() AT TIME ZONE 'Asia/Aden')::date-29
-   GROUP BY item_id
- )
- SELECT i.id,i.code,i.name,coalesce(sold.times,0)::integer AS sales,
-   ceil(($2::numeric*30)/(coalesce(sold.times,0)+5))::integer AS interval_days
- FROM items i LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id
- LEFT JOIN sold ON sold.item_id=i.id
- WHERE i.company_id=$1 AND i.active AND
-   ((s.stock_showroom<>0 AND
-      (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date -
-       COALESCE((s.last_showroom_adjustment_at AT TIME ZONE 'Asia/Aden')::date,
-                (i.created_at AT TIME ZONE 'Asia/Aden')::date)
-       >= ceil(($2::numeric*30)/(coalesce(sold.times,0)+5)))
-    OR (i.stocktake_required_at IS NOT NULL AND
-        (s.last_showroom_adjustment_at IS NULL OR i.stocktake_required_at>s.last_showroom_adjustment_at)))
- ORDER BY interval_days,i.name,i.id
- `;
+  SELECT i.id,i.code,i.name,COALESCE(activity.monthly_sales,0)::integer AS sales,
+    ceil(count_limit.raw_limit)::integer AS interval_days
+  ${settlementFollowUpFrom("$2")}
+  WHERE i.company_id=$1 AND i.active AND ${settlementDuePredicate}
+  ORDER BY interval_days,i.name,i.id
+`;
 export async function isItemDueForCount(client:PoolClient,companyId:number,itemId:number):Promise<boolean> {
  return !!(await client.query("SELECT 1 FROM ("+dueStockQuery+") d WHERE d.id=$3 LIMIT 1",[companyId,Number(await controlValue(client,companyId,"inventory_count_importance")),itemId])).rowCount;
 }
