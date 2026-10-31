@@ -159,3 +159,10 @@ apps/web/src/offline-storage.ts، OfflineStatus.tsx، api.tsx، AppSetup.tsx، a
 - تظل أسعار الأصناف والسطور وإجمالي الفاتورة محوّلة ومحسوبة محليًا بواسطة `calculateInvoiceTotals`؛ وتُعرض نسبة تصريف الصنف من كرت الصنف المحفوظ وتاريخ الفاتورة بواسطة `saleClearanceRate` حتى إذا لم يكن `sales-item-alerts` متاحًا؛ تُحفظ تنبيهات الصنف التي قرأها الموظف مسبقًا فقط. حساب العمولة النهائي يجري على الخادم عند الترحيل دون منح نقطة أو عمولة مرتين.
 - يُخزن `wallet/summary` آخر رصيد نقاط أكدته استجابة الخادم ضمن `snapshots` الخاصة بالمستخدم. يظهر «محفوظ» في وضع عدم الاتصال؛ النقاط الناشئة عن فاتورة أو إجابة غير مُزامنة لا تُضاف إلى الرصيد المؤكد إلا بعد تسجيلها في الخادم. تستمر صفحات الصلاحيات والرصيد في استخدام النسخ المحلية حتى بعد إعادة فتح التطبيق، دون تجاوز صلاحيات الحساب.
 - ملفات التنفيذ: `apps/web/src/offline-shared.ts` و`offline-shared-master.ts` و`OfflineStatus.tsx` و`api.tsx` و`offline-storage.ts` و`pages/CommercePages.tsx` و`InvoiceSaleAlerts.tsx` و`WalletIndicator.tsx` و`page-directory.tsx`. الاختبارات: `tests/device-offline.test.ts`.
+
+## ظهور زر الاتصال عند فقد الشبكة فقط — 31 أكتوبر 2026
+
+- مكوّن `ConnectionModeControl` لا يعرض زرًا في الترويسة عندما تكون حالة `connectionSnapshot()` هي `online`؛ فلا يعرض خيار «وضع عدم الاتصال» أثناء الاتصال العادي.
+- عند `browser-offline` أو `network-unreachable` أو `manual-offline` المتبقية من جلسة سابقة، يظهر زر «العودة إلى وضع الاتصال» ومؤشر «دون إنترنت». بعد نجاح `returnToOnline()` يخفي المكوّن نفسه دون إعادة تحميل الصفحة أو إزالة الفاتورة.
+- المنطق يعتمد على `useSyncExternalStore` و`subscribeConnection` نفسه. لا تغير حالة الطلبات المتأخرة أو هوية المستخدم أو تنشئ محاولات ترحيل جديدة لمجرد إخفاء الزر.
+- أُضيفت فحوص انحدار بملف `tests/connection-mode.test.ts` للتحقق من `if (!offline) return null` وعدم عرض زر فصل يدوي.
