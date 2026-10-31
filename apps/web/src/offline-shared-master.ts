@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { rememberRead, offlineUser } from "./offline-storage";
 import { sharedProgress, saveSharedProgress, shareAuthorizedRead, sharedReferenceRefreshDue } from "./offline-shared";
 const sections = [
   ["options:accounts","commerce-options?type=accounts"],
@@ -82,4 +83,51 @@ export async function refreshSharedDoctorDirectory(userId:number,companyId:numbe
   } catch {
     // Missing permissions or a disconnected network must not block invoicing.
   } finally { doctorSyncing.delete(key); }
+}
+
+/**
+ * Preload lightweight document defaults before a network outage, including in
+ * browsers that have not installed the PWA. Never infer a currency, branch or
+ * stock location ID; the server must first authorize and supply the records.
+ * Each cached snapshot remains scoped to the current authenticated user.
+ */
+const preloadingDocumentDefaults=new Set<string>();
+const documentDefaultsChecked=new Map<string,number>();
+export async function refreshOfflineDocumentDefaults(userId:number,companyId:number):Promise<void> {
+  const key=userId+":"+companyId;
+  if(!navigator.onLine || document.visibilityState==="hidden" || offlineUser()!==userId ||
+     preloadingDocumentDefaults.has(key) ||
+     Date.now()-(documentDefaultsChecked.get(key)??0)<10*60_000)return;
+  preloadingDocumentDefaults.add(key);
+  let hadSuccess=false;
+  try {
+    async function authorized<T>(path:string):Promise<T> {
+      const result=await api<T>(path);
+      if(offlineUser()!==userId)throw new Error("تغير المستخدم");
+      await rememberRead(path,result);
+      hadSuccess=true;
+      return result;
+    }
+    for(const resource of ["commerce-options","financial-options"] as const) {
+      const prefix="/companies/"+companyId+"/"+resource+"?";
+      // Download confirmed YER and all active currency/branch choices.
+      await authorized<Page>(prefix+"type=currencies&active=true&q=YER&page=1&pageSize=20").catch(()=>{});
+      const branches=await authorized<Page>(
+        prefix+"type=branches&active=true&page=1&pageSize=100").catch(()=>null);
+      if(resource!=="commerce-options" || !branches)continue;
+      const main=branches.items.find(b=>b.active && b.code==="HQ") ??
+        branches.items.find(b=>b.active && b.code==="MAIN") ??
+        branches.items.find(b=>b.active);
+      if(!main || typeof main.id!=="number")continue;
+      const branchId=main.id;
+      // Sales requires a showroom. Purchases may use a warehouse.
+      await authorized<Page>(prefix+"type=locations&active=true&branchId="+branchId+
+        "&kind=showroom&pageSize=100").catch(()=>{});
+      await authorized<Page>(prefix+"type=locations&active=true&branchId="+branchId+
+        "&pageSize=100").catch(()=>{});
+    }
+  } finally {
+    preloadingDocumentDefaults.delete(key);
+    if(hadSuccess) documentDefaultsChecked.set(key,Date.now());
+  }
 }
