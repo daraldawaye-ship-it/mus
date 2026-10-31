@@ -134,7 +134,7 @@ export function HomePage() {
 }
 
 export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
-  const { user, reloadSession } = useSession();
+  const { user, loginWithPassword, acceptRegistration, requiresOnlineLogin } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthReturn = searchParams.get("returnTo");
@@ -160,7 +160,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setLoginId("");
   }, [mode]);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user && !requiresOnlineLogin) return <Navigate to="/" replace />;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,18 +168,17 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setBusy(true);
     setError("");
     try {
-      await api<SessionResponse>(
-        registering ? "/auth/register" : "/auth/login",
-        {
-          method: "POST",
-          body: registering
-            ? { ...draft, image: "" }
-            : { ...(loginId.trim().includes("@") ? { email: loginId.trim() } : { phone: loginId.trim() }), password: draft.password },
-          signal: guard.signal,
-        },
-      );
-      if (!guard.isCurrent()) return;
-      await reloadSession();
+      if (registering) {
+        const result=await api<SessionResponse>("/auth/register",{
+          method:"POST",body:{...draft,image:""},signal:guard.signal,
+        });
+        if (!guard.isCurrent()) return;
+        await acceptRegistration(result);
+      } else {
+        await loginWithPassword(loginId,draft.password);
+      }
+      // A successful sign-in changes the user-scoped guard identity.
+      // The auth page must still navigate to the selected employee workspace.
       if (safeReturn) {
         // The OAuth approval page is a server route, not a React Router page.
         window.location.assign(safeReturn);
@@ -205,7 +204,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
         description={
           registering
             ? "ابدأ بحساب مستقل؛ الانضمام إلى شركة يتم من خلال موظف مرتبط بحسابك."
-            : "بعد تسجيل الدخول ستُفتح آخر شركة متاحة لك تلقائيًا، ويمكنك تغيير الشركة من القائمة."
+            : "يمكن لأي موظف سبق دخوله على هذا الجهاز الدخول بكلمة مروره دون إنترنت. تُرسل العمليات بعد تسجيل دخوله عبر الإنترنت مجددًا."
         }
       />
       <Card>

@@ -80,7 +80,11 @@ export function mutationSecurity(origin: string): RequestHandler {
       next(new HttpError(403, "csrf", "مصدر الطلب غير صالح"));
       return;
     }
-    if (req.auth && req.headers["x-csrf-token"] !== req.auth.csrf) {
+    // Password login replaces an old employee cookie after a device-local
+    // offline switch. It still requires the exact trusted Origin and JSON,
+    // and verifies the new password; all other mutations retain CSRF.
+    if (req.auth && req.path !== "/auth/login" &&
+        req.headers["x-csrf-token"] !== req.auth.csrf) {
       next(new HttpError(403, "csrf", "رمز حماية الطلب غير صالح"));
       return;
     }

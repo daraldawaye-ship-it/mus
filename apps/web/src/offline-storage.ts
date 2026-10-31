@@ -187,6 +187,123 @@ export async function readOfflineSession():
 export async function clearOfflineSession(): Promise<void> {
   await resumeClear();
 }
+
+/**
+ * A shared device may enroll more than one employee, but only after the
+ * server has verified that employee's password during an online login.
+ * PBKDF2 stores a salted verifier, never the password or the server hash.
+ * Offline access expires seven days after that online verification.
+ */
+type OfflineAccount = {
+  userId: number; user: import("../../../packages/contracts/src/index").User;
+  login: string; salt: number[]; verifier: number[]; verifiedAt: number;
+  failures: number; lockedUntil: number;
+};
+const OFFLINE_ACCOUNT_DB = "alraesy-offline-accounts-v1";
+const OFFLINE_PBKDF2_ITERATIONS = 350_000;
+function offlineLoginId(value: string): string { return value.trim().toLowerCase(); }
+function accountDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(OFFLINE_ACCOUNT_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("accounts", {keyPath: "userId"});
+    request.onsuccess = () => { const db=request.result; db.onversionchange=()=>db.close(); resolve(db); };
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("تعذر تحديث اعتماد الموظفين على هذا الجهاز"));
+  });
+}
+async function allOfflineAccounts(): Promise<OfflineAccount[]> {
+  const db=await accountDb();
+  try {
+    return await new Promise((resolve,reject)=>{
+      const req=db.transaction("accounts","readonly").objectStore("accounts").getAll();
+      req.onsuccess=()=>resolve(req.result as OfflineAccount[]);
+      req.onerror=()=>reject(req.error);
+    });
+  } finally { db.close(); }
+}
+async function storeOfflineAccount(account: OfflineAccount): Promise<void> {
+  const db=await accountDb();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=db.transaction("accounts","readwrite");
+      tx.objectStore("accounts").put(account);
+      tx.oncomplete=()=>resolve();
+      tx.onabort=()=>reject(tx.error);
+      tx.onerror=()=>reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+async function passwordVerifier(password:string,salt:number[]):Promise<number[]> {
+  if (!crypto?.subtle) throw new Error("هذا الجهاز لا يدعم التحقق الآمن دون اتصال");
+  const bytes=new TextEncoder().encode(password);
+  const key=await crypto.subtle.importKey("raw",bytes,{name:"PBKDF2"},false,["deriveBits"]);
+  const bits=await crypto.subtle.deriveBits({
+    name:"PBKDF2",salt:new Uint8Array(salt),iterations:OFFLINE_PBKDF2_ITERATIONS,hash:"SHA-256",
+  },key,256);
+  return Array.from(new Uint8Array(bits));
+}
+export async function enrollOfflineAccount(
+  user: import("../../../packages/contracts/src/index").User,
+  login: string, password: string,
+): Promise<void> {
+  if (user.archived || user.suspended || !user.id || !login.trim() || !password) return;
+  const salt=Array.from(crypto.getRandomValues(new Uint8Array(16)));
+  const verifier=await passwordVerifier(password,salt);
+  await storeOfflineAccount({
+    userId:user.id,user,login:offlineLoginId(login),salt,verifier,
+    verifiedAt:Date.now(),failures:0,lockedUntil:0,
+  });
+}
+export async function authenticateOfflineAccount(
+  login:string,password:string,
+): Promise<import("../../../packages/contracts/src/index").User> {
+  const account=(await allOfflineAccounts()).find(row=>row.login===offlineLoginId(login));
+  const now=Date.now();
+  if (!account || !validOfflineSession({user:account.user,savedAt:account.verifiedAt},now))
+    throw new Error("هذا الحساب لم يجهز للدخول دون إنترنت أو انتهت صلاحيته. يجب الدخول مرة عبر الإنترنت.");
+  if (account.lockedUntil>now)
+    throw new Error("محاولات دخول كثيرة. أعد المحاولة بعد انتهاء فترة الحظر أو ادخل عبر الإنترنت.");
+  const actual=await passwordVerifier(password,account.salt);
+  let difference=0;
+  for(let i=0;i<account.verifier.length;i++) difference |= account.verifier[i] ^ (actual[i] ?? 0);
+  if(difference!==0 || account.verifier.length!==actual.length) {
+    account.failures++;
+    if(account.failures>=5) { account.lockedUntil=now+60_000; account.failures=0; }
+    await storeOfflineAccount(account);
+    throw new Error("كلمة المرور غير صحيحة");
+  }
+  account.failures=0;
+  account.lockedUntil=0;
+  await storeOfflineAccount(account);
+  return account.user;
+}
+/** A local sign-out revokes local visibility without pretending to revoke the
+ * server cookie while disconnected. That cookie cannot be used by this app
+ * until a fresh online login replaces it. */
+export async function setOfflineLoginRequired(required:boolean, clearActive=false):Promise<void> {
+  const db=await resumeDatabase();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=db.transaction("verified","readwrite");
+      tx.objectStore("verified").put({key:"fresh-login-required",required});
+      if(clearActive) tx.objectStore("verified").delete("last");
+      tx.oncomplete=()=>resolve();
+      tx.onabort=()=>reject(tx.error);
+      tx.onerror=()=>reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+export async function offlineLoginRequired():Promise<boolean> {
+  const db=await resumeDatabase();
+  try {
+    return await new Promise((resolve,reject)=>{
+      const req=db.transaction("verified","readonly").objectStore("verified").get("fresh-login-required");
+      req.onsuccess=()=>resolve(!!(req.result as {required?:boolean}|undefined)?.required);
+      req.onerror=()=>reject(req.error);
+    });
+  } finally { db.close(); }
+}
+
 function allowedSnapshot(path: string): boolean {
   // Cache only already-authorized server GET responses. The user key is
   // separate per account; no authentication or password endpoints are cached.
