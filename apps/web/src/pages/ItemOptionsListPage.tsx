@@ -75,7 +75,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
   const pageSize = [20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize")) : 50;
-  const numberPattern = /^-?\\d{1,15}(?:\\.\\d{1,6})?$/;
+  const numberPattern = /^-?\d{1,15}(?:\.\d{1,6})?$/;
   const active = (["active", "archived", "all"] as const).find(
     value => value === params.get("active")) ?? "active";
   const sortBy = sortOptions.find(([key]) => key === params.get("sortBy"))?.[0] ?? "code";
