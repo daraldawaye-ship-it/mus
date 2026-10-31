@@ -1,9 +1,15 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <meta name="theme-color" content="#176b61" />
+    <meta name="theme-color" content="#111a22" />
+    <meta name="color-scheme" content="dark light" />
+    <style>
+      /* Paint before CSS/React: no bright splash on desktop or installed PWA. */
+      :root { color-scheme: dark; background: #111a22; color: #edf2f7; }
+      body { margin: 0; background: #111a22; color: #edf2f7; }
+    </style>
     <link rel="icon" type="image/png" sizes="192x192" href="/site-icon.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/site-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
