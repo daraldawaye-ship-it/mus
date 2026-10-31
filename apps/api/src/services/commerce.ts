@@ -111,20 +111,38 @@ export async function invoiceDTOs(
     "SELECT l.*,l.expiry_date::text AS expiry_text FROM invoice_lines l WHERE l.company_id=$1 AND l.invoice_id=ANY($2::integer[]) ORDER BY l.invoice_id,l.line_number",
     [rows[0].company_id, rows.map((row) => row.id)],
   );
-  return rows.map((row) => ({
+  const corrections = await db.query(
+    "SELECT invoice_id,corrected_total,line_snapshots FROM legacy_sales_sign_repairs WHERE company_id=$1 AND invoice_id=ANY($2::integer[])",
+    [rows[0].company_id, rows.map(row => row.id)],
+  );
+  const correctedByInvoice = new Map<number, { corrected_total: string; line_snapshots: Array<{
+    lineNumber: number; quantity: string; smallestQuantity: string; gross: string;
+    total: string; baseTotal: string; costBase: string;
+  }> }>(corrections.rows.map(row => [row.invoice_id, row]));
+  return rows.map((row) => {
+    const correction = correctedByInvoice.get(row.id);
+    const correctionLines = new Map(correction?.line_snapshots.map(line => [line.lineNumber,line]) ?? []);
+    const effectiveLines = lines.rows
+      .filter(line => line.invoice_id === row.id)
+      .map(line => {
+        const original = invoiceLineDTO(line);
+        const fixed = correctionLines.get(line.line_number);
+        return fixed ? {
+          ...original,
+          quantity: fixed.quantity, smallestQuantity: fixed.smallestQuantity,
+          gross: fixed.gross, total: fixed.total, baseTotal: fixed.baseTotal,
+          costBase: fixed.costBase,
+        } : original;
+      });
+    return ({
     id: row.id,
     companyId: row.company_id,
     number: row.number,
     kind: row.kind,
     status: "posted",
-    returning: row.is_return,
-    mixed:
-      lines.rows.some(
-        (line) => line.invoice_id === row.id && BigInt(line.quantity) > 0n,
-      ) &&
-      lines.rows.some(
-        (line) => line.invoice_id === row.id && BigInt(line.quantity) < 0n,
-      ),
+    returning: correction ? effectiveLines.every(line => BigInt(line.quantity) < 0n) : row.is_return,
+    mixed: effectiveLines.some(line => BigInt(line.quantity) > 0n) &&
+      effectiveLines.some(line => BigInt(line.quantity) < 0n),
     documentDate: row.date_text,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
@@ -150,21 +168,20 @@ export async function invoiceDTOs(
     saleCustomerId: row.sale_customer_id ?? null,
     saleCustomerNumber: row.sale_customer_number ?? null,
     saleCustomerName: row.sale_customer_name ?? null,
-    description: row.description,
-    gross: normalizeRate(row.gross),
+    description: correction ? row.description + " | مصالحة إشارات المبيعات التاريخية محفوظة في سجل التصحيح" : row.description,
+    gross: correction ? normalizeRate(-Number(row.gross)) : normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
-    total: normalizeRate(row.total),
-    baseTotal: normalizeRate(row.base_total),
+    total: correction ? normalizeRate(correction.corrected_total) : normalizeRate(row.total),
+    baseTotal: correction ? normalizeRate(-Number(row.base_total)) : normalizeRate(row.base_total),
     financialDocumentId: row.financial_document_id,
     costDocumentId: row.cost_document_id,
     varianceDocumentId: row.variance_document_id,
     createdBy: row.created_by,
     createdByName: row.created_by_name,
     createdAt: new Date(row.created_at).toISOString(),
-    lines: lines.rows
-      .filter((line) => line.invoice_id === row.id)
-      .map(invoiceLineDTO),
-  }));
+    lines: effectiveLines,
+    });
+  });
 }
 export async function loadInvoice(
   db: Database,
