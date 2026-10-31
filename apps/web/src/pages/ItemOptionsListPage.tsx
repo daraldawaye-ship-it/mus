@@ -29,7 +29,7 @@ type RangeKey = (typeof ranges)[number]["key"];
 type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
-    stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
+    stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
     monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
@@ -84,8 +84,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const numberPattern = /^-?\d{1,15}(?:\.\d{1,6})?$/;
   const active = (["active", "archived", "all"] as const).find(
     value => value === params.get("active")) ?? "active";
-  const sortBy = sortOptions.find(([key]) => key === params.get("sortBy"))?.[0] ?? "code";
-  const sortDir = params.get("sortDir") === "desc" ? "desc" : "asc";
+  const sortBy = sortOptions.find(([key]) => key === params.get("sortBy"))?.[0] ?? "allTime";
+  const sortDir = params.get("sortDir") === "asc" ? "asc" : "desc";
   // Only forward fields supported by this list's API. URL parameters from
   // navigation, older links, and other pages must never turn the list into a 400.
   const request = new URLSearchParams();
@@ -97,7 +97,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const q = params.get("q")?.trim();
   if (q) request.set("q", q.slice(0, 120));
   for (const { key } of ranges) {
-    const value = params.get(key)?.trim();
+    // Initial defaults are exactly one first-unit item. A deliberately blank
+    // URL value remains unbounded, unlike an absent parameter.
+    const value = (params.get(key) ??
+      (key === "stockMin" || key === "stockMax" ? "1" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
@@ -153,7 +156,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       const next = new URLSearchParams(previous);
       for (const { key } of ranges) {
         const value = draft[key].trim();
-        if (value) next.set(key, value); else next.delete(key);
+        // Preserve an explicitly empty quantity range so the user can request
+        // "without limit" instead of silently restoring the default of 1.
+        if (value || key === "stockMin" || key === "stockMax")
+          next.set(key, value);
+        else next.delete(key);
       }
       if (search.trim()) next.set("q", search.trim()); else next.delete("q");
       if (draft.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
@@ -164,9 +171,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   }
   function reset() {
     setFilterError("");
-    setDraft(readDraft(new URLSearchParams()));
+    const defaults = new URLSearchParams({
+      stockMin: "1", stockMax: "1", sortBy: "allTime", sortDir: "desc",
+    });
+    setDraft(readDraft(defaults));
     setSearch("");
-    setParams(new URLSearchParams());
+    setParams(defaults);
   }
   const coverage = (row: Row) => params.get("useReserve") === "false"
     ? row.approximateCoverageDays : row.coverageAfterReserveDays;
@@ -192,8 +202,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function sortByColumn(column: SortColumn) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
-      const isSameColumn = (previous.get("sortBy") ?? "code") === column;
-      const currentDirection = previous.get("sortDir") ?? "asc";
+      const isSameColumn = (previous.get("sortBy") ?? "allTime") === column;
+      const currentDirection = previous.get("sortDir") ?? "desc";
       const nextDirection = isSameColumn
         ? (currentDirection === "asc" ? "desc" : "asc")
         : (column === "code" || column === "name" ? "asc" : "desc");
