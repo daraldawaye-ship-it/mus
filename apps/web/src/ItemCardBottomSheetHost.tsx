@@ -37,7 +37,7 @@ export function ItemCardBottomSheetHost({ context }: { context: CompanyContext |
         || anchor.hasAttribute("data-open-item-full-page")) return;
       const path = new URL(anchor.href, window.location.href);
       if (path.origin !== window.location.origin) return;
-      const match = /^\\/companies\\/(\\d+)\\/items\\/(\\d+)\\/?$/.exec(path.pathname);
+      const match = /^\/companies\/(\d+)\/items\/(\d+)\/?$/.exec(path.pathname);
       if (!match || Number(match[1]) !== companyId) return;
       event.preventDefault();
       event.stopPropagation();
