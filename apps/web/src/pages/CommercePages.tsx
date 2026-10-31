@@ -1558,14 +1558,45 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setCashboxError("لا يُسمح بترحيل مبلغ سالب إلى المحفظة الإلكترونية.");
       return;
     }
+    const amount=normalizeDigits(cashboxDraft.amount);
+    if (cashboxDraft.kind==="close" && amount.startsWith("-")) {
+      setCashboxError("المبلغ الفعلي للصندوق لا يمكن أن يكون سالبًا.");
+      return;
+    }
+    if (cashboxDraft.kind!=="close" && Number(amount)===0) {
+      setCashboxError("أدخل مبلغًا غير صفري للترحيل.");
+      return;
+    }
+    const path=`/companies/${companyId}/sales/cashbox-operations`;
+    const payload={...cashboxDraft,amount};
+    async function saveCashboxOnDevice():Promise<boolean> {
+      if (!user?.id) return false;
+      try {
+        await queueOfflineOperation(user.id,companyId,"cashbox",path,payload);
+        if (guard.isCurrent()) {
+          setCashboxDraft(null);
+          setCashboxUnknown(false);
+          setCashboxError("");
+          setCashboxNotice("تم حفظ عملية الصندوق على هذا الجهاز فقط، وستُرحّل تلقائيًا عند عودة الاتصال. سيؤكد الخادم الرصيد وأي عجز أو زيادة عند المزامنة.");
+        }
+        return true;
+      } catch (cause) {
+        if (guard.isCurrent()) setCashboxError("تعذر الحفظ المحلي: "+errorMessage(cause));
+        return false;
+      }
+    }
     setCashboxBusy(true);
     setCashboxError("");
     try {
+      if (isOfflineNow()) {
+        await saveCashboxOnDevice();
+        return;
+      }
       const result=await api<{operationId:number;documentId:number;
         bookBalance:string|null;difference:string|null}>(
-        `/companies/${companyId}/sales/cashbox-operations`,{
+        path,{
           method:"POST",
-          body:{...cashboxDraft,amount:normalizeDigits(cashboxDraft.amount)},
+          body:payload,
           signal:guard.signal,
         });
       if(!guard.isCurrent()) return;
@@ -1593,6 +1624,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     }catch(cause) {
       if (!guard.isCurrent()) return;
       const uncertain=!(cause instanceof ApiFailure)||cause.status>=500;
+      // Keep the original idempotency key if the network dropped after the
+      // server committed the journal. Reconnect safely replays that key.
+      if (uncertain && await saveCashboxOnDevice()) return;
       setCashboxUnknown(uncertain);
       setCashboxError(uncertain
         ? "قد تكون العملية قد ترحّلت. أعد التأكيد بنفس الطلب دون تعديل المبلغ لتجنب التكرار. "+errorMessage(cause)

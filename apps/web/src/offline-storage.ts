@@ -3,7 +3,7 @@
  * This is not a second authoritative accounting database. Only the server
  * posts documents and awards question points.
  */
-export type OfflineKind = "invoice" | "voucher" | "answer";
+export type OfflineKind = "invoice" | "voucher" | "answer" | "cashbox";
 export type OfflinePending = {
   id: string;
   userId: number;
@@ -563,8 +563,21 @@ export async function queueOfflineOperation(
     ? /^\/(?:companies\/\d+\/)?questions\/\d+\/answers$/
     : kind === "invoice"
       ? /^\/companies\/\d+\/invoices$/
-      : /^\/companies\/\d+\/financial-documents$/;
+      : kind === "cashbox"
+        ? /^\/companies\/\d+\/sales\/cashbox-operations$/
+        : /^\/companies\/\d+\/financial-documents$/;
   if (!expected.test(path)) throw new Error("مسار العملية غير مسموح للحفظ المحلي");
+  if (kind === "cashbox" && (companyId === null ||
+      path !== `/companies/${companyId}/sales/cashbox-operations`))
+    throw new Error("عملية الصندوق لا تطابق شركة المستخدم");
+  const existing = await readOne<OfflinePending>("pending", body.idempotencyKey);
+  if (existing) {
+    if (existing.userId !== userId || existing.companyId !== companyId ||
+        existing.kind !== kind || existing.path !== path ||
+        JSON.stringify(existing.body) !== JSON.stringify(body))
+      throw new Error("مفتاح العملية محفوظ محليًا لبيانات مختلفة");
+    return;
+  }
   await writeOne("pending", {
     id: body.idempotencyKey, userId, companyId, kind, path,
     body, createdAt: new Date().toISOString(), failure: null,

@@ -11,11 +11,26 @@ test("push worker never caches API requests", () => {
   assert.doesNotMatch(text,/fetch\([^\n]+method:\s*["']POST/);
 });
 
-test("offline outbox only accepts finance docs, invoices and question answers", () => {
+test("offline outbox accepts invoices, vouchers, answers and scoped cashbox posts", () => {
   const text=readFileSync("apps/web/src/offline-storage.ts","utf8");
-  assert.match(text,/type OfflineKind = "invoice" \| "voucher" \| "answer"/);
+  assert.match(text,/type OfflineKind = "invoice" \| "voucher" \| "answer" \| "cashbox"/);
   assert.doesNotMatch(text,/type OfflineKind[^\n]*"question"/);
   assert.match(text,/questions\\\/\\d\+\\\/answers/);
+});
+
+test("offline cashbox movement replays the exact key and computes variance on the server", () => {
+  const outbox=readFileSync("apps/web/src/offline-storage.ts","utf8");
+  const commerce=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
+  const server=readFileSync("apps/api/src/services/cashbox-operations.ts","utf8");
+  assert.ok(outbox.includes('kind === "cashbox" && (companyId === null'));
+  assert.ok(outbox.includes('existing.userId !== userId'));
+  assert.ok(outbox.includes('sales/cashbox-operations'));
+  assert.ok(commerce.includes('queueOfflineOperation(user.id,companyId,"cashbox",path,payload)'));
+  assert.ok(commerce.includes('if (isOfflineNow())'));
+  assert.ok(commerce.includes('uncertain && await saveCashboxOnDevice()'));
+  assert.ok(commerce.includes('سيؤكد الخادم الرصيد'));
+  assert.ok(server.includes('idempotency_key=$2'));
+  assert.ok(server.includes('variance=book-amount'));
 });
 
 test("only confirmed server responses can post financial documents", () => {
