@@ -39,7 +39,7 @@ test("only confirmed server responses can post financial documents", () => {
   assert.match(finance,/queueOfflineOperation/);
   assert.match(commerce,/queueOfflineOperation/);
   assert.match(finance,/محليًا فقط/);
-  assert.match(commerce,/محاسبيًا أو مخزنيًا/);
+  assert.match(commerce,/لم تتغير الأرصدة أو المخزون بعد/);
 });
 
 test("browser shows no download controls and application detects its display mode", () => {
