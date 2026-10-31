@@ -14,6 +14,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { isItemDueForCount } from "./routes-tasks.ts";
+import { awardRequiredStockCount } from "./services/stock-count-rewards.ts";
 import { conflict, masterPage, mutateMaster } from "./services/masters.ts";
 import {
   checkQuantum,
@@ -771,6 +772,8 @@ export function inventoryRoutes(pool: Pool): Router {
               values,
             );
           }
+          if (eligibleForTask)
+            await awardRequiredStockCount(client, companyId, operationId, input.itemId, user);
           return {
             created: true,
             operation: await auditStockOperation(
