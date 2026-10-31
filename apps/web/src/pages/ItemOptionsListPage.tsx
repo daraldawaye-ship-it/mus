@@ -235,6 +235,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       <Notice tone="warning">تحتاج الصفحة إلى صلاحيات الأصناف والمبيعات والمخزون والكفاية.</Notice>}
     {actionMessage && <Notice>{actionMessage}</Notice>}
     {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
+    {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيارات المشتركة…</small>}
     {temporaryOrder.error && <Notice tone="error">{temporaryOrder.error}</Notice>}
     {!optionsCollapsed && <Card title="خيارات قائمة الأصناف">
       <form onSubmit={apply}>
@@ -323,7 +324,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {resultQuery.isPending && canView && <Notice>جارٍ تحميل الأصناف المطابقة…</Notice>}
       {result && <>
         <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
-          {result.rows.map(row => <article key={row.itemId} className="item-options-mobile-entry" role="listitem">
+          {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`} role="listitem">
             <div className="item-options-mobile-heading">
               <Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>
@@ -331,10 +332,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <label className="item-options-mobile-select">
                 <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
-                  disabled={!temporarySelection.enabled}
+                  disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
-                اختيار مؤقت
+                {temporarySelection.pendingIds.has(row.itemId) ? "جارٍ حفظ الاختيار…" : "اختيار مؤقت"}
               </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
@@ -370,14 +371,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("coverage", "الكفاية (يوم)")}
           </tr></thead>
           <tbody>
-            {result.rows.map(row => <tr key={row.itemId}>
+            {result.rows.map(row => <tr key={row.itemId}
+              className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}>
               <td><label className="item-options-table-choice">
                 <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
-                  disabled={!temporarySelection.enabled}
+                  disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
-                <span>اختيار</span>
+                <span>{temporarySelection.pendingIds.has(row.itemId) ? "حفظ…" : "اختيار"}</span>
               </label></td>
               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
