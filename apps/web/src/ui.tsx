@@ -293,8 +293,11 @@ interface TableProps<T> {
   columns: ColumnDef<T, unknown>[];
   data: T[];
   total: number;
+  /** False while the first page and its exact total are still being fetched. */
+  totalKnown?: boolean;
   page: number;
   pageSize: number;
+  pageSizeOptions?: readonly number[];
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   sorting: SortingState;
@@ -311,8 +314,10 @@ export function DataTable<T>({
   columns,
   data,
   total,
+  totalKnown = true,
   page,
   pageSize,
+  pageSizeOptions = [10, 20, 50, 100],
   onPageChange,
   onPageSizeChange,
   sorting,
@@ -400,7 +405,7 @@ export function DataTable<T>({
     >
       <div className="table-tools">
         <span>
-          {total.toLocaleString("ar")} سجل{" "}
+          {totalKnown ? total.toLocaleString("ar") : "جارٍ حساب العدد…"} سجل{" "}
           <span className="muted">
             ·{" "}
             {Object.values(selected)
@@ -587,7 +592,7 @@ export function DataTable<T>({
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
           >
-            {[10, 20, 50, 100].map((size) => (
+            {pageSizeOptions.map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>
@@ -595,15 +600,16 @@ export function DataTable<T>({
           </Select>
         </label>
         <span>
-          صفحة {page.toLocaleString("ar")} من{" "}
-          {Math.max(1, Math.ceil(total / pageSize)).toLocaleString("ar")}
+          {totalKnown
+            ? `الإجمالي: ${total.toLocaleString("ar")} سجل · صفحة ${page.toLocaleString("ar")} من ${Math.max(1, Math.ceil(total / pageSize)).toLocaleString("ar")}`
+            : "جارٍ حساب إجمالي السجلات…"}
         </span>
         <div>
           <Button
             variant="secondary"
             size="compact"
             aria-label="الصفحة السابقة"
-            disabled={page <= 1 || loading}
+            disabled={!totalKnown || page <= 1 || loading}
             onClick={() => onPageChange(page - 1)}
           >
             <ChevronRight size={16} />
@@ -612,7 +618,7 @@ export function DataTable<T>({
             variant="secondary"
             size="compact"
             aria-label="الصفحة التالية"
-            disabled={page * pageSize >= total || loading}
+            disabled={!totalKnown || page * pageSize >= total || loading}
             onClick={() => onPageChange(page + 1)}
           >
             <ChevronLeft size={16} />
