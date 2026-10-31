@@ -8,7 +8,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { HttpError } from "./errors.ts";
 import { readItems } from "./services/items.ts";
-import { directoryEntries } from "./services/pages.ts";
+import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { canReadItemCoverage, addItemCoverageToPage, itemCoverageJoin } from "./services/item-coverage.ts";
 import { stagedDailyActivitySql, activityColumns } from "./services/staged-activity-sql.ts";
 
@@ -178,7 +178,14 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     }).strict(), req.body);
     const result = await transaction(pool, async client => {
       const user = await currentActor(client, actor(req));
-      await companyAccess(client, user, companyId, "items.manage");
+      // This report has a separately configurable "edit" permission:
+      // the company can grant stock-reserve editing to a sales position
+      // without having to grant broader item-master management permissions.
+      await companyAccess(client, user, companyId, "items.view");
+      const entries = await directoryEntries(client, user, companyId);
+      const listPage = entries.find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage, "edit");
       const row = (await client.query(
         "SELECT revision, reserve_quantity FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
         [companyId, itemId],
