@@ -4393,7 +4393,7 @@ test("required stock-count reconciliations credit configured points once per new
       [s.company.id, item.id],
     );
     const body = {
-      documentDate: "2026-10-12",
+      documentDate: new Date().toLocaleDateString("sv-SE", {timeZone:"Asia/Aden"}),
       itemId: item.id,
       locationId: s.showroom.id,
       countedQuantity: "2",
