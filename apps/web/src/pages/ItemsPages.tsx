@@ -372,8 +372,11 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         title="الأصناف"
         description="كروت الأصناف ووحداتها وأسعارها."
         actions={
-          canManage && (
-            <>
+          <>
+            <Button variant="secondary" onClick={() => navigate(`/companies/${companyId}/item-options-list`)}>
+              قائمة الأصناف بخيارات
+            </Button>
+            {canManage && <>
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 استيراد الأصناف
               </Button>
@@ -382,8 +385,8 @@ function ItemsManager({ context }: { context: CompanyContext }) {
               >
                 صنف جديد
               </Button>
-            </>
-          )
+            </>}
+          </>
         }
       />
       <Card title="قائمة الأصناف">
