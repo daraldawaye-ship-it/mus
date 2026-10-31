@@ -251,6 +251,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     freshOnlineLoginRequired=false;
     if (epoch.current !== request) return;
     await applyLiveSession(result,request);
+    window.dispatchEvent(new Event("alraesy-auth-restored"));
   }
   const acceptRegistration = async (result: SessionResponse) => {
     await adoptLiveAuthentication(result);
