@@ -175,6 +175,38 @@ export async function repairNextLegacy127(
         moneyString(originalTotal),moneyString(-originalTotal),
         moneyString(inventoryDelta),operationId,revenueDocumentId,costDocumentId,user.id]
     );
+    const daily = new Map<number,{sold:bigint;returned:bigint;soldLines:number;returnLines:number}>();
+    for (const line of rows) {
+      const quantity = BigInt(String(line.smallest_quantity));
+      const item = daily.get(line.item_id) ?? {sold:0n,returned:0n,soldLines:0,returnLines:0};
+      if (quantity>0n) {item.sold+=quantity;item.soldLines++;}
+      else {item.returned-=quantity;item.returnLines++;}
+      daily.set(line.item_id,item);
+    }
+    for (const [itemId,item] of daily) {
+      const countDiff=Number(item.returnLines>0)-Number(item.soldLines>0);
+      const lineDiff=item.returnLines-item.soldLines;
+      const quantityDiff=item.returned-item.sold;
+      const state=await client.query(
+        "UPDATE item_daily_activity SET sale_invoices=sale_invoices+$3, " +
+        "sale_return_invoices=sale_return_invoices-$3, " +
+        "sale_lines=sale_lines+$4,sale_return_lines=sale_return_lines-$4, " +
+        "sale_quantity=sale_quantity+$5::numeric,sale_return_quantity=sale_return_quantity-$5::numeric, " +
+        "updated_at=clock_timestamp() WHERE company_id=2 AND item_id=$1 AND document_date=$2::date " +
+        "AND sale_invoices+$3>=0 AND sale_return_invoices-$3>=0 " +
+        "AND sale_lines+$4>=0 AND sale_return_lines-$4>=0 " +
+        "AND sale_quantity+$5::numeric>=0 AND sale_return_quantity-$5::numeric>=0 RETURNING item_id",
+        [itemId,invoice.document_date,countDiff,lineDiff,quantityDiff.toString()]
+      );
+      if(state.rowCount!==1) fail("daily_activity_mismatch","إحصائية المبيعات لا تطابق الفاتورة");
+      if(item.returnLines>0) await client.query(
+        "INSERT INTO item_statistics(company_id,item_id,last_sale_invoice_id) VALUES(2,$1,$2) " +
+        "ON CONFLICT(company_id,item_id) DO UPDATE SET " +
+        "last_sale_invoice_id=GREATEST(item_statistics.last_sale_invoice_id,EXCLUDED.last_sale_invoice_id)," +
+        "updated_at=clock_timestamp()",
+        [itemId,invoice.id]
+      );
+    }
     await auditStockOperation(client,2,user,operationId);
     await audit(client,user,"stock.adjustment","legacySalesSignRepair",invoice.id,
       {sourceId:invoice.source_id,oldTotal:moneyString(originalTotal)},
