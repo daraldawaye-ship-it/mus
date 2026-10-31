@@ -1410,10 +1410,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }, [showroomQuery.data, branch, location]);
   const [original, setOriginal] = useState<Invoice | null>(null);
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
-  // Load a same-origin print document only on demand. Its own viewer waits
-  // for the stored letterhead image before printing, while the cashier stays
-  // inside this invoice editor and can continue entering the next invoice.
-  const [printJob, setPrintJob] = useState<{ invoiceId: number; sequence: number } | null>(null);
+  // The committed POST already returns the complete printable invoice.
+  // Render its receipt in the same document to keep the print action inside
+  // the user's gesture; hidden iframes and async cross-frame window.print()
+  // are unreliable, especially on mobile browsers.
+  const letterheadForPrint = useCompanyLetterhead(companyId);
+  const [printReady, setPrintReady] = useState(false);
   // Track the actual invoice row because identical items may appear in several rows.
   const activeLineKey = useRef<string | null>(null);
   const [replacingClearance, setReplacingClearance] = useState(false);
@@ -1466,10 +1468,26 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     (stockPreview.data?.items ?? []).map((row) => [row.itemId, row]),
   );
   const [error, setError] = useState("");
-  const [savedInvoice, setSavedInvoice] = useState<{
-    id: number;
-    number: string;
-  } | null>(null);
+  const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
+  useEffect(() => {
+    setPrintReady(false);
+    if (!savedInvoice || letterheadForPrint.isPending) return;
+    const image = document.querySelector<HTMLImageElement>(
+      ".invoice-inline-print .company-print-letterhead-image",
+    );
+    // The company might intentionally have only a textual letterhead.
+    if (!image || image.complete) {
+      setPrintReady(true);
+      return;
+    }
+    const ready = () => setPrintReady(true);
+    image.addEventListener("load", ready);
+    image.addEventListener("error", ready);
+    return () => {
+      image.removeEventListener("load", ready);
+      image.removeEventListener("error", ready);
+    };
+  }, [savedInvoice, letterheadForPrint.isPending, letterheadForPrint.data?.imageUrl]);
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const [localQueued, setLocalQueued] = useState(false);
@@ -2127,7 +2145,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setSaleCustomerMatched(false);
     setError("");
     setSavedInvoice(null);
-    setPrintJob(null);
     setItemNotice("");
     // Only after explicit confirmation: refresh changed names/prices before
     // the next invoice, without downloading the whole item catalog.
@@ -2282,11 +2299,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       automaticCurrencyId.current = currency?.id ?? null;
       automaticBranchId.current = branch?.id ?? null;
       automaticLocationId.current = location?.id ?? null;
-      setSavedInvoice({
-        id: response.invoice.id,
-        number: response.invoice.number,
-      });
-      setPrintJob(null);
+      setSavedInvoice(response.invoice);
       focus(lineInputId(next, "item-search"));
     } catch (error) {
       if (!guard.isCurrent()) return;
@@ -3151,32 +3164,31 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setPrintJob(previous => ({
-                invoiceId: savedInvoice.id,
-                sequence: (previous?.sequence ?? 0) + 1,
-              }))}
+              disabled={!printReady}
+              onClick={() => window.print()}
             >
               <Printer size={16} />
-              طباعة الفاتورة المحفوظة
-            </Button>
+              {printReady ? "طباعة الفاتورة المحفوظة" : "تجهيز طباعة الفاتورة…"}
+            </Button>{" "}
+            <Link
+              to={`${invoicePath(companyId, savedInvoice.id)}?print=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              فتح نسخة الطباعة
+            </Link>
             </Notice>
           </div>
         )}
       </form>
-      {printJob && (
-        <iframe
-          key={`${printJob.invoiceId}:${printJob.sequence}`}
-          title="طباعة الفاتورة المحفوظة دون مغادرة شاشة الإدخال"
-          src={`${invoicePath(companyId, printJob.invoiceId)}?print=1`}
-          tabIndex={-1}
-          aria-hidden="true"
-          // Do not use display:none: browsers must lay out the frame's print
-          // document and company letterhead for reliable printing.
-          style={{
-            position: "fixed", top: 0, left: "-10000px", width: 1024,
-            height: 768, border: 0, pointerEvents: "none", opacity: 0,
-          }}
-        />
+      {savedInvoice && (
+        <div className="commerce-print-document invoice-inline-print">
+          <InvoicePrintSheet
+            context={context}
+            invoice={savedInvoice}
+            returning={savedInvoice.returning}
+          />
+        </div>
       )}
       {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
       <Dialog open={cashboxDraft!==null}
