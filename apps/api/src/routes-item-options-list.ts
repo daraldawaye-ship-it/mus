@@ -12,6 +12,8 @@ const optionalNumber = z.preprocess(
   value => value === "" ? undefined : value,
   z.string().regex(/^-?\d{1,15}(?:\.\d{1,6})?$/, "أدخل عددًا صالحًا حتى 6 منازل عشرية").optional(),
 );
+// Ignore unrelated URL parameters in this read-only report rather than
+// returning a generic validation error. Known filter values remain validated.
 const querySchema = z.object({
   q: z.string().trim().max(120).default(""),
   active: z.enum(["active", "archived", "all"]).default("active"),
@@ -26,7 +28,7 @@ const querySchema = z.object({
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   sortBy: z.enum(["code", "name", "stock", "month", "fourMonths", "allTime", "coverage"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
-}).strict();
+}).strip();
 type Options = z.infer<typeof querySchema>;
 
 async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>, companyId: number, options: Options) {
