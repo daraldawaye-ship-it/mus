@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
 import { api, useSession } from "./api";
 
@@ -27,13 +28,18 @@ export function CompanyPrintHeader({
 }) {
   const letterhead = useCompanyLetterhead(context.company.id);
   const imageUrl = letterhead.data?.imageUrl;
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = imageUrl && failedUrl !== imageUrl;
   return (
     <div className="company-print-letterhead">
-      {imageUrl ? (
+      {showImage ? (
         <img
           src={imageUrl}
           alt={`ترويسة ${context.company.name}`}
           className="company-print-letterhead-image"
+          loading="eager"
+          decoding="sync"
+          onError={() => setFailedUrl(imageUrl)}
         />
       ) : (
         <div className="company-print-letterhead-fallback">
