@@ -7,6 +7,8 @@ import type {
 } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
 import { usePageDirectory } from "./page-directory";
+import { isOfflineNow } from "./connection-mode";
+import { sessionRequiresLogin } from "./api";
 
 export function WalletIndicator({ context }: { context: CompanyContext }) {
   const { user } = useSession();
@@ -21,6 +23,7 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
         { signal },
       ),
     enabled: !!user && !!context.employee,
+    networkMode: "always",
   });
   const showPoints = control.data?.options.find(
     (option) => option.key === "show_header_points",
@@ -36,15 +39,17 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
         { signal },
       ),
     enabled: allowed,
+    networkMode: "always",
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
   });
   if (!allowed) return null;
   const wallet = query.data?.wallet;
-  const label = query.isError
+  const lastSaved = isOfflineNow() || sessionRequiresLogin();
+  const label = query.isError && !wallet
     ? "محفظتي، تعذر تحديث الرصيد"
     : wallet
-      ? `محفظتي، ${wallet.points} نقطة`
+      ? `محفظتي، ${wallet.points} نقطة${lastSaved ? " (آخر رصيد محفوظ دون إنترنت)" : ""}`
       : "محفظتي، جارٍ تحميل الرصيد";
   return (
     <Link
@@ -55,13 +60,14 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
     >
       <Coins size={17} aria-hidden="true" />
       <span>
-        {query.isError
+        {query.isError && !wallet
           ? "!"
           : wallet
             ? BigInt(wallet.points).toLocaleString("ar-YE")
             : "…"}
       </span>
-      {/* The coin glyph and amount identify the unified YER balance. */}
+      {wallet && lastSaved && <small title="رصيد مؤكد سابقًا؛ النقاط الجديدة تُعتمد عند المزامنة">محفوظ</small>}
+      {/* Never add provisional invoice or question points to confirmed balance. */}
     </Link>
   );
 }

@@ -151,6 +151,53 @@ export async function reuseAuthorizedRead<T>(path:string):Promise<T|undefined> {
   if (identity===null || !group || !grants.has(identity+":"+group)) return undefined;
   return await read("snapshot:"+path) as T|undefined;
 }
+
+// Search downloaded doctor/entity cards by the actual catalog, not by a URL
+// containing an exact online query that was never requested on this device.
+// Keep the current user's explicit server-granted module access mandatory.
+export async function lookupDownloadedDoctors<T>(path:string,userId:number):Promise<T|undefined> {
+  const match=path.match(/^\/companies\/(\d+)\/doctors\?(.*)$/);
+  if(!match || identity!==userId) return undefined;
+  const companyId=Number(match[1]);
+  if(!grants.has(userId+":"+companyId+":doctors")) return undefined;
+  const params=new URLSearchParams(match[2]);
+  const search=(params.get("q")??"").trim().toLocaleLowerCase();
+  const page=Math.max(1,Number(params.get("page"))||1);
+  const pageSize=Math.min(100,Math.max(1,Number(params.get("pageSize"))||20));
+  const prefix="snapshot:/companies/"+companyId+"/doctors?";
+  const database=await db();
+  let snapshots:Entry[];
+  try {
+    snapshots=await new Promise((resolve,reject)=>{
+      const range=IDBKeyRange.bound(prefix,prefix+"\uffff");
+      const request=database.transaction("entries","readonly").objectStore("entries").getAll(range);
+      request.onsuccess=()=>resolve(request.result as Entry[]);
+      request.onerror=()=>reject(request.error);
+    });
+  } finally { database.close(); }
+  if(identity!==userId || !grants.has(userId+":"+companyId+":doctors")) return undefined;
+  const byId=new Map<number,Record<string,unknown>>();
+  for(const entry of snapshots) {
+    const query=new URLSearchParams(entry.key.slice(prefix.length));
+    // Only unfiltered downloaded pages comprise the reliable local directory.
+    if(query.get("q") || query.get("pageSize")!=="100") continue;
+    const rows=(entry.data as {items?:Record<string,unknown>[]}|null)?.items;
+    if(!Array.isArray(rows)) continue;
+    for(const row of rows) {
+      if(typeof row.id==="number" && row.id>0) byId.set(row.id,row);
+    }
+  }
+  if(!snapshots.length || !byId.size) return undefined;
+  const activeOnly=params.get("active")==="true";
+  const matches=Array.from(byId.values()).filter(doctor=>
+    (!activeOnly || doctor.active!==false) &&
+    (!search || ["name","department","searchKeys","phone"].some(k=>
+      String(doctor[k]??"").toLocaleLowerCase().includes(search))));
+  matches.sort((a,b)=>String(a.name??"").localeCompare(String(b.name??""),"ar"));
+  return {items:matches.slice((page-1)*pageSize,page*pageSize),
+    total:matches.length,page,pageSize} as T;
+}
+
 export type SharedReferenceProgress = {page:number;complete:boolean;refreshedAt?:number};
 /** A completed reference catalog needs a bounded full refresh at least once per day. */
 export function sharedReferenceRefreshDue(

@@ -49,3 +49,37 @@ export async function downloadSharedReferenceCards(userId:number,companyId:numbe
     }
   }
 }
+
+const doctorSyncing=new Set<string>();
+/** Doctor and entity cards must be available before the first invoice goes
+ * offline. Download independently of the large item/account catalog and even
+ * in an ordinary browser. Never fetch without the signed-in user's server
+ * permission; page one grants this group for that user only. */
+export async function refreshSharedDoctorDirectory(userId:number,companyId:number):Promise<void> {
+  const key=userId+":"+companyId;
+  const interrupted=()=>!navigator.onLine || document.visibilityState==="hidden";
+  if(!userId || !companyId || interrupted() || doctorSyncing.has(key)) return;
+  doctorSyncing.add(key);
+  try {
+    const root="/companies/"+companyId+"/doctors?";
+    const url=(page:number)=>root+new URLSearchParams({
+      page:String(page),pageSize:"100",
+    });
+    const first=await api<Page>(url(1));
+    await shareAuthorizedRead(url(1),first);
+    const previous=await sharedProgress(companyId,"doctors",userId);
+    if(!sharedReferenceRefreshDue(previous))return;
+    let page=previous?.complete?1:(previous?.page??1);
+    for(let budget=0;budget<6;budget++,page++) {
+      if(interrupted())return;
+      const result=page===1?first:await api<Page>(url(page));
+      await shareAuthorizedRead(url(page),result);
+      const complete=result.items.length<100 ||
+        (typeof result.total==="number" && page*100>=result.total);
+      await saveSharedProgress(companyId,"doctors",userId,page+1,complete);
+      if(complete)break;
+    }
+  } catch {
+    // Missing permissions or a disconnected network must not block invoicing.
+  } finally { doctorSyncing.delete(key); }
+}

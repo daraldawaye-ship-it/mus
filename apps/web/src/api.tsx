@@ -11,7 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, offlineLoginRequired, readOfflineSession, rememberRead, savedRead, saveOfflineSession, setOfflineLoginRequired, setOfflineUser } from "./offline-storage";
-import { clearOfflineSharedGrants, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
+import { clearOfflineSharedGrants, lookupDownloadedDoctors, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
 import { offlineUser } from "./offline-storage";
@@ -49,8 +49,10 @@ export async function api<T>(
     const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
     if (reusable !== undefined) return reusable;
     const id = offlineUser();
-    return id === null ? undefined :
-      lookupSharedItem<T>(path,id).catch(() => undefined);
+    if (id===null) return undefined;
+    const doctors=await lookupDownloadedDoctors<T>(path,id).catch(()=>undefined);
+    if(doctors!==undefined) return doctors;
+    return lookupSharedItem<T>(path,id).catch(() => undefined);
   }
   // A disconnected employee may switch locally, but the old employee\'s
   // server cookie must never issue reads or writes on their behalf.
@@ -297,19 +299,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
   const logout = async () => {
     ++epoch.current;
+    let serverSignedOut = false;
     if (!isOfflineNow() && !freshOnlineLoginRequired) {
       try {
         await api("/auth/logout", { method: "POST" });
+        serverSignedOut = true;
       } catch (error) {
-        // HTTP auth/permission errors must not masquerade as connectivity loss.
+        // A transport failure needs a local lock; a real HTTP rejection
+        // cannot be treated as a completed logout.
         if (!(error instanceof TypeError)) throw error;
       }
     }
-    // Commit local lock and remove the active identity atomically before
-    // showing the guest screen. Keep encrypted? No: the verifier is salted,
-    // not a reusable secret, and other previously verified employees remain.
-    freshOnlineLoginRequired=true;
-    await setOfflineLoginRequired(true,true);
+    // Only a local signout (or an offline employee switch) leaves a previous
+    // server cookie usable. A confirmed online logout revoked that cookie,
+    // so OAuth and ordinary online login must remain available as before.
+    freshOnlineLoginRequired = !serverSignedOut;
+    await setOfflineLoginRequired(!serverSignedOut,true);
     await client.cancelQueries();
     client.clear();
     ++epoch.current;
