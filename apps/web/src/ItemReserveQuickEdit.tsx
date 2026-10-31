@@ -27,7 +27,7 @@ export function ItemReserveQuickEdit({
     if (!canEdit || busy.current) return;
     changing.current = false;
     const normalized = normalizeDigits(value.trim());
-    if (!/^\\d{1,22}$/.test(normalized)) {
+    if (!/^\d{1,22}$/.test(normalized)) {
       setError("أدخل عددًا صحيحًا غير سالب حتى 22 رقمًا.");
       return;
     }
