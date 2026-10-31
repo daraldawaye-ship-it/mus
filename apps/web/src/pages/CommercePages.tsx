@@ -2150,6 +2150,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         focus(lineInputId(unfinished, "item-search"));
         return;
       }
+      if (kind === "purchase" && !selectedSupplier) {
+        setError("اسم المورد الفعلي إلزامي في فاتورة المشتريات.");
+        return;
+      }
       if (kind === "purchase" && receiptRequired && !supplierReceiptNumber.trim()) {
         setError("رقم الوصل إلزامي لنوع الحساب المحدد في الكنترول.");
         focus("purchase-supplier-receipt");
@@ -2345,7 +2349,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                   <ServerLookup<Account>
                     companyId={companyId}
                     resource={`/companies/${companyId}/commerce-options?type=accounts`}
-                    label="المورد الفعلي"
+                    label="المورد الفعلي (إلزامي)"
+                    required
                     value={selectedSupplier}
                     onChange={setSupplier}
                     display={itemLabel}
