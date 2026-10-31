@@ -154,8 +154,17 @@ export function ItemReserveQuickEdit({
         disabled={!canEdit}
         onFocus={() => { editFocused.current = true; setSaved(false); }}
         onChange={event => {
-          latestValue.current = event.target.value;
-          setValue(event.target.value);
+          const typed = event.target.value;
+          if (/[-−]/.test(normalizeDigits(typed))) {
+            // Do not even display a negative reserve while editing.
+            latestValue.current = "0";
+            setValue("0");
+            setError("كمية الاحتياط لا يمكن أن تقل عن صفر.");
+            setSaved(false);
+            return;
+          }
+          latestValue.current = typed;
+          setValue(typed);
           setError("");
           setSaved(false);
         }}
