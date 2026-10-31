@@ -11,6 +11,7 @@ import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
 import { useTemporaryItemList } from "../temporary-item-list";
 import { useSharedItemSelection } from "../shared-item-selection";
+import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -39,6 +40,7 @@ function readDraft(params: URLSearchParams): Draft {
 }
 type Row = {
   itemId: number; code: string; name: string; active: boolean;
+  revision: number; reserveQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
   saleTimesAllTime: string; approximateCoverageDays: string | null;
@@ -64,6 +66,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [actionMessage, setActionMessage] = useState("");
   const directory = usePageDirectory(companyId);
   const canView = !!directory.data?.find(row => row.key === "company.item-options-list")?.actionAccess.view;
+  const cardAccess = directory.data?.find(row => row.key === "company.item-card");
+  const canEditReserve = (context.general || context.permissions.includes("items.manage"))
+    && !!cardAccess?.enabled && !!cardAccess.actionAccess.edit;
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
   const [search, setSearch] = useState(params.get("q") ?? "");
@@ -342,6 +347,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <div className="item-options-mobile-stat">
                 <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
               </div>
+              <div className="item-options-mobile-stat item-options-reserve-stat">
+                <span>كمية احتياط</span>
+                <ItemReserveQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId}
+                  revision={row.revision} reserveQuantity={row.reserveQuantity}
+                  canEdit={canEditReserve} />
+              </div>
               <div className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
@@ -365,6 +376,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <th scope="col">اختيار مؤقت</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
+            <th scope="col">كمية احتياط</th>
             {sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
@@ -384,12 +396,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
               <td><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
+              <td><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
+                itemId={row.itemId} revision={row.revision}
+                reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></td>
               <td><bdi>{row.saleTimesMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={7}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={8}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
