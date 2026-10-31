@@ -6,6 +6,7 @@ import { actor, handler, id, parse } from "./http.ts";
 import { HttpError } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { readItems } from "./services/items.ts";
+import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { audit } from "./services/audit.ts";
 
 /**
@@ -40,6 +41,10 @@ export function itemTemporarySelectionRoutes(pool: Pool): Router {
     const item = await transaction(pool, async client => {
       const user = await currentActor(client, actor(req));
       await companyAccess(client, user, companyId, "items.view");
+      const entries = await directoryEntries(client, user, companyId);
+      const listPage = entries.find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage, "edit");
       const found = await client.query(
         "SELECT id, code, name FROM items WHERE company_id=$1 AND id=$2",
         [companyId, itemId],
@@ -78,6 +83,10 @@ export function itemTemporarySelectionRoutes(pool: Pool): Router {
     const result = await transaction(pool, async client => {
       const user = await currentActor(client, actor(req));
       await companyAccess(client, user, companyId, "items.view");
+      const entries = await directoryEntries(client, user, companyId);
+      const listPage = entries.find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage, "edit");
       const updated = await client.query(
         "DELETE FROM company_item_temporary_selections WHERE company_id=$1",
         [companyId],
