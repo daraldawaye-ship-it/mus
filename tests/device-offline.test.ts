@@ -234,5 +234,5 @@ test("offline question cache refreshes completed pages with correct public grant
   assert.match(pack,/Math\.max\(2,progress\.nextPage\)/);
   assert.match(pack,/complete\?2:page\+1/);
   assert.match(pack,/gradeOfflineQuestion/);
-  assert.match(pack,/answer\.revision===question\.revision/);
+  assert.match(pack,/item\.revision===question\.revision/);
 });
