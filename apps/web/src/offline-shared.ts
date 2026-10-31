@@ -151,15 +151,24 @@ export async function reuseAuthorizedRead<T>(path:string):Promise<T|undefined> {
   if (identity===null || !group || !grants.has(identity+":"+group)) return undefined;
   return await read("snapshot:"+path) as T|undefined;
 }
+export type SharedReferenceProgress = {page:number;complete:boolean;refreshedAt?:number};
+/** A completed reference catalog needs a bounded full refresh at least once per day. */
+export function sharedReferenceRefreshDue(
+  progress:SharedReferenceProgress|null,now=Date.now(),
+):boolean {
+  const last=progress?.refreshedAt;
+  return !progress?.complete || typeof last!=="number" ||
+    !Number.isFinite(last) || last>now || now-last>=24*60*60*1000;
+}
 export async function sharedProgress(
   companyId:number,group:string,userId:number,
-):Promise<{page:number;complete:boolean}|null> {
+):Promise<SharedReferenceProgress|null> {
   if (identity!==userId || !grants.has(userId+":"+(companyId===0?"public":companyId)+":"+group)) return null;
-  return (await read("progress:"+companyId+":"+group) as {page:number;complete:boolean}|undefined)??null;
+  return (await read("progress:"+companyId+":"+group) as SharedReferenceProgress|undefined)??null;
 }
 export async function saveSharedProgress(
   companyId:number,group:string,userId:number,page:number,complete:boolean,
 ) {
   if (identity!==userId || !grants.has(userId+":"+(companyId===0?"public":companyId)+":"+group)) return;
-  await write("progress:"+companyId+":"+group,{page,complete});
+  await write("progress:"+companyId+":"+group,{page,complete,refreshedAt:complete?Date.now():undefined});
 }
