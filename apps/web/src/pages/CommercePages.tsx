@@ -50,6 +50,7 @@ import {
 import {
   api,
   ApiFailure,
+  sessionRequiresLogin,
   usePagedQuery,
   useScopeGuard,
   useSession,
@@ -1491,13 +1492,15 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const customerField=useRef<HTMLInputElement>(null);
   const customerSearch=useQuery<Page<SaleCustomer>>({
     queryKey:["sale-customer-search",user?.id,companyId,saleCustomerQuery],
-    enabled:!!user&&doctorPromptOpen&&saleCustomerQuery.trim().length>0,
+    enabled:!!user&&doctorPromptOpen&&saleCustomerQuery.trim().length>0 &&
+      !isOfflineNow() && !sessionRequiresLogin(),
     queryFn:({signal})=>api<Page<SaleCustomer>>(
       `/companies/${companyId}/sale-customers?q=${encodeURIComponent(saleCustomerQuery)}&page=1&pageSize=10`,{signal}),
   });
   const customerExact=useQuery<{customer:SaleCustomer|null}>({
     queryKey:["sale-customer-number",user?.id,companyId,saleCustomerNumber],
-    enabled:!!user&&doctorPromptOpen&&/^\d{1,30}$/.test(saleCustomerNumber),
+    enabled:!!user&&doctorPromptOpen&&/^\d{1,30}$/.test(saleCustomerNumber) &&
+      !isOfflineNow() && !sessionRequiresLogin(),
     queryFn:({signal})=>api<{customer:SaleCustomer|null}>(
       `/companies/${companyId}/sale-customers/lookup?number=${encodeURIComponent(saleCustomerNumber)}`,{signal}),
   });
@@ -1526,6 +1529,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const doctorChoices=useQuery({
     queryKey:["invoice-doctors",user?.id,companyId,doctorQuery],
     enabled:!!user && kind==="sale" && doctorPromptOpen,
+    networkMode:"always",
     queryFn:({signal})=>api<Page<Doctor>>(
       `/companies/${companyId}/doctors?active=true&q=${encodeURIComponent(doctorQuery)}&page=1&pageSize=20&sort=name:asc`,
       {signal},
@@ -2220,7 +2224,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         return false;
       }
     }
-    if (isOfflineNow()) {
+    if (isOfflineNow() || sessionRequiresLogin()) {
       await saveOnDevice();
       return;
     }
@@ -3311,7 +3315,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               }
             }}/>
           </div>
-          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل؛ عند حفظ الفاتورة يُنشأ كرت دون فئة ويُرسل تنبيه للمتابعة.</small>
+          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل؛ {isOfflineNow() || sessionRequiresLogin() ? "سيُحفظ الاسم مع الفاتورة محليًا ويُنشأ كرت الطبيب أو الجهة بعد قبول الخادم للمزامنة." : "عند حفظ الفاتورة يُنشأ كرت دون فئة ويُرسل تنبيه للمتابعة."}</small>
           <div id="invoice-doctor-options" ref={doctorOptionsRef} className="invoice-doctor-options"
             role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
@@ -3344,7 +3348,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 setDoctorError("اكتب اسم الطبيب أو الجهة أولًا.");
                 doctorField.current?.focus();
               }
-            }}>حفظ وترحيل الفاتورة</Button>
+            }}>{isOfflineNow() || sessionRequiresLogin() ? "حفظ الفاتورة على الجهاز" : "حفظ وترحيل الفاتورة"}</Button>
             <Button variant="secondary" disabled={saving} onClick={()=>{
               setDoctorPromptOpen(false);
               setDoctorError("");
