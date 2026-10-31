@@ -23,6 +23,7 @@ export function WalletIndicator({ context }: { context: CompanyContext }) {
         { signal },
       ),
     enabled: !!user && !!context.employee,
+    networkMode: "always",
   });
   const showPoints = control.data?.options.find(
     (option) => option.key === "show_header_points",
