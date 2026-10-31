@@ -297,19 +297,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
   const logout = async () => {
     ++epoch.current;
+    let serverSignedOut = false;
     if (!isOfflineNow() && !freshOnlineLoginRequired) {
       try {
         await api("/auth/logout", { method: "POST" });
+        serverSignedOut = true;
       } catch (error) {
-        // HTTP auth/permission errors must not masquerade as connectivity loss.
+        // A transport failure needs a local lock; a real HTTP rejection
+        // cannot be treated as a completed logout.
         if (!(error instanceof TypeError)) throw error;
       }
     }
-    // Commit local lock and remove the active identity atomically before
-    // showing the guest screen. Keep encrypted? No: the verifier is salted,
-    // not a reusable secret, and other previously verified employees remain.
-    freshOnlineLoginRequired=true;
-    await setOfflineLoginRequired(true,true);
+    // Only a local signout (or an offline employee switch) leaves a previous
+    // server cookie usable. A confirmed online logout revoked that cookie,
+    // so OAuth and ordinary online login must remain available as before.
+    freshOnlineLoginRequired = !serverSignedOut;
+    await setOfflineLoginRequired(!serverSignedOut,true);
     await client.cancelQueries();
     client.clear();
     ++epoch.current;
