@@ -237,3 +237,20 @@ test("offline question cache refreshes completed pages with correct public grant
   assert.match(pack,/gradeOfflineQuestion/);
   assert.match(pack,/item\.revision===question\.revision/);
 });
+
+test("completed reference catalogs rescan daily, but not on every poll", () => {
+  const day=24*60*60*1000;
+  const now=Date.UTC(2026,9,31);
+  assert.equal(sharedReferenceRefreshDue(null,now),true);
+  assert.equal(sharedReferenceRefreshDue({page:3,complete:false},now),true);
+  assert.equal(sharedReferenceRefreshDue({page:1,complete:true},now),true);
+  assert.equal(sharedReferenceRefreshDue({page:1,complete:true,refreshedAt:now-120000},now),false);
+  assert.equal(sharedReferenceRefreshDue({page:1,complete:true,refreshedAt:now-day},now),true);
+  assert.equal(sharedReferenceRefreshDue({page:1,complete:true,refreshedAt:now+1},now),true);
+  const master=readFileSync("apps/web/src/offline-shared-master.ts","utf8");
+  const extra=readFileSync("apps/web/src/offline-shared-extra.ts","utf8");
+  assert.ok(master.includes("sharedReferenceRefreshDue(previous)"));
+  assert.ok(master.includes("previous?.complete?1:"));
+  assert.ok(extra.includes("sharedReferenceRefreshDue(saved)"));
+  assert.ok(extra.includes("saved?.complete?1:"));
+});
