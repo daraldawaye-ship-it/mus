@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CompanyContext,
   CompanyCurrency,
+  Branch,
   Page,
 } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
@@ -26,10 +27,37 @@ export function useDefaultYerCurrency(
         { signal },
       ),
     enabled: !!user && companyId > 0,
+    networkMode: "always",
   });
   return result.data?.items.find(
     (item) => item.code === "YER" && item.active,
   ) ?? null;
+}
+
+/** The real company HQ / MAIN branch wins. When neither code exists,
+ * use the first authorized active branch. NetworkMode always enables cached
+ * reference cards on a disconnected device without guessing branch IDs. */
+export function useDefaultCompanyBranch(companyId: number) {
+  const { user } = useSession();
+  const result=useQuery({
+    queryKey:["company",user?.id,companyId,"default-branch"],
+    enabled:!!user && companyId>0,
+    networkMode:"always",
+    queryFn:async({signal})=>{
+      for(const code of ["HQ","MAIN"]) {
+        const path=`/companies/${companyId}/commerce-options?type=branches&active=true&q=${code}&pageSize=20`;
+        const page=await api<Page<Branch>>(path,{signal});
+        const exact=page.items.find(item=>item.active && item.code===code);
+        if(exact)return exact;
+      }
+      const rest=await api<Page<Branch>>(
+        `/companies/${companyId}/commerce-options?type=branches&active=true&page=1&pageSize=100`,
+        {signal},
+      );
+      return rest.items.find(item=>item.active)??null;
+    },
+  });
+  return result.data??null;
 }
 
 export const errorMessage = (error: unknown) =>
