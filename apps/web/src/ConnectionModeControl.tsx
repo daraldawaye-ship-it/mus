@@ -1,8 +1,8 @@
 import { useState, useSyncExternalStore } from "react";
-import { Wifi, WifiOff } from "lucide-react";
+import { WifiOff } from "lucide-react";
 import { Button } from "./ui";
 import {
-  connectionSnapshot, returnToOnline, setManualOffline, subscribeConnection,
+  connectionSnapshot, returnToOnline, subscribeConnection,
 } from "./connection-mode";
 
 /** Never remount the active invoice when switching the transport mode. */
@@ -11,26 +11,25 @@ export function ConnectionModeControl() {
   const [busy,setBusy] = useState(false);
   const [warning,setWarning] = useState("");
   const offline = state !== "online";
-  async function toggle() {
+  async function reconnect() {
     setWarning("");
-    if (!offline) {
-      setManualOffline();
-      return;
-    }
     setBusy(true);
     try {
       if (!(await returnToOnline())) setWarning("لم يعد اتصال الخادم متاحًا بعد. يمكنك متابعة العمل محليًا.");
     } finally { setBusy(false); }
   }
+  // Keep the header uncluttered when the server is reachable.
+  // This is only a recovery control, never a manual disconnect action.
+  if (!offline) return null;
   return <div className="connection-mode-control">
     <Button size="compact" variant="ghost" disabled={busy}
       className="connection-mode-button"
-      onClick={() => void toggle()}
-      title={offline ? "التحقق من الاتصال والعودة إلى العمل المباشر" : "استخدام النسخ المحلية وحفظ العمليات للمزامنة"}>
-      {offline ? <WifiOff size={15} aria-hidden="true"/> : <Wifi size={15} aria-hidden="true"/>}
-      <span>{offline ? "العودة إلى وضع الاتصال" : "وضع عدم الاتصال"}</span>
+      onClick={() => void reconnect()}
+      title="التحقق من الاتصال والعودة إلى العمل المباشر">
+      <WifiOff size={15} aria-hidden="true"/>
+      <span>العودة إلى وضع الاتصال</span>
     </Button>
-    {offline && <span className="connection-mode-indicator" role="status">دون إنترنت</span>}
+    <span className="connection-mode-indicator" role="status">دون إنترنت</span>
     {warning && <span className="connection-mode-warning" role="status">{warning}</span>}
   </div>;
 }
