@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, sessionRequiresLogin } from "./api";
 import { applyItemChanges, itemChangeCursor, offlineChanged, offlineUser, pendingForUser, rememberRead, syncPending, type ItemChangeCursor } from "./offline-storage";
 import { Button, Notice } from "./ui";
 import { isAppWindow } from "./app-install";
@@ -13,6 +13,9 @@ import { refreshSharedCompositions, refreshSharedQuestions } from "./offline-sha
 import { readSharedItemProgress, saveSharedItemBatch, refreshSharedItemCards } from "./offline-shared-items";
 import { migrateExistingCatalog } from "./offline-shared-migrate";
 
+// A restored network does not authorize sending another employee\'s drafts.
+// Only a fresh server login for the currently selected user enables sync.
+function offlineForSession() { return isOfflineNow() || sessionRequiresLogin(); }
 type DeviceProps = { userId: number; companyId?: number };
 export function OfflineStatus({ userId, companyId }: DeviceProps) {
   const holder = useRef<HTMLDivElement>(null);
@@ -50,7 +53,7 @@ function publishCatalogStatus(patch: Partial<CatalogUiState>) {
 }
 function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   const client = useQueryClient();
-  const [online, setOnline] = useState(!isOfflineNow());
+  const [online, setOnline] = useState(!offlineForSession());
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
   const scopeKey = userId + ":" + (companyId ?? "");
@@ -73,8 +76,8 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     refresh();
     const detach = offlineChanged(refresh);
     const connected = () => {
-      setOnline(!isOfflineNow());
-      if (!isOfflineNow()) void syncPending(userId,
+      setOnline(!offlineForSession());
+      if (!offlineForSession()) void syncPending(userId,
         (path, body) => api(path, { method: "POST", body }))
         .then(result => {
           if (result.saved) {
@@ -86,9 +89,11 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     };
     connected();
     const unsubscribeConnection=subscribeConnection(connected);
+    window.addEventListener("alraesy-auth-restored",connected);
     return () => {
       detach();
       unsubscribeConnection();
+      window.removeEventListener("alraesy-auth-restored",connected);
     };
   }, [userId, client]);
 
@@ -111,7 +116,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
       if (event.data === "changed") invalidateItems();
     };
     async function poll() {
-      if (stopped || running || isOfflineNow() || document.visibilityState === "hidden") return;
+      if (stopped || running || offlineForSession() || document.visibilityState === "hidden") return;
       running = true;
       lastPollAt = Date.now();
       try {
@@ -180,7 +185,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     };
   }, [companyId, userId, client]);
   async function sync() {
-    if (busy || isOfflineNow()) return;
+    if (busy || offlineForSession()) return;
     setBusy(true);
     setMessage("");
     try {
@@ -197,7 +202,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     if (catalogRetryTimer !== null) return;
     catalogRetryTimer = window.setTimeout(() => {
       catalogRetryTimer = null;
-      if (offlineUser() === userId && !isOfflineNow() && isAppWindow() &&
+      if (offlineUser() === userId && !offlineForSession() && isAppWindow() &&
           document.visibilityState !== "hidden" &&
           window.location.pathname.startsWith("/companies/" + companyId)) {
         downloadCatalog();
@@ -205,7 +210,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
     }, 5_000);
   }
   function downloadCatalog() {
-    if (!companyId || isOfflineNow() || activeCatalogDownload || offlineUser() !== userId) return;
+    if (!companyId || offlineForSession() || activeCatalogDownload || offlineUser() !== userId) return;
     const key = scopeKey;
     publishCatalogStatus({ key, busy: true, progress: "", message: "" });
     const transfer = async () => {
@@ -230,7 +235,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
           };
           let complete = false;
           for (let page = 0; page < 40; page++) {
-            if (isOfflineNow()) throw new Error("انقطع الاتصال أثناء التنزيل");
+            if (offlineForSession()) throw new Error("انقطع الاتصال أثناء التنزيل");
             const params = new URLSearchParams({
               since: cursor.since, afterId: String(cursor.afterId),
             });
@@ -283,7 +288,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if (!companyId || !isAppWindow()) return;
     const resume = () => {
-      if (!isOfflineNow() && document.visibilityState !== "hidden") downloadCatalog();
+      if (!offlineForSession() && document.visibilityState !== "hidden") downloadCatalog();
     };
     const timer = window.setInterval(resume, 120_000);
     window.addEventListener("online", resume);
@@ -305,7 +310,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   // both in a browser and in the installed app for offline grading.
   useEffect(() => {
     const warm = () => {
-      if (isOfflineNow() || document.visibilityState === "hidden") return;
+      if (offlineForSession() || document.visibilityState === "hidden") return;
       void syncOfflineQuestionPack(userId,null).catch(() => {});
       if (companyId) void syncOfflineQuestionPack(userId,companyId).catch(() => {});
     };
@@ -322,7 +327,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if (!isAppWindow()) return;
     const refresh = () => {
-      if (!isOfflineNow() && document.visibilityState !== "hidden")
+      if (!offlineForSession() && document.visibilityState !== "hidden")
         void syncMyHistory(userId,companyId??null);
     };
     const timer = window.setInterval(refresh,120_000);
@@ -333,7 +338,7 @@ function OfflineStatusBody({ userId, companyId }: DeviceProps) {
   useEffect(() => {
     if(!companyId || !isAppWindow())return;
     const run=()=>{
-      if(!isOfflineNow() && document.visibilityState!=="hidden")
+      if(!offlineForSession() && document.visibilityState!=="hidden")
         void refreshDailySaleRanks(userId,companyId);
     };
     run();
