@@ -67,10 +67,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const directory = usePageDirectory(companyId);
-  const canView = !!directory.data?.find(row => row.key === "company.item-options-list")?.actionAccess.view;
-  const cardAccess = directory.data?.find(row => row.key === "company.item-card");
-  const canEditReserve = (context.general || context.permissions.includes("items.manage"))
-    && !!cardAccess?.enabled && !!cardAccess.actionAccess.edit;
+  const itemListPage = directory.data?.find(row => row.key === "company.item-options-list");
+  const canView = !!itemListPage?.enabled && !!itemListPage.actionAccess.view;
+  const canEditReserve = !!itemListPage?.enabled && !!itemListPage.actionAccess.edit;
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
   const [search, setSearch] = useState(params.get("q") ?? "");
