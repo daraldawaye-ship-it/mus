@@ -133,7 +133,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     try {
       // Real PDF bytes, not the browser's print-to-PDF dialog; Arabic lettering
       // is shaped by the device and each A4 page has exactly two columns.
-      const pdf = await createTwoColumnItemNamesPdf(list.map(item => item.name));
+      const pdf = createTwoColumnItemNamesPdf(list.map(item => item.name));
       const today = new Date().toLocaleDateString("en-CA");
       const filename = `${mode === "selected" ? "selected-items" : "item-order-draft"}-${today}.pdf`;
       const result = await exportPdfToDevice(pdf, filename);
