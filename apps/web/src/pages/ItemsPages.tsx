@@ -62,7 +62,7 @@ import { formatMoney } from "../format-money";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
-import { useTemporaryItemList } from "../temporary-item-list";
+import { useSharedItemSelection } from "../shared-item-selection";
 import {
   OptionListTools,
   optionFilterKeys,
@@ -1173,7 +1173,7 @@ function ItemEditor({
   const companyId = context.company.id;
   const defaultSaleUnitGroup = useId();
   const { user } = useSession();
-  const temporarySelection = useTemporaryItemList(companyId, user?.id, "selected");
+  const temporarySelection = useSharedItemSelection(companyId, user?.id);
   const navigate = useNavigate();
   const itemQueryClient = useQueryClient();
   const guard = useScopeGuard(`company:${companyId}:item:${item?.id ?? "new"}`);
@@ -1522,14 +1522,14 @@ function ItemEditor({
       {item && <label className="item-card-temporary-choice">
         <input type="checkbox"
           checked={temporarySelection.items.some(entry => entry.id === item.id)}
-          disabled={!temporarySelection.enabled}
+          disabled={!temporarySelection.enabled || temporarySelection.loading}
           onChange={event => {
             temporarySelection.toggle({
               id: item.id, name: item.name, code: item.code,
             }, event.target.checked);
           }} />
         <span>اختيار مؤقت</span>
-        <small>تظهر العلامة في قائمة الأصناف، وتظل محفوظة حتى تصفير الاختيارات.</small>
+        <small>هذه علامة مشتركة بين مستخدمي الشركة على جميع الأجهزة حتى تصفيرها.</small>
       </label>}
       {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
       <form ref={formElement} onSubmit={(event) => void save(event)}
