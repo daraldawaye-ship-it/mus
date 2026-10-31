@@ -513,7 +513,7 @@ export interface AppearancePreference {
 }
 export const DEFAULT_APPEARANCE: Readonly<AppearancePreference> = Object.freeze(
   {
-    mode: "light",
+    mode: "dark",
     color: "#176b61",
   },
 );
