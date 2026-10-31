@@ -37,21 +37,21 @@ export function useDefaultYerCurrency(
 /** The real company HQ / MAIN branch wins. When neither code exists,
  * use the first authorized active branch. NetworkMode always enables cached
  * reference cards on a disconnected device without guessing branch IDs. */
-export function useDefaultCompanyBranch(companyId: number) {
+export function useDefaultCompanyBranch(companyId: number, resource: "commerce-options"|"financial-options" = "commerce-options") {
   const { user } = useSession();
   const result=useQuery({
-    queryKey:["company",user?.id,companyId,"default-branch"],
+    queryKey:["company",user?.id,companyId,"default-branch",resource],
     enabled:!!user && companyId>0,
     networkMode:"always",
     queryFn:async({signal})=>{
       for(const code of ["HQ","MAIN"]) {
-        const path=`/companies/${companyId}/commerce-options?type=branches&active=true&q=${code}&pageSize=20`;
+        const path=`/companies/${companyId}/${resource}?type=branches&active=true&q=${code}&pageSize=20`;
         const page=await api<Page<Branch>>(path,{signal});
         const exact=page.items.find(item=>item.active && item.code===code);
         if(exact)return exact;
       }
       const rest=await api<Page<Branch>>(
-        `/companies/${companyId}/commerce-options?type=branches&active=true&page=1&pageSize=100`,
+        `/companies/${companyId}/${resource}?type=branches&active=true&page=1&pageSize=100`,
         {signal},
       );
       return rest.items.find(item=>item.active)??null;
