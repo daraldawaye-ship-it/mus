@@ -32,11 +32,12 @@ import {
 import {
   api,
   ApiFailure,
+  sessionRequiresLogin,
   usePagedQuery,
   useScopeGuard,
   useSession,
 } from "../api";
-import { errorMessage, ServerLookup, useDefaultYerCurrency } from "../phase2";
+import { errorMessage, ServerLookup, useDefaultCompanyBranch, useDefaultYerCurrency } from "../phase2";
 import { useControls } from "../control";
 import { formatMoney } from "../format-money";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
@@ -71,7 +72,10 @@ export function financeAccess(
 }
 const documentPath = (companyId: number, id: number | "new") =>
   `/companies/${companyId}/financial-documents/${id}`;
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Aden" });
+const today = () => {
+  const date=new Date();
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+};
 const listPaths: Record<FinancialDocumentKind, string> = {
   journal: "journals",
   receipt: "receipts",
@@ -510,6 +514,7 @@ function DocumentEditor({
       setCurrency(defaultYer);
     }
   }, [document, showCurrency, defaultYer, currency]);
+  const defaultBranch = useDefaultCompanyBranch(companyId, "financial-options");
   const [branch, setBranch] = useState<PickBranch | null>(
     document?.branchId
       ? {
@@ -519,6 +524,11 @@ function DocumentEditor({
         }
       : null,
   );
+  const branchManuallyChosen=useRef(false);
+  useEffect(()=>{
+    if(document || branchManuallyChosen.current || branch || !defaultBranch)return;
+    setBranch(defaultBranch);
+  },[document,branch,defaultBranch]);
   const [lines, setLines] = useState<EditorLine[]>(
     document?.lines.map((line) => ({
       key: String(line.id),
@@ -714,7 +724,7 @@ function DocumentEditor({
         return false;
       }
     }
-    if (isOfflineNow() && !document && (kind === "receipt" || kind === "payment")) {
+    if ((isOfflineNow() || sessionRequiresLogin()) && !document && (kind === "receipt" || kind === "payment")) {
       await saveOnDevice();
       return;
     }
@@ -859,6 +869,7 @@ function DocumentEditor({
             disabled={!canEdit || saving}
             onClick={() => {
               touch();
+              branchManuallyChosen.current=true;
               setBranch(null);
             }}
           >
@@ -1337,6 +1348,7 @@ function DocumentEditor({
             onChange={(item) => {
               if (item) {
                 touch();
+                branchManuallyChosen.current=true;
                 setBranch(item);
                 setPicker(null);
               }
