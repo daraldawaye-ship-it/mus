@@ -80,7 +80,7 @@ export async function repairNextLegacy127(
   for (const invoice of records) {
     if (!invoice.posted || moneyUnits(String(invoice.discount)) !== 0n ||
         invoice.currency_id !== settings.baseCurrencyId ||
-        moneyUnits(String(invoice.exchange_rate)) !== 1000000n)
+        String(invoice.exchange_rate).replace(/\.0+$/, "") !== "1")
       fail("unexpected_invoice", "فاتورة بخصم أو عملة مختلفة تحتاج مراجعة خاصة");
     const sourceRows = invoice.source_metadata?.sourceRows;
     if (!Array.isArray(sourceRows)) fail("missing_source", "حركات المصدر غير موجودة");
