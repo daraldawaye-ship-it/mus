@@ -8198,5 +8198,36 @@
       },
       "additionalProperties": false
     }
+  },
+  "POST /companies/:companyId/transaction-import/prepare-qzip-172": {
+    "queryFields": [],
+    "source": "routes-qzip-remaining.ts",
+    "bodyContract": "prepareQzipRemainingSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "compressed": {
+          "type": "string",
+          "minLength": 100,
+          "maxLength": 20000
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 171
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 25
+        }
+      },
+      "required": [
+        "compressed",
+        "start"
+      ],
+      "additionalProperties": false
+    }
   }
 }
