@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { validOfflineSession, compareItemsBySavedSales } from "../apps/web/src/offline-storage.ts";
+import { sharedReferenceRefreshDue } from "../apps/web/src/offline-shared.ts";
 
 test("push worker never caches API requests", () => {
   const text=readFileSync("apps/web/public/push-sw.js","utf8");
