@@ -111,6 +111,22 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   type SortColumn = (typeof sortOptions)[number][0];
   const activeSort = params.get("sortBy") ?? "code";
   const activeDirection = params.get("sortDir") ?? "asc";
+  function selectSortColumn(column: SortColumn) {
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set("sortBy", column);
+      next.set("sortDir", column === "code" || column === "name" ? "asc" : "desc");
+      next.delete("page");
+      return next;
+    });
+  }
+  function reverseSortDirection() {
+    change("sortDir", activeDirection === "asc" ? "desc" : "asc");
+  }
+  function rememberItem(row: Row) {
+    if (user) rememberRecentEntity(user.id, companyId, "item",
+      { id: row.itemId, name: row.name });
+  }
   function sortByColumn(column: SortColumn) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -191,22 +207,53 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         {" "}· التاريخ: <bdi>{result.asOf}</bdi>
         {" "}· الصفحة <bdi>{page.toLocaleString("en-US")}</bdi> من <bdi>{pages.toLocaleString("en-US")}</bdi>
       </p>}
-      <div className="form-actions">
-        <Select label="ترتيب النتائج" value={params.get("sortBy") ?? "code"}
-          onChange={event => change("sortBy", event.target.value)}>
-          {sortOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </Select>
-        <Select label="اتجاه الترتيب" value={params.get("sortDir") ?? "asc"}
-          onChange={event => change("sortDir", event.target.value)}>
-          <option value="asc">تصاعدي</option><option value="desc">تنازلي</option>
-        </Select>
+      <div className="form-actions item-options-result-controls">
+        <div className="item-options-mobile-sort-controls">
+          <Select label="الترتيب حسب العمود" value={activeSort}
+            onChange={event => selectSortColumn(event.target.value as SortColumn)}>
+            {sortOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </Select>
+          <Button variant="secondary" type="button" onClick={reverseSortDirection}>
+            {activeDirection === "asc" ? "▲ تصاعدي" : "▼ تنازلي"}
+          </Button>
+        </div>
         <Select label="الأصناف في الصفحة" value={String(pageSize)}
           onChange={event => change("pageSize", event.target.value)}>
           <option value="20">20</option><option value="50">50</option><option value="100">100</option>
         </Select>
       </div>
       {resultQuery.isPending && canView && <Notice>جارٍ تحميل الأصناف المطابقة…</Notice>}
-      {result && <div className="table-scroll" role="region" aria-label="نتائج الأصناف حسب الخيارات">
+      {result && <>
+        <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
+          {result.rows.map(row => <article key={row.itemId} className="item-options-mobile-entry" role="listitem">
+            <div className="item-options-mobile-heading">
+              <Link to={`/companies/${companyId}/items/${row.itemId}`}
+                onClick={() => rememberItem(row)}>{row.name}</Link>
+              {!row.active && <span className="item-options-mobile-inactive"> (مؤرشف)</span>}
+              <span className="item-options-mobile-code">رمز <bdi>{row.code}</bdi></span>
+            </div>
+            <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
+              <div className="item-options-mobile-stat">
+                <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
+              </div>
+            </div>
+          </article>)}
+          {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
+        </div>
+        <div className="table-scroll item-options-desktop-table" role="region"
+          aria-label="نتائج الأصناف حسب الخيارات">
         <table>
           <thead><tr>
             {sortHeader("code", "رمز الصنف")}
@@ -221,10 +268,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {result.rows.map(row => <tr key={row.itemId}>
               <td><bdi>{row.code}</bdi></td>
               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
-                onClick={() => {
-                  if (user) rememberRecentEntity(user.id, companyId, "item",
-                    { id: row.itemId, name: row.name });
-                }}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
+                onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
               <td><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
               <td><bdi>{row.saleTimesMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
@@ -234,7 +278,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {!result.rows.length && <tr><td colSpan={7}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
-      </div>}
+        </div>
+      </>}
       {result && <div className="form-actions">
         <Button variant="secondary" disabled={resultQuery.isFetching || page <= 1}
           onClick={() => change("page", String(page - 1))}>السابق</Button>
