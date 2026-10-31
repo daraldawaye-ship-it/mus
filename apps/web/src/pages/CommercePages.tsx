@@ -2777,6 +2777,12 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                               onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
                           )}
+                          {kind==="sale" && line.sourceItem && (() => {
+                            const rate=saleClearanceRate(line.sourceItem,documentDate);
+                            return rate ? <small className="commerce-search-clearance-label">
+                              تصريف {rate}% — يُحسب اعتماد التصريف عند ترحيل الفاتورة
+                            </small> : null;
+                          })()}
                         </td>
                         <td>
                           <Select
