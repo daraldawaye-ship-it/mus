@@ -4,7 +4,7 @@ import { normalizeDigits } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { errorMessage } from "./phase2";
 
-const quantityPattern = /^\\d{1,22}$/;
+const quantityPattern = /^\d{1,22}$/;
 
 export function ItemReserveQuickEdit({
   companyId, itemId, revision, reserveQuantity, canEdit,
