@@ -233,6 +233,9 @@ const ItemFormDifferencesPage = lazy(() =>
 const ItemStatisticsReportPage = lazy(() =>
   import("./pages/ItemStatisticsReportPage").then(m=>({default:m.ItemStatisticsReportPage})),
 );
+const ItemOptionsListPage = lazy(() =>
+  import("./pages/ItemOptionsListPage").then(m=>({default:m.ItemOptionsListPage})),
+);
 const ItemsPage = lazy(() =>
   import("./pages/ItemsPages").then((module) => ({
     default: module.ItemsPage,
@@ -345,6 +348,7 @@ const companySections = [
   "my-cashbox-ledger",
   "items",
   "item-statistics-report",
+  "item-options-list",
   "central-access",
   "item",
   "item-agents",
@@ -433,6 +437,7 @@ function Navigation({
     "company.items": <Package size={17} />,
     "company.central-access": <Settings2 size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
+    "company.item-options-list": <ListTree size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
     "company.item-form-differences": <FileText size={17} />,
@@ -717,6 +722,10 @@ function CompanyContent({
     case "item-statistics-report":
       return <Suspense fallback={<Notice>جارٍ تحميل تقرير إحصائيات الأصناف…</Notice>}>
         <ItemStatisticsReportPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "item-options-list":
+      return <Suspense fallback={<Notice>جارٍ تحميل قائمة الأصناف…</Notice>}>
+        <ItemOptionsListPage key={context.company.id} context={context}/>
       </Suspense>;
     case "central-access":
       return <Suspense fallback={<Notice>جارٍ تحميل مركز الصلاحيات…</Notice>}>
