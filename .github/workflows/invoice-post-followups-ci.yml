@@ -42,6 +42,6 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: Test durable invoice rewards and clearance
-        run: node --import tsx --test --test-name-pattern="invoice reward tasks are opt-in|clearance earnings credit saver only|foreign-currency clearance is posted" tests/commerce.test.ts
+        run: node --import tsx --test --test-name-pattern="invoice follow-ups are deferred|invoice reward tasks are opt-in|clearance earnings credit saver only|foreign-currency clearance is posted" tests/commerce.test.ts
       - name: Check invoice print columns
         run: node --import tsx --test tests/invoice-print-sheet.test.ts
