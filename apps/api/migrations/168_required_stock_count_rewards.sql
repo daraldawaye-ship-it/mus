@@ -9,7 +9,7 @@ ON CONFLICT(code) DO NOTHING;
 INSERT INTO reward_task_settings
   (company_id,code,points,repeat_rule,enabled,page_key,updated_by)
 SELECT c.id,'STOCK_COUNT_REQUIRED',10,'per-document',true,NULL,c.created_by
-FROM companies c ON CONFLICT(company_id,code) DO NOTHING;
+FROM companies c WHERE true ON CONFLICT(company_id,code) DO NOTHING;
 
 -- New companies also receive the editable reward card.
 CREATE FUNCTION initialize_required_stock_count_reward() RETURNS trigger LANGUAGE plpgsql AS $$
