@@ -459,6 +459,7 @@ function invoiceBody(
     branchId: s.branch.id,
     locationId: s.showroom.id,
     counterpartyAccountId: s.supplier.id,
+    supplierAccountId: overrides.kind === "sale" ? null : s.supplier.id,
     description: "Commerce integration invoice",
     discount: "0",
     lines: [
@@ -4366,4 +4367,66 @@ test("form differences sorts all matching rows before paginating for each column
   }
   const wrong=await f.owner.request("GET",`${base}&sort=i.id;DROP TABLE items`);
   assert.equal(wrong.status,400,"Untrusted SQL sorting inputs must be rejected");
+});
+
+test("required stock-count reconciliations credit configured points once per new operation", async (t) => {
+  const f = await fixture(t);
+  const s = await setup(f, "Due stock counting rewards");
+  const staff = await f.member(s.company.id, ["inventory.post", "finance.post"], 841);
+  const wallet = async () => (await f.owner.ok<{
+    wallet: { points: string };
+  }>("GET", s.path + "/wallet?employeeId=" + staff.employee.id)).wallet;
+  const card = (await f.owner.ok<{
+    tasks: {code:string;points:string;enabled:boolean;revision:number;repeatRule:string;roleIds:number[];pageKey:string|null}[];
+  }>("GET", s.path + "/reward-tasks")).tasks.find((row) => row.code === "STOCK_COUNT_REQUIRED");
+  assert(card, "Required-count reward appears in task reward cards");
+  assert.equal(card.points, "10");
+  assert.equal(card.enabled, true);
+
+  const countItem = async (fromTask: boolean) => {
+    const item = await s.item({ hasExpiry: false });
+    await invoice(f, s, invoiceBody(s, item.id, {
+      lines: [{ itemId: item.id, unit: 1, quantity: "2", unitPrice: "800", expiryDate: null }],
+    }));
+    await f.pool.query(
+      "UPDATE items SET stocktake_required_at=clock_timestamp() WHERE company_id=$1 AND id=$2",
+      [s.company.id, item.id],
+    );
+    const body = {
+      documentDate: "2026-10-12",
+      itemId: item.id,
+      locationId: s.showroom.id,
+      countedQuantity: "2",
+      expectedQuantitySmallest: "48",
+      unit: 1,
+      expiryDate: null,
+      idempotencyKey: randomUUID(),
+    };
+    const path = s.path + "/stock-adjustments" + (fromTask ? "?taskSource=required-count" : "");
+    const first = await staff.client.ok<{ operation: { id: number } }>("POST", path, body, 201);
+    await staff.client.ok("POST", path, body, 200);
+    return first.operation.id;
+  };
+  const firstId = await countItem(true);
+  assert.equal((await wallet()).points, "10");
+  const firstEntry = await f.pool.query(
+    "SELECT stock_operation_id,task_code,points::text AS points FROM employee_wallet_entries WHERE company_id=$1 AND stock_operation_id=$2",
+    [s.company.id, firstId],
+  );
+  assert.equal(firstEntry.rowCount, 1);
+  assert.equal(firstEntry.rows[0].points, "10");
+
+  await f.owner.ok("PUT", s.path + "/reward-tasks/STOCK_COUNT_REQUIRED", {
+    revision: card.revision,
+    points: "17",
+    repeatRule: "per-document",
+    enabled: true,
+    roleIds: [],
+    pageKey: null,
+    dailyLimit: null,
+  });
+  await countItem(true);
+  assert.equal((await wallet()).points, "27", "The edited reward card applies only to later counts");
+  await countItem(false);
+  assert.equal((await wallet()).points, "27", "Ordinary stock adjustments do not qualify");
 });
