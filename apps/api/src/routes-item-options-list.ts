@@ -82,7 +82,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   const limit = `$${values.length - 1}`, offset = `$${values.length}`;
   const sql = `
     WITH candidate AS (
-      SELECT i.id, i.company_id, i.code, i.name, i.active,
+      SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
@@ -130,7 +130,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   const rows = (await client.query(sql, values)).rows;
   const selected = rows.filter(row => row.id !== null).map(row => ({
     id: Number(row.id), code: String(row.code), name: String(row.name),
-    active: Boolean(row.active),
+    active: Boolean(row.active), revision: Number(row.revision),
+    reserveQuantity: String(row.reserve_quantity),
     factor2: Number(row.factor2), factor3: Number(row.factor3),
     availableSmallest: String(row.available_smallest),
     availableUnit1: String(row.available_unit1),
@@ -145,6 +146,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   return {
     rows: enriched.map(row => ({
       itemId: row.id, code: row.code, name: row.name, active: row.active,
+      revision: row.revision, reserveQuantity: row.reserveQuantity,
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth,
