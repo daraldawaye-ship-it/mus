@@ -46,7 +46,7 @@ test("invoice editor and other queued forms use selected offline mode without re
   const questions=readFileSync("apps/web/src/pages/QuestionsPage.tsx","utf8");
   const app=readFileSync("apps/web/src/App.tsx","utf8");
   const switcher=readFileSync("apps/web/src/ConnectionModeControl.tsx","utf8");
-  assert.match(invoice,/if \(isOfflineNow\(\)\) \{\s*await saveOnDevice\(\)/);
+  assert.match(invoice,/if \(isOfflineNow\(\) \|\| sessionRequiresLogin\(\)\) \{\s*await saveOnDevice\(\)/);
   assert.match(finance,/if \(isOfflineNow\(\) && !document/);
   assert.match(questions,/if\(isOfflineNow\(\)\) throw new TypeError/);
   assert.match(invoice,/queueOfflineOperation\(user\.id, companyId, "invoice"/);
