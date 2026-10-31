@@ -43,6 +43,8 @@ jobs:
         run: npm ci
       - name: Check TypeScript
         run: npm run check
+      - name: Test supplier requirement and rewarded due-stock counts
+        run: node --import tsx --test --test-name-pattern="required stock-count reconciliations|purchase supplier is independent" tests/commerce.test.ts
       - name: Test exact multi-unit stock adjustment counting
         run: node --import tsx --test tests/stock-adjustment-count.test.ts
       - name: Test exact money display with thousands separators

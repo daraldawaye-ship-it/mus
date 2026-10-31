@@ -428,12 +428,13 @@ test("wallet access is self-only unless general, company isolated and reward tas
     "GET",
     base + "/reward-tasks",
   );
-  assert.equal(directory.tasks.length, 8);
-  assert(directory.tasks.every((row) => !row.enabled));
+  assert.equal(directory.tasks.length, 12);
   assert.deepEqual(
-    directory.tasks.filter((row) => row.implemented).map((row) => row.code).sort(),
-    ["DAILY_LOGIN", "PAGE_VISIT", "PAYMENT_PRINT", "PURCHASE_LINES", "PURCHASE_SAVED", "RECEIPT_PRINT", "SALE_LINES", "SALE_SAVED"],
+    directory.tasks.filter((row) => row.enabled).map((row) => row.code).sort(),
+    ["CUSTOMER_EXISTING", "CUSTOMER_NEW", "DOCTOR_REFERRED", "STOCK_COUNT_REQUIRED"],
   );
+  assert(directory.tasks.every((row) => row.implemented));
+  assert.equal(directory.tasks.find((row) => row.code === "STOCK_COUNT_REQUIRED")?.points, "10");
   assert.equal(
     (await staff.client.request("GET", base + "/reward-tasks")).status,
     403,

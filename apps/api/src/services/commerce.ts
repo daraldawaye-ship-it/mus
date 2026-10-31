@@ -323,6 +323,8 @@ export async function createInvoice(
   const supplierId = input.kind !== "purchase"
     ? null
     : creditPurchase ? input.counterpartyAccountId : input.supplierAccountId;
+  if (input.kind === "purchase" && supplierId === null && !importContext)
+    conflict("اسم المورد الفعلي إلزامي في فاتورة المشتريات؛ اختر حساب المورد قبل الحفظ.");
   let supplier: { id: number; code: string; name: string } | null = null;
   if (supplierId !== null) {
     const selected = await client.query(
