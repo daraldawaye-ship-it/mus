@@ -8177,5 +8177,26 @@
       "properties": {},
       "additionalProperties": false
     }
+  },
+  "GET /companies/:companyId/transaction-import/repair-20261030": {
+    "queryFields": [],
+    "source": "routes-legacy-sales-127-repair.ts"
+  },
+  "POST /companies/:companyId/transaction-import/repair-20261030": {
+    "queryFields": [],
+    "source": "routes-legacy-sales-127-repair.ts",
+    "bodyContract": "legacySales127RepairSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }
