@@ -16,5 +16,7 @@ INSERT INTO company_item_temporary_selections(company_id, item_id)
 SELECT company_id, id FROM items WHERE temporary_selected = true
 ON CONFLICT (company_id, item_id) DO NOTHING;
 
--- Remove the column that cannot be toggled without incrementing item revisions.
-ALTER TABLE items DROP COLUMN IF EXISTS temporary_selected;
+-- Keep the legacy items.temporary_selected column temporarily for safe
+-- rolling deployments: an old server process may still be serving reads while
+-- this migration runs. All new reads and writes use only the separate table.
+-- The legacy column is deprecated and is not a selection source of truth.
