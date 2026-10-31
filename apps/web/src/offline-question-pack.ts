@@ -35,9 +35,10 @@ export function syncOfflineQuestionPack(userId:number,companyId:number|null):Pro
     if(offlineUser()!==userId || !navigator.onLine)return;
     const scope=companyId??0;
     const progress=await readCatalogProgress(userId,scope,"private-question-pack");
-    // Recheck the first page on each visible resumption, then resume unfinished pages.
-    const pages=[1,...(progress.complete?[]:
-      Array.from({length:5},(_,i)=>Math.max(2,progress.nextPage)+i))];
+    // Recheck the first page, and rotate through remaining pages even
+    // after completion. New and edited answer keys must reach this private cache.
+    const pages=[1,...Array.from({length:5},(_,i)=>
+      Math.max(2,progress.nextPage)+i).filter(page=>page<=20)];
     for(const page of new Set(pages)){
       if(offlineUser()!==userId||!navigator.onLine||
          document.visibilityState==="hidden")return;
@@ -48,7 +49,7 @@ export function syncOfflineQuestionPack(userId:number,companyId:number|null):Pro
       await rememberRead(url,data);
       const complete=page*pageSize>=data.total;
       if(page>1 || complete)await saveCatalogProgress(userId,scope,
-        "private-question-pack",complete?1:page+1,complete);
+        "private-question-pack",complete?2:page+1,complete);
       if(complete)break;
     }
   })().finally(()=>running.delete(key));

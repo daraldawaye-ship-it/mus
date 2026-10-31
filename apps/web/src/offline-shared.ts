@@ -160,6 +160,6 @@ export async function sharedProgress(
 export async function saveSharedProgress(
   companyId:number,group:string,userId:number,page:number,complete:boolean,
 ) {
-  if (identity!==userId || !grants.has(userId+":"+companyId+":"+group)) return;
+  if (identity!==userId || !grants.has(userId+":"+(companyId===0?"public":companyId)+":"+group)) return;
   await write("progress:"+companyId+":"+group,{page,complete});
 }

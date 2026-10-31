@@ -219,3 +219,20 @@ test("the default sales account uses only the logged in employee cashbox, includ
   assert.match(ranking,/page\.key==="company\.sales"/);
   assert.doesNotMatch(ranking,/\["company\.sales","company\.purchases","company\.invoice"\]/);
 });
+
+
+test("offline question cache refreshes completed pages with correct public grant scope", () => {
+  const shared=readFileSync("apps/web/src/offline-shared.ts","utf8");
+  const questions=readFileSync("apps/web/src/offline-shared-extra.ts","utf8");
+  const pack=readFileSync("apps/web/src/offline-question-pack.ts","utf8");
+  const saveProgress=shared.slice(shared.indexOf("export async function saveSharedProgress"));
+  assert.match(saveProgress,/companyId===0\?"public":companyId/);
+  assert.doesNotMatch(questions,/if\(saved\?\.complete\) continue/);
+  assert.match(questions,/saved\?\.complete\?1/);
+  assert.match(questions,/allDone\?1:position/);
+  assert.doesNotMatch(pack,/progress\.complete\?\[\]:/);
+  assert.match(pack,/Math\.max\(2,progress\.nextPage\)/);
+  assert.match(pack,/complete\?2:page\+1/);
+  assert.match(pack,/gradeOfflineQuestion/);
+  assert.match(pack,/item\.revision===question\.revision/);
+});

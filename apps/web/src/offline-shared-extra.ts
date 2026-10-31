@@ -27,16 +27,17 @@ export async function refreshSharedQuestions(userId:number,companyId:number) {
       await shareAuthorizedRead(root+"/categories",categories);
     }catch { continue; }
     const saved=await sharedProgress(id,"questions",userId);
-    if(saved?.complete) continue;
+    // Completion starts a fresh bounded scan on the next visible pass,
+    // so edited and newly added question cards do not remain stale forever.
     // The cursor advances across categories and pages. Fetch at most
     // eight pages per visible pass, continuing later from the saved cursor.
-    let position=saved?.page??1;
+    let position=saved?.complete?1:(saved?.page??1);
     for(let budget=0;budget<8;budget++) {
       if(!navigator.onLine||document.visibilityState==="hidden") return;
       const categoryIndex=Math.floor((position-1)/10000);
       const page=((position-1)%10000)+1;
       if(categoryIndex>=categories.items.length) {
-        await saveSharedProgress(id,"questions",userId,position,true);
+        await saveSharedProgress(id,"questions",userId,1,true);
         break;
       }
       const category=categories.items[categoryIndex].category;
@@ -50,7 +51,7 @@ export async function refreshSharedQuestions(userId:number,companyId:number) {
           (typeof list.total==="number"&&page*20>=list.total);
         position=complete?(categoryIndex+1)*10000+1:position+1;
         const allDone=complete&&categoryIndex+1>=categories.items.length;
-        await saveSharedProgress(id,"questions",userId,position,allDone);
+        await saveSharedProgress(id,"questions",userId,allDone?1:position,allDone);
         if(allDone) break;
       }catch { break; }
     }
