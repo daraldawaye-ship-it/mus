@@ -47,7 +47,7 @@ test("server locks item and rejects stale values only for modified fields", () =
   assert.match(route, /existing\[field\]/);
   assert.match(route, /\.\.\.fieldPatch\.changes/);
   assert.match(route, /parse\(itemPatchSchema/);
-  assert.match(route, /AND revision=\$\{values\.length\}/);
+  assert.match(route, /AND revision=\$\$\{values\.length\}/);
   assert.match(route, /columnsToUpdate/);
   assert.match(route, /supplierChanged/);
   assert.match(route, /itemClearanceNotice\(before, next/);
@@ -59,7 +59,7 @@ test("editor tracks touched fields, submits a field-level patch and rebases afte
   assert.match(editor, /markDirty\("currencyId"\)/);
   assert.match(editor, /markDirty\("supplierAccountId"\)/);
   assert.match(editor, /markDirty\("agentId"\)/);
-  assert.match(editor, /savePayload = fieldPayload\.data/);
+  assert.match(editor, /savePayload = normalized/);
   assert.match(editor, /for \(const field of selectedField \? \[selectedField\] : \[\]\)/);
   assert.match(editor, /itemFieldPatchSchema\.safeParse\(\{ changes, expected, mode: "last-write-wins" \}\)/);
   assert.match(editor, /blockedFields\.current\.add\(selectedField\)/);
