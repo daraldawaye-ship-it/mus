@@ -2803,7 +2803,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
               aria-label="سطور الفاتورة"
             >
               <table
-                className={`commerce-lines commerce-matrix ${kind === "purchase" ? "commerce-matrix-purchase" : "commerce-matrix-sale"}`}
+                className={`commerce-lines commerce-matrix ${kind === "purchase" ? "commerce-matrix-purchase" : `commerce-matrix-sale${showExpiry ? " commerce-matrix-sale-has-expiry" : ""}`}`}
               >
                 <colgroup>
                   <col className="commerce-col-item" />
@@ -2910,7 +2910,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                           target.focus();
                         }}
                       >
-                        <td>
+                        <td className={kind === "sale" ? "commerce-mobile-sale-item-cell" : undefined}>
                           {line.originalSelection && original ? (
                             <Select
                               id={lineInputId(line, "original-line")}
@@ -2971,6 +2971,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                               onFinishEntry={kind === "sale" ? () => focus("invoice-notes") : undefined}
                             />
                           )}
+                          {kind === "sale" && line.itemId > 0 && line.itemName && (
+                            <span className="commerce-mobile-sale-item-name" dir="auto">{line.itemName}</span>
+                          )}
                           {kind==="sale" && line.sourceItem && (() => {
                             const rate=saleClearanceRate(line.sourceItem,documentDate);
                             return rate ? <small className="commerce-search-clearance-label">
@@ -2978,7 +2981,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                             </small> : null;
                           })()}
                         </td>
-                        <td>
+                        <td className="commerce-line-unit" data-mobile-label="الوحدة">
                           <Select
                             className="item-cell-field"
                             label={`الوحدة${line.itemName ? ` ${line.itemName}` : ""}`}
@@ -3055,7 +3058,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                             )}
                           </Select>
                         </td>
-                        <td>
+                        <td className="commerce-line-quantity" data-mobile-label="الكمية">
                           <Field
                             id={lineInputId(line, "quantity")}
                             className="item-cell-field"
@@ -3080,7 +3083,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                             }}
                           />
                         </td>
-                        <td>
+                        <td className="commerce-line-price" data-mobile-label="السعر">
                           <Field
                             id={lineInputId(line, "price")}
                             className="item-cell-field"
@@ -3119,7 +3122,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                           />
                         </td>
                         {showExpiry && (
-                          <td>
+                          <td className="commerce-line-expiry" data-mobile-label="انتهاء">
                             {kind === "purchase" && line.originalLineId ? (
                               line.expiryDate || "—"
                             ) : (line.sourceItem?.hasExpiry &&
@@ -3151,13 +3154,14 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                             )}
                           </td>
                         )}
-                        <td className="commerce-line-total" aria-live="polite">
+                        <td className="commerce-line-total" data-mobile-label="الإجمالي" aria-live="polite">
                           {amount(lineTotal)}
                         </td>
                         {kind === "sale" && (
                           <>
                             <td
                               className="commerce-line-available"
+                              data-mobile-label="المتاح"
                               title="المتاح في المعرض/المخزن المختار بالوحدة الأولى للصنف"
                             >
                               {line.itemId && location
@@ -3178,7 +3182,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                                       : "—"
                                 : "—"}
                             </td>
-                            <td className="commerce-line-shelf">
+                            <td className="commerce-line-shelf" data-mobile-label="الرف">
                               <span
                                 title={
                                   line.sourceItem?.shelf ||
@@ -3193,7 +3197,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                             </td>
                           </>
                         )}
-                        <td>
+                        <td className="commerce-line-action-cell">
                           <div className="commerce-line-actions">
                             <InvoiceItemActionsDropdown
                               itemName={line.itemName || "الصنف"}
