@@ -3,7 +3,7 @@ import { readSaleRankSnapshot, saveSaleRankSnapshot } from "./offline-storage";
 
 type RankingBatch={
   asOfDate:string;
-  items:{itemId:number;saleTimes:string}[];
+  items:{itemId:number;saleTimes:string;priorityScaled:string}[];
   hasMore:boolean;
   afterId:number;
 };
@@ -29,12 +29,12 @@ export async function refreshDailySaleRanks(userId:number,companyId:number):Prom
   try {
     const day=adenDay();
     const complete=await readSaleRankSnapshot(userId,companyId);
-    if(complete?.asOfDate===day)return;
+    if(complete?.asOfDate===day && complete.priorities)return;
     const previous=await readSaleRankSnapshot(userId,companyId,"progress");
-    const current=previous?.asOfDate===day
-      ?previous:{asOfDate:day,afterId:0,scores:{} as Record<string,string>};
+    const current=previous?.asOfDate===day && previous.priorities
+      ?previous:{asOfDate:day,afterId:0,scores:{} as Record<string,string>,priorities:{} as Record<string,string>};
     const canContinue=()=>navigator.onLine && document.visibilityState!=="hidden";
-    for(let i=0;i<6 && canContinue();i++){
+    for(let i=0;i<24 && canContinue();i++){
       const page=await api<RankingBatch>(
         "/companies/"+companyId+"/item-sale-ranks?afterId="+current.afterId,
       );
@@ -43,10 +43,13 @@ export async function refreshDailySaleRanks(userId:number,companyId:number):Prom
         if(Number.isSafeInteger(rank.itemId)&&rank.itemId>0 &&
           /^-?\d+$/.test(rank.saleTimes))
           current.scores[String(rank.itemId)]=rank.saleTimes;
+        if(Number.isSafeInteger(rank.itemId)&&rank.itemId>0 &&
+          /^-?\d+$/.test(rank.priorityScaled))
+          current.priorities![String(rank.itemId)]=rank.priorityScaled;
       }
       if(!page.hasMore){
         await saveSaleRankSnapshot(userId,companyId,"complete",{
-          asOfDate:day,afterId:0,scores:current.scores,
+          asOfDate:day,afterId:0,scores:current.scores,priorities:current.priorities,
         });
         return;
       }
