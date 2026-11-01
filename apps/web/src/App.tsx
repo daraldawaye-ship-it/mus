@@ -61,6 +61,8 @@ import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
+import { PresenceHeartbeat } from "./PresenceHeartbeat";
+import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
 import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
@@ -1233,6 +1235,7 @@ function Workspace() {
                   </Protected>
                 }
               />
+              <Route path="/users/last-present" element={<Protected><PageRouteGuard pageKey="public.users"><LastPresentUsersPage /></PageRouteGuard></Protected>} />
               <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsContinuousReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />
@@ -1322,6 +1325,7 @@ function Workspace() {
           </footer>
         </div>
       </div>
+      <PresenceHeartbeat userId={user?.id ?? null} />
       <AppUpdatePrompt />
       <Dialog
         open={drawer}
