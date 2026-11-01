@@ -1524,20 +1524,6 @@ function ItemEditor({
           </Button>
         </Notice>
       )}
-      {item && <label className="item-card-temporary-choice">
-        <input type="checkbox"
-          checked={temporarySelection.items.some(entry => entry.id === item.id)}
-          disabled={!temporarySelection.enabled || temporarySelection.loading || temporarySelection.pendingIds.has(item.id)}
-          onChange={event => {
-            temporarySelection.toggle({
-              id: item.id, name: item.name, code: item.code,
-            }, event.target.checked);
-          }} />
-        <span>اختيار مؤقت</span>
-        <small>هذه علامة مشتركة بين مستخدمي الشركة على جميع الأجهزة حتى تصفيرها.</small>
-      </label>}
-      {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيار المشترك…</small>}
-      {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
       <form ref={formElement} onSubmit={(event) => void save(event)}
         onBlurCapture={event => {
           if (!item || readOnly || !manage) return;
@@ -1578,23 +1564,6 @@ function ItemEditor({
         </div>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
-            <ImageUpload purpose="item" companyId={companyId}
-              preview={fields.imageId ? `/api/media/${fields.imageId}/thumbnail` : null}
-              disabled={disabled} onUploaded={({id})=>edit("imageId",id)}
-              onClear={()=>edit("imageId",null)} />
-            <Field
-              label="رمز الصنف"
-              value={item?.code ?? "تلقائي عند الحفظ"}
-              readOnly
-            />
-            <Field
-              label="المعرف في النظام السابق"
-              maxLength={100}
-              dir="ltr"
-              value={fields.legacyId}
-              disabled={disabled}
-              onChange={(event) => edit("legacyId", event.target.value)}
-            />
             <Field
               label="اسم الصنف"
               required
@@ -1629,7 +1598,6 @@ function ItemEditor({
                 هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.
               </small>}
               {shortcutCheck.isFetching && <small className="muted">جارٍ التحقق من الاختصار…</small>}
-              <small className="muted">اختصار فريد من خانة أو خانتين، ويمكن كتابة الرموز. اضغط Enter في الفاتورة. الرقم صفر وحده محجوز لإنهاء المبيعات.</small>
             </div>
             <div className="field">
               <div className="item-reference-field">
@@ -1647,60 +1615,6 @@ function ItemEditor({
                 <Button variant="secondary" disabled={disabled}
                   onClick={()=>setPicker("shelf")}>اختيار رف</Button>
               </div>
-            </div>
-            <Field
-              label="الباركود"
-              maxLength={80}
-              dir="ltr"
-              value={fields.barcode}
-              disabled={disabled}
-              onChange={(event) => edit("barcode", event.target.value)}
-            />
-            <div className="field item-floating-picker">
-              <label id="item-agent-label">وكيل الصنف</label>
-              <div className="item-reference-field">
-                <Button
-                  variant="secondary"
-                  disabled={disabled}
-                  aria-labelledby="item-agent-label item-agent-choice"
-                  onClick={() => setPicker("agent")}
-                >
-                  <span id="item-agent-choice">
-                    {agent?.name ?? "اختيار وكيل الصنف"}
-                  </span>
-                </Button>
-                {agent && (
-                  <Button
-                    variant="ghost"
-                    disabled={disabled}
-                    aria-label="إزالة وكيل الصنف"
-                    onClick={() => {
-                      setAgent(null);
-                      markDirty();
-                    }}
-                  >
-                    ×
-                  </Button>
-                )}
-              </div>
-              {agent && !agent.active && (
-                <small className="muted">الوكيل مؤرشف</small>
-              )}
-            </div>
-            <div className="field item-floating-picker">
-              <label id="item-supplier-label">الصنف من المورد</label>
-              <div className="item-reference-field">
-                <Button variant="secondary" disabled={disabled}
-                  aria-labelledby="item-supplier-label item-supplier-choice"
-                  onClick={()=>setPicker("supplier")}>
-                  <span id="item-supplier-choice">{supplier ? `${supplier.code} — ${supplier.name}` : "اختيار مورد الصنف"}</span>
-                </Button>
-                {supplier && <Button variant="ghost" disabled={disabled}
-                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setSupplierManuallyTouched(true);setDirty(true)}}>×</Button>}
-              </div>
-              <small className="muted">{item?.supplierInferred && !supplierManuallyTouched
-                ? "مورد مقترح تلقائيًا من آخر فاتورة مشتريات، وقد يحتاج إلى تصحيح. اختر المورد لتأكيده يدويًا."
-                : "يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية تتجاوز الرصيد السابق."}</small>
             </div>
             <div className="field item-floating-picker item-composition-picker">
               <label htmlFor="item-composition-search">التركيب</label>
@@ -1754,24 +1668,6 @@ function ItemEditor({
               {fields.compositionId&&compositionDetail.data?.composition.active===false&&
                 <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
-            <div className="field item-floating-picker">
-              <label id="item-currency-label">عملة الأسعار</label>
-              <Button
-                variant="secondary"
-                disabled={disabled}
-                aria-labelledby="item-currency-label item-currency-choice"
-                onClick={() => setPicker("currency")}
-              >
-                <span id="item-currency-choice">
-                  {currency
-                    ? `${currency.code} — ${currency.name}`
-                    : "اختيار عملة الأسعار"}
-                </span>
-              </Button>
-              {currency && !currency.active && (
-                <small className="muted">العملة موقفة</small>
-              )}
-            </div>
             <Field
               label="مفاتيح البحث"
               className="item-span-two"
@@ -1781,54 +1677,6 @@ function ItemEditor({
               onChange={(event) => edit("searchKeys", event.target.value)}
               placeholder="كلمات وأسماء أخرى تساعد في البحث"
             />
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={fields.hasExpiry}
-                disabled={disabled}
-                onChange={(event) => edit("hasExpiry", event.target.checked)}
-              />
-              له تاريخ انتهاء
-            </label>
-            {fields.hasExpiry && (
-              <ExpiryMonthField
-                label="شهر وسنة أقرب انتهاء"
-                value={nearestExpirySaved !== undefined ? nearestExpirySaved : fields.nearestExpiryDate}
-                disabled={disabled}
-                onChange={(date) => {
-                  setNearestExpirySaved(undefined);
-                  edit("nearestExpiryDate", date ?? "");
-                }}
-                hint="يُحفظ يوم 01 من الشهر. يمكنك تعديله من الكرت أو من تسوية الصنف."
-              />
-            )}
-            {item && (
-              <div className="field item-stocktake-required">
-                <label htmlFor="item-stocktake-required-at">مطلوب_جرده</label>
-                <div className="item-composition-controls">
-                  <input id="item-stocktake-required-at" readOnly
-                    value={stocktakeRequiredAt
-                      ? new Date(stocktakeRequiredAt).toLocaleString("ar-YE", { timeZone: "Asia/Aden", dateStyle: "short", timeStyle: "medium" })
-                      : ""}
-                    placeholder="لم يُطلب الجرد بعد"
-                    aria-label="تاريخ ووقت طلب جرد الصنف" />
-                  <Button variant="secondary" size="compact" type="button"
-                    disabled={disabled || dirty || saving || stocktakeBusy || conflict || optionBusy}
-                    onClick={() => void stampStocktakeRequiredAt()}>
-                    {stocktakeBusy ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
-                  </Button>
-                </div>
-              </div>
-            )}
-            <label className="check-label">
-              <input
-                type="checkbox"
-                checked={!fields.active}
-                disabled={disabled}
-                onChange={(event) => edit("active", !event.target.checked)}
-              />
-              مؤرشف
-            </label>
           </div>
         </Card>
         <Card
@@ -2039,6 +1887,158 @@ function ItemEditor({
           <small className="muted">
             يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
           </small>
+        </Card>
+        <Card title="بيانات أخرى">
+      {item && <label className="item-card-temporary-choice">
+        <input type="checkbox"
+          checked={temporarySelection.items.some(entry => entry.id === item.id)}
+          disabled={!temporarySelection.enabled || temporarySelection.loading || temporarySelection.pendingIds.has(item.id)}
+          onChange={event => {
+            temporarySelection.toggle({
+              id: item.id, name: item.name, code: item.code,
+            }, event.target.checked);
+          }} />
+        <span>اختيار مؤقت</span>
+        <small>هذه علامة مشتركة بين مستخدمي الشركة على جميع الأجهزة حتى تصفيرها.</small>
+      </label>}
+      {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيار المشترك…</small>}
+      {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
+          <div className="item-fields-grid">
+            <Field
+              label="رمز الصنف"
+              value={item?.code ?? "تلقائي عند الحفظ"}
+              readOnly
+            />
+            <Field
+              label="المعرف في النظام السابق"
+              maxLength={100}
+              dir="ltr"
+              value={fields.legacyId}
+              disabled={disabled}
+              onChange={(event) => edit("legacyId", event.target.value)}
+            />
+            <Field
+              label="الباركود"
+              maxLength={80}
+              dir="ltr"
+              value={fields.barcode}
+              disabled={disabled}
+              onChange={(event) => edit("barcode", event.target.value)}
+            />
+            <div className="field item-floating-picker">
+              <label id="item-agent-label">وكيل الصنف</label>
+              <div className="item-reference-field">
+                <Button
+                  variant="secondary"
+                  disabled={disabled}
+                  aria-labelledby="item-agent-label item-agent-choice"
+                  onClick={() => setPicker("agent")}
+                >
+                  <span id="item-agent-choice">
+                    {agent?.name ?? "اختيار وكيل الصنف"}
+                  </span>
+                </Button>
+                {agent && (
+                  <Button
+                    variant="ghost"
+                    disabled={disabled}
+                    aria-label="إزالة وكيل الصنف"
+                    onClick={() => {
+                      setAgent(null);
+                      markDirty();
+                    }}
+                  >
+                    ×
+                  </Button>
+                )}
+              </div>
+              {agent && !agent.active && (
+                <small className="muted">الوكيل مؤرشف</small>
+              )}
+            </div>
+            <div className="field item-floating-picker">
+              <label id="item-supplier-label">الصنف من المورد</label>
+              <div className="item-reference-field">
+                <Button variant="secondary" disabled={disabled}
+                  aria-labelledby="item-supplier-label item-supplier-choice"
+                  onClick={()=>setPicker("supplier")}>
+                  <span id="item-supplier-choice">{supplier ? `${supplier.code} — ${supplier.name}` : "اختيار مورد الصنف"}</span>
+                </Button>
+                {supplier && <Button variant="ghost" disabled={disabled}
+                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setSupplierManuallyTouched(true);setDirty(true)}}>×</Button>}
+              </div>
+            </div>
+            <div className="field item-floating-picker">
+              <label id="item-currency-label">عملة الأسعار</label>
+              <Button
+                variant="secondary"
+                disabled={disabled}
+                aria-labelledby="item-currency-label item-currency-choice"
+                onClick={() => setPicker("currency")}
+              >
+                <span id="item-currency-choice">
+                  {currency
+                    ? `${currency.code} — ${currency.name}`
+                    : "اختيار عملة الأسعار"}
+                </span>
+              </Button>
+              {currency && !currency.active && (
+                <small className="muted">العملة موقفة</small>
+              )}
+            </div>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={fields.hasExpiry}
+                disabled={disabled}
+                onChange={(event) => edit("hasExpiry", event.target.checked)}
+              />
+              له تاريخ انتهاء
+            </label>
+            {fields.hasExpiry && (
+              <ExpiryMonthField
+                label="شهر وسنة أقرب انتهاء"
+                value={nearestExpirySaved !== undefined ? nearestExpirySaved : fields.nearestExpiryDate}
+                disabled={disabled}
+                onChange={(date) => {
+                  setNearestExpirySaved(undefined);
+                  edit("nearestExpiryDate", date ?? "");
+                }}
+                hint="يُحفظ يوم 01 من الشهر. يمكنك تعديله من الكرت أو من تسوية الصنف."
+              />
+            )}
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={!fields.active}
+                disabled={disabled}
+                onChange={(event) => edit("active", !event.target.checked)}
+              />
+              مؤرشف
+            </label>
+            <ImageUpload purpose="item" companyId={companyId}
+              preview={fields.imageId ? `/api/media/${fields.imageId}/thumbnail` : null}
+              disabled={disabled} onUploaded={({id})=>edit("imageId",id)}
+              onClear={()=>edit("imageId",null)} />
+            {item && (
+              <div className="field item-stocktake-required">
+                <label htmlFor="item-stocktake-required-at">مطلوب_جرده</label>
+                <div className="item-composition-controls">
+                  <input id="item-stocktake-required-at" readOnly
+                    value={stocktakeRequiredAt
+                      ? new Date(stocktakeRequiredAt).toLocaleString("ar-YE", { timeZone: "Asia/Aden", dateStyle: "short", timeStyle: "medium" })
+                      : ""}
+                    placeholder="لم يُطلب الجرد بعد"
+                    aria-label="تاريخ ووقت طلب جرد الصنف" />
+                  <Button variant="secondary" size="compact" type="button"
+                    disabled={disabled || dirty || saving || stocktakeBusy || conflict || optionBusy}
+                    onClick={() => void stampStocktakeRequiredAt()}>
+                    {stocktakeBusy ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </Card>
         <Card title="إعدادات إحصائيات التسويات">
           <div className="item-fields-grid">
