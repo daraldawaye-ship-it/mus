@@ -244,7 +244,10 @@ export function calculateInvoiceTotals(
     if (quantities[index] >= 0n || line.discount === undefined) continue;
     const text = normalizeDigits(line.discount.trim()).replace(/٫/g, ".");
     const inherited = (text.startsWith("-") ? -1n : 1n) * units(amountSchema.parse(text.replace(/^-/, "")));
-    if (inherited > 0n || inherited < grossLines[index] || inherited % step !== 0n)
+    // A return of an original NEGATIVE discount must reverse it as a
+    // positive adjustment. The original invoice is checked again by the
+    // server for quantity and total refund bounds.
+    if (inherited < grossLines[index] || inherited % step !== 0n)
       throw new Error("خصم المردود غير مطابق لقيمة السطر أو دقة العملة");
     shares[index] = inherited;
   }
