@@ -1,0 +1,33 @@
+name: Purchase temporary work drafts
+on:
+  push:
+    branches: ['preview/render-2026-10-23']
+    paths:
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/purchase-drafts.ts'
+      - 'apps/web/src/styles.css'
+      - 'tests/purchase-work-drafts.test.ts'
+      - '.github/workflows/purchase-work-drafts-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/purchase-drafts.ts'
+      - 'apps/web/src/styles.css'
+      - 'tests/purchase-work-drafts.test.ts'
+      - '.github/workflows/purchase-work-drafts-ci.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/purchase-work-drafts.test.ts
