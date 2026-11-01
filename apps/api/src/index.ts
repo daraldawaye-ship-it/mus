@@ -12,6 +12,7 @@ import { prepareItemSaleRankings, startItemSaleRankings } from "./services/item-
 import { startLegacyImportWorker } from "./services/legacy-import-worker.ts";
 import { startInvoicePostFollowups } from "./services/invoice-post-followups.ts";
 import { startItemClearanceNotifications } from "./services/item-clearance-notification-worker.ts";
+import { provisionExistingDarAldawaInvoiceShortcuts } from "./services/company2-invoice-shortcut-defaults.ts";
 import { OCTOBER_2026_SALES_RUN_ID, prepareOctober2026SalesRecovery } from "./services/october-2026-sales-recovery.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 
@@ -22,6 +23,18 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+// One-time reconciliation ALSO covers the twelve existing invoice-authorized
+// employees of Dar Aldawa, not just staff created after this deployment.
+// Page grants are evaluated individually: no new permissions are assigned.
+if (!AUTOMATIONS_PAUSED) {
+  try {
+    await provisionExistingDarAldawaInvoiceShortcuts(application.pool);
+  } catch (error) {
+    console.error("COMPANY2_INVOICE_SHORTCUTS_RECONCILIATION_FAILED",
+      error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Owner-authorized initial-only intake: exactly nine missing October purchases.
 // This never posts invoices or starts/resumes legacy accounting/stock workers.
 if (!AUTOMATIONS_PAUSED) {
