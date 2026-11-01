@@ -6,7 +6,7 @@ import { CompanyPrintHeader } from "./CompanyPrintHeader";
 export type PrintableInvoice = Pick<Invoice,
   "kind" | "returning" | "documentDate" | "counterpartyAccountName" |
   "counterpartyAccountCode" | "supplierReceiptNumber" | "supplierAccountName" |
-  "branchName" | "locationName" | "currencyCode" |
+  "branchName" | "locationName" | "doctorName" | "currencyCode" |
   "description" | "gross" | "discount" | "total" |
   "createdByName" | "createdAt"> & {
     number?: string | null;
