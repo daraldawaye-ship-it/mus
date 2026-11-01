@@ -20,6 +20,7 @@ import {
   normalizeDigits,
   itemSchema,
   itemPatchSchema,
+  itemFieldPatchSchema,
   itemAgentSchema,
   itemAgentPatchSchema,
   itemFactorSchema,
@@ -1110,6 +1111,7 @@ type ItemFields = {
   nearestExpiryDate: string;
   active: boolean;
 };
+type EditableItemField = keyof ItemFields | "currencyId" | "agentId" | "supplierAccountId";
 function initialItemFields(item: Item | null): ItemFields {
   return {
     name: item?.name ?? "",
@@ -1269,7 +1271,9 @@ function ItemEditor({
   // Visible card fields are a local snapshot, not a full-record write payload.
   // Track only fields actually edited by this user, even during network saves.
   const lastSavedSnapshot = useRef<Item | null>(item);
-  const editedFields = useRef(new Map<keyof ItemFields | "currencyId" | "agentId" | "supplierAccountId", number>());
+  const editedFields = useRef(new Map<EditableItemField, number>());
+  const blockedFields = useRef(new Set<EditableItemField>());
+  const lastEditedField = useRef<EditableItemField | null>(null);
   const [visibleRevision, setVisibleRevision] = useState(item?.revision ?? 0);
   const [savedMessage, setSavedMessage] = useState("");
   const formElement = useRef<HTMLFormElement>(null);
@@ -1302,9 +1306,14 @@ function ItemEditor({
     onSavingChange?.(saving || stocktakeBusy || (embedded && (dirty || optionBusy)));
     return () => onSavingChange?.(false);
   }, [saving, stocktakeBusy, dirty, optionBusy, embedded, onSavingChange]);
-  function markDirty(field?: keyof ItemFields | "currencyId" | "agentId" | "supplierAccountId") {
+  function markDirty(field?: EditableItemField) {
     draftVersion.current += 1;
-    if (field) editedFields.current.set(field, draftVersion.current);
+    if (field) {
+      editedFields.current.set(field, draftVersion.current);
+      lastEditedField.current = field;
+      blockedFields.current.delete(field);
+      setConflictDetails(previous => previous?.fields.includes(field) ? null : previous);
+    }
     setError("");
     setSavedMessage("");
     setDirty(true);
@@ -1332,11 +1341,19 @@ function ItemEditor({
       return next;
     });
   }
-  async function save(event?: FormEvent, confirmedCurrent?: Item) {
+  async function save(event?: FormEvent, confirmedCurrent?: Item, onlyField?: EditableItemField) {
     event?.preventDefault();
     if (closingRef.current || readOnly || !manage || savingRequest.current ||
-        (item && (!dirty || (conflict && !confirmedCurrent)))) return;
-    if (shortcutDuplicate) {
+        (item && !dirty)) return;
+    // Every PATCH saves just one edited field, never a whole/stale card.
+    const selectedField: EditableItemField | null = item
+      ? onlyField
+        ? editedFields.current.has(onlyField) &&
+            (!blockedFields.current.has(onlyField) || !!confirmedCurrent) ? onlyField : null
+        : [...editedFields.current.keys()].find(key => !blockedFields.current.has(key)) ?? null
+      : null;
+    if (item && !selectedField) return;
+    if (shortcutDuplicate && (!item || selectedField === "shortcut")) {
       setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
       return;
     }
@@ -1357,7 +1374,7 @@ function ItemEditor({
       settlementDisplayDate: fields.settlementDisplayDate || null,
     };
     const parsed = item
-      ? itemPatchSchema.safeParse({ ...body, revision: savedRevision.current })
+      ? { success: true as const, data: body }
       : itemSchema.safeParse(
           unknownCreation
             ? submittedCreate.current
@@ -1375,7 +1392,8 @@ function ItemEditor({
       const expected: Record<string, unknown> = {};
       const previous = (confirmedCurrent ?? lastSavedSnapshot.current) as unknown as Record<string, unknown>;
       const current = parsed.data as unknown as Record<string, unknown>;
-      for (const field of editedFields.current.keys()) {
+      // Only the requested/oldest unblocked field leaves this snapshot.
+      for (const field of selectedField ? [selectedField] : []) {
         const oldValue = previous[field] ?? null;
         const newValue = current[field] ?? null;
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
@@ -1384,11 +1402,18 @@ function ItemEditor({
         }
       }
       if (!Object.keys(changes).length) {
-        editedFields.current.clear();
-        setDirty(false);
+        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
+          editedFields.current.delete(selectedField);
+        setDirty(editedFields.current.size > 0);
         return;
       }
-      savePayload = { changes, expected };
+      const fieldPayload = itemFieldPatchSchema.safeParse({ changes, expected });
+      if (!fieldPayload.success) {
+        if (selectedField) blockedFields.current.add(selectedField);
+        setError(fieldPayload.error.issues[0]?.message ?? "تحقق من قيمة الحقل.");
+        return;
+      }
+      savePayload = fieldPayload.data;
     }
     savingRequest.current = true;
     setSaving(true);
@@ -1418,6 +1443,8 @@ function ItemEditor({
           !same(actual[field],payload.expected[field]) &&
           !same(actual[field],payload.changes[field]));
         if (conflicting.length) {
+          if (selectedField) blockedFields.current.add(selectedField);
+          lastSavedSnapshot.current = latest.item;
           setConflictDetails({latest:latest.item,fields:conflicting});
           setConflict(true);
           setError("");
@@ -1439,14 +1466,26 @@ function ItemEditor({
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
-        for (const [field, version] of editedFields.current) {
-          if (version <= savedVersion) editedFields.current.delete(field);
-        }
+        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
+          editedFields.current.delete(selectedField);
+        if (selectedField) blockedFields.current.delete(selectedField);
         setDirty(editedFields.current.size > 0);
+        // Merge the latest real values into the visual snapshot without
+        // overwriting other fields still being edited by this user.
+        setFields(previous => {
+          const merged = initialItemFields(result.item);
+          for (const key of editedFields.current.keys()) {
+            if (key in previous)
+              (merged as unknown as Record<string, unknown>)[key] = previous[key as keyof ItemFields];
+          }
+          return merged;
+        });
       } else if (draftVersion.current === savedVersion) setDirty(false);
       setUnknownCreation(false);
-      setConflict(false);
-      setConflictDetails(null);
+      if (!conflictDetails || (selectedField && conflictDetails.fields.includes(selectedField))) {
+        setConflict(false);
+        setConflictDetails(null);
+      }
       if (item) {
         savedRevision.current = result.item.revision;
         savedItem.current = result.item;
@@ -1463,6 +1502,7 @@ function ItemEditor({
       if (guard.isCurrent()) {
         if (!item && (!(reason instanceof ApiFailure) || reason.status >= 500))
           setUnknownCreation(true);
+        if (item && selectedField) blockedFields.current.add(selectedField);
         if (item && reason instanceof ApiFailure && reason.status === 409 &&
             !String(errorMessage(reason)).includes("الاختصار"))
           setConflict(true);
@@ -1514,6 +1554,7 @@ function ItemEditor({
       savedItem.current = null;
       lastSavedSnapshot.current = result.item;
       editedFields.current.clear();
+      blockedFields.current.clear();
       setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
       setConflict(false);
@@ -1530,8 +1571,9 @@ function ItemEditor({
   // and picker choices save shortly after selection without a Save button.
   // Never attempt to persist a half-typed field or retry invalid data in a loop.
   useEffect(() => {
-    if (!item || !manage || readOnly || !dirty || saving || conflict || picker ||
-        error || closingRef.current) return;
+    if (!item || !manage || readOnly || !dirty || saving || picker ||
+        closingRef.current ||
+        ![...editedFields.current.keys()].some(key => !blockedFields.current.has(key))) return;
     const timeout = window.setTimeout(() => {
       const active = document.activeElement;
       const typing = active && formElement.current?.contains(active) &&
@@ -1599,7 +1641,8 @@ function ItemEditor({
           على جهاز آخر. تعديلاتك باقية هنا ولم تُحذف.
           <div className="form-actions">
             <Button variant="secondary" disabled={saving}
-              onClick={() => void save(undefined, conflictDetails.latest)}>
+              onClick={() => void save(undefined, conflictDetails.latest,
+                conflictDetails.fields[0] as EditableItemField)}>
               حفظ تعديلي رغم التعارض
             </Button>
             <Button variant="ghost" disabled={saving}
@@ -1623,7 +1666,8 @@ function ItemEditor({
                 event.target instanceof HTMLTextAreaElement ||
                 event.target instanceof HTMLSelectElement)) return;
           // Version checks retain any changes typed while this request runs.
-          window.setTimeout(() => void save(), 80);
+          const lastField = lastEditedField.current;
+          window.setTimeout(() => void save(undefined, undefined, lastField ?? undefined), 80);
         }}>
         <div className="form-actions item-save-actions">
           {manage && !readOnly && !item && (
