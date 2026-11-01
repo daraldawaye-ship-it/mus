@@ -49,23 +49,27 @@ export function commerceOptionRoutes(pool: Pool): Router {
         "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS day",
       );
       const day=today.rows[0]!.day;
-      const rows=await client.query<{item_id:number;total:string}>(`
-        WITH monthly AS (
-          SELECT item_id,net_sale_invoices FROM item_sale_rankings
-          WHERE company_id=$1 AND as_of_date=$2::date
-          UNION ALL
-          SELECT item_id,net_sale_invoices FROM staged_item_sale_rankings
-          WHERE company_id=$1 AND as_of_date=$2::date
-        )
-        SELECT item_id,SUM(net_sale_invoices)::text AS total
-        FROM monthly WHERE item_id>$3::integer
-        GROUP BY item_id HAVING SUM(net_sale_invoices)<>0
-        ORDER BY item_id ASC LIMIT 1001
-      `,[companyId,day,Number(afterId)]);
+      const canShowStock = await canReadItemStock(client,user,companyId);
+      const stockJoin = canShowStock
+        ? " LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id"
+        : "";
+      const saleable = canShowStock
+        ? "COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)"
+        : "0::numeric";
+      const rows=await client.query<{item_id:number;total:string;priority_scaled:string}>(`
+        SELECT i.id AS item_id,
+          (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0))::text AS total,
+          ROUND(((COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0))
+            + (${saleable}))*1000000)::text AS priority_scaled
+        FROM items i
+        ${itemSaleTimesJoinSql} ${stockJoin}
+        WHERE i.company_id=$1 AND i.id>$2::integer
+        ORDER BY i.id ASC LIMIT 1001
+      `,[companyId,Number(afterId)]);
       const more=rows.rows.length>1000;
       const page=rows.rows.slice(0,1000);
       return {asOfDate:day,items:page.map(row=>({
-        itemId:row.item_id,saleTimes:row.total,
+        itemId:row.item_id,saleTimes:row.total,priorityScaled:row.priority_scaled,
       })),hasMore:more,afterId:more?page[page.length-1]!.item_id:0};
     });
     res.json(result);
@@ -185,7 +189,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
         // three characters must never trigger broad scans or ranking work.
         if (fastItemLookup && !canSearchInvoiceItem(req.query.q as string)) {
           return {
-            items: [], total: 0, page: 1, pageSize: 10, hasMore: false,
+            items: [], total: 0, page: 1, pageSize: 20, hasMore: false,
           };
         }
         const query = {
@@ -203,6 +207,12 @@ export function commerceOptionRoutes(pool: Pool): Router {
           const stockSelect = canShowStock
             ? ",COALESCE(lookup_stock.stock_total,0)::text AS available_smallest "
             : ",NULL::text AS available_smallest ";
+          const soldQuantity = canRank
+            ? "COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0)"
+            : "0::numeric";
+          const saleableStock = canShowStock
+            ? "COALESCE(lookup_stock.stock_showroom,0)+COALESCE(lookup_stock.stock_warehouse,0)"
+            : "0::numeric";
           return masterPage(
             client,
             request,
@@ -210,7 +220,8 @@ export function commerceOptionRoutes(pool: Pool): Router {
             itemSelect.replace(itemFrom, stockSelect + stockFrom),
             stockFrom,
             "i",
-            { id: "i.id", code: "i.code", name: "i.name", active: "i.active", saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint" },
+            { id: "i.id", code: "i.code", name: "i.name", active: "i.active", saleTimes: canRank ? itemSaleTimesOrderSql : "0::bigint",
+              saleQuantityPlusStock: `(${soldQuantity})+(${saleableStock})` },
             [
               "i.name",
               "i.english_name",
