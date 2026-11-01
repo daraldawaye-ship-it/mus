@@ -48,4 +48,5 @@ test("sales header puts unused shortcut first and omits redundant row clearance"
   assert.ok(alerts.indexOf('key="current-clearance"') < alerts.indexOf('...[data?.saleNotes'));
   assert.match(alerts, /\(\{unusedShortcut\.trim\(\)\}\)/);
   assert.match(styles, /\.invoice-sale-inline-shortcut\s*\{[^}]*background:\s*#ffb300;/);
+  assert.match(styles, /\.invoice-sale-inline-shortcut\s*\{[^}]*font-size:\s*16px;/);
 });
