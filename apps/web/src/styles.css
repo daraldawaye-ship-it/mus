@@ -2211,6 +2211,74 @@ ul {
   gap: 8px;
   min-width: 0;
 }
+/* Simultaneous invoices in one installed-app window. */
+.invoice-point-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 7px;
+  padding: 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  direction: rtl;
+}
+.invoice-point-tab {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.invoice-point-tab.is-active {
+  border-color: var(--focus);
+  background: var(--nav-active);
+}
+.invoice-point-tab button,
+.invoice-point-add {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.invoice-point-tab [role="tab"] {
+  padding: 3px 10px;
+  font-weight: 600;
+}
+.invoice-point-tab [role="tab"][aria-selected="true"] {
+  color: var(--on-nav-active);
+}
+.invoice-point-close {
+  padding: 0 7px;
+  font-size: 18px !important;
+  border-inline-start: 1px solid var(--border) !important;
+}
+.invoice-point-close:hover,
+.invoice-point-add:hover {
+  background: var(--hover);
+}
+.invoice-point-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 2px 9px;
+}
+.invoice-point-tabs button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.invoice-point-tabs button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+@media print {
+  .invoice-point-tabs { display: none !important; }
+}
 .invoice-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(170px, 18vw, 225px);
