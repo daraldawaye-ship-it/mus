@@ -1157,7 +1157,7 @@ export async function createInvoice(
         subjectKey: `doctor:${newlyCreatedDoctor.id}`,
         eventKey: `doctor:new:${newlyCreatedDoctor.id}`,
         title: "اسم طبيب أو جهة جديد يحتاج مراجعة",
-        message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
+        message: `أُضيف «${newlyCreatedDoctor.name}» تلقائيًا من فاتورة المبيعات ${number}. منشئ الفاتورة: ${user.displayName || user.name}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
         href: `/companies/${companyId}/doctors?focus=${newlyCreatedDoctor.id}`,
       });
     }
@@ -1175,7 +1175,7 @@ export async function createInvoice(
          ON CONFLICT (code) DO NOTHING`,
       );
       await emitNotification(client,
-        archivedDoctorSaleNotice(companyId, reusedArchivedDoctor, invoiceId, number));
+        archivedDoctorSaleNotice(companyId, reusedArchivedDoctor, invoiceId, number, user.displayName || user.name));
     }
     if (!importContext?.suppressRewards) {
       await awardPostedInvoice(
