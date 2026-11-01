@@ -50,6 +50,14 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
       const actor = await client.query("SELECT * FROM users WHERE id=$1", [job.created_by]);
       if (!actor.rows[0]) throw new Error("invoice_post_followup_missing_user");
       const user = userDTO(actor.rows[0]);
+      // Name of the employee who CREATED this sale, not the background worker.
+      const creator = await client.query<{ name: string }>(
+        `SELECT e.name FROM employees e
+         WHERE e.company_id=$1 AND e.user_id=$2
+         ORDER BY e.active DESC,e.id DESC LIMIT 1`,
+        [job.company_id,job.created_by],
+      );
+      const creatorName = creator.rows[0]?.name || user.displayName || user.name;
       await awardPostedInvoice(client, job.company_id, job.invoice_id, invoice.kind,
         user, invoice.number, job.customer_reward_kind, job.doctor_reward_eligible);
       if (invoice.kind === "sale")
@@ -61,7 +69,7 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
           subjectKey: `doctor:${job.new_doctor_id}`,
           eventKey: `doctor:new:${job.new_doctor_id}`,
           title: "اسم طبيب أو جهة جديد يحتاج مراجعة",
-          message: `أُضيف «${job.new_doctor_name}» تلقائيًا من فاتورة المبيعات ${invoice.number}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
+          message: `أُضيف «${job.new_doctor_name}» تلقائيًا من فاتورة المبيعات ${invoice.number}. منشئ الفاتورة: ${creatorName}. حدّد الفئة وباقي التفاصيل أو أرشف الكرت.`,
           href: `/companies/${job.company_id}/doctors?focus=${job.new_doctor_id}`,
         });
       }
@@ -79,7 +87,7 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
         );
         await emitNotification(client, archivedDoctorSaleNotice(
           job.company_id, { id: job.archived_doctor_id,
-            name: job.archived_doctor_name }, job.invoice_id, invoice.number,
+            name: job.archived_doctor_name }, job.invoice_id, invoice.number, creatorName,
         ));
       }
       await client.query(
