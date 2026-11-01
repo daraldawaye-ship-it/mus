@@ -45,7 +45,7 @@ test("sales header puts unused shortcut first and omits redundant row clearance"
   assert.match(source, /chooseItem\(line, selected, false, selectedByShortcut\)/);
   assert.match(alerts, /unusedShortcut\?\.trim\(\)/);
   assert.ok(alerts.indexOf('key="unused-shortcut"') < alerts.indexOf('key="current-clearance"'));
-  assert.ok(alerts.indexOf('key="current-clearance"') < alerts.indexOf('data?.saleNotes'));
+  assert.ok(alerts.indexOf('key="current-clearance"') < alerts.indexOf('...[data?.saleNotes'));
   assert.match(alerts, /\(\{unusedShortcut\.trim\(\)\}\)/);
   assert.match(styles, /\.invoice-sale-inline-shortcut\s*\{[^}]*background:\s*#ffb300;/);
 });
