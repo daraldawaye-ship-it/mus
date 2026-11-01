@@ -14,10 +14,9 @@ export function openItemCardSheet(companyId: number, itemId: number): void {
 
 export function ItemCardBottomSheetHost({ context }: { context: CompanyContext | undefined }) {
   const [itemId, setItemId] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  const client = useQueryClient();
+   const client = useQueryClient();
   const companyId = context?.company.id;
-  useEffect(() => { setItemId(null); setBusy(false); }, [companyId]);
+  useEffect(() => { setItemId(null); }, [companyId]);
   useEffect(() => {
     if (!companyId) return;
     const onOpen = (event: Event) => {
@@ -51,7 +50,8 @@ export function ItemCardBottomSheetHost({ context }: { context: CompanyContext |
     };
   }, [companyId]);
   if (!context) return null;
-  const close = () => { if (!busy) setItemId(null); };
+  // X, Escape and outside click always dismiss this UI, even on stale edits.
+  const close = () => setItemId(null);
   const saved = (_item: Item) => {
     void client.invalidateQueries({ queryKey: ["item-options-list"] });
     void client.invalidateQueries({ queryKey: ["items"] });
@@ -61,7 +61,7 @@ export function ItemCardBottomSheetHost({ context }: { context: CompanyContext |
     onClose={close}>
     {itemId !== null && <Suspense fallback={<Notice>جارٍ فتح كرت الصنف…</Notice>}>
       <Editor key={`${context.company.id}:${itemId}`} context={context} itemId={itemId}
-        onSavingChange={setBusy} onClose={close} onSaved={saved} />
+        onClose={close} onSaved={saved} />
     </Suspense>}
   </Dialog>;
 }
