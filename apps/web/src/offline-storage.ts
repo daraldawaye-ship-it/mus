@@ -311,6 +311,7 @@ function allowedSnapshot(path: string): boolean {
     /^\/my-shortcuts(?:\?|$)/.test(path) ||
     /^\/companies(?:\?|$)/.test(path) ||
     /^\/companies\/[1-9]\d*$/.test(path) ||
+    /^\/companies\/[1-9]\d*\/letterhead$/.test(path) ||
     /^\/page-catalog\?/.test(path) ||
     /^\/companies\/[1-9]\d*\/(?:commerce-options|financial-options|invoices|financial-documents|items|item-compositions|accounts|stock-balances|stock-movements|branches|locations|currencies|control|my-sales-cashbox)(?:[/?]|$)/.test(path)
     || /^\/(?:questions|answers)(?:[/?]|$)/.test(path)
@@ -507,6 +508,31 @@ export async function rememberRead(path: string, value: unknown): Promise<void> 
   }
   await writeCatalog(records);
 }
+/** Device-local company letterhead image, isolated by verified user and company.
+ * No authenticated media URL is shared across users or promoted to an API grant.
+ */
+const letterheadMediaPath = (companyId:number, imageUrl:string) =>
+  "/local-company-letterhead/" + companyId + "/" + imageUrl;
+export async function saveOfflineLetterheadImage(
+  userId:number, companyId:number, imageUrl:string, blob:Blob,
+):Promise<void> {
+  if (activeUser!==userId || !/^\\/api\\/media\\/[0-9a-f-]{36}\\/full$/i.test(imageUrl) ||
+      !blob.type.startsWith("image/") || blob.size>5_000_000) return;
+  const path=letterheadMediaPath(companyId,imageUrl);
+  await writeOne("snapshots",{
+    key:userId+":"+path,userId,path,value:blob,savedAt:new Date().toISOString(),
+  } satisfies Snapshot);
+}
+export async function readOfflineLetterheadImage(
+  userId:number, companyId:number, imageUrl:string,
+):Promise<Blob|null> {
+  if (activeUser!==userId || !/^\\/api\\/media\\/[0-9a-f-]{36}\\/full$/i.test(imageUrl))
+    return null;
+  const row=await readOne<Snapshot>("snapshots",userId+":"+letterheadMediaPath(companyId,imageUrl));
+  return row?.value instanceof Blob && row.value.type.startsWith("image/")
+    ? row.value : null;
+}
+
 export async function savedRead<T>(path: string): Promise<T | undefined> {
   const userId = activeUser;
   if (userId === null || !allowedSnapshot(path)) return undefined;
