@@ -17,9 +17,10 @@ test("purchase work drafts have separate durable IndexedDB data with scoped owne
 });
 
 test("purchase form restores all header fields and all lines, allows several saved drafts",()=>{
-  for(const field of ["documentDate","account","supplier","supplierReceiptNumber","currency","branch","location","original","description","discount","lines"]){
+  for(const field of ["documentDate","account","supplier","supplierReceiptNumber","currency","branch","location","original","description","discount"]){
     assert.match(invoice,new RegExp("set"+field.charAt(0).toUpperCase()+field.slice(1)+"\\(form\\."+field+"\\)"));
   }
+  assert.match(invoice,/setLines\(form\.lines\.length \? form\.lines : \[emptyLine\(\)\]\)/);
   assert.match(invoice,/listPurchaseWorkDrafts<PurchaseDraftForm>/);
   assert.match(invoice,/activePurchaseDraftId \?\? undefined/);
   assert.match(invoice,/setActivePurchaseDraftId\(saved\.id\)/);
