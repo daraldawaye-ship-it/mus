@@ -18,16 +18,16 @@ ALTER TABLE invoice_lines ADD CONSTRAINT invoice_lines_signed_amounts_check CHEC
 -- than overwriting it with an obsolete copied implementation.
 DO $migration$
 DECLARE source text;
-DECLARE changed text;
-DECLARE old_account text := $needle$SELECT account_id INTO discount_account FROM account_links WHERE company_id=doc.company_id AND purpose='discountAllowed';$needle$;
-DECLARE new_account text := $replacement$SELECT account_id INTO discount_account FROM account_links
+changed text;
+old_account text := $needle$SELECT account_id INTO discount_account FROM account_links WHERE company_id=doc.company_id AND purpose='discountAllowed';$needle$;
+new_account text := $replacement$SELECT account_id INTO discount_account FROM account_links
    WHERE company_id=doc.company_id
      AND purpose=CASE WHEN doc.discount<0 THEN 'discountEarned' ELSE 'discountAllowed' END;
  IF doc.discount<0 AND discount_account IS NULL THEN
    discount_account := setting.sales_account_id;
  END IF;$replacement$;
-DECLARE old_refund text := $needle$AND (SELECT COALESCE(sum(-r.discount),0) FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id)<=o.discount$needle$;
-DECLARE new_refund text := $replacement$AND (
+old_refund text := $needle$AND (SELECT COALESCE(sum(-r.discount),0) FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id)<=o.discount$needle$;
+new_refund text := $replacement$AND (
           (o.discount>=0 AND (SELECT COALESCE(sum(-r.discount),0) FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id)<=o.discount)
        OR (o.discount<0 AND (SELECT COALESCE(sum(-r.discount),0) FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id)>=o.discount)
         )$replacement$;
