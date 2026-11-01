@@ -3560,7 +3560,7 @@ function InvoiceViewer({
   const { user } = useSession();
   const [searchParams] = useSearchParams();
   const autoPrint = searchParams.get("print") === "1";
-  const letterhead = useCompanyLetterhead(companyId);
+  const [printReady,setPrintReady] = useState(false);
   const printRequestedFor = useRef<number | null>(null);
   const result = useQuery({
     queryKey: ["commerce", user?.id, companyId, "invoice", invoiceId],
@@ -3574,41 +3574,16 @@ function InvoiceViewer({
   const loadedInvoiceId = result.data?.invoice.id;
   useEffect(() => {
     if (!autoPrint || loadedInvoiceId !== invoiceId ||
-        letterhead.isPending || printRequestedFor.current === invoiceId) return;
-    // The image is a separate protected media request. Wait for its decode
-    // before opening the print dialog, otherwise the header prints blank.
-    const image = document.querySelector<HTMLImageElement>(
-      ".invoice-print-sheet .company-print-letterhead-image",
-    );
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const printWhenReady = async () => {
-      if (cancelled || printRequestedFor.current === invoiceId) return;
-      if (image && !image.complete) return;
-      if (image && image.naturalWidth > 0) {
-        try { await image.decode(); } catch { /* The image load state decides. */ }
-      }
-      if (cancelled || printRequestedFor.current === invoiceId) return;
-      // Give the print-only header and its image one layout frame.
-      timer = setTimeout(() => {
-        if (cancelled || printRequestedFor.current === invoiceId) return;
-        printRequestedFor.current = invoiceId;
-        window.print();
-      }, 75);
-    };
-    if (image && !image.complete) {
-      image.addEventListener("load", printWhenReady, { once: true });
-      image.addEventListener("error", printWhenReady, { once: true });
-    } else {
-      void printWhenReady();
-    }
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      image?.removeEventListener("load", printWhenReady);
-      image?.removeEventListener("error", printWhenReady);
-    };
-  }, [autoPrint, invoiceId, loadedInvoiceId, letterhead.isPending, letterhead.data?.imageUrl]);
+        !printReady || printRequestedFor.current === invoiceId) return;
+    // Print only after CompanyPrintHeader confirms the protected image
+    // has actually loaded (or its textual fallback is ready).
+    const timer = window.setTimeout(() => {
+      if (printRequestedFor.current === invoiceId) return;
+      printRequestedFor.current = invoiceId;
+      window.print();
+    }, 75);
+    return () => window.clearTimeout(timer);
+  }, [autoPrint, invoiceId, loadedInvoiceId, printReady]);
   if (result.isPending) return <Notice>جارٍ تحميل الفاتورة…</Notice>;
   if (result.error)
     return (
@@ -3637,9 +3612,9 @@ function InvoiceViewer({
               >
                 قائمة الفواتير
               </Link>
-              <Button variant="secondary" onClick={() => window.print()}>
+              <Button variant="secondary" disabled={!printReady} onClick={() => window.print()}>
                 <Printer size={16} />
-                طباعة
+                {printReady ? "طباعة" : "تجهيز الطباعة…"}
               </Button>
               {canPost(context) && (
                 <Link
@@ -3654,7 +3629,8 @@ function InvoiceViewer({
         />
       </div>
       <Card className="commerce-print-document">
-        <InvoicePrintSheet context={context} invoice={invoice} returning={returning} />
+        <InvoicePrintSheet context={context} invoice={invoice} returning={returning}
+          onLetterheadReady={() => setPrintReady(true)} />
         <div className="commerce-print-heading">
           <CompanyPrintHeader context={context} />
           <h2>
