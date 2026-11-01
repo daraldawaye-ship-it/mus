@@ -10,15 +10,15 @@ export interface MarketGatewayOptions { url: string; secret: string; concurrency
 export function marketGatewayOptions(): MarketGatewayOptions | undefined {
   // Blueprint wires a private service hostname before cutover. Never switch automatically
   // merely because the private service exists; migration and validation come first.
-  if (process.env.MARKET_SERVICE_ENABLED === "0") return undefined;
+  // Explicit opt-in is required even when a legacy URL is present.
+  // Provisioning, environment drift, or an old URL must never initiate a cutover.
+  if (process.env.MARKET_SERVICE_ENABLED !== "1") return undefined;
   const explicitUrl = process.env.MARKET_SERVICE_URL?.trim();
   const hostport = process.env.MARKET_SERVICE_HOSTPORT?.trim();
-  const enabled = process.env.MARKET_SERVICE_ENABLED === "1";
-  if (enabled && !explicitUrl && !hostport) {
+  if (!explicitUrl && !hostport) {
     throw new Error("MARKET_SERVICE_ENABLED=1 requires MARKET_SERVICE_HOSTPORT or MARKET_SERVICE_URL");
   }
-  const url = explicitUrl ?? (enabled && hostport ? `http://${hostport}` : undefined);
-  if (!url) return undefined;
+  const url = explicitUrl ?? `http://${hostport}`;
   return { url, secret: process.env.MARKET_SERVICE_SECRET ?? "" };
 }
 const unavailable = () => new HttpError(503, "market_unavailable", "سوق الأدوية غير متاح مؤقتًا؛ حاول لاحقًا");

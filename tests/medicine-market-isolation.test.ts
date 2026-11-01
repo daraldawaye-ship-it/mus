@@ -164,8 +164,11 @@ test("private market Blueprint wiring does not cut over without an explicit enab
     process.env.MARKET_SERVICE_SECRET = secret;
     delete process.env.MARKET_SERVICE_ENABLED;
     assert.equal(marketGatewayOptions(), undefined, "Blueprint provisioning alone cannot activate market isolation");
+    process.env.MARKET_SERVICE_URL = "http://unexpected-private-market.internal:3000";
+    assert.equal(marketGatewayOptions(), undefined, "an explicit URL must not bypass opt-in");
     process.env.MARKET_SERVICE_ENABLED = "0";
-    assert.equal(marketGatewayOptions(), undefined);
+    assert.equal(marketGatewayOptions(), undefined, "disabled flag blocks explicit URL");
+    delete process.env.MARKET_SERVICE_URL;
     process.env.MARKET_SERVICE_ENABLED = "1";
     assert.deepEqual(marketGatewayOptions(), { url: "http://market-private.internal:3000", secret });
     delete process.env.MARKET_SERVICE_HOSTPORT;
