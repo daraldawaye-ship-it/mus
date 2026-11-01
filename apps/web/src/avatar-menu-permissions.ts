@@ -31,8 +31,9 @@ export function allowedAvatarTabs(
   if (any("company.accounts", "company.financial-documents", "company.account-ledger", "company.account-balances"))
     result.push("financialAccount");
   if (any("company.employees")) result.push("employee");
-  // This placeholder is reserved for administrators with configuration rights.
-  if (any("company.configuration", "company.central-access"))
+  // Every company employee has a tab for pages they are allowed to view.
+  // The global presence link alone can also expose it to permitted public users.
+  if (companyId !== null || any("public.last-present"))
     result.push("tools");
   result.push("settings");
   return result;

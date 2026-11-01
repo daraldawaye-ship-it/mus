@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
-  UserRound, Wrench, Package, WalletCards, RefreshCw,
+  UserRound, Wrench, Package, WalletCards, RefreshCw, ClipboardList, ShieldCheck, Users,
 } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
@@ -47,7 +47,7 @@ const sections = [
   { key: "item", label: "صنف", icon: Package },
   { key: "financialAccount", label: "حساب", icon: WalletCards },
   { key: "employee", label: "مستخدم", icon: UserRound },
-  { key: "tools", label: "الأدوات", icon: Wrench },
+  { key: "tools", label: "أخرى", icon: Wrench },
   { key: "settings", label: "الإعدادات", icon: Settings },
 ] as const;
 type SectionKey = typeof sections[number]["key"];
@@ -87,6 +87,10 @@ export function UserMenu({
     ? allowedAvatarTabs(user.owner, companyId, directory.data)
     : cachedMenu?.tabs ?? allowedAvatarTabs(user.owner, companyId, undefined);
   const visibleSections = sections.filter(section => permittedTabs.includes(section.key));
+  // Follow current server page permissions; do not hardcode a user's role.
+  const canViewPage = (key: string) => directory.data?.some(entry =>
+    entry.key === key && entry.enabled && entry.visible && entry.actionAccess.view,
+  ) === true;
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SectionKey>("navigation");
   const [itemMenuReset, setItemMenuReset] = useState(0);
@@ -245,10 +249,35 @@ export function UserMenu({
               </>
             )}
             {displayedTab === "tools" && (
-              <div className="user-menu-empty" aria-live="polite">
-                لا توجد خيارات في هذا القسم حاليًا
+              <div className="user-menu-grid user-menu-item-actions" aria-label="روابط أخرى">
+                {companyId && canViewPage("company.attendance-current") && (
+                  <NavLink className="user-menu-tile"
+                    to={`/companies/${companyId}/attendance-current`} onClick={dismiss}>
+                    <ClipboardList size={18} aria-hidden="true" />
+                    <span>المحضرون حاليًا</span>
+                  </NavLink>
+                )}
+                {companyId && canViewPage("company.pages") && (
+                  <NavLink className="user-menu-tile"
+                    to={`/companies/${companyId}/pages`} onClick={dismiss}>
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    <span>صلاحيات الصفحات</span>
+                  </NavLink>
+                )}
+                {canViewPage("public.last-present") && (
+                  <NavLink className="user-menu-tile" to="/users/last-present" onClick={dismiss}>
+                    <Users size={18} aria-hidden="true" />
+                    <span>آخر المتواجدين</span>
+                  </NavLink>
+                )}
+                {!directory.data && <div className="user-menu-grid-note">جارٍ تحميل الروابط المسموح بها…</div>}
+                {directory.data && !(
+                  (companyId && canViewPage("company.attendance-current")) ||
+                  (companyId && canViewPage("company.pages")) ||
+                  canViewPage("public.last-present")
+                ) && <div className="user-menu-grid-note">لا توجد خيارات أخرى مصرح بها.</div>}
               </div>
-            )}
+            )
           </div>
           <div className="user-menu-tabs-footer user-menu-settings-actions" role="group"
             aria-label="إجراءات المستخدم والتحديث">

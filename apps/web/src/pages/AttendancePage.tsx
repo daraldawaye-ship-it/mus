@@ -102,7 +102,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     !!employeesEntry.actionAccess.edit;
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "sessions" ? "sessions"
-    : params.get("view") === "current" && context.general ? "current" : "daily";
+    : params.get("view") === "current" ? "current" : "daily";
   const filters = new URLSearchParams();
   for (const key of ["day", "employeeId", "status"])
     if (params.get(key)) filters.set(key, params.get(key)!);
@@ -314,7 +314,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
           {[
             { value: "daily", label: "الملخص اليومي" },
             { value: "sessions", label: "جلسات الحضور" },
-            ...(context.general ? [{ value: "current", label: "المحضرون حاليًا" }] : []),
+            { value: "current", label: "المحضرون حاليًا" },
           ].map((item) => (
             <Button
               key={item.value}
@@ -376,7 +376,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
             </Select>
           )}
         </div>}
-        {view === "current" && context.general ? (
+        {view === "current" ? (
           <AttendanceCurrentlyPresent companyId={companyId} />
         ) : view === "sessions" ? (
           <AttendanceSessions
