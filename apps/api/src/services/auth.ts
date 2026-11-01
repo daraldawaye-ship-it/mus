@@ -14,6 +14,7 @@ import {
 } from "../../../../packages/contracts/src/index.ts";
 import { userDTO } from "../repositories/models.ts";
 import { audit } from "./audit.ts";
+import { recordUserPresence } from "./user-presence.ts";
 import { HttpError } from "../errors.ts";
 const scrypt = promisify(derive);
 export const tokenHash = (value: string): string =>
@@ -41,6 +42,9 @@ export async function createSession(db: Database, userId: number) {
     "INSERT INTO sessions(token_hash,user_id,csrf,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
     [tokenHash(token), userId, csrf],
   );
+  // A login in the public site or any company is an authenticated visit too.
+  // Presence is advisory; never prevent login if telemetry is unavailable.
+  await recordUserPresence(db, userId).catch(() => {});
   return { token, csrf };
 }
 export async function provisionOwner(
