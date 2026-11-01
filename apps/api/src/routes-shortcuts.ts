@@ -7,6 +7,7 @@ import { actor, handler, parse, id } from "./http.ts";
 import { currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { HttpError } from "./errors.ts";
+import { authorizedInvoiceShortcuts, ensureCompany2InvoiceShortcuts } from "./services/company2-invoice-shortcut-defaults.ts";
 
 const optionalId = (value: unknown) =>
   value === undefined ? null : id(typeof value === "string" ? value : "");
@@ -22,13 +23,20 @@ export function shortcutRoutes(pool: Pool): Router {
   router.get("/my-shortcuts",handler(async(req,res) => {
     const companyId=optionalId(req.query.companyId);
     const result=await transaction(pool,async client=>{
-      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      if(companyId!==2)
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ ONLY");
       const user=await currentActor(client,actor(req),false);
       const entries=await directoryEntries(client,user,companyId);
       const allowed=new Set(entries.filter(entry=>
         entry.enabled && entry.actionAccess.view && entry.href &&
         !entry.record && (entry.scope==="public" || companyId !== null)
       ).map(entry=>entry.key));
+      // Company 2: also initialize already-existing staff with their actual
+      // authorized create links, without undoing prior personal removals.
+      if(companyId===2) {
+        const shortcuts=await ensureCompany2InvoiceShortcuts(client,user,entries);
+        return {pageKeys:shortcuts.pageKeys.filter(key=>allowed.has(key))};
+      }
       const row=await client.query(
         "SELECT page_keys FROM user_page_shortcuts WHERE user_id=$1 AND scope_company_id=$2",
         [user.id,companyId??0],
@@ -53,12 +61,25 @@ export function shortcutRoutes(pool: Pool): Router {
       if(input.pageKeys.some(key=>!allowed.has(key)))
         throw new HttpError(403,"shortcut_not_allowed",
           "لا يمكن حفظ صفحة غير متاحة ضمن صلاحياتك؛ حدث دليل الصفحات.");
+      // Explicit customization marks the currently authorized invoice links
+      // as handled even if unselected, so their removal stays permanent.
+      const handled=companyId===2 ? authorizedInvoiceShortcuts(entries) : [];
       const row=await client.query(
-        `INSERT INTO user_page_shortcuts(user_id,scope_company_id,page_keys)
-         VALUES($1,$2,$3::text[]) ON CONFLICT(user_id,scope_company_id)
-         DO UPDATE SET page_keys=EXCLUDED.page_keys,updated_at=now()
+        `INSERT INTO user_page_shortcuts
+           (user_id,scope_company_id,page_keys,invoice_defaults_seen)
+         VALUES($1,$2,$3::text[],$4::text[])
+         ON CONFLICT(user_id,scope_company_id)
+         DO UPDATE SET
+           page_keys=EXCLUDED.page_keys,
+           invoice_defaults_seen=ARRAY(
+             SELECT DISTINCT key FROM unnest(
+               user_page_shortcuts.invoice_defaults_seen ||
+               EXCLUDED.invoice_defaults_seen
+             ) AS key
+           ),
+           updated_at=now()
          RETURNING page_keys`,
-        [user.id,companyId??0,input.pageKeys],
+        [user.id,companyId??0,input.pageKeys,handled],
       );
       return {pageKeys:row.rows[0].page_keys as string[]};
     });
