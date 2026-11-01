@@ -43,3 +43,15 @@ test("award uses existing configurable task, once per qualifying due operation",
   assert.match(rewards, /s\.points::text AS points/);
   assert.match(rewards, /ON CONFLICT DO NOTHING RETURNING id/);
 });
+
+test("page permission writes automatically register only validated page keys before grants", () => {
+  const route = readFileSync("apps/api/src/routes-pages.ts","utf8");
+  const i = route.indexOf("router.put(\"/page-catalog/:pageKey/grants\"");
+  assert.ok(i > 0);
+  const code = route.slice(i, route.indexOf("router.put(", i + 12));
+  assert.match(code,/const key=String\(req\.params\.pageKey\),definition=pageByKey\(key\)/);
+  assert.match(code,/if\(!definition\)missing\(\)/);
+  const register=code.indexOf("INSERT INTO page_registry(key)");
+  const grant=code.indexOf("INSERT INTO page_access_grants(page_key");
+  assert.ok(register > 0 && grant > register, "page FK must be populated before inserting grants");
+});
