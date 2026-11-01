@@ -1,6 +1,7 @@
 export const DEFAULT_DATABASE_URL =
   "postgresql:///tijara?host=%2Fworkspace%2F.tools%2Fpostgresql%2Fsocket&port=55432&user=agent";
 export interface AppOptions {
+  marketGateway?: import("./market/gateway.ts").MarketGatewayOptions | false;
   databaseUrl?: string;
   schema?: string;
   appOrigin?: string;

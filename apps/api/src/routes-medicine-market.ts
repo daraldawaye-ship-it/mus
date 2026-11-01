@@ -223,8 +223,9 @@ async function validateReferences(
       );
   }
 }
-async function enabled(
+async function defaultEnabled(
   db: Database,
+  _req: Request,
   section = "medicine-market",
   lock = false,
 ) {
@@ -238,7 +239,7 @@ async function enabled(
   );
   if (rows.rows.some((r) => !r.enabled)) deny("هذه الصفحة موقوفة حاليًا");
 }
-async function viewer(
+async function defaultViewer(
   db: Database,
   req: Request,
   write = false,
@@ -481,14 +482,31 @@ export const mcpBodySchemas = {
   reactionMarketSchema,
 };
 
-export function medicineMarketRoutes(pool: Pool): Router {
+export interface MarketAccess {
+  viewer: typeof defaultViewer;
+  enabled: typeof defaultEnabled;
+}
+
+export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router {
+  const viewer = access?.viewer ?? defaultViewer;
+  const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
+  // Market audit stays with market data after isolation; never joins a company ledger.
+  router.get(root + "/audit", handler(async (req, res) => {
+    const u = (await viewer(pool, req)) ?? actor(req);
+    if (!(u.owner || u.kind === "admin" || u.monitor)) deny();
+    await enabled(pool, req);
+    const v = pagination(req);
+    const rows = await pool.query("SELECT id,actor_id,actor_name,action,target_id,created_at FROM audit_events WHERE target_type='medicine-market' ORDER BY id DESC LIMIT $1 OFFSET $2", [v.pageSize, v.offset]);
+    const total = (await pool.query("SELECT count(*)::int total FROM audit_events WHERE target_type='medicine-market'")).rows[0].total;
+    res.json({ items: rows.rows, total, page: v.page, pageSize: v.pageSize });
+  }));
   router.get(
     root + "/meta",
     handler(async (req, res) => {
       const u = await viewer(pool, req),
         p = perms(u);
-      await enabled(pool);
+      await enabled(pool, req);
       const policies = (
         await pool.query("SELECT * FROM medicine_market_policies")
       ).rows;
@@ -519,7 +537,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
       const u = await viewer(pool, req),
         p = perms(u),
         v = pagination(req);
-      await enabled(pool);
+      await enabled(pool, req);
       const kind =
         req.query.kind === undefined || req.query.kind === ""
           ? null
@@ -551,7 +569,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const u = await viewer(pool, req),
         p = perms(u);
-      await enabled(pool);
+      await enabled(pool, req);
       const card = await getCard(pool, id(req.params.cardId), u);
       const comments = await pool.query(
         commentSelect +
@@ -598,7 +616,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
             throw conflict("مفتاح الطلب مرتبط بكرت مختلف");
           return { card: cardOutput(await getCard(db, old.id, u), p) };
         }
-        await enabled(db, "medicine-market", true);
+        await enabled(db, req, "medicine-market", true);
         const duplicate = (
           await db.query(
             "SELECT id FROM medicine_market_cards WHERE kind=$1 AND normalized_name=$2 AND status<>'rejected'",
@@ -682,7 +700,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
             card: cardOutput(card, p),
           };
         }
-        await enabled(db, "medicine-market", true);
+        await enabled(db, req, "medicine-market", true);
         if (card.archived || card.status === "rejected")
           deny("هذا الكرت مؤرشف أو مرفوض");
         const previous =
@@ -746,7 +764,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
         v = pagination(req);
       const mine = req.query.mine === "true" || !p.canModerate;
       await enabled(
-        pool,
+        pool, req,
         mine ? "medicine-market-contributions" : "medicine-market-review",
       );
       const status = req.query.status
@@ -783,7 +801,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
         const u = (await viewer(db, req, true))!,
           p = perms(u);
         if (!p.canModerate) deny();
-        await enabled(db, "medicine-market-review", true);
+        await enabled(db, req, "medicine-market-review", true);
         const targetId = id(req.params.contributionId),
           hint =
             (
@@ -911,7 +929,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!;
         if (!perms(u).canConfigure) deny();
-        await enabled(db, "medicine-market-points", true);
+        await enabled(db, req, "medicine-market-points", true);
         findField(input.kind, input.fieldKey);
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
           `medicine-market-policy:${input.kind}:${input.fieldKey}`,
@@ -958,7 +976,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!;
         if (!perms(u).canArchive) deny();
-        await enabled(db, "medicine-market", true);
+        await enabled(db, req, "medicine-market", true);
         const card = await getCard(db, id(req.params.cardId), u, true);
         if (card.revision !== input.revision) throw conflict();
         await db.query(
@@ -997,7 +1015,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
             throw conflict();
           return { comment: commentOutput(old) };
         }
-        await enabled(db, "medicine-market", true);
+        await enabled(db, req, "medicine-market", true);
         const row = (
           await db.query(
             "INSERT INTO medicine_market_comments(card_id,author_id,text,status,idempotency_key) VALUES($1,$2,$3,$4,$5) RETURNING id",
@@ -1029,7 +1047,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const u = (await viewer(pool, req)) ?? actor(req);
       if (!perms(u).canModerate) deny();
-      await enabled(pool, "medicine-market-review");
+      await enabled(pool, req, "medicine-market-review");
       const v = pagination(req),
         status = parse(
           z.enum(["pending", "approved", "rejected"]),
@@ -1061,7 +1079,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!;
         if (!perms(u).canModerate) deny();
-        await enabled(db, "medicine-market-review", true);
+        await enabled(db, req, "medicine-market-review", true);
         const c =
           (
             await db.query(
@@ -1106,7 +1124,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
       const input = parse(reactionMarketSchema, req.body);
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!;
-        await enabled(db, "medicine-market", true);
+        await enabled(db, req, "medicine-market", true);
         const card = await getCard(db, id(req.params.cardId), u, true);
         if (card.status !== "published" || card.archived) deny();
         const old = (
@@ -1138,7 +1156,7 @@ export function medicineMarketRoutes(pool: Pool): Router {
     root + "/me",
     handler(async (req, res) => {
       const u = (await viewer(pool, req)) ?? actor(req);
-      await enabled(pool, "medicine-market-contributions");
+      await enabled(pool, req, "medicine-market-contributions");
       const rows = (
         await pool.query(
           "SELECT status,count(*)::int total FROM medicine_market_contributions WHERE author_id=$1 GROUP BY status",

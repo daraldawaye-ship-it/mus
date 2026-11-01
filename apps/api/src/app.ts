@@ -1,3 +1,4 @@
+import { Pool } from "pg";
 import express, { type ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { resolve } from "node:path";
@@ -18,6 +19,7 @@ import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
 import { pledgeRoutes } from "./routes-pledges.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
+import { createMarketGateway, marketGatewayOptions, marketMaintenance } from "./market/gateway.ts";
 import { pushRoutes } from "./routes-push.ts";
 
 export async function createApp(options: AppOptions = {}) {
@@ -71,7 +73,17 @@ export async function createApp(options: AppOptions = {}) {
   // External IdPs redirect here (Apple uses form_post); dedicated one-use
   // state/cookie and signed ID-token validation secure these callbacks.
   app.use("/api", socialAuthRoutes(pool, config.appOrigin, config.production));
-  const business = businessRoutes(pool);
+  app.use("/api/medicine-market", marketMaintenance);
+  const marketOptions = options.marketGateway === false ? undefined : options.marketGateway ?? marketGatewayOptions();
+  // Market authentication cannot consume the sales connection pool. All queries here are read-only.
+  const marketAuthPool = marketOptions ? new Pool({ connectionString: config.databaseUrl,
+    options: `-c search_path=${config.schema} -c default_transaction_read_only=on`,
+    max: 2, connectionTimeoutMillis: 750, statement_timeout: 1000, idleTimeoutMillis: 10000 }) : undefined;
+  marketAuthPool?.on("error", () => console.error("MARKET_AUTH_CONNECTION_ERROR"));
+  const market = marketOptions ? createMarketGateway(marketAuthPool!, marketOptions) : undefined;
+  // Reject saturated market traffic before session queries or JSON parsing can consume core resources.
+  if (market) app.use("/api/medicine-market", market.admission, express.json({ limit: "64kb" }));
+  const business = businessRoutes(pool, market?.router);
   app.use(chatgptMcpRoutes(pool, config.appOrigin, business));
   // Only the authenticated explanation attachment upload needs larger JSON bodies.
   app.use("/api/explanations/nodes/:nodeId/assets", express.json({limit:"15mb"}));
@@ -80,7 +92,7 @@ export async function createApp(options: AppOptions = {}) {
   app.use(
     "/api",
     express.json({ limit: "5mb" }),
-    loadSession(pool),
+    (req, res, next) => loadSession(marketAuthPool && /^\/medicine-market(?:\/|$)/.test(req.path) ? marketAuthPool : pool)(req, res, next),
     mutationSecurity(config.appOrigin),
   );
   app.use(setupRoutes(pool, config.appOrigin));
@@ -196,6 +208,7 @@ export async function createApp(options: AppOptions = {}) {
     close: async () => {
       if (!closed) {
         closed = true;
+        await marketAuthPool?.end();
         await pool.end();
       }
     },
