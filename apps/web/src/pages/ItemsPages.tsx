@@ -1502,22 +1502,10 @@ function ItemEditor({
     setError("");
     setSavedMessage("");
     try {
-      const stamp = (revision: number) => api<{ item: Item }>(
+      const result = await api<{ item: Item }>(
         `/companies/${companyId}/items/${item.id}/stocktake-request`, {
-          method: "PATCH", body: { revision }, signal: guard.signal,
+          method: "PATCH", body: {}, signal: guard.signal,
         });
-      let result: { item: Item };
-      try {
-        result = await stamp(savedRevision.current);
-      } catch (reason) {
-        if (!(reason instanceof ApiFailure) || reason.status !== 409) throw reason;
-        // The timestamp is its own action: an unrelated card edit must not
-        // force the employee to reload the entire card before stamping.
-        const latest = await api<{ item: Item }>(
-          `/companies/${companyId}/items/${item.id}`, { signal: guard.signal });
-        if (!guard.isCurrent()) return;
-        result = await stamp(latest.item.revision);
-      }
       if (!guard.isCurrent()) return;
       savedRevision.current = result.item.revision;
       savedItem.current = result.item;

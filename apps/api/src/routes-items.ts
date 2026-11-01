@@ -847,17 +847,21 @@ export function itemRoutes(pool: Pool): Router {
     `${base}/items/:id/stocktake-request`,
     handler(async (req, res) => {
       const rowId = id(req.params.id);
-      const input = parse(z.object({ revision: z.number().int().positive() }).strict(), req.body);
+      parse(z.object({ revision: z.number().int().positive().optional() }).strict(), req.body);
       const item = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+        // Stamp is an independent field mutation. Serialize concurrent stamps
+        // on this row and accept the latest committed write.
+        await client.query(
+          "SELECT id FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [companyId, rowId],
+        );
         const before = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
-        if (before.revision !== input.revision)
-          conflict("تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل الكرت ثم حاول مجددًا.");
         const updated = await client.query(
           `UPDATE items SET stocktake_required_at=clock_timestamp(),revision=revision+1,
-             updated_at=clock_timestamp() WHERE company_id=$1 AND id=$2 AND revision=$3`,
-          [companyId, rowId, input.revision],
+             updated_at=clock_timestamp() WHERE company_id=$1 AND id=$2`,
+          [companyId, rowId],
         );
-        if (!updated.rowCount) conflict("تم تعديل الصنف بواسطة مستخدم آخر.");
+        if (!updated.rowCount) missing();
         const next = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
         await audit(client, user, "item.field.update", "item", rowId,
           { field: "stocktakeRequiredAt", label: "مطلوب_جرده", value: before.stocktakeRequiredAt },
