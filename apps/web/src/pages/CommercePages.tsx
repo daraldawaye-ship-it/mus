@@ -1615,6 +1615,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftNotice, setDraftNotice] = useState("");
+  // A compact transient toast doesn't change the invoice's vertical layout.
+  useEffect(() => {
+    if (!draftNotice) return;
+    const timer = window.setTimeout(() => setDraftNotice(""), 7000);
+    return () => window.clearTimeout(timer);
+  }, [draftNotice]);
   const [draftListOpen, setDraftListOpen] = useState(false);
   const refreshPurchaseDrafts = useCallback(async () => {
     if (kind !== "purchase" || !user?.id) return;
@@ -2814,6 +2820,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                 ) : (
                   <PageActionsDropdown actions={[
                     { label: "قائمة الفواتير", to: listPath(companyId, kind) },
+                    { label: "فتح فاتورة مبيعات",
+                      to: `${invoicePath(companyId, "new")}?kind=sale` },
                     { label: draftSaving ? "جارٍ الحفظ الأولي…" :
                         activePurchaseDraftId ? "تحديث الحفظ الأولي" : "حفظ أولي",
                       disabled: locked,
@@ -3028,7 +3036,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-        {kind === "purchase" && draftNotice && <Notice tone="success">{draftNotice}</Notice>}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
           <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
@@ -3587,6 +3594,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           </div>
         )}
       </form>
+      {kind === "purchase" && draftNotice && (
+        <div className="commerce-purchase-draft-toast" role="status" aria-live="polite">
+          {draftNotice}
+        </div>
+      )}
       {(savedInvoice || savedOfflineInvoice) && (
         <div className="commerce-print-document invoice-inline-print">
           <InvoicePrintSheet
