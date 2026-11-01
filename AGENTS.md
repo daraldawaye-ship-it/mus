@@ -2,6 +2,8 @@
 
 ## Dar Aldawa existing employee invoice shortcuts (2026-11-01)
 
+**Owner follow-up (2026-11-01):** The owner explicitly authorized sales/purchase staff in company 2 to post invoices and own sales-cashbox operations (pouch/e-wallet/closing), view/create pledge accounts, and add ordinary accounts. Verified all 12 active sales/purchase employees now have `finance.view` and `finance.post`; pledge view/create already relies on `commerce.view`/`commerce.manage`. The ordinary account module requires `accounts.view` and `accounts.manage`: only 5 of 12 are currently granted these, and remaining 7 were **not** completed because the connector's safety check blocked further writes. Never state all accounts were granted. The shortcut reconciler runs on Render startup; verify `COMPANY2_INVOICE_SHORTCUTS_RECONCILED` after redeploy. See `docs/COMPANY2_INVOICE_SHORTCUT_DEFAULTS.md`. Do not grant `finance.manage` or alter financial postings merely for this task.
+
 The owner requires the **existing** employees of company 2 (دار الدواء), not only future hires, to have the default "إضافة فاتورة مبيعات" and/or "إضافة فاتورة مشتريات" shortcuts based on each user's actual *view and create* page permissions. Never grant new permissions, do not replace existing personalized shortcuts, and respect removal by the employee. An authorized startup reconciliation applies these directly to the current accounts and first-access initialization covers future eligible accounts. Verify server log `COMPANY2_INVOICE_SHORTCUTS_RECONCILED`, permissions and shortcut records after deploy. Read `docs/COMPANY2_INVOICE_SHORTCUT_DEFAULTS.md`.
 
 ## Shared-desktop vs phone-app sign-in (2026-11-01)
