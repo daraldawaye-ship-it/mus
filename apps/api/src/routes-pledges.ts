@@ -10,7 +10,10 @@ import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { normalizeDigits } from "../../../packages/contracts/src/masters.ts";
 import { searchPattern } from "./services/lists.ts";
-import { readAccountLedger } from "./routes-finance.ts";
+import { insertDraft, postDraft, readAccountLedger } from "./routes-finance.ts";
+import { checkDocumentReferences, findIdempotent, loadDocument, moneyUnits } from "./services/finance.ts";
+import { assertEditableDocumentDate, assertYerWhenCurrencyHidden } from "./services/control-values.ts";
+import { financialDocumentSchema } from "../../../packages/contracts/src/index.ts";
 
 const pledgeSchema = z.object({
   idempotencyKey: z.uuid(),
@@ -20,6 +23,16 @@ const pledgeSchema = z.object({
   durationDays: z.number().int().min(1).max(36500),
   limit: z.string().trim().transform(normalizeDigits)
     .pipe(z.string().regex(/^\d{1,22}(?:\.\d{1,6})?$/)),
+}).strict();
+
+/** Narrow, atomic cashier-only pledge movement.
+ * Does not grant finance.manage or unrestricted voucher creation. */
+const pledgeCashTransferSchema = z.object({
+  idempotencyKey: z.uuid(),
+  mode: z.enum(["pay", "receive"]),
+  amount: z.string().trim().transform(normalizeDigits)
+    .pipe(z.string().regex(/^\\d{1,22}(?:\\.\\d{1,6})?$/)),
+  notes: z.string().trim().max(400).default(""),
 }).strict();
 
 export function pledgeRoutes(pool: Pool): Router {
@@ -76,6 +89,100 @@ export function pledgeRoutes(pool: Pool): Router {
       return readAccountLedger(client, companyId, accountId, req);
     });
     res.json(result);
+  }));
+
+  // For a salesperson, finance.post + commerce.manage authorizes ONLY a
+  // movement between their own linked sales cashbox and an existing pledge.
+  // Never expose the general financial-documents:create endpoint via this grant.
+  router.post(base + "/:accountId/transfer", handler(async (req, res) => {
+    const companyId=id(req.params.companyId),pledgeAccountId=id(req.params.accountId);
+    const input=parse(pledgeCashTransferSchema,req.body);
+    if(moneyUnits(input.amount)<=0n)
+      throw new HttpError(400,"invalid_amount","مبلغ حركة الرهن يجب أن يكون موجبًا");
+    const result=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req));
+      const context=await companyAccess(client,user,companyId,"commerce.manage",true);
+      await companyAccess(client,user,companyId,"finance.post",true);
+      if(!context.general && !context.employee?.positions.includes("sales"))
+        throw new HttpError(403,"forbidden","هذه العملية مخصصة لموظفي المبيعات المخولين");
+      if(!context.employee)
+        throw new HttpError(403,"missing_employee","يلزم وجود موظف نشط وصندوق مبيعات مرتبط به");
+
+      // The request payload is stable across retries, even after midnight.
+      // The entire draft+post happens atomically: no orphan drafts on failure.
+      const payload={operation:"sales-pledge-transfer",
+        pledgeAccountId,mode:input.mode,amount:input.amount,notes:input.notes};
+      const previous=await findIdempotent(client,companyId,input.idempotencyKey,payload);
+      if(previous){
+        if(previous.status!=="posted")
+          throw new HttpError(409,"not_posted","السند السابق لم يكتمل ترحيله");
+        return {document:await loadDocument(client,companyId,previous.id),replayed:true};
+      }
+
+      const pledge=await client.query(
+        `SELECT p.customer_name,a.code FROM account_pledges p
+         JOIN accounts a ON a.company_id=p.company_id AND a.id=p.account_id
+         WHERE p.company_id=$1 AND p.account_id=$2 AND a.active=true AND a.kind='posting'
+           AND a.account_choice='pledges' FOR SHARE OF p,a`,
+        [companyId,pledgeAccountId],
+      );
+      if(!pledge.rows[0])
+        throw new HttpError(404,"pledge_missing","الرهن غير موجود أو غير فعال");
+
+      const cash=await client.query(
+        `SELECT a.id FROM employee_account_links l
+         JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
+         WHERE l.company_id=$1 AND l.employee_id=$2 AND l.account_kind='sales_cash'
+           AND a.active=true AND a.kind='posting' AND a.cash_or_bank=true
+           AND a.category='asset' ORDER BY a.id LIMIT 1`,
+        [companyId,context.employee.id],
+      );
+      const cashId=cash.rows[0]?.id as number|undefined;
+      if(!cashId)
+        throw new HttpError(409,"missing_cashbox","صندوق مبيعات الموظف غير محدد");
+      if(cashId===pledgeAccountId)
+        throw new HttpError(400,"same_account","لا يمكن تحويل الرهن إلى صندوقه نفسه");
+
+      const currency=await client.query(
+        "SELECT id FROM company_currencies WHERE company_id=$1 AND code='YER' AND active=true ORDER BY id LIMIT 1",
+        [companyId],
+      );
+      if(!currency.rows[0])
+        throw new HttpError(409,"missing_yer","عملة الريال اليمني غير متاحة");
+      const day=await client.query<{today:string}>(
+        "SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date::text AS today",
+      );
+      const kind=input.mode==="pay"?"payment":"receipt";
+      const memo=(input.mode==="pay"?"صرف مبلغ لرهن: ":"استلام مبلغ من رهن: ")+
+        pledge.rows[0].customer_name+(input.notes?" — "+input.notes:"");
+      const description=memo.slice(0,1000);
+      const lineDescription=memo.slice(0,500);
+      const document=parse(financialDocumentSchema,{
+        idempotencyKey:input.idempotencyKey,
+        kind,documentDate:day.rows[0].today,currencyId:currency.rows[0].id,
+        branchId:null,cashAccountId:cashId,supplierReceiptNumber:"",description,
+        lines:[
+          {accountId:cashId,debit:kind==="receipt"?input.amount:"0",
+            credit:kind==="payment"?input.amount:"0",description:lineDescription},
+          {accountId:pledgeAccountId,debit:kind==="payment"?input.amount:"0",
+            credit:kind==="receipt"?input.amount:"0",description:lineDescription},
+        ],
+      });
+      await assertEditableDocumentDate(client,companyId,
+        kind==="receipt"?"edit_receipts_date":"edit_payments_date",document.documentDate);
+      await assertYerWhenCurrencyHidden(client,companyId,document.currencyId);
+      await checkDocumentReferences(client,companyId,document);
+      const documentId=await insertDraft(client,companyId,user,document,input.idempotencyKey,payload);
+      const draft=await loadDocument(client,companyId,documentId);
+      await audit(client,user,"financialDocument.create","financialDocument",
+        documentId,null,draft,companyId);
+      await postDraft(client,companyId,documentId,user);
+      const posted=await loadDocument(client,companyId,documentId);
+      await audit(client,user,"financialDocument.post","financialDocument",
+        documentId,draft,posted,companyId);
+      return {document:posted,replayed:false};
+    });
+    res.status(result.replayed?200:201).json({document:result.document});
   }));
 
   router.post(base, handler(async (req, res) => {
