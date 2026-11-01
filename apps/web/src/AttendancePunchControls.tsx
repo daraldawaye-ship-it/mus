@@ -34,6 +34,9 @@ export function refreshAttendance(
       queryKey: ["list", userId, `company:${companyId}:attendance`],
     }),
     client.invalidateQueries({
+      queryKey: ["attendance", companyId, "currently-present"],
+    }),
+    client.invalidateQueries({
       queryKey: ["wallet-summary", userId, companyId],
     }),
     client.invalidateQueries({

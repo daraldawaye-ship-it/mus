@@ -73,3 +73,16 @@ test("global last-present includes company activity even on older installed clie
   assert.deepEqual(writes[0]!.args, [12345]);
   assert.match(writes[0]!.sql, /INSERT INTO user_presence/);
 });
+
+// Cached "currently present" must refresh on any successful check-in/out,
+// in addition to the 15-second poll when somebody else punches.
+test("company attendance refreshes immediately after punches and polls every 15 seconds", () => {
+  const cache = readFileSync("apps/web/src/AttendancePunchControls.tsx", "utf8");
+  const page = readFileSync("apps/web/src/AttendanceCurrentlyPresent.tsx", "utf8");
+  assert.match(cache, /queryKey: \["attendance", companyId, "currently-present"\]/);
+  assert.match(cache, /void refreshAttendance\(client, user\?\.id, companyId\)/);
+  assert.match(page, /refetchInterval: 15_000/);
+  assert.match(page, /refetchIntervalInBackground: false/);
+  assert.match(page, /refetchOnWindowFocus: true/);
+  assert.match(page, /refetchOnReconnect: true/);
+});

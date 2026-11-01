@@ -20,7 +20,12 @@ export function AttendanceCurrentlyPresent({ companyId }: { companyId: number })
     queryFn: ({ signal }) => api<{ items: PresentEmployee[] }>(
       `/companies/${companyId}/attendance/currently-present`, { signal }),
     enabled: !isOfflineNow(),
-    refetchInterval: 60_000,
+    // Every 15 seconds while visible; an attendance punch invalidates this
+    // cache immediately. Inactive background tabs are not polled.
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
