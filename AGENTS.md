@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Shared-desktop vs phone-app sign-in (2026-11-01)
+
+The owner requires that laptop/desktop browser and installed PWA logins **never store or prefill passwords in the application**; retaining just the login identifier is allowed. Users of a shared laptop must enter the password when reopening offline, rather than silently restore the previous employee. The **installed phone app** retains OS/browser password-manager support for both online and offline login; never store raw passwords. Browser password managers may ignore autocomplete hints; see `docs/SHARED_DESKTOP_LOGIN.md` for limits and secure signout recommendations. Distinguish actual mobile device/installed mode from viewport width, and preserve existing salted offline verifiers and user isolation.
+
 ## Sales doctor and item-clearance alerts (2026-11-01)
 
 Existing `emitNotification`, company templates/followers and per-recipient inbox are the source of truth for all alerts; never create a parallel notification store. Doctor/new-or-archived sale notices must identify the **user/employee who created the invoice**, not a background worker. Item card edits changing commission rate/clearance-from/clearance-to notify the company after successful save: added to clearance, clearance updated, or removed from clearance, with the actor and field differences. Use the durable company/item/revision-scoped outbox and background processor (`docs/ITEM_CLEARANCE_AND_DOCTOR_NOTIFICATIONS.md`), preserving invoice performance and existing accounting. User-facing alert templates may be configured using existing notification settings.
