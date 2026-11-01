@@ -367,8 +367,12 @@ test("chat image defaults deny direct and group attachments; only participants c
   });
   assert.equal(fromOwner.message.imageUrl,outboundImage.fullUrl);
   assert.equal((await bob.client.image(outboundImage.fullUrl)).status,200);
-  assert.equal((await alice.client.request("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true})).status,403);
-  const enabled = await f.owner.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("PUT","/chat/image-settings",{...originalSettings,allowDirectImages:true});
+  // siteOwnerIds belongs to GET metadata and must never be sent to the strict write API.
+  const editableSettings = ({allowGroupImages,allowDirectImages,revision}:{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}) =>
+    ({allowGroupImages,allowDirectImages,revision});
+  const changedSettings = {...editableSettings(originalSettings),allowDirectImages:true};
+  assert.equal((await alice.client.request("PUT","/chat/image-settings",changedSettings)).status,403);
+  const enabled = await f.owner.client.ok<{allowGroupImages:boolean;allowDirectImages:boolean;revision:number}>("PUT","/chat/image-settings",changedSettings);
   assert.equal(enabled.allowDirectImages,true);
   assert.equal(enabled.allowGroupImages,false);
   const received = await alice.client.ok<{message:ChatMessage}>("POST",messagesPath(bob.user.id),payload);
