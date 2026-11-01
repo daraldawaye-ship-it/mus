@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Invoice suggestion priority (2026-11-01)
+
+Sales and purchase invoice item searches display 20 matches per page. After exact code/barcode matches, the descending order uses **net sold quantity in the rolling month plus available showroom+warehouse stock**, in each item's smallest unit. The total is an internal ranking key, not a visible result column. Monthly quantities come from materialized posted and staged ranking tables, never invoice or daily-activity scans while typing. Server authorization gates sales and stock information. Offline daily rankings maintain a separate scaled priority, retaining saleTimes for older search paths. See docs/INVOICE_ITEM_QUANTITY_STOCK_RANKING.md.
+
 ## Item card: Close/X always exit despite stale revision (2026-11-01)
 
 When the item editor shows a revision conflict (“توجد نسخة أحدث”), **Close**, header **×**, Escape and dismissing the modal must leave the card directly, without requiring “تحميل النسخة الحالية” or trying to save again. Previously `ItemEditor.leaveEditor` attempted an automatic PATCH for dirty fields and `ItemCardBottomSheetHost` blocked closing when an embedded draft was dirty. The fix separates close from persistence, uses an unmount/closing guard to prevent queued blur/autosave requests, and removes the sheet's dirty/busy close gate. Any edits saved successfully before the close remain saved; unsaved conflicting changes are discarded. Preserve optimistic revision and HTTP 409 checks on actual writes; never bypass financial/stock protections to implement a UI close. See `docs/ITEM_CARD_FORCE_CLOSE_ON_CONFLICT.md`.
