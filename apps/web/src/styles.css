@@ -6709,3 +6709,27 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .presence-time-relative { font-size: 12px; }
   .presence-time-date { font-size: 10px; }
 }
+
+/* Purchase draft popup opened from the invoice Actions dropdown. */
+.purchase-work-drafts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(56dvh, 440px);
+  min-width: min(500px, 85vw);
+  overflow-y: auto;
+}
+.purchase-work-draft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 2px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.purchase-work-draft > span { flex: 1 1 170px; font-size: 12px; overflow-wrap: anywhere; }
+.purchase-work-draft .form-actions { gap: 6px; }
+@media (max-width: 680px) {
+  .purchase-work-drafts-list { min-width: 0; width: 100%; }
+  .purchase-work-draft { align-items: stretch; }
+}
