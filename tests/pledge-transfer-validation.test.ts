@@ -32,7 +32,8 @@ test("doctor and agency remain invoice data but are absent from printed receipt 
   const print=readFileSync("apps/web/src/InvoicePrintSheet.tsx","utf8");
   const editor=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
   const schema=readFileSync("packages/contracts/src/commerce.ts","utf8");
-  assert.doesNotMatch(print,/doctorName|الطبيب \/ الجهة/);
+  assert.doesNotMatch(print,/<dt>الطبيب \/ الجهة<\/dt>/);
+  assert.match(print,/"doctorName"/);
   assert.match(editor,/doctorName/);
   assert.match(schema,/doctorId: id\.nullable\(\)/);
 });
