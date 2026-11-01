@@ -6,7 +6,7 @@ import { CompanyPrintHeader } from "./CompanyPrintHeader";
 export type PrintableInvoice = Pick<Invoice,
   "kind" | "returning" | "documentDate" | "counterpartyAccountName" |
   "counterpartyAccountCode" | "supplierReceiptNumber" | "supplierAccountName" |
-  "branchName" | "locationName" | "doctorName" | "currencyCode" |
+  "branchName" | "locationName" | "currencyCode" |
   "description" | "gross" | "discount" | "total" |
   "createdByName" | "createdAt"> & {
     number?: string | null;
@@ -68,7 +68,6 @@ export function InvoicePrintSheet({
         )}
         <div><dt>الفرع</dt><dd>{invoice.branchName}</dd></div>
         <div><dt>الموقع</dt><dd>{invoice.locationName}</dd></div>
-        {invoice.doctorName && <div><dt>الطبيب / الجهة</dt><dd>{invoice.doctorName}</dd></div>}
         <div><dt>العملة</dt><dd>{invoice.currencyCode}</dd></div>
       </dl>
       {invoice.description && (
