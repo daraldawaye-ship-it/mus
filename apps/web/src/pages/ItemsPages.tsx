@@ -1266,6 +1266,10 @@ function ItemEditor({
   // Do not remount the current editor after each automatic save.
   const savedRevision = useRef(item?.revision ?? 0);
   const savedItem = useRef<Item | null>(null);
+  // Visible card fields are a local snapshot, not a full-record write payload.
+  // Track only fields actually edited by this user, even during network saves.
+  const lastSavedSnapshot = useRef<Item | null>(item);
+  const editedFields = useRef(new Map<keyof ItemFields | "currencyId" | "agentId" | "supplierAccountId", number>());
   const [visibleRevision, setVisibleRevision] = useState(item?.revision ?? 0);
   const [savedMessage, setSavedMessage] = useState("");
   const formElement = useRef<HTMLFormElement>(null);
@@ -1297,13 +1301,15 @@ function ItemEditor({
     onSavingChange?.(saving || stocktakeBusy || (embedded && (dirty || optionBusy)));
     return () => onSavingChange?.(false);
   }, [saving, stocktakeBusy, dirty, optionBusy, embedded, onSavingChange]);
-  function markDirty() {
+  function markDirty(field?: keyof ItemFields | "currencyId" | "agentId" | "supplierAccountId") {
     draftVersion.current += 1;
+    if (field) editedFields.current.set(field, draftVersion.current);
     setError("");
+    setSavedMessage("");
     setDirty(true);
   }
   function edit<K extends keyof ItemFields>(key: K, value: ItemFields[K]) {
-    markDirty();
+    markDirty(key);
     setFields((previous) => {
       const next = { ...previous, [key]: value };
       const secondFactor = itemFactorSchema.safeParse(next.factor2);
@@ -1317,8 +1323,11 @@ function ItemEditor({
           (!thirdFactor.success ||
             thirdFactor.data <= 1 ||
             !next.unit3Name.trim()))
-      )
+      ) {
         next.defaultSaleUnit = 1;
+        if (previous.defaultSaleUnit !== 1)
+          editedFields.current.set("defaultSaleUnit", draftVersion.current);
+      }
       return next;
     });
   }
@@ -1359,6 +1368,27 @@ function ItemEditor({
     }
     if (!item) submittedCreate.current = parsed.data as ItemInput;
     const savedVersion = draftVersion.current;
+    let savePayload: unknown = parsed.data;
+    if (item) {
+      const changes: Record<string, unknown> = {};
+      const expected: Record<string, unknown> = {};
+      const previous = lastSavedSnapshot.current as unknown as Record<string, unknown>;
+      const current = parsed.data as Record<string, unknown>;
+      for (const field of editedFields.current.keys()) {
+        const oldValue = previous[field] ?? null;
+        const newValue = current[field] ?? null;
+        if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+          changes[field] = newValue;
+          expected[field] = oldValue;
+        }
+      }
+      if (!Object.keys(changes).length) {
+        editedFields.current.clear();
+        setDirty(false);
+        return;
+      }
+      savePayload = { changes, expected };
+    }
     savingRequest.current = true;
     setSaving(true);
     try {
@@ -1366,12 +1396,18 @@ function ItemEditor({
         `/companies/${companyId}/items${item ? `/${item.id}` : ""}`,
         {
           method: item ? "PATCH" : "POST",
-          body: parsed.data,
+          body: savePayload,
           signal: guard.signal,
         },
       );
       if (!guard.isCurrent()) return;
-      if (draftVersion.current === savedVersion) setDirty(false);
+      if (item) {
+        lastSavedSnapshot.current = result.item;
+        for (const [field, version] of editedFields.current) {
+          if (version <= savedVersion) editedFields.current.delete(field);
+        }
+        setDirty(editedFields.current.size > 0);
+      } else if (draftVersion.current === savedVersion) setDirty(false);
       setUnknownCreation(false);
       setConflict(false);
       if (item) {
@@ -1439,6 +1475,8 @@ function ItemEditor({
       setDirty(false);
       savedRevision.current = result.item.revision;
       savedItem.current = null;
+      lastSavedSnapshot.current = result.item;
+      editedFields.current.clear();
       setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
       if (onReloaded) onReloaded(result.item);
@@ -1945,7 +1983,7 @@ function ItemEditor({
                     aria-label="إزالة وكيل الصنف"
                     onClick={() => {
                       setAgent(null);
-                      markDirty();
+                      markDirty("agentId");
                     }}
                   >
                     ×
@@ -1965,7 +2003,7 @@ function ItemEditor({
                   <span id="item-supplier-choice">{supplier ? `${supplier.code} — ${supplier.name}` : "اختيار مورد الصنف"}</span>
                 </Button>
                 {supplier && <Button variant="ghost" disabled={disabled}
-                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setSupplierManuallyTouched(true);setDirty(true)}}>×</Button>}
+                  aria-label="إزالة مورد الصنف" onClick={()=>{setSupplier(null);setSupplierManuallyTouched(true);markDirty("supplierAccountId")}}>×</Button>}
               </div>
             </div>
             <div className="field item-floating-picker">
@@ -2250,7 +2288,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setCurrency(option);
-              markDirty();
+              markDirty("currencyId");
               setPicker(null);
             }}
           />
@@ -2261,7 +2299,7 @@ function ItemEditor({
             label="حساب مورد الصنف"
             value={supplier}
             display={option=>`${option.code} — ${option.name}`}
-            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);markDirty();setPicker(null)}}
+            onChange={option=>{setSupplier(option);setSupplierManuallyTouched(true);markDirty("supplierAccountId");setPicker(null)}}
             disabled={disabled}
           />
         ) : picker === "shelf" ? (
@@ -2304,7 +2342,7 @@ function ItemEditor({
             onChange={(option) => {
               if (!option) return;
               setAgent(option);
-              markDirty();
+              markDirty("agentId");
               setPicker(null);
             }}
           />
