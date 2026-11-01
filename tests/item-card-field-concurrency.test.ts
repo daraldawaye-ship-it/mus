@@ -24,10 +24,21 @@ test("an item update carries exactly the touched fields and their original value
   assert.equal(itemFieldPatchSchema.safeParse({
     changes: { revision: 15 }, expected: { revision: 14 },
   }).success, false);
+  const lastWins = itemFieldPatchSchema.safeParse({
+    changes: { salePrice1: "1500" }, expected: { salePrice1: "800" },
+    mode: "last-write-wins",
+  });
+  assert.equal(lastWins.success, true);
+  assert.equal(lastWins.data?.mode, "last-write-wins");
+  assert.equal(itemFieldPatchSchema.safeParse({
+    changes: { salePrice1: "1500" }, expected: { salePrice1: "800" },
+    mode: "unsupported",
+  }).success, false);
 });
 
 test("server locks item and rejects stale values only for modified fields", () => {
   assert.match(route, /FOR UPDATE/);
+  assert.match(route, /fieldPatch && fieldPatch\.mode !== "last-write-wins"/);
   assert.match(route, /Object\.entries\(fieldPatch\.expected\)/);
   assert.match(route, /existing\[field\]/);
   assert.match(route, /\.\.\.fieldPatch\.changes/);
@@ -46,7 +57,7 @@ test("editor tracks touched fields, submits a field-level patch and rebases afte
   assert.match(editor, /markDirty\("agentId"\)/);
   assert.match(editor, /savePayload = fieldPayload\.data/);
   assert.match(editor, /for \(const field of selectedField \? \[selectedField\] : \[\]\)/);
-  assert.match(editor, /itemFieldPatchSchema\.safeParse\(\{ changes, expected \}\)/);
+  assert.match(editor, /itemFieldPatchSchema\.safeParse\(\{ changes, expected, mode: "last-write-wins" \}\)/);
   assert.match(editor, /blockedFields\.current\.add\(selectedField\)/);
   assert.match(editor, /setFields\(previous => \{/);
   assert.match(editor, /lastEditedField\.current/);
@@ -60,7 +71,9 @@ test("one stale field never blocks saving an independently edited field", () => 
   assert.match(editor, /editedFields\.current\.delete\(selectedField\)/);
   assert.doesNotMatch(editor, /for \(const \[field, version\] of editedFields\.current\)/);
   assert.doesNotMatch(editor, /\(conflict && !confirmedCurrent\)/);
-  assert.match(editor, /lastSavedSnapshot\.current = latest\.item/);
+  assert.doesNotMatch(editor, /setConflictDetails/);
+  assert.doesNotMatch(editor, /حفظ تعديلي رغم التعارض/);
+  assert.match(editor, /changes\[field\] = newValue/);
   assert.match(editor, /for \(const key of editedFields\.current\.keys\(\)\)/);
 });
 
@@ -72,4 +85,14 @@ test("each pending field preserves its own observed baseline across unrelated su
   assert.match(editor, /pendingExpected\.current\.set\(selectedField,/);
   assert.match(editor, /pendingExpected\.current\.delete\(selectedField\)/);
   assert.match(editor, /pendingExpected\.current\.clear\(\)/);
+});
+
+test("latest edited value is submitted even if equal to the originally displayed snapshot", () => {
+  assert.match(editor, /changes\[field\] = newValue/);
+  assert.match(editor, /expected\[field\] = oldValue/);
+  assert.doesNotMatch(editor, /if \(JSON\.stringify\(oldValue\) !== JSON\.stringify\(newValue\)\)/);
+  assert.doesNotMatch(editor, /if \(selectedField && JSON\.stringify\(/);
+  assert.match(route, /FOR UPDATE/);
+  assert.match(route, /columnsToUpdate/);
+  assert.match(route, /updated_at=clock_timestamp\(\)/);
 });

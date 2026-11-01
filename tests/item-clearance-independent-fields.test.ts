@@ -48,10 +48,10 @@ test("editor autosaves changes without three-field prerequisite and handles stal
   assert.match(editor,/onChange=\{\(event\) => edit\("clearanceFrom", event\.target\.value\)\}/);
   assert.match(editor,/onChange=\{\(event\) => edit\("clearanceTo", event\.target\.value\)\}/);
   assert.match(editor,/onBlurCapture=\{event =>/);
-  assert.match(editor,/setConflictDetails\(\{latest:latest\.item,fields:conflicting\}\)/);
-  assert.match(editor,/save\(undefined, conflictDetails\.latest,/);
-  assert.match(editor,/body:\{changes,expected\}/);
-  assert.match(editor,/لم نحذف|تعديلاتك باقية/);
+  assert.match(editor,/mode: "last-write-wins"/);
+  assert.doesNotMatch(editor,/setConflictDetails/);
+  assert.doesNotMatch(editor,/حفظ تعديلي رغم التعارض/);
+  assert.match(editor,/changes\[field\] = newValue/);
   assert.match(editor,/التصريف غير مفعّل، ولا تُحسب أي عمولة/);
   assert.match(route,/تغيّرت قيمة حقل/);
   assert.doesNotMatch(editor,/توجد نسخة أحدث من هذا الصنف\. تعديلاتك باقية هنا/);
