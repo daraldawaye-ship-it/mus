@@ -30,12 +30,22 @@ test("sales item search hides inactive, expired, invalid or incomplete clearance
   assert.equal(saleClearanceRate({...item,commissionRate:"2.5000"}, "2026-10-17"), "2.5");
 });
 
-// Prevent expanding a sales invoice row with the item name or posting details.
-test("sales invoice clearance hint is concise and smaller than its row text", () => {
+// Sale-row clearance is not duplicated below the selected item name.
+// The header presents an unused shortcut ahead of clearance, notes and peers.
+test("sales header puts unused shortcut first and omits redundant row clearance", () => {
   const source = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
+  const alerts = readFileSync("apps/web/src/InvoiceSaleAlerts.tsx", "utf8");
   const styles = readFileSync("apps/web/src/styles.css", "utf8");
-  assert.match(source, /commerce-search-clearance-label commerce-sale-line-clearance-label/);
-  assert.match(source, /تصريف \{rate\}%/);
-  assert.doesNotMatch(source, /تصريف \{rate\}% — يُحسب اعتماد التصريف عند ترحيل الفاتورة/);
-  assert.match(styles, /\.commerce-sale-line-clearance-label\s*\{[^}]*font-size:\s*0\.78em/);
+  assert.doesNotMatch(source, /commerce-sale-line-clearance-label/);
+  assert.doesNotMatch(styles, /commerce-sale-line-clearance-label/);
+  assert.match(source, /unusedShortcut=\{selectedHeaderLine && !selectedHeaderLine\.selectedByShortcut/);
+  assert.match(source, /selectedByShortcut\?: boolean;/);
+  assert.match(source, /if \(match\) choose\(match, true\)/);
+  assert.match(source, /onChoose\(item, selectedByShortcut\)/);
+  assert.match(source, /chooseItem\(line, selected, false, selectedByShortcut\)/);
+  assert.match(alerts, /unusedShortcut\?\.trim\(\)/);
+  assert.ok(alerts.indexOf('key="unused-shortcut"') < alerts.indexOf('key="current-clearance"'));
+  assert.ok(alerts.indexOf('key="current-clearance"') < alerts.indexOf('data?.saleNotes'));
+  assert.match(alerts, /\(\{unusedShortcut\.trim\(\)\}\)/);
+  assert.match(styles, /\.invoice-sale-inline-shortcut\s*\{[^}]*background:\s*#ffb300;/);
 });

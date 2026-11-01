@@ -467,6 +467,7 @@ interface DraftLine {
   originalSelection: boolean;
   originalSource?: InvoiceLine;
   sourceItem?: Item;
+  selectedByShortcut?: boolean;
 }
 
 function emptyLine(returning = false): DraftLine {
@@ -486,6 +487,7 @@ function emptyLine(returning = false): DraftLine {
     originalSelection: returning,
     originalSource: undefined,
     sourceItem: undefined,
+    selectedByShortcut: false,
   };
 }
 /** Suggest a physical return batch from the item's card, never from a previous invoice's batch. */
@@ -517,7 +519,7 @@ function ItemSearch({
   selected: boolean;
   disabled: boolean;
   onQueryChange: (value: string) => void;
-  onChoose: (item: Item) => void;
+  onChoose: (item: Item, selectedByShortcut: boolean) => void;
   onConfirmSelected: () => void;
   onFinishEntry?: () => void;
 }) {
@@ -628,11 +630,11 @@ function ItemSearch({
   // never display results from a previous or incomplete input.
   const resultsReady = searchCurrent && result.isSuccess;
   const items = resultsReady ? (result.data?.items ?? []) : [];
-  function choose(item: Item) {
+  function choose(item: Item, selectedByShortcut = false) {
     shortcutAttempt.current += 1;
     setShortcutBusy(false);
     setShortcutError("");
-    onChoose(item);
+    onChoose(item, selectedByShortcut);
     setOpen(false);
     setSearch("");
     setActive(0);
@@ -747,7 +749,7 @@ function ItemSearch({
               ).then(response => {
                 if (attempt !== shortcutAttempt.current || currentInput.current !== query) return;
                 const match = response.items[0];
-                if (match) choose(match);
+                if (match) choose(match, true);
                 else setShortcutError("لا يوجد صنف بهذا الاختصار؛ اكتب ثلاثة أحرف للبحث العادي.");
               }).catch(() => {
                 if (attempt === shortcutAttempt.current)
@@ -1556,6 +1558,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
   const activeLineKey = useRef<string | null>(null);
   const [replacingClearance, setReplacingClearance] = useState(false);
   const selectedLines = lines.filter((line) => line.itemId > 0);
+  const selectedHeaderLine = lines.find(line =>
+    line.key === activeLineKey.current && line.itemId === headerItem?.id);
   const hasLinkedLines = selectedLines.some(
     (line) => line.originalLineId !== null,
   );
@@ -1887,7 +1891,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
       current.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     );
   }
-  function chooseItem(line: DraftLine, selected: Item, preserveQuantity = false) {
+  function chooseItem(
+    line: DraftLine, selected: Item, preserveQuantity = false,
+    selectedByShortcut = false,
+  ) {
     if (user) rememberRecentEntity(user.id, companyId, "item", {id:selected.id,name:selected.name});
     activeLineKey.current=line.key;
     setHeaderItem(selected);
@@ -1900,6 +1907,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
       itemName: selected.name,
       search: selected.name,
       sourceItem: selected,
+      selectedByShortcut,
       unit: selectedUnit,
       unitName: unitName(selected, selectedUnit),
       quantity: preserveQuantity ? line.quantity : "1",
@@ -2777,6 +2785,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                   <InvoiceSaleAlerts companyId={companyId} userId={user?.id}
                     itemId={headerItem?.id??null}
                     currentClearanceRate={headerItem?saleClearanceRate(headerItem,documentDate):null}
+                    unusedShortcut={selectedHeaderLine && !selectedHeaderLine.selectedByShortcut
+                      ? selectedHeaderLine.sourceItem?.shortcut ?? headerItem?.shortcut : null}
                     onChooseClearance={replaceWithClearance}
                     disableSelection={locked || !activeLineKey.current}/>
                 </>}
@@ -2962,8 +2972,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                                   search: value,
                                 })
                               }
-                              onChoose={(selected) =>
-                                chooseItem(line, selected)
+                              onChoose={(selected, selectedByShortcut) =>
+                                chooseItem(line, selected, false, selectedByShortcut)
                               }
                               onConfirmSelected={() =>
                                 focus(lineInputId(line, "quantity"), kind === "purchase")
@@ -2974,12 +2984,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                           {kind === "sale" && line.itemId > 0 && line.itemName && (
                             <span className="commerce-mobile-sale-item-name" dir="auto">{line.itemName}</span>
                           )}
-                          {kind==="sale" && line.sourceItem && (() => {
-                            const rate=saleClearanceRate(line.sourceItem,documentDate);
-                            return rate ? <small className="commerce-search-clearance-label commerce-sale-line-clearance-label">
-                              تصريف {rate}%
-                            </small> : null;
-                          })()}
                         </td>
                         <td className="commerce-line-unit" data-mobile-label="الوحدة">
                           <Select

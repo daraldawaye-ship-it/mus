@@ -21,9 +21,10 @@ export type SaleAlerts = {
 /** Asynchronous sidebar only: never intercept invoice keyboard navigation,
  * price calculations, onChange, or save. Cached per selected company/item. */
 export function InvoiceSaleAlerts({
-  companyId,userId,itemId,currentClearanceRate,onChooseClearance,disableSelection=false,
+  companyId,userId,itemId,currentClearanceRate,unusedShortcut,onChooseClearance,disableSelection=false,
 }: {
   companyId:number; userId:number|undefined; itemId:number|null; currentClearanceRate?:string|null;
+  unusedShortcut?:string|null;
   /** Replaces only the currently selected, unlinked sales invoice row. */
   onChooseClearance?: (itemId:number)=>void;
   disableSelection?:boolean;
@@ -38,10 +39,11 @@ export function InvoiceSaleAlerts({
   // The item card includes dated clearance rate. Display it even when
   // the optional server alerts have never been downloaded on this device.
   const hasNotes=!!data?.saleNotes||!!data?.compositionSaleNotes;
-  if(!hasNotes && !data?.alternatives.length && !currentClearanceRate)return null;
+  if(!hasNotes && !data?.alternatives.length && !currentClearanceRate && !unusedShortcut)return null;
   return (
     <section className="invoice-sale-alerts invoice-sale-alerts-inline" aria-label="تنبيهات الصنف عند البيع">
       {[
+        ...(unusedShortcut?.trim()?[<span key="unused-shortcut" className="invoice-sale-inline-shortcut" dir="ltr">({unusedShortcut.trim()})</span>]:[]),
         ...(currentClearanceRate?[<span key="current-clearance" className="invoice-sale-inline-clearance">تصريف {wholePercent(currentClearanceRate)}%</span>]:[]),
         ...[data?.saleNotes,data?.compositionSaleNotes].filter(Boolean).map((note,index)=>(
           <span key={`note-${index}`} className={index===0&&data?.saleNotes?"invoice-sale-inline-note invoice-sale-item-note":"invoice-sale-inline-note"}>{note}</span>

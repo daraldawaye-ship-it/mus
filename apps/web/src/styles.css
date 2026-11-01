@@ -2746,14 +2746,6 @@ ul {
   line-height: inherit;
   background: transparent;
 }
-/* Short, secondary clearance hint on a sales invoice row only. The item
-   search result style stays unchanged so its name/price remain readable. */
-.commerce-sale-line-clearance-label {
-  display: block;
-  font-size: 0.78em;
-  font-weight: 500;
-  line-height: 1.2;
-}
 .commerce-search-item-stock,
 .commerce-search-item-price {
   direction: ltr;
@@ -5045,6 +5037,18 @@ a.notification-quick-title:hover { text-decoration: underline; }
   line-height: 1.55;
 }
 .invoice-sale-inline-segment { display: inline; }
+.invoice-sale-inline-shortcut {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #ffb300;
+  color: #15110a;
+  font-size: 0.92em;
+  font-weight: 800;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
 .invoice-sale-inline-note { color: var(--text); }
 .invoice-sale-inline-note.invoice-sale-item-note {
   background: #39ff14;
