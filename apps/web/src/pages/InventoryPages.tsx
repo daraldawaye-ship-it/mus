@@ -1189,11 +1189,12 @@ export function InventoryTransferSheet({
 }
 
 export function InventoryAdjustmentSheet({
-  context, item, onClose, onSaved,
+  context, item, onClose, onSaved, fromRequiredPage = false,
 }: {
   context: CompanyContext;
   item: Item;
   onClose: () => void;
+  fromRequiredPage?: boolean;
   onSaved?: (nearestExpiryDate: string | null, shelf: {shelfId:number|null;shelf:string},
     metadata: {compositionId:number|null;cardUpdated:boolean}) => void;
 }) {
@@ -1202,13 +1203,16 @@ export function InventoryAdjustmentSheet({
     return <Notice tone="warning">ليس لديك صلاحية تسوية الصنف.</Notice>;
   return <OperationEditor key={`${user?.id}:${context.company.id}:adjust:${item.id}`}
     context={context} initialMode="adjustment" lockedMode preselectedItem={item}
+    fromRequiredPage={fromRequiredPage}
     onClose={onClose} onSaved={onSaved} />;
 }
 function OperationEditor({
   context, initialMode = "transfer", lockedMode = false,
   preselectedItem = null, onClose, onSaved, onTransferPosted,
+  fromRequiredPage = false,
 }: {
   context: CompanyContext;
+  fromRequiredPage?: boolean;
   initialMode?: OperationMode;
   lockedMode?: boolean;
   preselectedItem?: Item | null;
@@ -1219,7 +1223,7 @@ function OperationEditor({
 }) {
   const companyId = context.company.id;
   const [routeParams] = useSearchParams();
-  const fromRequiredTask = routeParams.get("taskSource") === "required-count";
+  const fromRequiredTask = fromRequiredPage || routeParams.get("taskSource") === "required-count";
   const { user } = useSession();
   const guard = useScopeGuard(`company:${companyId}:stock-operation`);
   const queryClient = useQueryClient();
