@@ -8,7 +8,16 @@ import { marketPages, requireMarketSecret, signMarketRequest } from "./transport
 
 export interface MarketGatewayOptions { url: string; secret: string; concurrency?: number; timeoutMs?: number; }
 export function marketGatewayOptions(): MarketGatewayOptions | undefined {
-  const url = process.env.MARKET_SERVICE_URL;
+  // Blueprint wires a private service hostname before cutover. Never switch automatically
+  // merely because the private service exists; migration and validation come first.
+  if (process.env.MARKET_SERVICE_ENABLED === "0") return undefined;
+  const explicitUrl = process.env.MARKET_SERVICE_URL?.trim();
+  const hostport = process.env.MARKET_SERVICE_HOSTPORT?.trim();
+  const enabled = process.env.MARKET_SERVICE_ENABLED === "1";
+  if (enabled && !explicitUrl && !hostport) {
+    throw new Error("MARKET_SERVICE_ENABLED=1 requires MARKET_SERVICE_HOSTPORT or MARKET_SERVICE_URL");
+  }
+  const url = explicitUrl ?? (enabled && hostport ? `http://${hostport}` : undefined);
   if (!url) return undefined;
   return { url, secret: process.env.MARKET_SERVICE_SECRET ?? "" };
 }
