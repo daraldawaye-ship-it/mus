@@ -80,3 +80,17 @@ test("temporary save resets only after the IndexedDB write resolves",()=>{
   assert.match(invoice,/setDiscount\("0"\)/);
   assert.match(invoice,/setActivePurchaseDraftId\(null\)/);
 });
+
+
+test("purchase Actions includes sales shortcut and saved draft notices never push the header down", () => {
+  assert.match(invoice, /label: "فتح فاتورة مبيعات"/);
+  assert.match(invoice, /to: \`\\$\\{invoicePath\\(companyId, "new"\\)\\}\\?kind=sale\`/);
+  assert.match(invoice, /<PageActionsDropdown actions=\\{\\[/);
+  assert.match(invoice, /className="commerce-purchase-draft-toast" role="status" aria-live="polite"/);
+  assert.doesNotMatch(invoice, /\\{kind === "purchase" && draftNotice && <Notice tone="success">/);
+  assert.match(css, /\\.commerce-purchase-draft-toast \\{[^}]*position: fixed;/);
+  assert.match(css, /\\.commerce-purchase-draft-toast \\{[^}]*bottom:/);
+  assert.match(css, /pointer-events: none;/);
+  assert.match(invoice, /setTimeout\\(\\(\\) => setDraftNotice\\(""\\), 7000\\)/);
+  assert.match(css, /@media print \\{ \\.commerce-purchase-draft-toast \\{ display: none !important; \\} \\}/);
+});
