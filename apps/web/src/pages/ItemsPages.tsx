@@ -1403,18 +1403,10 @@ function ItemEditor({
           ? pendingExpected.current.get(field) ?? null
           : previous[field] ?? null;
         const newValue = current[field] ?? null;
-        if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-          changes[field] = newValue;
-          expected[field] = oldValue;
-        }
-      }
-      if (!Object.keys(changes).length) {
-        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
-          editedFields.current.delete(selectedField);
-          pendingExpected.current.delete(selectedField);
-        }
-        setDirty(editedFields.current.size > 0);
-        return;
+        // Even when the user changes a field back to its original displayed
+        // value, this intentional edit is the newest write and must be sent.
+        changes[field] = newValue;
+        expected[field] = oldValue;
       }
       const fieldPayload = itemFieldPatchSchema.safeParse({ changes, expected, mode: "last-write-wins" });
       if (!fieldPayload.success) {
@@ -1422,19 +1414,7 @@ function ItemEditor({
         setError(fieldPayload.error.issues[0]?.message ?? "تحقق من قيمة الحقل.");
         return;
       }
-      // Compare normalized values (e.g. "1" versus numeric factor 1) so
-      // visiting a field without changing it cannot bump the card revision.
       const normalized = fieldPayload.data;
-      if (selectedField && JSON.stringify((normalized.changes as Record<string,unknown>)[selectedField] ?? null) ===
-          JSON.stringify((normalized.expected as Record<string,unknown>)[selectedField] ?? null)) {
-        if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
-          editedFields.current.delete(selectedField);
-          pendingExpected.current.delete(selectedField);
-        }
-        blockedFields.current.delete(selectedField);
-        setDirty(editedFields.current.size > 0);
-        return;
-      }
       savePayload = normalized;
     }
     savingRequest.current = true;
