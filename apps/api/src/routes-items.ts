@@ -906,7 +906,7 @@ export function itemRoutes(pool: Pool): Router {
               if (JSON.stringify(existing[field] ?? null) !== JSON.stringify(expected ?? null))
                 conflict(`تغيّرت قيمة حقل «${clearanceNames[field] ?? field}» بعد فتح الكرت؛ راجع القيمة الحديثة قبل حفظ تعديلك.`);
             }
-          } else if (fullInput!.revision !== before.revision) {
+          } else if (!fieldPatch && fullInput!.revision !== before.revision) {
             conflict("تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ");
           }
           const input = fieldPatch
