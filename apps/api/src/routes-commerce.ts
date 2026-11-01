@@ -531,24 +531,34 @@ export function commerceRoutes(pool: Pool): Router {
     `${base}/invoices`,
     handler(async (req, res) => {
       const input = parse(invoiceSchema, req.body);
+      // Measure ONLY server-side successful posting latency; never log account,
+      // customer, item, invoice identifiers, amounts or draft contents.
+      const startedAt = performance.now();
+      let validationMs = 0, postingMs = 0, retry = false;
       const invoice = await mutateMaster(
         pool,
         req,
         "commerce.manage",
         async (client, user, companyId) => {
+          const checksStarted = performance.now();
           await companyAccess(client, user, companyId, "finance.post", true);
           // Accepted UUID retries remain verifiable even if a control changes.
           const existing = await client.query(
             "SELECT 1 FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
             [companyId, input.idempotencyKey],
           );
-          if (!existing.rowCount) {
+          retry = existing.rowCount > 0;
+          if (!retry) {
             await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
             await assertEditableDocumentDate(client, companyId,
               input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date", input.documentDate);
             await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
           }
-          return createInvoice(client, companyId, user, input);
+          validationMs = performance.now() - checksStarted;
+          const postingStarted = performance.now();
+          const saved = await createInvoice(client, companyId, user, input);
+          postingMs = performance.now() - postingStarted;
+          return saved;
         },
       ).catch(async (error:unknown)=>{
         if(error instanceof HttpError && error.code==="memo_feature_block"){
@@ -567,6 +577,16 @@ export function commerceRoutes(pool: Pool): Router {
         }
         throw error;
       });
+      const totalMs = performance.now() - startedAt;
+      if (totalMs >= 1000) {
+        console.info("INVOICE_POST_SLOW", JSON.stringify({
+          totalMs: Math.round(totalMs),
+          validationMs: Math.round(validationMs),
+          postingMs: Math.round(postingMs),
+          transactionOverheadMs: Math.round(Math.max(0, totalMs - validationMs - postingMs)),
+          kind: input.kind, lineCount: input.lines.length, retry,
+        }));
+      }
       res.status(201).json({ invoice });
     }),
   );
