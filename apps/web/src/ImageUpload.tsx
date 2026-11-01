@@ -63,9 +63,9 @@ export function ImageUpload({
         disabled={disabled||busy} onChange={(event)=>void upload(event)} />
       {preview && onClear && <button type="button" disabled={disabled||busy} onClick={onClear}>إزالة الصورة</button>}
     </div>
-    <small className="muted">{purpose==="letterhead"
+    {purpose!=="item" && <small className="muted">{purpose==="letterhead"
       ? "يفضّل رفع صورة أفقية عريضة واضحة (مثل 1600×200). تحفظ الصورة الكاملة للطباعة."
-      : "تُنشأ نسخة مصغرة تلقائيًا للعرض السريع في القوائم."}</small>
+      : "تُنشأ نسخة مصغرة تلقائيًا للعرض السريع في القوائم."}</small>}
     {busy && <small aria-live="polite">جارٍ تجهيز الصورة ورفعها…</small>}
     {error && <small className="image-upload-error" role="alert">{error}</small>}
   </div>;
