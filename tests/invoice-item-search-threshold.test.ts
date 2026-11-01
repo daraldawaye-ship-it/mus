@@ -33,7 +33,12 @@ test("invoice typeahead stays fast and reads stored monthly rankings", () => {
   assert.match(search, /searchCurrent && result\.isSuccess/);
   assert.doesNotMatch(search, /searchCurrent && !result\.isFetching && result\.isSuccess/);
   assert.match(search, /canSearchInvoiceItem\(search\)/);
-  assert.match(search, /sort: "saleTimes:desc,code:asc", fast: "1"/);
+  assert.match(search, /sort: "saleQuantityPlusStock:desc,code:asc", fast: "1"/);
+  assert.match(search, /pageSize: "20"/);
+  assert.match(search, /page \* 20 >=/);
+  assert.match(route, /saleQuantityPlusStock:/);
+  assert.match(route, /net_sale_quantity/);
+  assert.match(route, /stock_showroom,0/);
   assert.match(route, /fastItemLookup/);
   assert.match(route, /itemLookupSearchPlan/);
   assert.match(rank, /item_sale_rankings sale_rank/);
