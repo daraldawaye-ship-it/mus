@@ -223,7 +223,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
   const [importOpen, setImportOpen] = useState(false);
   const [sheetItemId,setSheetItemId]=useState<number|null>(null);
   const previousSelectedIds = useRef<Set<string>>(new Set());
-  const [sheetBusy,setSheetBusy]=useState(false);
+  // The user may dismiss an item card even when its draft has a stale revision.
   function filter(key: string, value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -458,9 +458,9 @@ function ItemsManager({ context }: { context: CompanyContext }) {
         />
       </Card>
       <Dialog open={sheetItemId!==null} title="كرت الصنف" className="invoice-item-sheet"
-        onClose={()=>{if(!sheetBusy)setSheetItemId(null);}}>
+        onClose={()=>setSheetItemId(null)}>
         {sheetItemId!==null&&<InvoiceItemEditor key={`${companyId}:${sheetItemId}`}
-          context={context} itemId={sheetItemId} onSavingChange={setSheetBusy}
+          context={context} itemId={sheetItemId}
           onClose={()=>setSheetItemId(null)}
           onSaved={()=>{setSheetItemId(null);void list.refetch();}} />}
       </Dialog>
@@ -1270,6 +1270,9 @@ function ItemEditor({
   const [savedMessage, setSavedMessage] = useState("");
   const formElement = useRef<HTMLFormElement>(null);
   const savingRequest = useRef(false);
+  const closingRef = useRef(false);
+  // A pending blur/autosave timer must never POST/PATCH after the card closes.
+  useEffect(() => () => { closingRef.current = true; }, []);
   const draftVersion = useRef(0);
   const [unknownCreation, setUnknownCreation] = useState(false);
   const [error, setError] = useState("");
@@ -1321,7 +1324,8 @@ function ItemEditor({
   }
   async function save(event?: FormEvent) {
     event?.preventDefault();
-    if (readOnly || !manage || savingRequest.current || (item && (!dirty || conflict))) return;
+    if (closingRef.current || readOnly || !manage || savingRequest.current ||
+        (item && (!dirty || conflict))) return;
     if (shortcutDuplicate) {
       setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
       return;
@@ -1449,8 +1453,8 @@ function ItemEditor({
   // and picker choices save shortly after selection without a Save button.
   // Never attempt to persist a half-typed field or retry invalid data in a loop.
   useEffect(() => {
-    if (!item || !manage || readOnly || !dirty || saving || conflict || picker || error)
-      return;
+    if (!item || !manage || readOnly || !dirty || saving || conflict || picker ||
+        error || closingRef.current) return;
     const timeout = window.setTimeout(() => {
       const active = document.activeElement;
       const typing = active && formElement.current?.contains(active) &&
@@ -1465,16 +1469,14 @@ function ItemEditor({
     fields, currency, agent, supplier, supplierManuallyTouched]);
 
   function leaveEditor() {
-    if (item && (optionBusy || stocktakeBusy)) return;
-    if (item && dirty) {
-      // An explicit Close also commits the most recent text edit.
-      void save();
-      return;
-    }
+    // Closing is not a save action. In particular, a 409 conflict must never
+    // trap the employee in the editor or force them to reload the newer card.
+    closingRef.current = true;
     if (embedded) {
-      if (savedItem.current) onSaved(savedItem.current, "تم حفظ تعديلات الصنف.");
+      if (savedItem.current) onSaved(savedItem.current, "تم حفظ تعديلات الصنف السابقة.");
       else onClose?.();
     } else {
+      allowNavigation.current = true;
       navigate(`/companies/${companyId}/items`);
     }
   }
@@ -1526,7 +1528,7 @@ function ItemEditor({
       )}
       <form ref={formElement} onSubmit={(event) => void save(event)}
         onBlurCapture={event => {
-          if (!item || readOnly || !manage) return;
+          if (closingRef.current || !item || readOnly || !manage) return;
           if (!(event.target instanceof HTMLInputElement ||
                 event.target instanceof HTMLTextAreaElement ||
                 event.target instanceof HTMLSelectElement)) return;
@@ -1547,7 +1549,6 @@ function ItemEditor({
           )}
           <Button
             variant="secondary"
-            disabled={saving}
             onClick={leaveEditor}
           >
             {embedded ? "إغلاق" : "العودة للقائمة"}
