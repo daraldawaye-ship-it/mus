@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Item card: Close/X always exit despite stale revision (2026-11-01)
+
+When the item editor shows a revision conflict (“توجد نسخة أحدث”), **Close**, header **×**, Escape and dismissing the modal must leave the card directly, without requiring “تحميل النسخة الحالية” or trying to save again. Previously `ItemEditor.leaveEditor` attempted an automatic PATCH for dirty fields and `ItemCardBottomSheetHost` blocked closing when an embedded draft was dirty. The fix separates close from persistence, uses an unmount/closing guard to prevent queued blur/autosave requests, and removes the sheet's dirty/busy close gate. Any edits saved successfully before the close remain saved; unsaved conflicting changes are discarded. Preserve optimistic revision and HTTP 409 checks on actual writes; never bypass financial/stock protections to implement a UI close. See `docs/ITEM_CARD_FORCE_CLOSE_ON_CONFLICT.md`.
+
 ## Compact avatar settings actions and full-site refresh (2026-11-01)
 
 Owner requires the settings actions (edit my account, appearance, ChatGPT connections where permitted, logout) to live in a **permanently visible bottom strip of the avatar menu** on every tab, in place of the “اسحب لأسفل...” hint; actions in that strip are 38px high rather than normal 54px tiles. Add a **full site refresh** at the far-left side (RTL layout). On click, confirm potential loss of unsaved entry, verify fresh HTML over the network without cache, ask SW to update, then navigate the current route with a cache-busting parameter so freshly published HTML references current hashed build assets. Never clear IndexedDB/offline invoice/question queues or grant access as part of refresh. JavaScript cannot literally trigger browser Ctrl+F5; this is the supported equivalent for deployed PWA assets. See `docs/AVATAR_COMPACT_ACTIONS_AND_FORCE_REFRESH.md`.
