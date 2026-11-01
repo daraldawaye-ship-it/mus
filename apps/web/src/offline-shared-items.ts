@@ -1,5 +1,5 @@
 import { sharedItemsAllowed } from "./offline-shared";
-import { compareItemsBySavedSales, readSaleRankSnapshot } from "./offline-storage";
+import { compareItemsBySavedSales, compareItemsBySaleQuantityAndStock, readSaleRankSnapshot } from "./offline-storage";
 type Cursor = { since:string;afterId:number };
 type Progress = { cursor:Cursor;count:number;complete:boolean };
 type Row = { key:string;companyId:number;value:Record<string,unknown> };
@@ -61,7 +61,11 @@ export async function lookupSharedItem<T>(path:string,userId:number):Promise<T|u
     (q.get("active")!=="true"||x.active!==false) &&
     (!search||["name","englishName","code","barcode","searchKeys"].some(k=>
       String(x[k]??"").toLowerCase().includes(search))));
-  if(q.get("sort")?.startsWith("saleTimes:desc")){
+  if(q.get("sort")?.startsWith("saleQuantityPlusStock:desc")){
+    const snapshot=await readSaleRankSnapshot(userId,companyId);
+    if(snapshot?.priorities)
+      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,snapshot.priorities,q.get("q")??""));
+  } else if(q.get("sort")?.startsWith("saleTimes:desc")){
     const snapshot=await readSaleRankSnapshot(userId,companyId);
     if(snapshot)
       filtered.sort((a,b)=>compareItemsBySavedSales(a,b,snapshot.scores,q.get("q")??""));
