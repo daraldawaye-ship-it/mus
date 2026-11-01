@@ -20,7 +20,7 @@ test("both pages are separate and discoverable in the registered navigation", ()
   assert.equal(company.navigation, true);
   assert.equal(company.scope, "company");
   assert.equal(company.parentKey, "company.attendance");
-  assert.equal(company.actions.view?.role, "company-general");
+  assert.equal(company.actions.view?.role, "company-member");
   assert.equal(pageHref(company, 2), "/companies/2/attendance-current");
   assert.equal(pageKeyForLocation("/companies/2/attendance-current", ""), company.key);
 });

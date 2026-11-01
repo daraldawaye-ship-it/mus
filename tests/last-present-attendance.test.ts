@@ -17,7 +17,8 @@ test("public presence has explicit administration authorization and throttled si
   const route = readFileSync("apps/api/src/routes-public.ts","utf8");
   const heartbeat = readFileSync("apps/web/src/PresenceHeartbeat.tsx","utf8");
   assert.match(route,/router\.get\("\/users\/last-present"/);
-  assert.match(route,/publicAdmin\(actor\(req\)\)/);
+  assert.match(route,/directoryEntries\(pool, actor\(req\), null\)/);
+  assert.match(route,/assertDirectoryAccess\(entry\)/);
   const recorder = readFileSync("apps/api/src/services/user-presence.ts","utf8");
   const app = readFileSync("apps/api/src/app.ts","utf8");
   const auth = readFileSync("apps/api/src/services/auth.ts","utf8");
@@ -38,11 +39,12 @@ test("company presence uses attendance punches, respects company manager authori
   const route = readFileSync("apps/api/src/routes-attendance.ts","utf8");
   const ui = readFileSync("apps/web/src/pages/AttendancePage.tsx","utf8");
   assert.match(route,/base \+ "\/currently-present"/);
-  assert.match(route,/if \(!context.general\) deny/);
+  assert.match(route,/directoryEntries\(client, user, companyId\)/);
+  assert.match(route,/assertDirectoryAccess\(entry\)/);
   assert.match(route,/r.checked_out_at IS NULL/);
   assert.match(route,/ORDER BY \(active.checked_in_at IS NOT NULL\) DESC/);
   assert.match(route,/last_checked_out_at/);
-  assert.match(ui,/view === "current" && context.general/);
+  assert.match(ui,/view === "current" \?/);
   assert.match(ui,/المحضرون حاليًا/);
 });
 
@@ -85,4 +87,18 @@ test("company attendance refreshes immediately after punches and polls every 15 
   assert.match(page, /refetchIntervalInBackground: false/);
   assert.match(page, /refetchOnWindowFocus: true/);
   assert.match(page, /refetchOnReconnect: true/);
+});
+
+test("the Other tab uses the exact page view permissions and never grants editing rights", () => {
+  const menu = readFileSync("apps/web/src/UserMenu.tsx","utf8");
+  const contracts = readFileSync("packages/contracts/src/pages.ts","utf8");
+  const general = readFileSync("apps/web/src/pages/LastPresentUsersPage.tsx","utf8");
+  assert.match(menu,/key: "tools", label: "أخرى"/);
+  assert.match(menu,/canViewPage\("company.attendance-current"\)/);
+  assert.match(menu,/canViewPage\("company.pages"\)/);
+  assert.match(menu,/canViewPage\("public.last-present"\)/);
+  assert.match(menu,/to="\/users\/last-present"/);
+  assert.match(menu,/صلاحيات الصفحات/);
+  assert.match(contracts,/"company.attendance-current"[\s\S]*?\{ view: member \}/);
+  assert.doesNotMatch(general,/user\.owner \|\| user\.kind === "admin"/);
 });
