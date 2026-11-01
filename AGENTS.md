@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Offline invoice receipt and letterhead (2026-11-01)
+
+Offline invoice persistence resets entry fields only **after** confirmed IndexedDB enqueue; the outbox remains unchanged and uses the original idempotency key. After queueing, show a saved-local confirmation and print button; print with the cached company letterhead but NEVER show a final invoice number on a not-yet-posted receipt. Do not mark it posted or change accounts/stock until server sync. The online-posted invoice still shows its real invoice number. See `docs/OFFLINE_INVOICE_RECEIPT.md` for implementation and limits.
+
 ## Avatar navigation: first-paint and offline (2026-11-01)
 
 The user requires company and public avatar navigation links/tabs to appear immediately on repeat opening and after an offline restart. Read `docs/AVATAR_NAVIGATION_OFFLINE.md` before changing `UserMenu.tsx`, `UserShortcutMenuGrid.tsx`, or page permission loading. A short-lived user/company-scoped localStorage snapshot is for **UI display only**; it must never authorize a route, a mutation, or access to another company. The server and page guards remain authoritative, with fresh online changes replacing saved links.
