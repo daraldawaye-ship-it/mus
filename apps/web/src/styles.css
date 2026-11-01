@@ -6685,3 +6685,18 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .app-update-prompt-action { font-size: 12px; padding-inline: 8px; }
 }
 @media print { .app-update-prompt { display: none !important; } }
+
+/* General last-presence and company punch overviews share a compact read-only table. */
+.presence-table-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
+.presence-table { border-collapse: collapse; width: 100%; text-align: start; font-size: 13px; }
+.presence-table th, .presence-table td {
+  padding: 9px 10px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; text-align: start;
+}
+.presence-table th { font-weight: 700; color: var(--muted); }
+.presence-employee-current { background: rgba(52, 211, 153, 0.13); }
+.presence-employee-current td:first-child,
+.presence-employee-current td:nth-child(2) { color: #34d399; font-weight: 700; }
+@media (max-width: 680px) {
+  .presence-table th, .presence-table td { padding: 7px 8px; font-size: 12px; }
+}
