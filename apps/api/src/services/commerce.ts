@@ -441,19 +441,24 @@ export async function createInvoice(
       expiryDate = input.kind === "sale"
         ? line.expiryDate ?? original.expiry_text
         : original.expiry_text;
+      const originalDiscount = moneyUnits(original.discount);
       const remainingDiscount =
-        moneyUnits(original.discount) - moneyUnits(previous.rows[0].discount);
-      discount = -(returned + requested === originalQuantity
+        originalDiscount - moneyUnits(previous.rows[0].discount);
+      // A returned line reverses its origin's discount sign. In particular,
+      // the return of a sale with a negative header discount earns a positive
+      // refund adjustment, bounded by the ORIGINAL surcharge already returned.
+      const proratedMagnitude = share(
+        abs(originalDiscount), requested, originalQuantity,
+        quantum(currency.decimal_places),
+      );
+      const signedProrata = originalDiscount < 0n
+        ? -proratedMagnitude : proratedMagnitude;
+      const attributable = returned + requested === originalQuantity
         ? remainingDiscount
-        : (() => {
-            const prorata = share(
-              moneyUnits(original.discount),
-              requested,
-              originalQuantity,
-              quantum(currency.decimal_places),
-            );
-            return prorata > remainingDiscount ? remainingDiscount : prorata;
-          })());
+        : originalDiscount < 0n
+          ? (signedProrata < remainingDiscount ? remainingDiscount : signedProrata)
+          : (signedProrata > remainingDiscount ? remainingDiscount : signedProrata);
+      discount = -attributable;
 
     } else {
       if (input.kind === "sale") {
