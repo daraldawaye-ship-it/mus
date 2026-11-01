@@ -16,7 +16,7 @@ const page = (
   record: false,
   actionAccess: { view: options.view ?? true, create: options.create ?? false },
 } as PageEntry);
-const user = {id: 43, owner: false, kind: "employee"} as const;
+const user = {id: 43, owner: false, kind: "member"} as const;
 
 test("snapshot includes only previously permitted company links in catalog order", () => {
   const pages = [
