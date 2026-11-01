@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { mobileInstalledApp } from "../apps/web/src/device-login-policy.ts";
+import { compactDesktopTextSecret, mobileInstalledApp } from "../apps/web/src/device-login-policy.ts";
 
 test("phone PWA keeps password-manager integration online and offline", () => {
   assert.equal(mobileInstalledApp("Mozilla/5.0 (iPhone; CPU iPhone OS 18_4)",true),true);
@@ -38,4 +38,19 @@ test("desktop form remembers only identity, suppresses password autofill and cle
   assert.match(api,/authenticateOfflineAccount\(identity,password\)/);
   assert.match(storage,/OFFLINE_PBKDF2_ITERATIONS = 350_000/);
   assert.match(storage,/crypto\.subtle\.deriveBits/);
+});
+
+test("desktop login field is short unmasked plain text; installed mobile remains native password", () => {
+  assert.equal(compactDesktopTextSecret(false, false), true);
+  assert.equal(compactDesktopTextSecret(true, false), false);
+  assert.equal(compactDesktopTextSecret(false, true), false);
+  const page = readFileSync("apps/web/src/pages/PublicPages.tsx", "utf8");
+  const style = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(page,/const desktopTextSecret = compactDesktopTextSecret/);
+  assert.match(page,/type=\{desktopTextSecret \? "text" : "password"\}/);
+  assert.match(page,/name=\{desktopTextSecret \? "employee-secret-entry" : "password"\}/);
+  assert.match(page,/className=\{desktopTextSecret \? "auth-desktop-short-secret" : ""\}/);
+  assert.match(style,/\.field\.auth-desktop-short-secret input\s*\{/);
+  assert.match(style,/width: calc\(2ch \+ 20px\)/);
+  assert.doesNotMatch(style,/\.auth-desktop-short-secret[^}]*-webkit-text-security/);
 });
