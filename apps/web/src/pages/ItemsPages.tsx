@@ -1354,6 +1354,7 @@ function ItemEditor({
       : null;
     if (item && !selectedField) return;
     if (shortcutDuplicate && (!item || selectedField === "shortcut")) {
+      if (selectedField) blockedFields.current.add(selectedField);
       setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
       return;
     }
@@ -1413,7 +1414,18 @@ function ItemEditor({
         setError(fieldPayload.error.issues[0]?.message ?? "تحقق من قيمة الحقل.");
         return;
       }
-      savePayload = fieldPayload.data;
+      // Compare normalized values (e.g. "1" versus numeric factor 1) so
+      // visiting a field without changing it cannot bump the card revision.
+      const normalized = fieldPayload.data;
+      if (selectedField && JSON.stringify((normalized.changes as Record<string,unknown>)[selectedField] ?? null) ===
+          JSON.stringify((normalized.expected as Record<string,unknown>)[selectedField] ?? null)) {
+        if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
+          editedFields.current.delete(selectedField);
+        blockedFields.current.delete(selectedField);
+        setDirty(editedFields.current.size > 0);
+        return;
+      }
+      savePayload = normalized;
     }
     savingRequest.current = true;
     setSaving(true);
@@ -1519,21 +1531,33 @@ function ItemEditor({
     setError("");
     setSavedMessage("");
     try {
-      const result = await api<{ item: Item }>(`/companies/${companyId}/items/${item.id}/stocktake-request`, {
-        method: "PATCH",
-        body: { revision: savedRevision.current },
-        signal: guard.signal,
-      });
+      const stamp = (revision: number) => api<{ item: Item }>(
+        `/companies/${companyId}/items/${item.id}/stocktake-request`, {
+          method: "PATCH", body: { revision }, signal: guard.signal,
+        });
+      let result: { item: Item };
+      try {
+        result = await stamp(savedRevision.current);
+      } catch (reason) {
+        if (!(reason instanceof ApiFailure) || reason.status !== 409) throw reason;
+        // The timestamp is its own action: an unrelated card edit must not
+        // force the employee to reload the entire card before stamping.
+        const latest = await api<{ item: Item }>(
+          `/companies/${companyId}/items/${item.id}`, { signal: guard.signal });
+        if (!guard.isCurrent()) return;
+        result = await stamp(latest.item.revision);
+      }
       if (!guard.isCurrent()) return;
       savedRevision.current = result.item.revision;
       savedItem.current = result.item;
+      lastSavedSnapshot.current = result.item;
       setVisibleRevision(result.item.revision);
       setStocktakeRequiredAt(result.item.stocktakeRequiredAt);
+      setFields(initialItemFields(result.item));
       setSavedMessage("سُجل التاريخ والوقت الحاليان لطلب الجرد.");
       void changed(true);
     } catch (reason) {
       if (!guard.isCurrent()) return;
-      if (reason instanceof ApiFailure && reason.status === 409) setConflict(true);
       setError(errorMessage(reason));
     } finally {
       if (guard.isCurrent()) setStocktakeBusy(false);
