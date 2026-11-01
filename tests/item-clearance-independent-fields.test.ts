@@ -54,6 +54,9 @@ test("editor autosaves changes without three-field prerequisite and handles stal
   assert.match(editor,/changes\[field\] = newValue/);
   assert.match(editor,/التصريف غير مفعّل، ولا تُحسب أي عمولة/);
   assert.match(route,/تغيّرت قيمة حقل/);
+  assert.match(route,/else if \(!fieldPatch && fullInput!\.revision !== before\.revision\)/);
+  assert.match(route,/itemClearanceNotice\(before, next, next,/);
+  assert.match(route,/item_clearance_notification_jobs/);
   assert.doesNotMatch(editor,/توجد نسخة أحدث من هذا الصنف\. تعديلاتك باقية هنا/);
 });
 test("DB releases only the obsolete cross-field constraint; invoice posting remains gated",()=>{

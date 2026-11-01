@@ -39,6 +39,10 @@ test("an item update carries exactly the touched fields and their original value
 test("server locks item and rejects stale values only for modified fields", () => {
   assert.match(route, /FOR UPDATE/);
   assert.match(route, /fieldPatch && fieldPatch\.mode !== "last-write-wins"/);
+  // Regression: when fieldPatch exists and the LWW mode is selected,
+  // fullInput is null; dereferencing fullInput.revision used to crash every save.
+  assert.match(route, /else if \(!fieldPatch && fullInput!\.revision !== before\.revision\)/);
+  assert.doesNotMatch(route, /else if \(fullInput!\.revision !== before\.revision\)/);
   assert.match(route, /Object\.entries\(fieldPatch\.expected\)/);
   assert.match(route, /existing\[field\]/);
   assert.match(route, /\.\.\.fieldPatch\.changes/);
