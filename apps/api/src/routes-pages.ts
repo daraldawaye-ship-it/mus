@@ -236,6 +236,13 @@ export function pageRoutes(pool: Pool): Router {
           [key,companyId,action,principalType,principalValue]
         );
       }else{
+        // A valid page can exist in pageDefinitions before an old database has
+        // its matching FK row. Repair it atomically to avoid opaque 500 errors.
+        // pageByKey(key) was already checked above: never register unknown pages.
+        await client.query(
+          "INSERT INTO page_registry(key) VALUES($1) ON CONFLICT (key) DO NOTHING",
+          [key],
+        );
         await client.query(
           "INSERT INTO page_access_grants(page_key,company_id,action,principal_type,principal_value,effect,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (page_key,company_id,action,principal_type,principal_value) DO UPDATE SET effect=EXCLUDED.effect,updated_at=NOW()",
           [key,companyId,action,principalType,principalValue,effect,user.id]
