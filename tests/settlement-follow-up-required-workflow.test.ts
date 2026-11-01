@@ -55,3 +55,12 @@ test("page permission writes automatically register only validated page keys bef
   const grant=code.indexOf("INSERT INTO page_access_grants(page_key");
   assert.ok(register > 0 && grant > register, "page FK must be populated before inserting grants");
 });
+
+test("default reward is 20 for new companies without rewriting administrative settings", () => {
+  const sql=readFileSync("apps/api/migrations/20261102_default_required_count_20.sql","utf8");
+  assert.match(sql,/UPDATE reward_task_definitions/);
+  assert.match(sql,/default_points=20/);
+  assert.match(sql,/CREATE OR REPLACE FUNCTION initialize_required_stock_count_reward/);
+  assert.match(sql,/VALUES \(NEW\.id,'STOCK_COUNT_REQUIRED',20,'per-document'/);
+  assert.doesNotMatch(sql,/UPDATE reward_task_settings/);
+});
