@@ -18,8 +18,16 @@ test("public presence has explicit administration authorization and throttled si
   const heartbeat = readFileSync("apps/web/src/PresenceHeartbeat.tsx","utf8");
   assert.match(route,/router\.get\("\/users\/last-present"/);
   assert.match(route,/publicAdmin\(actor\(req\)\)/);
-  assert.match(route,/INSERT INTO user_presence\(user_id,last_seen_at\)/);
-  assert.match(route,/50 seconds/);
+  const recorder = readFileSync("apps/api/src/services/user-presence.ts","utf8");
+  const app = readFileSync("apps/api/src/app.ts","utf8");
+  const auth = readFileSync("apps/api/src/services/auth.ts","utf8");
+  assert.match(route,/recordUserPresence\(pool, user.id\)/);
+  assert.match(recorder,/INSERT INTO user_presence\(user_id,last_seen_at\)/);
+  assert.match(recorder,/50 seconds/);
+  assert.match(recorder,/60_000/);
+  assert.match(recorder,/req\.auth\?\.user\.id/);
+  assert.match(app,/trackAuthenticatedPresence\(pool\)/);
+  assert.match(auth,/recordUserPresence\(db, userId\)/);
   assert.match(heartbeat,/isOfflineNow\(\)/);
   assert.match(heartbeat,/document.visibilityState !== "visible"/);
   assert.match(heartbeat,/5 \* 60_000/);
@@ -42,8 +50,26 @@ test("general last present is routed only through public users permissions", () 
   const app = readFileSync("apps/web/src/App.tsx","utf8");
   const page = readFileSync("apps/web/src/pages/LastPresentUsersPage.tsx","utf8");
   assert.match(app,/path="\/users\/last-present"/);
-  assert.match(app,/pageKey="public.users"/);
+  assert.match(app,/pageKey="public.last-present"/);
   assert.match(app,/<PresenceHeartbeat userId=\{user\?\.id \?\? null\}/);
   assert.match(page,/title="آخر المتواجدين"/);
   assert.match(page,/sinceText\(row.lastSeenAt, now\)/);
+});
+
+test("global last-present includes company activity even on older installed clients", async () => {
+  const { trackAuthenticatedPresence } = await import("../apps/api/src/services/user-presence.ts");
+  const writes: Array<{ sql: string; args: unknown[] }> = [];
+  const pool = { query: (sql: string, args: unknown[]) => {
+    writes.push({ sql, args });
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  } };
+  const middleware = trackAuthenticatedPresence(pool as never);
+  const next = () => {};
+  for (const path of ["/companies/2/items", "/companies/2/sales", "/users"]) {
+    middleware({ auth: { user: { id: 12345 } }, path } as never, {} as never, next);
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes.length, 1, "one activity write, not three queries");
+  assert.deepEqual(writes[0]!.args, [12345]);
+  assert.match(writes[0]!.sql, /INSERT INTO user_presence/);
 });
