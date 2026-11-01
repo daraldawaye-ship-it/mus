@@ -547,7 +547,7 @@ export function commerceRoutes(pool: Pool): Router {
             "SELECT 1 FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
             [companyId, input.idempotencyKey],
           );
-          retry = existing.rowCount > 0;
+          retry = !!existing.rowCount;
           if (!retry) {
             await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
             await assertEditableDocumentDate(client, companyId,
