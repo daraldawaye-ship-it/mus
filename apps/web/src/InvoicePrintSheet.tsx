@@ -1,6 +1,18 @@
-import type { CompanyContext, Invoice, InvoiceKind } from "../../../packages/contracts/src/index.ts";
+import type { CompanyContext, Invoice, InvoiceKind, InvoiceLine } from "../../../packages/contracts/src/index.ts";
 import { formatMoney } from "./format-money";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
+
+/** Both committed server invoices and queued device-only receipts share one print layout. */
+export type PrintableInvoice = Pick<Invoice,
+  "kind" | "returning" | "documentDate" | "counterpartyAccountName" |
+  "counterpartyAccountCode" | "supplierReceiptNumber" | "supplierAccountName" |
+  "branchName" | "locationName" | "doctorName" | "currencyCode" |
+  "description" | "gross" | "discount" | "total" |
+  "createdByName" | "createdAt"> & {
+    number?: string | null;
+    lines: Pick<InvoiceLine, "id" | "itemName" | "quantity" | "unitName" |
+      "unitPrice" | "expiryDate" | "total">[];
+  };
 
 /** Printed invoice columns are intentionally distinct from data-entry columns.
  * Purchase bonus is a reserved, blank print column until bonus entry exists.
@@ -16,23 +28,28 @@ export function printedExpiry(value: string | null): string {
 const money = (value: string) => <bdi dir="ltr">{formatMoney(value)}</bdi>;
 
 export function InvoicePrintSheet({
-  context, invoice, returning,
+  context, invoice, returning, pendingSync = false, onLetterheadReady,
 }: {
   context: CompanyContext;
-  invoice: Invoice;
+  invoice: PrintableInvoice;
   returning: boolean;
+  pendingSync?: boolean;
+  onLetterheadReady?: () => void;
 }) {
   const purchase = invoice.kind === "purchase";
   const kindLabel = purchase ? "فاتورة مشتريات" : "فاتورة مبيعات";
   const columns = printedInvoiceColumns(invoice.kind);
   return (
     <section className={`invoice-print-sheet invoice-print-sheet--${invoice.kind}`} dir="rtl" aria-label="نسخة طباعة الفاتورة">
-      <CompanyPrintHeader context={context} />
+      <CompanyPrintHeader context={context} onReady={onLetterheadReady} />
       <div className="invoice-print-caption">
         <h2>{returning ? "مردود " : ""}{kindLabel}</h2>
+        {pendingSync && <p className="invoice-local-print-notice">محفوظة على الجهاز — لم تُرحّل بعد</p>}
       </div>
       <dl className="invoice-print-details">
-        <div><dt>رقم الفاتورة</dt><dd><bdi>{invoice.number}</bdi></dd></div>
+        {!pendingSync && invoice.number && (
+          <div><dt>رقم الفاتورة</dt><dd><bdi>{invoice.number}</bdi></dd></div>
+        )}
         <div><dt>التاريخ</dt><dd><bdi dir="ltr">{invoice.documentDate}</bdi></dd></div>
         <div><dt>{purchase ? "المورد / الحساب" : "العميل / الحساب"}</dt>
           <dd>{invoice.counterpartyAccountName}</dd></div>
