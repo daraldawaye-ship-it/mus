@@ -1,0 +1,37 @@
+name: Sales item caption and clearance hint
+on:
+  push:
+    branches:
+      - 'preview/render-2026-10-23'
+    paths:
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/web/src/invoice-clearance-label.ts'
+      - 'tests/invoice-clearance-label.test.ts'
+      - 'tests/mobile-sales-two-band-lines.test.ts'
+      - '.github/workflows/sales-item-hint-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/web/src/invoice-clearance-label.ts'
+      - 'tests/invoice-clearance-label.test.ts'
+      - 'tests/mobile-sales-two-band-lines.test.ts'
+      - '.github/workflows/sales-item-hint-ci.yml'
+permissions:
+  contents: read
+jobs:
+  sales-item-caption:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Confirm single item name on desktop and mobile and compact clearance text
+        run: node --import tsx --test tests/invoice-clearance-label.test.ts tests/mobile-sales-two-band-lines.test.ts
