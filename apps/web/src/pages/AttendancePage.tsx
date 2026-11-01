@@ -22,6 +22,7 @@ import {
 } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { AttendancePunchControls, refreshAttendance } from "../AttendancePunchControls";
+import { AttendanceCurrentlyPresent } from "../AttendanceCurrentlyPresent";
 import { errorMessage } from "../phase2";
 import {
   Button,
@@ -100,7 +101,8 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     !!employeesEntry.actionAccess.view &&
     !!employeesEntry.actionAccess.edit;
   const [params, setParams] = useSearchParams();
-  const view = params.get("view") === "sessions" ? "sessions" : "daily";
+  const view = params.get("view") === "sessions" ? "sessions"
+    : params.get("view") === "current" && context.general ? "current" : "daily";
   const filters = new URLSearchParams();
   for (const key of ["day", "employeeId", "status"])
     if (params.get(key)) filters.set(key, params.get(key)!);
@@ -312,6 +314,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
           {[
             { value: "daily", label: "الملخص اليومي" },
             { value: "sessions", label: "جلسات الحضور" },
+            ...(context.general ? [{ value: "current", label: "المحضرون حاليًا" }] : []),
           ].map((item) => (
             <Button
               key={item.value}
@@ -335,7 +338,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
             </Button>
           ))}
         </div>
-        <div className="table-filters">
+        {view !== "current" && <div className="table-filters">
           <Field
             label="يوم السجل"
             type="date"
@@ -372,8 +375,10 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
               )}
             </Select>
           )}
-        </div>
-        {view === "sessions" ? (
+        </div>}
+        {view === "current" && context.general ? (
+          <AttendanceCurrentlyPresent companyId={companyId} />
+        ) : view === "sessions" ? (
           <AttendanceSessions
             key="sessions"
             context={context}
