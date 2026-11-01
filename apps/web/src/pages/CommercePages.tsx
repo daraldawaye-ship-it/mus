@@ -2,6 +2,7 @@ import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -1221,7 +1222,6 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
   const [params] = useSearchParams();
   const { user } = useSession();
   const kind = params.get("kind") === "purchase" ? "purchase" : "sale";
-  const [selectedItem, setSelectedItem] = useState<Pick<Item,"id"|"name"> | null>(null);
   const control = useControls(context.company.id, context.employee?.id ?? null);
   if (!commerceAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض الفواتير.</Notice>;
@@ -1229,13 +1229,11 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     return canPost(context) ? ((isMobileDevice() && control.value(kind === "sale" ? "mobile_sales" : "mobile_purchases") === false) ? (
       <Notice tone="warning">إنشاء هذا النوع من الفواتير من الهاتف غير مسموح في الكنترول.</Notice>
     ) : (
-      <InvoiceWorkspace context={context} kind={kind} selectedItemId={selectedItem?.id ?? null}
-        selectedItemName={selectedItem?.name ?? null}>
-        <InvoiceEditor
-          key={`${user?.id}:${context.company.id}:${kind}`}
-          context={context} onChooseItem={setSelectedItem}
-        />
-      </InvoiceWorkspace>
+      <InvoicePointsWorkspace
+        key={`${user?.id}:${context.company.id}:${kind}`}
+        context={context}
+        kind={kind}
+      />
     )) : (
       <Notice tone="warning">
         إنشاء الفاتورة يحتاج صلاحية إدارة الفواتير والترحيل المالي.
@@ -1247,7 +1245,115 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     </InvoiceWorkspace>
   );
 }
-function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void }) {
+type InvoicePointStatus = { dirty: boolean; saving: boolean; unknown: boolean };
+const MAX_OPEN_INVOICE_POINTS = 10;
+
+/** Each mounted point owns its invoice data and idempotency state.
+ * The single parent route blocker protects the drafts in every point. */
+function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; kind: InvoiceKind }) {
+  const [points, setPoints] = useState<string[]>(() => [crypto.randomUUID()]);
+  const [activePoint, setActivePoint] = useState(() => points[0]!);
+  const [pointItems, setPointItems] = useState<Record<string, Pick<Item,"id"|"name"> | null>>({});
+  const [statuses, setStatuses] = useState<Record<string, InvoicePointStatus>>({});
+  const updateStatus = useCallback((id: string, next: InvoicePointStatus) => {
+    setStatuses(current => {
+      const prior = current[id];
+      if (prior?.dirty === next.dirty && prior.saving === next.saving &&
+        prior.unknown === next.unknown) return current;
+      return { ...current, [id]: next };
+    });
+  }, []);
+  const hasPendingDraft = Object.values(statuses).some(status =>
+    status.dirty || status.saving || status.unknown);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    hasPendingDraft && (currentLocation.pathname !== nextLocation.pathname ||
+      currentLocation.search !== nextLocation.search));
+  const addPoint = () => {
+    if (points.length >= MAX_OPEN_INVOICE_POINTS) return;
+    const id = crypto.randomUUID();
+    setPoints(previous => [...previous, id]);
+    setActivePoint(id);
+  };
+  const closePoint = (id: string) => {
+    const status = statuses[id];
+    if (status?.saving || status?.unknown) return;
+    if (status?.dirty && !window.confirm("هذه النقطة تحتوي فاتورة غير محفوظة. هل تريد إغلاقها وفقدان بياناتها؟")) return;
+    if (points.length <= 1) return;
+    const remaining = points.filter(point => point !== id);
+    setPoints(remaining);
+    setActivePoint(previous => previous === id ? remaining[0]! : previous);
+    setStatuses(previous => {
+      const next = { ...previous };
+      delete next[id];
+      return next;
+    });
+    setPointItems(previous => {
+      const next = { ...previous };
+      delete next[id];
+      return next;
+    });
+  };
+  const selected = pointItems[activePoint] ?? null;
+  return (
+    <InvoiceWorkspace context={context} kind={kind}
+      selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}>
+      <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير">
+        {points.map((id, index) => (
+          <div key={id} className={`invoice-point-tab${id === activePoint ? " is-active" : ""}`}>
+            <button type="button" role="tab" aria-selected={id === activePoint}
+              aria-controls={`invoice-point-panel-${id}`}
+              onClick={() => setActivePoint(id)}>
+              {kind === "sale" ? "مبيعات" : "مشتريات"} {index + 1}
+              {statuses[id]?.dirty ? " •" : ""}
+            </button>
+            {points.length > 1 && (
+              <button type="button" className="invoice-point-close"
+                disabled={!!statuses[id]?.saving || !!statuses[id]?.unknown}
+                aria-label={`إغلاق ${kind === "sale" ? "مبيعات" : "مشتريات"} ${index + 1}`}
+                title="إغلاق هذه الفاتورة"
+                onClick={() => closePoint(id)}>×</button>
+            )}
+          </div>
+        ))}
+        <button type="button" className="invoice-point-add" onClick={addPoint}
+          disabled={points.length >= MAX_OPEN_INVOICE_POINTS}
+          title="فتح فاتورة أخرى في نفس التطبيق">
+          <Plus size={15} /> فاتورة أخرى
+        </button>
+      </div>
+      {points.map(id => (
+        <div key={id} id={`invoice-point-panel-${id}`} role="tabpanel"
+          aria-hidden={id !== activePoint}
+          style={{ display: id === activePoint ? undefined : "none" }}>
+          <InvoiceEditor context={context} tabId={id} active={id === activePoint}
+            onStatusChange={updateStatus}
+            onChooseItem={item => setPointItems(previous => ({ ...previous, [id]: item }))} />
+        </div>
+      ))}
+      <Dialog open={blocker.state === "blocked"} title="مغادرة الفواتير"
+        onClose={() => { if (blocker.state === "blocked") blocker.reset(); }}>
+        <p>توجد فاتورة غير محفوظة في نقطة واحدة على الأقل، أو عملية حفظ لم تتأكد نتيجتها.</p>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={() => {
+            if (blocker.state === "blocked") blocker.reset();
+          }}>البقاء في الفواتير</Button>
+          <Button variant="danger" disabled={Object.values(statuses).some(status => status.saving || status.unknown)}
+            onClick={() => { if (blocker.state === "blocked") blocker.proceed(); }}>
+            مغادرة دون حفظ
+          </Button>
+        </div>
+      </Dialog>
+    </InvoiceWorkspace>
+  );
+}
+
+function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }: {
+  context: CompanyContext;
+  onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void;
+  tabId: string;
+  active: boolean;
+  onStatusChange: (id: string, status: InvoicePointStatus) => void;
+}) {
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
@@ -1638,7 +1744,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       if(guard.isCurrent())setCashboxBusy(false);
     }
   }
-  const allowNavigation = useRef(false);
   const dirty =
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
@@ -1656,13 +1761,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       (currencyManuallyChosen.current ||
         currency.id !== automaticCurrencyId.current));
   const locked = saving || unknown || replacingClearance;
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      !allowNavigation.current &&
-      (dirty || saving || unknown) &&
-      (currentLocation.pathname !== nextLocation.pathname ||
-        currentLocation.search !== nextLocation.search),
-  );
+  useEffect(() => {
+    onStatusChange(tabId, { dirty, saving, unknown });
+  }, [tabId, dirty, saving, unknown, onStatusChange]);
   useEffect(() => {
     if (!dirty && !saving && !unknown) return;
     const handler = (event: BeforeUnloadEvent) => {
@@ -1676,16 +1777,26 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   const [focusTarget, setFocusTarget] = useState<{ id: string; select?: boolean } | null>(() => ({
     id: lineInputId(lines[0]!, "item-search"),
   }));
-  const focus = (id: string, select = false) => setFocusTarget({ id, select });
+  const fixedInputId = (id: string) => `${tabId}-${id}`;
+  const focus = (id: string, select = false) => setFocusTarget({
+    id: ["invoice-notes", "invoice-discount", "invoice-save",
+      "purchase-supplier-receipt"].includes(id) ? fixedInputId(id) : id,
+    select,
+  });
+  useEffect(() => {
+    if (active) setFocusTarget(current => current ?? {
+      id: lineInputId(lines.find(line => !line.itemId) ?? lines[0]!, "item-search"),
+    });
+  }, [active]);
   useLayoutEffect(() => {
-    if (!focusTarget || locked || !guard.isCurrent()) return;
+    if (!active || !focusTarget || locked || !guard.isCurrent()) return;
     const element = document.getElementById(focusTarget.id);
     // Selection and a new row must commit before their controls can receive focus.
     if (!element || element.matches(":disabled")) return;
     element.focus();
     if (focusTarget.select && element instanceof HTMLInputElement) element.select();
     setFocusTarget(null);
-  }, [focusTarget, lines, locked]);
+  }, [focusTarget, lines, locked, active]);
   const salePrice = (selected: Item, level: 1 | 2 | 3) =>
     level === 1
       ? selected.salePrice1
@@ -2353,7 +2464,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   }
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      if (active && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (editingItem) {
           document
@@ -2413,7 +2524,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
                 )}
                 {kind === "purchase" && (
                   <Field
-                    id="purchase-supplier-receipt"
+                    id={fixedInputId("purchase-supplier-receipt")}
                     label={receiptRequired ? "رقم الوصل (إلزامي)" : "رقم الوصل"}
                     required={receiptRequired}
                     placeholder="رقم فاتورة المورد"
@@ -3123,7 +3234,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
           )}
           <div className="commerce-footer-grid">
             <Field
-              id="invoice-notes"
+              id={fixedInputId("invoice-notes")}
               label="ملاحظات الفاتورة"
               value={description}
               maxLength={1000}
@@ -3136,7 +3247,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               }}
             />
             <Field
-              id="invoice-discount"
+              id={fixedInputId("invoice-discount")}
               label="الخصم"
               money
               value={hasPositiveLines ? discount : "0"}
@@ -3172,7 +3283,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               >
                 تصفير الفاتورة
               </Button>
-              <Button id="invoice-save" type="submit" disabled={saving || localQueued || !selectedLines.length}>
+              <Button id={fixedInputId("invoice-save")} type="submit" disabled={saving || localQueued || !selectedLines.length}>
                 {saving
                   ? "جارٍ الحفظ والترحيل…"
                   : localQueued
@@ -3289,8 +3400,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
         }}>
         <div className="form-stack">
           <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-search">بحث عن عميل بالرقم أو الاسم (اختياري)</label>
-            <input id="invoice-sale-customer-search" type="search"
+            <label htmlFor={fixedInputId("invoice-sale-customer-search")}>بحث عن عميل بالرقم أو الاسم (اختياري)</label>
+            <input id={fixedInputId("invoice-sale-customer-search")} type="search"
               value={saleCustomerQuery} autoComplete="off"
               placeholder="اكتب رقم العميل أو اسمه للبحث"
               onChange={event=>{
@@ -3329,8 +3440,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             </div>
           )}
           <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-number">رقم العميل (اختياري)</label>
-            <input id="invoice-sale-customer-number" type="text" inputMode="numeric"
+            <label htmlFor={fixedInputId("invoice-sale-customer-number")}>رقم العميل (اختياري)</label>
+            <input id={fixedInputId("invoice-sale-customer-number")} type="text" inputMode="numeric"
               ref={customerField} maxLength={30} autoComplete="off"
               value={saleCustomerNumber} placeholder="رقم العميل"
               onChange={event=>{
@@ -3341,15 +3452,15 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               }}/>
           </div>
           <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-sale-customer-name">اسم العميل (اختياري)</label>
-            <input id="invoice-sale-customer-name" type="text" maxLength={240}
+            <label htmlFor={fixedInputId("invoice-sale-customer-name")}>اسم العميل (اختياري)</label>
+            <input id={fixedInputId("invoice-sale-customer-name")} type="text" maxLength={240}
               value={saleCustomerName} placeholder="يظهر للرقم الموجود؛ وللرقم الجديد بدون اسم يُحفظ «بدون»"
               readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
           </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
           <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor="invoice-doctor-name">اسم الطبيب أو الجهة</label>
-            <input id="invoice-doctor-name" type="search" required autoFocus
+            <label htmlFor={fixedInputId("invoice-doctor-name")}>اسم الطبيب أو الجهة</label>
+            <input id={fixedInputId("invoice-doctor-name")} type="search" required autoFocus
             ref={doctorField} value={doctorQuery} autoComplete="off"
             role="combobox" aria-autocomplete="list" aria-expanded={doctorPromptOpen}
             aria-controls="invoice-doctor-options"
@@ -3401,7 +3512,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             }}/>
           </div>
           <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل؛ {isOfflineNow() || sessionRequiresLogin() ? "سيُحفظ الاسم مع الفاتورة محليًا ويُنشأ كرت الطبيب أو الجهة بعد قبول الخادم للمزامنة." : "عند حفظ الفاتورة يُنشأ كرت دون فئة ويُرسل تنبيه للمتابعة."}</small>
-          <div id="invoice-doctor-options" ref={doctorOptionsRef} className="invoice-doctor-options"
+          <div id={fixedInputId("invoice-doctor-options")} ref={doctorOptionsRef} className="invoice-doctor-options"
             role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
             {doctorChoices.isError&&<Notice tone="error">{errorMessage(doctorChoices.error)}</Notice>}
@@ -3519,40 +3630,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             />
           </Suspense>
         )}
-      </Dialog>
-      <Dialog
-        open={blocker.state === "blocked"}
-        title="مغادرة الفاتورة"
-        onClose={() => {
-          if (blocker.state === "blocked") blocker.reset();
-        }}
-      >
-        <p>
-          {unknown
-            ? "نتيجة الحفظ غير معروفة. أعد تأكيد الطلب نفسه قبل بدء فاتورة أخرى."
-            : saving
-              ? "جارٍ حفظ الفاتورة. انتظر تأكيد النتيجة."
-              : "توجد مدخلات غير محفوظة في الفاتورة."}
-        </p>
-        <div className="form-actions">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              if (blocker.state === "blocked") blocker.reset();
-            }}
-          >
-            البقاء في الفاتورة
-          </Button>
-          <Button
-            variant="danger"
-            disabled={saving || unknown}
-            onClick={() => {
-              if (blocker.state === "blocked") blocker.proceed();
-            }}
-          >
-            مغادرة دون حفظ
-          </Button>
-        </div>
       </Dialog>
     </div>
   );
