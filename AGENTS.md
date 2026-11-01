@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Mobile offline viewport (2026-11-01)
+
+When disconnected on Android/PWA, the long reconnect control in the topbar previously expanded the flex layout and cut the company overview offscreen. Mobile now displays an accessible 34px WifiOff action; the desktop label remains. Constrain the mobile toolbar/overview to the viewport without hiding content or breaking wide table scrolling. See `docs/MOBILE_OFFLINE_VIEWPORT.md`. Verify portrait-device behavior when available.
+
 ## Offline invoice receipt and letterhead (2026-11-01)
 
 Offline invoice persistence resets entry fields only **after** confirmed IndexedDB enqueue; the outbox remains unchanged and uses the original idempotency key. After queueing, show a saved-local confirmation and print button; print with the cached company letterhead but NEVER show a final invoice number on a not-yet-posted receipt. Do not mark it posted or change accounts/stock until server sync. The online-posted invoice still shows its real invoice number. See `docs/OFFLINE_INVOICE_RECEIPT.md` for implementation and limits.
