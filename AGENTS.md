@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Invoice quantities and signed header discount (2026-11-01)
+
+The owner requires invoice quantity inputs to immediately restore **1** when emptied (never blank, zero or alphabetic), and invoice header discount inputs to immediately restore **0** when emptied. Both inputs reject letters during entry; returns still allow negative quantities. A negative header discount is an **additional customer amount** increasing invoice net, calculated and stored as a signed amount for online posting and offline outbox/printing. Distribute it exactly across positive invoice lines and reverse it correctly on linked returns. For sales the additional amount credits the configured discount-earned income account or the configured sale income if not linked; never create a negative expense debit or weaken general voucher/price validation. Refer to `docs/INVOICE_NUMERIC_FIELDS_AND_SIGNED_DISCOUNT.md`. Do not update existing invoices or historical accounting for testing.
+
 ## Dar Aldawa existing employee invoice shortcuts (2026-11-01)
 
 **Owner follow-up (2026-11-01):** The owner explicitly authorized sales/purchase staff in company 2 to post invoices and own sales-cashbox operations (pouch/e-wallet/closing), view/create pledge accounts, and add ordinary accounts. Verified all 12 active sales/purchase employees now have `finance.view` and `finance.post`; pledge view/create already relies on `commerce.view`/`commerce.manage`. The ordinary account module requires `accounts.view` and `accounts.manage`: only 5 of 12 are currently granted these, and remaining 7 were **not** completed because the connector's safety check blocked further writes. Never state all accounts were granted. The shortcut reconciler runs on Render startup; verify `COMPANY2_INVOICE_SHORTCUTS_RECONCILED` after redeploy. See `docs/COMPANY2_INVOICE_SHORTCUT_DEFAULTS.md`. Do not grant `finance.manage` or alter financial postings merely for this task.
