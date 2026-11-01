@@ -62,7 +62,7 @@ import { ExpiryMonthField } from "../ExpiryMonthField";
 import { useEmployeeCashbox } from "../employee-cashbox";
 import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
-import { SalesHeaderActionsDropdown } from "../SalesHeaderActionsDropdown";
+import { SalesHeaderActionsDropdown, PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
@@ -1615,7 +1615,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftNotice, setDraftNotice] = useState("");
-  const [draftListOpen, setDraftListOpen] = useState(false);
   const refreshPurchaseDrafts = useCallback(async () => {
     if (kind !== "purchase" || !user?.id) return;
     const list = await listPurchaseWorkDrafts<PurchaseDraftForm>(user.id, companyId);
@@ -1893,7 +1892,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       return false;
     }
     const captured = purchaseDraftForm;
-    const signature = draftFingerprint;
     setDraftSaving(true);
     setError("");
     try {
@@ -1903,10 +1901,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
         activePurchaseDraftId ?? undefined,
       );
       if (!guard.isCurrent()) return false;
-      setActivePurchaseDraftId(saved.id);
-      setLastSavedFingerprint(signature);
-      setDraftNotice("تم حفظ مسودة المشتريات مؤقتًا على هذا الجهاز، دون أي ترحيل. يمكنك مواصلتها أو فتح غيرها.");
-      await refreshPurchaseDrafts();
+      // IndexedDB transaction completed. Only now clear the working invoice.
+      // Saving an opened draft updates that same ID, while the reset ensures
+      // that saving a different invoice creates a new independent draft.
+      resetInvoiceValues();
+      setDraftNotice("تم الحفظ الأولي وتصفير الفاتورة.");
+      void refreshPurchaseDrafts().catch(() => {});
       window.dispatchEvent(new Event("alraesy-purchase-drafts-changed"));
       return true;
     } catch (reason) {
@@ -1956,7 +1956,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     setSavedOfflineInvoice(null);
     setDraftNotice("تم فتح المسودة. يمكنك التعديل عليها ثم حفظها مؤقتًا مرة أخرى أو ترحيل الفاتورة نهائيًا.");
     setError("");
-    setDraftListOpen(false);
   }
 
   async function removePurchaseDraft(draft: PurchaseWorkDraft<PurchaseDraftForm>) {
@@ -2425,8 +2424,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       ),
     );
   }
-  function resetInvoice() {
-    if (locked || editingItem) return;
+  function resetInvoiceValues() {
     setResetConfirmOpen(false);
     setActivePurchaseDraftId(null);
     setLastSavedFingerprint(null);
@@ -2476,6 +2474,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       detail: { companyId },
     }));
     focus(lineInputId(first, "item-search"));
+  }
+  function resetInvoice() {
+    if (locked || editingItem) return;
+    resetInvoiceValues();
   }
   /** A successful local queue and a confirmed server POST both start a new
    * clean invoice. The receipt stays mounted outside the editable form.
@@ -2709,39 +2711,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
   });
   return (
     <div className="commerce-document-page">
-      {kind === "purchase" && <section className="purchase-work-drafts" aria-label="مسودات فواتير المشتريات">
-        <div className="form-actions purchase-work-drafts-actions">
-          <Button type="button" disabled={locked}
-            onClick={() => { void savePurchaseTemporarily(); }}>
-            {draftSaving ? "جارٍ الحفظ المؤقت…" : activePurchaseDraftId ? "تحديث الحفظ الأولي" : "حفظ أولي"}
-          </Button>
-          <Button variant="secondary" type="button"
-            onClick={() => setDraftListOpen(open => !open)}>
-            المسودات المحفوظة ({purchaseDrafts.length})
-          </Button>
-          <Button variant="secondary" type="button" disabled={locked}
-            onClick={() => {
-              if (editorDirty && !window.confirm(
-                selectedLines.length > 1
-                  ? "توجد أكثر من صنف. احفظ الفاتورة مؤقتًا أولًا إن أردت الرجوع إليها. هل تريد فتح فاتورة جديدة دون حفظ التغييرات؟"
-                  : "هل تريد فتح فاتورة جديدة وفقدان بيانات الفاتورة الحالية غير المحفوظة؟",
-              )) return;
-              resetInvoice();
-            }}>فاتورة جديدة</Button>
-        </div>
-        <small className="muted">الحفظ الأولي مسودة على هذا الجهاز فقط، وليس فاتورة مرحّلة ولا حركة مخزون.</small>
-        {draftNotice && <Notice tone="success">{draftNotice}</Notice>}
-        {draftListOpen && <div className="purchase-work-drafts-list">
-          {purchaseDrafts.length === 0 ? <p className="muted">لا توجد فواتير مشتريات محفوظة مؤقتًا لهذا المستخدم.</p> :
-            purchaseDrafts.map(draft => <div className="purchase-work-draft" key={draft.id}>
-              <span>{draft.title} — {draft.itemCount} صنف — {new Date(draft.savedAt).toLocaleString("ar-YE")}</span>
-              <Button type="button" variant="secondary" disabled={locked}
-                onClick={() => { void openPurchaseDraft(draft); }}>فتح ومواصلة</Button>
-              <Button type="button" variant="danger" disabled={locked}
-                onClick={() => { void removePurchaseDraft(draft); }}>حذف</Button>
-            </div>)}
-        </div>}
-      </section>}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className={`commerce-header-card invoice-kind-${kind}`}>
           <fieldset disabled={locked} className="commerce-fieldset">
@@ -2819,8 +2788,22 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                     }}
                   />
                 ) : (
-                  <Link className="button button-secondary commerce-list-link"
-                    to={listPath(companyId, kind)}>قائمة الفواتير</Link>
+                  <PageActionsDropdown actions={[
+                    { label: "قائمة الفواتير", to: listPath(companyId, kind) },
+                    { label: draftSaving ? "جارٍ الحفظ الأولي…" :
+                        activePurchaseDraftId ? "تحديث الحفظ الأولي" : "حفظ أولي",
+                      disabled: locked,
+                      onClick: () => { void savePurchaseTemporarily(); } },
+                    { label: `الفواتير المحفوظة أوليًا (${purchaseDrafts.length})`, disabled: true },
+                    ...purchaseDrafts.flatMap(draft => [
+                      { label: `فتح ومواصلة: ${draft.title} — ${draft.itemCount} صنف — ${new Date(draft.savedAt).toLocaleString("ar-YE")}`,
+                        disabled: locked,
+                        onClick: () => { void openPurchaseDraft(draft); } },
+                      { label: `حذف المحفوظة أوليًا: ${draft.title} — ${new Date(draft.savedAt).toLocaleString("ar-YE")}`,
+                        disabled: locked,
+                        onClick: () => { void removePurchaseDraft(draft); } },
+                    ]),
+                  ]} />
                 )}
                 <Field
                   label="تاريخ الفاتورة"
@@ -3028,6 +3011,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {kind === "purchase" && draftNotice && <Notice tone="success">{draftNotice}</Notice>}}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
           <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
