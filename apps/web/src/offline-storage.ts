@@ -324,6 +324,7 @@ function allowedSnapshot(path: string): boolean {
 export type SaleRankSnapshot = {
   asOfDate: string;
   scores: Record<string,string>;
+  priorities?: Record<string,string>;
 };
 export type SaleRankProgress = SaleRankSnapshot & {
   afterId: number;
@@ -373,6 +374,25 @@ export function compareItemsBySavedSales(
   const left=BigInt(scores[String(a.id)]??"0"),right=BigInt(scores[String(b.id)]??"0");
   if(left!==right)return left>right?-1:1;
   return String(a.code??"").localeCompare(String(b.code??""),"en")||Number(a.id)-Number(b.id);
+}
+
+/** Invoice search ranking is server-derived and scaled by 1e6 to retain
+ * fractional quantities while comparing exactly with BigInt offline.
+ */
+export function compareItemsBySaleQuantityAndStock(
+  a: Record<string,unknown>, b: Record<string,unknown>,
+  scores: Record<string,string>, search = "",
+): number {
+  const q = search.trim().toLocaleLowerCase();
+  const exact = (item: Record<string,unknown>) =>
+    !!q && [item.code,item.barcode].some(value =>
+      typeof value === "string" && value.toLocaleLowerCase() === q);
+  if (exact(a) !== exact(b)) return exact(a) ? -1 : 1;
+  const left = BigInt(scores[String(a.id)] ?? "0");
+  const right = BigInt(scores[String(b.id)] ?? "0");
+  if (left !== right) return left > right ? -1 : 1;
+  return String(a.code ?? "").localeCompare(String(b.code ?? ""), "en")
+    || Number(a.id) - Number(b.id);
 }
 
 type LocalAppearance = import("../../../packages/contracts/src/index").AppearancePreference;
@@ -568,7 +588,11 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
     return ["name", "code", "barcode", "shortCode", "shortcut", "searchKeys", "englishName"]
       .some(key => String(item[key] ?? "").normalize("NFKC").toLocaleLowerCase().includes(q));
   });
-  if(type==="items" && qs.get("sort")?.startsWith("saleTimes:desc")) {
+  if(type==="items" && qs.get("sort")?.startsWith("saleQuantityPlusStock:desc")) {
+    const rank=await readSaleRankSnapshot(userId,companyId);
+    if(rank?.priorities)
+      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,rank.priorities,qs.get("q")??""));
+  } else if(type==="items" && qs.get("sort")?.startsWith("saleTimes:desc")) {
     const rank=await readSaleRankSnapshot(userId,companyId);
     if(rank) filtered.sort((a,b)=>compareItemsBySavedSales(a,b,rank.scores,qs.get("q")??""));
   }
