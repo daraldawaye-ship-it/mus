@@ -33,15 +33,15 @@ services:
         fromDatabase:
           name: alraesy-preview-db
           property: connectionString
-      # Temporary cutover connection; remove after the verified transfer.
-      - key: MARKET_TRANSFER_DATABASE_URL
-        fromDatabase:
-          name: alraesy-medicine-market-db
-          property: connectionString
-      - key: MARKET_MAINTENANCE
+      # Cutover completed: market data is isolated while company databases stay unchanged.
+      # Confirmed private endpoint for the market service listening on PORT 3000.
+      - key: MARKET_SERVICE_URL
+        value: http://alraesy-medicine-market-api:3000
+      - key: MARKET_SERVICE_ENABLED
         value: "1"
-      # Host and secret are prepared while the app continues using the original market DB.
-      # Activate only after freezing market traffic and verifying the transfer.
+      - key: MARKET_MAINTENANCE
+        value: "0"
+      # Keep the Blueprint's dynamic private-service reference for future endpoint correction.
       - key: MARKET_SERVICE_HOSTPORT
         fromService:
           type: pserv
