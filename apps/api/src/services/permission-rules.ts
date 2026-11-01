@@ -214,6 +214,17 @@ export async function requestPermissionTargets(
         : []),
     ];
   }
+  // A sales pledge transfer is a scoped financial post, not general
+  // financial-document creation. Honor explicit page denies for both sales
+  // access and the affected receipt/payment posting action.
+  if (resource === "pledges" && verb === "POST" &&
+      segments[2] === "transfer" && /^[1-9]\\d*$/.test(detail ?? "")) {
+    const mode=req.body?.mode;
+    return [
+      pagePermissionAliases("company.sales","view"),
+      pagePermissionAliases(mode === "pay" ? "company.payments" : "company.receipts","post"),
+    ];
+  }
   if (resource === "wallet" && detail === "reversals" && verb === "POST")
     action = "reverse";
   if (resource === "wallet-conversions" && verb === "POST") {
