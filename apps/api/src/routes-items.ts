@@ -734,6 +734,14 @@ export function itemRoutes(pool: Pool): Router {
             `INSERT INTO items(${columns.join(",")}) VALUES(${values.map((_, position) => `$${position + 1}`).join(",")}) RETURNING id`,
             values,
           );
+          // The item card and stock reports require a zero-valued projection
+          // immediately after creation. This idempotent insert protects against
+          // missing seed rows without touching any preexisting stock snapshot.
+          // All stock movements remain authoritative and transaction-scoped.
+          await client.query(
+            "INSERT INTO item_statistics(company_id,item_id) VALUES($1,$2) ON CONFLICT(company_id,item_id) DO NOTHING",
+            [companyId, added.rows[0].id],
+          );
           // Persist additional option defaults only on the first creation.
           // Native item flags remain authoritative on the items table.
           await client.query(
