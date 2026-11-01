@@ -4,6 +4,7 @@ import type { PageEntry, User } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { useControls } from "./control";
 import { usePageDirectory } from "./page-directory";
+import { readMenuNavigation } from "./menu-navigation-cache";
 
 type SavedShortcuts = { pageKeys: string[] };
 
@@ -34,22 +35,30 @@ export function UserShortcutMenuGrid({
   });
   if (controls.value("show_shortcuts_menu") === false) return null;
 
+  const cached = readMenuNavigation(user.id, companyId);
+  // Do not replace the complete cached menu with a partial loading state.
+  // Fresh server-authorized results supersede it once BOTH requests finish.
+  const liveReady = !!directory.data && !!shortcuts.data;
   const permitted = new Map((directory.data ?? [])
     .filter(entry => eligible(entry, companyId))
     .map(entry => [entry.key, entry]));
   const defaultPage = permitted.get(companyId ? "company.pages" : "public.pages") ??
     permitted.get("public.pages");
-  const defaultHref = defaultPage?.href ??
-    (!directory.data && directory.isLoading
-      ? (companyId ? `/companies/${companyId}/pages` : "/pages")
-      : null);
-  const chosen = (shortcuts.data?.pageKeys ?? [])
-    .map(key => permitted.get(key))
-    .filter((entry): entry is PageEntry =>
-      !!entry && entry.key !== defaultPage?.key)
-    .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key));
-  const allowQuickAdd = (user.owner || user.kind === "admin") &&
-    !!permitted.get("public.general-table")?.actionAccess.create;
+  const defaultHref = liveReady
+    ? defaultPage?.href ?? null
+    : cached?.defaultHref ?? defaultPage?.href ??
+      (directory.isLoading ? (companyId ? `/companies/${companyId}/pages` : "/pages") : null);
+  const chosen = liveReady
+    ? (shortcuts.data?.pageKeys ?? [])
+      .map(key => permitted.get(key))
+      .filter((entry): entry is PageEntry =>
+        !!entry && entry.key !== defaultPage?.key)
+      .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
+    : cached?.links ?? [];
+  const allowQuickAdd = liveReady
+    ? (user.owner || user.kind === "admin") &&
+      !!permitted.get("public.general-table")?.actionAccess.create
+    : cached?.quickAllowed ?? false;
 
   return (
     <div className="user-menu-grid user-menu-shortcuts-grid" aria-label="التنقل والاختصارات">
@@ -74,8 +83,8 @@ export function UserShortcutMenuGrid({
       <button type="button" className="user-menu-tile" onClick={onManage}>
         <span>تحديد اختصاراتي</span>
       </button>
-      {directory.isLoading && <span className="user-menu-grid-note">جارٍ تحميل الصفحات…</span>}
-      {shortcuts.isError && <span className="user-menu-grid-note">تعذر تحميل الاختصارات</span>}
+      {directory.isLoading && !cached && <span className="user-menu-grid-note">جارٍ تحميل الصفحات…</span>}
+      {shortcuts.isError && !cached && <span className="user-menu-grid-note">تعذر تحميل الاختصارات</span>}
     </div>
   );
 }
