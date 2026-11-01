@@ -101,3 +101,5 @@ export function businessRoutes(pool: Pool): Router {
   );
   return router;
 }
+
+// CI baseline-only marker (no runtime effect): 2026-11-01 medicine-market isolation comparison.
