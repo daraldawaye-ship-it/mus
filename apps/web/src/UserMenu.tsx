@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
@@ -11,6 +12,8 @@ import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { usePageDirectory } from "./page-directory";
+import { api } from "./api";
+import { readMenuNavigation, saveMenuNavigation } from "./menu-navigation-cache";
 import { allowedAvatarTabs } from "./avatar-menu-permissions";
 import "./user-menu-tabs.css";
 
@@ -63,7 +66,24 @@ export function UserMenu({
   const appearance = useAppearance();
   const location = useLocation();
   const directory = usePageDirectory(companyId ?? undefined);
-  const permittedTabs = allowedAvatarTabs(user.owner, companyId, directory.data);
+  // Start loading navigation preferences before the avatar menu is opened.
+  // The last authorized snapshot paints immediately on repeat visits/offline.
+  const shortcuts = useQuery({
+    queryKey: ["my-shortcuts", user.id, companyId],
+    queryFn: ({ signal }) => api<{ pageKeys: string[] }>(
+      "/my-shortcuts" + (companyId ? "?companyId=" + companyId : ""), { signal }),
+    networkMode: "always",
+    staleTime: 10_000,
+  });
+  useEffect(() => {
+    if (directory.data && shortcuts.data) {
+      saveMenuNavigation(user, companyId, directory.data, shortcuts.data.pageKeys);
+    }
+  }, [user.id, user.owner, user.kind, companyId, directory.data, shortcuts.data]);
+  const cachedMenu = readMenuNavigation(user.id, companyId);
+  const permittedTabs = directory.data
+    ? allowedAvatarTabs(user.owner, companyId, directory.data)
+    : cachedMenu?.tabs ?? allowedAvatarTabs(user.owner, companyId, undefined);
   const visibleSections = sections.filter(section => permittedTabs.includes(section.key));
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SectionKey>("navigation");
