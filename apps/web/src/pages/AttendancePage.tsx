@@ -91,6 +91,10 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
   const employeesEntry = directory.data?.find(
     (entry) => entry.key === "company.employees",
   );
+  const currentEntry = directory.data?.find(
+    (entry) => entry.key === "company.attendance-current",
+  );
+  const mayViewCurrent = !!currentEntry?.enabled && !!currentEntry.actionAccess.view;
   const mayAdjust =
     context.general &&
     !!attendanceEntry?.enabled &&
@@ -102,7 +106,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     !!employeesEntry.actionAccess.edit;
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "sessions" ? "sessions"
-    : params.get("view") === "current" ? "current" : "daily";
+    : params.get("view") === "current" && mayViewCurrent ? "current" : "daily";
   const filters = new URLSearchParams();
   for (const key of ["day", "employeeId", "status"])
     if (params.get(key)) filters.set(key, params.get(key)!);
@@ -314,7 +318,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
           {[
             { value: "daily", label: "الملخص اليومي" },
             { value: "sessions", label: "جلسات الحضور" },
-            { value: "current", label: "المحضرون حاليًا" },
+            ...(mayViewCurrent ? [{ value: "current", label: "المحضرون حاليًا" }] : []),
           ].map((item) => (
             <Button
               key={item.value}
