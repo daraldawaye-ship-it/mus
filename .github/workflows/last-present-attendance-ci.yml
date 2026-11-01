@@ -2,7 +2,7 @@ name: Presence and attendance reports
 on:
   push:
     branches: ['preview/render-2026-10-23']
-    paths: ['apps/api/src/routes-public.ts', 'apps/api/src/routes-attendance.ts', 'apps/api/src/app.ts', 'apps/api/src/services/auth.ts', 'apps/api/src/services/user-presence.ts', 'apps/web/src/**', 'tests/last-present-attendance.test.ts', 'tests/presence-navigation.test.ts', 'packages/contracts/src/pages.ts', 'apps/api/migrations/20261102_register_presence_pages.sql', '.github/workflows/last-present-attendance-ci.yml']
+    paths: ['apps/api/src/routes-public.ts', 'apps/api/src/routes-attendance.ts', 'apps/api/src/app.ts', 'apps/api/src/services/auth.ts', 'apps/api/src/services/user-presence.ts', 'apps/web/src/**', 'tests/avatar-menu-permissions.test.ts', 'tests/last-present-attendance.test.ts', 'tests/presence-navigation.test.ts', 'packages/contracts/src/pages.ts', 'apps/api/migrations/20261102_register_presence_pages.sql', '.github/workflows/last-present-attendance-ci.yml']
 permissions:
   contents: read
 jobs:
@@ -18,4 +18,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/last-present-attendance.test.ts tests/presence-navigation.test.ts
+      - run: node --import tsx --test tests/last-present-attendance.test.ts tests/presence-navigation.test.ts tests/avatar-menu-permissions.test.ts
