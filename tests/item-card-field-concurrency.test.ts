@@ -63,3 +63,13 @@ test("one stale field never blocks saving an independently edited field", () => 
   assert.match(editor, /lastSavedSnapshot\.current = latest\.item/);
   assert.match(editor, /for \(const key of editedFields\.current\.keys\(\)\)/);
 });
+
+test("each pending field preserves its own observed baseline across unrelated successful saves", () => {
+  assert.match(editor, /pendingExpected = useRef\(new Map/);
+  assert.match(editor, /if \(!pendingExpected\.current\.has\(field\) \|\| blockedFields\.current\.has\(field\)\)/);
+  assert.match(editor, /pendingExpected\.current\.has\(field\)/);
+  assert.match(editor, /pendingExpected\.current\.get\(field\)/);
+  assert.match(editor, /pendingExpected\.current\.set\(selectedField,/);
+  assert.match(editor, /pendingExpected\.current\.delete\(selectedField\)/);
+  assert.match(editor, /pendingExpected\.current\.clear\(\)/);
+});
