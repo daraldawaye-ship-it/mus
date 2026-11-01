@@ -325,6 +325,8 @@ export type SaleRankSnapshot = {
   asOfDate: string;
   scores: Record<string,string>;
   priorities?: Record<string,string>;
+  // Per-user only: stock visibility is granted by the same server policy.
+  stocks?: Record<string,string>;
 };
 export type SaleRankProgress = SaleRankSnapshot & {
   afterId: number;
