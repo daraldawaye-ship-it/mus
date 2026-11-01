@@ -302,8 +302,6 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
             autoComplete={allowPasswordAutofill
               ? (registering ? "new-password" : "current-password")
               : "off"}
-            // Shared desktops must require active typing, not reuse an
-            // autofilled password from the previously logged-in employee.
             readOnly={!allowPasswordAutofill && !passwordReady}
             onFocus={() => setPasswordReady(true)}
             value={draft.password}
