@@ -9,6 +9,7 @@ on:
       - 'apps/api/src/routes-inventory.ts'
       - 'apps/api/src/routes-pages.ts'
       - 'apps/api/migrations/20261102_register_settlement_followup.sql'
+      - 'apps/api/migrations/20261102_default_required_count_20.sql'
       - 'tests/settlement-follow-up-required-workflow.test.ts'
       - '.github/workflows/settlement-follow-up-required-ci.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'apps/api/src/routes-inventory.ts'
       - 'apps/api/src/routes-pages.ts'
       - 'apps/api/migrations/20261102_register_settlement_followup.sql'
+      - 'apps/api/migrations/20261102_default_required_count_20.sql'
       - 'tests/settlement-follow-up-required-workflow.test.ts'
       - '.github/workflows/settlement-follow-up-required-ci.yml'
 permissions: { contents: read }
