@@ -3028,7 +3028,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
-        {kind === "purchase" && draftNotice && <Notice tone="success">{draftNotice}</Notice>}}
+        {kind === "purchase" && draftNotice && <Notice tone="success">{draftNotice}</Notice>}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
           <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
