@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+## Item-card Zod defaults regression (2026-11-01)
+
+Field PATCH decoding must NEVER inject defaults for omitted card fields. Zod 4 `itemFields.partial()` did so and turned a one-field edit into an update of dozens of unrelated columns. Use the explicit default-free partial shape built from `itemFields.shape`, unwrapping `ZodDefault` with `removeDefault()` before `optional()`; assert `Object.keys(parsed.changes)` exactly equals input keys. Also, when `mode === "last-write-wins"`, `fullInput` is null: only compare `fullInput!.revision` if `!fieldPatch`. After each successful edit of commissionRate, clearanceFrom or clearanceTo, queue a notification even if the other clearance fields are empty; commission earnings still require complete valid rate/date range. See `docs/ITEM_CARD_FIELD_CONCURRENCY.md`.
+
+
 ## Item card independent concurrent edits (2026-11-01)
 
 For every existing company item card, the editor's displayed values are a read snapshot. **Never save a whole card for a one-field edit.** Save each touched field in an independent PATCH with `mode: "last-write-wins"`. Under the row lock, the last committed write to that SAME field takes precedence even when another employee changed it after this card was opened. There is NO stale-revision confirmation prompt; preserve drafts of other fields, merge fresh server values only into untouched controls, and keep sequential local autosaves. `expected` is retained for older compare-and-set clients but intentionally ignored only in this explicit item-card mode. Stocktake timestamp is likewise last-write-wins. Preserve page/role authorization, strict value/business validation, immutable audit, and stock restrictions; invalid data must still be rejected. See `docs/ITEM_CARD_FIELD_CONCURRENCY.md`.

@@ -38,3 +38,13 @@
 - `stocktake-request` يُحدث التاريخ تحت قفل الصف دون التوقف على revision قديم، مع التدقيق.
 - لا تُعطّل صلاحيات التعديل، ولا شروط صحة البيانات أو منع تغيير وحدات الصنف بعد الحركة، ولا قيود المخزون أو التنبيهات أو سجلات التدقيق. هذا الاستثناء **لحقول كرت الصنف فقط** وليس للفواتير والقيود والسندات.
 - اختبارات التراجع: `tests/item-card-field-concurrency.test.ts` و`tests/item-clearance-independent-fields.test.ts` و`tests/item-card-close-conflict.test.ts`. يجب تشغيل `npm run check` و`npm run build` والتحقق من Render قبل الادعاء بالنشر.
+
+## تصحيح جذري أثبتته اختبارات GitHub Actions — 1 نوفمبر 2026
+
+**مشكلة الحفظ الأولى:** أثناء تفعيل `mode:"last-write-wins"` كان `apps/api/src/routes-items.ts` ينتقل إلى `else if (fullInput!.revision ...)` حتى عندما `fullInput=null`. أكّدت سجلات Render بثلاث طلبات فاشلة في 20:47 UTC خطأ `Cannot read properties of null (reading 'revision')`. أصبح الشرط `else if (!fieldPatch && fullInput!.revision !== before.revision)`؛ لا تلغِ هذه الحماية.
+
+**المشكلة الثانية، الأخطر على تعديلات الحقول:** `itemFields.partial()` من Zod 4 كان يُخرج القيم الافتراضية لمعظم الحقول غير المرسلة في `fieldPatch.changes` بعد `safeParse`. كشف اختبار CI أن إرسال `clearanceFrom` و`clearanceTo` أعاد أسماء عشرات الحقول في `changes`، مما يجعل SQL يحدّثها جميعًا ويُلغي معنى الحفظ على مستوى الحقل. الإصلاح هو إنشاء `itemPatchShape` من `itemFields.shape` مع `removeDefault().optional()` لكل حقل له ZodDefault، و`optional()` لسائر الحقول، ثم بناء مخطط `changes` و`expected` من هذا الشكل الخالي من القيم الافتراضية. يجب أن تظل مفاتيح الطلب بعد التحليل **مطابقة تمامًا للمفاتيح التي أرسلها المستخدم**.
+
+**تنبيهات التصريف:** `itemClearanceNotice` يلتقط تغيير أي من `commissionRate` أو `clearanceFrom` أو `clearanceTo` فور نجاح حفظ الحقل، حتى عندما تكون الحقول الأخرى فارغة. الحدث غير المكتمل `ITEM_CLEARANCE_UPDATED`؛ عند اكتمال الإعداد يمكن تصنيفه إضافة/إخراج عند الاقتضاء. يُودع الإشعار في `item_clearance_notification_jobs` ثم يوزّعه العامل الخلفي عبر القوالب الحالية. **شرط اكتمال الثلاثة لاحتساب العمولة على الفاتورة فقط، وليس لإرسال التنبيهات.** الاختبارات `tests/item-clearance-notifications.test.ts` و`tests/item-clearance-independent-fields.test.ts` تثبت هذا الفصل.
+
+تُشغّل اختبارات `item-card-field-concurrency` و`item-clearance-notifications` على الفرع المنشور في workflow `.github/workflows/item-form-monitor-ci.yml` (push + PR). راجع حالة CI النهائية قبل الجزم بنجاح الاختبارات، ولا تجرب الكتابة على بيانات الأصناف الحية.
