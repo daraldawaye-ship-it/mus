@@ -21,17 +21,24 @@ export function allowPasswordAutofillOnDevice():boolean {
     navigator.platform,navigator.maxTouchPoints);
 }
 
-/** The shared-desktop login input intentionally has a non-password type
- * and a very narrow viewport (CSS). This reduces Chrome's opportunity to
- * associate an input with a stored password. The letters are real plain text
- * while typed; a narrow field is not secret masking or a security guarantee.
- * Registration and installed phone app retain native password field types.
+/** Chrome/Edge desktop sign-in can display a full-width, bullet-masked
+ * type=text input using -webkit-text-security. This is a browser autofill
+ * heuristic, not a guarantee that password managers cannot recognize the
+ * form. If the text-security CSS is unavailable, fall back to type=password
+ * instead of exposing the entire password as clear text.
+ * Registration and installed phone apps keep their native password input.
  */
 export function compactDesktopTextSecret(
   nativePasswordManagerAllowed: boolean,
   registering: boolean,
+  textSecuritySupported: boolean,
 ): boolean {
-  return !registering && !nativePasswordManagerAllowed;
+  return !registering && !nativePasswordManagerAllowed && textSecuritySupported;
+}
+export function browserSupportsTextMask(): boolean {
+  return typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("-webkit-text-security", "disc");
 }
 
 /** This store contains ONLY the optional login identifier, NEVER credentials. */
