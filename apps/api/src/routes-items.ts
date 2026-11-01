@@ -10,6 +10,7 @@ import {
   itemCompositionPatchSchema,
   itemSchema,
   itemPatchSchema,
+  itemFieldPatchSchema,
   itemConversionSchema,
   itemShelfPatchSchema,
   arabicShelfLetters,
@@ -870,20 +871,42 @@ export function itemRoutes(pool: Pool): Router {
   router.patch(
     `${base}/items/:id`,
     handler(async (req, res) => {
-      const input = parse(itemPatchSchema, req.body),
-        rowId = id(req.params.id);
+      const fieldPatch = req.body && typeof req.body === "object" &&
+        Object.prototype.hasOwnProperty.call(req.body, "changes")
+        ? parse(itemFieldPatchSchema, req.body) : null;
+      const fullInput = fieldPatch ? null : parse(itemPatchSchema, req.body);
+      const rowId = id(req.params.id);
       const item = await mutateMaster(
         pool,
         req,
         "items.manage",
         async (client, user, companyId) => {
+          // Lock the current row before checking any per-field compare-and-set.
+          // An unrelated edit on another device is safe, while editing the
+          // same field rejects rather than silently overwriting the new value.
+          await client.query(
+            "SELECT id FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+            [companyId, rowId],
+          );
           const before = itemDTO(
             await masterRow(client, itemSelect, "i", companyId, rowId),
           );
-          if (input.revision !== before.revision)
-            conflict(
-              "تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ",
-            );
+          if (fieldPatch) {
+            const existing = before as unknown as Record<string, unknown>;
+            for (const [field, expected] of Object.entries(fieldPatch.expected)) {
+              if (JSON.stringify(existing[field] ?? null) !== JSON.stringify(expected ?? null))
+                conflict("تم تعديل هذا الحقل بواسطة مستخدم آخر؛ حمّل النسخة الحالية لمراجعة قيمته");
+            }
+          } else if (fullInput!.revision !== before.revision) {
+            conflict("تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ");
+          }
+          const input = fieldPatch
+            ? parse(itemPatchSchema, {
+                ...Object.fromEntries(itemFieldColumns.map(([field]) => [field, before[field]])),
+                ...fieldPatch.changes,
+                revision: before.revision,
+              })
+            : fullInput!;
           // An archived item must have no remaining stock in any location.
           // Include negative balances and opposing showroom/warehouse balances:
           // a zero company total alone does not mean the item is empty.
@@ -937,14 +960,23 @@ export function itemRoutes(pool: Pool): Router {
               conflict("هذا الصنف محدد أورجنال في كرت التركيب؛ ألغِ تعيين الأورجنال قبل نقل الصنف أو فك ارتباطه.");
           }
           await checkItemReferences(client, companyId, fields, before);
-          const values: unknown[] = itemFieldColumns.map(
-            ([field]) => fields[field],
-          );
-          values.push(companyId, rowId);
-          await client.query(
-            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${input.supplierAccountId === undefined ? "supplier_inferred" : "false"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 1} AND id=$${values.length}`,
+          // The SQL itself writes only the touched columns for field patches;
+          // unrelated values remain untouched even at the column level.
+          const columnsToUpdate = fieldPatch
+            ? itemFieldColumns.filter(([field]) =>
+                Object.prototype.hasOwnProperty.call(fieldPatch.changes, field))
+            : itemFieldColumns;
+          const values: unknown[] = columnsToUpdate.map(([field]) => fields[field]);
+          values.push(companyId, rowId, before.revision);
+          const supplierChanged = fieldPatch
+            ? Object.prototype.hasOwnProperty.call(fieldPatch.changes, "supplierAccountId")
+            : input.supplierAccountId !== undefined;
+          const changedRow = await client.query(
+            `UPDATE items SET ${columnsToUpdate.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${supplierChanged ? "false" : "supplier_inferred"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 2} AND id=$${values.length - 1} AND revision=$${values.length}`,
             values,
           );
+          if (!changedRow.rowCount)
+            conflict("تم تعديل الصنف أثناء الحفظ؛ أعد تحميل السجل");
           const next = itemDTO(
             await masterRow(client, itemSelect, "i", companyId, rowId),
           );
