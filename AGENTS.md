@@ -6,6 +6,8 @@ The owner requires the **existing** employees of company 2 (دار الدواء)
 
 ## Shared-desktop vs phone-app sign-in (2026-11-01)
 
+**Updated desktop secret field:** For Chrome/Edge, use a full-width `type=text` input with `-webkit-text-security: disc` (bullets), only when `CSS.supports` confirms support; on unsupported browsers use native `type=password` instead of showing cleartext. The actual input value is unchanged. Keep `autocomplete=off`, a neutral field name and the mobile-installed-app exception. This does not guarantee Chrome will avoid recognizing or filling stored credentials. See `docs/SHARED_DESKTOP_LOGIN.md`.
+
 The owner requires that laptop/desktop browser and installed PWA logins **never store or prefill passwords in the application**; retaining just the login identifier is allowed. Users of a shared laptop must enter the password when reopening offline, rather than silently restore the previous employee. The **installed phone app** retains OS/browser password-manager support for both online and offline login; never store raw passwords. Browser password managers may ignore autocomplete hints; see `docs/SHARED_DESKTOP_LOGIN.md` for limits and secure signout recommendations. Distinguish actual mobile device/installed mode from viewport width, and preserve existing salted offline verifiers and user isolation.
 
 ## Sales doctor and item-clearance alerts (2026-11-01)
