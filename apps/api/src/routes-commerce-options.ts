@@ -56,11 +56,12 @@ export function commerceOptionRoutes(pool: Pool): Router {
       const saleable = canShowStock
         ? "COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)"
         : "0::numeric";
-      const rows=await client.query<{item_id:number;total:string;priority_scaled:string}>(`
+      const rows=await client.query<{item_id:number;total:string;priority_scaled:string;stock_available:string|null}>(`
         SELECT i.id AS item_id,
           (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0))::text AS total,
           ROUND(((COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0))
-            + (${saleable}))*1000000)::text AS priority_scaled
+            + (${saleable}))*1000000)::text AS priority_scaled,
+          ${canShowStock ? `(${saleable})::text` : "NULL::text"} AS stock_available
         FROM items i
         ${itemSaleTimesJoinSql} ${stockJoin}
         WHERE i.company_id=$1 AND i.id>$2::integer
@@ -70,6 +71,7 @@ export function commerceOptionRoutes(pool: Pool): Router {
       const page=rows.rows.slice(0,1000);
       return {asOfDate:day,items:page.map(row=>({
         itemId:row.item_id,saleTimes:row.total,priorityScaled:row.priority_scaled,
+        stockAvailable:row.stock_available,
       })),hasMore:more,afterId:more?page[page.length-1]!.item_id:0};
     });
     res.json(result);
