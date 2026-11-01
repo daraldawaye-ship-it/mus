@@ -6473,3 +6473,114 @@ a.notification-quick-title:hover { text-decoration: underline; }
     padding-inline: 2px; font-size: 13px;
   }
 }
+
+/* Phone sales entry: show each editable invoice line as two complete bands.
+   Keep the desktop/purchase table and the print document unchanged. */
+@media screen and (max-width: 680px) {
+  .commerce-matrix-card .commerce-lines-scroll:has(> .commerce-matrix-sale) {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .commerce-matrix-sale {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    table-layout: auto;
+  }
+  .commerce-matrix-sale colgroup,
+  .commerce-matrix-sale thead {
+    display: none;
+  }
+  .commerce-matrix-sale tbody {
+    display: block;
+    width: 100%;
+  }
+  .commerce-matrix-sale tbody > tr {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    gap: 4px 2px;
+    padding: 6px 3px;
+    border-bottom: 1px solid var(--border);
+  }
+  .commerce-matrix-sale tbody > tr > td {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    height: auto;
+    padding: 0 1px;
+    border: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .commerce-matrix-sale td[data-mobile-label]::before {
+    content: attr(data-mobile-label);
+    display: block;
+    flex: 0 0 auto;
+    font-size: 10px;
+    line-height: 1.25;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .commerce-matrix-sale .commerce-mobile-sale-item-cell { grid-column: 1 / span 7; grid-row: 1; }
+  .commerce-matrix-sale .commerce-line-available { grid-column: 8 / span 2; grid-row: 1; }
+  .commerce-matrix-sale .commerce-line-shelf { grid-column: 10 / span 1; grid-row: 1; }
+  .commerce-matrix-sale .commerce-line-action-cell { grid-column: 11 / span 2; grid-row: 1; }
+  .commerce-matrix-sale .commerce-line-unit { grid-column: 1 / span 3; grid-row: 2; }
+  .commerce-matrix-sale .commerce-line-quantity { grid-column: 4 / span 3; grid-row: 2; }
+  .commerce-matrix-sale .commerce-line-price { grid-column: 7 / span 3; grid-row: 2; }
+  .commerce-matrix-sale .commerce-line-total { grid-column: 10 / span 3; grid-row: 2; }
+  /* Sales returns add an expiry control without requiring a third band. */
+  .commerce-matrix-sale-has-expiry .commerce-line-unit { grid-column: 1 / span 2; }
+  .commerce-matrix-sale-has-expiry .commerce-line-quantity { grid-column: 3 / span 2; }
+  .commerce-matrix-sale-has-expiry .commerce-line-price { grid-column: 5 / span 2; }
+  .commerce-matrix-sale-has-expiry .commerce-line-expiry { grid-column: 7 / span 3; grid-row: 2; }
+  .commerce-matrix-sale-has-expiry .commerce-line-total { grid-column: 10 / span 3; }
+  .commerce-matrix-sale .commerce-mobile-sale-item-name {
+    display: block;
+    width: 100%;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .commerce-matrix-sale .commerce-item-search,
+  .commerce-matrix-sale .field,
+  .commerce-matrix-sale .expiry-month-fields {
+    min-width: 0;
+    width: 100%;
+  }
+  .commerce-matrix-sale input,
+  .commerce-matrix-sale select {
+    min-width: 0;
+    max-width: 100%;
+    padding-inline: 2px;
+    font-size: 12px;
+  }
+  .commerce-matrix-sale .commerce-line-available,
+  .commerce-matrix-sale .commerce-line-total,
+  .commerce-matrix-sale .commerce-line-shelf {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .commerce-matrix-sale .commerce-line-shelf span {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+  .commerce-matrix-sale .commerce-line-actions {
+    justify-content: flex-end;
+    gap: 0;
+    flex-wrap: nowrap;
+  }
+  .commerce-matrix-sale .commerce-line-actions .button {
+    flex: 0 0 27px;
+    width: 27px;
+    padding-inline: 2px;
+  }
+}
