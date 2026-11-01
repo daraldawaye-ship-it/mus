@@ -38,6 +38,6 @@ For every future navigation change, keep snapshots user/company-scoped and
 presentation-only. Never treat localStorage or IndexedDB as proof of current
 authorization, nor enable mutations solely because a cached link exists.
 
-## زر تعديل كرت الصنف من قائمة المستخدم (2026-11-01)
+## زر كرت الصنف من قائمة المستخدم (2026-11-01)
 
-في تبويب «صنف» من قائمة الصورة الشخصية، يظهر زر «تعديل كرت الصنف» كخيار سادس بجوار مشتريات ومبيعات وتسويات ومناقلات والبدائل. يظل معطلاً حتى اختيار صنف داخل الشركة. عند الضغط يُغلق منيو الصورة الشخصية ويُفتح `ItemCardBottomSheetHost` عبر `openItemCardSheet(companyId, itemId)` دون تغيير الصفحة أو إنشاء نموذج تعديل مكرر. يستمر `InvoiceItemEditor` في التحقق من صلاحيات عرض/تعديل صفحات الأصناف وكرت الصنف ومن قيود الكتابة على الخادم. أصبح مضيف اللوحة يعمل بـ `navigationContext` (الشركة النشطة أو آخر شركة مسموحة) ليدعم القائمة في الصفحات العامة كذلك. اختبر التدفق في `tests/browser-header-item-search.ts`؛ لا تخزن بيانات تعديل ضمن كاش التنقل.
+في تبويب «صنف» من قائمة الصورة الشخصية، يظهر زر «كرت الصنف» كخيار سادس بجوار مشتريات ومبيعات وتسويات ومناقلات والبدائل. يظل معطلاً حتى اختيار صنف داخل الشركة. عند الضغط يُغلق منيو الصورة الشخصية ويُفتح `ItemCardBottomSheetHost` عبر `openItemCardSheet(companyId, itemId)` دون تغيير الصفحة أو إنشاء نموذج تعديل مكرر. يستمر `InvoiceItemEditor` في التحقق من صلاحيات عرض/تعديل صفحات الأصناف وكرت الصنف ومن قيود الكتابة على الخادم. أصبح مضيف اللوحة يعمل بـ `navigationContext` (الشركة النشطة أو آخر شركة مسموحة) ليدعم القائمة في الصفحات العامة كذلك. اختبر التدفق في `tests/browser-header-item-search.ts`؛ لا تخزن بيانات تعديل ضمن كاش التنقل.
