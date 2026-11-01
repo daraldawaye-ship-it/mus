@@ -1,0 +1,36 @@
+name: Settlement follow-up and permissions
+on:
+  push:
+    branches: ['preview/render-2026-10-23']
+    paths:
+      - 'apps/web/src/pages/SettlementFollowUpPage.tsx'
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'apps/api/src/routes-settlement-follow-up.ts'
+      - 'apps/api/src/routes-inventory.ts'
+      - 'apps/api/migrations/20261102_register_settlement_followup.sql'
+      - 'tests/settlement-follow-up-required-workflow.test.ts'
+      - '.github/workflows/settlement-follow-up-required-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/SettlementFollowUpPage.tsx'
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'apps/api/src/routes-settlement-follow-up.ts'
+      - 'apps/api/src/routes-inventory.ts'
+      - 'apps/api/migrations/20261102_register_settlement_followup.sql'
+      - 'tests/settlement-follow-up-required-workflow.test.ts'
+      - '.github/workflows/settlement-follow-up-required-ci.yml'
+permissions: { contents: read }
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/settlement-follow-up-required-workflow.test.ts
