@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Dar Aldawa existing employee invoice shortcuts (2026-11-01)
+
+The owner requires the **existing** employees of company 2 (دار الدواء), not only future hires, to have the default "إضافة فاتورة مبيعات" and/or "إضافة فاتورة مشتريات" shortcuts based on each user's actual *view and create* page permissions. Never grant new permissions, do not replace existing personalized shortcuts, and respect removal by the employee. An authorized startup reconciliation applies these directly to the current accounts and first-access initialization covers future eligible accounts. Verify server log `COMPANY2_INVOICE_SHORTCUTS_RECONCILED`, permissions and shortcut records after deploy. Read `docs/COMPANY2_INVOICE_SHORTCUT_DEFAULTS.md`.
+
 ## Shared-desktop vs phone-app sign-in (2026-11-01)
 
 The owner requires that laptop/desktop browser and installed PWA logins **never store or prefill passwords in the application**; retaining just the login identifier is allowed. Users of a shared laptop must enter the password when reopening offline, rather than silently restore the previous employee. The **installed phone app** retains OS/browser password-manager support for both online and offline login; never store raw passwords. Browser password managers may ignore autocomplete hints; see `docs/SHARED_DESKTOP_LOGIN.md` for limits and secure signout recommendations. Distinguish actual mobile device/installed mode from viewport width, and preserve existing salted offline verifiers and user isolation.
