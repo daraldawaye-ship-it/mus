@@ -10,7 +10,8 @@ type LastSeenUser = { id: number; name: string; lastSeenAt: string | null };
 export function LastPresentUsersPage() {
   const { user } = useSession();
   const [now, setNow] = useState(Date.now());
-  const permitted = !!user && (user.owner || user.kind === "admin");
+  // The page's view grant is checked by PageRouteGuard and the API itself.
+  const permitted = !!user;
   const list = useQuery({
     queryKey: ["public", "last-present", user?.id],
     queryFn: ({ signal }) => api<{ items: LastSeenUser[] }>("/users/last-present", { signal }),
@@ -22,7 +23,6 @@ export function LastPresentUsersPage() {
     return () => window.clearInterval(interval);
   }, []);
   if (!user) return <Navigate to="/login" replace />;
-  if (!permitted) return <Notice tone="error">هذه الصفحة لإدارة الموقع العام فقط.</Notice>;
   return <>
     <PageHeader title="آخر المتواجدين"
       description="آخر نشاط لأي مستخدم في تطبيق الرئيسي، سواء في العام أو داخل أي شركة. لا يُعد سجل حضور وانصراف."
