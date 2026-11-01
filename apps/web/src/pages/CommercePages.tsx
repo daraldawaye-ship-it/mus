@@ -70,6 +70,10 @@ import { formatMoney, formatWholeMoney } from "../format-money";
 import { enteredInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
+import {
+  listPurchaseWorkDrafts, savePurchaseWorkDraft, deletePurchaseWorkDraft,
+  type PurchaseWorkDraft,
+} from "../purchase-drafts";
 import { fastLocalInvoiceItems, warmLocalInvoiceItems } from "../offline-shared-items";
 import { isOfflineNow } from "../connection-mode";
 import {
@@ -1269,7 +1273,7 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     </InvoiceWorkspace>
   );
 }
-type InvoicePointStatus = { dirty: boolean; saving: boolean; unknown: boolean };
+type InvoicePointStatus = { dirty: boolean; saving: boolean; unknown: boolean; itemCount: number };
 const MAX_OPEN_INVOICE_POINTS = 10;
 
 /** Each mounted point owns its invoice data and idempotency state.
@@ -1279,11 +1283,39 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   const [activePoint, setActivePoint] = useState(() => points[0]!);
   const [pointItems, setPointItems] = useState<Record<string, Pick<Item,"id"|"name"> | null>>({});
   const [statuses, setStatuses] = useState<Record<string, InvoicePointStatus>>({});
+  const draftSavers = useRef(new Map<string, () => Promise<boolean>>());
+  const [leavingBusy, setLeavingBusy] = useState(false);
+  const [leavingError, setLeavingError] = useState("");
+  const registerDraftSaver = useCallback((id: string, save: (() => Promise<boolean>) | null) => {
+    if (save) draftSavers.current.set(id, save);
+    else draftSavers.current.delete(id);
+  }, []);
+  const saveAllAndLeave = async () => {
+    if (leavingBusy || kind !== "purchase" || blocker.state !== "blocked") return;
+    setLeavingBusy(true);
+    setLeavingError("");
+    try {
+      // Every changed point must be saved, not only the active invoice.
+      for (const id of points) {
+        if (!statuses[id]?.dirty) continue;
+        const save = draftSavers.current.get(id);
+        if (!save || !(await save())) {
+          setLeavingError("تعذر حفظ جميع فواتير المشتريات مؤقتًا. لم تغادر الصفحة.");
+          return;
+        }
+      }
+      if (blocker.state === "blocked") blocker.proceed();
+    } catch (error) {
+      setLeavingError("تعذر إكمال الحفظ المؤقت: " + errorMessage(error));
+    } finally {
+      setLeavingBusy(false);
+    }
+  };
   const updateStatus = useCallback((id: string, next: InvoicePointStatus) => {
     setStatuses(current => {
       const prior = current[id];
       if (prior?.dirty === next.dirty && prior.saving === next.saving &&
-        prior.unknown === next.unknown) return current;
+        prior.unknown === next.unknown && prior.itemCount === next.itemCount) return current;
       return { ...current, [id]: next };
     });
   }, []);
@@ -1298,13 +1330,21 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
     setPoints(previous => [...previous, id]);
     setActivePoint(id);
   };
-  const closePoint = (id: string) => {
+  const closePoint = async (id: string) => {
     const status = statuses[id];
     if (status?.saving || status?.unknown) return;
-    if (status?.dirty && !window.confirm("هذه النقطة تحتوي فاتورة غير محفوظة. هل تريد إغلاقها وفقدان بياناتها؟")) return;
+    if (status?.dirty && kind === "purchase" && status.itemCount > 1) {
+      if (!window.confirm("هذه فاتورة مشتريات تحتوي أكثر من صنف. هل تريد حفظها مؤقتًا قبل إغلاق النقطة؟")) return;
+      const save = draftSavers.current.get(id);
+      if (!save || !(await save())) return;
+    } else if (status?.dirty &&
+      !window.confirm(kind === "purchase"
+        ? "يوجد صنف واحد في فاتورة المشتريات. هل تريد إغلاق الفاتورة دون حفظ؟"
+        : "هذه النقطة تحتوي فاتورة غير محفوظة. هل تريد إغلاقها وفقدان بياناتها؟")) return;
     if (points.length <= 1) return;
     const remaining = points.filter(point => point !== id);
     setPoints(remaining);
+    draftSavers.current.delete(id);
     setActivePoint(previous => previous === id ? remaining[0]! : previous);
     setStatuses(previous => {
       const next = { ...previous };
@@ -1335,7 +1375,7 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
                 disabled={!!statuses[id]?.saving || !!statuses[id]?.unknown}
                 aria-label={`إغلاق ${kind === "sale" ? "مبيعات" : "مشتريات"} ${index + 1}`}
                 title="إغلاق هذه الفاتورة"
-                onClick={() => closePoint(id)}>×</button>
+                onClick={() => { void closePoint(id); }}>×</button>
             )}
           </div>
         ))}
@@ -1351,19 +1391,30 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
           style={{ display: id === activePoint ? undefined : "none" }}>
           <InvoiceEditor context={context} tabId={id} active={id === activePoint}
             onStatusChange={updateStatus}
+            onRegisterDraftSaver={registerDraftSaver}
             onChooseItem={item => setPointItems(previous => ({ ...previous, [id]: item }))} />
         </div>
       ))}
       <Dialog open={blocker.state === "blocked"} title="مغادرة الفواتير"
         onClose={() => { if (blocker.state === "blocked") blocker.reset(); }}>
-        <p>توجد فاتورة غير محفوظة في نقطة واحدة على الأقل، أو عملية حفظ لم تتأكد نتيجتها.</p>
+        <p>{kind === "purchase"
+          ? Object.values(statuses).some(status => status.dirty && status.itemCount > 1)
+            ? "توجد مشتريات مكتوبة بأكثر من سطر. هل تريد حفظ الفواتير مؤقتًا قبل المغادرة؟ يمكنك فتحها لاحقًا دون ترحيل."
+            : "هل تريد الخروج من فاتورة المشتريات؟ يوجد صنف واحد أو بيانات لم تُحفظ."
+          : "توجد فاتورة غير محفوظة في نقطة واحدة على الأقل، أو عملية حفظ لم تتأكد نتيجتها."}</p>
+        {leavingError && <Notice tone="error">{leavingError}</Notice>}
         <div className="form-actions">
           <Button variant="secondary" onClick={() => {
             if (blocker.state === "blocked") blocker.reset();
           }}>البقاء في الفواتير</Button>
-          <Button variant="danger" disabled={Object.values(statuses).some(status => status.saving || status.unknown)}
+          {kind === "purchase" && Object.values(statuses).some(status => status.dirty && status.itemCount > 1) &&
+            <Button disabled={leavingBusy || Object.values(statuses).some(status => status.saving || status.unknown)}
+              onClick={() => { void saveAllAndLeave(); }}>
+              {leavingBusy ? "جارٍ حفظ المسودات…" : "حفظ مؤقت ثم الخروج"}
+            </Button>}
+          <Button variant="danger" disabled={leavingBusy || Object.values(statuses).some(status => status.saving || status.unknown)}
             onClick={() => { if (blocker.state === "blocked") blocker.proceed(); }}>
-            مغادرة دون حفظ
+            {kind === "purchase" ? "نعم، الخروج دون حفظ" : "مغادرة دون حفظ"}
           </Button>
         </div>
       </Dialog>
@@ -1371,12 +1422,13 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   );
 }
 
-function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }: {
+function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, onRegisterDraftSaver }: {
   context: CompanyContext;
   onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void;
   tabId: string;
   active: boolean;
   onStatusChange: (id: string, status: InvoicePointStatus) => void;
+  onRegisterDraftSaver: (id: string, save: (() => Promise<boolean>) | null) => void;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
