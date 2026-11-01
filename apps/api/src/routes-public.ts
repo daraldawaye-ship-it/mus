@@ -9,7 +9,7 @@ import {
   DEFAULT_APPEARANCE,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
-import { assertRequestPagesEnabled } from "./services/pages.ts";
+import { assertRequestPagesEnabled, directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
@@ -38,7 +38,12 @@ export function publicRoutes(pool: Pool): Router {
   // Presence aggregates authenticated general and company activity, never attendance.
   // Only site owner/admin can view other users' last activity.
   router.get("/users/last-present", handler(async (req, res) => {
-    publicAdmin(actor(req));
+    // A specifically granted view permission works for non-admin users too.
+    // Managing public users remains governed by the separate admin-only API.
+    const entry = (await directoryEntries(pool, actor(req), null))
+      .find(page => page.key === "public.last-present");
+    if (!entry) deny("الصفحة غير مسجلة في دليل الصفحات");
+    assertDirectoryAccess(entry);
     const rows = await pool.query(`
       SELECT u.id,COALESCE(NULLIF(u.display_name,''),u.name) AS name,
         p.last_seen_at

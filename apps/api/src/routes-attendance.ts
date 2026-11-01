@@ -14,7 +14,7 @@ import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError, missing, deny } from "./errors.ts";
 import { audit } from "./services/audit.ts";
-import { assertRequestPagesEnabled } from "./services/pages.ts";
+import { assertRequestPagesEnabled, directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { permissionRuleEffects } from "./services/permission-rules.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import { getAttendanceSettings } from "./services/attendance-settings.ts";
@@ -126,12 +126,16 @@ export function attendanceRoutes(pool: Pool) {
     base = "/companies/:companyId/attendance";
   // Latest presence is NOT restricted to the current day: employees who are
   // absent now still have their actual last arrival and departure displayed.
-  // Only the company general manager or site owner may view other employees.
+  // Every active company member with this specific page permission may view
+  // the report. Explicit page denials remain enforced server-side.
   router.get(base + "/currently-present", handler(async (req, res) => {
     const result = await transaction(pool, async client => {
       await client.query("SET TRANSACTION READ ONLY");
-      const { companyId, context } = await access(client, req);
-      if (!context.general) deny("عرض حضور جميع الموظفين يتطلب إدارة الشركة");
+      const { companyId, user } = await access(client, req);
+      const entry = (await directoryEntries(client, user, companyId))
+        .find(page => page.key === "company.attendance-current");
+      if (!entry) deny("الصفحة غير مسجلة في دليل الصفحات");
+      assertDirectoryAccess(entry);
       const rows = await client.query(`
         SELECT e.id,e.name,
           active.checked_in_at AS open_checked_in_at,
