@@ -124,6 +124,50 @@ async function dailySummary(
 export function attendanceRoutes(pool: Pool) {
   const router = Router(),
     base = "/companies/:companyId/attendance";
+  // Latest presence is NOT restricted to the current day: employees who are
+  // absent now still have their actual last arrival and departure displayed.
+  // Only the company general manager or site owner may view other employees.
+  router.get(base + "/currently-present", handler(async (req, res) => {
+    const result = await transaction(pool, async client => {
+      await client.query("SET TRANSACTION READ ONLY");
+      const { companyId, context } = await access(client, req);
+      if (!context.general) deny("عرض حضور جميع الموظفين يتطلب إدارة الشركة");
+      const rows = await client.query(`
+        SELECT e.id,e.name,
+          active.checked_in_at AS open_checked_in_at,
+          arrived.checked_in_at AS last_checked_in_at,
+          departed.checked_out_at AS last_checked_out_at
+        FROM employees e
+        LEFT JOIN LATERAL (
+          SELECT r.checked_in_at FROM attendance_records r
+          WHERE r.company_id=e.company_id AND r.employee_id=e.id AND r.checked_out_at IS NULL
+          ORDER BY r.checked_in_at DESC,r.id DESC LIMIT 1
+        ) active ON true
+        LEFT JOIN LATERAL (
+          SELECT r.checked_in_at FROM attendance_records r
+          WHERE r.company_id=e.company_id AND r.employee_id=e.id
+          ORDER BY r.checked_in_at DESC,r.id DESC LIMIT 1
+        ) arrived ON true
+        LEFT JOIN LATERAL (
+          SELECT r.checked_out_at FROM attendance_records r
+          WHERE r.company_id=e.company_id AND r.employee_id=e.id AND r.checked_out_at IS NOT NULL
+          ORDER BY r.checked_out_at DESC,r.id DESC LIMIT 1
+        ) departed ON true
+        WHERE e.company_id=$1 AND e.active
+        ORDER BY (active.checked_in_at IS NOT NULL) DESC,
+          active.checked_in_at DESC NULLS LAST,
+          arrived.checked_in_at DESC NULLS LAST,e.id
+        LIMIT 1000`, [companyId]);
+      return { items: rows.rows.map(row => ({
+        employeeId: row.id,
+        employeeName: row.name,
+        isPresent: !!row.open_checked_in_at,
+        lastCheckedInAt: row.last_checked_in_at?.toISOString() ?? null,
+        lastCheckedOutAt: row.last_checked_out_at?.toISOString() ?? null,
+      })) };
+    });
+    res.json(result);
+  }));
   router.get(
     base,
     handler(async (req, res) => {
