@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## PWA multiple desktop windows (2026-11-01)
+
+The installed Alraesy PWA uses `apps/web/public/site.webmanifest`, with stable `id=/`, `scope=/`, `start_url=/`, and `display=standalone`. The prior `launch_handler.client_mode=navigate-existing` reused an existing installed-app window on repeated taskbar launches. The owner reported one Windows computer opening two independent windows while another reused the first. Set `launch_handler.client_mode=navigate-new` to request a separate app window for each launch in supporting Chromium browsers. This setting affects window selection, not separate authentication sessions; windows in the same Chrome profile may share login cookies. Some existing installations cache the manifest and may need an app/browser restart or reinstall to adopt its update. The browser ultimately controls launch behavior. Do not add a 'single-instance' app-level lock.
+
 ## Invoice quantities and signed header discount (2026-11-01)
 
 The owner requires invoice quantity inputs to immediately restore **1** when emptied (never blank, zero or alphabetic), and invoice header discount inputs to immediately restore **0** when emptied. Both inputs reject letters during entry; returns still allow negative quantities. A negative header discount is an **additional customer amount** increasing invoice net, calculated and stored as a signed amount for online posting and offline outbox/printing. Distribute it exactly across positive invoice lines and reverse it correctly on linked returns. For sales the additional amount credits the configured discount-earned income account or the configured sale income if not linked; never create a negative expense debit or weaken general voucher/price validation. Refer to `docs/INVOICE_NUMERIC_FIELDS_AND_SIGNED_DISCOUNT.md`. Do not update existing invoices or historical accounting for testing.
