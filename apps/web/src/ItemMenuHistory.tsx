@@ -71,7 +71,7 @@ export function ItemMenuHistory({
           disabled={!itemId}
           title={itemId ? `فتح كرت الصنف: ${itemName ?? ""}` : "اختر صنفًا من البحث أولًا"}
           onClick={() => { if (itemId) onEditItem(itemId); }}>
-          <span>تعديل كرت الصنف</span>
+          <span>كرت الصنف</span>
         </button>
       </div>
     );
