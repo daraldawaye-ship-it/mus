@@ -249,9 +249,20 @@ export const itemPatchSchema = itemFields
 // Existing item cards can be edited concurrently from several devices.
  // Only supplied fields are changed; expected contains the values read by the
  // editor for exactly those fields, protecting against same-field lost updates.
+// Zod 4's .partial() does not reliably suppress inner .default() values:
+// decoding {changes:{commissionRate:"5"}} previously populated dozens of
+// unrelated item columns. Strip every default BEFORE making fields optional.
+// Absence of a key must stay absence all the way to the SQL UPDATE.
+const itemPatchShape = Object.fromEntries(
+  Object.entries(itemFields.shape).map(([field, schema]) => [
+    field,
+    (schema instanceof z.ZodDefault ? schema.removeDefault() : schema).optional(),
+  ]),
+) as Record<keyof typeof itemFields.shape, z.ZodOptional<z.ZodType>>;
+const singleFieldValues = z.object(itemPatchShape).strict();
 export const itemFieldPatchSchema = z.object({
-  changes: itemFields.partial().strict(),
-  expected: itemFields.partial().strict(),
+  changes: singleFieldValues,
+  expected: singleFieldValues,
   // Explicit owner-selected behavior for item cards only: the final committed
   // write to the same field wins. The ordinary compare-and-set mode remains.
   mode: z.literal("last-write-wins").optional(),
