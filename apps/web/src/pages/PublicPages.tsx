@@ -26,7 +26,13 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
-import { allowPasswordAutofillOnDevice, rememberLoginIdentifier, savedLoginIdentifier } from "../device-login-policy";
+import {
+  allowPasswordAutofillOnDevice,
+  browserSupportsTextMask,
+  useMaskedDesktopSignInField,
+  rememberLoginIdentifier,
+  savedLoginIdentifier,
+} from "../device-login-policy";
 import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import { ProfileImageUrlField } from "../ProfileImageUrlField";
 import {
@@ -155,6 +161,9 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const [loginId, setLoginId] = useState(savedLoginIdentifier);
   const [passwordReady, setPasswordReady] = useState(false);
   const allowPasswordAutofill = allowPasswordAutofillOnDevice();
+  const maskedDesktopSignIn = useMaskedDesktopSignInField(
+    allowPasswordAutofill, browserSupportsTextMask(), registering,
+  );
 
   useEffect(() => {
     setBusy(false);
@@ -284,10 +293,10 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           ) : (
             <Field
               label="رقم الهاتف أو البريد الإلكتروني"
-              name="login"
+              name={allowPasswordAutofill ? "login" : "employee-identifier"}
               type="text"
               dir="ltr"
-              autoComplete="username"
+              autoComplete={allowPasswordAutofill ? "username" : "off"}
               value={loginId}
               onChange={(event) => setLoginId(event.target.value)}
               required
@@ -297,8 +306,11 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           )}
           <Field
             label="كلمة المرور"
-            name="password"
-            type="password"
+            name={maskedDesktopSignIn ? "employee-secret-entry" : "password"}
+            type={maskedDesktopSignIn ? "text" : "password"}
+            className={maskedDesktopSignIn ? "auth-desktop-masked-secret" : ""}
+            spellCheck={false}
+            autoCapitalize="off"
             autoComplete={allowPasswordAutofill
               ? (registering ? "new-password" : "current-password")
               : "off"}
