@@ -29,6 +29,7 @@ import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
 import {
   allowPasswordAutofillOnDevice,
   compactDesktopTextSecret,
+  browserSupportsTextMask,
   rememberLoginIdentifier,
   savedLoginIdentifier,
 } from "../device-login-policy";
@@ -160,7 +161,9 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const [loginId, setLoginId] = useState(savedLoginIdentifier);
   const [passwordReady, setPasswordReady] = useState(false);
   const allowPasswordAutofill = allowPasswordAutofillOnDevice();
-  const desktopTextSecret = compactDesktopTextSecret(allowPasswordAutofill, registering);
+  const desktopTextSecret = compactDesktopTextSecret(
+    allowPasswordAutofill, registering, browserSupportsTextMask(),
+  );
 
   useEffect(() => {
     setBusy(false);
@@ -305,7 +308,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
             label="كلمة المرور"
             name={desktopTextSecret ? "employee-secret-entry" : "password"}
             type={desktopTextSecret ? "text" : "password"}
-            className={desktopTextSecret ? "auth-desktop-short-secret" : ""}
+            className={desktopTextSecret ? "auth-desktop-masked-secret" : ""}
             dir={desktopTextSecret ? "ltr" : undefined}
             spellCheck={false}
             autoCapitalize="off"
