@@ -1583,14 +1583,13 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("englishName", event.target.value)}
             />
-            <div className="field">
+            <div className="field floating-ready" data-label-raised={fields.shortcut ? "true" : "false"}>
               <label htmlFor="item-shortcut">الاختصارات (خانة أو خانتان)</label>
               <input id="item-shortcut" type="text" maxLength={2}
                 autoComplete="off" dir="ltr" disabled={disabled}
                 value={fields.shortcut}
                 aria-invalid={shortcutDuplicate}
                 aria-describedby={shortcutDuplicate ? "item-shortcut-error" : undefined}
-                placeholder="مثل A أو 5. أو ++"
                 onChange={event => edit("shortcut", Array.from(normalizeDigits(event.target.value.toUpperCase())).slice(0,2).join(""))}
               />
               {shortcutDuplicate && <small id="item-shortcut-error" role="alert"
