@@ -593,7 +593,7 @@ function ItemSearch({
     queryKey: ["commerce", user?.id, companyId, "item-search", search, page],
     queryFn: ({ signal }) =>
       api<Page<Item>>(
-        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "10", sort: "saleTimes:desc,code:asc", fast: "1" })}`,
+        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "20", sort: "saleQuantityPlusStock:desc,code:asc", fast: "1" })}`,
         { signal },
       ),
     networkMode: "always",
@@ -830,7 +830,7 @@ function ItemSearch({
                 size="compact"
                 variant="ghost"
                 disabled={
-                  page * 10 >= (result.data?.total ?? 0) || result.isFetching
+                  page * 20 >= (result.data?.total ?? 0) || result.isFetching
                 }
                 onClick={() => {
                   setPage(page + 1);
