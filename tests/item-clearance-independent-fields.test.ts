@@ -9,6 +9,8 @@ const page = readFileSync("apps/web/src/pages/ItemsPages.tsx", "utf8");
 const editor = page.slice(page.indexOf("function ItemEditor({"), page.indexOf("function UnitPreview({"));
 const contracts = readFileSync("packages/contracts/src/items.ts", "utf8");
 const route = readFileSync("apps/api/src/routes-items.ts", "utf8");
+const migration = readFileSync("apps/api/migrations/20261101_clearance_independent_fields.sql", "utf8");
+const posting = readFileSync("apps/api/src/services/commerce.ts", "utf8");
 
 test("each clearance field is independently accepted with previously empty values",()=>{
   const patches = [
@@ -54,3 +56,13 @@ test("editor autosaves changes without three-field prerequisite and handles stal
   assert.match(route,/تغيّرت قيمة حقل/);
   assert.doesNotMatch(editor,/توجد نسخة أحدث من هذا الصنف\. تعديلاتك باقية هنا/);
 });
+test("DB releases only the obsolete cross-field constraint; invoice posting remains gated",()=>{
+  assert.match(migration,/ALTER TABLE items DROP CONSTRAINT IF EXISTS item_clearance_period;/);
+  assert.doesNotMatch(migration,/DROP CONSTRAINT.*commission_rate/);
+  assert.match(posting,/rate !== "0" &&/);
+  assert.match(posting,/item.clearance_from_text &&/);
+  assert.match(posting,/item.clearance_to_text &&/);
+  assert.match(posting,/input.documentDate >= item.clearance_from_text &&/);
+  assert.match(posting,/input.documentDate <= item.clearance_to_text/);
+});
+
