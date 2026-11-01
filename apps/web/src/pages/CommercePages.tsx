@@ -1706,21 +1706,23 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       normalizeDigits(line.quantity.trim()).startsWith("-")
     ) {
       const quantity = -BigInt(normalizeDigits(line.quantity.trim()));
-      const [whole, fraction = ""] = line.originalSource.discount.split(".");
-      const originalDiscount =
+      const originalWasNegative = line.originalSource.discount.startsWith("-");
+      const [whole, fraction = ""] = (originalWasNegative
+        ? line.originalSource.discount.slice(1) : line.originalSource.discount).split(".");
+      const originalMagnitude =
         BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
       const step = 10n ** BigInt(6 - (currency?.decimalPlaces ?? 6));
       const denominator = BigInt(line.originalSource.quantity) * step;
-      const numerator = originalDiscount * quantity;
-      const value =
+      const numerator = originalMagnitude * quantity;
+      const magnitude =
         (numerator / denominator +
           ((numerator % denominator) * 2n >= denominator ? 1n : 0n)) *
         step;
-      const digits = (value % 1_000_000n)
+      const digits = (magnitude % 1_000_000n)
         .toString()
         .padStart(6, "0")
         .replace(/0+$/, "");
-      inheritedDiscount = `${value ? "-" : ""}${value / 1_000_000n}${digits ? `.${digits}` : ""}`;
+      inheritedDiscount = `${magnitude > 0n && !originalWasNegative ? "-" : ""}${magnitude / 1_000_000n}${digits ? `.${digits}` : ""}`;
     }
     return {
       quantity: line.quantity,
