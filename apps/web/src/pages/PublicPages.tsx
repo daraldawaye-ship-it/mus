@@ -959,15 +959,11 @@ function UserList() {
         title="المستخدمون"
         description="إدارة الهوية العامة فقط؛ صلاحيات الشركة تأتي من الموظف الفعال داخلها."
         actions={
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void list.refetch();
-            }}
-            disabled={list.loading}
-          >
-            تحديث
-          </Button>
+          <div className="actions">
+            <Link to="/users/last-present" className="button button-secondary">آخر المتواجدين</Link>
+            <Button variant="secondary"
+              onClick={() => { void list.refetch(); }} disabled={list.loading}>تحديث</Button>
+          </div>
         }
       />
       <Card>
