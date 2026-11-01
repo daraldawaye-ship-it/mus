@@ -77,7 +77,12 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
       else failures = 0;
       if (req.method === "HEAD") res.status(response.status).end();
       else res.status(response.status).json(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    } catch {
+    } catch (error) {
+      // Report only the transport error category, never URL, signed headers or user data.
+      const cause = error instanceof Error ? error.cause : undefined;
+      const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string"
+        ? cause.code : error instanceof Error ? error.name : "unknown";
+      console.error("MEDICINE_MARKET_UPSTREAM_FAILURE", code);
       failures++; if (failures >= 3) openUntil = Date.now() + 10000;
       // No fallback to the primary DB, and no automatic write retry after uncertain delivery.
       throw unavailable();
