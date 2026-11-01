@@ -63,6 +63,7 @@ import { AppSetup } from "./AppSetup";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
 import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
+import { AttendanceCurrentlyPresent } from "./AttendanceCurrentlyPresent";
 import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
@@ -70,7 +71,7 @@ import { ItemCardBottomSheetHost } from "./ItemCardBottomSheetHost";
 import { reportPrintLayout } from "./reportPrintLayout";
 import { CompanyLetterheadPage } from "./pages/CompanyLetterheadPage";
 import { useCompanyIdleLogout } from "./idle-logout";
-import { Button, Card, Dialog, Notice } from "./ui";
+import { Button, Card, Dialog, Notice, PageHeader } from "./ui";
 import {
   AuthPage,
   HomePage,
@@ -322,6 +323,7 @@ const companySections = [
   "memo-feature-rules",
   "memo-detail",
   "attendance",
+  "attendance-current",
   "wallet",
   "reward-tasks",
   "wallet-settings",
@@ -402,6 +404,7 @@ function Navigation({
     "public.profile": <CircleUserRound size={17} />,
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
+    "public.last-present": <FileClock size={17} />,
     "public.general-table": <TableProperties size={17} />,
     "public.explanations-reader": <BookOpen size={17}/>,
     "public.explanations-editor": <FileText size={17}/>,
@@ -420,6 +423,7 @@ function Navigation({
     "company.control": <Settings2 size={17} />,
     "company.employees": <Users size={17} />,
     "company.attendance": <FileClock size={17} />,
+    "company.attendance-current": <Users size={17} />,
     "company.wallet": <Wallet size={17} />,
     "company.reward-tasks": <Coins size={17} />,
     "company.wallet-settings": <Wallet size={17} />,
@@ -647,6 +651,16 @@ function CompanyContent({
         <Suspense fallback={<Notice>جارٍ تحميل الحضور والانصراف…</Notice>}>
           <AttendancePage key={context.company.id} context={context} />
         </Suspense>
+      );
+    case "attendance-current":
+      return (
+        <>
+          <PageHeader title="المحضرون حاليًا"
+            description="آخر حضور وانصراف لكل موظف فعال. المحضرون باللون الأخضر والأحدث حضورًا أولًا." />
+          <Card>
+            <AttendanceCurrentlyPresent companyId={context.company.id} />
+          </Card>
+        </>
       );
     case "wallet":
       return (
@@ -1235,7 +1249,7 @@ function Workspace() {
                   </Protected>
                 }
               />
-              <Route path="/users/last-present" element={<Protected><PageRouteGuard pageKey="public.users"><LastPresentUsersPage /></PageRouteGuard></Protected>} />
+              <Route path="/users/last-present" element={<Protected><PageRouteGuard pageKey="public.last-present"><LastPresentUsersPage /></PageRouteGuard></Protected>} />
               <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsContinuousReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />

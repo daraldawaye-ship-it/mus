@@ -161,6 +161,15 @@ page(
   "إدارة الحسابات العامة؛ لا تمنح عضوية في شركة.",
 );
 page(
+  "public.last-present",
+  "آخر المتواجدين",
+  "إدارة المنصة",
+  "/users/last-present",
+  { view: admin },
+  "آخر نشاط للمستخدمين في الموقع العام بالدقائق والساعات والأيام، مع التاريخ الفعلي.",
+  { parentKey: "public.users", type: "report", keywords: ["نشاط المستخدمين", "آخر تواجد", "المتواجدون", "آخر دخول"] },
+);
+page(
   "public.archive",
   "أرشيف المستندات والمرفقات",
   "الأرشيف",
@@ -478,6 +487,15 @@ page(
   "/companies/:companyId/attendance",
   { view: member, create: member, edit: general },
   "تسجيل الحضور والانصراف وإعداد دوام الموظفين والسجل اليومي.",
+);
+page(
+  "company.attendance-current",
+  "المحضرون حاليًا",
+  "الموظفون",
+  "/companies/:companyId/attendance-current",
+  { view: general },
+  "جميع الموظفين الفعالين مع آخر حضور وانصراف؛ المحضرون أولًا بحسب أحدث حضور.",
+  { parentKey: "company.attendance", type: "report", keywords: ["حاضر", "انصراف", "محضر", "دوام", "آخر حضور"] },
 );
 page(
   "company.accounts",
