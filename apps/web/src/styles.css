@@ -382,7 +382,21 @@ legend {
   font-size: 12px;
 }
 @media (max-width: 680px) {
-  .connection-mode-button { font-size: 10px; padding: 4px; }
+  /* An offline reconnect action is an icon on phones. The long Arabic label
+     used to force the entire toolbar (and consequently the overview) sideways. */
+  .connection-mode-control {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  .connection-mode-button {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    justify-content: center;
+    padding: 4px;
+    color: var(--warning-text);
+  }
+  .connection-mode-label,
   .connection-mode-indicator { display: none; }
 }
 @media print { .connection-mode-control { display: none !important; } }
@@ -1410,8 +1424,14 @@ ul {
   .sidebar {
     display: none;
   }
+  .workspace {
+    max-width: 100%;
+    min-width: 0;
+  }
   .workspace-body {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     margin: 0;
   }
   .topbar {
@@ -1437,6 +1457,26 @@ ul {
   .topbar-actions,
   .topbar-start {
     gap: 5px;
+    min-width: 0;
+  }
+  .topbar-start {
+    flex: 1 1 0;
+    overflow: hidden;
+  }
+  .topbar-actions {
+    flex: 0 0 auto;
+    max-width: 75%;
+  }
+  .scope-title,
+  .scope-title > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .scope-title {
+    flex: 1 1 auto;
+  }
+  .scope-title strong {
+    max-width: 100%;
   }
   .scope-mark {
     display: none;
@@ -1450,8 +1490,24 @@ ul {
     font-size: 11px;
   }
   .main-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 15px 12px;
     gap: 13px;
+  }
+  /* Prevent a wide notice or attendance toolbar from making the viewport
+     wider; individual wide data tables still scroll in their own wrappers. */
+  .main-content > *,
+  .main-content .card-grid,
+  .main-content .card,
+  .company-attendance-actions,
+  .company-attendance-actions > .notice {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .company-attendance-actions > .notice {
+    overflow-wrap: anywhere;
   }
   .page-heading {
     align-items: flex-start;
