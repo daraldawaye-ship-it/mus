@@ -277,7 +277,7 @@ export function UserMenu({
                   canViewPage("public.last-present")
                 ) && <div className="user-menu-grid-note">لا توجد خيارات أخرى مصرح بها.</div>}
               </div>
-            )
+            )}
           </div>
           <div className="user-menu-tabs-footer user-menu-settings-actions" role="group"
             aria-label="إجراءات المستخدم والتحديث">
