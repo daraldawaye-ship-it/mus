@@ -1896,7 +1896,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     setDraftSaving(true);
     setError("");
     try {
-      const saved = await savePurchaseWorkDraft(
+      await savePurchaseWorkDraft(
         user.id, companyId, captured, captured.lines.filter(line => !!line.itemId).length,
         captured.supplier?.name ?? captured.account?.name ?? "فاتورة مشتريات",
         activePurchaseDraftId ?? undefined,
