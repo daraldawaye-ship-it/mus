@@ -14,6 +14,7 @@ import { authenticateOfflineAccount, clearOfflineSession, enrollOfflineAccount, 
 import { clearOfflineSharedGrants, lookupDownloadedDoctors, restoreOfflineSharedGrants, reuseAuthorizedRead, shareAuthorizedRead, sharedIdentity } from "./offline-shared";
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
+import { readApiJson, UnexpectedApiResponse } from "./api-response";
 import { offlineUser } from "./offline-storage";
 import { allowPasswordAutofillOnDevice } from "./device-login-policy";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
@@ -72,8 +73,10 @@ export async function api<T>(
     response = await fetch(`/api${path}`, {
       method,
       credentials: "same-origin",
+      cache: path.startsWith("/auth/") ? "no-store" : "default",
       signal: options.signal,
       headers: {
+        "Accept": "application/json",
         ...(mutation ? { "Content-Type": "application/json" } : {}),
         ...(mutation && csrf ? { "X-CSRF-Token": csrf } : {}),
       },
@@ -86,8 +89,24 @@ export async function api<T>(
     if (saved !== undefined) return saved;
     throw error;
   }
+  let data: unknown;
+  try {
+    data = await readApiJson(response);
+  } catch (error) {
+    if (!(error instanceof UnexpectedApiResponse)) throw error;
+    // A proxy/maintenance HTML page must not be treated as a successful
+    // login, a wrong password or a valid API payload. The local authenticated
+    // offline path can still be used if this device was enrolled previously.
+    markNetworkFailure();
+    const saved = await fallbackRead();
+    if (saved !== undefined) return saved;
+    throw new ApiFailure(
+      error.message,
+      response.status >= 500 ? response.status : 503,
+      "invalid_api_response",
+    );
+  }
   markNetworkSuccess();
-  const data: unknown = response.status === 204 ? {} : await response.json();
   if (!response.ok) {
     const error = (data as { error?: { message?: string; code?: string } })
       .error;
