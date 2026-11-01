@@ -2324,7 +2324,6 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       setSavedOfflineInvoice(null);
       setPrintReady(false);
       setSavedInvoice(response.invoice);
-      focus(lineInputId(next, "item-search"));
     } catch (error) {
       if (!guard.isCurrent()) return;
       const uncertain = !(error instanceof ApiFailure) || error.status >= 500;
