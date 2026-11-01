@@ -252,6 +252,9 @@ export const itemPatchSchema = itemFields
 export const itemFieldPatchSchema = z.object({
   changes: itemFields.partial().strict(),
   expected: itemFields.partial().strict(),
+  // Explicit owner-selected behavior for item cards only: the final committed
+  // write to the same field wins. The ordinary compare-and-set mode remains.
+  mode: z.literal("last-write-wins").optional(),
 }).strict().superRefine((value, context) => {
   const changed = Object.keys(value.changes);
   if (!changed.length) {

@@ -1296,8 +1296,6 @@ function ItemEditor({
   const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
   const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
     !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
-  const [conflict, setConflict] = useState(false);
-  const [conflictDetails, setConflictDetails] = useState<{latest: Item; fields: string[]} | null>(null);
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
@@ -1318,7 +1316,7 @@ function ItemEditor({
       editedFields.current.set(field, draftVersion.current);
       lastEditedField.current = field;
       blockedFields.current.delete(field);
-      setConflictDetails(previous => previous?.fields.includes(field) ? null : previous);
+      // Any new change uses last-committed-write-wins on this field.
     }
     setError("");
     setSavedMessage("");
@@ -1347,7 +1345,7 @@ function ItemEditor({
       return next;
     });
   }
-  async function save(event?: FormEvent, confirmedCurrent?: Item, onlyField?: EditableItemField) {
+  async function save(event?: FormEvent, onlyField?: EditableItemField) {
     event?.preventDefault();
     if (closingRef.current || readOnly || !manage || savingRequest.current ||
         (item && !dirty)) return;
@@ -1355,7 +1353,7 @@ function ItemEditor({
     const selectedField: EditableItemField | null = item
       ? onlyField
         ? editedFields.current.has(onlyField) &&
-            (!blockedFields.current.has(onlyField) || !!confirmedCurrent) ? onlyField : null
+            !blockedFields.current.has(onlyField) ? onlyField : null
         : [...editedFields.current.keys()].find(key => !blockedFields.current.has(key)) ?? null
       : null;
     if (item && !selectedField) return;
@@ -1397,15 +1395,13 @@ function ItemEditor({
     if (item) {
       const changes: Record<string, unknown> = {};
       const expected: Record<string, unknown> = {};
-      const previous = (confirmedCurrent ?? lastSavedSnapshot.current) as unknown as Record<string, unknown>;
+      const previous = lastSavedSnapshot.current as unknown as Record<string, unknown>;
       const current = parsed.data as unknown as Record<string, unknown>;
       // Only the requested/oldest unblocked field leaves this snapshot.
       for (const field of selectedField ? [selectedField] : []) {
-        const oldValue = confirmedCurrent
-          ? previous[field] ?? null
-          : pendingExpected.current.has(field)
-            ? pendingExpected.current.get(field) ?? null
-            : previous[field] ?? null;
+        const oldValue = pendingExpected.current.has(field)
+          ? pendingExpected.current.get(field) ?? null
+          : previous[field] ?? null;
         const newValue = current[field] ?? null;
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
           changes[field] = newValue;
@@ -1420,7 +1416,7 @@ function ItemEditor({
         setDirty(editedFields.current.size > 0);
         return;
       }
-      const fieldPayload = itemFieldPatchSchema.safeParse({ changes, expected });
+      const fieldPayload = itemFieldPatchSchema.safeParse({ changes, expected, mode: "last-write-wins" });
       if (!fieldPayload.success) {
         if (selectedField) blockedFields.current.add(selectedField);
         setError(fieldPayload.error.issues[0]?.message ?? "تحقق من قيمة الحقل.");
@@ -1444,51 +1440,10 @@ function ItemEditor({
     savingRequest.current = true;
     setSaving(true);
     try {
-      let result: {item: Item};
-      try {
-        result = await api<{item: Item}>(
-          `/companies/${companyId}/items${item ? `/${item.id}` : ""}`,
-          { method: item ? "PATCH" : "POST", body: savePayload, signal: guard.signal },
-        );
-      } catch (reason) {
-        const message = errorMessage(reason);
-        const changedField = item && reason instanceof ApiFailure &&
-          reason.status === 409 &&
-          (message.includes("تم تعديل هذا الحقل") || message.includes("تغيّرت قيمة حقل"));
-        if (!changedField || !item) throw reason;
-        // The editor stays untouched while we inspect a current database copy.
-        const latest = await api<{item: Item}>(
-          `/companies/${companyId}/items/${item.id}`, {signal: guard.signal},
-        );
-        if (!guard.isCurrent()) return;
-        const payload = savePayload as {changes: Record<string,unknown>; expected: Record<string,unknown>};
-        const actual = latest.item as unknown as Record<string,unknown>;
-        const same = (a:unknown,b:unknown) =>
-          JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-        const conflicting = Object.keys(payload.changes).filter(field =>
-          !same(actual[field],payload.expected[field]) &&
-          !same(actual[field],payload.changes[field]));
-        if (conflicting.length) {
-          if (selectedField) blockedFields.current.add(selectedField);
-          lastSavedSnapshot.current = latest.item;
-          setConflictDetails({latest:latest.item,fields:conflicting});
-          setConflict(true);
-          setError("");
-          return;
-        }
-        const changes: Record<string,unknown> = {};
-        const expected: Record<string,unknown> = {};
-        for (const [field,value] of Object.entries(payload.changes)) {
-          if (same(actual[field],value)) continue;
-          changes[field]=value;
-          expected[field]=actual[field] ?? null;
-        }
-        // Retry once only; never overwrite a different server value silently.
-        result = Object.keys(changes).length
-          ? await api<{item: Item}>(`/companies/${companyId}/items/${item.id}`,
-              {method:"PATCH",body:{changes,expected},signal:guard.signal})
-          : latest;
-      }
+      const result = await api<{item: Item}>(
+        `/companies/${companyId}/items${item ? `/${item.id}` : ""}`,
+        { method: item ? "PATCH" : "POST", body: savePayload, signal: guard.signal },
+      );
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
@@ -1517,10 +1472,6 @@ function ItemEditor({
         });
       } else if (draftVersion.current === savedVersion) setDirty(false);
       setUnknownCreation(false);
-      if (!conflictDetails || (selectedField && conflictDetails.fields.includes(selectedField))) {
-        setConflict(false);
-        setConflictDetails(null);
-      }
       if (item) {
         savedRevision.current = result.item.revision;
         savedItem.current = result.item;
@@ -1538,9 +1489,6 @@ function ItemEditor({
         if (!item && (!(reason instanceof ApiFailure) || reason.status >= 500))
           setUnknownCreation(true);
         if (item && selectedField) blockedFields.current.add(selectedField);
-        if (item && reason instanceof ApiFailure && reason.status === 409 &&
-            !String(errorMessage(reason)).includes("الاختصار"))
-          setConflict(true);
         setError(errorMessage(reason));
       }
     } finally {
@@ -1549,7 +1497,7 @@ function ItemEditor({
     }
   }
   async function stampStocktakeRequiredAt() {
-    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || unknownCreation || conflict || savingRequest.current) return;
+    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || unknownCreation || savingRequest.current) return;
     setStocktakeBusy(true);
     setError("");
     setSavedMessage("");
@@ -1605,8 +1553,6 @@ function ItemEditor({
       blockedFields.current.clear();
       setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
-      setConflict(false);
-      setConflictDetails(null);
       if (onReloaded) onReloaded(result.item);
       else onSaved(result.item, "تم تحميل النسخة الحالية من الصنف.");
     } catch (reason) {
@@ -1632,7 +1578,7 @@ function ItemEditor({
       if (!typing) void save();
     }, 350);
     return () => window.clearTimeout(timeout);
-  }, [item, manage, readOnly, dirty, saving, conflict, picker, error,
+  }, [item, manage, readOnly, dirty, saving, picker, error,
     fields, currency, agent, supplier, supplierManuallyTouched]);
 
   function leaveEditor() {
@@ -1681,32 +1627,6 @@ function ItemEditor({
           الصنف.
         </Notice>
       )}
-      {conflictDetails && (
-        <Notice tone="warning">
-          تغيّرت قيمة {conflictDetails.fields.map(field =>
-            ({commissionRate:"نسبة التصريف",clearanceFrom:"بداية التصريف",
-              clearanceTo:"نهاية التصريف"} as Record<string,string>)[field] ?? field).join("، ")}
-          على جهاز آخر. تعديلاتك باقية هنا ولم تُحذف.
-          <div className="form-actions">
-            <Button variant="secondary" disabled={saving}
-              onClick={() => void save(undefined, conflictDetails.latest,
-                conflictDetails.fields[0] as EditableItemField)}>
-              حفظ تعديلي رغم التعارض
-            </Button>
-            <Button variant="ghost" disabled={saving}
-              onClick={() => setReloadConfirmation(true)}>
-              مراجعة النسخة الحالية
-            </Button>
-          </div>
-        </Notice>
-      )}
-      {conflict && !conflictDetails && !error && (
-        <Notice tone="warning">توجد نسخة أحدث، لكن تعديلاتك باقية هنا.
-          <Button variant="ghost" disabled={saving} onClick={() => setReloadConfirmation(true)}>
-            مراجعة النسخة الحالية
-          </Button>
-        </Notice>
-      )}
       <form ref={formElement} onSubmit={(event) => void save(event)}
         onBlurCapture={event => {
           if (closingRef.current || !item || readOnly || !manage) return;
@@ -1715,7 +1635,7 @@ function ItemEditor({
                 event.target instanceof HTMLSelectElement)) return;
           // Version checks retain any changes typed while this request runs.
           const lastField = lastEditedField.current;
-          window.setTimeout(() => void save(undefined, undefined, lastField ?? undefined), 80);
+          window.setTimeout(() => void save(undefined, lastField ?? undefined), 80);
         }}>
         <div className="form-actions item-save-actions">
           {manage && !readOnly && !item && (
@@ -2209,7 +2129,7 @@ function ItemEditor({
                     placeholder="لم يُطلب الجرد بعد"
                     aria-label="تاريخ ووقت طلب جرد الصنف" />
                   <Button variant="secondary" size="compact" type="button"
-                    disabled={disabled || dirty || saving || stocktakeBusy || conflict || optionBusy}
+                    disabled={disabled || dirty || saving || stocktakeBusy || optionBusy}
                     onClick={() => void stampStocktakeRequiredAt()}>
                     {stocktakeBusy ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
                   </Button>

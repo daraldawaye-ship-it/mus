@@ -891,7 +891,7 @@ export function itemRoutes(pool: Pool): Router {
           const before = itemDTO(
             await masterRow(client, itemSelect, "i", companyId, rowId),
           );
-          if (fieldPatch) {
+          if (fieldPatch && fieldPatch.mode !== "last-write-wins") {
             const existing = before as unknown as Record<string, unknown>;
             const clearanceNames: Record<string, string> = {
               commissionRate: "نسبة التصريف",
