@@ -960,16 +960,20 @@ export function itemRoutes(pool: Pool): Router {
               conflict("هذا الصنف محدد أورجنال في كرت التركيب؛ ألغِ تعيين الأورجنال قبل نقل الصنف أو فك ارتباطه.");
           }
           await checkItemReferences(client, companyId, fields, before);
-          const values: unknown[] = itemFieldColumns.map(
-            ([field]) => fields[field],
-          );
-          values.push(companyId, rowId);
+          // The SQL itself writes only the touched columns for field patches;
+          // unrelated values remain untouched even at the column level.
+          const columnsToUpdate = fieldPatch
+            ? itemFieldColumns.filter(([field]) =>
+                Object.prototype.hasOwnProperty.call(fieldPatch.changes, field))
+            : itemFieldColumns;
+          const values: unknown[] = columnsToUpdate.map(([field]) => fields[field]);
+          values.push(companyId, rowId, before.revision);
           const supplierChanged = fieldPatch
             ? Object.prototype.hasOwnProperty.call(fieldPatch.changes, "supplierAccountId")
             : input.supplierAccountId !== undefined;
           const changedRow = await client.query(
-            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${supplierChanged ? "false" : "supplier_inferred"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 1} AND id=$${values.length} AND revision=$${values.length + 1}`,
-            [...values, before.revision],
+            `UPDATE items SET ${columnsToUpdate.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${supplierChanged ? "false" : "supplier_inferred"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 2} AND id=$${values.length - 1} AND revision=$${values.length}`,
+            values,
           );
           if (!changedRow.rowCount)
             conflict("تم تعديل الصنف أثناء الحفظ؛ أعد تحميل السجل");
