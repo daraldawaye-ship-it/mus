@@ -60,6 +60,7 @@ import { UserMenu } from "./UserMenu";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
+import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
 import { CompanyPrintHeader } from "./CompanyPrintHeader";
@@ -1321,6 +1322,7 @@ function Workspace() {
           </footer>
         </div>
       </div>
+      <AppUpdatePrompt />
       <Dialog
         open={drawer}
         onClose={() => setDrawer(false)}
