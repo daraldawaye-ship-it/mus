@@ -591,7 +591,7 @@ export async function savedRead<T>(path: string): Promise<T | undefined> {
   if(type==="items" && qs.get("sort")?.startsWith("saleQuantityPlusStock:desc")) {
     const rank=await readSaleRankSnapshot(userId,companyId);
     if(rank?.priorities)
-      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,rank.priorities,qs.get("q")??""));
+      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,rank.priorities!,qs.get("q")??""));
   } else if(type==="items" && qs.get("sort")?.startsWith("saleTimes:desc")) {
     const rank=await readSaleRankSnapshot(userId,companyId);
     if(rank) filtered.sort((a,b)=>compareItemsBySavedSales(a,b,rank.scores,qs.get("q")??""));
