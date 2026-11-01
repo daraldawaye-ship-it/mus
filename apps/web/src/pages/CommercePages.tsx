@@ -19,9 +19,9 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { CompanyPrintHeader, useCompanyLetterhead } from "../CompanyPrintHeader";
+import { CompanyPrintHeader, useCompanyLetterhead, usePreparedCompanyLetterhead } from "../CompanyPrintHeader";
 import { StagedInvoicesPanel } from "../StagedInvoiceViews";
-import { InvoicePrintSheet } from "../InvoicePrintSheet";
+import { InvoicePrintSheet, type PrintableInvoice } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
 import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
@@ -1415,6 +1415,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   // the user's gesture; hidden iframes and async cross-frame window.print()
   // are unreliable, especially on mobile browsers.
   const letterheadForPrint = useCompanyLetterhead(companyId);
+  // Prefetch the protected letterhead image while the cashier is entering
+  // the invoice. It then remains available for printing when the line drops.
+  usePreparedCompanyLetterhead(companyId,letterheadForPrint.data?.imageUrl);
   const [printReady, setPrintReady] = useState(false);
   // Track the actual invoice row because identical items may appear in several rows.
   const activeLineKey = useRef<string | null>(null);
@@ -1469,25 +1472,7 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
   );
   const [error, setError] = useState("");
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
-  useEffect(() => {
-    setPrintReady(false);
-    if (!savedInvoice || letterheadForPrint.isPending) return;
-    const image = document.querySelector<HTMLImageElement>(
-      ".invoice-inline-print .company-print-letterhead-image",
-    );
-    // The company might intentionally have only a textual letterhead.
-    if (!image || image.complete) {
-      setPrintReady(true);
-      return;
-    }
-    const ready = () => setPrintReady(true);
-    image.addEventListener("load", ready);
-    image.addEventListener("error", ready);
-    return () => {
-      image.removeEventListener("load", ready);
-      image.removeEventListener("error", ready);
-    };
-  }, [savedInvoice, letterheadForPrint.isPending, letterheadForPrint.data?.imageUrl]);
+  const [savedOfflineInvoice, setSavedOfflineInvoice] = useState<PrintableInvoice | null>(null);
   const [saving, setSaving] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const [localQueued, setLocalQueued] = useState(false);
@@ -2145,6 +2130,8 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     setSaleCustomerMatched(false);
     setError("");
     setSavedInvoice(null);
+    setSavedOfflineInvoice(null);
+    setPrintReady(false);
     setItemNotice("");
     // Only after explicit confirmation: refresh changed names/prices before
     // the next invoice, without downloading the whole item catalog.
@@ -2153,6 +2140,46 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     }));
     focus(lineInputId(first, "item-search"));
   }
+  /** A successful local queue and a confirmed server POST both start a new
+   * clean invoice. The receipt stays mounted outside the editable form.
+   */
+  function clearAfterSavedInvoice() {
+    const next = emptyLine();
+    pending.current = null;
+    setLocalQueued(false);
+    setHeaderItem(null);
+    onChooseItem(null);
+    setLines([next]);
+    setAccount(initialInvoiceAccount(kind, defaultCashbox, configuredPurchaseAccount));
+    setSupplier(null);
+    setSupplierReceiptNumber("");
+    accountManuallyChosen.current = false;
+    setOriginal(null);
+    setShowOriginalPicker(false);
+    setDocumentDate(today());
+    setDescription("");
+    setDiscount("0");
+    setDoctorPromptOpen(false);
+    setDoctorSelected(null);
+    setDoctorActiveIndex(-1);
+    setDoctorQuery("");
+    setDoctorError("");
+    setSaleCustomerQuery("");
+    setSaleCustomerNumber("");
+    setSaleCustomerName("");
+    setSaleCustomerMatched(false);
+    // Keep a user's currency, branch and showroom for the next sale, exactly
+    // like a confirmed online save; clear only manual selection flags.
+    currencyManuallyChosen.current = false;
+    branchManuallyChosen.current = false;
+    locationManuallyChosen.current = false;
+    automaticCurrencyId.current = currency?.id ?? null;
+    automaticBranchId.current = branch?.id ?? null;
+    automaticLocationId.current = location?.id ?? null;
+    setItemNotice("");
+    focus(lineInputId(next, "item-search"));
+  }
+
   async function save(event?: FormEvent, selectedDoctorId?: number, freeTextDoctorName = "") {
     event?.preventDefault();
     if (saving || editingItem || localQueued || !guard.isCurrent()) return;
@@ -2228,21 +2255,44 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     const submission = payload;
     async function saveOnDevice(): Promise<boolean> {
       if (!user?.id) return false;
+      if (!totals) {
+        setError("تعذر حساب إجمالي الفاتورة للطباعة المحلية؛ راجع الكميات والأسعار والخصم.");
+        return false;
+      }
+      const localPrint:PrintableInvoice = {
+        kind, returning:selectedLines.every(line=>
+          normalizeDigits(line.quantity.trim()).startsWith("-")),
+        documentDate:submission.documentDate,
+        counterpartyAccountCode:account?.code ?? "",
+        counterpartyAccountName:account?.name ?? "",
+        supplierReceiptNumber:kind==="purchase" ? supplierReceiptNumber : "",
+        supplierAccountName:kind==="purchase" ? selectedSupplier?.name ?? null : null,
+        branchName:branch?.name ?? "",
+        locationName:location?.name ?? "",
+        doctorName:kind==="sale" ? doctorSelected?.name ?? enteredDoctorName ?? null : null,
+        currencyCode:currency?.code ?? "",
+        description:submission.description ?? "",
+        gross:totals.gross,discount:totals.discount,total:totals.total,
+        createdByName:user.displayName || user.name,
+        createdAt:new Date().toISOString(),
+        lines:selectedLines.map((line,index)=>({
+          id:index+1,itemName:line.itemName,quantity:line.quantity,
+          unitName:line.unitName,unitPrice:line.unitPrice,
+          expiryDate:line.expiryDate,
+          total:totals.lineTotals[index] ?? "0",
+        })),
+      };
       try {
+        // Await durable IndexedDB storage BEFORE clearing the old invoice.
         await queueOfflineOperation(user.id, companyId, "invoice",
           "/companies/" + companyId + "/invoices", submission);
-        pending.current = null;
+        if (!guard.isCurrent()) return true;
         setUnknown(false);
-        setLocalQueued(true);
-        // A queued invoice must close the doctor picker; its success notice
-        // belongs on the underlying invoice, not a hidden error banner.
-        setDoctorPromptOpen(false);
-        setDoctorSelected(null);
-        setDoctorError("");
-        setDoctorActiveIndex(-1);
-        setDoctorQuery("");
+        clearAfterSavedInvoice();
+        setSavedInvoice(null);
+        setPrintReady(false);
+        setSavedOfflineInvoice(localPrint);
         setError("");
-        setItemNotice("تم حفظ الفاتورة على هذا الجهاز، وستُرحّل باسم هذا الموظف عند عودة الاتصال وتسجيل دخوله. لم تتغير الأرصدة أو المخزون بعد.");
         return true;
       } catch (reason) {
         const message="تعذر حفظ النسخة المحلية: " + errorMessage(reason);
@@ -2252,7 +2302,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       }
     }
     if (isOfflineNow() || sessionRequiresLogin()) {
-      await saveOnDevice();
+      setSaving(true);
+      try { await saveOnDevice(); }
+      finally { if (guard.isCurrent()) setSaving(false); }
       return;
     }
     setSaving(true);
@@ -2268,37 +2320,9 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
       // item selection will fetch fresh data; all financial/stock posting has
       // already committed atomically on the server.
       void invalidate("none").catch(() => undefined);
-      const next = emptyLine();
-      pending.current = null;
-      setHeaderItem(null);
-      onChooseItem(null);
-      setLines([next]);
-      setAccount(initialInvoiceAccount(kind, defaultCashbox, configuredPurchaseAccount));
-      setSupplier(null);
-      setSupplierReceiptNumber("");
-      accountManuallyChosen.current = false;
-      setOriginal(null);
-      setShowOriginalPicker(false);
-      setDocumentDate(today());
-      setDescription("");
-      setDiscount("0");
-      setDoctorPromptOpen(false);
-      setDoctorSelected(null);
-      setDoctorActiveIndex(-1);
-      setDoctorQuery("");
-      setDoctorError("");
-      setSaleCustomerQuery("");
-      setSaleCustomerNumber("");
-      setSaleCustomerName("");
-      setSaleCustomerMatched(false);
-      // Reuse currency, branch and stock location for efficient consecutive
-      // invoices, but always clear the old customer/supplier.
-      currencyManuallyChosen.current = false;
-      branchManuallyChosen.current = false;
-      locationManuallyChosen.current = false;
-      automaticCurrencyId.current = currency?.id ?? null;
-      automaticBranchId.current = branch?.id ?? null;
-      automaticLocationId.current = location?.id ?? null;
+      clearAfterSavedInvoice();
+      setSavedOfflineInvoice(null);
+      setPrintReady(false);
       setSavedInvoice(response.invoice);
       focus(lineInputId(next, "item-search"));
     } catch (error) {
@@ -3157,36 +3181,35 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
             </small>
           )}
         </footer>
-        {savedInvoice && (
+        {(savedInvoice || savedOfflineInvoice) && (
           <div className="commerce-saved-confirmation">
             <Notice tone="success">
-            تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.{" "}
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={!printReady}
-              onClick={() => window.print()}
-            >
-              <Printer size={16} />
-              {printReady ? "طباعة الفاتورة المحفوظة" : "تجهيز طباعة الفاتورة…"}
-            </Button>{" "}
-            <Link
-              to={`${invoicePath(companyId, savedInvoice.id)}?print=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              فتح نسخة الطباعة
-            </Link>
+              {savedInvoice
+                ? <>تم حفظ وترحيل الفاتورة رقم <bdi>{savedInvoice.number}</bdi> بنجاح.</>
+                : <>تم حفظ الفاتورة على الجهاز بنجاح، وتم تصفيرها للفاتورة التالية.
+                    ستُرحّل تلقائيًا عند عودة الاتصال. لم تتغير الأرصدة أو المخزون بعد.</>}
+              {" "}
+              <Button type="button" variant="ghost" disabled={!printReady}
+                onClick={() => window.print()}>
+                <Printer size={16} />
+                {printReady ? "طباعة الفاتورة المحفوظة" : "تجهيز طباعة الفاتورة…"}
+              </Button>
+              {savedInvoice && (
+                <>{" "}<Link to={`${invoicePath(companyId, savedInvoice.id)}?print=1`}
+                  target="_blank" rel="noopener noreferrer">فتح نسخة الطباعة</Link></>
+              )}
             </Notice>
           </div>
         )}
       </form>
-      {savedInvoice && (
+      {(savedInvoice || savedOfflineInvoice) && (
         <div className="commerce-print-document invoice-inline-print">
           <InvoicePrintSheet
             context={context}
-            invoice={savedInvoice}
-            returning={savedInvoice.returning}
+            invoice={(savedInvoice ?? savedOfflineInvoice)!}
+            returning={(savedInvoice ?? savedOfflineInvoice)!.returning}
+            pendingSync={!!savedOfflineInvoice}
+            onLetterheadReady={() => setPrintReady(true)}
           />
         </div>
       )}
