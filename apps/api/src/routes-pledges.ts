@@ -27,11 +27,11 @@ const pledgeSchema = z.object({
 
 /** Narrow, atomic cashier-only pledge movement.
  * Does not grant finance.manage or unrestricted voucher creation. */
-const pledgeCashTransferSchema = z.object({
+export const pledgeCashTransferSchema = z.object({
   idempotencyKey: z.uuid(),
   mode: z.enum(["pay", "receive"]),
   amount: z.string().trim().transform(normalizeDigits)
-    .pipe(z.string().regex(/^\\d{1,22}(?:\\.\\d{1,6})?$/)),
+    .pipe(z.string().regex(/^\d{1,22}(?:\.\d{1,6})?$/,"المبلغ يجب أن يكون رقمًا موجبًا حتى 22 رقمًا و6 خانات كسرية")),
   notes: z.string().trim().max(400).default(""),
 }).strict();
 
