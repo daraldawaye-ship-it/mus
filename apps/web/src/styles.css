@@ -6709,3 +6709,23 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .presence-time-relative { font-size: 12px; }
   .presence-time-date { font-size: 10px; }
 }
+
+
+/* Device-local purchase work drafts: no accounting or inventory posting. */
+.purchase-work-drafts {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-block-end: 10px;
+  background: var(--surface);
+}
+.purchase-work-drafts-actions { justify-content: flex-start; flex-wrap: wrap; gap: 7px; }
+.purchase-work-drafts-list { display: flex; flex-direction: column; margin-top: 8px; gap: 6px; max-height: 320px; overflow-y: auto; }
+.purchase-work-draft { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 8px; }
+.purchase-work-draft > span { flex: 1 1 160px; overflow-wrap: anywhere; font-size: 12px; }
+@media (max-width: 680px) {
+  .purchase-work-drafts { padding: 7px; margin-bottom: 7px; }
+  .purchase-work-drafts-actions { gap: 4px; }
+  .purchase-work-draft { gap: 5px; }
+}
+@media print { .purchase-work-drafts { display: none !important; } }
