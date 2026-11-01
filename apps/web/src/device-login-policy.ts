@@ -21,26 +21,17 @@ export function allowPasswordAutofillOnDevice():boolean {
     navigator.platform,navigator.maxTouchPoints);
 }
 
-/** A desktop Chrome/Edge/Safari text input can be visually masked with
- * -webkit-text-security so the login form does not expose a native password
- * input to browser password managers. Never allow an unmasked text fallback:
- * on unsupported browsers retain the native type=password.
- *
- * A text field still exposes its value to scripts and browser extensions,
- * exactly like a password field: this is a UX heuristic, not a security
- * boundary or a way to erase credentials already saved in Chrome.
+/** The shared-desktop login input intentionally has a non-password type
+ * and a very narrow viewport (CSS). This reduces Chrome's opportunity to
+ * associate an input with a stored password. The letters are real plain text
+ * while typed; a narrow field is not secret masking or a security guarantee.
+ * Registration and installed phone app retain native password field types.
  */
-export function useMaskedDesktopSignInField(
-  allowNativePasswordManager: boolean,
-  supportsTextMask: boolean,
+export function compactDesktopTextSecret(
+  nativePasswordManagerAllowed: boolean,
   registering: boolean,
 ): boolean {
-  return !registering && !allowNativePasswordManager && supportsTextMask;
-}
-export function browserSupportsTextMask(): boolean {
-  return typeof CSS !== "undefined" &&
-    typeof CSS.supports === "function" &&
-    CSS.supports("-webkit-text-security", "disc");
+  return !registering && !nativePasswordManagerAllowed;
 }
 
 /** This store contains ONLY the optional login identifier, NEVER credentials. */
