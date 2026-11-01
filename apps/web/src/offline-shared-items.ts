@@ -10,6 +10,12 @@ const invoiceIndexKey=(userId:number,companyId:number)=>userId+":"+companyId;
 function invalidateInvoiceIndex(userId:number,companyId:number) {
   invoiceIndexes.delete(invoiceIndexKey(userId,companyId));
 }
+export function invalidateLocalInvoiceIndex(userId:number,companyId:number):void {
+  invalidateInvoiceIndex(userId,companyId);
+  window.dispatchEvent(new CustomEvent("alraesy-local-invoice-index-changed",{
+    detail:{userId,companyId},
+  }));
+}
 const normalized=(value:unknown)=>String(value??"").normalize("NFKC").toLocaleLowerCase().trim();
 const invoiceSearchFields=["name","englishName","compositionArabicName",
   "compositionEnglishName","searchKeys","code","barcode","shortcut"] as const;
