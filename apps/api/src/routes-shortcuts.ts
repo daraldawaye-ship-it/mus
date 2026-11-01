@@ -24,7 +24,7 @@ export function shortcutRoutes(pool: Pool): Router {
     const companyId=optionalId(req.query.companyId);
     const result=await transaction(pool,async client=>{
       if(companyId!==2)
-        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ ONLY");
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const user=await currentActor(client,actor(req),false);
       const entries=await directoryEntries(client,user,companyId);
       const allowed=new Set(entries.filter(entry=>
@@ -75,7 +75,7 @@ export function shortcutRoutes(pool: Pool): Router {
              SELECT DISTINCT key FROM unnest(
                user_page_shortcuts.invoice_defaults_seen ||
                EXCLUDED.invoice_defaults_seen
-             ) AS key
+             ) AS keys(key)
            ),
            updated_at=now()
          RETURNING page_keys`,
