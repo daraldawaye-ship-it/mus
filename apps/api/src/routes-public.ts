@@ -25,20 +25,17 @@ import { deny, missing, HttpError } from "./errors.ts";
 import { passwordHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
+import { recordUserPresence } from "./services/user-presence.ts";
 
 export function publicRoutes(pool: Pool): Router {
   const router = Router();
   // Lightweight foreground activity signal; never infer attendance from it.
   router.post("/presence/heartbeat", handler(async (req, res) => {
     const user = actor(req);
-    await pool.query(`
-      INSERT INTO user_presence(user_id,last_seen_at)
-      VALUES($1,clock_timestamp())
-      ON CONFLICT(user_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at
-      WHERE user_presence.last_seen_at < clock_timestamp()-interval '50 seconds'`,
-      [user.id]);
+    await recordUserPresence(pool, user.id);
     res.json({ ok: true });
   }));
+  // Presence aggregates authenticated general and company activity, never attendance.
   // Only site owner/admin can view other users' last activity.
   router.get("/users/last-present", handler(async (req, res) => {
     publicAdmin(actor(req));
