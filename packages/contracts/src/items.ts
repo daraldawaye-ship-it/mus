@@ -200,10 +200,10 @@ function validateNames(
 ) {
   if (!value.hasExpiry && value.nearestExpiryDate)
     context.addIssue({ code: "custom", path: ["nearestExpiryDate"], message: "لا يمكن تعيين انتهاء لصنف لا يتتبع الانتهاء" });
-  if (value.commissionRate !== "0" && (!value.clearanceFrom || !value.clearanceTo))
-    context.addIssue({ code: "custom", path: ["clearanceFrom"], message: "حدد بداية ونهاية فترة التصريف لتفعيل العمولة" });
-  if (value.clearanceFrom && value.clearanceTo && value.clearanceFrom > value.clearanceTo)
-    context.addIssue({ code: "custom", path: ["clearanceTo"], message: "تاريخ نهاية التصريف لا يسبق بدايته" });
+  // Each clearance field is an independent, persistent card field.
+  // A positive rate and either date can be saved before the other two fields.
+  // An inverted or incomplete period is only an inactive draft: the invoice
+  // settlement must require a positive rate and a valid inclusive date range.
   if (value.factor2 > 1 && !value.unit2Name)
     context.addIssue({
       code: "custom",

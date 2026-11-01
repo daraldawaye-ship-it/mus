@@ -893,9 +893,14 @@ export function itemRoutes(pool: Pool): Router {
           );
           if (fieldPatch) {
             const existing = before as unknown as Record<string, unknown>;
+            const clearanceNames: Record<string, string> = {
+              commissionRate: "نسبة التصريف",
+              clearanceFrom: "تاريخ بداية التصريف",
+              clearanceTo: "تاريخ نهاية التصريف",
+            };
             for (const [field, expected] of Object.entries(fieldPatch.expected)) {
               if (JSON.stringify(existing[field] ?? null) !== JSON.stringify(expected ?? null))
-                conflict("تم تعديل هذا الحقل بواسطة مستخدم آخر؛ حمّل النسخة الحالية لمراجعة قيمته");
+                conflict(`تغيّرت قيمة حقل «${clearanceNames[field] ?? field}» بعد فتح الكرت؛ راجع القيمة الحديثة قبل حفظ تعديلك.`);
             }
           } else if (fullInput!.revision !== before.revision) {
             conflict("تم تعديل الصنف بواسطة مستخدم آخر؛ أعد تحميل السجل قبل الحفظ");

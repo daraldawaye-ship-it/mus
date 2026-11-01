@@ -1290,6 +1290,7 @@ function ItemEditor({
   const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
     !!adjustmentPage.actionAccess.view && !!adjustmentPage.actionAccess.create;
   const [conflict, setConflict] = useState(false);
+  const [conflictDetails, setConflictDetails] = useState<{latest: Item; fields: string[]} | null>(null);
   const [createKey] = useState(() => crypto.randomUUID());
   const submittedCreate = useRef<ItemInput | null>(null);
   const manage = itemsAccess(context, true);
@@ -1331,10 +1332,10 @@ function ItemEditor({
       return next;
     });
   }
-  async function save(event?: FormEvent) {
+  async function save(event?: FormEvent, confirmedCurrent?: Item) {
     event?.preventDefault();
     if (closingRef.current || readOnly || !manage || savingRequest.current ||
-        (item && (!dirty || conflict))) return;
+        (item && (!dirty || (conflict && !confirmedCurrent)))) return;
     if (shortcutDuplicate) {
       setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
       return;
@@ -1372,7 +1373,7 @@ function ItemEditor({
     if (item) {
       const changes: Record<string, unknown> = {};
       const expected: Record<string, unknown> = {};
-      const previous = lastSavedSnapshot.current as unknown as Record<string, unknown>;
+      const previous = (confirmedCurrent ?? lastSavedSnapshot.current) as unknown as Record<string, unknown>;
       const current = parsed.data as unknown as Record<string, unknown>;
       for (const field of editedFields.current.keys()) {
         const oldValue = previous[field] ?? null;
@@ -1392,14 +1393,49 @@ function ItemEditor({
     savingRequest.current = true;
     setSaving(true);
     try {
-      const result = await api<{ item: Item }>(
-        `/companies/${companyId}/items${item ? `/${item.id}` : ""}`,
-        {
-          method: item ? "PATCH" : "POST",
-          body: savePayload,
-          signal: guard.signal,
-        },
-      );
+      let result: {item: Item};
+      try {
+        result = await api<{item: Item}>(
+          `/companies/${companyId}/items${item ? `/${item.id}` : ""}`,
+          { method: item ? "PATCH" : "POST", body: savePayload, signal: guard.signal },
+        );
+      } catch (reason) {
+        const message = errorMessage(reason);
+        const changedField = item && reason instanceof ApiFailure &&
+          reason.status === 409 &&
+          (message.includes("تم تعديل هذا الحقل") || message.includes("تغيّرت قيمة حقل"));
+        if (!changedField || !item) throw reason;
+        // The editor stays untouched while we inspect a current database copy.
+        const latest = await api<{item: Item}>(
+          `/companies/${companyId}/items/${item.id}`, {signal: guard.signal},
+        );
+        if (!guard.isCurrent()) return;
+        const payload = savePayload as {changes: Record<string,unknown>; expected: Record<string,unknown>};
+        const actual = latest.item as unknown as Record<string,unknown>;
+        const same = (a:unknown,b:unknown) =>
+          JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        const conflicting = Object.keys(payload.changes).filter(field =>
+          !same(actual[field],payload.expected[field]) &&
+          !same(actual[field],payload.changes[field]));
+        if (conflicting.length) {
+          setConflictDetails({latest:latest.item,fields:conflicting});
+          setConflict(true);
+          setError("");
+          return;
+        }
+        const changes: Record<string,unknown> = {};
+        const expected: Record<string,unknown> = {};
+        for (const [field,value] of Object.entries(payload.changes)) {
+          if (same(actual[field],value)) continue;
+          changes[field]=value;
+          expected[field]=actual[field] ?? null;
+        }
+        // Retry once only; never overwrite a different server value silently.
+        result = Object.keys(changes).length
+          ? await api<{item: Item}>(`/companies/${companyId}/items/${item.id}`,
+              {method:"PATCH",body:{changes,expected},signal:guard.signal})
+          : latest;
+      }
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
@@ -1410,6 +1446,7 @@ function ItemEditor({
       } else if (draftVersion.current === savedVersion) setDirty(false);
       setUnknownCreation(false);
       setConflict(false);
+      setConflictDetails(null);
       if (item) {
         savedRevision.current = result.item.revision;
         savedItem.current = result.item;
@@ -1479,6 +1516,8 @@ function ItemEditor({
       editedFields.current.clear();
       setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
+      setConflict(false);
+      setConflictDetails(null);
       if (onReloaded) onReloaded(result.item);
       else onSaved(result.item, "تم تحميل النسخة الحالية من الصنف.");
     } catch (reason) {
@@ -1552,15 +1591,28 @@ function ItemEditor({
           الصنف.
         </Notice>
       )}
-      {conflict && (
+      {conflictDetails && (
         <Notice tone="warning">
-          توجد نسخة أحدث من هذا الصنف. تعديلاتك باقية هنا؛{" "}
-          <Button
-            variant="ghost"
-            disabled={saving}
-            onClick={() => setReloadConfirmation(true)}
-          >
-            تحميل النسخة الحالية
+          تغيّرت قيمة {conflictDetails.fields.map(field =>
+            ({commissionRate:"نسبة التصريف",clearanceFrom:"بداية التصريف",
+              clearanceTo:"نهاية التصريف"} as Record<string,string>)[field] ?? field).join("، ")}
+          على جهاز آخر. تعديلاتك باقية هنا ولم تُحذف.
+          <div className="form-actions">
+            <Button variant="secondary" disabled={saving}
+              onClick={() => void save(undefined, conflictDetails.latest)}>
+              حفظ تعديلي رغم التعارض
+            </Button>
+            <Button variant="ghost" disabled={saving}
+              onClick={() => setReloadConfirmation(true)}>
+              مراجعة النسخة الحالية
+            </Button>
+          </div>
+        </Notice>
+      )}
+      {conflict && !conflictDetails && !error && (
+        <Notice tone="warning">توجد نسخة أحدث، لكن تعديلاتك باقية هنا.
+          <Button variant="ghost" disabled={saving} onClick={() => setReloadConfirmation(true)}>
+            مراجعة النسخة الحالية
           </Button>
         </Notice>
       )}
@@ -1591,15 +1643,7 @@ function ItemEditor({
           >
             {embedded ? "إغلاق" : "العودة للقائمة"}
           </Button>
-          {item && manage && (
-            <Button
-              variant="secondary"
-              disabled={saving || unknownCreation}
-              onClick={() => setReloadConfirmation(true)}
-            >
-              تحميل النسخة الحالية
-            </Button>
-          )}
+
         </div>
         <Card title="بيانات الصنف">
           <div className="item-fields-grid">
@@ -1922,8 +1966,12 @@ function ItemEditor({
               onChange={(event) => edit("clearanceTo", event.target.value)}
             />
           </div>
-          <small className="muted">
-            يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
+          <small className="muted" role="status">
+            {Number(fields.commissionRate) > 0 && fields.clearanceFrom && fields.clearanceTo &&
+             fields.clearanceFrom <= fields.clearanceTo
+              ? "التصريف مكتمل: تُحسب العمولة فقط لفواتير المبيعات داخل الفترة المحددة، شاملة يومي البداية والنهاية."
+              : "يُحفظ كل حقل من حقول التصريف وحده. التصريف غير مفعّل، ولا تُحسب أي عمولة حتى تكتمل النسبة الموجبة وتاريخا البداية والنهاية الصحيحان."}
+            {" "}لا يُدفع المستحق نقديًا دون اعتماده وحساب المستفيد.
           </small>
         </Card>
         <Card title="بيانات أخرى">

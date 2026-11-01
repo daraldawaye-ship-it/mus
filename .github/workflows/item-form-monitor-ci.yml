@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'apps/api/migrations/099_product_form_classification.sql'
+      - 'apps/api/migrations/20261101_clearance_independent_fields.sql'
       - 'apps/api/src/routes-items.ts'
       - 'apps/api/src/repositories/items.ts'
       - 'apps/api/src/services/items.ts'
@@ -15,6 +16,7 @@ on:
       - 'packages/contracts/src/items.ts'
       - 'packages/contracts/src/pages.ts'
       - 'tests/commerce.test.ts'
+      - 'tests/item-clearance-independent-fields.test.ts'
       - '.github/workflows/item-form-monitor-ci.yml'
   workflow_dispatch:
 permissions:
@@ -49,3 +51,5 @@ jobs:
       - run: npm run build
       - name: Item composition classification and company-scoped mismatch report
         run: node --import tsx --test --test-name-pattern="product form choices are independent" tests/commerce.test.ts
+      - name: Independent clearance field persistence, eligibility and conflict regression
+        run: node --import tsx --test tests/item-clearance-independent-fields.test.ts

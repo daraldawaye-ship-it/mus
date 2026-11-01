@@ -13,7 +13,8 @@ export type ClearanceNoticeCode =
 
 function configured(value: ItemClearanceSettings): boolean {
   return Number(value.commissionRate) > 0 &&
-    !!value.clearanceFrom && !!value.clearanceTo;
+    !!value.clearanceFrom && !!value.clearanceTo &&
+    value.clearanceFrom <= value.clearanceTo;
 }
 function activeToday(value: ItemClearanceSettings, today: string): boolean {
   return configured(value) &&
