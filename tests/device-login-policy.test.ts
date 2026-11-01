@@ -40,17 +40,24 @@ test("desktop form remembers only identity, suppresses password autofill and cle
   assert.match(storage,/crypto\.subtle\.deriveBits/);
 });
 
-test("desktop login field is short unmasked plain text; installed mobile remains native password", () => {
-  assert.equal(compactDesktopTextSecret(false, false), true);
-  assert.equal(compactDesktopTextSecret(true, false), false);
-  assert.equal(compactDesktopTextSecret(false, true), false);
+test("desktop Chrome uses full-width bullet-masked text without native password autofill", () => {
+  assert.equal(compactDesktopTextSecret(false, false, true), true);
+  assert.equal(compactDesktopTextSecret(false, false, false), false,
+    "Unsupported browsers must fall back to a masked native password input");
+  assert.equal(compactDesktopTextSecret(true, false, true), false,
+    "The installed mobile app continues using its native password input");
+  assert.equal(compactDesktopTextSecret(false, true, true), false,
+    "Registration keeps a native password input");
   const page = readFileSync("apps/web/src/pages/PublicPages.tsx", "utf8");
+  const policy = readFileSync("apps/web/src/device-login-policy.ts", "utf8");
   const style = readFileSync("apps/web/src/styles.css", "utf8");
   assert.match(page,/const desktopTextSecret = compactDesktopTextSecret/);
+  assert.match(page,/browserSupportsTextMask\(\)/);
+  assert.match(policy,/CSS\.supports\("-webkit-text-security", "disc"\)/);
   assert.match(page,/type=\{desktopTextSecret \? "text" : "password"\}/);
   assert.match(page,/name=\{desktopTextSecret \? "employee-secret-entry" : "password"\}/);
-  assert.match(page,/className=\{desktopTextSecret \? "auth-desktop-short-secret" : ""\}/);
-  assert.match(style,/\.field\.auth-desktop-short-secret input\s*\{/);
-  assert.match(style,/width: calc\(2ch \+ 20px\)/);
-  assert.doesNotMatch(style,/\.auth-desktop-short-secret[^}]*-webkit-text-security/);
+  assert.match(page,/className=\{desktopTextSecret \? "auth-desktop-masked-secret" : ""\}/);
+  assert.match(style,/\.field\.auth-desktop-masked-secret input\s*\{/);
+  assert.match(style,/width: 100%;/);
+  assert.match(style,/-webkit-text-security: disc;/);
 });
