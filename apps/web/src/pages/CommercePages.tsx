@@ -2976,8 +2976,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                           )}
                           {kind==="sale" && line.sourceItem && (() => {
                             const rate=saleClearanceRate(line.sourceItem,documentDate);
-                            return rate ? <small className="commerce-search-clearance-label">
-                              تصريف {rate}% — يُحسب اعتماد التصريف عند ترحيل الفاتورة
+                            return rate ? <small className="commerce-search-clearance-label commerce-sale-line-clearance-label">
+                              تصريف {rate}%
                             </small> : null;
                           })()}
                         </td>

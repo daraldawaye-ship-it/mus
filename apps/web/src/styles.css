@@ -2742,6 +2742,14 @@ ul {
   line-height: inherit;
   background: transparent;
 }
+/* Short, secondary clearance hint on a sales invoice row only. The item
+   search result style stays unchanged so its name/price remain readable. */
+.commerce-sale-line-clearance-label {
+  display: block;
+  font-size: 0.78em;
+  font-weight: 500;
+  line-height: 1.2;
+}
 .commerce-search-item-stock,
 .commerce-search-item-price {
   direction: ltr;

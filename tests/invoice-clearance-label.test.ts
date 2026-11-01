@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { saleClearanceRate } from "../apps/web/src/invoice-clearance-label.ts";
 
 const item = {
@@ -27,4 +28,14 @@ test("sales item search hides inactive, expired, invalid or incomplete clearance
   assert.equal(saleClearanceRate(item, ""), null);
   assert.equal(saleClearanceRate(item, "2026-10-17T00:00:00Z"), null);
   assert.equal(saleClearanceRate({...item,commissionRate:"2.5000"}, "2026-10-17"), "2.5");
+});
+
+// Prevent expanding a sales invoice row with the item name or posting details.
+test("sales invoice clearance hint is concise and smaller than its row text", () => {
+  const source = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
+  const styles = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(source, /commerce-search-clearance-label commerce-sale-line-clearance-label/);
+  assert.match(source, /تصريف \{rate\}%/);
+  assert.doesNotMatch(source, /تصريف \{rate\}% — يُحسب اعتماد التصريف عند ترحيل الفاتورة/);
+  assert.match(styles, /\.commerce-sale-line-clearance-label\s*\{[^}]*font-size:\s*0\.78em/);
 });
