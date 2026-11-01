@@ -3,6 +3,16 @@ import { amountSchema, documentDateSchema } from "./finance.ts";
 import { normalizeDigits } from "./masters.ts";
 
 const id = z.number().int().positive().max(2_147_483_647);
+/** Invoice header discount alone accepts negative additional amounts. Financial
+ * document debits, credits, item prices and other amounts remain nonnegative. */
+export const invoiceDiscountSchema = z.string().trim()
+  .transform((value) => normalizeDigits(value).replace(/٫/g, "."))
+  .pipe(z.string().regex(
+    /^-?\d{1,22}(?:\.\d{1,6})?$/,
+    "الخصم مبلغ رقمي موجب أو سالب حتى 22 رقمًا صحيحًا و6 كسور",
+  ))
+  .transform((value) => value === "-0" ? "0" : value.replace(/^(-?)0+(?=\d)/, "$1"));
+
 export const invoiceKinds = ["sale", "purchase"] as const;
 export type InvoiceKind = (typeof invoiceKinds)[number];
 export const invoiceKindLabels: Record<InvoiceKind, string> = {
@@ -49,7 +59,7 @@ export const invoiceSchema = z
     saleCustomerName: z.string().trim().max(240).default(""),
     supplierReceiptNumber: z.string().trim().max(100).default(""),
     description: z.string().trim().max(1000).default(""),
-    discount: amountSchema.default("0"),
+    discount: invoiceDiscountSchema.default("0"),
     lines: z.array(invoiceLineSchema).min(1).max(100),
   })
   .strict()
@@ -171,8 +181,11 @@ export interface Invoice {
   lines: InvoiceLine[];
 }
 function units(value: string): bigint {
-  const [whole, fraction = ""] = value.split(".");
-  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
+  const negative = value.startsWith("-");
+  const [whole, fraction = ""] = (negative ? value.slice(1) : value).split(".");
+  const magnitude = BigInt(whole) * 1_000_000n +
+    BigInt(fraction.padEnd(6, "0"));
+  return negative ? -magnitude : magnitude;
 }
 function amount(value: bigint): string {
   const negative = value < 0n;
@@ -204,21 +217,29 @@ export function calculateInvoiceTotals(
   });
   const gross = grossLines.reduce((sum, value) => sum + value, 0n);
   const positiveGross = grossLines.reduce((sum, value) => sum + (value > 0n ? value : 0n), 0n);
-  const discountUnits = units(amountSchema.parse(discount));
+  const discountUnits = units(invoiceDiscountSchema.parse(discount));
   if (discountUnits % step !== 0n || discountUnits > positiveGross)
     throw new Error("الخصم يتجاوز إجمالي السطور الموجبة أو دقة العملة");
-  const shares = grossLines.map((value) =>
-    positiveGross === 0n || value <= 0n ? 0n : ((discountUnits * value) / positiveGross / step) * step,
+  if (positiveGross === 0n && discountUnits !== 0n)
+    throw new Error("الخصم يتطلب سطورًا موجبة");
+  // Allocate the absolute magnitude first. Negative discount is a separately
+  // credited extra amount, spread across positive sale lines for consistent
+  // line totals and monetary clearance; returns retain their original rule.
+  const magnitude = discountUnits < 0n ? -discountUnits : discountUnits;
+  const positiveShares = grossLines.map((value) =>
+    positiveGross === 0n || value <= 0n ? 0n :
+      ((magnitude * value) / positiveGross / step) * step,
   );
-  let remaining =
-    discountUnits - shares.reduce((sum, value) => sum + value, 0n);
-  for (let index = 0; remaining > 0n && index < shares.length; index++) {
-    if (shares[index] + step <= grossLines[index]) {
-      shares[index] += step;
+  let remaining = magnitude - positiveShares.reduce((sum, value) => sum + value, 0n);
+  for (let index = 0; remaining > 0n && index < positiveShares.length; index++) {
+    if (grossLines[index] > 0n &&
+        (discountUnits < 0n || positiveShares[index] + step <= grossLines[index])) {
+      positiveShares[index] += step;
       remaining -= step;
     }
   }
   if (remaining !== 0n) throw new Error("تعذر توزيع الخصم");
+  const shares = positiveShares.map(value => discountUnits < 0n ? -value : value);
   for (const [index, line] of lines.entries()) {
     if (quantities[index] >= 0n || line.discount === undefined) continue;
     const text = normalizeDigits(line.discount.trim()).replace(/٫/g, ".");
