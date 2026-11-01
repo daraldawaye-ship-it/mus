@@ -1,4 +1,4 @@
-import { normalizeDigits } from "../../../../packages/contracts/src/masters.ts";
+import { normalizeDigits } from "../../../packages/contracts/src/masters.ts";
 
 /** Return null to reject the keystroke/paste entirely (letters, symbols,
  * excess precision or oversized numbers). Numeric fields never become blank.
