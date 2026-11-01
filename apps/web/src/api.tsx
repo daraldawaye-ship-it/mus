@@ -15,6 +15,7 @@ import { clearOfflineSharedGrants, lookupDownloadedDoctors, restoreOfflineShared
 import { lookupSharedItem } from "./offline-shared-items";
 import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connection-mode";
 import { offlineUser } from "./offline-storage";
+import { allowPasswordAutofillOnDevice } from "./device-login-policy";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -175,6 +176,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     if (navigator.onLine && !(error instanceof TypeError) &&
         !(error instanceof ApiFailure && error.status >= 500)) return false;
+    if (!allowPasswordAutofillOnDevice()) {
+      // A shared desktop may retain user-scoped offline card snapshots but
+      // must NEVER silently reopen the last employee on an offline restart.
+      // An employee can still enter their password against the salted local
+      // verifier. Installed phones retain existing offline resume behavior.
+      if (epoch.current !== request) return false;
+      csrf = null;
+      setOfflineUser(null);
+      sharedIdentity(null);
+      setSession({user:null,csrf:null,pendingLogoutRedirect:false});
+      setRequiresOnlineLogin(false);
+      setOfflineMode(true);
+      setError(null);
+      setLoading(false);
+      return true;
+    }
     const user = await readOfflineSession().catch(() => null);
     if (!user || epoch.current !== request) return false;
     csrf = null;
