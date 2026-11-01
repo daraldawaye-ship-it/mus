@@ -50,6 +50,7 @@ import {
 } from "./repositories/items.ts";
 import { currencyDTO } from "./repositories/masters.ts";
 import { audit } from "./services/audit.ts";
+import { itemClearanceNotice } from "./services/item-clearance-notices.ts";
 import {
   conflict,
   masterPage,
@@ -992,6 +993,21 @@ export function itemRoutes(pool: Pool): Router {
               { field, label, value: oldValues[field] ?? null },
               { field, label, value: newValues[field] ?? null },
               companyId,
+            );
+          }
+          // Enqueue a single event for this committed revision. The existing
+          // notification system delivers it asynchronously; item-card editing
+          // does not wait for recipients, templates or push delivery.
+          const clearanceNotice = itemClearanceNotice(before, next, next,
+            user.displayName || user.name);
+          if (clearanceNotice) {
+            await client.query(
+              `INSERT INTO item_clearance_notification_jobs
+               (company_id,item_id,item_revision,notification_code,title,message)
+               VALUES($1,$2,$3,$4,$5,$6)
+               ON CONFLICT(company_id,item_id,item_revision) DO NOTHING`,
+              [companyId,rowId,next.revision,clearanceNotice.code,
+               clearanceNotice.title,clearanceNotice.message],
             );
           }
           return next;
