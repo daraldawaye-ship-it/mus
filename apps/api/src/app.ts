@@ -201,3 +201,5 @@ export async function createApp(options: AppOptions = {}) {
     },
   };
 }
+
+// CI baseline-only marker (no runtime effect): 2026-11-01 medicine-market isolation comparison.
