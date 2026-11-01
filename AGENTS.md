@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+## Item card independent concurrent edits (2026-11-01)
+
+For every existing company item card, the editor's displayed values are a read snapshot. **Never save a whole card for a one-field edit.** Save each independently touched field with an isolated field-level PATCH and its own old value (`pendingExpected`); the baseline must remain pinned while unrelated field saves rehydrate the snapshot. A conflict or validation failure for field A must not block field B; preserve local drafts and only merge fresh server values into untouched controls. On a genuine same-field conflict, never silently clobber the other user's value; allow explicit override or reload. The stocktake timestamp action rechecks revision on an unrelated update. Respect page/item permissions, audit and stock constraints. See `docs/ITEM_CARD_FIELD_CONCURRENCY.md`.
+
+
 ## Invoice suggestion priority (2026-11-01)
 
 Sales and purchase invoice item searches display 20 matches per page. After exact code/barcode matches, the descending order uses **net sold quantity in the rolling month plus available showroom+warehouse stock**, in each item's smallest unit. The total is an internal ranking key, not a visible result column. Monthly quantities come from materialized posted and staged ranking tables, never invoice or daily-activity scans while typing. Server authorization gates sales and stock information. Offline daily rankings maintain a separate scaled priority, retaining saleTimes for older search paths. See docs/INVOICE_ITEM_QUANTITY_STOCK_RANKING.md.
