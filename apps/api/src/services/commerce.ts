@@ -1007,15 +1007,25 @@ export async function createInvoice(
   }
   let discountAccountId: number | null = null;
   if (input.kind === "sale" && discount !== 0n) {
+    // A positive discount is a sales concession (expense). A NEGATIVE
+    // discount adds an amount to the customer's payable, and must credit an
+    // income account, never credit the discount expense account by mistake.
+    const positiveDiscount = discount > 0n;
+    const purpose = positiveDiscount ? "discountAllowed" : "discountEarned";
+    const category = positiveDiscount ? "expense" : "income";
     const link = await client.query(
-      "SELECT a.id FROM account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.purpose='discountAllowed' AND a.active AND a.kind='posting' AND a.category='expense' FOR SHARE OF a",
-      [companyId],
+      `SELECT a.id FROM account_links l JOIN accounts a
+         ON a.company_id=l.company_id AND a.id=l.account_id
+       WHERE l.company_id=$1 AND l.purpose=$2 AND a.active
+         AND a.kind='posting' AND a.category=$3 FOR SHARE OF a`,
+      [companyId,purpose,category],
     );
-    if (!link.rows[0])
-      conflict(
-        "اربط حساب الخصم المسموح به بحساب مصروف حركي فعال قبل ترحيل الخصم",
-      );
-    discountAccountId = link.rows[0].id;
+    if (!link.rows[0] && positiveDiscount)
+      conflict("اربط حساب الخصم المسموح به بحساب مصروف حركي فعال قبل ترحيل الخصم");
+    // Existing companies without a dedicated 'discountEarned' income link
+    // still post safely to their configured sale-income account.
+    discountAccountId = link.rows[0]?.id ??
+      (positiveDiscount ? null : settings.salesAccountId);
   }
   const journalLines: {
     accountId: number;
@@ -1041,7 +1051,8 @@ export async function createInvoice(
   if (input.kind === "sale") {
     add(input.counterpartyAccountId, total, true, "صافي فاتورة المبيعات");
     if (discountAccountId !== null)
-      add(discountAccountId, discount, true, "خصم المبيعات الموزع");
+      add(discountAccountId, abs(discount), discount > 0n,
+        discount > 0n ? "خصم المبيعات الموزع" : "مبلغ إضافي من خصم سالب");
     add(settings.salesAccountId, gross, false, "إجمالي المبيعات");
   } else {
     add(settings.inventoryAccountId, total, true, "صافي تكلفة المشتريات");
