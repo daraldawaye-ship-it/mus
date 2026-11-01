@@ -25,6 +25,9 @@ test("item primary fields stay in the primary section and secondary fields move 
   assert(extras.indexOf("temporarySelection.toggle") >= 0);
   assert(!extras.includes("يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية"));
   assert(!main.includes("اختصار فريد من خانة أو خانتين"));
+  assert(main.includes('className="field floating-ready" data-label-raised={fields.shortcut ? "true" : "false"}'));
+  assert(main.includes('<label htmlFor="item-shortcut">الاختصارات (خانة أو خانتان)</label>'));
+  assert(!main.includes('placeholder="مثل A أو 5. أو ++"'));
 });
 
 test("item image upload does not render the thumbnail explanation", () => {
