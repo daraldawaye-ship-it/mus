@@ -95,9 +95,10 @@ export async function api<T>(
   } catch (error) {
     if (!(error instanceof UnexpectedApiResponse)) throw error;
     // A proxy/maintenance HTML page must not be treated as a successful
-    // login, a wrong password or a valid API payload. The local authenticated
-    // offline path can still be used if this device was enrolled previously.
-    markNetworkFailure();
+    // login, a wrong password or a valid API payload. This *is* an HTTP
+    // response, so do not mark the transport offline: an immediate retry
+    // should still reach the server. Previously enrolled offline accounts
+    // remain available through the login fallback.
     const saved = await fallbackRead();
     if (saved !== undefined) return saved;
     throw new ApiFailure(
