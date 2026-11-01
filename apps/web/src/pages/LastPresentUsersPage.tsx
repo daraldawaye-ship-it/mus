@@ -25,7 +25,7 @@ export function LastPresentUsersPage() {
   if (!permitted) return <Notice tone="error">هذه الصفحة لإدارة الموقع العام فقط.</Notice>;
   return <>
     <PageHeader title="آخر المتواجدين"
-      description="آخر نشاط مسجل للمستخدمين في الموقع العام، وليس سجل الحضور الوظيفي."
+      description="آخر نشاط لأي مستخدم في تطبيق الرئيسي، سواء في العام أو داخل أي شركة. لا يُعد سجل حضور وانصراف."
       actions={<div className="actions">
         <Link className="button button-secondary" to="/users">المستخدمون</Link>
         <Button variant="secondary" onClick={() => void list.refetch()}>تحديث</Button>
