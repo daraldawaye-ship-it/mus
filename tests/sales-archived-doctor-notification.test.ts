@@ -20,3 +20,10 @@ test("each sale gets a distinct notice, including repeated use of one archived d
   assert.equal(first.href, second.href);
   assert.equal(first.eventKey, archivedDoctorSaleNotice(2, doctor, 101, "101").eventKey);
 });
+
+test("archived doctor alert identifies the user who saved the sale", () => {
+  const alert = archivedDoctorSaleNotice(
+    2, { id: 78, name: "جهة مؤرشفة" }, 101, "0000000101", "الموظف المختبر",
+  );
+  assert.match(alert.message, /منشئ الفاتورة: الموظف المختبر/);
+});
