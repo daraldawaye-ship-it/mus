@@ -297,6 +297,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const loginWithPassword = async (login: string, password: string) => {
     const identity=login.trim();
     if (!identity || !password) throw new Error("أدخل الحساب وكلمة المرور");
+    let failedOnlineLogin: ApiFailure | TypeError | null = null;
     if (!isOfflineNow()) {
       try {
         const result=await api<SessionResponse>("/auth/login",{
@@ -310,11 +311,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch(error) {
         if (!(error instanceof TypeError) &&
             !(error instanceof ApiFailure && error.status >= 500)) throw error;
+        failedOnlineLogin = error;
       }
     }
     // An offline login authenticates only against a previous successful
     // server login on this device; it never creates a server session.
-    const offlineUserRecord=await authenticateOfflineAccount(identity,password);
+    let offlineUserRecord: User;
+    try {
+      offlineUserRecord=await authenticateOfflineAccount(identity,password);
+    } catch (error) {
+      // If the server returned HTML and the employee was never enrolled for
+      // offline login, show the actual connectivity failure, not a misleading
+      // message suggesting that the employee's credentials are invalid.
+      if (failedOnlineLogin && error instanceof Error &&
+          error.message.includes("لم يجهز للدخول دون إنترنت")) throw failedOnlineLogin;
+      throw error;
+    }
     const request=++epoch.current;
     freshOnlineLoginRequired=true;
     await setOfflineLoginRequired(true);
