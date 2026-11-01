@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
-import { api, useSession } from "./api";
+import { api, sessionRequiresLogin, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { readOfflineLetterheadImage, saveOfflineLetterheadImage } from "./offline-storage";
 
@@ -38,7 +38,7 @@ export function usePreparedCompanyLetterhead(companyId:number, imageUrl:string|n
     queryFn:async ({signal}):Promise<Blob|null>=>{
       if (!user || !imageUrl || !/^\/api\/media\/[0-9a-f-]{36}\/full$/i.test(imageUrl))
         return null;
-      if (!isOfflineNow()) {
+      if (!isOfflineNow() && !sessionRequiresLogin()) {
         try {
           const response=await fetch(imageUrl,{
             credentials:"same-origin",signal,cache:"default",
