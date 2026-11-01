@@ -522,6 +522,7 @@ function ItemSearch({
   onFinishEntry?: () => void;
 }) {
   const { user } = useSession();
+  const query = value;
   const queryClient = useQueryClient();
   // A completed device catalog serves the cashier without a network roundtrip.
   // Rank/stock snapshots are already prepared; missing snapshots fall back to
