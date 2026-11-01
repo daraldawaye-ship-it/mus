@@ -258,7 +258,7 @@ const itemPatchShape = Object.fromEntries(
     field,
     (schema instanceof z.ZodDefault ? schema.removeDefault() : schema).optional(),
   ]),
-) as Record<keyof typeof itemFields.shape, z.ZodOptional<z.ZodType>>;
+) as unknown as Record<keyof typeof itemFields.shape, z.ZodOptional<z.ZodType>>;
 const singleFieldValues = z.object(itemPatchShape).strict();
 export const itemFieldPatchSchema = z.object({
   changes: singleFieldValues,
