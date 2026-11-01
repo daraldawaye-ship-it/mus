@@ -18,8 +18,9 @@ export function allowedAvatarTabs(
 ): AvatarMenuTab[] {
   if (owner) return ["navigation", "item", "financialAccount", "employee", "tools", "settings"];
   const allowed = new Set(
-    companyId && pages
-      ? pages.filter(page => page.enabled && page.actionAccess.view).map(page => page.key)
+    pages
+      ? pages.filter(page => page.enabled && page.actionAccess.view &&
+          (companyId !== null || page.key === "public.last-present")).map(page => page.key)
       : [],
   );
   const any = (...keys: string[]) => keys.some(key => allowed.has(key));
