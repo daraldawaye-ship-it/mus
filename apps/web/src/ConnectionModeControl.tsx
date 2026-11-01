@@ -25,9 +25,10 @@ export function ConnectionModeControl() {
     <Button size="compact" variant="ghost" disabled={busy}
       className="connection-mode-button"
       onClick={() => void reconnect()}
-      title="التحقق من الاتصال والعودة إلى العمل المباشر">
+      title="التحقق من الاتصال والعودة إلى العمل المباشر"
+      aria-label="العودة إلى وضع الاتصال">
       <WifiOff size={15} aria-hidden="true"/>
-      <span>العودة إلى وضع الاتصال</span>
+      <span className="connection-mode-label">العودة إلى وضع الاتصال</span>
     </Button>
     <span className="connection-mode-indicator" role="status">دون إنترنت</span>
     {warning && <span className="connection-mode-warning" role="status">{warning}</span>}
