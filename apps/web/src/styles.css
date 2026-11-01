@@ -966,6 +966,21 @@ select {
   display: grid;
   gap: 18px;
 }
+/* Shared Windows/macOS login only: the input is type=text, NOT a password
+   or text-security masked field. The viewport shows about two characters;
+   the actual typed value remains complete, scrollable and is sent to the
+   existing authenticated login endpoint. Installed phone apps are unchanged.
+   This is an anti-autofill UI preference, not protection from onlookers. */
+.field.auth-desktop-short-secret input {
+  width: calc(2ch + 20px);
+  max-width: 100%;
+  min-width: 0;
+  font-family: monospace;
+  direction: ltr;
+  text-align: left;
+  letter-spacing: normal;
+}
+
 .notice {
   border: 1px solid currentColor;
   border-radius: 6px;
