@@ -17,16 +17,12 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
     handler(async (req, res) => {
       const data = await readItems(pool, req, async (client, companyId) => {
         const directory = await directoryEntries(client, actor(req), companyId);
-        // A list of item cards must not bypass sales, purchase, or invoice visibility.
-        for (const key of ["company.sales", "company.purchases", "company.invoice", "company.stock-balances", "company.stock-movements"]) {
-          const entry = directory.find((page) => page.key === key);
-          if (!entry?.enabled || !entry.actionAccess.view)
-            throw new HttpError(
-              403,
-              "forbidden",
-              "متابعة التسويات تتطلب صلاحيات عرض الأصناف والفواتير والمخزون.",
-            );
-        }
+        // This is a dedicated read-only stock-count report. Its *own* page
+        // grant is authoritative; do not require unrelated sales, purchase,
+        // ledger or stock-movement pages, especially for sales/purchase staff.
+        const entry = directory.find(page => page.key === "company.settlement-follow-up");
+        if (!entry?.enabled || !entry.actionAccess.view)
+          throw new HttpError(403, "forbidden", "لا تملك صلاحية عرض متابعة التسويات.");
         const configured = await controlValue(client, companyId, "inventory_count_importance");
         const importance = typeof configured === "number" ? configured : 8;
         const query = listQuery(
