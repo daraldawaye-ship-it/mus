@@ -548,7 +548,7 @@ function ItemSearch({
       setSearch(query.trim());
       setPage(1);
       setActive(0);
-    }, 240);
+    }, 100);
     return () => window.clearTimeout(timer);
   }, [query, selected, open]);
   // Do not open a dropdown or send a request for the first two characters.
@@ -600,10 +600,10 @@ function ItemSearch({
     enabled: !!user && expanded && searchCurrent && canSearchInvoiceItem(search),
     staleTime: 30_000,
   });
-  // A cached or in-flight result belongs to the *previous* input until the
-  // current request finishes. Hide it entirely rather than showing disabled,
-  // faded choices that could be mistaken for new matches.
-  const resultsReady = searchCurrent && !result.isFetching && result.isSuccess;
+  // Query cache data is keyed by the EXACT typed search and page. Show
+  // valid cached results immediately even while the same query revalidates;
+  // never display results from a previous or incomplete input.
+  const resultsReady = searchCurrent && result.isSuccess;
   const items = resultsReady ? (result.data?.items ?? []) : [];
   function choose(item: Item) {
     shortcutAttempt.current += 1;
@@ -777,7 +777,7 @@ function ItemSearch({
                     onClick={() => choose(item)}
                     onMouseDown={(event) => event.preventDefault()}
                     disabled={
-                      disabled || result.isFetching || search !== query.trim()
+                      disabled || search !== query.trim()
                     }
                   >
                     <bdi className="commerce-search-item-stock"
