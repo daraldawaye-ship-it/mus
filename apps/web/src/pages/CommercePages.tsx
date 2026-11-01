@@ -66,6 +66,7 @@ import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
+import { enteredInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
 import { isOfflineNow } from "../connection-mode";
@@ -2008,7 +2009,10 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
     );
     focus(lineInputId(row, "original-line"));
   }
-  function changeQuantity(line: DraftLine, value: string) {
+  function changeQuantity(line: DraftLine, rawValue: string) {
+    const entered = enteredInvoiceQuantity(rawValue);
+    if (entered === null) return; // Reject letters, fractional counts and invalid characters.
+    const value = entered;
     const positive =
       /^\d+$/.test(normalizeDigits(value.trim())) &&
       BigInt(normalizeDigits(value.trim())) > 0n;
@@ -3136,7 +3140,11 @@ function InvoiceEditor({ context, onChooseItem }: { context: CompanyContext; onC
               value={hasPositiveLines ? discount : "0"}
               inputMode="decimal"
               disabled={locked || !hasPositiveLines}
-              onChange={(event) => setDiscount(event.target.value)}
+              onChange={(event) => {
+                const entered = enteredInvoiceDiscount(event.target.value);
+                if (entered !== null) setDiscount(entered);
+              }}
+              onBlur={() => setDiscount(current => completedInvoiceDiscount(current))}
               onKeyDown={(event) => {
                 if (kind !== "sale" || event.key !== "Enter" || event.nativeEvent.isComposing) return;
                 event.preventDefault();
