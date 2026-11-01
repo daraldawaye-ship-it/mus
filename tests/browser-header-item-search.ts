@@ -68,7 +68,7 @@ try {
   const result = await response;
   assert.equal(result.status(), 200);
   assert.equal((await result.json()).items[0].id, expected.id);
-  const editButton = page.getByRole("button", { name: "تعديل كرت الصنف" });
+  const editButton = page.getByRole("button", { name: "كرت الصنف" });
   assert.equal(await editButton.isDisabled(), true);
   const option = page.getByRole("option").filter({ hasText: expected.name });
   await option.waitFor();
