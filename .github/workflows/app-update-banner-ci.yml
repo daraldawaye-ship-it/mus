@@ -1,0 +1,35 @@
+name: Deployed app update prompt
+on:
+  push:
+    branches: ['preview/render-2026-10-23']
+    paths:
+      - 'apps/web/src/app-update-version.ts'
+      - 'apps/web/src/AppUpdatePrompt.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/styles.css'
+      - 'tests/app-update-prompt.test.ts'
+      - '.github/workflows/app-update-banner-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/web/src/app-update-version.ts'
+      - 'apps/web/src/AppUpdatePrompt.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/styles.css'
+      - 'tests/app-update-prompt.test.ts'
+      - '.github/workflows/app-update-banner-ci.yml'
+permissions:
+  contents: read
+jobs:
+  check-update-prompt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/app-update-prompt.test.ts
