@@ -44,8 +44,22 @@ test("editor tracks touched fields, submits a field-level patch and rebases afte
   assert.match(editor, /markDirty\("currencyId"\)/);
   assert.match(editor, /markDirty\("supplierAccountId"\)/);
   assert.match(editor, /markDirty\("agentId"\)/);
-  assert.match(editor, /savePayload = \{ changes, expected \}/);
+  assert.match(editor, /savePayload = fieldPayload\.data/);
+  assert.match(editor, /for \(const field of selectedField \? \[selectedField\] : \[\]\)/);
+  assert.match(editor, /itemFieldPatchSchema\.safeParse\(\{ changes, expected \}\)/);
+  assert.match(editor, /blockedFields\.current\.add\(selectedField\)/);
+  assert.match(editor, /setFields\(previous => \{/);
+  assert.match(editor, /lastEditedField\.current/);
   assert.match(editor, /body: savePayload/);
   assert.match(editor, /lastSavedSnapshot\.current = result\.item/);
   assert.doesNotMatch(editor, /body: parsed\.data/);
+});
+
+test("one stale field never blocks saving an independently edited field", () => {
+  assert.match(editor, /\[\.\.\.editedFields\.current\.keys\(\)\]\.find\(key => !blockedFields\.current\.has\(key\)\)/);
+  assert.match(editor, /editedFields\.current\.delete\(selectedField\)/);
+  assert.doesNotMatch(editor, /for \(const \[field, version\] of editedFields\.current\)/);
+  assert.doesNotMatch(editor, /\(conflict && !confirmedCurrent\)/);
+  assert.match(editor, /lastSavedSnapshot\.current = latest\.item/);
+  assert.match(editor, /for \(const key of editedFields\.current\.keys\(\)\)/);
 });
