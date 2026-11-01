@@ -7,7 +7,7 @@ import express, { type ErrorRequestHandler } from "express";
 import type { Pool } from "pg";
 import type { User } from "../packages/contracts/src/index.ts";
 import { createMarketApp } from "../apps/api/src/market/app.ts";
-import { createMarketGateway } from "../apps/api/src/market/gateway.ts";
+import { createMarketGateway, marketGatewayOptions } from "../apps/api/src/market/gateway.ts";
 import { marketVerifier, signMarketRequest } from "../apps/api/src/market/transport.ts";
 import { transferMarket } from "../apps/api/src/market/transfer.ts";
 import { medicineMarketRoutes } from "../apps/api/src/routes-medicine-market.ts";
@@ -153,4 +153,27 @@ test("market overload rejects excess work before auth queries and times out with
   const before = authReads;
   assert.equal((await request(server.url, "GET", "/api/medicine-market/cards")).status, 503);
   assert.equal(authReads, before, "open circuit avoids auth and upstream work");
+});
+
+test("private market Blueprint wiring does not cut over without an explicit enable flag", () => {
+  const vars = ["MARKET_SERVICE_URL", "MARKET_SERVICE_HOSTPORT", "MARKET_SERVICE_ENABLED", "MARKET_SERVICE_SECRET"] as const;
+  const saved = vars.map(key => [key, process.env[key]] as const);
+  try {
+    delete process.env.MARKET_SERVICE_URL;
+    process.env.MARKET_SERVICE_HOSTPORT = "market-private.internal:3000";
+    process.env.MARKET_SERVICE_SECRET = secret;
+    delete process.env.MARKET_SERVICE_ENABLED;
+    assert.equal(marketGatewayOptions(), undefined, "Blueprint provisioning alone cannot activate market isolation");
+    process.env.MARKET_SERVICE_ENABLED = "0";
+    assert.equal(marketGatewayOptions(), undefined);
+    process.env.MARKET_SERVICE_ENABLED = "1";
+    assert.deepEqual(marketGatewayOptions(), { url: "http://market-private.internal:3000", secret });
+    delete process.env.MARKET_SERVICE_HOSTPORT;
+    assert.throws(() => marketGatewayOptions(), /requires MARKET_SERVICE_HOSTPORT/);
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
