@@ -1373,7 +1373,7 @@ function ItemEditor({
       const changes: Record<string, unknown> = {};
       const expected: Record<string, unknown> = {};
       const previous = lastSavedSnapshot.current as unknown as Record<string, unknown>;
-      const current = parsed.data as Record<string, unknown>;
+      const current = parsed.data as unknown as Record<string, unknown>;
       for (const field of editedFields.current.keys()) {
         const oldValue = previous[field] ?? null;
         const newValue = current[field] ?? null;
