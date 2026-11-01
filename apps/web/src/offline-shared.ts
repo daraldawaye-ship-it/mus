@@ -3,9 +3,16 @@
 const dbName = "alraesy-shared-references-v1";
 let identity: number | null = null;
 const grants = new Set<string>();
+// Online local-first reads require a *current session's* authorized response.
+// Old offline grants may still be used offline but never prove live access.
+const liveGrants = new Set<string>();
 export function sharedIdentity(userId: number | null) {
   identity = userId;
   grants.clear();
+  liveGrants.clear();
+}
+export function sharedItemsLiveAllowed(companyId:number,userId:number):boolean {
+  return identity===userId && liveGrants.has(userId+":"+companyId+":options:items");
 }
 const offlineGrantMaxAge = 7 * 24 * 60 * 60 * 1000;
 type OfflineGrant = { userId:number;group:string;savedAt:number };
@@ -138,6 +145,7 @@ export async function shareAuthorizedRead(path:string,data:unknown):Promise<void
   if (!serialized || serialized.length>800_000) return;
   if (current!==identity) return;
   // A successful live GET is the authorization proof for this session.
+  liveGrants.add(current+":"+group);
   if (!grants.has(current+":"+group)) {
     grants.add(current+":"+group);
     await write("grant:"+current+":"+group,{
