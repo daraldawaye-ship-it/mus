@@ -968,7 +968,7 @@ export function itemRoutes(pool: Pool): Router {
             ? Object.prototype.hasOwnProperty.call(fieldPatch.changes, "supplierAccountId")
             : input.supplierAccountId !== undefined;
           const changedRow = await client.query(
-            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=${position + 1}`).join(",")},supplier_inferred=${supplierChanged ? "false" : "supplier_inferred"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=${values.length - 1} AND id=${values.length} AND revision=${values.length + 1}`,
+            `UPDATE items SET ${itemFieldColumns.map(([, column], position) => `${column}=$${position + 1}`).join(",")},supplier_inferred=${supplierChanged ? "false" : "supplier_inferred"},revision=revision+1,updated_at=clock_timestamp() WHERE company_id=$${values.length - 1} AND id=$${values.length} AND revision=$${values.length + 1}`,
             [...values, before.revision],
           );
           if (!changedRow.rowCount)
