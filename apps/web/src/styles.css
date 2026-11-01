@@ -6700,3 +6700,12 @@ a.notification-quick-title:hover { text-decoration: underline; }
 @media (max-width: 680px) {
   .presence-table th, .presence-table td { padding: 7px 8px; font-size: 12px; }
 }
+
+/* Punch reports: prominent relative time, quieter small exact date below. */
+.presence-time-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.presence-time-relative { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.presence-time-date { font-size: 10px; font-weight: 400; color: var(--muted); line-height: 1.35; }
+@media (max-width: 680px) {
+  .presence-time-relative { font-size: 12px; }
+  .presence-time-date { font-size: 10px; }
+}

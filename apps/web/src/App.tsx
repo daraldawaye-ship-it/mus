@@ -656,7 +656,7 @@ function CompanyContent({
       return (
         <>
           <PageHeader title="المحضرون حاليًا"
-            description="آخر حضور وانصراف لكل موظف فعال. المحضرون باللون الأخضر والأحدث حضورًا أولًا." />
+            description="آخر حضور وانصراف وآخر نشاط في النظام لكل موظف؛ المدة بالأيام والساعات والدقائق وفوق التاريخ التفصيلي. المحضرون بالأخضر أولًا." />
           <Card>
             <AttendanceCurrentlyPresent companyId={context.company.id} />
           </Card>

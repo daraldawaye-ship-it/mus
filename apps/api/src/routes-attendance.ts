@@ -140,8 +140,12 @@ export function attendanceRoutes(pool: Pool) {
         SELECT e.id,e.name,
           active.checked_in_at AS open_checked_in_at,
           arrived.checked_in_at AS last_checked_in_at,
-          departed.checked_out_at AS last_checked_out_at
+          departed.checked_out_at AS last_checked_out_at,
+          presence.last_seen_at AS last_app_activity_at
         FROM employees e
+        -- One shared account timestamp for activity anywhere in Alraesy.
+        -- Keep the company boundary via e.company_id and its account link.
+        LEFT JOIN user_presence presence ON presence.user_id=e.user_id
         LEFT JOIN LATERAL (
           SELECT r.checked_in_at FROM attendance_records r
           WHERE r.company_id=e.company_id AND r.employee_id=e.id AND r.checked_out_at IS NULL
@@ -168,6 +172,7 @@ export function attendanceRoutes(pool: Pool) {
         isPresent: !!row.open_checked_in_at,
         lastCheckedInAt: row.last_checked_in_at?.toISOString() ?? null,
         lastCheckedOutAt: row.last_checked_out_at?.toISOString() ?? null,
+        lastActivityAt: row.last_app_activity_at?.toISOString() ?? null,
       })) };
     });
     res.json(result);

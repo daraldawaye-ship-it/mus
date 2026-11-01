@@ -102,3 +102,28 @@ test("the Other tab uses the exact page view permissions and never grants editin
   assert.match(contracts,/"company.attendance-current"[\s\S]*?\{ view: member \}/);
   assert.doesNotMatch(general,/user\.owner \|\| user\.kind === "admin"/);
 });
+
+// Punch times and last app activity each show age above a smaller exact date.
+// All app interactions share the existing user_presence row per linked account.
+test("attendance reports show relative age and small exact date in all three columns", () => {
+  const apiRoute = readFileSync("apps/api/src/routes-attendance.ts", "utf8");
+  const view = readFileSync("apps/web/src/AttendanceCurrentlyPresent.tsx", "utf8");
+  const css = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(apiRoute, /LEFT JOIN user_presence presence ON presence\.user_id=e\.user_id/);
+  assert.match(apiRoute, /WHERE e\.company_id=\$1 AND e\.active/);
+  assert.match(apiRoute, /lastActivityAt: row\.last_app_activity_at\?\.toISOString\(\) \?\? null/);
+  assert.match(view, /lastActivityAt: string \| null/);
+  assert.match(view, /sinceText\(value, now\)/);
+  assert.match(view, /presenceDate\(value\)/);
+  assert.match(view, /<small className="presence-time-date">/);
+  assert.match(view, /<th>آخر حضور<\/th>/);
+  assert.match(view, /<th>آخر انصراف<\/th>/);
+  assert.match(view, /<th title="آخر تواجد أو تفاعل داخل أي قسم من تطبيق الرئيسي">آخر نشاط في النظام<\/th>/);
+  assert.match(view, /<LastTime value=\{row\.lastCheckedInAt\} now=\{now\}/);
+  assert.match(view, /<LastTime value=\{row\.lastCheckedOutAt\} now=\{now\}/);
+  assert.match(view, /<LastTime value=\{row\.lastActivityAt\} now=\{now\}/);
+  assert.match(css, /\.presence-time-date \{ font-size: 10px;/);
+  assert.match(view, /refetchInterval: 15_000/);
+  assert.match(view, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 30_000\)/);
+  assert.doesNotMatch(apiRoute, /presence\.company_id/);
+});
