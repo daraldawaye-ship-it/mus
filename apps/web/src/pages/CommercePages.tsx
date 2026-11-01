@@ -659,7 +659,7 @@ function ItemSearch({
   }, [autoChoose, search, result.isFetching, result.data, disabled]);
   return (
     <div
-      className="commerce-item-search"
+      className={selected ? "commerce-item-search commerce-item-search-selected" : "commerce-item-search"}
       ref={anchor}
       onBlur={(event) => {
         if (

@@ -2673,6 +2673,10 @@ ul {
 .commerce-item-search {
   position: relative;
 }
+/* The full name is a separate mobile-only line; never repeat it on desktop. */
+.commerce-mobile-sale-item-name {
+  display: none;
+}
 .commerce-search-results {
   position: fixed;
   z-index: 60;
@@ -6547,6 +6551,23 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .commerce-matrix-sale-has-expiry .commerce-line-price { grid-column: 5 / span 2; }
   .commerce-matrix-sale-has-expiry .commerce-line-expiry { grid-column: 7 / span 3; grid-row: 2; }
   .commerce-matrix-sale-has-expiry .commerce-line-total { grid-column: 10 / span 3; }
+  /* Keep the full name readable below the search control on a phone.
+     When selected, the control itself is only a change-item affordance,
+     not a second copy of the same name. Focusing restores normal editing. */
+  .commerce-matrix-sale .commerce-item-search-selected:not(:focus-within) input {
+    color: transparent;
+  }
+  .commerce-matrix-sale .commerce-item-search-selected:not(:focus-within)::after {
+    content: "تغيير الصنف";
+    position: absolute;
+    pointer-events: none;
+    inset-inline-start: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.1;
+  }
   .commerce-matrix-sale .commerce-mobile-sale-item-name {
     display: block;
     width: 100%;

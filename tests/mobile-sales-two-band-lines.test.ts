@@ -34,3 +34,12 @@ test("mobile sales no longer forces a 700px-wide scrolling table", () => {
   assert.match(phoneRule, /\.commerce-matrix-card \.commerce-lines-scroll:has\(> \.commerce-matrix-sale\)/);
   assert.match(phoneRule, /overflow-x: hidden;/);
 });
+
+test("sales item name appears only once, with full mobile label and an editable change control", () => {
+  assert.match(page, /className=\{selected \? "commerce-item-search commerce-item-search-selected"/);
+  const base = css.slice(css.indexOf("/* The full name is a separate mobile-only line"));
+  assert.match(base, /\.commerce-mobile-sale-item-name\s*\{\s*display: none;/);
+  assert.match(phoneRule, /\.commerce-item-search-selected:not\(:focus-within\) input\s*\{\s*color: transparent;/);
+  assert.match(phoneRule, /content: "تغيير الصنف";/);
+  assert.match(phoneRule, /\.commerce-mobile-sale-item-name\s*\{\s*display: block;/);
+});
