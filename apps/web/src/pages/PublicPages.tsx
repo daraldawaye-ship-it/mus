@@ -28,8 +28,7 @@ import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
 import {
   allowPasswordAutofillOnDevice,
-  browserSupportsTextMask,
-  useMaskedDesktopSignInField,
+  compactDesktopTextSecret,
   rememberLoginIdentifier,
   savedLoginIdentifier,
 } from "../device-login-policy";
@@ -161,9 +160,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const [loginId, setLoginId] = useState(savedLoginIdentifier);
   const [passwordReady, setPasswordReady] = useState(false);
   const allowPasswordAutofill = allowPasswordAutofillOnDevice();
-  const maskedDesktopSignIn = useMaskedDesktopSignInField(
-    allowPasswordAutofill, browserSupportsTextMask(), registering,
-  );
+  const desktopTextSecret = compactDesktopTextSecret(allowPasswordAutofill, registering);
 
   useEffect(() => {
     setBusy(false);
@@ -306,9 +303,10 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
           )}
           <Field
             label="كلمة المرور"
-            name={maskedDesktopSignIn ? "employee-secret-entry" : "password"}
-            type={maskedDesktopSignIn ? "text" : "password"}
-            className={maskedDesktopSignIn ? "auth-desktop-masked-secret" : ""}
+            name={desktopTextSecret ? "employee-secret-entry" : "password"}
+            type={desktopTextSecret ? "text" : "password"}
+            className={desktopTextSecret ? "auth-desktop-short-secret" : ""}
+            dir={desktopTextSecret ? "ltr" : undefined}
             spellCheck={false}
             autoCapitalize="off"
             autoComplete={allowPasswordAutofill
