@@ -2567,7 +2567,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
                     canOpenPurchase={commerceAccess(context)}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
                     canManagePledges={!locked && commerceAccess(context, true)}
-                    canOperatePledges={!locked && !!defaultCashbox && canPost(context) && (context.general || context.permissions.includes("finance.manage")) && !cashboxBusy}
+                    canOperatePledges={!locked && !!defaultCashbox && canPost(context) &&
+                      (context.general || context.permissions.includes("finance.manage") ||
+                       !!context.employee?.positions.includes("sales")) && !cashboxBusy}
                     canEdit={!locked}
                     originalVisible={showOriginalPicker}
                     onAction={action => {
@@ -3619,6 +3621,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
         mode={pledgeMode}
         cashbox={defaultCashbox}
         yerCurrencyId={defaultYer?.id ?? null}
+        salesScopedTransfer={!context.general && !context.permissions.includes("finance.manage") &&
+          !!context.employee?.positions.includes("sales")}
         onClose={() => setPledgeMode(null)}
         onCreated={(newAccount, points) => {
           accountManuallyChosen.current = true;
