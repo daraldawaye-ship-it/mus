@@ -966,16 +966,15 @@ select {
   display: grid;
   gap: 18px;
 }
-/* Shared Windows/macOS login only: the input is type=text, NOT a password
-   or text-security masked field. The viewport shows about two characters;
-   the actual typed value remains complete, scrollable and is sent to the
-   existing authenticated login endpoint. Installed phone apps are unchanged.
-   This is an anti-autofill UI preference, not protection from onlookers. */
-.field.auth-desktop-short-secret input {
-  width: calc(2ch + 20px);
+/* Desktop Chrome/Edge: visually mask a normal type=text login input.
+   It stays full width and submits the complete typed secret. Native password
+   inputs remain the fallback if text-security isn't supported. This does not
+   guarantee Chrome's password manager won't recognize a login form. */
+.field.auth-desktop-masked-secret input {
+  width: 100%;
   max-width: 100%;
   min-width: 0;
-  font-family: monospace;
+  -webkit-text-security: disc;
   direction: ltr;
   text-align: left;
   letter-spacing: normal;
