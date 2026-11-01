@@ -12,9 +12,10 @@ type Pledge = {
  phone:string; collateral:string; durationDays:number; receivedBy:string; createdAt:string;
 };
 export function PledgeDialogs({
- companyId,mode,cashbox,yerCurrencyId,onClose,onCreated,onSelect,
+ companyId,mode,cashbox,yerCurrencyId,onClose,onCreated,onSelect,salesScopedTransfer,
 }: {
  companyId:number;mode:"add"|"list"|"pay"|"receive"|null;cashbox:Account|null;yerCurrencyId:number|null;onClose:()=>void;
+ salesScopedTransfer:boolean;
  onCreated:(account:Account,points:number)=>void;
  onSelect:(accountId:number)=>void;
 }) {
@@ -94,6 +95,28 @@ export function PledgeDialogs({
   if(!parsed.success){setTransferError(parsed.error.issues[0]?.message??"راجع بيانات السند.");return;}
   setTransferBusy(true);
   try{
+   if(salesScopedTransfer){
+    // Narrow server-only operation: the server resolves the logged-in
+    // employee's own cashbox, validates the pledge and posts atomically.
+    // Keep the idempotency key on an uncertain error for safe retry.
+    const created=await api<{document:FinancialDocument}>(
+     "/companies/"+companyId+"/pledges/"+selectedPledge.accountId+"/transfer",
+     {method:"POST",body:{
+      idempotencyKey:transferKey.current,mode,amount,notes:transferNotes.trim(),
+     }},
+    );
+    if(created.document.status!=="posted")throw new Error("لم يؤكد الخادم ترحيل السند.");
+    setLastPosted({id:created.document.id,number:created.document.number,mode});
+    transferKey.current=crypto.randomUUID();
+    setSelectedPledge(null);setTransferAmount("");setTransferNotes("");
+    void cache.invalidateQueries({queryKey:["pledges",companyId]});
+    void cache.invalidateQueries({predicate:({queryKey})=>
+     queryKey.includes(companyId) && (queryKey[0]==="list" || queryKey[0]==="finance" ||
+     queryKey[0]==="account-ledger" || queryKey[0]==="account-balances")
+    });
+    onClose();
+    return;
+   }
    let draft=pendingDraft;
    if(!draft){
     const created=await api<{document:FinancialDocument}>(
