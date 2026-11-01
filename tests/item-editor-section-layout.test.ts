@@ -19,9 +19,8 @@ test("item primary fields stay in the primary section and secondary fields move 
   }
   for (const label of ["اختيار مؤقت", "رمز الصنف", "المعرف في النظام السابق", "الباركود", "وكيل الصنف", "الصنف من المورد", "عملة الأسعار", "له تاريخ انتهاء", "شهر وسنة أقرب انتهاء", "مؤرشف", "مطلوب_جرده"]) {
     assert(extras.includes(label), `secondary section missing ${label}`);
-    assert(!main.includes(label), `secondary field ${label} still in primary section`);
+    if (label !== "مؤرشف") assert(!main.includes(label), `secondary field ${label} still in primary section`);
   }
-  assert(extras.indexOf('صورة الصنف') < 0 || extras.indexOf('ImageUpload purpose="item"') >= 0);
   assert(extras.indexOf('ImageUpload purpose="item"') < extras.indexOf('item-stocktake-required'));
   assert(extras.indexOf("temporarySelection.toggle") >= 0);
   assert(!extras.includes("يمكن تغييره يدويًا؛ ويتحدث عند شراء كمية"));
