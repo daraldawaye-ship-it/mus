@@ -1615,6 +1615,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftNotice, setDraftNotice] = useState("");
+  const [draftListOpen, setDraftListOpen] = useState(false);
   const refreshPurchaseDrafts = useCallback(async () => {
     if (kind !== "purchase" || !user?.id) return;
     const list = await listPurchaseWorkDrafts<PurchaseDraftForm>(user.id, companyId);
@@ -1954,7 +1955,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     setLastSavedFingerprint(JSON.stringify(form));
     setSavedInvoice(null);
     setSavedOfflineInvoice(null);
-    setDraftNotice("تم فتح المسودة. يمكنك التعديل عليها ثم حفظها مؤقتًا مرة أخرى أو ترحيل الفاتورة نهائيًا.");
+    setDraftNotice("تم فتح المسودة لاستكمالها.");
+    setDraftListOpen(false);
     setError("");
   }
 
@@ -2711,6 +2713,28 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
   });
   return (
     <div className="commerce-document-page">
+      {kind === "purchase" && <Dialog
+        open={draftListOpen}
+        title={`المسودات المحفوظة (${purchaseDrafts.length})`}
+        onClose={() => setDraftListOpen(false)}>
+        <div className="purchase-work-drafts-list">
+          {purchaseDrafts.length === 0
+            ? <p>لا توجد مسودات محفوظة.</p>
+            : purchaseDrafts.map(draft => <div className="purchase-work-draft" key={draft.id}>
+                <span>{draft.title} — {draft.itemCount} صنف — {new Date(draft.savedAt).toLocaleString("ar-YE")}</span>
+                <div className="form-actions">
+                  <Button type="button" variant="secondary" disabled={locked}
+                    onClick={() => { void openPurchaseDraft(draft); }}>فتح ومواصلة</Button>
+                  <Button type="button" variant="danger" disabled={locked}
+                    onClick={() => { void removePurchaseDraft(draft); }}>حذف</Button>
+                </div>
+              </div>)}
+        </div>
+        <div className="form-actions">
+          <Button type="button" variant="secondary"
+            onClick={() => setDraftListOpen(false)}>إغلاق</Button>
+        </div>
+      </Dialog>}
       <form onSubmit={(event) => void save(event)} className="commerce-editor">
         <Card className={`commerce-header-card invoice-kind-${kind}`}>
           <fieldset disabled={locked} className="commerce-fieldset">
@@ -2794,15 +2818,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                         activePurchaseDraftId ? "تحديث الحفظ الأولي" : "حفظ أولي",
                       disabled: locked,
                       onClick: () => { void savePurchaseTemporarily(); } },
-                    { label: `الفواتير المحفوظة أوليًا (${purchaseDrafts.length})`, disabled: true },
-                    ...purchaseDrafts.flatMap(draft => [
-                      { label: `فتح ومواصلة: ${draft.title} — ${draft.itemCount} صنف — ${new Date(draft.savedAt).toLocaleString("ar-YE")}`,
-                        disabled: locked,
-                        onClick: () => { void openPurchaseDraft(draft); } },
-                      { label: `حذف المحفوظة أوليًا: ${draft.title} — ${new Date(draft.savedAt).toLocaleString("ar-YE")}`,
-                        disabled: locked,
-                        onClick: () => { void removePurchaseDraft(draft); } },
-                    ]),
+                    { label: `المسودات المحفوظة (${purchaseDrafts.length})`,
+                      onClick: () => { setDraftListOpen(true); } },
                   ]} />
                 )}
                 <Field
