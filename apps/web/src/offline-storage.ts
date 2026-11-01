@@ -516,7 +516,7 @@ const letterheadMediaPath = (companyId:number, imageUrl:string) =>
 export async function saveOfflineLetterheadImage(
   userId:number, companyId:number, imageUrl:string, blob:Blob,
 ):Promise<void> {
-  if (activeUser!==userId || !/^\\/api\\/media\\/[0-9a-f-]{36}\\/full$/i.test(imageUrl) ||
+  if (activeUser!==userId || !/^\/api\/media\/[0-9a-f-]{36}\/full$/i.test(imageUrl) ||
       !blob.type.startsWith("image/") || blob.size>5_000_000) return;
   const path=letterheadMediaPath(companyId,imageUrl);
   await writeOne("snapshots",{
@@ -526,7 +526,7 @@ export async function saveOfflineLetterheadImage(
 export async function readOfflineLetterheadImage(
   userId:number, companyId:number, imageUrl:string,
 ):Promise<Blob|null> {
-  if (activeUser!==userId || !/^\\/api\\/media\\/[0-9a-f-]{36}\\/full$/i.test(imageUrl))
+  if (activeUser!==userId || !/^\/api\/media\/[0-9a-f-]{36}\/full$/i.test(imageUrl))
     return null;
   const row=await readOne<Snapshot>("snapshots",userId+":"+letterheadMediaPath(companyId,imageUrl));
   return row?.value instanceof Blob && row.value.type.startsWith("image/")
