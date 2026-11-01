@@ -64,7 +64,7 @@ export async function lookupSharedItem<T>(path:string,userId:number):Promise<T|u
   if(q.get("sort")?.startsWith("saleQuantityPlusStock:desc")){
     const snapshot=await readSaleRankSnapshot(userId,companyId);
     if(snapshot?.priorities)
-      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,snapshot.priorities,q.get("q")??""));
+      filtered.sort((a,b)=>compareItemsBySaleQuantityAndStock(a,b,snapshot.priorities!,q.get("q")??""));
   } else if(q.get("sort")?.startsWith("saleTimes:desc")){
     const snapshot=await readSaleRankSnapshot(userId,companyId);
     if(snapshot)
