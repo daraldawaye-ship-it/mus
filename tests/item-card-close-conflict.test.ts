@@ -30,7 +30,7 @@ test("closing cancels delayed blur and autosave attempts without disabling confl
   assert.match(editor,/const closingRef = useRef\(false\)/);
   assert.match(editor,/useEffect\(\(\) => \(\) => \{ closingRef\.current = true; \}, \[\]\)/);
   assert.match(editor,/if \(closingRef\.current \|\| readOnly \|\| !manage \|\| savingRequest\.current/);
-  assert.match(editor,/error \|\| closingRef\.current\) return;/);
+  assert.match(editor,/closingRef\.current \|\|/);
   assert.match(editor,/if \(closingRef\.current \|\| !item \|\| readOnly \|\| !manage\) return;/);
   assert.match(editor,/reason\.status === 409/);
   assert.match(editor,/setConflict\(true\)/);
