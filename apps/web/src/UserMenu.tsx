@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
-  UserRound, Wrench, Package, WalletCards,
+  UserRound, Wrench, Package, WalletCards, RefreshCw,
 } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
@@ -15,6 +15,7 @@ import { usePageDirectory } from "./page-directory";
 import { api } from "./api";
 import { readMenuNavigation, saveMenuNavigation } from "./menu-navigation-cache";
 import { allowedAvatarTabs } from "./avatar-menu-permissions";
+import { refreshEntireApp } from "./app-force-refresh";
 import "./user-menu-tabs.css";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
@@ -90,6 +91,7 @@ export function UserMenu({
   const [itemMenuReset, setItemMenuReset] = useState(0);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -125,6 +127,16 @@ export function UserMenu({
   }, [activeTab]);
 
   const dismiss = () => setOpen(false);
+  async function fullRefresh() {
+    if (refreshBusy || !window.confirm("سيجلب التطبيق أحدث إصدار من الموقع. قد تفقد التعديلات غير المحفوظة على هذه الصفحة. هل تريد المتابعة؟")) return;
+    setRefreshBusy(true);
+    try {
+      await refreshEntireApp();
+    } catch (error) {
+      setRefreshBusy(false);
+      window.alert(error instanceof Error ? error.message : "تعذر تحديث الموقع. حاول مرة أخرى.");
+    }
+  }
   const openMenu = () => {
     setActiveTab("navigation");
     setOpen(true);
@@ -223,28 +235,7 @@ export function UserMenu({
                     <small title={user.email} dir="ltr">{user.email}</small>
                   </span>
                 </div>
-                <div className="user-menu-grid">
-                  <NavLink to="/profile" className="user-menu-tile" onClick={dismiss}>
-                    <CircleUserRound size={17} aria-hidden="true" />
-                    <span>تعديل حسابي</span>
-                  </NavLink>
-                  <button type="button" className="user-menu-tile"
-                    onClick={() => { dismiss(); appearance.open(); }}>
-                    <Palette size={17} aria-hidden="true" />
-                    <span>المظهر</span>
-                  </button>
-                  {(user.owner || user.kind === "admin") && (
-                    <a href="/oauth/connections" className="user-menu-tile" onClick={dismiss}>
-                      <Link2 size={17} aria-hidden="true" />
-                      <span>اتصالات ChatGPT</span>
-                    </a>
-                  )}
-                  <button type="button" className="user-menu-tile user-menu-tile-logout"
-                    onClick={() => { dismiss(); onLogout(); }}>
-                    <LogOut size={17} aria-hidden="true" />
-                    <span>تسجيل الخروج</span>
-                  </button>
-                </div>
+
               </>
             )}
             {displayedTab === "tools" && (
@@ -253,7 +244,36 @@ export function UserMenu({
               </div>
             )}
           </div>
-          <div className="user-menu-tabs-footer">اسحب لأسفل لعرض المزيد من خيارات القسم</div>
+          <div className="user-menu-tabs-footer user-menu-settings-actions" role="group"
+            aria-label="إجراءات المستخدم والتحديث">
+            <NavLink to="/profile" className="user-menu-tile" onClick={dismiss}>
+              <CircleUserRound size={15} aria-hidden="true" />
+              <span>تعديل حسابي</span>
+            </NavLink>
+            <button type="button" className="user-menu-tile"
+              onClick={() => { dismiss(); appearance.open(); }}>
+              <Palette size={15} aria-hidden="true" />
+              <span>المظهر</span>
+            </button>
+            {(user.owner || user.kind === "admin") && (
+              <a href="/oauth/connections" className="user-menu-tile" onClick={dismiss}>
+                <Link2 size={15} aria-hidden="true" />
+                <span>اتصالات ChatGPT</span>
+              </a>
+            )}
+            <button type="button" className="user-menu-tile user-menu-tile-logout"
+              onClick={() => { dismiss(); onLogout(); }}>
+              <LogOut size={15} aria-hidden="true" />
+              <span>تسجيل الخروج</span>
+            </button>
+            <button type="button" className="user-menu-tile user-menu-full-refresh"
+              disabled={refreshBusy} aria-label="تحديث الموقع بالكامل"
+              title="جلب أحدث إصدار من الموقع مثل تحديث Ctrl+F5"
+              onClick={() => { void fullRefresh(); }}>
+              <RefreshCw size={15} aria-hidden="true" className={refreshBusy ? "is-spinning" : ""} />
+              <span>{refreshBusy ? "جارٍ التحديث" : "تحديث شامل"}</span>
+            </button>
+          </div>
         </div>
       )}
       <ShortcutEditor user={user} companyId={companyId}
