@@ -21,6 +21,28 @@ export function allowPasswordAutofillOnDevice():boolean {
     navigator.platform,navigator.maxTouchPoints);
 }
 
+/** A desktop Chrome/Edge/Safari text input can be visually masked with
+ * -webkit-text-security so the login form does not expose a native password
+ * input to browser password managers. Never allow an unmasked text fallback:
+ * on unsupported browsers retain the native type=password.
+ *
+ * A text field still exposes its value to scripts and browser extensions,
+ * exactly like a password field: this is a UX heuristic, not a security
+ * boundary or a way to erase credentials already saved in Chrome.
+ */
+export function useMaskedDesktopSignInField(
+  allowNativePasswordManager: boolean,
+  supportsTextMask: boolean,
+  registering: boolean,
+): boolean {
+  return !registering && !allowNativePasswordManager && supportsTextMask;
+}
+export function browserSupportsTextMask(): boolean {
+  return typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("-webkit-text-security", "disc");
+}
+
 /** This store contains ONLY the optional login identifier, NEVER credentials. */
 const IDENTIFIER_KEY="alraesy-login-identifier-v1";
 export function savedLoginIdentifier():string {
