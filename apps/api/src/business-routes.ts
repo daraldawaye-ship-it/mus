@@ -1,3 +1,4 @@
+import { marketMaintenance } from "./market/gateway.ts";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { publicRoutes } from "./routes-public.ts";
@@ -48,8 +49,10 @@ import { legacyImportRunRoutes } from "./routes-legacy-import-runs.ts";
 import { importSourceDateRoutes } from "./routes-import-source-dates.ts";
 
 /** Shared by browser and OAuth MCP: one set of domain policies and transactions. */
-export function businessRoutes(pool: Pool): Router {
+export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
   const router = Router();
+  router.use("/medicine-market", marketMaintenance);
+  if (marketGateway) router.use(marketGateway);
   router.use(
     pageRoutes(pool),
     shortcutRoutes(pool),
@@ -68,6 +71,7 @@ export function businessRoutes(pool: Pool): Router {
     notificationRoutes(pool),
     memoRoutes(pool),
     questionRoutes(pool),
+    // Keep registered domain routes discoverable by MCP; the gateway handles every market path first.
     medicineMarketRoutes(pool),
     taskRoutes(pool),
     memoFeatureRuleRoutes(pool),
