@@ -32,7 +32,8 @@ test("server locks item and rejects stale values only for modified fields", () =
   assert.match(route, /existing\[field\]/);
   assert.match(route, /\.\.\.fieldPatch\.changes/);
   assert.match(route, /parse\(itemPatchSchema/);
-  assert.match(route, /AND revision=\$\{values\.length \+ 1\}/);
+  assert.match(route, /AND revision=\$\{values\.length\}/);
+  assert.match(route, /columnsToUpdate/);
   assert.match(route, /supplierChanged/);
   assert.match(route, /itemClearanceNotice\(before, next/);
 });
