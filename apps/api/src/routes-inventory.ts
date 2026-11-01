@@ -775,7 +775,9 @@ export function inventoryRoutes(pool: Pool): Router {
               values,
             );
           }
-          if (eligibleForReward)
+          // Credit only real due-count settlements invoked from the designated
+          // required-count workflow. No rewards for unrelated adjustments.
+          if (eligibleForTask)
             await awardRequiredStockCount(client, companyId, operationId, input.itemId, user);
           return {
             created: true,
