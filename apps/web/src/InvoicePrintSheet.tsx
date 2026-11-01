@@ -22,6 +22,10 @@ export function printedInvoiceColumns(kind: InvoiceKind): readonly string[] {
     ? ["اسم الصنف", "الكمية", "الوحدة", "البونص", "السعر", "تاريخ الانتهاء", "القيمة"]
     : ["اسم الصنف", "الكمية", "الوحدة", "السعر", "القيمة"];
 }
+/** Never show a final invoice number on a device-only, unposted printout. */
+export function printableInvoiceNumber(number:string|null|undefined,pendingSync:boolean) {
+  return !pendingSync && number ? number : null;
+}
 export function printedExpiry(value: string | null): string {
   return value ? value.slice(0, 7) : "—";
 }
@@ -47,7 +51,7 @@ export function InvoicePrintSheet({
         {pendingSync && <p className="invoice-local-print-notice">محفوظة على الجهاز — لم تُرحّل بعد</p>}
       </div>
       <dl className="invoice-print-details">
-        {!pendingSync && invoice.number && (
+        {printableInvoiceNumber(invoice.number,pendingSync) && (
           <div><dt>رقم الفاتورة</dt><dd><bdi>{invoice.number}</bdi></dd></div>
         )}
         <div><dt>التاريخ</dt><dd><bdi dir="ltr">{invoice.documentDate}</bdi></dd></div>
