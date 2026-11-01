@@ -68,8 +68,11 @@ services:
       - fromGroup: alraesy-medicine-market-auth
 
 databases:
+  # Owner-approved scale-up 2026-11-01: cashier database pressure was near
+  # its CPU ceiling on 0.1c-256mb. Target 5x CPU / 4x RAM without migrating data.
+  # Applied to the live database only after a Render Blueprint sync / plan edit.
   - name: alraesy-preview-db
-    plan: 0.1c-256mb
+    plan: 0.5c-1g
     region: frankfurt
     postgresMajorVersion: "17"
     databaseName: tijara_preview
