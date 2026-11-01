@@ -1966,8 +1966,12 @@ function ItemEditor({
               onChange={(event) => edit("clearanceTo", event.target.value)}
             />
           </div>
-          <small className="muted">
-            يوم البداية والنهاية مشمولان. تحفظ نسبة ومبالغ التصريف مع الفاتورة؛ لا يتم دفع العمولة نقديًا من دون اعتماد مستحقها وحساب المستفيد.
+          <small className="muted" role="status">
+            {Number(fields.commissionRate) > 0 && fields.clearanceFrom && fields.clearanceTo &&
+             fields.clearanceFrom <= fields.clearanceTo
+              ? "التصريف مكتمل: تُحسب العمولة فقط لفواتير المبيعات داخل الفترة المحددة، شاملة يومي البداية والنهاية."
+              : "يُحفظ كل حقل من حقول التصريف وحده. التصريف غير مفعّل، ولا تُحسب أي عمولة حتى تكتمل النسبة الموجبة وتاريخا البداية والنهاية الصحيحان."}
+            {" "}لا يُدفع المستحق نقديًا دون اعتماده وحساب المستفيد.
           </small>
         </Card>
         <Card title="بيانات أخرى">
