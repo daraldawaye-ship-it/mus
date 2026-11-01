@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Preferred form field titles — default, not a restriction (2026-11-01)
+
+For new or redesigned forms, prefer compact in-control floating labels (like the existing `Field` / `Select` /`.floating-ready` styles) instead of separate headings above inputs. This is a **default design preference**, NOT a mandatory restriction: use another pattern where usability, accessibility, tables or field types benefit. In the item editor, shortcut title is now inside its field; see `docs/ITEM_EDITOR_SECONDARY_FIELDS.md` for the rearranged fields and removed prose. Keep original validations, save semantics and controls intact.
+
 ## Mobile offline viewport (2026-11-01)
 
 When disconnected on Android/PWA, the long reconnect control in the topbar previously expanded the flex layout and cut the company overview offscreen. Mobile now displays an accessible 34px WifiOff action; the desktop label remains. Constrain the mobile toolbar/overview to the viewport without hiding content or breaking wide table scrolling. See `docs/MOBILE_OFFLINE_VIEWPORT.md`. Verify portrait-device behavior when available.
