@@ -1273,6 +1273,9 @@ function ItemEditor({
   const lastSavedSnapshot = useRef<Item | null>(item);
   const editedFields = useRef(new Map<EditableItemField, number>());
   const blockedFields = useRef(new Set<EditableItemField>());
+  // A dirty field keeps the value observed when editing started, even if a
+  // different field's save brings a newer complete server snapshot.
+  const pendingExpected = useRef(new Map<EditableItemField, unknown>());
   const lastEditedField = useRef<EditableItemField | null>(null);
   const [visibleRevision, setVisibleRevision] = useState(item?.revision ?? 0);
   const [savedMessage, setSavedMessage] = useState("");
@@ -1309,6 +1312,9 @@ function ItemEditor({
   function markDirty(field?: EditableItemField) {
     draftVersion.current += 1;
     if (field) {
+      const snapshot = lastSavedSnapshot.current as unknown as Record<string, unknown> | null;
+      if (!pendingExpected.current.has(field) || blockedFields.current.has(field))
+        pendingExpected.current.set(field, snapshot?.[field] ?? null);
       editedFields.current.set(field, draftVersion.current);
       lastEditedField.current = field;
       blockedFields.current.delete(field);
@@ -1395,7 +1401,11 @@ function ItemEditor({
       const current = parsed.data as unknown as Record<string, unknown>;
       // Only the requested/oldest unblocked field leaves this snapshot.
       for (const field of selectedField ? [selectedField] : []) {
-        const oldValue = previous[field] ?? null;
+        const oldValue = confirmedCurrent
+          ? previous[field] ?? null
+          : pendingExpected.current.has(field)
+            ? pendingExpected.current.get(field) ?? null
+            : previous[field] ?? null;
         const newValue = current[field] ?? null;
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
           changes[field] = newValue;
@@ -1403,8 +1413,10 @@ function ItemEditor({
         }
       }
       if (!Object.keys(changes).length) {
-        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
+        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
           editedFields.current.delete(selectedField);
+          pendingExpected.current.delete(selectedField);
+        }
         setDirty(editedFields.current.size > 0);
         return;
       }
@@ -1419,8 +1431,10 @@ function ItemEditor({
       const normalized = fieldPayload.data;
       if (selectedField && JSON.stringify((normalized.changes as Record<string,unknown>)[selectedField] ?? null) ===
           JSON.stringify((normalized.expected as Record<string,unknown>)[selectedField] ?? null)) {
-        if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
+        if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
           editedFields.current.delete(selectedField);
+          pendingExpected.current.delete(selectedField);
+        }
         blockedFields.current.delete(selectedField);
         setDirty(editedFields.current.size > 0);
         return;
@@ -1478,9 +1492,18 @@ function ItemEditor({
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
-        if (selectedField && (editedFields.current.get(selectedField) ?? Infinity) <= savedVersion)
-          editedFields.current.delete(selectedField);
-        if (selectedField) blockedFields.current.delete(selectedField);
+        if (selectedField) {
+          if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
+            editedFields.current.delete(selectedField);
+            pendingExpected.current.delete(selectedField);
+          } else {
+            // Another local edit happened while this request was in flight.
+            // Its new baseline is the value just written by this request.
+            pendingExpected.current.set(selectedField,
+              (result.item as unknown as Record<string, unknown>)[selectedField] ?? null);
+          }
+          blockedFields.current.delete(selectedField);
+        }
         setDirty(editedFields.current.size > 0);
         // Merge the latest real values into the visual snapshot without
         // overwriting other fields still being edited by this user.
@@ -1578,6 +1601,7 @@ function ItemEditor({
       savedItem.current = null;
       lastSavedSnapshot.current = result.item;
       editedFields.current.clear();
+      pendingExpected.current.clear();
       blockedFields.current.clear();
       setVisibleRevision(result.item.revision);
       setReloadConfirmation(false);
