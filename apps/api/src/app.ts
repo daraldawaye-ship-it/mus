@@ -7,6 +7,7 @@ import { createDatabase } from "./db.ts";
 import { configuration, type AppOptions } from "./config.ts";
 import { HttpError } from "./errors.ts";
 import { loadSession, mutationSecurity } from "./http.ts";
+import { trackAuthenticatedPresence } from "./services/user-presence.ts";
 import { authRoutes } from "./routes-auth.ts";
 import { setupRoutes } from "./routes-setup.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
@@ -94,6 +95,7 @@ export async function createApp(options: AppOptions = {}) {
     express.json({ limit: "5mb" }),
     (req, res, next) => loadSession(marketAuthPool && /^\/medicine-market(?:\/|$)/.test(req.path) ? marketAuthPool : pool)(req, res, next),
     mutationSecurity(config.appOrigin),
+    trackAuthenticatedPresence(pool),
   );
   app.use(setupRoutes(pool, config.appOrigin));
   app.use("/api", (req, _res, next) => permissionRequest.run(req, next));
