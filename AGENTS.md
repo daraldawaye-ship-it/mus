@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Avatar navigation: first-paint and offline (2026-11-01)
+
+The user requires company and public avatar navigation links/tabs to appear immediately on repeat opening and after an offline restart. Read `docs/AVATAR_NAVIGATION_OFFLINE.md` before changing `UserMenu.tsx`, `UserShortcutMenuGrid.tsx`, or page permission loading. A short-lived user/company-scoped localStorage snapshot is for **UI display only**; it must never authorize a route, a mutation, or access to another company. The server and page guards remain authoritative, with fresh online changes replacing saved links.
+
 Current explicit restoration (2026-10-27): the user requested stopping invoice posting, restoring every recorded automatic task/database calculation, reopening the website, then resuming invoice posting. Read docs/AUTOMATION_PAUSE.md. Migration139 pauses and reconciles the authorized company2 run, restores exact saved database automation, and sets defer_projections=false. AUTOMATIONS_PAUSED=false reopens the application and restores all recorded workers. Verify the stopped run and successful restoration before the separately authorized resume action. Keep invoice deduplication and all financial/stock integrity checks; failed documents remain for manual correction. Do not claim raw receipt/payment vouchers are financially posted.
 
 ## Earlier raw-only intake instruction (superseded for authorized invoice posting)
