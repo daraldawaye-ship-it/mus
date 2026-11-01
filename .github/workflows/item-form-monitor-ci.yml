@@ -1,5 +1,17 @@
 name: Item and composition form matching
 on:
+  push:
+    branches: ['preview/render-2026-10-23']
+    paths:
+      - 'apps/api/src/routes-items.ts'
+      - 'apps/api/src/services/item-clearance-notices.ts'
+      - 'apps/api/src/services/item-clearance-notification-worker.ts'
+      - 'apps/web/src/pages/ItemsPages.tsx'
+      - 'packages/contracts/src/items.ts'
+      - 'tests/item-card-field-concurrency.test.ts'
+      - 'tests/item-clearance-independent-fields.test.ts'
+      - 'tests/item-clearance-notifications.test.ts'
+      - '.github/workflows/item-form-monitor-ci.yml'
   pull_request:
     paths:
       - 'apps/api/migrations/099_product_form_classification.sql'
@@ -53,3 +65,5 @@ jobs:
         run: node --import tsx --test --test-name-pattern="product form choices are independent" tests/commerce.test.ts
       - name: Independent clearance field persistence, eligibility and conflict regression
         run: node --import tsx --test tests/item-clearance-independent-fields.test.ts
+      - name: Item-card field saving and clearance-notification regression
+        run: node --import tsx --test tests/item-card-field-concurrency.test.ts tests/item-clearance-notifications.test.ts
