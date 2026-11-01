@@ -52,7 +52,7 @@ services:
     plan: 1c-2g
     dockerfilePath: ./Dockerfile.market
     dockerContext: .
-    healthCheckPath: /api/health
+    # Private services use TCP readiness; HTTP health remains available internally.
     autoDeployTrigger: "off"
     envVars:
       - key: NODE_ENV
