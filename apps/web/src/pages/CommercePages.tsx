@@ -70,6 +70,7 @@ import { formatMoney, formatWholeMoney } from "../format-money";
 import { enteredInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
+import { fastLocalInvoiceItems, warmLocalInvoiceItems } from "../offline-shared-items";
 import { isOfflineNow } from "../connection-mode";
 import {
   Button,
@@ -521,7 +522,20 @@ function ItemSearch({
   onFinishEntry?: () => void;
 }) {
   const { user } = useSession();
-  const query = value;
+  const queryClient = useQueryClient();
+  // A completed device catalog serves the cashier without a network roundtrip.
+  // Rank/stock snapshots are already prepared; missing snapshots fall back to
+  // the existing permission-checked API.
+  useEffect(() => {
+    if (!user) return;
+    const onIndexChanged = (event:Event) => {
+      if (!(event instanceof CustomEvent) ||
+          event.detail?.userId!==user.id || event.detail?.companyId!==companyId) return;
+      void queryClient.invalidateQueries({queryKey:["commerce",user.id,companyId,"item-search"]});
+    };
+    window.addEventListener("alraesy-local-invoice-index-changed",onIndexChanged);
+    return () => window.removeEventListener("alraesy-local-invoice-index-changed",onIndexChanged);
+  }, [user?.id,companyId,queryClient]);
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -549,7 +563,7 @@ function ItemSearch({
       setSearch(query.trim());
       setPage(1);
       setActive(0);
-    }, 100);
+    }, 60);
     return () => window.clearTimeout(timer);
   }, [query, selected, open]);
   // Do not open a dropdown or send a request for the first two characters.
@@ -592,11 +606,18 @@ function ItemSearch({
   }, [expanded, page]);
   const result = useQuery({
     queryKey: ["commerce", user?.id, companyId, "item-search", search, page],
-    queryFn: ({ signal }) =>
-      api<Page<Item>>(
-        `/companies/${companyId}/commerce-options?${new URLSearchParams({ type: "items", q: search, page: String(page), pageSize: "20", sort: "saleQuantityPlusStock:desc,code:asc", fast: "1" })}`,
-        { signal },
-      ),
+    queryFn: async ({ signal }) => {
+      const path=`/companies/${companyId}/commerce-options?${new URLSearchParams({
+        type:"items",q:search,page:String(page),pageSize:"20",
+        sort:"saleQuantityPlusStock:desc,code:asc",fast:"1",
+      })}`;
+      // Only the downloaded *complete* authorized snapshot can be used here.
+      const local=user && !signal.aborted
+        ?await fastLocalInvoiceItems<Page<Item>>(path,user.id).catch(()=>undefined)
+        :undefined;
+      if (signal.aborted) throw new Error("بحث ملغى");
+      return local ?? api<Page<Item>>(path,{signal});
+    },
     networkMode: "always",
     enabled: !!user && expanded && searchCurrent && canSearchInvoiceItem(search),
     staleTime: 30_000,
@@ -1357,6 +1378,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange }:
   const companyId = context.company.id;
   const { user } = useSession();
   const client = useQueryClient();
+  // Load the local search index once on entry, not after the cashier types.
+  useEffect(() => {
+    if(user?.id) warmLocalInvoiceItems(user.id,companyId);
+  }, [user?.id,companyId]);
   const controls = useControls(companyId, context.employee?.id ?? null);
   const directory = usePageDirectory(companyId);
   const canEditItem =
