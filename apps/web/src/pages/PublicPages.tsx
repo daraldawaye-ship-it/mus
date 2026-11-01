@@ -26,6 +26,7 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
+import { allowPasswordAutofillOnDevice, rememberLoginIdentifier, savedLoginIdentifier } from "../device-login-policy";
 import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import { ProfileImageUrlField } from "../ProfileImageUrlField";
 import {
@@ -151,14 +152,28 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     password: "",
   });
   const registering = mode === "register";
-  const [loginId, setLoginId] = useState("");
+  const [loginId, setLoginId] = useState(savedLoginIdentifier);
+  const [passwordReady, setPasswordReady] = useState(false);
+  const allowPasswordAutofill = allowPasswordAutofillOnDevice();
 
   useEffect(() => {
     setBusy(false);
     setError("");
     setDraft({ name: "", displayName: "", email: "", phone: "", password: "" });
-    setLoginId("");
+    setLoginId(savedLoginIdentifier());
+    setPasswordReady(false);
   }, [mode]);
+  useEffect(() => {
+    // A restored back/forward-cache login form must not expose previously
+    // typed credentials to the next employee at a shared computer.
+    const resetRestoredPassword = (event: PageTransitionEvent) => {
+      if (!event.persisted || allowPasswordAutofill) return;
+      setDraft(current => ({...current,password:""}));
+      setPasswordReady(false);
+    };
+    window.addEventListener("pageshow",resetRestoredPassword);
+    return () => window.removeEventListener("pageshow",resetRestoredPassword);
+  }, [allowPasswordAutofill]);
 
   if (user && !requiresOnlineLogin) return <Navigate to="/" replace />;
 
@@ -176,6 +191,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
         await acceptRegistration(result);
       } else {
         await loginWithPassword(loginId,draft.password);
+        rememberLoginIdentifier(loginId);
       }
       // A successful sign-in changes the user-scoped guard identity.
       // The auth page must still navigate to the selected employee workspace.
@@ -188,7 +204,11 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     } catch (cause) {
       if (guard.isCurrent()) setError(messageOf(cause));
     } finally {
-      if (guard.isCurrent()) setBusy(false);
+      if (guard.isCurrent()) {
+        setDraft(current => ({...current,password:""}));
+        setPasswordReady(false);
+        setBusy(false);
+      }
     }
   }
 
@@ -208,7 +228,8 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
         }
       />
       <Card>
-        <form onSubmit={submit} className="form-grid" aria-busy={busy}>
+        <form onSubmit={submit} className="form-grid" aria-busy={busy}
+          autoComplete={allowPasswordAutofill ? undefined : "off"}>
           {registering && (
             <>
               <Field
@@ -278,7 +299,13 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
             label="كلمة المرور"
             name="password"
             type="password"
-            autoComplete={registering ? "new-password" : "current-password"}
+            autoComplete={allowPasswordAutofill
+              ? (registering ? "new-password" : "current-password")
+              : "off"}
+            // Shared desktops must require active typing, not reuse an
+            // autofilled password from the previously logged-in employee.
+            readOnly={!allowPasswordAutofill && !passwordReady}
+            onFocus={() => setPasswordReady(true)}
             value={draft.password}
             onChange={(event) => update("password", event.target.value)}
             required
