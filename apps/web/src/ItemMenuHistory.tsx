@@ -26,13 +26,14 @@ const actions: { key: ItemMenuView; label: string }[] = [
 /** The search stays in place. The five scalable navigation-style tiles are
  * replaced by a page of ten real records; tapping the top Item tab resets them. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey,
+  userId, companyId, itemId, itemName, resetKey, onEditItem,
 }: {
   userId: number;
   companyId: number;
   itemId: number | null;
   itemName: string | null;
   resetKey: number;
+  onEditItem: (itemId: number) => void;
 }) {
   const [view, setView] = useState<ItemMenuView | null>(null);
   const [page, setPage] = useState(1);
@@ -66,6 +67,12 @@ export function ItemMenuHistory({
             <span>{action.label}</span>
           </button>
         ))}
+        <button type="button" className="user-menu-tile"
+          disabled={!itemId}
+          title={itemId ? `فتح كرت الصنف: ${itemName ?? ""}` : "اختر صنفًا من البحث أولًا"}
+          onClick={() => { if (itemId) onEditItem(itemId); }}>
+          <span>تعديل كرت الصنف</span>
+        </button>
       </div>
     );
   }

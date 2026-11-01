@@ -17,7 +17,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 };
 
 export function EntityMenuSearch({
-  user, companyId, employeeId, employeeName, kind, itemMenuReset = 0,
+  user, companyId, employeeId, employeeName, kind, itemMenuReset = 0, onEditItem,
 }: {
   user: User;
   companyId: number | null;
@@ -25,6 +25,7 @@ export function EntityMenuSearch({
   employeeName?: string | null;
   kind: RecentEntityKind;
   itemMenuReset?: number;
+  onEditItem: (itemId: number) => void;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -170,7 +171,7 @@ export function EntityMenuSearch({
       {kind === "item" && company > 0 && (
         <ItemMenuHistory userId={user.id} companyId={company}
           itemId={selected?.id ?? null} itemName={selected?.name ?? null}
-          resetKey={itemMenuReset} />
+          resetKey={itemMenuReset} onEditItem={onEditItem} />
       )}
       {!focused && selected && kind !== "item" && (
         <p className="user-menu-entity-hint">

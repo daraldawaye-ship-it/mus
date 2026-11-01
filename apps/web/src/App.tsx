@@ -1309,7 +1309,7 @@ function Workspace() {
               />
             </Routes>
 
-            <ItemCardBottomSheetHost context={inCompany && !company.isError ? company.data : undefined} />
+            <ItemCardBottomSheetHost context={navigationContext} />
             {/* Device sync runs in the background; only installation help or
                 an actionable notification prompt can appear below page content. */}
             <AppSetup key={user?.id ?? "guest"} userId={user?.id}

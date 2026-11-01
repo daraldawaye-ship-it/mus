@@ -11,6 +11,7 @@ import { thumbnailUrl } from "./ImageUpload";
 import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
 import { EntityMenuSearch } from "./EntityMenuSearch";
+import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { usePageDirectory } from "./page-directory";
 import { api } from "./api";
 import { readMenuNavigation, saveMenuNavigation } from "./menu-navigation-cache";
@@ -224,7 +225,12 @@ export function UserMenu({
                 user={user} companyId={companyId} employeeId={employeeId}
                 employeeName={employeeName}
                 kind={displayedTab === "item" ? "item" : displayedTab === "financialAccount" ? "account" : "employee"}
-                itemMenuReset={itemMenuReset} />
+                itemMenuReset={itemMenuReset}
+                 onEditItem={itemId => {
+                   if (!companyId) return;
+                   dismiss();
+                   openItemCardSheet(companyId, itemId);
+                 }} />
             )}
             {displayedTab === "settings" && (
               <>

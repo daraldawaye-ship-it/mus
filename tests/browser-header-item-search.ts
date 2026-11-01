@@ -68,12 +68,18 @@ try {
   const result = await response;
   assert.equal(result.status(), 200);
   assert.equal((await result.json()).items[0].id, expected.id);
+  const editButton = page.getByRole("button", { name: "تعديل كرت الصنف" });
+  assert.equal(await editButton.isDisabled(), true);
   const option = page.getByRole("option").filter({ hasText: expected.name });
   await option.waitFor();
   assert.equal(await page.getByText("جارٍ البحث…", { exact: true }).count(), 0);
   console.log(`PASS real header item search: ${Math.round(performance.now()-started)}ms through the browser`);
   await option.click();
   assert.equal(await input.inputValue(), expected.name);
+  assert.equal(await editButton.isEnabled(), true);
+  await editButton.click();
+  await page.locator(".invoice-item-sheet").waitFor();
+  assert.equal(await page.getByRole("dialog", { name: "قائمة المستخدم والأقسام" }).count(), 0);
   await mkdir("/workspace/work", { recursive: true });
   await page.screenshot({ path: "/workspace/work/header-item-search-verified.png" });
 } finally {

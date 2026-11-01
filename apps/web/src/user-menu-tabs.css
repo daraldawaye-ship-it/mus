@@ -368,6 +368,13 @@
 }
 /* Within the item tab, replace the grid with actual movement records. */
 .user-menu-item-actions { flex: 0 0 auto; }
+.user-menu-item-actions .user-menu-tile:disabled,
+.user-menu-item-actions .user-menu-tile:disabled:hover {
+  opacity: .5;
+  cursor: not-allowed;
+  background: var(--soft);
+  color: var(--on-soft);
+}
 .user-menu-item-history { min-width: 0; padding-top: 2px; }
 .user-menu-item-history-heading { display:flex; align-items:center; gap:8px; padding:4px 2px 8px; font-size:12px; border-bottom:1px solid var(--border); }
 .user-menu-item-history-heading > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
