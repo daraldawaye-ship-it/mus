@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Sales doctor and item-clearance alerts (2026-11-01)
+
+Existing `emitNotification`, company templates/followers and per-recipient inbox are the source of truth for all alerts; never create a parallel notification store. Doctor/new-or-archived sale notices must identify the **user/employee who created the invoice**, not a background worker. Item card edits changing commission rate/clearance-from/clearance-to notify the company after successful save: added to clearance, clearance updated, or removed from clearance, with the actor and field differences. Use the durable company/item/revision-scoped outbox and background processor (`docs/ITEM_CLEARANCE_AND_DOCTOR_NOTIFICATIONS.md`), preserving invoice performance and existing accounting. User-facing alert templates may be configured using existing notification settings.
+
 ## Preferred form field titles — default, not a restriction (2026-11-01)
 
 For new or redesigned forms, prefer compact in-control floating labels (like the existing `Field` / `Select` /`.floating-ready` styles) instead of separate headings above inputs. This is a **default design preference**, NOT a mandatory restriction: use another pattern where usability, accessibility, tables or field types benefit. In the item editor, shortcut title is now inside its field; see `docs/ITEM_EDITOR_SECONDARY_FIELDS.md` for the rearranged fields and removed prose. Keep original validations, save semantics and controls intact.
