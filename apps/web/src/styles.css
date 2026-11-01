@@ -4240,6 +4240,12 @@ a.notification-quick-title:hover { text-decoration: underline; }
     margin-bottom: 3mm;
     text-align: center;
   }
+  .invoice-local-print-notice {
+    margin: 2mm 0 0;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #333;
+  }
   .invoice-print-caption h2 {
     display: inline-block;
     font-size: 13pt;
