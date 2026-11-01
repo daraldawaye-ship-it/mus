@@ -246,6 +246,32 @@ export const itemPatchSchema = itemFields
   })
   .strict()
   .superRefine(validateNames);
+// Existing item cards can be edited concurrently from several devices.
+ // Only supplied fields are changed; expected contains the values read by the
+ // editor for exactly those fields, protecting against same-field lost updates.
+export const itemFieldPatchSchema = z.object({
+  changes: itemFields.partial().strict(),
+  expected: itemFields.partial().strict(),
+}).strict().superRefine((value, context) => {
+  const changed = Object.keys(value.changes);
+  if (!changed.length) {
+    context.addIssue({ code: "custom", path: ["changes"], message: "حدد حقلًا واحدًا على الأقل للتعديل" });
+  }
+  for (const field of changed) {
+    if (!Object.prototype.hasOwnProperty.call(value.expected, field)) {
+      context.addIssue({ code: "custom", path: ["expected", field],
+        message: "القيمة السابقة مطلوبة لكل حقل معدل" });
+    }
+  }
+  for (const field of Object.keys(value.expected)) {
+    if (!Object.prototype.hasOwnProperty.call(value.changes, field)) {
+      context.addIssue({ code: "custom", path: ["expected", field],
+        message: "لا ترسل قيمًا سابقة لحقول غير معدلة" });
+    }
+  }
+});
+export type ItemFieldPatchInput = z.input<typeof itemFieldPatchSchema>;
+
 export type ItemInput = z.input<typeof itemSchema>;
 export type ItemPatchInput = z.input<typeof itemPatchSchema>;
 export type ItemAgentInput = z.input<typeof itemAgentSchema>;
