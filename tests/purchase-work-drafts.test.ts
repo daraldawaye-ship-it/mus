@@ -23,12 +23,13 @@ test("purchase form restores all header fields and all lines, allows several sav
   assert.match(invoice,/setLines\(form\.lines\.length \? form\.lines : \[emptyLine\(\)\]\)/);
   assert.match(invoice,/listPurchaseWorkDrafts<PurchaseDraftForm>/);
   assert.match(invoice,/activePurchaseDraftId \?\? undefined/);
-  assert.match(invoice,/setActivePurchaseDraftId\(saved\.id\)/);
-  assert.match(invoice,/setLastSavedFingerprint\(signature\)/);
+  assert.match(invoice,/resetInvoiceValues\(\);\s*setDraftNotice\("تم الحفظ الأولي وتصفير الفاتورة\."\)/);
+  assert.match(invoice,/setActivePurchaseDraftId\(draft\.id\)/);
+  assert.match(invoice,/setLastSavedFingerprint\(JSON\.stringify\(form\)\)/);
   assert.match(invoice,/setDraftListOpen/);
   assert.match(invoice,/فتح ومواصلة/);
   assert.match(invoice,/حفظ أولي/);
-  assert.match(invoice,/فاتورة جديدة/);
+  assert.match(invoice,/قائمة الفواتير/);
   assert.match(invoice,/تم حذف المسودة المؤقتة فقط/);
   assert.match(invoice,/if \(kind === "purchase" && activePurchaseDraftId\)/);
   assert.match(invoice,/void deletePurchaseWorkDraft\(user\.id, companyId, activePurchaseDraftId\)/);
@@ -47,8 +48,35 @@ test("multirow purchase navigations offer local save; single row confirms leavin
   assert.match(invoice,/onStatusChange\(tabId, \{ dirty: editorDirty/);
 });
 
-test("draft controls and list never appear on sales or printing",()=>{
-  assert.match(invoice,/\{kind === "purchase" && <section className="purchase-work-drafts"/);
-  assert.match(css,/@media print \{ \.purchase-work-drafts \{ display: none !important; \} \}/);
-  assert.match(invoice,/الحفظ الأولي مسودة على هذا الجهاز فقط/);
+test("purchase draft choices are in the existing Actions drop-down; list opens in a dialog above the invoice",()=>{
+  assert.match(invoice,/import \{ SalesHeaderActionsDropdown, PageActionsDropdown \}/);
+  assert.match(invoice,/<PageActionsDropdown actions=\{\[/);
+  assert.match(invoice,/label: "قائمة الفواتير", to: listPath\(companyId, kind\)/);
+  assert.match(invoice,/label: draftSaving \? "جارٍ الحفظ الأولي…"/);
+  assert.match(invoice,/label: `المسودات المحفوظة \(\$\{purchaseDrafts\.length\}\)`/);
+  assert.match(invoice,/onClick: \(\) => \{ setDraftListOpen\(true\); \}/);
+  assert.match(invoice,/<Dialog\s+open=\{draftListOpen\}/);
+  assert.match(invoice,/purchaseDrafts\.map\(draft => <div className="purchase-work-draft"/);
+  assert.match(invoice,/void openPurchaseDraft\(draft\)/);
+  assert.match(invoice,/void removePurchaseDraft\(draft\)/);
+  assert.match(invoice,/\{kind === "purchase" && <Dialog/);
+  assert.match(css,/\.purchase-work-drafts-list \{/);
+  assert.doesNotMatch(invoice,/<section className="purchase-work-drafts"/);
+  assert.doesNotMatch(invoice,/الحفظ الأولي مسودة على هذا الجهاز فقط، وليس فاتورة مرحّلة ولا حركة مخزون/);
+});
+
+test("temporary save resets only after the IndexedDB write resolves",()=>{
+  const save = invoice.slice(invoice.indexOf('async function savePurchaseTemporarily()'),
+    invoice.indexOf('async function openPurchaseDraft('));
+  assert.match(save,/await savePurchaseWorkDraft\(/);
+  assert.match(save,/if \(!guard\.isCurrent\(\)\) return false;/);
+  assert.match(save,/resetInvoiceValues\(\)/);
+  assert.ok(save.indexOf('await savePurchaseWorkDraft(') < save.indexOf('resetInvoiceValues()'));
+  assert.match(save,/catch \(reason\)/);
+  assert.doesNotMatch(save,/setActivePurchaseDraftId\(saved\.id\)/);
+  assert.match(invoice,/function resetInvoiceValues\(\)/);
+  assert.match(invoice,/setLines\(\[first\]\)/);
+  assert.match(invoice,/setSupplier\(null\)/);
+  assert.match(invoice,/setDiscount\("0"\)/);
+  assert.match(invoice,/setActivePurchaseDraftId\(null\)/);
 });
