@@ -2,7 +2,7 @@
 -- Only a user's own private notes can be read later. Never expose their body
 -- through general/company list APIs, notifications or audit logs.
 CREATE TABLE IF NOT EXISTS user_private_notes (
-  id BIGSERIAL PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   client_request_id UUID NOT NULL,
   title VARCHAR(200) NOT NULL CHECK(length(btrim(title))>0),
