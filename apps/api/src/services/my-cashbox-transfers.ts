@@ -31,7 +31,7 @@ const iso = (date: Date | string) => new Date(date).toISOString();
 
 /**
  * Cashier-only reporting: pouch/electronic transfers in the rolling previous
- * 24 hours; shortage/overage from closings during the previous 72 hours.
+ * 24 hours; shortage/overage from closings during the previous 14 hours.
  * Last closing no longer resets transfer history. Everything is read-only,
  * scoped to the authenticated employee, and uses a single database timestamp
  * so totals and paginated previews refer to identical periods.
@@ -59,7 +59,7 @@ export async function listMyCashboxTransfers(
   )).rows[0].as_of;
   const windowEndAt = iso(asOf);
   const transferWindowStartAt = new Date(asOf.getTime() - 24 * millisecondsPerHour).toISOString();
-  const closingWindowStartAt = new Date(asOf.getTime() - 72 * millisecondsPerHour).toISOString();
+  const closingWindowStartAt = new Date(asOf.getTime() - 14 * millisecondsPerHour).toISOString();
   const params = [companyId, employee.id, transferWindowStartAt, windowEndAt];
   const predicate = `company_id=$1 AND employee_id=$2
     AND created_at >= $3::timestamptz AND created_at <= $4::timestamptz
