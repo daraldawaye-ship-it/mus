@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
+import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
 type View = "pouch" | "electronic" | "closings" | "present";
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
@@ -29,11 +30,12 @@ const views: { value: View; label: string }[] = [
   { value: "closings", label: "العجز والزيادة عند الإغلاق" },
   { value: "present", label: "المحضرون حاليًا" },
 ];
-const localTime = (value: string) =>
-  new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Aden", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(new Date(value));
+function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
+  return <span className="invoice-side-event-time">
+    <span className="invoice-side-event-elapsed">{invoiceSideElapsed(value, nowMs)}</span>
+    <small className="invoice-side-event-datetime"><bdi>{invoiceSideDateTime(value)}</bdi></small>
+  </span>;
+}
 
 /** The second (previously empty) invoice-side panel. Only the selected view
  * fetches, so item lookup and invoice entry do not wait for these reports.
@@ -42,6 +44,11 @@ const localTime = (value: string) =>
 export function InvoiceSideOverview({ companyId }: { companyId: number }) {
   const { user } = useSession();
   const [view, setView] = useState<View>("pouch");
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = window.setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => window.clearInterval(tick);
+  }, []);
   const menu = useRef<HTMLDetailsElement>(null);
   const offline = isOfflineNow();
   const transfers = useQuery<Transfers>({
@@ -92,7 +99,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
             {transfers.data?.hasEmployee && (
               <>
                 <small className="invoice-side-overview-since">
-                  آخر 24 ساعة {transfers.data.transferWindowStartAt ? `(من ${localTime(transfers.data.transferWindowStartAt)})` : ""}
+                  آخر 24 ساعة {transfers.data.transferWindowStartAt ? `(من ${invoiceSideDateTime(transfers.data.transferWindowStartAt)})` : ""}
                 </small>
                 <div className="invoice-side-overview-total">
                   <span>الإجمالي ({section?.count ?? 0} حركة)</span>
@@ -105,7 +112,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                       <thead><tr><th>التاريخ</th><th>المبلغ</th></tr></thead>
                       <tbody>{section.items.map(entry => (
                         <tr key={entry.id} title={entry.notes || undefined}>
-                          <td>{localTime(entry.createdAt)}{entry.notes &&
+                          <td><EventTimestamp value={entry.createdAt} nowMs={clockNow} />{entry.notes &&
                             <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.amount)}</bdi></td>
                         </tr>
@@ -127,7 +134,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
             {transfers.data?.hasEmployee && (
               <>
                 <small className="invoice-side-overview-since">
-                  آخر 3 أيام {transfers.data.closingWindowStartAt ? `(من ${localTime(transfers.data.closingWindowStartAt)})` : ""}
+                  آخر 3 أيام {transfers.data.closingWindowStartAt ? `(من ${invoiceSideDateTime(transfers.data.closingWindowStartAt)})` : ""}
                 </small>
                 <div className="invoice-side-overview-variances">
                   <span>العجز <strong><bdi>{formatWholeMoney(transfers.data.closings.shortageTotal)}</bdi></strong></span>
@@ -141,7 +148,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                       <thead><tr><th>الإغلاق</th><th>العجز</th><th>الزيادة</th></tr></thead>
                       <tbody>{transfers.data.closings.items.map(entry => (
                         <tr key={entry.id} title={`الدفتر: ${formatWholeMoney(entry.bookBalance)}؛ النقد المعدود: ${formatWholeMoney(entry.countedCash)}${entry.notes ? `؛ ${entry.notes}` : ""}`}>
-                          <td>{localTime(entry.createdAt)}
+                          <td><EventTimestamp value={entry.createdAt} nowMs={clockNow} />
                             {entry.notes && <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.shortage)}</bdi></td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.surplus)}</bdi></td>
@@ -166,7 +173,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                   <ul className="invoice-side-overview-presence">
                     {presentRows.map(row => <li key={row.employeeId}>
                       <span>{row.employeeName}</span>
-                      <small>{row.lastCheckedInAt ? localTime(row.lastCheckedInAt) : ""}</small>
+                      {row.lastCheckedInAt && <EventTimestamp value={row.lastCheckedInAt} nowMs={clockNow} />}
                     </li>)}
                   </ul>
                 ) : <small>لا يوجد موظفون محضرون حاليًا.</small>}
