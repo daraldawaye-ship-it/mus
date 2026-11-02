@@ -7,12 +7,21 @@ import { normalizeDigits } from "../../../packages/contracts/src/masters.ts";
 export function enteredInvoiceQuantity(value: string): string | null {
   const text = normalizeDigits(value.trim());
   if (text === "") return "1";
-  if (text === "-") return "-1";
+  if (text === "-") return "-"; // Keep the sign while the user types the negative quantity.
   if (!/^-?\d{1,22}$/.test(text)) return null;
   const negative = text.startsWith("-");
   const magnitude = (negative ? text.slice(1) : text).replace(/^0+(?=\d)/, "");
-  if (BigInt(magnitude) === 0n) return negative ? "-1" : "1";
+  if (BigInt(magnitude) === 0n) return negative ? "-0" : "1";
   return (negative ? "-" : "") + magnitude;
+}
+
+/** Finish a partially typed negative quantity before leaving the field.
+ * Neither a zero nor a sign alone can be submitted as an invoice quantity.
+ */
+export function completedInvoiceQuantity(value: string): string {
+  const entered = enteredInvoiceQuantity(value);
+  if (entered === "-" || entered === "-0") return "-1";
+  return entered ?? "1";
 }
 
 /** Header discount is 0 when cleared. A single '-' becomes '-0' so users
