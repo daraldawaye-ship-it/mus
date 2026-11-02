@@ -62,7 +62,7 @@ test("invoice side reports do not permit choosing another employee", () => {
   assert.match(service, /GREATEST\(variance_amount,0\)/);
   assert.match(service, /GREATEST\(-variance_amount,0\)/);
   assert.match(service, /24 \* millisecondsPerHour/);
-  assert.match(service, /72 \* millisecondsPerHour/);
+  assert.match(service, /14 \* millisecondsPerHour/);
   assert.match(ui, /attendance\/currently-present/);
   assert.match(ui, /ترحيلاتي إلى الحافظة/);
   assert.match(ui, /المحضرون حاليًا/);
