@@ -98,21 +98,71 @@ test("negative discounts distribute exactly across separate sale lines", () => {
   assert.deepEqual(result.lineDiscounts,["-14","-21"]);
   assert.deepEqual(result.lineTotals,["54","81"]);
 });
-test("returns retain their negative stock direction and cannot carry standalone header discount", () => {
+test("sales and purchases accept positive and negative discounts on wholly negative invoices", () => {
+  for (const kind of ["sale","purchase"] as const) {
+    for (const discount of ["20","-20"]) {
+      const result=invoiceSchema.safeParse({
+        idempotencyKey:"00000000-0000-4000-8000-000000000001",
+        kind,documentDate:"2026-11-02",
+        currencyId:1,branchId:1,locationId:1,counterpartyAccountId:1,
+        discount,lines:[{itemId:1,unit:1,quantity:"-2",unitPrice:"50"}],
+      });
+      assert.equal(result.success,true,kind+" "+discount);
+    }
+  }
+  const plus=calculateInvoiceTotals([{quantity:"-2",unitPrice:"50"}],"20",2);
+  assert.deepEqual(plus,{gross:"-100",discount:"20",total:"-120",
+    lineDiscounts:["20"],lineManualDiscounts:["20"],lineTotals:["-120"]});
+  const minus=calculateInvoiceTotals([{quantity:"-2",unitPrice:"50"}],"-20",2);
+  assert.deepEqual(minus,{gross:"-100",discount:"-20",total:"-80",
+    lineDiscounts:["-20"],lineManualDiscounts:["-20"],lineTotals:["-80"]});
+  assert.throws(()=>calculateInvoiceTotals([{quantity:"-2",unitPrice:"50"}],"-101",2));
+});
+test("negative mixed invoice allocates the header discount to returns without touching positive lines", () => {
+  const total=calculateInvoiceTotals([
+    {quantity:"1",unitPrice:"50"},{quantity:"-1",unitPrice:"100"},
+  ],"10",2);
+  assert.equal(total.gross,"-50");
+  assert.equal(total.total,"-60");
+  assert.deepEqual(total.lineManualDiscounts,["0","10"]);
+  assert.deepEqual(total.lineTotals,["50","-110"]);
+});
+test("linked returns preserve original prorated discount apart from manual header amount", () => {
+  const plus=calculateInvoiceTotals([{quantity:"-1",unitPrice:"100",discount:"-10"}],"20",2);
+  assert.equal(plus.discount,"10");
+  assert.equal(plus.total,"-110");
+  assert.deepEqual(plus.lineManualDiscounts,["20"]);
+  const minus=calculateInvoiceTotals([{quantity:"-1",unitPrice:"100",discount:"-10"}],"-20",2);
+  assert.equal(minus.discount,"-30");
+  assert.equal(minus.total,"-70");
+  assert.deepEqual(minus.lineManualDiscounts,["-20"]);
+  assert.throws(()=>calculateInvoiceTotals([{quantity:"-1",unitPrice:"100",discount:"-10"}],"-91",2));
+});
+test("returns also handle mixed ordinary lines with their original inherited discount", () => {
   const result=calculateInvoiceTotals([
-    {quantity:"1",unitPrice:"50"},
-    {quantity:"-1",unitPrice:"20",discount:"-5"},
+    {quantity:"1",unitPrice:"50"},{quantity:"-1",unitPrice:"20",discount:"-5"},
   ],"-10",2);
   assert.equal(result.gross,"30");
   assert.equal(result.discount,"-15");
   assert.equal(result.total,"45");
   assert.deepEqual(result.lineTotals,["60","-15"]);
-  assert.throws(()=>calculateInvoiceTotals([{quantity:"-1",unitPrice:"20"}],"-2",2));
+  assert.deepEqual(result.lineManualDiscounts,["-10","0"]);
 });
 test("strict accounting schema still rejects signed prices and invalid input", () => {
   assert.throws(()=>invoiceDiscountSchema.parse("-2x"));
   assert.throws(()=>calculateInvoiceTotals([{quantity:"1",unitPrice:"-5"}],"0",2));
   assert.throws(()=>calculateInvoiceTotals([{quantity:"1",unitPrice:"100"}],"101",2));
+});
+test("return discount migration tracks additional amounts without consuming original refund", () => {
+  const sql=readFileSync("apps/api/migrations/174_signed_negative_invoice_discounts.sql","utf8");
+  const server=readFileSync("apps/api/src/services/commerce.ts","utf8");
+  const ui=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
+  assert.match(sql,/ADD COLUMN manual_discount/);
+  assert.match(sql,/sum\(-r\.discount\+r\.manual_discount\)/);
+  assert.match(server,/lineManualDiscounts/);
+  assert.match(server,/manual_discount/);
+  assert.doesNotMatch(ui,/hasPositiveLines/);
+  assert.match(ui,/value=\{discount\}/);
 });
 test("database migration preserves existing invoice validation and routes negative discount to income", () => {
   const sql=readFileSync("apps/api/migrations/172_signed_invoice_header_discount.sql","utf8");
