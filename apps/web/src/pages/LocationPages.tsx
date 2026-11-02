@@ -660,6 +660,11 @@ function LocationEditor({
   const [active, setActive] = useState(location?.active ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const editableKinds: readonly LocationKind[] = !location
+    ? locationKinds
+    : location.kind === "showroom"
+      ? ["showroom"]
+      : ["warehouse", "returns"];
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -668,7 +673,11 @@ function LocationEditor({
     setError("");
     try {
       const body = location
-        ? { name, ...(kind !== location.kind ? { kind } : {}), ...(active !== location.active ? { active } : {}) }
+        ? {
+            name,
+            ...(kind !== location.kind ? { kind } : {}),
+            ...(active !== location.active ? { active } : {}),
+          }
         : { branchId: branch?.id, name, kind };
       const result = await api<{ location: Location }>(
         `/companies/${companyId}/locations${location ? `/${location.id}` : ""}`,
@@ -742,7 +751,7 @@ function LocationEditor({
           onChange={(event) => setKind(event.target.value as LocationKind)}
           disabled={saving || location?.kind === "showroom"}
         >
-          {(location ? location.kind === "showroom" ? ["showroom"] : ["warehouse", "returns"] : locationKinds).map((value) => (
+          {editableKinds.map((value) => (
             <option key={value} value={value}>
               {locationKindLabels[value]}
             </option>
@@ -774,7 +783,11 @@ function LocationEditor({
                   : "الإتاحة الفعلية: الموقع متوقف رغم تفعيل الفرع."
                 : "الإتاحة الفعلية: متوقف بسبب إيقاف الفرع. يبقى تفعيل الموقع محفوظًا، ويمكن تعديل اسمه أو إيقافه؛ تفعيله يتطلب إعادة تفعيل الفرع أولًا."}
             </Notice>
-            <p className="muted">نوع الموقع ثابت بعد الإنشاء.</p>
+            <p className="muted">
+              {location.kind === "showroom"
+                ? "نوع المعرض ثابت؛ لا يُسمح بتحويله إلى مخزن."
+                : "يمكن تصحيح النوع بين مخزن ومخزن مرتجع. يظل الكود والفرع وحركات المخزون السابقة كما هي."}
+            </p>
           </>
         )}
         <div className="form-actions">
