@@ -24,6 +24,7 @@ import { CompanyPrintHeader, useCompanyLetterhead, usePreparedCompanyLetterhead 
 import { StagedInvoicesPanel } from "../StagedInvoiceViews";
 import { InvoicePrintSheet, type PrintableInvoice } from "../InvoicePrintSheet";
 import { InvoiceSaleAlerts } from "../InvoiceSaleAlerts";
+import { InvoiceSideOverview } from "../InvoiceSideOverview";
 import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceItemActionsDropdown";
 import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1251,7 +1252,8 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
           context={context} kind={kind} selectedItemId={selectedItemId}
           selectedItemName={selectedItemName} userId={user?.id} />
-        {kind === "purchase" && <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
+        {kind === "sale" ? <InvoiceSideOverview companyId={companyId} /> :
+          <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
       </aside>}
     </div>
   );
@@ -1848,6 +1850,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       setCashboxDraft(null);
       setCashboxUnknown(false);
       void invalidate();
+      void client.invalidateQueries({queryKey:["invoice-side-cashbox",user?.id,companyId]});
       void client.invalidateQueries({predicate:q=>
         q.queryKey.includes(companyId) &&
         ["account-balances","account-ledger","financial-documents"].includes(String(q.queryKey[0]))});
