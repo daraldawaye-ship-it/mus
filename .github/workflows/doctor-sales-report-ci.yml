@@ -9,6 +9,8 @@ on:
       - "apps/api/src/mcp-contracts.json"
       - "apps/web/src/pages/DoctorSalesReportPage.tsx"
       - "apps/web/src/App.tsx"
+      - "apps/web/src/UserMenu.tsx"
+      - "apps/web/src/UserShortcutMenuGrid.tsx"
       - "packages/contracts/src/pages.ts"
       - "tests/doctor-sales-report.test.ts"
       - ".github/workflows/doctor-sales-report-ci.yml"
