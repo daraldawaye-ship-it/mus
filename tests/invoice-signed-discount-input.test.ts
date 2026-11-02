@@ -120,7 +120,8 @@ test("database migration preserves existing invoice validation and routes negati
   const editor=readFileSync("apps/web/src/pages/CommercePages.tsx","utf8");
   assert.match(sql,/invoice_lines_signed_amounts_check/);
   assert.match(sql,/pg_get_functiondef\('check_invoice_integrity\(\)'::regprocedure\)/);
-  assert.match(server,/discount > 0n \? "discountAllowed" : "discountEarned"/);
+  assert.match(server,/const positiveDiscount = discount > 0n/);
+  assert.match(server,/const purpose = positiveDiscount \? "discountAllowed" : "discountEarned"/);
   assert.match(editor,/enteredInvoiceQuantity\(rawValue\)/);
   assert.match(editor,/enteredInvoiceDiscount\(event.target.value\)/);
   assert.match(editor,/onBlur=\{\(\) => setDiscount\(current => completedInvoiceDiscount\(current\)\)\}/);
