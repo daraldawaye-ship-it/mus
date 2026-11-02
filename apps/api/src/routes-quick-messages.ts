@@ -7,6 +7,7 @@ import { actor, handler, parse } from "./http.ts";
 import { HttpError, deny } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { sendChatMessage } from "./services/chat.ts";
+import type { QuickChatNotification } from "./services/chat-notifications.ts";
 import { audit } from "./services/audit.ts";
 
 export const quickMessageSchema = z.object({
@@ -21,6 +22,16 @@ export const quickMessageSchema = z.object({
   if (value.kind === "private_note" && !value.title)
     context.addIssue({ code: "custom", path: ["title"], message: "اكتب عنوان المذكرة الشخصية" });
 });
+/** Separate notification codes keep "all employees", "present employees",
+ * and management messages from being grouped with ordinary private chats. */
+export const quickNotificationTypes = {
+  system_change: {code:"CHAT_QUICK_SYSTEM_GLOBAL",title:"طلب تعديل النظام"},
+  present_employees: {code:"CHAT_QUICK_PRESENT_COMPANY",title:"رسالة إلى جميع المحضّرين"},
+  all_employees: {code:"CHAT_QUICK_ALL_COMPANY",title:"رسالة إلى جميع الموظفين"},
+  app_manager: {code:"CHAT_QUICK_MANAGER_GLOBAL",title:"رسالة إلى مسؤول التطبيق"},
+} as const satisfies Record<Exclude<z.infer<typeof quickMessageSchema>["kind"],"private_note">,
+  Pick<QuickChatNotification,"code"|"title">>;
+
 function messageIdFor(requestId: string, peerId: number): string {
   const bytes = createHash("sha256").update("alraesy-quick-message:" + requestId + ":" + peerId).digest().subarray(0,16);
   bytes[6] = (bytes[6]! & 15) | 64;
@@ -121,6 +132,9 @@ export function quickMessagesRoutes(pool: Pool): Router {
         await sendChatMessage(client,user,peerId,{
           scope,...(scope==="company"?{companyId:input.companyId}:{}),
           clientMessageId:messageIdFor(input.clientRequestId,peerId),text:message,
+        },{
+          ...quickNotificationTypes[input.kind],
+          message:"من " + user.displayName + ":\n" + input.text,
         });
       }
       await audit(client,user,"quick.broadcast","quick_message",null,null,
