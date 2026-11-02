@@ -22,6 +22,7 @@ import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
+import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
 import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
@@ -510,6 +511,16 @@ export function commerceRoutes(pool: Pool): Router {
           receiveElectronicMovement(client,companyId,user,input),
       );
       res.status(201).json({receipt:result});
+    }),
+  );
+  // Invoice sidebar: per-employee read-only transfers since their own last
+  // closed till. Does not expose another user's receipts, balances or history.
+  router.get(
+    `${base}/sales/my-cashbox-transfers`,
+    handler(async (req, res) => {
+      const result = await readCommerce(pool, req, (client, companyId) =>
+        listMyCashboxTransfers(client, companyId, actor(req).id));
+      res.json(result);
     }),
   );
   // Sales-only quick till actions. No account identifiers are accepted from
