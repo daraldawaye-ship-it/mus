@@ -1923,7 +1923,10 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
 test("atomic new unit activation persists name and conversion at zero stock", async (t) => {
   const f = await fixture(t);
   const company = await f.company("Atomic unit test company");
-  const curr = await currency(f, company.id);
+  const curr = (await f.owner.ok<Page<CompanyCurrency>>(
+    "GET", `/companies/${company.id}/currencies`,
+  )).items.find(entry => entry.code === "YER")!;
+  assert(curr,"company default currency exists");
   const original = await item(f, company.id, curr.id, {
     unit1Name:"باكت", unit2Name:"", factor2:1,
     unit3Name:"", factor3:1, defaultSaleUnit:1,
