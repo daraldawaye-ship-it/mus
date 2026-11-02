@@ -4505,6 +4505,42 @@ test("signed header discounts post negative sales and purchase invoices while pr
     lines:[{itemId:item.id,unit:1,quantity:"3"}],
   }));
   assert.equal(sold.total,"300");
+  // Disposable test-schema-only diagnosis for a deferred integrity assertion.
+  const definition = String((await f.pool.query(
+    "SELECT pg_get_functiondef('check_invoice_integrity()'::regprocedure) AS ddl",
+  )).rows[0].ddl);
+  const target = "RAISE EXCEPTION 'Invoice row amounts, direction and stock sources must be consistent'";
+  assert(definition.includes(target), "Expected integrity assertion to diagnose");
+  const diagnostics = \`RAISE EXCEPTION 'Invoice diagnostic %',
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+      'line',l.id,'originalLine',l.original_line_id,
+      'price',l.unit_price::text,'originalPrice',o.unit_price::text,
+      'unit',l.unit,'originalUnit',o.unit,
+      'item',l.item_id,'originalItem',o.item_id,
+      'expiry',l.expiry_date::text,'originalExpiry',o.expiry_date::text,
+      'discount',l.discount::text,'manual',l.manual_discount::text,
+      'originalDiscount',o.discount::text,
+      'originalRefundDiscount',(
+        SELECT sum(-r.discount+r.manual_discount)::text
+        FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id),
+      'originalRefundQuantity',(
+        SELECT sum(-r.quantity)::text
+        FROM invoice_lines r WHERE r.company_id=o.company_id AND r.original_line_id=o.id),
+      'originalQuantity',o.quantity::text,
+      'originalKind',ori.kind,'kind',doc.kind,
+      'originalAccount',ori.counterparty_account_id,'account',doc.counterparty_account_id,
+      'originalLocation',ori.location_id,'location',doc.location_id,
+      'movement',(SELECT jsonb_agg(jsonb_build_object(
+        'id',m.id,'orig',m.original_movement_id,
+        'item',m.item_id,'location',m.location_id,'kind',m.kind,
+        'batch',m.batch_key,'qty',m.quantity_smallest::text,
+        'cost',m.cost_base::text))
+        FROM stock_movements m WHERE m.company_id=l.company_id AND m.invoice_line_id=l.id)
+    )),'[]'::jsonb)::text FROM invoice_lines l
+       LEFT JOIN invoice_lines o ON o.company_id=l.company_id AND o.id=l.original_line_id
+       LEFT JOIN invoices ori ON ori.company_id=o.company_id AND ori.id=o.invoice_id
+       WHERE l.company_id=doc.company_id AND l.invoice_id=doc.id)\`;
+  await f.pool.query(definition.replace(target, diagnostics));
 
   for (const discount of ["0","10","-10"]) {
     const linked=await invoice(f,s,invoiceBody(s,item.id,{
