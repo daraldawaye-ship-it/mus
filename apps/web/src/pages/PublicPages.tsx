@@ -655,7 +655,12 @@ function ProfileForms({ user }: { user: User }) {
 
 type PublicFlag = "archived" | "suspended" | "editor" | "monitor";
 type DeviceKind = "desktop_browser" | "mobile_browser" | "android_app" | "iphone_app";
-type DeviceTimes = { lastLoginAt: string | null; lastPushConfirmedAt: string | null };
+type DeviceTimes = {
+  lastLoginAt: string | null;
+  lastPushConfirmedAt: string | null;
+  lastPushPermission?: "granted" | "denied" | "default" | "unsupported" | null;
+  lastPushPermissionCheckedAt?: string | null;
+};
 type TrackedUser = User & {
   deviceActivity?: Partial<Record<DeviceKind, DeviceTimes>>;
   activePushDevices?: DeviceKind[];
@@ -671,9 +676,19 @@ function lastPushCell(record: TrackedUser, kinds: DeviceKind[]) {
     .filter((value): value is string => Boolean(value));
   const last = dates.sort((a,b) => Date.parse(b) - Date.parse(a))[0];
   const linked = kinds.some(kind => record.activePushDevices?.includes(kind));
-  return <div title="الاشتراك مرتبط بالخادم فقط؛ قد يغيّر المستخدم إذن الجهاز دون إبلاغ الموقع.">
+  const latestPermission = kinds.map(kind => record.deviceActivity?.[kind])
+    .filter((item): item is DeviceTimes => Boolean(item?.lastPushPermissionCheckedAt))
+    .sort((a,b) => Date.parse(b.lastPushPermissionCheckedAt!) - Date.parse(a.lastPushPermissionCheckedAt!))[0];
+  const label = latestPermission?.lastPushPermission === "granted" ? "الإذن مسموح"
+    : latestPermission?.lastPushPermission === "denied" ? "الإذن محظور"
+    : latestPermission?.lastPushPermission === "default" ? "بانتظار موافقة الجهاز"
+    : latestPermission?.lastPushPermission === "unsupported" ? "غير مدعوم"
+    : "حالة الإذن غير معروفة";
+  return <div title="حالة الإذن حسب آخر تقرير من جهاز نشط؛ قد تتغير أثناء إغلاق الموقع.">
     <span>{last ? dateLabel(last) : "—"}</span>
-    <small className="muted">{linked ? "اشتراك مرتبط" : "لا يوجد اشتراك نشط"}</small>
+    <small className="muted">{label} · {linked ? "اشتراك مرتبط" : "بدون اشتراك"}</small>
+    {latestPermission?.lastPushPermissionCheckedAt &&
+      <small className="muted">آخر فحص: {dateLabel(latestPermission.lastPushPermissionCheckedAt)}</small>}
   </div>;
 }
 const flagLabels: Record<PublicFlag, string> = {
@@ -1033,7 +1048,7 @@ function UserList() {
             <option value="true">مؤرشف</option>
           </Select>
         </div>
-        <p className="muted">تبدأ تواريخ الدخول المفصّلة من تفعيل هذه الميزة؛ (—) يعني أنه لا توجد بيانات مؤكدة. المقصود بتطبيق أندرويد أو آيفون هو تطبيق الويب المثبّت. «اشتراك مرتبط» لا يضمن أن إذن الإشعارات ما زال مفعّلًا على الجهاز.</p>
+        <p className="muted">تبدأ تواريخ الدخول المفصّلة من تفعيل هذه الميزة؛ (—) يعني أنه لا توجد بيانات مؤكدة. المقصود بتطبيق أندرويد أو آيفون هو تطبيق الويب المثبّت. حالة إذن الإشعارات مأخوذة من آخر فحص أرسله جهاز نشط، وقد تصبح قديمة أثناء إغلاق الموقع؛ و«اشتراك مرتبط» لا يضمن استلام الإشعارات.</p>
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
         {list.error && <Notice tone="error">{messageOf(list.error)}</Notice>}
         <DataTable
