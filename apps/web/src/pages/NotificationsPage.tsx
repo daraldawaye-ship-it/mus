@@ -345,7 +345,7 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
         {list.data?.items.map((record) => (
           <article
             key={record.id}
-            className={`card notification-record${record.groupUnread>0 ? " is-unread" : ""}`}
+            className={`card notification-record${record.groupUnread>0 ? " is-unread" : ""}${record.code.startsWith("QUICK_") ? " is-quick-message" : ""}`}
             data-notification-id={record.id}
           >
             <div className="notification-heading">
