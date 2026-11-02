@@ -89,16 +89,16 @@ export function settlementFollowUpRoutes(pool: Pool): Router {
           [...params, importance, query.pageSize, query.offset],
         );
         // Compute across all matching active items, independent of the visible page.
-        // A stock_total > 0 is required: out-of-stock/negative items must not
-        // contribute to the monthly count workload, even if they have sales.
-        // 30 / ((importance * 30) / (sales + 5)) = (sales + 5) / importance.
+        // Reuse the same capped periodic interval as the displayed countLimit
+        // and required-count predicate; uncapped frequencies overstate workload.
+        // A stock_total > 0 remains required for the workload projection.
         const summary = await client.query<{
           stocktakeFrequencyTotal: string;
           stockedItemsCount: number;
         }>(
           `SELECT
             COALESCE(ROUND(SUM(
-              (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) / $3::numeric
+              30::numeric / count_limit.raw_limit
             ), 6), 0)::text AS "stocktakeFrequencyTotal",
             COUNT(*)::integer AS "stockedItemsCount"
           ${reportFrom}
