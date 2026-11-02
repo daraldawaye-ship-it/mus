@@ -1354,6 +1354,9 @@ function OperationEditor({
       /* Keep the user's incomplete input intact. */
     }
   }
+  // "Zero" is an explicit BUTTON action, never inferred from the count.
+  // Counted quantities (even 0) stay ordinary physical reconciliations;
+  // only the zero-location button bypasses shelf/expiry/composition inputs.
   async function save(event: FormEvent | null, zeroLocation = false) {
     event?.preventDefault();
     if (!allowed || saving || result) return;
