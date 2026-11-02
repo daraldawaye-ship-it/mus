@@ -12,13 +12,21 @@ type HistoricalLine = {
 };
 type UnitFactors = { id: number; factor2: number; factor3: number; unit2_name: string; unit3_name: string };
 
+/** The owner's bounded stock-variance exception: Dar Al Dawa legacy sales through 1 Nov 2026. */
+export function allowsLegacyStockVariance(
+  companyId: number, sourceSystem: string, kind: string, documentDate: string,
+): boolean {
+  return companyId === 2 && sourceSystem === "dar-aldawa-legacy-2026-10" &&
+    kind === "sale" && documentDate >= "2026-10-01" && documentDate <= "2026-11-01";
+}
+
 /**
  * Import-only exact conversion: a fractional large unit may be posted as an
  * integer quantity of a genuine smaller unit, at the correspondingly reduced
  * price. Both quantity and gross value must be exactly conserved.
  *
  * Exact conversions are preferred. In the explicit owner-authorized
- * October 2026 recovery only, a nonrepresentable source fraction can post
+ * October 2026 through 1 November 2026 recovery only, a nonrepresentable source fraction can post
  * as one signed inventory unit with a repriced line that preserves its
  * original extended amount to the currency's supported precision. Original
  * quantities remain unchanged in the staged provenance record.
