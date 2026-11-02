@@ -274,6 +274,13 @@ export function UserMenu({
             )}
             {displayedTab === "tools" && (
               <div className="user-menu-grid user-menu-item-actions" aria-label="روابط أخرى">
+                {companyId && canViewPage("company.doctor-sales-report") && (
+                  <NavLink className="user-menu-tile"
+                    to={`/companies/${companyId}/doctor-sales-report?compact=1`} onClick={dismiss}>
+                    <ClipboardList size={18} aria-hidden="true" />
+                    <span>مبيعات الأطباء آخر 3 أيام</span>
+                  </NavLink>
+                )}
                 {companyId && canViewPage("company.attendance-current") && (
                   <NavLink className="user-menu-tile"
                     to={`/companies/${companyId}/attendance-current`} onClick={dismiss}>
@@ -296,6 +303,7 @@ export function UserMenu({
                 )}
                 {!directory.data && <div className="user-menu-grid-note">جارٍ تحميل الروابط المسموح بها…</div>}
                 {directory.data && !(
+                  (companyId && canViewPage("company.doctor-sales-report")) ||
                   (companyId && canViewPage("company.attendance-current")) ||
                   (companyId && canViewPage("company.pages")) ||
                   canViewPage("public.last-present")
