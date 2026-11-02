@@ -4511,7 +4511,7 @@ test("signed header discounts post negative sales and purchase invoices while pr
   )).rows[0].ddl);
   const target = "RAISE EXCEPTION 'Invoice row amounts, direction and stock sources must be consistent'";
   assert(definition.includes(target), "Expected integrity assertion to diagnose");
-  const diagnostics = \`RAISE EXCEPTION 'Invoice diagnostic %',
+  const diagnostics = `RAISE EXCEPTION 'Invoice diagnostic %',
     (SELECT COALESCE(jsonb_agg(jsonb_build_object(
       'line',l.id,'originalLine',l.original_line_id,
       'price',l.unit_price::text,'originalPrice',o.unit_price::text,
@@ -4539,7 +4539,7 @@ test("signed header discounts post negative sales and purchase invoices while pr
     )),'[]'::jsonb)::text FROM invoice_lines l
        LEFT JOIN invoice_lines o ON o.company_id=l.company_id AND o.id=l.original_line_id
        LEFT JOIN invoices ori ON ori.company_id=o.company_id AND ori.id=o.invoice_id
-       WHERE l.company_id=doc.company_id AND l.invoice_id=doc.id)\`;
+       WHERE l.company_id=doc.company_id AND l.invoice_id=doc.id)`;
   await f.pool.query(definition.replace(target, diagnostics));
 
   for (const discount of ["0","10","-10"]) {
