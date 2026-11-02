@@ -6,7 +6,7 @@ import { transaction } from "./db.ts";
 import { actor, handler, parse } from "./http.ts";
 import { HttpError, deny } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
-import { emitNotification } from "./services/notifications.ts";
+import { effectiveTemplate, emitNotification } from "./services/notifications.ts";
 import { audit } from "./services/audit.ts";
 
 export const quickMessageSchema = z.object({
@@ -102,14 +102,17 @@ export function quickMessagesRoutes(pool: Pool): Router {
         throw new HttpError(409,"too_many_recipients","عدد المستلمين يتجاوز 250؛ لم يُرسل أي شيء، راجع الإدارة");
       if (!recipients.length)
         throw new HttpError(409,"no_recipients","لا يوجد مستلمون مؤهلون؛ لم تُرسل الرسالة");
+      const type=quickNotificationTypes[input.kind];
+      const companyScoped=input.kind==="present_employees"||input.kind==="all_employees";
+      const template=await effectiveTemplate(client,companyScoped?input.companyId!:null,type.code);
+      if(!template?.implemented || !template.enabled)
+        throw new HttpError(409,"notifications_disabled","نوع التنبيه غير مفعّل، ولم تُرسل أي رسالة");
       await client.query(
         ["INSERT INTO user_quick_messages",
          "(user_id,client_request_id,kind,company_id,payload_hash,recipient_ids)",
          "VALUES($1,$2,$3,$4,$5,$6::integer[])"].join(" "),
         [user.id,input.clientRequestId,input.kind,input.companyId??null,digest,recipients.map(r=>r.userId)],
       );
-      const type=quickNotificationTypes[input.kind];
-      const companyScoped=input.kind==="present_employees"||input.kind==="all_employees";
       const destination=companyScoped
         ? "/companies/"+input.companyId+"/notifications?state=all&grouped=0&code="+type.code
         : "/notifications?state=all&grouped=0&code="+type.code;
