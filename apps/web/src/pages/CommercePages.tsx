@@ -2436,11 +2436,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       ),
     );
   }
-  function focusInvoiceLine(line: DraftLine, from: EventTarget | null) {
+  function focusInvoiceLine(line: DraftLine, source: DraftLine, from: EventTarget | null) {
     const element = from instanceof HTMLElement ? from : null;
     const column =
-      element?.id === lineInputId(line, "quantity") ? "quantity" :
-      element?.id === lineInputId(line, "price") ? "price" :
+      element?.id === lineInputId(source, "quantity") ? "quantity" :
+      element?.id === lineInputId(source, "price") ? "price" :
       null;
     // Reuse the same column when it exists, otherwise land in the item's
     // search or original-invoice selector. No row can focus a disabled field.
@@ -2455,7 +2455,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     if (position < 0) return;
     const next = lines[position + direction];
     if (next) {
-      focusInvoiceLine(next, from);
+      focusInvoiceLine(next, line, from);
       return;
     }
     if (direction < 0) return;
@@ -3155,7 +3155,14 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                           if (user) rememberRecentEntity(user.id, companyId, "item",
                             {id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
-                        onClickCapture={() => {
+                        onClickCapture={(event) => {
+                          // Clicking non-input cells activates this row for
+                          // Delete/Arrow shortcuts, without stealing focus
+                          // from the editor or item-result buttons.
+                          if (event.target instanceof HTMLElement &&
+                              !event.target.closest("input,textarea,select,button,a,[contenteditable]")) {
+                            event.currentTarget.focus();
+                          }
                           activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
