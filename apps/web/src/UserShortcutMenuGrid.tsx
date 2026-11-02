@@ -75,6 +75,14 @@ export function UserShortcutMenuGrid({
           <span>{entry.name}</span>
         </NavLink>
       ))}
+      {liveReady && companyId && permitted.has("company.doctor-sales-report") && (
+        <NavLink
+          to={`/companies/${companyId}/doctor-sales-report?compact=1`}
+          className="user-menu-tile" onClick={onNavigate}
+        >
+          <span>مبيعات الأطباء آخر 3 أيام</span>
+        </NavLink>
+      )}
       {allowQuickAdd && (
         <button type="button" className="user-menu-tile" onClick={onQuickAdd}>
           <span>إضافة إلى الجدول العام</span>
