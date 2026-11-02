@@ -301,7 +301,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {ranges.map(({ key, label }) =>
               <label className="item-options-filter-field" key={key}>
                 <span className="item-options-filter-label" title={label}>{label}</span>
-                <input type="number" step="any" placeholder="بدون حد"
+                <input type="number" step="any"
                   value={draft[key]}
                   onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} />
               </label>

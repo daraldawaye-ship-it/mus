@@ -27,14 +27,18 @@ test("labels stay inside fields and visible even when default values exist",()=>
   assert.ok(section.includes('<span className="item-options-filter-label">بحث عن صنف'));
   assert.ok(section.includes('<span className="item-options-filter-label">حالة الصنف</span>'));
   assert.ok(section.includes('<span className="item-options-filter-label" title={label}>{label}</span>'));
-  assert.ok(section.includes('type="number" step="any" placeholder="بدون حد"'));
+  assert.ok(section.includes('type="number" step="any"'));
+  assert.ok(!section.includes('placeholder="بدون حد"'),"empty numeric range has no filler text");
   assert.ok(section.includes("value={draft[key]}"),"retain previously set ranges");
   assert.ok(section.includes("value={search}"),"search remains controlled");
   assert.ok(section.includes("value={active}"),"status remains controlled");
   assert.ok(css.includes(".item-options-filter-field .item-options-filter-label"));
   assert.ok(css.includes("position: absolute"));
   assert.ok(css.includes("pointer-events: none"),"label does not block editing");
-  assert.ok(css.includes("padding-block: 21px 5px"),"content sits beneath embedded title");
+  assert.ok(css.includes("padding-block: 22px 5px"),"content sits beneath embedded title");
+  assert.ok(css.includes(".item-options-filters-card .item-options-filter-field > input"),
+    "item options padding wins over global input:not selectors");
+  assert.ok(css.includes("height: var(--item-filter-row-height)"),"field uses complete row height");
 });
 
 test("controls and selected options remain outside scroll viewport",()=>{
