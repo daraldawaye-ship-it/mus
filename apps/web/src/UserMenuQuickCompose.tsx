@@ -60,12 +60,12 @@ export function UserMenuQuickCompose({
     {result?<div className="form-stack">
       <Notice>{privateNote
         ?"تم حفظ المذكرة الخاصة في حسابك دون مشاركتها أو إرسال إشعارات للآخرين. سيتم إضافة مكان عرضها لاحقًا."
-        :"تم إرسال الرسالة والإشعارات إلى "+result.recipients+" من المستلمين."}</Notice>
+        :"تم نشر التنبيه في قسم التنبيهات لدى "+result.recipients+" من المستلمين."}</Notice>
       <div className="form-actions"><Button onClick={onClose}>إغلاق</Button></div>
     </div>:<form className="form-stack" onSubmit={event=>void submit(event)}>
       {kind==="present_employees"&&<p className="muted">تصل الرسالة بإشعار إلى الموظفين المحضّرين حاليًا والذين لم يسجّلوا انصرافهم.</p>}
       {kind==="all_employees"&&<p className="muted">تصل الرسالة بإشعار لكل موظف فعّال في الشركة، عدا حسابك.</p>}
-      {(kind==="system_change"||kind==="app_manager")&&<p className="muted">تُرسل الرسالة وإشعارها إلى إدارة التطبيق عبر الدردشة العامة.</p>}
+      {(kind==="system_change"||kind==="app_manager")&&<p className="muted">يظهر نص الرسالة واسمك للإدارة في قسم التنبيهات، دون دردشة.</p>}
       {privateNote&&<p className="muted">مذكرة لا يراها أحد غيرك، ولا يذهب عنها إشعار لأي مستخدم.</p>}
       {error&&<Notice tone="error">{error}</Notice>}
       {privateNote&&<label className="field">

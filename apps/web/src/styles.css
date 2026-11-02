@@ -7017,3 +7017,16 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .app-install-banner-action { width: 100%; flex: 1 1 100%; font-size: 17px; }
 }
 @media print { .app-install-banner { display: none !important; } }
+
+/* User-requested (+) broadcasts are *notifications*, not chat. Keep the
+   sender's text readable in the notification itself (including newlines);
+   long messages scroll within the existing popover, never a chat window. */
+.notification-quick-item.is-quick-message .notification-quick-message {
+  display: block;
+  -webkit-line-clamp: unset;
+  white-space: pre-wrap;
+  overflow: visible;
+}
+.notification-record.is-quick-message .notification-message {
+  white-space: pre-wrap;
+}

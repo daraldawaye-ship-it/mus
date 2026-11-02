@@ -1,0 +1,25 @@
+name: Quick message notifications only
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-quick-messages.ts'
+      - 'apps/api/migrations/20261102_quick_notifications_only.sql'
+      - 'apps/web/src/NotificationBell.tsx'
+      - 'apps/web/src/pages/NotificationsPage.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/web/src/UserMenuQuickCompose.tsx'
+      - 'tests/quick-notifications-only.test.ts'
+      - '.github/workflows/quick-notifications-only-ci.yml'
+jobs:
+  notifications:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/quick-notifications-only.test.ts tests/avatar-quick-messages.test.ts

@@ -335,7 +335,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
             {items.map((record) => (
               <article
                 key={record.id}
-                className={`notification-quick-item${record.groupUnread>0 ? " is-unread" : ""}`}
+                className={`notification-quick-item${record.groupUnread>0 ? " is-unread" : ""}${record.code.startsWith("QUICK_") ? " is-quick-message" : ""}`}
               >
                 <div className="notification-quick-item-top">
                   {record.href ? (
