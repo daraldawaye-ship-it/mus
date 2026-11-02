@@ -7,6 +7,9 @@ on:
       - 'apps/web/src/App.tsx'
       - 'apps/web/src/styles.css'
       - 'apps/web/src/app-install.ts'
+      - 'apps/web/public/site.webmanifest'
+      - 'tests/pwa-link-launch.test.ts'
+      - 'apps/web/src/QuickLoginPage.tsx'
       - 'tests/prominent-pwa-install-banner.test.ts'
       - '.github/workflows/prominent-pwa-install-ci.yml'
 jobs:
@@ -21,4 +24,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/app-install.test.ts tests/prominent-pwa-install-banner.test.ts
+      - run: node --import tsx --test tests/app-install.test.ts tests/prominent-pwa-install-banner.test.ts tests/pwa-link-launch.test.ts tests/user-magic-link-login.test.ts
