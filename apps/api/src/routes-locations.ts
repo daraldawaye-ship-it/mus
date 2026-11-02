@@ -319,11 +319,14 @@ export function locationRoutes(pool: Pool): Router {
           );
           if (input.active === true && !before.branchActive)
             conflict("يجب تفعيل الفرع قبل تفعيل الموقع");
+          if (input.kind !== undefined && before.kind === "showroom")
+            conflict("لا يمكن تغيير نوع معرض الفرع؛ التصحيح متاح للمخازن والمرتجعات فقط");
           await client.query(
-            "UPDATE locations SET name=$1,active=$2 WHERE company_id=$3 AND id=$4",
+            "UPDATE locations SET name=$1,active=$2,kind=$3 WHERE company_id=$4 AND id=$5",
             [
               input.name ?? before.name,
               input.active ?? before.active,
+              input.kind ?? before.kind,
               companyId,
               locationId,
             ],
