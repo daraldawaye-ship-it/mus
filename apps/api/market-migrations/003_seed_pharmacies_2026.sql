@@ -2,8 +2,8 @@
 -- listed hours/phones are currently verified. Each branch is a distinct card.
 -- Import is idempotent and avoids changes to existing manual edits.
 -- System attribution (id=0) never represents a real employee account.
--- Keep only the first valid local mobile per pharmacy: nine digits beginning
--- with 7. Do not store any landline, extra contact, incomplete or country code.
+-- Store at most one mobile (9 digits, starts 7) and one fixed phone (8 digits, starts 0).
+-- Preserve leading zeros and never add +967, 00 or extra numbers.
 INSERT INTO users(id,display_name) VALUES (0,'دليل السوق — إدخال إداري')
 ON CONFLICT(id) DO NOTHING;
 WITH supplied(name,address,phones,source_domain,notes) AS (
@@ -83,31 +83,11 @@ WITH supplied(name,address,phones,source_domain,notes) AS (
   lower(regexp_replace(translate(s.name,'أإآٱى','ااااي'),'[[:space:]]+',' ','g')) AS normalized,
   md5('market-pharmacy-list-2026-11-02:' || s.name) AS uid,
   (SELECT trim(m.value) FROM unnest(string_to_array(s.phones,',')) WITH ORDINALITY AS m(value,seq)
-    WHERE trim(m.value) ~ '^7[0-9]{8}$' ORDER BY m.seq LIMIT 1) AS mobile_phone,
+    WHERE trim(m.value) ~ '^7[0-9]{8}$'
+    ORDER BY m.seq LIMIT 1) AS mobile_phone,
   (SELECT trim(m.value) FROM unnest(string_to_array(s.phones,',')) WITH ORDINALITY AS m(value,seq)
-    WHERE trim(m.value) ~ '^0[0-9]{7} ORDER BY m.seq LIMIT 1) AS landline_phone
- FROM supplied s
-)
-INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,created_by,idempotency_key)
-SELECT 'pharmacy',name,normalized,
- jsonb_strip_nulls(jsonb_build_object(
-   'phone',mobile_phone,
-   'landlinePhone',landline_phone,
-   'address',address,
-   'countryCode','YE','governorateCode','YE-AMANA','cityCode','YE-AMANA-SANAA',
-   'sourceNotes','الاسم والموقع والأرقام وردت من قائمة المالك بتاريخ 02/11/2026؛ المصدر المذكور ' ||
-      source_domain || ' دون رابط مباشر؛ لم يُتحقق من البيانات مباشرة. ' ||
-      'تم اختيار رقم موبايل واحد ورقم هاتف ثابت واحد كحد أقصى بصيغتهما المحلية، دون مفتاح دولي.' ||
-      CASE WHEN notes='24h' THEN ' وُصفت الصيدلية بأنها تعمل 24 ساعة؛ غير مؤكد.'
-        WHEN notes LIKE 'partial:%' THEN ' رُفض الرقم الناقص؛ لم يتم إدخاله.'
-        ELSE '' END
- )),
- 'published',0,
- (substring(uid,1,8)||'-'||substring(uid,9,4)||'-'||substring(uid,13,4)||'-'||
-  substring(uid,17,4)||'-'||substring(uid,21,12))::uuid
-FROM prepared
-ON CONFLICT DO NOTHING;
- ORDER BY m.seq LIMIT 1) AS landline_phone
+    WHERE trim(m.value) ~ '^0[0-9]{7}$'
+    ORDER BY m.seq LIMIT 1) AS landline_phone
  FROM supplied s
 )
 INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,created_by,idempotency_key)
