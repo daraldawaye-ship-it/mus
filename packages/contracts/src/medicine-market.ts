@@ -3,9 +3,6 @@ export const marketKinds = [
   "composition",
   "scientific-name",
   "dosage-form",
-  "country",
-  "governorate",
-  "city",
   "pharmacy",
   "wholesaler",
   "agent",
@@ -16,13 +13,19 @@ export const marketKinds = [
   "college",
 ] as const;
 export type MarketKind = (typeof marketKinds)[number];
-/** Admin-owned reference catalog. Public cards may reference these, but
- * non-administrators cannot create or edit the reference cards themselves. */
-export const marketAdministrativeKinds = [
-  "country", "governorate", "city", "dosage-form",
-] as const satisfies readonly MarketKind[];
+/** Geographic values are managed as admin-owned reference rows, NOT as
+ * individual card records for every city or governorate. */
+export const marketAdministrativeKinds = ["dosage-form"] as const satisfies readonly MarketKind[];
 export const isMarketAdministrativeKind = (kind: MarketKind): boolean =>
   (marketAdministrativeKinds as readonly string[]).includes(kind);
+export const marketReferenceKinds = ["country", "governorate", "city"] as const;
+export type MarketReferenceKind = typeof marketReferenceKinds[number];
+export interface MarketReferenceEntry {
+  kind: MarketReferenceKind;
+  code: string;
+  name: string;
+  parentCode: string | null;
+}
 export type MarketVisibility = "public" | "ministry" | "accounting";
 export type MarketFieldType =
   | "text"
@@ -33,6 +36,7 @@ export type MarketFieldType =
   | "date"
   | "url"
   | "relation"
+  | "reference"
   | "contacts"
   | "ingredients"
   | "accounting";
@@ -63,9 +67,9 @@ const phone = f("phone", "رقم التواصل");
 const contacts = f("contacts", "أرقام المسؤولين", "contacts");
 const keywords = f("keywords", "مفاتيح البحث");
 const locationRelations = [
-  f("countryId", "الدولة", "relation", { relationKind: "country" }),
-  f("governorateId", "المحافظة", "relation", { relationKind: "governorate" }),
-  f("cityId", "المدينة", "relation", { relationKind: "city" }),
+  f("countryCode", "الدولة", "reference"),
+  f("governorateCode", "المحافظة", "reference"),
+  f("cityCode", "المدينة", "reference"),
 ];
 const directory = [name, phone, address, ...locationRelations, contacts, keywords];
 export const marketTypes: MarketType[] = [
@@ -141,21 +145,6 @@ export const marketTypes: MarketType[] = [
     label: "الأشكال الصيدلانية",
     fields: [name, f("englishName", "الاسم الإنجليزي"), keywords],
   },
-  {
-    key: "country", label: "الدول", fields: [
-      name, f("englishName", "الاسم بالإنجليزي"), keywords,
-    ],
-  },
-  {
-    key: "governorate", label: "المحافظات", fields: [
-      name, f("countryId", "الدولة", "relation", { relationKind: "country" }), keywords,
-    ],
-  },
-  {
-    key: "city", label: "المدن", fields: [
-      name, f("governorateId", "المحافظة", "relation", { relationKind: "governorate" }), keywords,
-    ],
-  },
   { key: "pharmacy", label: "الصيدليات", fields: [
     ...directory, f("sourceNotes", "مصدر البيانات وملاحظات التحقق", "textarea"),
   ] },
@@ -167,7 +156,7 @@ export const marketTypes: MarketType[] = [
     fields: [
       name,
       f("country", "البلد"),
-      f("countryId", "الدولة (الكرت المرجعي)", "relation", { relationKind: "country" }),
+      f("countryCode", "الدولة (المرجع الإداري)", "reference"),
       f("agentId", "الوكيل", "relation", { relationKind: "agent" }),
       image,
       keywords,
@@ -197,6 +186,7 @@ export interface MarketFieldMeta extends MarketField {
 export interface MarketMeta {
   types: (Omit<MarketType, "fields"> & { fields: MarketFieldMeta[] })[];
   permissions: MarketPermissions;
+  references: MarketReferenceEntry[];
   userPoints: string;
 }
 export interface MarketCard {
