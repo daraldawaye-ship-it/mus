@@ -3692,13 +3692,13 @@
           "type": "string",
           "enum": [
             "showroom",
-            "warehouse"
+            "warehouse",
+            "returns"
           ]
         }
       },
       "required": [
         "branchId",
-        "code",
         "name",
         "kind"
       ],
@@ -3724,6 +3724,10 @@
         },
         "active": {
           "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["warehouse", "returns"]
         }
       },
       "additionalProperties": false
