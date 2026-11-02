@@ -20,7 +20,11 @@ export function PresenceHeartbeat({ userId }: { userId: number | null }) {
           isOfflineNow() || sessionRequiresLogin()) return;
       inflight = true;
       lastSent = now;
-      try { await api("/presence/heartbeat", { method: "POST", body: {} }); }
+      try {
+        const notificationPermission = "Notification" in window
+          ? Notification.permission : "unsupported";
+        await api("/presence/heartbeat", { method: "POST", body: { notificationPermission } });
+      }
       catch { /* A presence hint must never impede a sale or offline drafts. */ }
       finally { inflight = false; }
     };
