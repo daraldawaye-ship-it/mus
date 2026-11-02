@@ -12,6 +12,7 @@ on:
       - "apps/web/src/pages/CommercePages.tsx"
       - "apps/web/src/styles.css"
       - "tests/item-unit-history-and-invoice-side.test.ts"
+      - "tests/my-cashbox-transfer-window.test.ts"
       - ".github/workflows/invoice-side-unit-addition-ci.yml"
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - "apps/web/src/pages/CommercePages.tsx"
       - "apps/web/src/styles.css"
       - "tests/item-unit-history-and-invoice-side.test.ts"
+      - "tests/my-cashbox-transfer-window.test.ts"
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -38,3 +40,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx tsx --test tests/item-unit-history-and-invoice-side.test.ts
+      - run: npx tsx --test tests/my-cashbox-transfer-window.test.ts
