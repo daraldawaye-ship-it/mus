@@ -1,0 +1,58 @@
+name: Avatar Item Quick Actions CI
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+    paths:
+      - "apps/web/src/ItemMenuHistory.tsx"
+      - "apps/web/src/EntityMenuSearch.tsx"
+      - "apps/web/src/UserMenu.tsx"
+      - "apps/web/src/ItemQuickInventorySheetHost.tsx"
+      - "apps/web/src/pages/MemosPage.tsx"
+      - "apps/web/src/App.tsx"
+      - "packages/contracts/src/memos.ts"
+      - "apps/api/migrations/175_item_return_memo_type.sql"
+      - "tests/avatar-item-quick-actions.test.ts"
+      - ".github/workflows/avatar-item-quick-actions-ci.yml"
+  pull_request:
+    paths:
+      - "apps/web/src/ItemMenuHistory.tsx"
+      - "apps/web/src/EntityMenuSearch.tsx"
+      - "apps/web/src/UserMenu.tsx"
+      - "apps/web/src/ItemQuickInventorySheetHost.tsx"
+      - "apps/web/src/pages/MemosPage.tsx"
+      - "packages/contracts/src/memos.ts"
+      - "apps/api/migrations/175_item_return_memo_type.sql"
+      - "tests/avatar-item-quick-actions.test.ts"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx tsx --test tests/avatar-item-quick-actions.test.ts
+      - run: node --import tsx --test --test-name-pattern="memo links resolve safely" tests/api.test.ts
