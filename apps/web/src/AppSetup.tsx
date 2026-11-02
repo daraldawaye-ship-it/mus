@@ -1,17 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { Download } from "lucide-react";
+import { useEffect } from "react";
 import { DevicePushBootstrap } from "./DeviceNotificationSettings";
-import {
-  appleMobile, installInstructions, installSnapshot, observeInstall, requestInstall,
-} from "./app-install";
-import { Button, Card, Notice } from "./ui";
 import { OfflineStatus } from "./OfflineStatus";
 
-/** Always present until the applicable device steps actually succeed. There is
- * no saved dismissal or user preference hiding setup from subsequent visits. */
+/** Preserve one headless device bootstrap for push/offline. Installation is
+ * promoted in InstallBanner ABOVE the page; do not repeat bottom-page guides.
+ */
 export function AppSetup({ userId, companyId }: { userId?: number; companyId?: number }) {
-  const install = useSyncExternalStore(observeInstall, installSnapshot);
-  const [copyMessage, setCopyMessage] = useState("");
   useEffect(() => {
     // A browser can retain older device-setup DOM from a previous application
     // shell. Sibling-only CSS cannot hide copies mounted in separate wrappers.
@@ -39,35 +33,10 @@ export function AppSetup({ userId, companyId }: { userId?: number; companyId?: n
       });
     };
   }, [userId, companyId]);
-  const apple = appleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopyMessage("تم نسخ الرابط. الصقه في متصفح هاتفك.");
-    } catch {
-      setCopyMessage("انسخ الرابط من شريط العنوان وافتحه في متصفح هاتفك.");
-    }
-  }
+
   return <section className="app-device-setup" data-alraesy-setup="current"
-    data-company-id={companyId ?? ""} aria-label="إعداد التطبيق والإشعارات">
-    {!install.installed && <details className="app-install-guide">
-      <summary>تثبيت تطبيق الرئيسي على الجهاز (اختياري)</summary>
-      <Card title="تثبيت التطبيق">
-        <p>المتصفح يعمل عبر الإنترنت دون تنزيل أصناف. لتنزيل البيانات للعمل دون إنترنت، افتح التطبيق المثبّت.</p>
-        <div className="form-actions">
-          {install.prompt && <Button disabled={install.busy} onClick={() => void requestInstall()}>
-            <Download size={16} aria-hidden="true" />
-            {install.busy ? "جارٍ فتح التثبيت…" : "تثبيت التطبيق"}
-          </Button>}
-          <Button variant="secondary" onClick={() => void copyLink()}>نسخ الرابط</Button>
-        </div>
-        {install.message && <Notice>{install.message}</Notice>}
-        <p>{installInstructions(apple, navigator.userAgent)}</p>
-        {copyMessage && <p role="status">{copyMessage}</p>}
-      </Card>
-    </details>}
+    data-company-id={companyId ?? ""} aria-label="إعداد الإشعارات ومزامنة البيانات">
     {userId && <OfflineStatus key={userId} userId={userId} companyId={companyId} />}
-    {userId ? <DevicePushBootstrap key={userId} userId={userId} /> :
-      !install.installed && <p className="muted">بعد تسجيل الدخول ستظهر خطوة تفعيل إشعارات العمل تلقائيًا.</p>}
+    {userId && <DevicePushBootstrap key={userId} userId={userId} />}
   </section>;
 }
