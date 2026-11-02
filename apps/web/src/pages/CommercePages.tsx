@@ -717,7 +717,7 @@ function ItemSearch({
           setAutoChoose("");
         }}
         onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
+          if (event.key === "ArrowDown" && expanded) {
             // The item suggestion menu owns these keys; never navigate to
             // another invoice line while choosing from its results.
             event.preventDefault();
@@ -726,7 +726,7 @@ function ItemSearch({
               Math.max(0, Math.min(index + 1, items.length - 1)),
             );
           }
-          if (event.key === "ArrowUp") {
+          if (event.key === "ArrowUp" && expanded) {
             event.preventDefault();
             event.stopPropagation();
             setActive((index) => Math.max(index - 1, 0));
@@ -3219,11 +3219,13 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                           if (event.ctrlKey ||
                               (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
                           if (target instanceof HTMLElement &&
-                              (target.matches("select,textarea") ||
+                              (target.matches("select,textarea,button,a") ||
                                target.isContentEditable)) return;
-                          // ItemSearch handles its own ArrowUp/Down for results.
+                          // ItemSearch owns Up/Down only while its results
+                          // are expanded. A selected item can navigate rows.
                           if (target instanceof HTMLElement &&
-                              target.getAttribute("role") === "combobox") return;
+                              target.getAttribute("role") === "combobox" &&
+                              target.getAttribute("aria-expanded") === "true") return;
                           event.preventDefault();
                           event.stopPropagation();
                           moveInvoiceLine(line, event.key === "ArrowDown" ? 1 : -1, target);
