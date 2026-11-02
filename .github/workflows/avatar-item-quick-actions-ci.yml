@@ -13,6 +13,7 @@ on:
       - "packages/contracts/src/memos.ts"
       - "apps/api/migrations/175_item_return_memo_type.sql"
       - "tests/avatar-item-quick-actions.test.ts"
+      - "tests/api.test.ts"
       - ".github/workflows/avatar-item-quick-actions-ci.yml"
   pull_request:
     paths:
@@ -24,6 +25,7 @@ on:
       - "packages/contracts/src/memos.ts"
       - "apps/api/migrations/175_item_return_memo_type.sql"
       - "tests/avatar-item-quick-actions.test.ts"
+      - "tests/api.test.ts"
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -55,4 +57,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx tsx --test tests/avatar-item-quick-actions.test.ts
-      - run: node --import tsx --test --test-name-pattern="memo links resolve safely" tests/api.test.ts
+      - run: node --import tsx --test --test-name-pattern="memo links resolve safely|item return memo type persists" tests/api.test.ts
