@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
-  UserRound, Wrench, Package, WalletCards, RefreshCw, ClipboardList, ShieldCheck, Users,
+  UserRound, Wrench, Package, WalletCards, RefreshCw, ClipboardList, ShieldCheck, Users, Plus,
 } from "lucide-react";
 import type { User } from "../../../packages/contracts/src/index";
 import { useAppearance } from "./theme";
 import { thumbnailUrl } from "./ImageUpload";
 import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
+import { UserMenuQuickCompose, quickMessageOptions, type QuickMessageKind } from "./UserMenuQuickCompose";
 import { EntityMenuSearch } from "./EntityMenuSearch";
 import { openItemInventorySheet } from "./ItemQuickInventorySheetHost";
 import type { ItemMenuQuickAction } from "./ItemMenuHistory";
@@ -103,12 +104,14 @@ export function UserMenu({
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [refreshBusy, setRefreshBusy] = useState(false);
+  const [quickOptionsOpen, setQuickOptionsOpen] = useState(false);
+  const [quickCompose, setQuickCompose] = useState<QuickMessageKind | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setOpen(false), [location.pathname, user.id]);
+  useEffect(() => { setOpen(false); setQuickOptionsOpen(false); }, [location.pathname, user.id]);
   useEffect(() => {
     if (!permittedTabs.includes(activeTab)) setActiveTab("navigation");
   }, [activeTab, permittedTabs.join("|")]);
@@ -137,7 +140,7 @@ export function UserMenu({
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }, [activeTab]);
 
-  const dismiss = () => setOpen(false);
+  const dismiss = () => { setOpen(false); setQuickOptionsOpen(false); };
   async function fullRefresh() {
     if (refreshBusy || !window.confirm("سيجلب التطبيق أحدث إصدار من الموقع. قد تفقد التعديلات غير المحفوظة على هذه الصفحة. هل تريد المتابعة؟")) return;
     setRefreshBusy(true);
@@ -300,8 +303,25 @@ export function UserMenu({
               </div>
             )}
           </div>
+          {quickOptionsOpen && <div className="user-menu-quick-options" id="user-menu-quick-options" role="group"
+            aria-label="إضافة رسالة أو مذكرة">
+            {quickMessageOptions.filter(option => !option.company || !!companyId && (!!employeeId || user.owner))
+              .map(option => (
+              <button key={option.kind} type="button" className="user-menu-quick-option"
+                onClick={() => {
+                  dismiss();
+                  setQuickCompose(option.kind);
+                }}>{option.label}</button>
+            ))}
+          </div>}
           <div className="user-menu-tabs-footer user-menu-settings-actions" role="group"
             aria-label="إجراءات المستخدم والتحديث">
+            <button type="button" className="user-menu-tile user-menu-quick-add"
+              aria-label="إضافة رسالة أو مذكرة" title="إضافة رسالة أو مذكرة"
+              aria-expanded={quickOptionsOpen} aria-controls="user-menu-quick-options"
+              onClick={() => setQuickOptionsOpen(value => !value)}>
+              <Plus size={18} aria-hidden="true" />
+            </button>
             <NavLink to="/profile" className="user-menu-tile" onClick={dismiss}>
               <CircleUserRound size={15} aria-hidden="true" />
               <span>تعديل حسابي</span>
@@ -332,6 +352,8 @@ export function UserMenu({
           </div>
         </div>
       )}
+      {quickCompose && <UserMenuQuickCompose key={quickCompose} kind={quickCompose}
+        companyId={companyId} onClose={() => setQuickCompose(null)} />}
       <ShortcutEditor user={user} companyId={companyId}
         open={shortcutEditorOpen} onClose={() => setShortcutEditorOpen(false)} />
       {(user.owner || user.kind === "admin") && (
