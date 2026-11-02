@@ -118,6 +118,8 @@ export const auditActionLabels = {
   "chat.group.send": "إرسال رسالة مجموعة دردشة",
   "chat.group.receipt": "تأكيد استلام أو عرض رسالة مجموعة",
   "chat.send": "إرسال رسالة دردشة خاصة",
+  "quick.broadcast": "إرسال رسالة جماعية أو للإدارة",
+  "quick.privateNoteCreate": "إنشاء مذكرة شخصية خاصة",
   "chat.receipt": "تأكيد استلام أو عرض رسالة دردشة",
   "chat.image.settings": "تعديل إعدادات إرفاق صور الدردشة",
   "owner.create": "إنشاء مالك المنصة",

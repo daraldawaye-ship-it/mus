@@ -1,0 +1,26 @@
+name: Avatar quick messages and private notes
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/UserMenu.tsx'
+      - 'apps/web/src/UserMenuQuickCompose.tsx'
+      - 'apps/web/src/user-menu-tabs.css'
+      - 'apps/api/src/routes-quick-messages.ts'
+      - 'apps/api/src/app.ts'
+      - 'apps/api/migrations/20261102_avatar_quick_messages.sql'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/avatar-quick-messages.test.ts'
+      - '.github/workflows/avatar-quick-messages-ci.yml'
+jobs:
+  quick-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/avatar-quick-messages.test.ts
