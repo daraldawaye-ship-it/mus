@@ -60,6 +60,7 @@ import { UserMenu } from "./UserMenu";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
+import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
 import { QuickLoginPage } from "./QuickLoginPage";
@@ -1148,6 +1149,7 @@ function Workspace() {
               )}
             </div>
           </header>
+          <InstallBanner />
           <main className="main-content" ref={main} tabIndex={-1}>
             {sessionError && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}
@@ -1332,8 +1334,8 @@ function Workspace() {
 
             <ItemCardBottomSheetHost context={navigationContext} />
             <ItemQuickInventorySheetHost context={navigationContext} />
-            {/* Device sync runs in the background; only installation help or
-                an actionable notification prompt can appear below page content. */}
+            {/* Device sync runs in the background, and notification setup remains below content.
+                The installation call-to-action is displayed above the page instead. */}
             <AppSetup key={user?.id ?? "guest"} userId={user?.id}
               companyId={navigationContext?.company.id} />
           </main>

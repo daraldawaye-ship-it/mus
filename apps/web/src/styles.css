@@ -6929,3 +6929,91 @@ a.notification-quick-title:hover { text-decoration: underline; }
   text-align: center;
 }
 @media print { .commerce-purchase-draft-toast { display: none !important; } }
+
+
+/* Persistent, high-visibility install invitation in the header area.
+   No overlay: invoices, login forms and PWA/offline data remain usable.
+   The component itself disappears only on a verified standalone app window
+   or an appinstalled event; do not store a fake dismissal preference. */
+.app-install-banner {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 14px 18px;
+  margin: 0 12px 8px;
+  background: var(--soft);
+  border: 2px solid var(--focus);
+  border-radius: 12px;
+  box-shadow: 0 2px 14px var(--shadow);
+  color: var(--text);
+}
+.app-install-banner-heading {
+  display: flex;
+  flex: 1 1 310px;
+  align-items: center;
+  min-width: 0;
+  gap: 13px;
+}
+.app-install-banner-icon {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 11px;
+  object-fit: contain;
+  background: var(--surface);
+}
+.app-install-banner-copy { display: grid; gap: 4px; min-width: 0; }
+.app-install-banner-copy strong { font-size: 17px; font-weight: 800; }
+.app-install-banner-copy span { font-size: 13px; }
+.app-install-banner-copy small {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--on-soft);
+  font-weight: 700;
+}
+.app-install-banner-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  gap: 9px;
+  min-height: 50px;
+  padding: 11px 20px;
+  border: 1px solid var(--focus);
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.3;
+  box-shadow: 0 2px 7px var(--shadow);
+}
+.app-install-banner-action:not(:disabled):hover { filter: brightness(1.12); }
+.app-install-banner-guide, .app-install-banner-message {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  line-height: 1.8;
+}
+.app-install-banner-guide strong { display: block; font-size: 15px; }
+.app-install-banner-guide ol { margin: 8px 0; padding-inline-start: 28px; }
+.app-install-banner-guide li { margin-bottom: 5px; }
+.app-install-banner-guide li svg { display: inline; vertical-align: middle; }
+.app-install-banner-guide p { margin: 7px 0; }
+.app-install-banner-guide small { color: var(--muted); }
+@media (max-width: 700px) {
+  .app-install-banner { padding: 12px; margin: 6px 8px 10px; gap: 12px; }
+  .app-install-banner-heading { flex-basis: 100%; gap: 10px; }
+  .app-install-banner-icon { width: 43px; height: 43px; }
+  .app-install-banner-copy strong { font-size: 16px; }
+  .app-install-banner-action { width: 100%; flex: 1 1 100%; font-size: 17px; }
+}
+@media print { .app-install-banner { display: none !important; } }
