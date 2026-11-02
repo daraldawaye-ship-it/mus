@@ -3663,6 +3663,40 @@ test("memo links resolve safely, redact unauthorized account details and reject 
  assert.equal((await recipient.client.request("GET",`${base}/link-accounts`)).status,403);
 });
 
+test("item return memo type persists with linked item and scoped recipient", async (t) => {
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const co=await company(platform.client,"Item return quick memo");
+  const recipient=await register(f,"item-return-memo@example.test");
+  const staff=await employee(platform.client,co.id,recipient.user.id);
+  const prefix=`/companies/${co.id}`;
+  const currency=(await platform.client.ok<Page<{id:number;code:string}>>(
+    "GET",prefix+"/currencies")).items.find(row=>row.code==="YER")!;
+  const item=(await platform.client.ok<{item:{id:number}}>("POST",prefix+"/items",{
+    idempotencyKey:randomUUID(),name:"صنف مذكرة إرجاع",currencyId:currency.id,
+    hasExpiry:false,shelf:"A1",unit1Name:"باكت",unit2Name:"",
+    unit3Name:"",factor2:1,factor3:1,
+    salePrice1:"100",salePrice2:"0",salePrice3:"0",purchasePrice:"50",
+  },201)).item;
+  const created=(await platform.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+    "POST",prefix+"/memos",{
+      idempotencyKey:randomUUID(),title:"إرجاع صنف: صنف مذكرة إرجاع",
+      body:"طلب إرجاع الصنف المحدد",type:"item_return",
+      recipientEmployeeId:staff.id,
+      links:{followPage:null,referencePage:null,itemId:item.id,accountId:null},
+    },201)).memo;
+  assert.equal(created.type,"item_return");
+  assert.equal(created.links.item?.id,item.id);
+  const viewed=(await recipient.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
+    "GET",`${prefix}/memos/${created.id}`)).memo;
+  assert.equal(viewed.type,"item_return");
+  assert.equal(viewed.links.item?.id,item.id);
+  assert.equal((await f.pool.query(
+    "SELECT type FROM memos WHERE company_id=$1 AND id=$2",
+    [co.id,created.id],
+  )).rows[0].type,"item_return");
+});
+
 test("memo options use shared typed definitions, capture defaults, filter lists, audit changes and preserve old values",async(t)=>{
  const f=await fixture(t);
  const platform=await owner(f);
