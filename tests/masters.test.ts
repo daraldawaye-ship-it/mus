@@ -1621,6 +1621,55 @@ test("returns location is a valid third type and gets distinct automatic codes",
   assert.equal(all.filter(item => item.kind === "showroom").length, 1);
 });
 
+test("location kinds can be corrected between warehouse and returns while showroom and identifiers stay protected", async (t) => {
+  const f = await fixture(t),
+    c = await f.company(),
+    b = await branch(f, c.id, "KIND_EDIT");
+  const warehouse = (await f.owner.ok<{ location: Location }>(
+    "POST",
+    `/companies/${c.id}/locations`,
+    { branchId: b.id, name: "مرتجعات السوق", kind: "warehouse" },
+    201,
+  )).location;
+  const originalCode = warehouse.code;
+  const corrected = (await f.owner.ok<{ location: Location }>(
+    "PATCH",
+    `/companies/${c.id}/locations/${warehouse.id}`,
+    { kind: "returns" },
+  )).location;
+  assert.equal(corrected.kind, "returns");
+  assert.equal(corrected.code, originalCode);
+  assert.equal(corrected.name, warehouse.name);
+  assert.equal(corrected.branchId, b.id);
+  assert.equal(corrected.active, true);
+  const returned = (await f.owner.ok<{ location: Location }>(
+    "GET",
+    `/companies/${c.id}/locations/${warehouse.id}`,
+  )).location;
+  assert.equal(returned.kind, "returns");
+  const filtered = await f.owner.ok<Page<Location>>(
+    "GET",
+    `/companies/${c.id}/locations?kind=returns`,
+  );
+  assert(filtered.items.some((item) => item.id === warehouse.id));
+  const audit = await auditFor(f, c.id, warehouse.id, "kind", "returns");
+  assert.equal(audit.before_value?.kind, "warehouse");
+  const restored = (await f.owner.ok<{ location: Location }>(
+    "PATCH",
+    `/companies/${c.id}/locations/${warehouse.id}`,
+    { kind: "warehouse" },
+  )).location;
+  assert.equal(restored.kind, "warehouse");
+  assert.equal(restored.code, originalCode);
+  const showroom = (await f.owner.ok<Page<Location>>(
+    "GET",
+    `/companies/${c.id}/locations?kind=showroom`,
+  )).items.find((item) => item.branchId === b.id)!;
+  assert.equal((await f.owner.request("PATCH", `/companies/${c.id}/locations/${showroom.id}`, { kind: "returns" })).status, 409);
+  assert.equal((await f.owner.request("PATCH", `/companies/${c.id}/locations/${warehouse.id}`, { kind: "showroom" })).status, 400);
+  assert.equal((await f.owner.request("PATCH", `/companies/${c.id}/locations/${warehouse.id}`, { code: "RT00000001" })).status, 400);
+});
+
 test("branch and location codes normalize uppercase digits and archived codes remain reserved", async (t) => {
   const f = await fixture(t),
     c = await f.company();
