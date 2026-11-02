@@ -668,7 +668,7 @@ function LocationEditor({
     setError("");
     try {
       const body = location
-        ? { name, ...(active !== location.active ? { active } : {}) }
+        ? { name, ...(kind !== location.kind ? { kind } : {}), ...(active !== location.active ? { active } : {}) }
         : { branchId: branch?.id, name, kind };
       const result = await api<{ location: Location }>(
         `/companies/${companyId}/locations${location ? `/${location.id}` : ""}`,
@@ -740,9 +740,9 @@ function LocationEditor({
           label="نوع الموقع"
           value={kind}
           onChange={(event) => setKind(event.target.value as LocationKind)}
-          disabled={saving || Boolean(location)}
+          disabled={saving || location?.kind === "showroom"}
         >
-          {locationKinds.map((value) => (
+          {(location ? location.kind === "showroom" ? ["showroom"] : ["warehouse", "returns"] : locationKinds).map((value) => (
             <option key={value} value={value}>
               {locationKindLabels[value]}
             </option>
