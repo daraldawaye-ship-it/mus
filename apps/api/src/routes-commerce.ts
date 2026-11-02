@@ -25,7 +25,7 @@ import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services
 import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
-import { assertEditableDocumentDate, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
+import { adenToday, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -554,20 +554,30 @@ export function commerceRoutes(pool: Pool): Router {
           const checksStarted = performance.now();
           await companyAccess(client, user, companyId, "finance.post", true);
           // Accepted UUID retries remain verifiable even if a control changes.
-          const existing = await client.query(
-            "SELECT 1 FROM invoices WHERE company_id=$1 AND idempotency_key=$2",
+          const existing = await client.query<{ documentDate: string }>(
+            `SELECT creation_payload->>'documentDate' AS "documentDate"
+             FROM invoices WHERE company_id=$1 AND idempotency_key=$2`,
             [companyId, input.idempotencyKey],
           );
           retry = !!existing.rowCount;
+          // A first-time POST with a locked date uses the actual business day
+          // at the moment of posting. A reopened draft, or an invoice left
+          // open across midnight, must not be rejected with control_date_disabled.
+          // UUID replays reuse the stored document date so that an already
+          // committed operation remains idempotent after the day changes.
+          let postingInput = input;
           if (!retry) {
             await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
-            await assertEditableDocumentDate(client, companyId,
-              input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date", input.documentDate);
+            const dateControl = input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date";
+            if ((await controlValue(client, companyId, dateControl)) === false)
+              postingInput = { ...input, documentDate: await adenToday(client) };
             await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
+          } else if (existing.rows[0]?.documentDate) {
+            postingInput = { ...input, documentDate: existing.rows[0].documentDate };
           }
           validationMs = performance.now() - checksStarted;
           const postingStarted = performance.now();
-          const saved = await createInvoice(client, companyId, user, input);
+          const saved = await createInvoice(client, companyId, user, postingInput);
           postingMs = performance.now() - postingStarted;
           return saved;
         },
