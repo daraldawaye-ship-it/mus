@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   marketKinds,
   marketTypes,
+  isMarketAdministrativeKind,
   type MarketCard,
   type MarketComment,
   type MarketContribution,
@@ -545,8 +546,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
       const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
+      const referenceFilter = kind === null && !p.canConfigure
+        ? " AND c.kind NOT IN ('country','governorate','city','dosage-form')"
+        : "";
       const condition =
-        "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)";
+        "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
       const args = [u?.id ?? null, archived, kind, `%${query}%`, v.q];
       const rows = await pool.query(
         `${cardSelect} WHERE ${condition} ORDER BY c.updated_at DESC,c.id DESC LIMIT $6 OFFSET $7`,
@@ -595,6 +599,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!,
           p = perms(u);
+        if (isMarketAdministrativeKind(input.kind) && !p.canConfigure)
+          deny("هذه كروت إدارية ثابتة؛ الإضافة والتعديل للإدارة فقط");
         const old = (
           await db.query(
             "SELECT * FROM medicine_market_cards WHERE created_by=$1 AND idempotency_key=$2",
@@ -672,6 +678,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
           p = perms(u),
           card = await getCard(db, id(req.params.cardId), u, true),
           field = findField(card.kind, input.fieldKey);
+        if (isMarketAdministrativeKind(card.kind) && !p.canConfigure)
+          deny("لا يمكن للمستخدمين تعديل الكروت الإدارية المرجعية");
         if (!canField(field, p)) deny();
         const value = normalizeValue(field, input.value),
           expected = normalizeValue(
