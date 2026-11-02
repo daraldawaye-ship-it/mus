@@ -14,6 +14,7 @@ const filters = z.object({
   dateFrom: documentDateSchema,
   dateTo: documentDateSchema,
   q: z.string().trim().max(120).optional().default(""),
+  medicalOnly: z.enum(["true","false"]).optional().default("false"),
   page: z.coerce.number().int().min(1).max(100000).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(50),
 }).strict();
@@ -35,7 +36,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         throw new HttpError(403,"forbidden","ليست لديك صلاحية عرض تقرير مبيعات الأطباء والجهات");
       const rows = await client.query(doctorSalesReportSql,[
         companyId,input.dateFrom,input.dateTo,searchPattern(input.q),
-        input.pageSize,(input.page-1)*input.pageSize,
+        input.pageSize,(input.page-1)*input.pageSize,input.medicalOnly==="true",
       ]);
       const first=rows.rows[0];
       return {
