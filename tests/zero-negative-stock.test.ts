@@ -14,17 +14,29 @@ test("zero negative balance is valid without shelf composition or any expiry",()
   });
   assert.equal(parsed.success,true,parsed.success?"":parsed.error.message);
 });
-test("zero numeric count automatically uses zeroLocation in UI, unlike positive count",()=>{
+test("entering zero (including all units zero) is a NORMAL physical count, not forced zeroing",()=>{
   const web=read("apps/web/src/pages/InventoryPages.tsx");
-  assert.match(web,/const countIsZero = mode === "adjustment"/);
-  assert.match(web,/\.every\(value => \/\^0\*\$\/\.test\(value\.trim\(\)\)\)/);
-  assert.match(web,/const zeroCount = mode === "adjustment" && \(zeroLocation \|\| countIsZero\)/);
-  assert.match(web,/if \(mode === "adjustment" && !zeroCount\)/);
-  assert.match(web,/countedUnits: zeroCount/);
-  assert.match(web,/zeroCount \? \{ zeroLocation: true \}/);
-  assert.match(web,/mode === "adjustment" && !countIsZero && item\?\.hasExpiry/);
-  assert.match(web,/mode === "adjustment" && !countIsZero && \(/);
-  assert.match(web,/countIsZero \? "تصفير رصيد الصنف"/);
+  assert.doesNotMatch(web,/countIsZero|zeroCount/);
+  assert.match(web,/if \(mode === "adjustment" && !zeroLocation\)/);
+  assert.match(web,/countedUnits: zeroLocation\s*\? \{ unit1: "0" \}/);
+  assert.match(web,/unit1: fields\.countUnit1 \|\| "0"/);
+  assert.match(web,/unit2: fields\.countUnit2 \|\| "0"/);
+  assert.match(web,/unit3: fields\.countUnit3 \|\| "0"/);
+  assert.match(web,/\.\.\.\(zeroLocation \? \{ zeroLocation: true \} : \{/);
+  assert.match(web,/nearestExpiryDate: item\.hasExpiry \? fields\.nearestExpiryDate/);
+  assert.match(web,/shelfId: selectedShelf\?\.id \?\? null/);
+  assert.match(web,/: "ترحيل تسوية الجرد"\}/);
+  assert.doesNotMatch(web,/countedUnits:[\s\S]*?countIsZero|تصفير رصيد الصنف" : "ترحيل تسوية الجرد"/);
+});
+test("only an explicit zero-button click skips shelf/expiry/composition fields",()=>{
+  const web=read("apps/web/src/pages/InventoryPages.tsx");
+  assert.match(web,/<Button type="button" variant="secondary"[\s\S]*?void save\(null, true\);[\s\S]*?تصفير الموقع المحدد/);
+  assert.match(web,/window\.confirm\([\s\S]*?تصفير رصيد/);
+  assert.match(web,/mode === "adjustment" && item && !item\.compositionId/);
+  assert.match(web,/mode === "adjustment" && item\?\.hasExpiry/);
+  assert.match(web,/label="رف الصنف \(إلزامي\)"/);
+  assert.match(web,/label="شهر وسنة أقرب انتهاء في كرت الصنف \(إلزامي\)"/);
+  assert.match(web,/if \(mode === "adjustment" && !zeroLocation\)/);
 });
 test("backend never requires expiry for zero increase even for expiry-tracked negative stock",()=>{
   const route=read("apps/api/src/routes-inventory.ts");
