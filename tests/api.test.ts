@@ -3690,7 +3690,10 @@ test("item return memo type persists with linked item and scoped recipient", asy
   const viewed=(await recipient.client.ok<{memo:import("../packages/contracts/src/index.ts").MemoDetail}>(
     "GET",`${prefix}/memos/${created.id}`)).memo;
   assert.equal(viewed.type,"item_return");
-  assert.equal(viewed.links.item?.id,item.id);
+  // A recipient without items.view can read the memo but cannot see the
+  // linked item details. The sender/owner retains the item link.
+  assert.equal(viewed.links.item,null);
+  assert.equal(viewed.links.hiddenItem,true);
   assert.equal((await f.pool.query(
     "SELECT type FROM memos WHERE company_id=$1 AND id=$2",
     [co.id,created.id],
