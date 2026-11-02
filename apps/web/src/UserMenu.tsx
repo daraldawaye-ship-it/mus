@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   CircleUserRound, Compass, Link2, LogOut, Palette, Settings,
   UserRound, Wrench, Package, WalletCards, RefreshCw, ClipboardList, ShieldCheck, Users,
@@ -11,6 +11,8 @@ import { thumbnailUrl } from "./ImageUpload";
 import { ShortcutEditor, GeneralTableQuickAdd } from "./UserShortcuts";
 import { UserShortcutMenuGrid } from "./UserShortcutMenuGrid";
 import { EntityMenuSearch } from "./EntityMenuSearch";
+import { openItemInventorySheet } from "./ItemQuickInventorySheetHost";
+import type { ItemMenuQuickAction } from "./ItemMenuHistory";
 import { openItemCardSheet } from "./ItemCardBottomSheetHost";
 import { usePageDirectory } from "./page-directory";
 import { api } from "./api";
@@ -67,6 +69,7 @@ export function UserMenu({
 }) {
   const appearance = useAppearance();
   const location = useLocation();
+  const navigate = useNavigate();
   const directory = usePageDirectory(companyId ?? undefined);
   // Start loading navigation preferences before the avatar menu is opened.
   // The last authorized snapshot paints immediately on repeat visits/offline.
@@ -88,6 +91,9 @@ export function UserMenu({
     : cachedMenu?.tabs ?? allowedAvatarTabs(user.owner, companyId, undefined);
   const visibleSections = sections.filter(section => permittedTabs.includes(section.key));
   // Follow current server page permissions; do not hardcode a user's role.
+  const canCreateMemo = directory.data?.some(entry =>
+    entry.key === "company.memos" && entry.enabled && entry.actionAccess.create,
+  ) === true;
   const canViewPage = (key: string) => directory.data?.some(entry =>
     entry.key === key && entry.enabled && entry.visible && entry.actionAccess.view,
   ) === true;
@@ -234,7 +240,22 @@ export function UserMenu({
                    if (!companyId) return;
                    dismiss();
                    openItemCardSheet(companyId, itemId);
-                 }} />
+                 }}
+                canCreateMemo={canCreateMemo}
+                onItemQuickAction={(action: ItemMenuQuickAction, itemId, itemName) => {
+                  if (!companyId) return;
+                  dismiss();
+                  if (action === "adjustment" || action === "transfer") {
+                    openItemInventorySheet(companyId, itemId, action);
+                    return;
+                  }
+                  if (!canCreateMemo) return;
+                  const parameters = new URLSearchParams({
+                    new:"1",itemId:String(itemId),itemName:itemName.slice(0,120),
+                    itemMemo: action === "memo-return" ? "return" : "item",
+                  });
+                  navigate(`/companies/${companyId}/memos?${parameters}`);
+                }} />
             )}
             {displayedTab === "settings" && (
               <>
