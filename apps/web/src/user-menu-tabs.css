@@ -396,9 +396,10 @@
   .user-menu-tab svg { width: 14px; height: 14px; }
 }
 
-/* One compact + button in the avatar footer. Options float ABOVE the footer
-   without increasing the panel's overall height or covering external pages. */
-.user-menu-panel.user-menu-tabbed-panel { position: relative; }
+/* The avatar panel MUST stay absolutely positioned beneath its trigger.
+   Its existing position:absolute in styles.css is already the containing
+   block for the + options. Setting position:relative here overrides that
+   positioning and pushes the top tabs offscreen. */
 .user-menu-settings-actions > .user-menu-quick-add {
   flex: 0 0 35px;
   width: 35px;
