@@ -2810,6 +2810,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         // Await durable IndexedDB storage BEFORE clearing the old invoice.
         await queueOfflineOperation(user.id, companyId, "invoice",
           "/companies/" + companyId + "/invoices", submission);
+        // The invoice is now in the durable posting outbox, not an editable
+        // sales point. Remove the prior draft to avoid a duplicate after reload.
+        if (kind === "sale") {
+          await deleteSalesPointDraft(user.id, companyId, tabId).catch(reason =>
+            setSalesStorageError("تعذر تنظيف مسودة المبيعات المحفوظة: " + errorMessage(reason)));
+        }
         if (!guard.isCurrent()) return true;
         if (kind === "purchase" && activePurchaseDraftId)
           void deletePurchaseWorkDraft(user.id, companyId, activePurchaseDraftId)
@@ -2842,6 +2848,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       );
       if (!guard.isCurrent()) return;
       setUnknown(false);
+      // The server has committed this invoice. Never restore its old draft as
+      // if it were still unposted, even if the page closes immediately.
+      if (kind === "sale" && user?.id) {
+        await deleteSalesPointDraft(user.id, companyId, tabId).catch(reason =>
+          setSalesStorageError("تم ترحيل الفاتورة لكن تعذر تنظيف مسودتها المحلية: " + errorMessage(reason)));
+      }
       if (kind === "purchase" && user?.id && activePurchaseDraftId)
         void deletePurchaseWorkDraft(user.id, companyId, activePurchaseDraftId)
           .then(() => refreshPurchaseDrafts()).catch(() => {});
