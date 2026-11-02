@@ -148,7 +148,9 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                       <thead><tr><th>الإغلاق</th><th>العجز</th><th>الزيادة</th></tr></thead>
                       <tbody>{transfers.data.closings.items.map(entry => (
                         <tr key={entry.id} title={`الدفتر: ${formatWholeMoney(entry.bookBalance)}؛ النقد المعدود: ${formatWholeMoney(entry.countedCash)}${entry.notes ? `؛ ${entry.notes}` : ""}`}>
-                          <td><EventTimestamp value={entry.createdAt} nowMs={clockNow} />
+                          <td><time dateTime={entry.createdAt} className="invoice-side-closing-datetime">
+                            <bdi>{invoiceSideDateTime(entry.createdAt)}</bdi>
+                          </time>
                             {entry.notes && <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.shortage)}</bdi></td>
                           <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.surplus)}</bdi></td>
