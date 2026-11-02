@@ -260,7 +260,7 @@ export function socialAuthRoutes(pool:Pool,origin:string,production:boolean):Rou
         return {linked:false as const,userId:account.id,...(await createSession(db,account.id))};
       });
       if(result.linked)return res.redirect(303,"/profile?socialConnected="+provider);
-      await recordDeviceLogin(pool,req,result.userId ?? 0).catch(()=>{});
+      await recordDeviceLogin(pool,req,result.userId).catch(()=>{});
       setSessionCookie(res,result.token,production);
       return res.redirect(303,attempt.return_to);
     }catch(err){
