@@ -122,6 +122,37 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
       res.json({ user: result.user, csrf: result.csrf });
     }),
   );
+  // The token is transmitted in a same-origin JSON POST body, never a URL
+  // query/path that could be saved in access logs or sent as a referrer.
+  // Exactly one claim wins under concurrent redemption.
+  router.post("/auth/login-link/redeem",handler(async (req,res) => {
+    limitAuth(`link-redeem:${req.ip}`, 15);
+    const token = req.body?.token;
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw new HttpError(400,"invalid_link","رابط الدخول غير صالح أو انتهت صلاحيته");
+    const result = await transaction(pool,async client => {
+      const claimed = await client.query(`
+        DELETE FROM user_login_links
+        WHERE token_hash=$1 AND expires_at>clock_timestamp()
+        RETURNING user_id`,[tokenHash(token)]);
+      if (!claimed.rowCount)
+        throw new HttpError(401,"invalid_link","رابط الدخول مستخدم أو منتهي الصلاحية");
+      const target = await client.query("SELECT * FROM users WHERE id=$1 FOR SHARE",
+        [claimed.rows[0].user_id]);
+      if (!target.rowCount || target.rows[0].archived)
+        throw new HttpError(401,"invalid_link","هذا الحساب غير متاح");
+      const user = userDTO(target.rows[0]);
+      if (req.auth) await client.query(
+        "DELETE FROM sessions WHERE token_hash=$1",[req.auth.tokenHash]);
+      const session = await createSession(client,user.id);
+      await audit(client,user,"auth.loginLinkRedeem","user",user.id,null,null);
+      return {user,...session};
+    });
+    await recordDeviceLogin(pool,req,result.user.id).catch(()=>{});
+    setSessionCookie(res,result.token,secure);
+    res.setHeader("Cache-Control","no-store");
+    res.json({user:result.user,csrf:result.csrf});
+  }));
   router.post(
     "/auth/logout",
     handler(async (req, res) => {
@@ -211,6 +242,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
             "conflict",
             "تغيرت كلمة المرور، أعد المحاولة",
           );
+        await client.query("DELETE FROM user_login_links WHERE user_id=$1",[user.id]);
         await client.query(
           "DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2",
           [user.id, req.auth!.tokenHash],
