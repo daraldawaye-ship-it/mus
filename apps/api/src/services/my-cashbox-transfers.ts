@@ -50,7 +50,7 @@ export async function listMyCashboxTransfers(
        SELECT id,kind,amount,notes,created_at,
          row_number() OVER(PARTITION BY kind ORDER BY created_at DESC,id DESC) AS rank
        FROM employee_cashbox_operations WHERE ${predicate}
-     ) recent WHERE rank<=50 ORDER BY kind,createdAt DESC,id DESC`,params,
+     ) recent WHERE rank<=50 ORDER BY kind,"createdAt" DESC,id DESC`,params,
   );
   const pouch = empty(), electronic = empty();
   for (const row of totals.rows) {
