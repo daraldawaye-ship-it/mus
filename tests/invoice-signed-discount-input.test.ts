@@ -37,7 +37,7 @@ test("invoice quantity cell shows one decimal while storage remains an integer",
   assert.equal(enteredInvoiceQuantity("8"), "8");
   assert.equal(invoiceQuantitySchema.parse(completedInvoiceQuantity("8")), "8");
   const editor = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
-  assert.match(editor, /displayInvoiceQuantity\\(line\\.quantity\\)/);
+  assert.match(editor, /displayInvoiceQuantity\(line\.quantity\)/);
   assert.doesNotMatch(editor, /placeholder="3 أحرف على الأقل: اسم الصنف/);
 });
 test("discount stays numeric, resets to zero and permits negative entry", () => {
