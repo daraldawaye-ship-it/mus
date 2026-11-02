@@ -1663,9 +1663,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       original || hasLinkedLines) return;
     setAccount(defaultAccount);
   }, [kind, defaultCashbox, configuredPurchaseAccount, account, original, hasLinkedLines]);
-  const hasPositiveLines = selectedLines.some(
-    (line) => !normalizeDigits(line.quantity.trim()).startsWith("-"),
-  );
   const showExpiry =
     kind === "purchase" ||
     selectedLines.some(
@@ -2069,13 +2066,13 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     try {
       return calculateInvoiceTotals(
         lines.filter((line) => line.itemId > 0).map(calculationLine),
-        hasPositiveLines ? discount : "0",
+        discount,
         currency?.decimalPlaces ?? 6,
       );
     } catch {
       return null;
     }
-  }, [lines, discount, currency?.decimalPlaces, hasPositiveLines]);
+  }, [lines, discount, currency?.decimalPlaces]);
   const doctorNeeded = kind==="sale" && totals !== null &&
     Math.abs(Number(totals.total)) > doctorThreshold;
   function updateLine(key: string, patch: Partial<DraftLine>) {
@@ -2586,7 +2583,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
         saleCustomerName: kind === "sale" && saleCustomerNumber ? saleCustomerName.trim() : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
-        discount: hasPositiveLines ? discount : "0",
+        discount,
         lines: selectedLines.map((line) => ({
           itemId: line.itemId,
           unit: line.unit,
@@ -3531,9 +3528,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
               id={fixedInputId("invoice-discount")}
               label="الخصم"
               money
-              value={hasPositiveLines ? discount : "0"}
+              value={discount}
               inputMode="text"
-              disabled={locked || !hasPositiveLines}
+              disabled={locked}
               onFocus={(event) => event.target.select()}
               onChange={(event) => {
                 const entered = enteredInvoiceDiscount(event.target.value);
