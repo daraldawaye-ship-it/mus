@@ -17,6 +17,7 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
+import { addsOnlyPreviouslyInactiveUnits } from "./services/item-unit-history.ts";
 import { readCompositionStatistics } from "./services/composition-statistics.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
@@ -942,10 +943,22 @@ export function itemRoutes(pool: Pool): Router {
               "SELECT 1 FROM stock_movements WHERE company_id=$1 AND item_id=$2 LIMIT 1",
               [companyId, rowId],
             );
-            if (history.rowCount)
-              conflict(
-                "لا يمكن تغيير الوحدات أو عواملها أو تتبع الانتهاء بعد وجود حركات للصنف؛ أنشئ صنفًا جديدًا للبنية المختلفة",
+            if (history.rowCount) {
+              // Historical units and expiry rules stay immutable. Only the
+              // addition of an unused second/third unit is safe at zero stock.
+              if (!addsOnlyPreviouslyInactiveUnits(before, input))
+                conflict("لا يمكن تعديل الوحدات السابقة أو عواملها بعد وجود حركات؛ يمكن فقط إضافة وحدة جديدة عندما يصبح رصيد الصنف صفرًا في كل المواقع.");
+              // Verify the authoritative batches, not just a cached company
+              // total: opposing negative/positive location balances cannot
+              // falsely appear as zero. Item row lock serializes stock writes.
+              const remaining = await client.query(
+                `SELECT 1 FROM stock_balances
+                 WHERE company_id=$1 AND item_id=$2 AND quantity_smallest<>0 LIMIT 1`,
+                [companyId, rowId],
               );
+              if (remaining.rowCount)
+                conflict("لإضافة وحدة جديدة يجب أن تكون كمية الصنف صفرًا في جميع المخازن والمعارض والدفعات.");
+            }
           }
           const fields = {
             ...input,
