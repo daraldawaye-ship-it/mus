@@ -3203,14 +3203,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                           if (locked || event.nativeEvent.isComposing ||
                               event.altKey || event.metaKey || event.shiftKey) return;
                           const target = event.target;
-                          const editable = target instanceof HTMLElement &&
-                            (target.matches("input,textarea,select,[contenteditable]") ||
-                             target.isContentEditable);
                           if (event.key === "Delete") {
-                            // Normal Delete edits text in fields, but Delete on
-                            // the selected row (or Ctrl+Delete inside a field)
-                            // removes the whole unsaved invoice line.
-                            if (editable && !event.ctrlKey) return;
+                            // The owner explicitly wants Delete to remove the
+                            // current invoice draft row even while the caret is
+                            // in its item name, quantity, price or expiry field.
+                            // Backspace remains available for deleting text.
                             event.preventDefault();
                             event.stopPropagation();
                             deleteLine(line);
@@ -3547,7 +3544,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                               variant="ghost"
                               size="compact"
                               aria-label={`حذف ${line.itemName || "السطر الفارغ"}`}
-                              title="حذف السطر: زر الحذف أو Delete عند تحديد السطر، أو Ctrl+Delete داخل الحقل"
+                              title="حذف السطر: زر الحذف أو مفتاح Delete حتى داخل حقل الصنف أو الكمية أو السعر"
                               className="commerce-delete-line"
                               onClick={() => deleteLine(line)}
                             >
