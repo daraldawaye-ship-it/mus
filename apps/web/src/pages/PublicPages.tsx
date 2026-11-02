@@ -320,9 +320,9 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
             value={draft.password}
             onChange={(event) => update("password", event.target.value)}
             required
-            minLength={registering ? 12 : undefined}
+            minLength={registering ? 3 : undefined}
             maxLength={128}
-            hint={registering ? "استخدم 12 حرفًا على الأقل." : undefined}
+            hint={registering ? "من 3 أحرف أو أرقام على الأقل؛ كلمة أطول تحمي حسابك أكثر." : undefined}
             disabled={busy}
           />
           {error && <Notice tone="error">{error}</Notice>}
@@ -621,9 +621,9 @@ function ProfileForms({ user }: { user: User }) {
               updatePassword("newPassword", event.target.value)
             }
             required
-            minLength={12}
+            minLength={3}
             maxLength={128}
-            hint="12 حرفًا على الأقل."
+            hint="يمكن استخدام 3 أحرف أو أرقام؛ كلمة أطول أكثر أمانًا."
           />
           <Field
             label="تأكيد كلمة المرور الجديدة"
@@ -741,6 +741,42 @@ function UserList() {
   const [editError, setEditError] = useState("");
   // Public identities are independent of employees. Only the platform owner
   // may reset another user's sign-in password.
+  const [loginLink, setLoginLink] = useState<{
+    name: string; url: string; expiresAt: string;
+  } | null>(null);
+  const [loginLinkBusy, setLoginLinkBusy] = useState<number | null>(null);
+  const [loginLinkCopied, setLoginLinkCopied] = useState(false);
+  async function createLoginLink(target: User) {
+    if (!user?.owner || target.owner || target.archived || loginLinkBusy !== null) return;
+    setLoginLinkBusy(target.id);
+    setLoginLink(null);
+    setNotice(null);
+    try {
+      const result = await api<{token:string;expiresAt:string}>(
+        `/users/${target.id}/login-link`, {method:"POST",body:{},signal:guard.signal});
+      if (!guard.isCurrent()) return;
+      setLoginLink({
+        name: target.displayName,
+        url: `${window.location.origin}/quick-login#${result.token}`,
+        expiresAt: result.expiresAt,
+      });
+      setLoginLinkCopied(false);
+    } catch (cause) {
+      if (guard.isCurrent()) setNotice({tone:"error",text:messageOf(cause)});
+    } finally {
+      if (guard.isCurrent()) setLoginLinkBusy(null);
+    }
+  }
+  async function copyLoginLink() {
+    if (!loginLink) return;
+    try {
+      await navigator.clipboard.writeText(loginLink.url);
+      setLoginLinkCopied(true);
+    } catch {
+      setLoginLinkCopied(false);
+      setNotice({tone:"error",text:"تعذر النسخ التلقائي. حدد الرابط داخل النافذة وانسخه يدويًا."});
+    }
+  }
   const [passwordTarget, setPasswordTarget] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -765,8 +801,8 @@ function UserList() {
 
   async function savePasswordReset() {
     if (!user?.owner || !passwordTarget || passwordBusy) return;
-    if (newPassword.length < 12 || newPassword.length > 128) {
-      setPasswordError("كلمة المرور يجب أن تتكون من 12 إلى 128 حرفًا.");
+    if (newPassword.length < 3 || newPassword.length > 128) {
+      setPasswordError("كلمة المرور يجب أن تتكون من 3 إلى 128 حرفًا أو رقمًا.");
       return;
     }
     if (newPassword !== passwordConfirmation) {
@@ -906,7 +942,7 @@ function UserList() {
     }));
     return [
       {
-        id: "edit", header: "الإجراءات", size: user?.owner ? 235 : 110,
+        id: "edit", header: "الإجراءات", size: user?.owner ? 335 : 110,
         enableSorting: false,
         cell: ({ row }) => row.original.owner ? "محمي" : (
           <div className="actions">
@@ -916,11 +952,18 @@ function UserList() {
               تعديل
             </Button>
             {user?.owner && (
-              <Button type="button" size="compact" variant="secondary"
-                onClick={() => openPasswordDialog(row.original)}
+              <>
+                <Button type="button" size="compact" variant="secondary"
+                  disabled={loginLinkBusy !== null || row.original.archived}
+                  onClick={() => void createLoginLink(row.original)}>
+                  {loginLinkBusy === row.original.id ? "جارٍ إنشاء الرابط…" : "رابط دخول"}
+                </Button>
+                <Button type="button" size="compact" variant="secondary"
+                  onClick={() => openPasswordDialog(row.original)}
                 disabled={savingIds.has(row.original.id)}>
                 تغيير كلمة المرور
-              </Button>
+                </Button>
+              </>
             )}
           </div>
         ),
@@ -1068,6 +1111,19 @@ function UserList() {
           ariaLabel="جدول المستخدمين العامين"
         />
       </Card>
+      <Dialog open={Boolean(loginLink)} title={loginLink ? `رابط دخول: ${loginLink.name}` : "رابط دخول"}
+        onClose={() => {setLoginLink(null);setLoginLinkCopied(false);}}
+        footer={<>
+          <Button variant="secondary" onClick={() => setLoginLink(null)}>إغلاق</Button>
+          <Button onClick={() => void copyLoginLink()}>
+            {loginLinkCopied ? "تم نسخ الرابط" : "نسخ الرابط"}
+          </Button>
+        </>}>
+        <p>الرابط صالح حتى {loginLink ? dateLabel(loginLink.expiresAt) : "—"}، ويعمل مرة واحدة فقط. يمكنك نسخه وإرساله للمستخدم عبر رسالة SMS أو واتساب.</p>
+        <Field label="رابط الدخول المباشر" type="text" dir="ltr" readOnly
+          value={loginLink?.url ?? ""} onFocus={event => event.target.select()} />
+        <Notice tone="warning">من يمتلك هذا الرابط يستطيع الدخول للحساب حتى استخدامه أو انتهاء الساعة. إنشاء رابط جديد لهذا المستخدم يلغي الرابط السابق؛ أرسله للمستخدم المقصود فقط.</Notice>
+      </Dialog>
       <Dialog
         open={Boolean(passwordTarget)}
         onClose={closePasswordDialog}
