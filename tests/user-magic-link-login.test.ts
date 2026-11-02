@@ -8,8 +8,11 @@ test("three-character alphabetic and numeric passwords work in all flows", () =>
   for (const value of ["abc","123","ا12"]) {
     assert.equal(passwordSchema.parse(value),value);
     assert.equal(ownerPasswordResetSchema.parse({newPassword:value}).newPassword,value);
-    assert.equal(passwordChangeSchema.parse({currentPassword:"old",newPassword:value}).newPassword,value);
+    assert.equal(passwordChangeSchema.parse({newPassword:value}).newPassword,value);
   }
+  assert.equal(passwordChangeSchema.safeParse({
+    currentPassword:"old",newPassword:"abc",
+  }).success,false, "no old password should be requested or submitted");
   assert.equal(registerSchema.parse({
     name:"Tester",displayName:"Test",phone:"712345678",email:"",password:"123",image:"",
   }).password,"123");
@@ -53,5 +56,11 @@ test("quick-login fragment is removed before same-origin JSON redemption", () =>
   assert.match(page,/acceptRegistration\(session\)/);
   assert.match(app,/Route path="\/quick-login" element=\{<QuickLoginPage \/>\}/);
   assert.match(client,/path !== "\/auth\/login-link\/redeem"/);
-  assert.match(publicPage,/minLength=\{3\}/);
+  assert.match(publicPage,/minLength=\\{3\\}/);
+  assert.doesNotMatch(publicPage,/label="كلمة المرور الحالية"/);
+  assert.doesNotMatch(publicPage,/passwords\\.currentPassword/);
+  const routes = read("apps/api/src/routes-auth.ts");
+  assert.doesNotMatch(routes,/passwordMatches\\(input\\.currentPassword/);
+  assert.match(routes,/DELETE FROM sessions WHERE user_id=\\$1 AND token_hash<>\\$2/);
+
 });
