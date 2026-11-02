@@ -1377,6 +1377,9 @@ function OperationEditor({
         setError("اختر الصنف والمواقع المطلوبة.");
         return;
       }
+      if (zeroCount && !zeroLocation && !window.confirm(
+        `تصفير رصيد "${item.name}" في موقع "${fromLocation.name}" سواء كان سالبًا أو موجبًا؟ لن يتغير الرف أو تاريخ الانتهاء أو تركيب الصنف.`,
+      )) return;
       if (mode === "adjustment" && !zeroCount) {
         if (!item.compositionId && !selectedComposition) {
           setError("هذا الصنف بدون تركيب؛ اختر التركيب قبل حفظ التسوية.");
@@ -1889,7 +1892,7 @@ function OperationEditor({
                     ? "إعادة تأكيد الطلب نفسه"
                     : mode === "transfer"
                       ? "ترحيل المناقلة"
-                      : "ترحيل تسوية الجرد"}
+                      : countIsZero ? "تصفير رصيد الصنف" : "ترحيل تسوية الجرد"}
               </Button>
               {mode === "adjustment" && (
                 <Button type="button" variant="secondary"
