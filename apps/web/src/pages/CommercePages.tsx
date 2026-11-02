@@ -509,6 +509,10 @@ interface SalesPointForm {
   saleCustomerMatched: boolean;
   pending: InvoiceInput | null;
   unknown: boolean;
+  manualAccount: boolean;
+  manualCurrency: boolean;
+  manualBranch: boolean;
+  manualLocation: boolean;
 }
 
 function emptyLine(returning = false): DraftLine {
@@ -1604,18 +1608,21 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   });
 
   const invalidate = useCommerceChanges(companyId);
-  const [documentDate, setDocumentDate] = useState(today);
-  const [currency, setCurrency] = useState<CompanyCurrency | null>(null);
+  const [documentDate, setDocumentDate] = useState(() => restored?.documentDate ?? today());
+  const [currency, setCurrency] = useState<CompanyCurrency | null>(restored?.currency ?? null);
   const defaultYer = useDefaultYerCurrency(companyId, "commerce-options");
-  const currencyManuallyChosen = useRef(false);
-  const automaticCurrencyId = useRef<number | null>(null);
-  const [branch, setBranch] = useState<Branch | null>(null);
-  const [location, setLocation] = useState<Location | null>(null);
+  const currencyManuallyChosen = useRef(restored?.manualCurrency ?? false);
+  const automaticCurrencyId = useRef<number | null>(
+    restored?.manualCurrency ? null : restored?.currency?.id ?? null);
+  const [branch, setBranch] = useState<Branch | null>(restored?.branch ?? null);
+  const [location, setLocation] = useState<Location | null>(restored?.location ?? null);
   const [showOriginalPicker, setShowOriginalPicker] = useState(false);
-  const branchManuallyChosen = useRef(false);
-  const locationManuallyChosen = useRef(false);
-  const automaticBranchId = useRef<number | null>(null);
-  const automaticLocationId = useRef<number | null>(null);
+  const branchManuallyChosen = useRef(restored?.manualBranch ?? false);
+  const locationManuallyChosen = useRef(restored?.manualLocation ?? false);
+  const automaticBranchId = useRef<number | null>(
+    restored?.manualBranch ? null : restored?.branch?.id ?? null);
+  const automaticLocationId = useRef<number | null>(
+    restored?.manualLocation ? null : restored?.location?.id ?? null);
   const defaultBranch = useDefaultCompanyBranch(companyId);
   const showroomQuery = useQuery({
     queryKey: ["invoice-default-showroom", user?.id, companyId, kind, branch?.id],
@@ -1627,7 +1634,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         { signal },
       ),
   });
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | null>(restored?.account ?? null);
   const configuredPurchaseAccountQuery = useQuery({
     queryKey: ["invoice-purchase-default-account",user?.id,companyId,purchaseDefaultId],
     queryFn:({signal})=>api<Page<Account>>(
@@ -1657,9 +1664,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const [cashboxUnknown,setCashboxUnknown]=useState(false);
   const [cashboxError,setCashboxError]=useState("");
   const [cashboxNotice,setCashboxNotice]=useState("");
-  const accountManuallyChosen = useRef(false);
-  const [description, setDescription] = useState("");
-  const [discount, setDiscount] = useState("0");
+  const accountManuallyChosen = useRef(restored?.manualAccount ?? false);
+  const [description, setDescription] = useState(restored?.description ?? "");
+  const [discount, setDiscount] = useState(restored?.discount ?? "0");
   useEffect(() => {
     if (!defaultYer || currencyManuallyChosen.current) return;
     if (currency === null) {
@@ -1709,8 +1716,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     automaticLocationId.current = defaultShowroom.id;
     setLocation(defaultShowroom);
   }, [showroomQuery.data, branch, location]);
-  const [original, setOriginal] = useState<Invoice | null>(null);
-  const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
+  const [original, setOriginal] = useState<Invoice | null>(restored?.original ?? null);
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    restored?.lines?.length ? restored.lines.slice(0, 100) : [emptyLine()]);
   const [purchaseDrafts, setPurchaseDrafts] = useState<PurchaseWorkDraft<PurchaseDraftForm>[]>([]);
   const [activePurchaseDraftId, setActivePurchaseDraftId] = useState<string | null>(null);
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(null);
@@ -1800,19 +1808,19 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [savedOfflineInvoice, setSavedOfflineInvoice] = useState<PrintableInvoice | null>(null);
   const [saving, setSaving] = useState(false);
-  const [unknown, setUnknown] = useState(false);
+  const [unknown, setUnknown] = useState(restored?.unknown ?? false);
   const [localQueued, setLocalQueued] = useState(false);
-  const pending = useRef<InvoiceInput | null>(null);
+  const pending = useRef<InvoiceInput | null>(restored?.pending ?? null);
   const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
-  const [doctorQuery,setDoctorQuery]=useState("");
-  const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(null);
+  const [doctorQuery,setDoctorQuery]=useState(restored?.doctorQuery ?? "");
+  const [doctorSelected,setDoctorSelected]=useState<Doctor|null>(restored?.doctorSelected ?? null);
   const [doctorActiveIndex,setDoctorActiveIndex]=useState(-1);
   const doctorOptionsRef=useRef<HTMLDivElement>(null);
   const [doctorError,setDoctorError]=useState("");
-  const [saleCustomerQuery,setSaleCustomerQuery]=useState("");
-  const [saleCustomerNumber,setSaleCustomerNumber]=useState("");
-  const [saleCustomerName,setSaleCustomerName]=useState("");
-  const [saleCustomerMatched,setSaleCustomerMatched]=useState(false);
+  const [saleCustomerQuery,setSaleCustomerQuery]=useState(restored?.saleCustomerQuery ?? "");
+  const [saleCustomerNumber,setSaleCustomerNumber]=useState(restored?.saleCustomerNumber ?? "");
+  const [saleCustomerName,setSaleCustomerName]=useState(restored?.saleCustomerName ?? "");
+  const [saleCustomerMatched,setSaleCustomerMatched]=useState(restored?.saleCustomerMatched ?? false);
   const customerField=useRef<HTMLInputElement>(null);
   const customerSearch=useQuery<Page<SaleCustomer>>({
     queryKey:["sale-customer-search",user?.id,companyId,saleCustomerQuery],
@@ -1974,6 +1982,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     lines.some((line) => line.itemId || line.search.trim()) ||
     !!original ||
     !!description ||
+    (kind === "sale" && (discount.trim() !== "0" && discount.trim() !== "" ||
+      !!doctorSelected || !!doctorQuery.trim() || !!saleCustomerQuery.trim() ||
+      !!saleCustomerNumber || !!saleCustomerName.trim())) ||
     (kind === "purchase" && (!!supplier || !!supplierReceiptNumber)) ||
     accountManuallyChosen.current ||
     (!!account && account.id !== (kind === "sale" ? defaultCashbox?.id : configuredPurchaseAccount?.id)) ||
@@ -2080,18 +2091,50 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       setError("تعذر حذف المسودة: " + errorMessage(reason));
     }
   }
+  const [salesStorageError, setSalesStorageError] = useState("");
+  const [salesStoragePending, setSalesStoragePending] = useState(false);
+  const salesWriteSequence = useRef(0);
+  const salesPointCreated = useRef(pointCreatedAt ?? new Date().toISOString());
+  // Persist EVERY independently mounted sale point to IndexedDB as users type.
+  // No server invoice, invoice number, financial posting, or offline queue is created here.
   useEffect(() => {
-    onStatusChange(tabId, { dirty: editorDirty, saving: saving || draftSaving, unknown, itemCount: selectedLines.length });
-  }, [tabId, editorDirty, saving, draftSaving, unknown, selectedLines.length, onStatusChange]);
+    if (kind !== "sale" || !user?.id) return;
+    const form: SalesPointForm = {
+      documentDate, account, currency, branch, location, original,
+      description, discount, lines, doctorSelected, doctorQuery,
+      saleCustomerQuery, saleCustomerNumber, saleCustomerName, saleCustomerMatched,
+      pending: pending.current, unknown,
+      manualAccount: accountManuallyChosen.current,
+      manualCurrency: currencyManuallyChosen.current,
+      manualBranch: branchManuallyChosen.current,
+      manualLocation: locationManuallyChosen.current,
+    };
+    const current = ++salesWriteSequence.current;
+    setSalesStoragePending(true);
+    void saveSalesPointDraft(user.id, companyId, tabId, salesPointCreated.current, form)
+      .then(() => { if (current === salesWriteSequence.current) setSalesStorageError(""); })
+      .catch(error => { if (current === salesWriteSequence.current)
+        setSalesStorageError("لم تُحفظ نقطة المبيعات على الجهاز: " + errorMessage(error)); })
+      .finally(() => { if (current === salesWriteSequence.current) setSalesStoragePending(false); });
+  }, [kind, user?.id, companyId, tabId, documentDate, account, currency,
+    branch, location, original, description, discount, lines, doctorSelected,
+    doctorQuery, saleCustomerQuery, saleCustomerNumber, saleCustomerName,
+    saleCustomerMatched, unknown, saving]);
   useEffect(() => {
-    if (!editorDirty && !saving && !unknown && !draftSaving) return;
+    onStatusChange(tabId, { dirty: editorDirty, saving: saving || draftSaving,
+      unknown, itemCount: selectedLines.length, storageError: !!salesStorageError });
+  }, [tabId, editorDirty, saving, draftSaving, unknown, selectedLines.length,
+    salesStorageError, onStatusChange]);
+  useEffect(() => {
+    if (kind === "sale" ? !saving && !unknown && !salesStoragePending &&
+      !salesStorageError : !editorDirty && !saving && !unknown && !draftSaving) return;
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [editorDirty, saving, unknown, draftSaving]);
+  }, [kind, editorDirty, saving, unknown, draftSaving, salesStoragePending, salesStorageError]);
   // Start new invoices with the cursor in the first item/barcode search.
   const [focusTarget, setFocusTarget] = useState<{ id: string; select?: boolean } | null>(() => ({
     id: lineInputId(lines[0]!, "item-search"),
@@ -2850,6 +2893,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   });
   return (
     <div className="commerce-document-page">
+      {kind === "sale" && salesStorageError && <Notice tone="error">{salesStorageError}</Notice>}
       {kind === "purchase" && <Dialog
         open={draftListOpen}
         title={`المسودات المحفوظة (${purchaseDrafts.length})`}
