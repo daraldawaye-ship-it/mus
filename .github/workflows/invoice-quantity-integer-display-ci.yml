@@ -7,12 +7,16 @@ on:
       - "apps/web/src/pages/CommercePages.tsx"
       - "apps/web/src/invoice-number-input.ts"
       - "tests/invoice-signed-discount-input.test.ts"
+      - "tests/invoice-sales-save-modal-layout.test.ts"
+      - "apps/web/src/styles.css"
       - ".github/workflows/invoice-quantity-integer-display-ci.yml"
   pull_request:
     paths:
       - "apps/web/src/pages/CommercePages.tsx"
       - "apps/web/src/invoice-number-input.ts"
       - "tests/invoice-signed-discount-input.test.ts"
+      - "tests/invoice-sales-save-modal-layout.test.ts"
+      - "apps/web/src/styles.css"
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -28,3 +32,4 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx tsx --test tests/invoice-signed-discount-input.test.ts
+      - run: npx tsx --test tests/invoice-sales-save-modal-layout.test.ts
