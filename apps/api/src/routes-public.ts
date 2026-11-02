@@ -26,7 +26,7 @@ import { passwordHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordUserPresence } from "./services/user-presence.ts";
-import { recordReportedPushPermission, requestDevice } from "./services/user-device-activity.ts";
+import { recordDeviceActivity, recordReportedPushPermission, requestDevice } from "./services/user-device-activity.ts";
 
 export function publicRoutes(pool: Pool): Router {
   const router = Router();
@@ -34,6 +34,9 @@ export function publicRoutes(pool: Pool): Router {
   router.post("/presence/heartbeat", handler(async (req, res) => {
     const user = actor(req);
     await recordUserPresence(pool, user.id);
+    // Foreground heartbeat only: never infer a person's activity from polling,
+    // background HTTP requests or the last login timestamp.
+    await recordDeviceActivity(pool,user.id,requestDevice(req)).catch(() => {});
     const notificationPermission = req.body?.notificationPermission;
     if (notificationPermission === "granted" || notificationPermission === "denied" ||
         notificationPermission === "default" || notificationPermission === "unsupported") {
@@ -78,8 +81,21 @@ export function publicRoutes(pool: Pool): Router {
         kind: "kind",
         archived: "archived",
         suspended: "suspended",
+        editor: "editor",
+        monitor: "monitor",
+        owner: "owner",
+        "device-activity-desktop_browser": "(SELECT a.last_activity_at FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind='desktop_browser')",
+        "device-activity-mobile_browser": "(SELECT a.last_activity_at FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind='mobile_browser')",
+        "device-activity-android_app": "(SELECT a.last_activity_at FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind='android_app')",
+        "device-activity-iphone_app": "(SELECT a.last_activity_at FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind='iphone_app')",
+        "app-push": "(SELECT max(a.last_push_confirmed_at) FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind IN ('android_app','iphone_app'))",
+        "laptop-push": "(SELECT a.last_push_confirmed_at FROM user_device_activity a WHERE a.user_id=users.id AND a.device_kind='desktop_browser')",
         createdAt: "created_at",
-      });
+      }, "id:asc", new Set([
+        "device-activity-desktop_browser","device-activity-mobile_browser",
+        "device-activity-android_app","device-activity-iphone_app",
+        "app-push","laptop-push",
+      ]));
       const parameters: unknown[] = [searchPattern(query.q)];
       let filter =
         "(name ILIKE $1 OR display_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1)";
@@ -112,6 +128,7 @@ export function publicRoutes(pool: Pool): Router {
       const userIds = rows.rows.map(row => Number(row.id));
       const deviceByUser = new Map<number, Record<string, {
         lastLoginAt: Date | null;
+        lastActivityAt: Date | null;
         lastPushConfirmedAt: Date | null;
         lastPushPermission: string | null;
         lastPushPermissionCheckedAt: Date | null;
@@ -120,7 +137,7 @@ export function publicRoutes(pool: Pool): Router {
       if (userIds.length) {
         try {
           const activity = await pool.query(
-            `SELECT user_id,device_kind,last_login_at,last_push_confirmed_at,
+            `SELECT user_id,device_kind,last_login_at,last_activity_at,last_push_confirmed_at,
                     last_push_permission,last_push_permission_checked_at
                FROM user_device_activity
                WHERE user_id=ANY($1::integer[])`,
@@ -131,6 +148,7 @@ export function publicRoutes(pool: Pool): Router {
             const kinds = deviceByUser.get(id) ?? {};
             kinds[item.device_kind] = {
               lastLoginAt: item.last_login_at,
+              lastActivityAt: item.last_activity_at,
               lastPushConfirmedAt: item.last_push_confirmed_at,
               lastPushPermission: item.last_push_permission,
               lastPushPermissionCheckedAt: item.last_push_permission_checked_at,
