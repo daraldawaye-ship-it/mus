@@ -4507,6 +4507,18 @@ test("signed header discounts post negative sales and purchase invoices while pr
   assert.equal(sold.total,"200");
 
   for (const discount of ["10","-10"]) {
+    const linked=await invoice(f,s,invoiceBody(s,item.id,{
+      kind:"sale",counterpartyAccountId:s.customer.id,discount,
+      lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sold.lines[0]!.id}],
+    }));
+    assert.equal(linked.total,discount==="10"?"-110":"-90");
+    const row=(await f.pool.query(
+      "SELECT discount::text AS discount,manual_discount::text AS manual FROM invoice_lines WHERE company_id=$1 AND id=$2",
+      [s.company.id,linked.lines[0]!.id],
+    )).rows[0];
+    assert.equal(Number(row.manual),Number(discount),"manual header amount must be tracked separately");
+  }
+  for (const discount of ["10","-10"]) {
     const saleReturn=await invoice(f,s,invoiceBody(s,item.id,{
       kind:"sale",counterpartyAccountId:s.customer.id,discount,
       lines:[{itemId:item.id,unit:1,quantity:"-1"}],
@@ -4521,18 +4533,6 @@ test("signed header discounts post negative sales and purchase invoices while pr
     assert.equal(purchaseReturn.total,discount==="10"?"-110":"-90");
     assert.equal(purchaseReturn.discount,discount);
     assert.equal(purchaseReturn.returning,true);
-  }
-  for (const discount of ["10","-10"]) {
-    const linked=await invoice(f,s,invoiceBody(s,item.id,{
-      kind:"sale",counterpartyAccountId:s.customer.id,discount,
-      lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sold.lines[0]!.id}],
-    }));
-    assert.equal(linked.total,discount==="10"?"-110":"-90");
-    const row=(await f.pool.query(
-      "SELECT discount::text AS discount,manual_discount::text AS manual FROM invoice_lines WHERE company_id=$1 AND id=$2",
-      [s.company.id,linked.lines[0]!.id],
-    )).rows[0];
-    assert.equal(Number(row.manual),Number(discount),"manual header amount must be tracked separately");
   }
   await assertBalanced(f,s.company.id);
 });
