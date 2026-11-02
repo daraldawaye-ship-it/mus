@@ -654,6 +654,28 @@ function ProfileForms({ user }: { user: User }) {
 }
 
 type PublicFlag = "archived" | "suspended" | "editor" | "monitor";
+type DeviceKind = "desktop_browser" | "mobile_browser" | "android_app" | "iphone_app";
+type DeviceTimes = { lastLoginAt: string | null; lastPushConfirmedAt: string | null };
+type TrackedUser = User & {
+  deviceActivity?: Partial<Record<DeviceKind, DeviceTimes>>;
+  activePushDevices?: DeviceKind[];
+};
+const loginColumns: { kind: DeviceKind; header: string }[] = [
+  { kind: "desktop_browser", header: "آخر دخول من متصفح لابتوب" },
+  { kind: "mobile_browser", header: "آخر دخول من متصفح هاتف" },
+  { kind: "android_app", header: "آخر دخول من تطبيق أندرويد" },
+  { kind: "iphone_app", header: "آخر دخول من تطبيق آيفون" },
+];
+function lastPushCell(record: TrackedUser, kinds: DeviceKind[]) {
+  const dates = kinds.map(kind => record.deviceActivity?.[kind]?.lastPushConfirmedAt)
+    .filter((value): value is string => Boolean(value));
+  const last = dates.sort((a,b) => Date.parse(b) - Date.parse(a))[0];
+  const linked = kinds.some(kind => record.activePushDevices?.includes(kind));
+  return <div title="الاشتراك مرتبط بالخادم فقط؛ قد يغيّر المستخدم إذن الجهاز دون إبلاغ الموقع.">
+    <span>{last ? dateLabel(last) : "—"}</span>
+    <small className="muted">{linked ? "اشتراك مرتبط" : "لا يوجد اشتراك نشط"}</small>
+  </div>;
+}
 const flagLabels: Record<PublicFlag, string> = {
   archived: "مؤرشف",
   suspended: "موقوف عن المشاركة",
@@ -683,7 +705,7 @@ function UserList() {
   const filters = new URLSearchParams();
   if (kindFilter) filters.set("kind", kindFilter);
   if (archiveFilter) filters.set("archived", archiveFilter);
-  const list = usePagedQuery<User>(
+  const list = usePagedQuery<TrackedUser>(
     `/users${filters.size ? `?${filters}` : ""}`,
     "public",
   );
@@ -830,7 +852,7 @@ function UserList() {
     }
   }
 
-  const columns = useMemo<ColumnDef<User, unknown>[]>(() => {
+  const columns = useMemo<ColumnDef<TrackedUser, unknown>[]>(() => {
     const valueCell = (title: string, value: string) => (
       <Button
         type="button"
@@ -843,7 +865,7 @@ function UserList() {
         <span className="truncate">{value || "—"}</span>
       </Button>
     );
-    const flags: ColumnDef<User, unknown>[] = (
+    const flags: ColumnDef<TrackedUser, unknown>[] = (
       Object.keys(flagLabels) as PublicFlag[]
     ).map((flag) => ({
       accessorKey: flag,
@@ -944,6 +966,19 @@ function UserList() {
         cell: ({ row }) => (row.original.owner ? "نعم · محمي" : "لا"),
       },
       ...flags,
+      ...loginColumns.map(({kind,header}): ColumnDef<TrackedUser, unknown> => ({
+        id: `device-login-${kind}`, header, size: 220, enableSorting: false,
+        cell: ({row}) => {
+          const value = row.original.deviceActivity?.[kind]?.lastLoginAt;
+          return value ? dateLabel(value) : "—";
+        },
+      })),
+      { id: "app-push", header: "آخر تفعيل إشعارات التطبيق",
+        size: 225, enableSorting: false,
+        cell: ({row}) => lastPushCell(row.original, ["android_app","iphone_app"]) },
+      { id: "laptop-push", header: "آخر تفعيل إشعارات اللابتوب",
+        size: 225, enableSorting: false,
+        cell: ({row}) => lastPushCell(row.original, ["desktop_browser"]) },
       {
         accessorKey: "createdAt",
         header: "تاريخ الإنشاء",
@@ -957,7 +992,7 @@ function UserList() {
     <>
       <PageHeader
         title="المستخدمون"
-        description="إدارة الهوية العامة فقط؛ صلاحيات الشركة تأتي من الموظف الفعال داخلها."
+        description="إدارة حسابات الموقع، وآخر تسجيل دخول بحسب الجهاز، وآخر تأكيد لربط الإشعارات."
         actions={
           <div className="actions">
             <Link to="/users/last-present" className="button button-secondary">آخر المتواجدين</Link>
@@ -998,6 +1033,7 @@ function UserList() {
             <option value="true">مؤرشف</option>
           </Select>
         </div>
+        <p className="muted">تبدأ تواريخ الدخول المفصّلة من تفعيل هذه الميزة؛ (—) يعني أنه لا توجد بيانات مؤكدة. المقصود بتطبيق أندرويد أو آيفون هو تطبيق الويب المثبّت. «اشتراك مرتبط» لا يضمن أن إذن الإشعارات ما زال مفعّلًا على الجهاز.</p>
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
         {list.error && <Notice tone="error">{messageOf(list.error)}</Notice>}
         <DataTable
