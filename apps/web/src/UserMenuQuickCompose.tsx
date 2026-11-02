@@ -60,7 +60,7 @@ export function UserMenuQuickCompose({
     {result?<div className="form-stack">
       <Notice>{privateNote
         ?"تم حفظ المذكرة الخاصة في حسابك دون مشاركتها أو إرسال إشعارات للآخرين. سيتم إضافة مكان عرضها لاحقًا."
-        :"تم إرسال الرسالة والإشعارات إلى "+result.recipients+" من المستلمين."}</Notice>
+        :"تم نشر التنبيه في قسم التنبيهات لدى "+result.recipients+" من المستلمين."}</Notice>
       <div className="form-actions"><Button onClick={onClose}>إغلاق</Button></div>
     </div>:<form className="form-stack" onSubmit={event=>void submit(event)}>
       {kind==="present_employees"&&<p className="muted">تصل الرسالة بإشعار إلى الموظفين المحضّرين حاليًا والذين لم يسجّلوا انصرافهم.</p>}
