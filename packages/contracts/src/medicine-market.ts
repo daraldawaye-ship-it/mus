@@ -3,6 +3,9 @@ export const marketKinds = [
   "composition",
   "scientific-name",
   "dosage-form",
+  "country",
+  "governorate",
+  "city",
   "pharmacy",
   "wholesaler",
   "agent",
@@ -13,6 +16,13 @@ export const marketKinds = [
   "college",
 ] as const;
 export type MarketKind = (typeof marketKinds)[number];
+/** Admin-owned reference catalog. Public cards may reference these, but
+ * non-administrators cannot create or edit the reference cards themselves. */
+export const marketAdministrativeKinds = [
+  "country", "governorate", "city", "dosage-form",
+] as const satisfies readonly MarketKind[];
+export const isMarketAdministrativeKind = (kind: MarketKind): boolean =>
+  (marketAdministrativeKinds as readonly string[]).includes(kind);
 export type MarketVisibility = "public" | "ministry" | "accounting";
 export type MarketFieldType =
   | "text"
@@ -52,7 +62,12 @@ const address = f("address", "العنوان", "textarea");
 const phone = f("phone", "رقم التواصل");
 const contacts = f("contacts", "أرقام المسؤولين", "contacts");
 const keywords = f("keywords", "مفاتيح البحث");
-const directory = [name, phone, address, contacts, keywords];
+const locationRelations = [
+  f("countryId", "الدولة", "relation", { relationKind: "country" }),
+  f("governorateId", "المحافظة", "relation", { relationKind: "governorate" }),
+  f("cityId", "المدينة", "relation", { relationKind: "city" }),
+];
+const directory = [name, phone, address, ...locationRelations, contacts, keywords];
 export const marketTypes: MarketType[] = [
   {
     key: "medicine",
@@ -60,6 +75,7 @@ export const marketTypes: MarketType[] = [
     fields: [
       f("name", "اسم الصنف بالعربي"),
       f("englishName", "اسم الصنف بالإنجليزي"),
+      ...locationRelations,
       f("dosageFormId", "الشكل الصيدلاني", "relation", {
         relationKind: "dosage-form",
       }),
@@ -125,7 +141,24 @@ export const marketTypes: MarketType[] = [
     label: "الأشكال الصيدلانية",
     fields: [name, f("englishName", "الاسم الإنجليزي"), keywords],
   },
-  { key: "pharmacy", label: "الصيدليات", fields: directory },
+  {
+    key: "country", label: "الدول", fields: [
+      name, f("englishName", "الاسم بالإنجليزي"), keywords,
+    ],
+  },
+  {
+    key: "governorate", label: "المحافظات", fields: [
+      name, f("countryId", "الدولة", "relation", { relationKind: "country" }), keywords,
+    ],
+  },
+  {
+    key: "city", label: "المدن", fields: [
+      name, f("governorateId", "المحافظة", "relation", { relationKind: "governorate" }), keywords,
+    ],
+  },
+  { key: "pharmacy", label: "الصيدليات", fields: [
+    ...directory, f("sourceNotes", "مصدر البيانات وملاحظات التحقق", "textarea"),
+  ] },
   { key: "wholesaler", label: "محلات الجملة", fields: directory },
   { key: "agent", label: "الوكلاء", fields: directory },
   {
@@ -134,6 +167,7 @@ export const marketTypes: MarketType[] = [
     fields: [
       name,
       f("country", "البلد"),
+      f("countryId", "الدولة (الكرت المرجعي)", "relation", { relationKind: "country" }),
       f("agentId", "الوكيل", "relation", { relationKind: "agent" }),
       image,
       keywords,
