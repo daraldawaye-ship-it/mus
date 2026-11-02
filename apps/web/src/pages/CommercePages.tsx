@@ -2089,7 +2089,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     setHeaderItem(null);
     onChooseItem(null);
     setActivePurchaseDraftId(draft.id);
-    setLastSavedFingerprint(JSON.stringify(form));
+    setLastSavedFingerprint(JSON.stringify({ ...form, documentDate: today() }));
     setSavedInvoice(null);
     setSavedOfflineInvoice(null);
     setDraftNotice("تم فتح المسودة لاستكمالها.");
