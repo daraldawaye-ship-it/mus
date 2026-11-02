@@ -50,4 +50,5 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npx tsx --test tests/invoice-signed-discount-input.test.ts
+      - run: npx tsx --test --test-name-pattern="partial sale returns preserve original prices" tests/commerce.test.ts
       - run: npx tsx --test --test-name-pattern="signed header discounts post negative sales and purchase invoices" tests/commerce.test.ts
