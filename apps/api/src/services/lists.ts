@@ -10,6 +10,7 @@ export function listQuery(
   query: Record<string, unknown>,
   columns: Record<string, string>,
   fallback = "id:asc",
+  nullsLastFields: ReadonlySet<string> = new Set(),
 ): ListQuery {
   const integer = (
     value: unknown,
@@ -45,7 +46,7 @@ export function listQuery(
     )
       throw new HttpError(400, "invalid_sort", "الترتيب غير صالح");
     seen.add(field);
-    orders.push(`${columns[field]} ${direction.toUpperCase()}`);
+    orders.push(`${columns[field]} ${direction.toUpperCase()}${nullsLastFields.has(field) ? " NULLS LAST" : ""}`);
   }
   if (!seen.has("id")) orders.push(`${columns.id} ASC`);
   return {
