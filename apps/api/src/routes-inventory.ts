@@ -491,6 +491,103 @@ export function inventoryRoutes(pool: Pool): Router {
         .json({ operation: result.operation });
     }),
   );
+  // Bounded import of physical transfers from legacy item identifiers.
+  // Each item commits independently through the SAME stock and audit
+  // services as the ordinary transfer endpoint; a failing row never
+  // double-posts or rolls back another successfully transferred item.
+  const legacyTransferBatchSchema = z.object({
+    documentDate: documentDateSchema,
+    fromLocationId: z.number().int().positive(),
+    toLocationId: z.number().int().positive(),
+    sourceFileId: z.string().trim().min(3).max(120),
+    items: z.array(z.object({
+      legacyId: z.string().trim().regex(/^[0-9]{1,30}$/),
+      quantity: z.string().trim().regex(/^[1-9][0-9]{0,39}$/),
+      idempotencyKey: z.uuid(),
+    }).strict()).min(1).max(25),
+  }).strict().refine(v => v.fromLocationId !== v.toLocationId, {
+    path: ["toLocationId"], message: "يجب اختلاف موقعي المناقلة",
+  }).refine(v => new Set(v.items.map(x => x.legacyId)).size === v.items.length, {
+    path: ["items"], message: "لا تكرر الصنف في الدفعة نفسها",
+  });
+  router.post(
+    `${base}/stock-transfers/legacy-batch`,
+    handler(async (req, res) => {
+      const input = parse(legacyTransferBatchSchema, req.body);
+      const completed: {legacyId:string; itemId:number; quantity:string; operationId:number; created:boolean}[] = [];
+      const failed: {legacyId:string; error:string}[] = [];
+      for (const row of input.items) {
+        try {
+          const transfer = await mutateMaster(
+            pool, req, "inventory.post",
+            async (client, user, companyId) => {
+              const matches = await client.query(
+                "SELECT id FROM items WHERE company_id=$1 AND legacy_id=$2 ORDER BY id LIMIT 2",
+                [companyId, row.legacyId],
+              );
+              if (matches.rows.length !== 1)
+                conflict(matches.rows.length ? "معرف الصنف السابق مكرر" : "لم يُعثر على معرف الصنف السابق");
+              const itemId = Number(matches.rows[0].id);
+              const payload = {
+                documentDate: input.documentDate,
+                itemId,
+                fromLocationId: input.fromLocationId,
+                toLocationId: input.toLocationId,
+                quantity: row.quantity,
+                unit: 1 as const,
+                expiryDate: null,
+                description: `مناقلة مرتجعات الشركات من ملف النظام السابق ${input.sourceFileId}؛ معرف الصنف السابق ${row.legacyId}؛ الكمية ${row.quantity} بعد حذف الكسور.`,
+                idempotencyKey: row.idempotencyKey,
+              };
+              const previous = await findStockOperation(
+                client, companyId, payload.idempotencyKey, payload,
+              );
+              if (previous !== null) return {itemId, operationId: previous, created: false};
+              const item = await itemStockSnapshot(client, companyId, itemId);
+              await checkStockLocation(client, companyId, input.fromLocationId);
+              await checkStockLocation(client, companyId, input.toLocationId);
+              const quantity = BigInt(row.quantity) * stockUnitMultiplier(item, 1);
+              const operationId = await createStockOperation(
+                client, companyId, user, "transfer", payload,
+              );
+              const taken = await applyStock(client, companyId, user.id, {
+                itemId,
+                locationId: input.fromLocationId,
+                quantitySmallest: -quantity,
+                kind: "transfer_out",
+                documentDate: input.documentDate,
+                expiryDate: null,
+                operationId,
+                allowExpired: true,
+              });
+              for (const batch of taken.allocations)
+                await applyStock(client, companyId, user.id, {
+                  itemId,
+                  locationId: input.toLocationId,
+                  quantitySmallest: -BigInt(batch.quantitySmallest),
+                  costBase: -moneyUnits(batch.costBase),
+                  kind: "transfer_in",
+                  documentDate: input.documentDate,
+                  expiryDate: batch.expiryDate,
+                  operationId,
+                  originalMovementId: batch.movementId,
+                  allowExpired: true,
+                });
+              await auditStockOperation(client, companyId, user, operationId);
+              return {itemId, operationId, created: true};
+            },
+          );
+          completed.push({legacyId: row.legacyId, quantity: row.quantity, ...transfer});
+        } catch (error) {
+          // Authentication and authorization failure must not be swallowed.
+          if (error instanceof HttpError && [401,403].includes(error.status)) throw error;
+          failed.push({legacyId: row.legacyId, error: error instanceof Error
+            ? error.message : "تعذر تنفيذ مناقلة هذا الصنف"});
+        }
+      }
+      res.json({completed, failed});
+    }),
+  );
   router.post(
     `${base}/stock-adjustments`,
     handler(async (req, res) => {
