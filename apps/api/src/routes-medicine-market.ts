@@ -174,6 +174,8 @@ function normalizeValue(field: MarketField, value: unknown): unknown {
       );
     case "relation":
       return parse(z.number().int().positive().max(2147483647), value);
+    case "reference":
+      return parse(z.string().trim().min(2).max(48).regex(/^[A-Za-z0-9_-]+$/), value);
     case "contacts":
       return parse(z.array(contact).max(30), value);
     case "ingredients":
@@ -200,6 +202,20 @@ async function validateReferences(
   value: unknown,
 ) {
   if (value === null) return;
+  if (field.type === "reference") {
+    const referenceKind =
+      field.key === "countryCode" ? "country" :
+      field.key === "governorateCode" ? "governorate" :
+      field.key === "cityCode" ? "city" : null;
+    if (!referenceKind) throw new HttpError(400, "invalid_reference", "حقل جغرافي غير معروف");
+    const valid = await db.query(
+      "SELECT 1 FROM market_reference_entries WHERE kind=$1 AND code=$2",
+      [referenceKind, value],
+    );
+    if (!valid.rowCount)
+      throw new HttpError(400, "invalid_reference", "الاسم غير موجود في القائمة الإدارية المعتمدة");
+    return;
+  }
   const refs =
     field.type === "relation"
       ? [{ id: value as number, kind: field.relationKind! }]
@@ -528,6 +544,9 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
             }),
         })),
         permissions: p,
+        references: (await pool.query(
+          "SELECT kind,code,name,parent_code AS \"parentCode\" FROM market_reference_entries ORDER BY CASE kind WHEN 'country' THEN 1 WHEN 'governorate' THEN 2 ELSE 3 END,name",
+        )).rows,
         userPoints: await points(pool, u?.id ?? null),
       });
     }),
@@ -546,8 +565,10 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
       const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
-      const referenceFilter = kind === null && !p.canConfigure
-        ? " AND c.kind NOT IN ('country','governorate','city','dosage-form')"
+      // Fixed dosage forms stay available by explicit lookup for medicine
+      // relations, but are never catalog tiles or user-create choices.
+      const referenceFilter = kind === null
+        ? " AND c.kind <> 'dosage-form'"
         : "";
       const condition =
         "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
@@ -600,7 +621,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
         const u = (await viewer(db, req, true))!,
           p = perms(u);
         if (isMarketAdministrativeKind(input.kind) && !p.canConfigure)
-          deny("هذه كروت إدارية ثابتة؛ الإضافة والتعديل للإدارة فقط");
+          deny("الكروت المرجعية ثابتة؛ لا يمكن إضافتها من واجهة المستخدم");
         const old = (
           await db.query(
             "SELECT * FROM medicine_market_cards WHERE created_by=$1 AND idempotency_key=$2",
