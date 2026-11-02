@@ -65,7 +65,7 @@ export function UserMenuQuickCompose({
     </div>:<form className="form-stack" onSubmit={event=>void submit(event)}>
       {kind==="present_employees"&&<p className="muted">تصل الرسالة بإشعار إلى الموظفين المحضّرين حاليًا والذين لم يسجّلوا انصرافهم.</p>}
       {kind==="all_employees"&&<p className="muted">تصل الرسالة بإشعار لكل موظف فعّال في الشركة، عدا حسابك.</p>}
-      {(kind==="system_change"||kind==="app_manager")&&<p className="muted">تُرسل الرسالة وإشعارها إلى إدارة التطبيق عبر الدردشة العامة.</p>}
+      {(kind==="system_change"||kind==="app_manager")&&<p className="muted">يظهر نص الرسالة واسمك للإدارة في قسم التنبيهات، دون دردشة.</p>}
       {privateNote&&<p className="muted">مذكرة لا يراها أحد غيرك، ولا يذهب عنها إشعار لأي مستخدم.</p>}
       {error&&<Notice tone="error">{error}</Notice>}
       {privateNote&&<label className="field">
