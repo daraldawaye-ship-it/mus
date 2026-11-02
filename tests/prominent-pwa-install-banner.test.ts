@@ -68,7 +68,7 @@ test("installed PWA accepts direct-link routes using one existing app window whe
   assert.equal(manifest.launch_handler?.client_mode, "navigate-existing");
   assert.equal(manifest.capture_links, undefined, "do not rely on obsolete capture_links");
   assert.equal(manifest.protocol_handlers, undefined, "do not invent a custom scheme");
-  assert.match(app, /Route path="\\/quick-login"/);
-  assert.match(directLogin, /window\\.location\\.hash\\.slice\\(1\\)/);
-  assert.match(directLogin, /window\\.history\\.replaceState/);
+  assert.ok(app.includes('path="/quick-login"'));
+  assert.ok(directLogin.includes("window.location.hash.slice(1)"));
+  assert.ok(directLogin.includes("window.history.replaceState"));
 });
