@@ -3532,6 +3532,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
               value={hasPositiveLines ? discount : "0"}
               inputMode="text"
               disabled={locked || !hasPositiveLines}
+              onFocus={(event) => event.target.select()}
               onChange={(event) => {
                 const entered = enteredInvoiceDiscount(event.target.value);
                 if (entered !== null) setDiscount(entered);
