@@ -29,7 +29,7 @@ export function completedInvoiceQuantity(value: string): string {
  * Do not format while the cashier is typing or during a partial negative sign.
  */
 export function displayInvoiceQuantity(value: string): string {
-  return /^-?\\d+$/.test(value) && value !== "-0" ? `${value}.0` : value;
+  return /^-?\d+$/.test(value) && value !== "-0" ? `${value}.0` : value;
 }
 
 /** Header discount is 0 when cleared. A single '-' becomes '-0' so users
