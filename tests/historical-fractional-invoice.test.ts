@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { batchSchema } from "../apps/api/src/routes-transaction-import-schemas.ts";
-import { convertHistoricalFractionalLine } from "../apps/api/src/services/historical-fractional-invoice.ts";
+import { allowsLegacyStockVariance, convertHistoricalFractionalLine } from "../apps/api/src/services/historical-fractional-invoice.ts";
 
 const item = { id: 35, factor2: 10, factor3: 1, unit2_name: "حبة", unit3_name: "جزء" };
 const make = (quantity: string, unitPrice = "4000") => ({
@@ -67,4 +67,16 @@ test("owner-scoped inventory variance keeps signed amount at currency precision"
     { ...item, factor2: 1, factor3: 1 }, { currencyDecimals: 0 });
   assert.equal(odd.quantity, "1");
   assert.equal(odd.unitPrice, "12");
+});
+
+test("inventory variance exception is limited to company 2 legacy sales through November 1", () => {
+  const allow = (companyId: number, source: string, kind: string, date: string) =>
+    allowsLegacyStockVariance(companyId, source, kind, date);
+  assert.equal(allow(2, "dar-aldawa-legacy-2026-10", "sale", "2026-10-31"), true);
+  assert.equal(allow(2, "dar-aldawa-legacy-2026-10", "sale", "2026-11-01"), true);
+  assert.equal(allow(2, "dar-aldawa-legacy-2026-10", "sale", "2026-11-02"), false);
+  assert.equal(allow(2, "dar-aldawa-legacy-2026-10", "purchase", "2026-11-01"), false);
+  assert.equal(allow(1, "dar-aldawa-legacy-2026-10", "sale", "2026-11-01"), false);
+  assert.equal(allow(2, "another-source", "sale", "2026-11-01"), false);
+  assert.equal(allow(2, "dar-aldawa-legacy-2026-10", "sale", "2026-09-30"), false);
 });

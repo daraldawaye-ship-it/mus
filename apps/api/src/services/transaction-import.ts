@@ -6,7 +6,7 @@ import type { batchSchema } from "../routes-transaction-import-schemas.ts";
 import { HttpError } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { createInvoice, loadInvoice } from "./commerce.ts";
-import { normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
+import { allowsLegacyStockVariance, normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
 import { legacySaleInvoiceLines } from "./legacy-sales-quantity.ts";
 import {
   assertBalanced,
@@ -155,18 +155,16 @@ export async function importTransactionBatch(
       if (source.type === "invoice") {
         // Explicit, bounded owner instruction: reconcile stock differences
         // later with opening balances. All other imports remain exact-only.
-        const octoberStockVariance =
-          companyId === 2 && input.sourceSystem === "dar-aldawa-legacy-2026-10" &&
-          source.payload.kind === "sale" &&
-          source.payload.documentDate >= "2026-10-01" &&
-          source.payload.documentDate < "2026-11-01";
+        const scopedStockVariance = allowsLegacyStockVariance(
+          companyId, input.sourceSystem, source.payload.kind, source.payload.documentDate,
+        );
         const directionSafeLines = legacySaleInvoiceLines(
           companyId, input.sourceSystem, source.payload.kind,
           source.payload.lines, source.sourceRows,
         );
         const normalized = await normalizeHistoricalInvoiceFractions(
           client, companyId, directionSafeLines,
-          octoberStockVariance ? source.payload.currencyId : undefined,
+          scopedStockVariance ? source.payload.currencyId : undefined,
         );
         const invoice = await createInvoice(
           client,
@@ -176,7 +174,7 @@ export async function importTransactionBatch(
             ...source.payload,
             lines: normalized.lines,
             description: (description + (normalized.converted
-              ? (octoberStockVariance
+              ? (scopedStockVariance
                 ? " | كمية المصدر الكسرية محفوظة في مرجع الترحيل؛ قد تختلف كمية المخزون عند التسوية الافتتاحية"
                 : " | كمية المصدر الكسرية محفوظة في مرجع الترحيل؛ حُوّلت بدقة إلى وحدة أصغر")
               : "")).slice(0, 1000),
