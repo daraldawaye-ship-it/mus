@@ -32,7 +32,7 @@ test("backend never requires expiry for zero increase even for expiry-tracked ne
   assert.match(route,/delta > 0n && item\.hasExpiry && !input\.zeroLocation/);
   assert.match(route,/allowUnknownExpiry: input\.zeroLocation && delta > 0n/);
   assert.match(route,/if \(cost <= 0n && !input\.zeroLocation\)/);
-  assert.match(service,/input\.kind === "adjustment_surplus"\]\.includes\(input\.kind\) && input\.allowUnknownExpiry/);
+  assert.ok(service.includes('["purchase", "adjustment_surplus"].includes(input.kind) && input.allowUnknownExpiry'));
   assert.match(route,/assertStockChronology/);
   assert.match(route,/expectedQuantitySmallest/);
   assert.match(route,/await postCommerceJournal/);
