@@ -12,7 +12,7 @@ import { audit } from "./audit.ts";
 import { searchPattern } from "./lists.ts";
 import { pagePermissionAliases, permissionRuleEffects } from "./permission-rules.ts";
 import { chatAvatarUrls } from "./chat-avatars.ts";
-import { notifyChatRecipient, type QuickChatNotification } from "./chat-notifications.ts";
+import { notifyChatRecipient } from "./chat-notifications.ts";
 import { checkChatImage, checkChatImageAllowed } from "./chat-images.ts";
 
 export interface ChatListQuery extends ChatContext {
@@ -238,7 +238,6 @@ export async function chatMessages(
 
 export async function sendChatMessage(
   client: PoolClient, actor: User, peerId: number, input: ChatSendInput,
-  notification?: QuickChatNotification,
 ): Promise<ChatMessage> {
   // Deterministic shared identity locks avoid opposite-direction send deadlocks
   // and serialize against concurrent archive/suspension changes.
@@ -275,7 +274,7 @@ export async function sendChatMessage(
   await client.query("UPDATE chat_conversations SET updated_at=greatest(updated_at,$2) WHERE id=$1", [thread.id, row.created_at]);
   await notifyChatRecipient(client,{
     companyId:current.companyId,recipientId:peerId,
-    senderName:current.user.displayName,messageId:row.id,notification,
+    senderName:current.user.displayName,messageId:row.id,
   });
   // Audit readers are not chat participants: never copy private content into
   // general/company audit logs, including receipt snapshots.
@@ -315,9 +314,7 @@ export async function acknowledgeChatMessages(
     await client.query(
       "UPDATE notifications SET read_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp()"+
       " WHERE recipient_user_id=$1 AND company_id IS NOT DISTINCT FROM $2::integer"+
-      " AND code IN ('CHAT_DIRECT_GLOBAL','CHAT_DIRECT_COMPANY',"+
-      " 'CHAT_QUICK_PRESENT_COMPANY','CHAT_QUICK_ALL_COMPANY',"+
-      " 'CHAT_QUICK_SYSTEM_GLOBAL','CHAT_QUICK_MANAGER_GLOBAL')"+
+      " AND code IN ('CHAT_DIRECT_GLOBAL','CHAT_DIRECT_COMPANY')"+
       " AND subject_key=ANY($3::text[]) AND read_at IS NULL AND completed_at IS NULL",
       [current.user.id,current.companyId,input.readMessageIds.map(id=>"chat-message:"+id)],
     );
