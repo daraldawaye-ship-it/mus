@@ -5,7 +5,7 @@ import {
   calculateInvoiceTotals, invoiceDiscountSchema, invoiceQuantitySchema, invoiceSchema,
 } from "../packages/contracts/src/commerce.ts";
 import {
-  enteredInvoiceQuantity, completedInvoiceQuantity, displayInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount,
+  enteredInvoiceQuantity, completedInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount,
 } from "../apps/web/src/invoice-number-input.ts";
 
 test("quantity never stays blank, zero, or alphabetic while typing", () => {
@@ -28,16 +28,16 @@ test("quantity never stays blank, zero, or alphabetic while typing", () => {
   assert.equal(enteredInvoiceQuantity("1,000"), null);
   assert.equal(invoiceQuantitySchema.parse(enteredInvoiceQuantity("  ")!), "1");
 });
-test("invoice quantity cell shows one decimal while storage remains an integer", () => {
-  assert.equal(displayInvoiceQuantity("8"), "8.0");
-  assert.equal(displayInvoiceQuantity("-5"), "-5.0");
-  assert.equal(displayInvoiceQuantity("1"), "1.0");
-  assert.equal(displayInvoiceQuantity("-"), "-");
-  assert.equal(displayInvoiceQuantity("-0"), "-0");
+test("invoice quantity cell displays the exact nonzero integer, not artificial decimal digits", () => {
   assert.equal(enteredInvoiceQuantity("8"), "8");
+  assert.equal(enteredInvoiceQuantity("15"), "15");
+  assert.equal(enteredInvoiceQuantity("-5"), "-5");
   assert.equal(invoiceQuantitySchema.parse(completedInvoiceQuantity("8")), "8");
+  assert.equal(invoiceQuantitySchema.safeParse("8.0").success, false);
+  assert.equal(invoiceQuantitySchema.safeParse("1.5").success, false);
   const editor = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
-  assert.match(editor, /displayInvoiceQuantity\(line\.quantity\)/);
+  assert.match(editor, /value=\{line\.quantity\}/);
+  assert.doesNotMatch(editor, /displayInvoiceQuantity|focusedQuantityLineKey/);
   assert.doesNotMatch(editor, /placeholder="3 أحرف على الأقل: اسم الصنف/);
 });
 test("discount stays numeric, resets to zero and permits negative entry", () => {
