@@ -8308,5 +8308,15 @@
       ],
       "additionalProperties": false
     }
+  },
+  "GET /companies/:companyId/doctor-sales-report": {
+    "queryFields": [
+      "dateFrom",
+      "dateTo",
+      "q",
+      "page",
+      "pageSize"
+    ],
+    "source": "routes-doctor-sales-report.ts"
   }
 }
