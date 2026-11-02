@@ -1,0 +1,27 @@
+name: Legacy Returns Transfer Batch
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+    paths:
+      - "apps/api/src/routes-inventory.ts"
+      - "apps/api/src/mcp-contracts.json"
+      - "tests/legacy-returns-transfer-batch.test.ts"
+      - ".github/workflows/legacy-returns-transfer-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  transfer-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/legacy-returns-transfer-batch.test.ts
