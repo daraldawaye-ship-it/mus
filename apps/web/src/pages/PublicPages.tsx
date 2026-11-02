@@ -620,7 +620,7 @@ function ProfileForms({ user }: { user: User }) {
               updatePassword("confirmation", event.target.value)
             }
             required
-            minLength={12}
+            minLength={3}
             maxLength={128}
           />
           {passwordNotice && (
@@ -1130,10 +1130,10 @@ function UserList() {
             موظفًا في أي شركة. سيتم تسجيل خروج المستخدم من جميع أجهزته.
           </p>
           <Field label="كلمة المرور الجديدة" type="password" autoComplete="new-password"
-            value={newPassword} required minLength={12} maxLength={128}
+            value={newPassword} required minLength={3} maxLength={128}
             onChange={(event) => {setNewPassword(event.target.value); setPasswordError("");}} />
           <Field label="تأكيد كلمة المرور" type="password" autoComplete="new-password"
-            value={passwordConfirmation} required minLength={12} maxLength={128}
+            value={passwordConfirmation} required minLength={3} maxLength={128}
             onChange={(event) => {setPasswordConfirmation(event.target.value); setPasswordError("");}} />
           {newPassword && passwordConfirmation && newPassword !== passwordConfirmation && (
             <Notice tone="error">تأكيد كلمة المرور لا يطابق الكلمة الجديدة.</Notice>
