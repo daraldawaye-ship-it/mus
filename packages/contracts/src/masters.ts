@@ -131,7 +131,7 @@ export const normalSideLabels: Record<NormalSide, string> = {
 export const locationKindLabels: Record<LocationKind, string> = {
   showroom: "معرض",
   warehouse: "مخزن",
-  returns: "مرتجعات",
+  returns: "مخزن مرتجع",
 };
 export const accountLinkLabels: Record<AccountLinkPurpose, string> = {
   salesRevenue: "إيراد المبيعات",
@@ -470,7 +470,14 @@ export const branchPatchSchema = z
 export const locationSchema = z
   .object({ branchId: id, code: siteCode.optional(), name, kind: z.enum(locationKinds) })
   .strict();
-export const locationPatchSchema = currencyPatchSchema;
+export const locationPatchSchema = z
+  .object({
+    name: name.optional(),
+    active: z.boolean().optional(),
+    kind: z.enum(["warehouse", "returns"]).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");
 export const emptyInitializeSchema = z.object({}).strict();
 export type AccountInput = z.input<typeof accountSchema>;
 export type CompanyCurrencyInput = z.input<typeof currencySchema>;
