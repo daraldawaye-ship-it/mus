@@ -60,7 +60,7 @@ test("editor tracks touched fields, submits a field-level patch and rebases afte
   assert.match(editor, /markDirty\("supplierAccountId"\)/);
   assert.match(editor, /markDirty\("agentId"\)/);
   assert.match(editor, /savePayload = normalized/);
-  assert.match(editor, /for \(const field of selectedField \? \[selectedField\] : \[\]\)/);
+  assert.match(editor, /for \(const field of selectedFields\)/);
   assert.match(editor, /itemFieldPatchSchema\.safeParse\(\{ changes, expected, mode: "last-write-wins" \}\)/);
   assert.match(editor, /blockedFields\.current\.add\(selectedField\)/);
   assert.match(editor, /setFields\(previous => \{/);
@@ -72,7 +72,7 @@ test("editor tracks touched fields, submits a field-level patch and rebases afte
 
 test("one stale field never blocks saving an independently edited field", () => {
   assert.match(editor, /\[\.\.\.editedFields\.current\.keys\(\)\]\.find\(key => !blockedFields\.current\.has\(key\)\)/);
-  assert.match(editor, /editedFields\.current\.delete\(selectedField\)/);
+  assert.match(editor, /editedFields\.current\.delete\(field\)/);
   assert.doesNotMatch(editor, /for \(const \[field, version\] of editedFields\.current\)/);
   assert.doesNotMatch(editor, /\(conflict && !confirmedCurrent\)/);
   assert.doesNotMatch(editor, /setConflictDetails/);
@@ -86,8 +86,8 @@ test("each pending field preserves its own observed baseline across unrelated su
   assert.match(editor, /if \(!pendingExpected\.current\.has\(field\) \|\| blockedFields\.current\.has\(field\)\)/);
   assert.match(editor, /pendingExpected\.current\.has\(field\)/);
   assert.match(editor, /pendingExpected\.current\.get\(field\)/);
-  assert.match(editor, /pendingExpected\.current\.set\(selectedField,/);
-  assert.match(editor, /pendingExpected\.current\.delete\(selectedField\)/);
+  assert.match(editor, /pendingExpected\.current\.set\(field,/);
+  assert.match(editor, /pendingExpected\.current\.delete\(field\)/);
   assert.match(editor, /pendingExpected\.current\.clear\(\)/);
 });
 

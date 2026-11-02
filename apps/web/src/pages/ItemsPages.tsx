@@ -1357,6 +1357,40 @@ function ItemEditor({
         : [...editedFields.current.keys()].find(key => !blockedFields.current.has(key)) ?? null
       : null;
     if (item && !selectedField) return;
+    // Names and conversion factors are one logical update when activating a
+    // previously unused unit. A single-field PATCH with factor2=5 before the
+    // newly typed name is committed fails itemPatchSchema validation; the
+    // reverse order can race the blur autosave. Only combine the *touched*
+    // pair, preserving per-field writes for every unrelated card property.
+    const unitPair = selectedField === "unit2Name" || selectedField === "factor2"
+      ? (["unit2Name", "factor2"] as const)
+      : selectedField === "unit3Name" || selectedField === "factor3"
+        ? (["unit3Name", "factor3"] as const)
+        : null;
+    const selectedUnitFactor = unitPair?.[1] === "factor2" ? fields.factor2 : fields.factor3;
+    const parsedUnitFactor = unitPair ? itemFactorSchema.safeParse(selectedUnitFactor) : null;
+    if (unitPair && (!parsedUnitFactor?.success || parsedUnitFactor.data > 1 &&
+      !fields[unitPair[0]].trim())) {
+      setError("أكمل اسم الوحدة وعددها داخل الوحدة السابقة قبل الحفظ.");
+      return;
+    }
+    const wasInactive = unitPair?.[1] === "factor2"
+      ? (lastSavedSnapshot.current?.factor2 ?? 1) <= 1
+      : (lastSavedSnapshot.current?.factor3 ?? 1) <= 1;
+    const selectedFields: EditableItemField[] = selectedField
+      ? unitPair && wasInactive && (parsedUnitFactor?.data ?? 1) > 1
+        ? unitPair.filter(field => editedFields.current.has(field) &&
+            !blockedFields.current.has(field))
+        : [selectedField]
+      : [];
+    // A factor cannot activate before its name is stored. For a name that
+    // has not been saved yet, ensure both touched values travel atomically.
+    if (unitPair && parsedUnitFactor?.success && parsedUnitFactor.data > 1 &&
+        selectedFields.length === 1 && selectedFields[0] === unitPair[1] &&
+        !(lastSavedSnapshot.current?.[unitPair[0]] ?? "").trim() &&
+        fields[unitPair[0]].trim()) {
+      selectedFields.unshift(unitPair[0]);
+    }
     if (shortcutDuplicate && (!item || selectedField === "shortcut")) {
       if (selectedField) blockedFields.current.add(selectedField);
       setError("هذا الاختصار مستخدم لصنف آخر؛ اختر اختصارًا مختلفًا.");
@@ -1397,8 +1431,9 @@ function ItemEditor({
       const expected: Record<string, unknown> = {};
       const previous = lastSavedSnapshot.current as unknown as Record<string, unknown>;
       const current = parsed.data as unknown as Record<string, unknown>;
-      // Only the requested/oldest unblocked field leaves this snapshot.
-      for (const field of selectedField ? [selectedField] : []) {
+      // All fields in an activating unit pair are saved together; other
+      // edits still send just their own column and expected baseline.
+      for (const field of selectedFields) {
         const oldValue = pendingExpected.current.has(field)
           ? pendingExpected.current.get(field) ?? null
           : previous[field] ?? null;
@@ -1427,17 +1462,17 @@ function ItemEditor({
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
-        if (selectedField) {
-          if ((editedFields.current.get(selectedField) ?? Infinity) <= savedVersion) {
-            editedFields.current.delete(selectedField);
-            pendingExpected.current.delete(selectedField);
+        for (const field of selectedFields) {
+          if ((editedFields.current.get(field) ?? Infinity) <= savedVersion) {
+            editedFields.current.delete(field);
+            pendingExpected.current.delete(field);
           } else {
-            // Another local edit happened while this request was in flight.
-            // Its new baseline is the value just written by this request.
-            pendingExpected.current.set(selectedField,
-              (result.item as unknown as Record<string, unknown>)[selectedField] ?? null);
+            // Keep any newer typed value and rebase its baseline after this
+            // transaction; never lose a simultaneous change from the user.
+            pendingExpected.current.set(field,
+              (result.item as unknown as Record<string, unknown>)[field] ?? null);
           }
-          blockedFields.current.delete(selectedField);
+          blockedFields.current.delete(field);
         }
         setDirty(editedFields.current.size > 0);
         // Merge the latest real values into the visual snapshot without
