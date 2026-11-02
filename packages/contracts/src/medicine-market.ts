@@ -37,6 +37,8 @@ export type MarketFieldType =
   | "url"
   | "relation"
   | "reference"
+  | "mobile-phone"
+  | "landline-phone"
   | "contacts"
   | "ingredients"
   | "accounting";
@@ -64,6 +66,8 @@ const name = f("name", "الاسم");
 const image = f("image", "الصورة", "url");
 const address = f("address", "العنوان", "textarea");
 const phone = f("phone", "رقم التواصل");
+const mobilePhone = f("phone", "رقم الموبايل", "mobile-phone");
+const landlinePhone = f("landlinePhone", "الهاتف الثابت", "landline-phone");
 const contacts = f("contacts", "أرقام المسؤولين", "contacts");
 const keywords = f("keywords", "مفاتيح البحث");
 const locationRelations = [
@@ -146,9 +150,12 @@ export const marketTypes: MarketType[] = [
     fields: [name, f("englishName", "الاسم الإنجليزي"), keywords],
   },
   { key: "pharmacy", label: "الصيدليات", fields: [
-    ...directory, f("sourceNotes", "مصدر البيانات وملاحظات التحقق", "textarea"),
+    name, mobilePhone, landlinePhone, address, ...locationRelations,
+    keywords, f("sourceNotes", "مصدر البيانات وملاحظات التحقق", "textarea"),
   ] },
-  { key: "wholesaler", label: "محلات الجملة", fields: directory },
+  { key: "wholesaler", label: "محلات الجملة", fields: [
+    name, mobilePhone, landlinePhone, address, ...locationRelations, keywords,
+  ] },
   { key: "agent", label: "الوكلاء", fields: directory },
   {
     key: "manufacturer",
