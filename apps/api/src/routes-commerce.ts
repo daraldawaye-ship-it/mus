@@ -569,7 +569,7 @@ export function commerceRoutes(pool: Pool): Router {
           if (!retry) {
             await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
             const dateControl = input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date";
-            if ((await controlValue(client, companyId, dateControl)) === false)
+            if (!(await controlValue(client, companyId, dateControl)))
               postingInput = { ...input, documentDate: await adenToday(client) };
             await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
           } else if (existing.rows[0]?.documentDate) {
