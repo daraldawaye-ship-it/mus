@@ -58,7 +58,7 @@ test("signed discount increases a normal sale's net, positive discount reduces i
   const line = [{quantity:"1",unitPrice:"100"}];
   assert.deepEqual(
     calculateInvoiceTotals(line, "-20", 2),
-    {gross:"100",discount:"-20",total:"120",lineDiscounts:["-20"],lineTotals:["120"]},
+    {gross:"100",discount:"-20",total:"120",lineDiscounts:["-20"],lineManualDiscounts:["-20"],lineTotals:["120"]},
   );
   const positive=calculateInvoiceTotals(line,"20",2);
   assert.equal(positive.total,"80");
