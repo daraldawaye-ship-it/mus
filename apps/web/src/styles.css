@@ -2619,6 +2619,15 @@ ul {
   white-space: nowrap;
   direction: ltr;
 }
+.invoice-side-closing-datetime {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  direction: ltr;
+}
+
 .invoice-side-overview-note { display: block; opacity: .8; overflow-wrap: anywhere; }
 .invoice-side-overview-variances {
   display: grid;
