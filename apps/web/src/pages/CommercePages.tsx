@@ -3682,12 +3682,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           // to return to the unsaved invoice instead of silently dismissing.
           doctorField.current?.focus();
         }}>
-        <div className="form-stack">
+        <div className="form-stack invoice-customer-doctor-form">
           <div className="field floating-ready" data-label-raised="true">
             <label htmlFor={fixedInputId("invoice-sale-customer-search")}>بحث عن عميل بالرقم أو الاسم (اختياري)</label>
             <input id={fixedInputId("invoice-sale-customer-search")} type="search"
               value={saleCustomerQuery} autoComplete="off"
-              placeholder="اكتب رقم العميل أو اسمه للبحث"
               onChange={event=>{
                 const text=event.target.value;
                 setSaleCustomerQuery(text);
@@ -3723,23 +3722,25 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
               {customerSearch.data?.items.length===0&&<small>لم يُعثر على عميل مطابق. أدخل رقمًا جديدًا، ويمكن ترك الاسم ليُحفظ «بدون».</small>}
             </div>
           )}
-          <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor={fixedInputId("invoice-sale-customer-number")}>رقم العميل (اختياري)</label>
+          <div className="invoice-customer-identity-row">
+            <div className="field floating-ready" data-label-raised="true">
+              <label htmlFor={fixedInputId("invoice-sale-customer-number")}>رقم العميل (اختياري)</label>
             <input id={fixedInputId("invoice-sale-customer-number")} type="text" inputMode="numeric"
               ref={customerField} maxLength={30} autoComplete="off"
-              value={saleCustomerNumber} placeholder="رقم العميل"
+              value={saleCustomerNumber}
               onChange={event=>{
                 setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
                 setSaleCustomerName("");
                 setSaleCustomerMatched(false);
                 setDoctorError("");
               }}/>
-          </div>
-          <div className="field floating-ready" data-label-raised="true">
-            <label htmlFor={fixedInputId("invoice-sale-customer-name")}>اسم العميل (اختياري)</label>
+            </div>
+            <div className="field floating-ready" data-label-raised="true">
+              <label htmlFor={fixedInputId("invoice-sale-customer-name")}>اسم العميل (اختياري)</label>
             <input id={fixedInputId("invoice-sale-customer-name")} type="text" maxLength={240}
-              value={saleCustomerName} placeholder="يظهر للرقم الموجود؛ وللرقم الجديد بدون اسم يُحفظ «بدون»"
+              value={saleCustomerName}
               readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
+            </div>
           </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
           <div className="field floating-ready" data-label-raised="true">
@@ -3751,7 +3752,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
             aria-activedescendant={doctorActiveIndex >= 0 && doctorResults[doctorActiveIndex]
               ? `invoice-doctor-option-${doctorResults[doctorActiveIndex]!.id}` : undefined}
             maxLength={240}
-            placeholder="ابحث أو اكتب اسمًا جديدًا لإضافته تلقائيًا للكروت"
             onChange={event=>{
               setDoctorQuery(event.target.value);
               setDoctorSelected(null);
@@ -3795,7 +3795,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
               }
             }}/>
           </div>
-          <small>السهمان ↑ ↓ للتنقل، وEnter للاختيار. يمكنك أيضًا كتابة اسم غير مسجل؛ {isOfflineNow() || sessionRequiresLogin() ? "سيُحفظ الاسم مع الفاتورة محليًا ويُنشأ كرت الطبيب أو الجهة بعد قبول الخادم للمزامنة." : "عند حفظ الفاتورة يُنشأ كرت دون فئة ويُرسل تنبيه للمتابعة."}</small>
           <div id={fixedInputId("invoice-doctor-options")} ref={doctorOptionsRef} className="invoice-doctor-options"
             role="listbox" aria-label="نتائج الأطباء والجهات">
             {doctorChoices.isLoading&&<small>جارٍ البحث…</small>}
