@@ -2508,6 +2508,110 @@ ul {
     display: block;
   }
 }
+/* Reusable lower sidebar area: cashier transfer timeline and live attendance. */
+.invoice-side-overview {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 115px;
+  overflow: hidden;
+}
+.invoice-side-overview-menu {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 auto;
+}
+.invoice-side-overview-menu summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 1px solid var(--border);
+}
+.invoice-side-overview-menu summary::-webkit-details-marker { display: none; }
+.invoice-side-overview-menu summary span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.invoice-side-overview-choices {
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  display: grid;
+  padding: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 5px 14px #0004;
+}
+.invoice-side-overview-choices button {
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+.invoice-side-overview-choices button:hover,
+.invoice-side-overview-choices .is-selected {
+  background: var(--surface-raised, var(--border));
+}
+.invoice-side-overview-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: 7px;
+  overflow-y: auto;
+  padding: 8px;
+  font-size: 11px;
+}
+.invoice-side-overview-since { color: var(--muted); }
+.invoice-side-overview-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.invoice-side-overview-total strong { direction: ltr; font-variant-numeric: tabular-nums; }
+.invoice-side-overview-scroll { overflow-y: auto; min-height: 0; }
+.invoice-side-overview-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.invoice-side-overview-scroll th, .invoice-side-overview-scroll td {
+  padding: 5px 3px;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+.invoice-side-overview-scroll th { position: sticky; top: 0; background: var(--surface); }
+.invoice-side-overview-amount { direction: ltr; font-variant-numeric: tabular-nums; }
+.invoice-side-overview-note { display: block; opacity: .8; overflow-wrap: anywhere; }
+.invoice-side-overview-presence-count { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.invoice-side-overview-presence { padding: 0; margin: 0; list-style: none; }
+.invoice-side-overview-presence li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+}
+.invoice-side-overview-presence li small { opacity: .75; }
+
 /* Shared expiry editor: numeric month and year regardless of browser locale. */
 .expiry-month-fields {
   display: grid;
