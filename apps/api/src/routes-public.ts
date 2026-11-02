@@ -102,34 +102,66 @@ export function publicRoutes(pool: Pool): Router {
         `SELECT count(*)::integer AS total FROM users WHERE ${filter}`,
         parameters,
       );
+      // Keep the identity list query independent from optional device telemetry.
+      // A stale migration or unavailable push table must never break /users.
       const rows = await pool.query(
-        `SELECT users.*,
-          COALESCE((
-            SELECT jsonb_object_agg(d.device_kind,
-              jsonb_build_object('lastLoginAt',d.last_login_at,
-                                 'lastPushConfirmedAt',d.last_push_confirmed_at,
-                                 'lastPushPermission',d.last_push_permission,
-                                 'lastPushPermissionCheckedAt',d.last_push_permission_checked_at))
-            FROM user_device_activity d WHERE d.user_id=users.id
-          ),'{}'::jsonb) AS device_activity,
-          COALESCE((
-            SELECT jsonb_agg(DISTINCT sp.device_kind)
-            FROM web_push_subscriptions sp
-            JOIN sessions ss ON ss.token_hash=sp.session_hash
-              AND ss.user_id=sp.user_id AND ss.expires_at>clock_timestamp()
-            WHERE sp.user_id=users.id AND sp.device_kind IS NOT NULL
-          ),'[]'::jsonb) AS active_push_devices
-          FROM users WHERE ${filter}
-          ORDER BY ${query.order}
-          LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
+        `SELECT * FROM users WHERE ${filter} ORDER BY ${query.order}
+         LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
         [...parameters, query.pageSize, query.offset],
       );
+      const userIds = rows.rows.map(row => Number(row.id));
+      const deviceByUser = new Map<number, Record<string, {
+        lastLoginAt: Date | null;
+        lastPushConfirmedAt: Date | null;
+        lastPushPermission: string | null;
+        lastPushPermissionCheckedAt: Date | null;
+      }>>();
+      const pushByUser = new Map<number, string[]>();
+      if (userIds.length) {
+        try {
+          const activity = await pool.query(
+            `SELECT user_id,device_kind,last_login_at,last_push_confirmed_at,
+                    last_push_permission,last_push_permission_checked_at
+               FROM user_device_activity
+               WHERE user_id=ANY($1::integer[])`,
+            [userIds],
+          );
+          for (const item of activity.rows) {
+            const id = Number(item.user_id);
+            const kinds = deviceByUser.get(id) ?? {};
+            kinds[item.device_kind] = {
+              lastLoginAt: item.last_login_at,
+              lastPushConfirmedAt: item.last_push_confirmed_at,
+              lastPushPermission: item.last_push_permission,
+              lastPushPermissionCheckedAt: item.last_push_permission_checked_at,
+            };
+            deviceByUser.set(id, kinds);
+          }
+          const push = await pool.query(
+            `SELECT DISTINCT p.user_id,p.device_kind
+             FROM web_push_subscriptions p
+             JOIN sessions ss ON ss.token_hash=p.session_hash
+               AND ss.user_id=p.user_id AND ss.expires_at>clock_timestamp()
+             WHERE p.user_id=ANY($1::integer[]) AND p.device_kind IS NOT NULL`,
+            [userIds],
+          );
+          for (const item of push.rows) {
+            const id = Number(item.user_id);
+            const kinds = pushByUser.get(id) ?? [];
+            kinds.push(item.device_kind);
+            pushByUser.set(id,kinds);
+          }
+        } catch (error) {
+          console.warn("USER_DEVICE_TELEMETRY_UNAVAILABLE",
+            error instanceof Error ? error.message : "unknown");
+        }
+      }
       await audit(pool, user, "users.view", "user", null, null, null);
       res.json({
         items: rows.rows.map(row=>({
           ...userDTO(row),
-          deviceActivity: row.device_activity,
-          activePushDevices: row.active_push_devices,
+          deviceActivity: deviceByUser.get(Number(row.id)) ?? {},
+          activePushDevices: pushByUser.get(Number(row.id)) ?? [],
         })),
         total: count.rows[0].total,
         page: query.page,
