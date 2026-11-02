@@ -18,6 +18,7 @@ import { businessRoutes } from "./business-routes.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
+import { quickMessagesRoutes } from "./routes-quick-messages.ts";
 import { pledgeRoutes } from "./routes-pledges.ts";
 import { AUTOMATIONS_PAUSED } from "./automation-control.ts";
 import { createMarketGateway, marketGatewayOptions, marketMaintenance } from "./market/gateway.ts";
@@ -106,6 +107,7 @@ export async function createApp(options: AppOptions = {}) {
     mediaRoutes(pool),
     chatRoutes(pool),
     chatGroupRoutes(pool),
+    quickMessagesRoutes(pool),
     business,
     pledgeRoutes(pool),
   );
