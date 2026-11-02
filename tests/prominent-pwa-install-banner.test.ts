@@ -41,7 +41,7 @@ test("iPhone offers clear share-to-home-screen steps without fake native install
   assert.match(banner, /فتح كتطبيق ويب/);
   assert.match(banner, /متجر التطبيقات/);
   assert.match(banner, /WhatsApp/);
-  assert.match(banner, /window\.location\.hash|beforeinstallprompt/);
+  assert.doesNotMatch(banner, /window\.location\.hash/);
 });
 
 test("large readable, mobile responsive and print-hidden banner", () => {
