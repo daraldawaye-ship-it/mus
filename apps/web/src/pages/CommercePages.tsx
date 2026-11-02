@@ -68,7 +68,7 @@ import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
-import { enteredInvoiceQuantity, completedInvoiceQuantity, displayInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
+import { enteredInvoiceQuantity, completedInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
 import {
@@ -1460,7 +1460,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
       return page?.enabled && page.actionAccess.view && page.actionAccess.edit;
     });
   const [headerItem,setHeaderItem]=useState<Item|null>(null);
-  const [focusedQuantityLineKey, setFocusedQuantityLineKey] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<{
     itemId: number;
     lineKey: string;
@@ -3310,16 +3309,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                             }
                             inputMode="text"
                             disabled={!line.itemId}
-                            value={focusedQuantityLineKey === line.key ? line.quantity : displayInvoiceQuantity(line.quantity)}
+                            value={line.quantity}
                             onChange={(event) =>
                               changeQuantity(line, event.target.value)
                             }
-                            onFocus={(event) => {
-                              setFocusedQuantityLineKey(line.key);
-                              event.target.select();
-                            }}
+                            onFocus={(event) => event.target.select()}
                             onBlur={() => {
-                              setFocusedQuantityLineKey(current => current === line.key ? null : current);
                               const completed = completedInvoiceQuantity(line.quantity);
                               if (completed !== line.quantity) changeQuantity(line, completed);
                             }}
