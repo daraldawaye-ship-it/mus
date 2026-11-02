@@ -9,6 +9,7 @@ import { HttpError } from "./errors.ts";
 import { authLimiter, createSession, passwordHash, tokenHash } from "./services/auth.ts";
 import { userDTO } from "./repositories/models.ts";
 import { audit } from "./services/audit.ts";
+import { recordDeviceLogin } from "./services/user-device-activity.ts";
 
 type Provider = "google" | "apple";
 type Intent = "login" | "link";
@@ -256,9 +257,10 @@ export function socialAuthRoutes(pool:Pool,origin:string,production:boolean):Rou
           throw new HttpError(403,"social_blocked","هذا الحساب معطّل");
         const account=userDTO(user);
         await audit(db,account,"auth.login","user",account.id,null,null);
-        return {linked:false as const,...(await createSession(db,account.id))};
+        return {linked:false as const,userId:account.id,...(await createSession(db,account.id))};
       });
       if(result.linked)return res.redirect(303,"/profile?socialConnected="+provider);
+      await recordDeviceLogin(pool,req,result.userId).catch(()=>{});
       setSessionCookie(res,result.token,production);
       return res.redirect(303,attempt.return_to);
     }catch(err){

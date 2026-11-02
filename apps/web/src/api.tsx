@@ -17,6 +17,7 @@ import { isOfflineNow, markNetworkFailure, markNetworkSuccess } from "./connecti
 import { readApiJson, UnexpectedApiResponse } from "./api-response";
 import { offlineUser } from "./offline-storage";
 import { allowPasswordAutofillOnDevice } from "./device-login-policy";
+import { currentDeviceKind } from "./device-kind";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -77,6 +78,7 @@ export async function api<T>(
       signal: options.signal,
       headers: {
         "Accept": "application/json",
+        "X-Alraesy-Device": currentDeviceKind(),
         ...(mutation ? { "Content-Type": "application/json" } : {}),
         ...(mutation && csrf ? { "X-CSRF-Token": csrf } : {}),
       },

@@ -26,6 +26,7 @@ import { passwordHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordUserPresence } from "./services/user-presence.ts";
+import { recordReportedPushPermission, requestDevice } from "./services/user-device-activity.ts";
 
 export function publicRoutes(pool: Pool): Router {
   const router = Router();
@@ -33,6 +34,12 @@ export function publicRoutes(pool: Pool): Router {
   router.post("/presence/heartbeat", handler(async (req, res) => {
     const user = actor(req);
     await recordUserPresence(pool, user.id);
+    const notificationPermission = req.body?.notificationPermission;
+    if (notificationPermission === "granted" || notificationPermission === "denied" ||
+        notificationPermission === "default" || notificationPermission === "unsupported") {
+      await recordReportedPushPermission(pool,user.id,requestDevice(req),notificationPermission)
+        .catch(() => {});
+    }
     res.json({ ok: true });
   }));
   // Presence aggregates authenticated general and company activity, never attendance.
@@ -96,12 +103,34 @@ export function publicRoutes(pool: Pool): Router {
         parameters,
       );
       const rows = await pool.query(
-        `SELECT * FROM users WHERE ${filter} ORDER BY ${query.order} LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
+        `SELECT users.*,
+          COALESCE((
+            SELECT jsonb_object_agg(d.device_kind,
+              jsonb_build_object('lastLoginAt',d.last_login_at,
+                                 'lastPushConfirmedAt',d.last_push_confirmed_at,
+                                 'lastPushPermission',d.last_push_permission,
+                                 'lastPushPermissionCheckedAt',d.last_push_permission_checked_at))
+            FROM user_device_activity d WHERE d.user_id=users.id
+          ),'{}'::jsonb) AS device_activity,
+          COALESCE((
+            SELECT jsonb_agg(DISTINCT sp.device_kind)
+            FROM web_push_subscriptions sp
+            JOIN sessions ss ON ss.token_hash=sp.session_hash
+              AND ss.user_id=sp.user_id AND ss.expires_at>clock_timestamp()
+            WHERE sp.user_id=users.id AND sp.device_kind IS NOT NULL
+          ),'[]'::jsonb) AS active_push_devices
+          FROM users WHERE ${filter}
+          ORDER BY ${query.order}
+          LIMIT ${parameters.length + 1} OFFSET ${parameters.length + 2}`,
         [...parameters, query.pageSize, query.offset],
       );
       await audit(pool, user, "users.view", "user", null, null, null);
       res.json({
-        items: rows.rows.map(userDTO),
+        items: rows.rows.map(row=>({
+          ...userDTO(row),
+          deviceActivity: row.device_activity,
+          activePushDevices: row.active_push_devices,
+        })),
         total: count.rows[0].total,
         page: query.page,
         pageSize: query.pageSize,

@@ -6,6 +6,7 @@ import { HttpError } from "./errors.ts";
 import {
   hashEndpoint,pushPublicKey,pushReady,validPushEndpoint,validPushKeys,
 } from "./services/web-push.ts";
+import { recordPushConfirmation, requestDevice } from "./services/user-device-activity.ts";
 
 const subscription=z.object({
   endpoint:z.string().min(1).max(2048),
@@ -35,17 +36,19 @@ export function pushRoutes(pool:Pool):Router{
     const input=parse(subscription,req.body);
     if(!validPushEndpoint(input.endpoint)||!validPushKeys(input.keys.p256dh,input.keys.auth))
       throw new HttpError(400,"invalid_subscription","بيانات اشتراك الإشعارات غير صالحة");
+    const deviceKind=requestDevice(req);
     // The endpoint must belong to a browser PushManager. Limit devices per user
     // to prevent accidental unbounded subscriptions.
     await pool.query(
-      "INSERT INTO web_push_subscriptions(user_id,session_hash,endpoint_hash,endpoint,p256dh,auth)"+
-      " VALUES($1,$2,$3,$4,$5,$6)"+
+      "INSERT INTO web_push_subscriptions(user_id,session_hash,endpoint_hash,endpoint,p256dh,auth,device_kind)"+
+      " VALUES($1,$2,$3,$4,$5,$6,$7)"+
       " ON CONFLICT(endpoint_hash) DO UPDATE SET"+
       " user_id=EXCLUDED.user_id,session_hash=EXCLUDED.session_hash,"+
       " endpoint=EXCLUDED.endpoint,p256dh=EXCLUDED.p256dh,auth=EXCLUDED.auth,"+
+      " device_kind=EXCLUDED.device_kind,"+
       " updated_at=clock_timestamp()",
       [user.id,req.auth!.tokenHash,hashEndpoint(input.endpoint),
-        input.endpoint,input.keys.p256dh,input.keys.auth]);
+        input.endpoint,input.keys.p256dh,input.keys.auth,deviceKind]);
     // Reusing an existing endpoint may reassign the subscriber (device login).
     // Prune expired session rows while preserving other active devices.
     await pool.query(
@@ -53,6 +56,8 @@ export function pushRoutes(pool:Pool):Router{
       " AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.token_hash=p.session_hash"+
       " AND s.user_id=p.user_id AND s.expires_at>clock_timestamp())",
       [user.id]);
+    // A confirmed server subscription may later be revoked in device settings.
+    await recordPushConfirmation(pool,user.id,deviceKind).catch(()=>{});
     res.json({enabled:true});
   }));
   router.post("/push/unsubscribe",handler(async(req,res)=>{

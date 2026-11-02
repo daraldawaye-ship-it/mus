@@ -1,0 +1,28 @@
+name: User device login and notifications checks
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/services/user-device-activity.ts'
+      - 'apps/api/src/routes-auth.ts'
+      - 'apps/api/src/routes-social-auth.ts'
+      - 'apps/api/src/routes-push.ts'
+      - 'apps/api/src/routes-public.ts'
+      - 'apps/api/migrations/20261102_user_device_activity.sql'
+      - 'apps/web/src/device-kind.ts'
+      - 'apps/web/src/pages/PublicPages.tsx'
+      - 'apps/web/src/api.tsx'
+      - 'tests/user-device-activity.test.ts'
+      - '.github/workflows/user-device-activity-ci.yml'
+jobs:
+  user-devices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/user-device-activity.test.ts
