@@ -395,3 +395,55 @@
   }
   .user-menu-tab svg { width: 14px; height: 14px; }
 }
+
+/* One compact + button in the avatar footer. Options float ABOVE the footer
+   without increasing the panel's overall height or covering external pages. */
+.user-menu-panel.user-menu-tabbed-panel { position: relative; }
+.user-menu-settings-actions > .user-menu-quick-add {
+  flex: 0 0 35px;
+  width: 35px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 16px;
+}
+.user-menu-settings-actions > .user-menu-quick-add svg { flex: none; }
+.user-menu-quick-options {
+  position: absolute;
+  z-index: 18;
+  bottom: 46px;
+  inset-inline-start: 3px;
+  width: min(275px, calc(100% - 6px));
+  padding: 6px;
+  display: grid;
+  gap: 3px;
+  max-height: calc(100% - 92px);
+  overflow-y: auto;
+  border: 1px solid var(--focus);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 6px 22px var(--shadow);
+}
+.user-menu-quick-option {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 9px 12px;
+  min-height: 37px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: start;
+}
+.user-menu-quick-option:hover,
+.user-menu-quick-option:focus-visible {
+  background: var(--hover);
+  border-color: var(--focus);
+}
+@media (max-width:520px) {
+  .user-menu-settings-actions > .user-menu-quick-add { flex: 0 0 33px; width: 33px; }
+  .user-menu-quick-options { width: min(280px, calc(100% - 6px)); }
+}
+@media print { .user-menu-quick-options { display: none !important; } }
