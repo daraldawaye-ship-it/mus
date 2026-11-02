@@ -2099,12 +2099,12 @@ ul {
 
 /* Compact labels inside controls. Scoped so invoice matrix cells and unrelated
    forms keep their existing dense keyboard layouts. */
-:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid, .invoice-customer-doctor-form)
   .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) {
   position: relative;
   gap: 0;
 }
-:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid, .invoice-customer-doctor-form)
   .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) > label {
   position: absolute;
   z-index: 1;
@@ -2122,14 +2122,14 @@ ul {
   pointer-events: none;
   transition: top 120ms ease, font-size 120ms ease, transform 120ms ease;
 }
-:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid, .invoice-customer-doctor-form)
   .field.floating-ready:not(.item-cell-field):not(.financial-cell-field):is(:focus-within, [data-label-raised="true"]) > label {
   top: 2px;
   font-size: 10px;
   line-height: 11px;
   transform: none;
 }
-:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+:is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid, .invoice-customer-doctor-form)
   .field.floating-ready:not(.item-cell-field):not(.financial-cell-field) > :is(input, select) {
   padding-block-start: 12px;
   padding-block-end: 1px;
@@ -2186,7 +2186,7 @@ ul {
   margin-block-start: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid)
+  :is(.item-editor, .commerce-header-content, .financial-header-grid, .financial-voucher-grid, .invoice-customer-doctor-form)
     .field.floating-ready > label {
     transition: none;
   }
@@ -3953,6 +3953,23 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .control-editors{display:flex;flex-wrap:wrap;gap:8px 16px;margin:12px 0}
 @media(max-width:680px){.control-toolbar,.control-option-main{align-items:stretch}.control-option-input{justify-content:flex-start}}
 
+
+/* Sales save dialog uses in-control labels and a responsive customer pair,
+   reusing the standard field styles instead of a separate input widget. */
+.invoice-customer-doctor-form .field.floating-ready {
+  min-width: 0;
+}
+.invoice-customer-identity-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+@media (max-width: 680px) {
+  .invoice-customer-identity-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* Sales-only doctor selection stays inside the modal; typed search never posts
    a free-text name without choosing a stable company doctor ID. */
