@@ -488,22 +488,27 @@ function FieldEditor({
       value={String(value ?? "")}
       disabled={disabled}
       type={
-        field.type === "date" ? "date" : field.type === "url" ? "url" : "text"
+        field.type === "date" ? "date" :
+        field.type === "url" ? "url" :
+        field.type === "mobile-phone" || field.type === "landline-phone" ? "tel" : "text"
       }
       inputMode={
-        field.type === "decimal" || field.type === "percent"
-          ? "decimal"
-          : undefined
+        field.type === "mobile-phone" || field.type === "landline-phone" ? "numeric" :
+        field.type === "decimal" || field.type === "percent" ? "decimal" : undefined
       }
       dir={
         field.type === "url" ||
+        field.type === "mobile-phone" ||
+        field.type === "landline-phone" ||
         field.type === "decimal" ||
         field.type === "percent"
           ? "ltr"
           : undefined
       }
-      maxLength={field.type === "url" ? 2000 : 1000}
+      maxLength={field.type === "url" ? 2000 : field.type === "mobile-phone" ? 9 : field.type === "landline-phone" ? 8 : 1000}
       hint={
+        field.type === "mobile-phone" ? "رقم موبايل واحد: يبدأ بـ7 ويتكون من 9 أرقام، دون مفتاح دولي" :
+        field.type === "landline-phone" ? "رقم ثابت واحد: يبدأ بـ0 ويتكون من 8 أرقام، مثل 01371007" :
         field.type === "url"
           ? "رابط HTTPS للصورة أو الصفحة حسب اسم الحقل"
           : field.type === "percent"
