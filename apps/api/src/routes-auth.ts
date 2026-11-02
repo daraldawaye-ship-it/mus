@@ -19,6 +19,7 @@ import {
   createSession,
   passwordHash,
   passwordMatches,
+  tokenHash,
   authLimiter,
 } from "./services/auth.ts";
 import { userDTO } from "./repositories/models.ts";
@@ -222,15 +223,8 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         [user.id],
       );
       const previousHash = result.rows[0]?.password_hash;
-      if (
-        !previousHash ||
-        !(await passwordMatches(input.currentPassword, previousHash))
-      )
-        throw new HttpError(
-          400,
-          "invalid_password",
-          "كلمة المرور الحالية غير صحيحة",
-        );
+      if (!previousHash)
+        throw new HttpError(401, "unauthenticated", "الحساب غير متاح");
       const hash = await passwordHash(input.newPassword);
       await transaction(pool, async (client) => {
         const current = await currentActor(client, user);
