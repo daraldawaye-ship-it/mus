@@ -68,5 +68,5 @@ test("invoice side reports do not permit choosing another employee", () => {
   assert.match(ui, /المحضرون حاليًا/);
   assert.match(ui, /العجز والزيادة عند الإغلاق/);
   assert.match(ui, /آخر 24 ساعة/);
-  assert.match(ui, /آخر 3 أيام/);
+  assert.match(ui, /آخر 14 ساعة/);
 });
