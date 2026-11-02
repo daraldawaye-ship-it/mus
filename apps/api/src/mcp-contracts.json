@@ -5824,7 +5824,7 @@
     "source": "routes-transaction-import-staging.ts"
   },
   "GET /companies/:companyId/transaction-import/stage-next": {
-    "queryFields": [],
+    "queryFields": ["sourceSystem", "dateFrom", "dateTo", "kind"],
     "source": "routes-transaction-import-staging.ts"
   },
   "POST /companies/:companyId/transaction-import/stage-ack": {

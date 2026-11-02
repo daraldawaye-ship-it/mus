@@ -157,19 +157,29 @@ export function transactionImportStagingRoutes(pool: Pool): Router {
 
   router.get("/companies/:companyId/transaction-import/stage-next",handler(async(req,res)=>{
     const companyId=id(req.params.companyId);
+    const sourceSystem=req.query.sourceSystem===undefined?null:parse(z.string().trim().min(1).max(100),req.query.sourceSystem);
+    const dateFrom=parse(z.iso.date(),req.query.dateFrom??"0001-01-01");
+    const dateTo=parse(z.iso.date(),req.query.dateTo??"9999-12-31");
+    const kind=req.query.kind===undefined?null:parse(z.enum(["sale","purchase"]),req.query.kind);
+    if(dateFrom>dateTo)throw new HttpError(400,"invalid_query","بداية الفترة تتجاوز نهايتها");
     const result=await transaction(pool,async client=>{
       await assertOwner(client,req,companyId);
       const rows=await client.query(
         `WITH first AS (
             SELECT source_system,posting_date FROM legacy_import_staging
             WHERE company_id=$1 AND status='pending'
+              AND ($2::text IS NULL OR source_system=$2)
+              AND posting_date BETWEEN $3::date AND $4::date
+              AND ($5::text IS NULL OR source_document->'payload'->>'kind'=$5)
             ORDER BY posting_date,source_id LIMIT 1
           )
           SELECT s.source_system,s.posting_date::text AS posting_date,s.source_document
           FROM legacy_import_staging s JOIN first f
           ON s.source_system=f.source_system AND s.posting_date=f.posting_date
           WHERE s.company_id=$1 AND s.status='pending'
-          ORDER BY s.source_id LIMIT 20`,[companyId]);
+            AND ($5::text IS NULL OR s.source_document->'payload'->>'kind'=$5)
+          ORDER BY s.source_id LIMIT 20`,
+        [companyId,sourceSystem,dateFrom,dateTo,kind]);
       if(!rows.rows.length)return {batch:null};
       return {batch:{
         idempotencyKey:randomUUID(),
