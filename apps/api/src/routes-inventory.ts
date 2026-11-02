@@ -540,6 +540,27 @@ export function inventoryRoutes(pool: Pool): Router {
                 description: `مناقلة مرتجعات الشركات من ملف النظام السابق ${input.sourceFileId}؛ معرف الصنف السابق ${row.legacyId}؛ الكمية ${row.quantity} بعد حذف الكسور.`,
                 idempotencyKey: row.idempotencyKey,
               };
+              // Some earlier single-item transfers used the same stable key
+              // with a longer human description. Reconcile by the audited
+              // quantity/identity fields, never by description alone, so a
+              // retried import cannot double-move stock.
+              const prior = (await client.query(
+                "SELECT id,kind,creation_payload FROM stock_operations WHERE company_id=$1 AND idempotency_key=$2",
+                [companyId, payload.idempotencyKey],
+              )).rows[0];
+              if (prior) {
+                const original = prior.creation_payload;
+                if (prior.kind !== "transfer" ||
+                    Number(original.itemId) !== itemId ||
+                    Number(original.fromLocationId) !== input.fromLocationId ||
+                    Number(original.toLocationId) !== input.toLocationId ||
+                    String(original.quantity) !== row.quantity ||
+                    Number(original.unit) !== 1 ||
+                    String(original.documentDate) !== input.documentDate ||
+                    original.expiryDate != null)
+                  conflict("مفتاح المناقلة مسجل بمحتوى مختلف؛ رُفض تكرار الحركة");
+                return {itemId, operationId: Number(prior.id), created: false};
+              }
               const previous = await findStockOperation(
                 client, companyId, payload.idempotencyKey, payload,
               );
