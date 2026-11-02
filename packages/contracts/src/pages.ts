@@ -557,6 +557,16 @@ page(
   { keywords: ["طبيب", "ممرض", "مستشفى", "قسم", "جهات"] },
 );
 page(
+  "company.doctor-sales-report",
+  "مبيعات الأطباء والجهات",
+  "التقارير",
+  "/companies/:companyId/doctor-sales-report",
+  { view: permission("commerce.view") },
+  "إجمالي صافي مبيعات كل طبيب أو ممرض أو جهة بين تاريخين، مع الخصومات والمردودات والعملات.",
+  { type: "report", parentKey: "company.sales",
+    keywords: ["طبيب", "جهة", "ممرض", "مبيعات", "تقرير", "مردود", "إحالات"] },
+);
+page(
   "company.items",
   "الأصناف",
   "الأصناف والمخزون",
