@@ -718,13 +718,17 @@ function ItemSearch({
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
+            // The item suggestion menu owns these keys; never navigate to
+            // another invoice line while choosing from its results.
             event.preventDefault();
+            event.stopPropagation();
             setActive((index) =>
               Math.max(0, Math.min(index + 1, items.length - 1)),
             );
           }
           if (event.key === "ArrowUp") {
             event.preventDefault();
+            event.stopPropagation();
             setActive((index) => Math.max(index - 1, 0));
           }
           if (event.key === "Escape") {
@@ -2417,6 +2421,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
     focus(lineInputId(created, "item-search"));
   }
   function deleteLine(line: DraftLine) {
+    if (locked) return;
     setError("");
     const remaining = lines.filter((entry) => entry.key !== line.key);
     const replacement = remaining.length ? remaining : [emptyLine()];
@@ -2430,6 +2435,37 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           : "item-search",
       ),
     );
+  }
+  function focusInvoiceLine(line: DraftLine, from: EventTarget | null) {
+    const element = from instanceof HTMLElement ? from : null;
+    const column =
+      element?.id === lineInputId(line, "quantity") ? "quantity" :
+      element?.id === lineInputId(line, "price") ? "price" :
+      null;
+    // Reuse the same column when it exists, otherwise land in the item's
+    // search or original-invoice selector. No row can focus a disabled field.
+    const targetId = column && line.itemId
+      ? lineInputId(line, column)
+      : lineInputId(line, line.originalSelection ? "original-line" : "item-search");
+    focus(targetId, column !== null);
+  }
+  function moveInvoiceLine(line: DraftLine, direction: -1 | 1, from: EventTarget | null) {
+    if (locked) return;
+    const position = lines.findIndex(entry => entry.key === line.key);
+    if (position < 0) return;
+    const next = lines[position + direction];
+    if (next) {
+      focusInvoiceLine(next, from);
+      return;
+    }
+    if (direction < 0) return;
+    // The last empty row is already the new-entry row: don't create an
+    // unlimited stream of blanks by holding ArrowDown.
+    if (!line.itemId) {
+      focus(lineInputId(line, line.originalSelection ? "original-line" : "item-search"));
+      return;
+    }
+    nextLine(line); // Retains validation and the existing 100-line maximum.
   }
   function resetInvoiceValues() {
     setResetConfirmOpen(false);
@@ -3109,6 +3145,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                         key={line.key}
                         data-line-key={line.key}
                         data-selected={!!line.itemId}
+                        tabIndex={locked ? -1 : 0}
+                        aria-label={`سطر الفاتورة: ${line.itemName || "فارغ"}`}
                         onFocusCapture={() => {
                           activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
@@ -3153,6 +3191,35 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                           event.preventDefault();
                           event.stopPropagation();
                           target.focus();
+                        }}
+                        onKeyDown={(event) => {
+                          if (locked || event.nativeEvent.isComposing ||
+                              event.altKey || event.metaKey || event.shiftKey) return;
+                          const target = event.target;
+                          const editable = target instanceof HTMLElement &&
+                            (target.matches("input,textarea,select,[contenteditable]") ||
+                             target.isContentEditable);
+                          if (event.key === "Delete") {
+                            // Normal Delete edits text in fields, but Delete on
+                            // the selected row (or Ctrl+Delete inside a field)
+                            // removes the whole unsaved invoice line.
+                            if (editable && !event.ctrlKey) return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            deleteLine(line);
+                            return;
+                          }
+                          if (event.ctrlKey ||
+                              (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                          if (target instanceof HTMLElement &&
+                              (target.matches("select,textarea") ||
+                               target.isContentEditable)) return;
+                          // ItemSearch handles its own ArrowUp/Down for results.
+                          if (target instanceof HTMLElement &&
+                              target.getAttribute("role") === "combobox") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          moveInvoiceLine(line, event.key === "ArrowDown" ? 1 : -1, target);
                         }}
                       >
                         <td className={kind === "sale" ? "commerce-mobile-sale-item-cell" : undefined}>
@@ -3471,6 +3538,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                               variant="ghost"
                               size="compact"
                               aria-label={`حذف ${line.itemName || "السطر الفارغ"}`}
+                              title="حذف السطر: زر الحذف أو Delete عند تحديد السطر، أو Ctrl+Delete داخل الحقل"
                               className="commerce-delete-line"
                               onClick={() => deleteLine(line)}
                             >
