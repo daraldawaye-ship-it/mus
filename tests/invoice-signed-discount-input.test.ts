@@ -2,20 +2,26 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  calculateInvoiceTotals, invoiceDiscountSchema, invoiceQuantitySchema,
+  calculateInvoiceTotals, invoiceDiscountSchema, invoiceQuantitySchema, invoiceSchema,
 } from "../packages/contracts/src/commerce.ts";
 import {
-  enteredInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount,
+  enteredInvoiceQuantity, completedInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount,
 } from "../apps/web/src/invoice-number-input.ts";
 
 test("quantity never stays blank, zero, or alphabetic while typing", () => {
   assert.equal(enteredInvoiceQuantity(""), "1");
   assert.equal(enteredInvoiceQuantity("  "), "1");
-  assert.equal(enteredInvoiceQuantity("-"), "-1");
+  assert.equal(enteredInvoiceQuantity("-"), "-");
   assert.equal(enteredInvoiceQuantity("0"), "1");
-  assert.equal(enteredInvoiceQuantity("-0"), "-1");
+  assert.equal(enteredInvoiceQuantity("-0"), "-0");
   assert.equal(enteredInvoiceQuantity("١٢"), "12");
   assert.equal(enteredInvoiceQuantity("-٣"), "-3");
+  assert.equal(enteredInvoiceQuantity("-05"), "-5");
+  assert.equal(completedInvoiceQuantity("-"), "-1");
+  assert.equal(completedInvoiceQuantity("-0"), "-1");
+  assert.equal(completedInvoiceQuantity("-5"), "-5");
+  assert.equal(invoiceQuantitySchema.safeParse("-").success, false);
+  assert.equal(invoiceQuantitySchema.safeParse("-0").success, false);
   assert.equal(enteredInvoiceQuantity("12a"), null);
   assert.equal(enteredInvoiceQuantity("abc"), null);
   assert.equal(enteredInvoiceQuantity("1.4"), null);
@@ -46,6 +52,25 @@ test("signed discount increases a normal sale's net, positive discount reduces i
   assert.equal(positive.total,"80");
   assert.equal(positive.discount,"20");
 });
+test("sale and purchase invoices both accept negative header discounts", () => {
+  for (const kind of ["sale", "purchase"] as const) {
+    const result = invoiceSchema.safeParse({
+      idempotencyKey: "00000000-0000-4000-8000-000000000001",
+      kind,
+      documentDate: "2026-11-02",
+      currencyId: 1,
+      branchId: 1,
+      locationId: 1,
+      counterpartyAccountId: 1,
+      discount: "-20",
+      lines: [{ itemId: 1, unit: 1, quantity: "-2", unitPrice: "100" },
+              { itemId: 2, unit: 1, quantity: "3", unitPrice: "100" }],
+    });
+    assert.equal(result.success, true, kind + ": " + (!result.success ? result.error.message : ""));
+    assert.equal(result.data?.discount, "-20");
+  }
+});
+
 test("negative fractional discount keeps its sign even below one rial", () => {
   const result=calculateInvoiceTotals([{quantity:"1",unitPrice:"100"}],"-0.5",2);
   assert.equal(result.total,"100.5");
