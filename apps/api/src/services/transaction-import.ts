@@ -6,7 +6,7 @@ import type { batchSchema } from "../routes-transaction-import-schemas.ts";
 import { HttpError } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { createInvoice, loadInvoice } from "./commerce.ts";
-import { normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
+import { allowsLegacyStockVariance, normalizeHistoricalInvoiceFractions } from "./historical-fractional-invoice.ts";
 import { legacySaleInvoiceLines } from "./legacy-sales-quantity.ts";
 import {
   assertBalanced,
@@ -155,11 +155,9 @@ export async function importTransactionBatch(
       if (source.type === "invoice") {
         // Explicit, bounded owner instruction: reconcile stock differences
         // later with opening balances. All other imports remain exact-only.
-        const scopedStockVariance =
-          companyId === 2 && input.sourceSystem === "dar-aldawa-legacy-2026-10" &&
-          source.payload.kind === "sale" &&
-          source.payload.documentDate >= "2026-10-01" &&
-          source.payload.documentDate < "2026-11-02";
+        const scopedStockVariance = allowsLegacyStockVariance(
+          companyId, input.sourceSystem, source.payload.kind, source.payload.documentDate,
+        );
         const directionSafeLines = legacySaleInvoiceLines(
           companyId, input.sourceSystem, source.payload.kind,
           source.payload.lines, source.sourceRows,
