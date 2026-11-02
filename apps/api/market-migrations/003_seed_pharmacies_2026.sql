@@ -2,6 +2,8 @@
 -- listed hours/phones are currently verified. Each branch is a distinct card.
 -- Import is idempotent and avoids changes to existing manual edits.
 -- System attribution (id=0) never represents a real employee account.
+-- Keep only the first valid local mobile per pharmacy: nine digits beginning
+-- with 7. Do not store any landline, extra contact, incomplete or country code.
 INSERT INTO users(id,display_name) VALUES (0,'دليل السوق — إدخال إداري')
 ON CONFLICT(id) DO NOTHING;
 WITH supplied(name,address,phones,source_domain,notes) AS (
@@ -79,7 +81,31 @@ WITH supplied(name,address,phones,source_domain,notes) AS (
 ), prepared AS (
  SELECT s.*,
   lower(regexp_replace(translate(s.name,'أإآٱى','ااااي'),'[[:space:]]+',' ','g')) AS normalized,
-  md5('market-pharmacy-list-2026-11-02:' || s.name) AS uid
+  md5('market-pharmacy-list-2026-11-02:' || s.name) AS uid,
+  (SELECT trim(m.value) FROM unnest(string_to_array(s.phones,',')) WITH ORDINALITY AS m(value,seq)
+   WHERE trim(m.value) ~ '^7[0-9]{8}
+)
+INSERT INTO medicine_market_cards(
+ kind,name,normalized_name,data,status,created_by,idempotency_key
+)
+SELECT
+ 'pharmacy',name,normalized,
+ jsonb_strip_nulls(jsonb_build_object(
+   'phone',mobile_phone,
+   'address',address,
+   'countryCode','YE','governorateCode','YE-AMANA','cityCode','YE-AMANA-SANAA',
+   'sourceNotes','الاسم والموقع ورقم الموبايل إن توفر واردة من قائمة المالك بتاريخ 02/11/2026؛ ورد فيها اسم المصدر ' ||
+     source_domain || ' دون رابط مباشر، ولم يُتحقق من البيانات مباشرة.' ||
+     CASE WHEN notes='24h' THEN ' ورد أن الفرع يخدم 24 ساعة؛ لم تؤكد ساعات العمل.' 
+     WHEN notes LIKE 'partial:%' THEN ' رقم إضافي ناقص (' || substring(notes from 10) || ') ولم يُسجل كرقم صالح.'
+     ELSE '' END
+ )),
+ 'published',0,
+ (substring(uid,1,8)||'-'||substring(uid,9,4)||'-'||substring(uid,13,4)||'-'||
+  substring(uid,17,4)||'-'||substring(uid,21,12))::uuid
+FROM prepared
+ON CONFLICT DO NOTHING;
+ ORDER BY m.seq LIMIT 1) AS mobile_phone
  FROM supplied s
 )
 INSERT INTO medicine_market_cards(
