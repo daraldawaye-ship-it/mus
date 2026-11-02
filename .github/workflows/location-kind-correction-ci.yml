@@ -43,4 +43,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/masters.test.ts
+      - name: Validate warehouse/returns correction and showroom protections
+        run: node --import tsx --test --test-name-pattern="branch creation|returns location|location kinds can|branch and location codes" tests/masters.test.ts
