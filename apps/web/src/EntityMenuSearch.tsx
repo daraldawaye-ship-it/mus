@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { ItemMenuHistory } from "./ItemMenuHistory";
+import { ItemMenuHistory, type ItemMenuQuickAction } from "./ItemMenuHistory";
 import type { Page, User } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import {
@@ -18,6 +18,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 
 export function EntityMenuSearch({
   user, companyId, employeeId, employeeName, kind, itemMenuReset = 0, onEditItem,
+  onItemQuickAction, canCreateMemo,
 }: {
   user: User;
   companyId: number | null;
@@ -26,6 +27,8 @@ export function EntityMenuSearch({
   kind: RecentEntityKind;
   itemMenuReset?: number;
   onEditItem: (itemId: number) => void;
+  onItemQuickAction: (action: ItemMenuQuickAction,itemId: number,itemName: string) => void;
+  canCreateMemo: boolean;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -171,7 +174,8 @@ export function EntityMenuSearch({
       {kind === "item" && company > 0 && (
         <ItemMenuHistory userId={user.id} companyId={company}
           itemId={selected?.id ?? null} itemName={selected?.name ?? null}
-          resetKey={itemMenuReset} onEditItem={onEditItem} />
+          resetKey={itemMenuReset} onEditItem={onEditItem}
+          onQuickAction={onItemQuickAction} canCreateMemo={canCreateMemo} />
       )}
       {!focused && selected && kind !== "item" && (
         <p className="user-menu-entity-hint">
