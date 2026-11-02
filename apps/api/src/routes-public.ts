@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
 import {
   appearanceSchema,
@@ -22,7 +22,7 @@ import {
 } from "./policies/access.ts";
 import { auditDTO, userDTO } from "./repositories/models.ts";
 import { deny, missing, HttpError } from "./errors.ts";
-import { passwordHash } from "./services/auth.ts";
+import { passwordHash, tokenHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordUserPresence } from "./services/user-presence.ts";
@@ -187,6 +187,36 @@ export function publicRoutes(pool: Pool): Router {
       });
     }),
   );
+  // Owner-issued one-hour access links are bearer credentials, not account
+  // passwords. Generate only on demand; store only SHA-256 and rotate any
+  // older outstanding link for this same recipient.
+  router.post("/users/:id/login-link", handler(async (req, res) => {
+    const owner = await currentActor(pool,actor(req));
+    ownerOnly(owner);
+    const targetId = id(req.params.id);
+    const rawToken = randomBytes(32).toString("base64url");
+    const issued = await transaction(pool,async client => {
+      const target = await client.query(
+        "SELECT id,archived,owner FROM users WHERE id=$1 FOR UPDATE",
+        [targetId]);
+      if (!target.rowCount) missing();
+      if (target.rows[0].owner) deny("رابط دخول المالك غير متاح لهذا الإجراء");
+      if (target.rows[0].archived) deny("لا يمكن إنشاء رابط دخول لحساب مؤرشف");
+      const result = await client.query(`
+        INSERT INTO user_login_links(user_id,token_hash,issued_by,issued_at,expires_at)
+        VALUES($1,$2,$3,clock_timestamp(),clock_timestamp()+interval '1 hour')
+        ON CONFLICT(user_id) DO UPDATE
+        SET token_hash=EXCLUDED.token_hash,issued_by=EXCLUDED.issued_by,
+            issued_at=EXCLUDED.issued_at,expires_at=EXCLUDED.expires_at
+        RETURNING expires_at`,
+        [targetId,tokenHash(rawToken),owner.id]);
+      await audit(client,owner,"auth.loginLinkIssue","user",targetId,null,
+        { expiresAt: result.rows[0].expires_at.toISOString() });
+      return result.rows[0].expires_at as Date;
+    });
+    res.setHeader("Cache-Control","no-store");
+    res.json({ token:rawToken, expiresAt:issued.toISOString() });
+  }));
   router.post(
     "/users/:id/password",
     handler(async (req, res) => {
@@ -204,6 +234,7 @@ export function publicRoutes(pool: Pool): Router {
         if (target.rows[0].owner)
           deny("تغيير كلمة مرور المالك يتطلب كلمة المرور الحالية من ملفه الشخصي");
         await client.query("UPDATE users SET password_hash=$1 WHERE id=$2", [hash, targetId]);
+        await client.query("DELETE FROM user_login_links WHERE user_id=$1", [targetId]);
         await client.query("DELETE FROM sessions WHERE user_id=$1", [targetId]);
         await audit(client, owner, "auth.password", "user", targetId, null, null);
         await emitNotification(client, {
