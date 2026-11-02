@@ -1470,10 +1470,8 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
       selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}>
       {kind === "sale" && !ready && <Notice>جارٍ استعادة فواتير المبيعات المحفوظة على الجهاز…</Notice>}
       {deviceError && <Notice tone="error">{deviceError}</Notice>}
-      {kind === "sale" && ready && !deviceError && <p className="muted">
-        تُحفظ نقاط المبيعات تلقائيًا على هذا الجهاز لكل مستخدم؛ لا تُرحّل الفاتورة حتى تضغط حفظ.
-      </p>}
-      {ready && <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير">
+      {ready && <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير"
+        title={kind === "sale" ? "تُحفظ مسودات هذه النقاط تلقائيًا على الجهاز دون ترحيل" : undefined}>
         {points.map((id, index) => (
           <div key={id} className={`invoice-point-tab${id === activePoint ? " is-active" : ""}`}>
             <button type="button" role="tab" aria-selected={id === activePoint}
