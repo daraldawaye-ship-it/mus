@@ -7,8 +7,10 @@ on:
     paths:
       - 'packages/contracts/src/masters.ts'
       - 'apps/api/src/routes-locations.ts'
+      - 'apps/api/src/mcp-contracts.json'
       - 'apps/web/src/pages/LocationPages.tsx'
       - 'tests/masters.test.ts'
+      - 'tests/location-kind-mcp-contract.test.ts'
       - '.github/workflows/location-kind-correction-ci.yml'
   workflow_dispatch:
 
@@ -43,5 +45,6 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - run: node --import tsx --test tests/location-kind-mcp-contract.test.ts
       - name: Validate warehouse/returns correction and showroom protections
         run: node --import tsx --test --test-name-pattern="branch creation|returns location|location kinds can|branch and location codes" tests/masters.test.ts
