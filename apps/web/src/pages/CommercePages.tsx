@@ -67,7 +67,7 @@ import { PledgeDialogs } from "../PledgeDialogs";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
-import { enteredInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
+import { enteredInvoiceQuantity, completedInvoiceQuantity, enteredInvoiceDiscount, completedInvoiceDiscount } from "../invoice-number-input";
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
 import {
@@ -3312,14 +3312,21 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
                               changeQuantity(line, event.target.value)
                             }
                             onFocus={(event) => event.target.select()}
+                            onBlur={() => {
+                              const completed = completedInvoiceQuantity(line.quantity);
+                              if (completed !== line.quantity) changeQuantity(line, completed);
+                            }}
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               event.preventDefault();
                               setError("");
-                              if (!validateQuantity(line)) return;
+                              const completed = completedInvoiceQuantity(line.quantity);
+                              if (completed !== line.quantity) changeQuantity(line, completed);
+                              const validLine = { ...line, quantity: completed };
+                              if (!validateQuantity(validLine)) return;
                               if (kind === "purchase" && !line.originalLineId)
                                 focus(lineInputId(line, "price"));
-                              else nextLine(line);
+                              else nextLine(validLine);
                             }}
                           />
                         </td>
@@ -3523,7 +3530,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
               label="الخصم"
               money
               value={hasPositiveLines ? discount : "0"}
-              inputMode="decimal"
+              inputMode="text"
               disabled={locked || !hasPositiveLines}
               onChange={(event) => {
                 const entered = enteredInvoiceDiscount(event.target.value);
