@@ -1,0 +1,53 @@
+name: Signed Negative Invoice Discount CI
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+    paths:
+      - "apps/api/migrations/174_signed_negative_invoice_discounts.sql"
+      - "apps/api/src/services/commerce.ts"
+      - "packages/contracts/src/commerce.ts"
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "tests/invoice-signed-discount-input.test.ts"
+      - "tests/commerce.test.ts"
+      - ".github/workflows/signed-negative-invoice-discount-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/migrations/174_signed_negative_invoice_discounts.sql"
+      - "apps/api/src/services/commerce.ts"
+      - "packages/contracts/src/commerce.ts"
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "tests/invoice-signed-discount-input.test.ts"
+      - "tests/commerce.test.ts"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: invoice_test_password
+          POSTGRES_USER: postgres
+          POSTGRES_DB: invoice_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:invoice_test_password@127.0.0.1:5432/invoice_ci
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx tsx --test tests/invoice-signed-discount-input.test.ts
+      - run: npx tsx --test --test-name-pattern="signed header discounts post negative sales and purchase invoices" tests/commerce.test.ts
