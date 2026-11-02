@@ -56,7 +56,7 @@ test("both transfer kinds use rolling 24 hours and closings use rolling 14 hours
     [2,91,"2026-11-01T12:00:00.000Z","2026-11-02T12:00:00.000Z"]);
   assert.deepEqual(records.queries[3]?.params, records.queries[2]?.params);
   assert.deepEqual(records.queries[4]?.params,
-    [2,91,"2026-10-30T12:00:00.000Z","2026-11-02T12:00:00.000Z"]);
+    [2,91,"2026-11-01T22:00:00.000Z","2026-11-02T12:00:00.000Z"]);
   assert.deepEqual(records.queries[5]?.params, records.queries[4]?.params);
   assert.match(records.queries[2]!.sql, /kind IN \('pouch','electronic'\)/);
   assert.match(records.queries[4]!.sql, /kind='close'/);
