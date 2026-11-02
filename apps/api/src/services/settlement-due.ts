@@ -3,6 +3,8 @@
  * متابعة التسويات. The task candidate list and reconciliation rewards
  * deliberately reuse this exact relation + predicate. Keep changes to
  * the due rules here, not independently in other routes.
+ * Periodic interval is never shorter than 1.5 days, for both the displayed
+ * countLimit and the shared due predicate (rewards and task candidates).
  */
 export const settlementDuePredicate = `(
   last_count.id IS NULL
@@ -41,6 +43,6 @@ export function settlementFollowUpFrom(importanceParameter: string): string {
           AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
     ) activity ON true
     LEFT JOIN LATERAL (
-      SELECT (${importanceParameter}::numeric * 30) / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5) AS raw_limit
+      SELECT GREATEST(1.5::numeric, (${importanceParameter}::numeric * 30) / (GREATEST(COALESCE(activity.monthly_sales, 0), 0) + 5)) AS raw_limit
     ) count_limit ON true`;
 }
