@@ -8,6 +8,7 @@ import { currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { HttpError } from "./errors.ts";
 import { authorizedInvoiceShortcuts, ensureCompany2InvoiceShortcuts } from "./services/company2-invoice-shortcut-defaults.ts";
+import { withRequiredShortcuts } from "./services/required-shortcuts.ts";
 
 const optionalId = (value: unknown) =>
   value === undefined ? null : id(typeof value === "string" ? value : "");
@@ -35,15 +36,15 @@ export function shortcutRoutes(pool: Pool): Router {
       // authorized create links, without undoing prior personal removals.
       if(companyId===2) {
         const shortcuts=await ensureCompany2InvoiceShortcuts(client,user,entries);
-        return {pageKeys:shortcuts.pageKeys.filter(key=>allowed.has(key))};
+        return {pageKeys:withRequiredShortcuts(shortcuts.pageKeys,allowed,companyId)};
       }
       const row=await client.query(
         "SELECT page_keys FROM user_page_shortcuts WHERE user_id=$1 AND scope_company_id=$2",
         [user.id,companyId??0],
       );
       return {
-        pageKeys:(row.rows[0]?.page_keys as string[] | undefined ?? [])
-          .filter(key=>allowed.has(key)),
+        pageKeys:withRequiredShortcuts(
+          row.rows[0]?.page_keys as string[] | undefined ?? [],allowed,companyId),
       };
     });
     res.json(result);
@@ -81,7 +82,7 @@ export function shortcutRoutes(pool: Pool): Router {
          RETURNING page_keys`,
         [user.id,companyId??0,input.pageKeys,handled],
       );
-      return {pageKeys:row.rows[0].page_keys as string[]};
+      return {pageKeys:withRequiredShortcuts(row.rows[0].page_keys as string[],allowed,companyId)};
     });
     res.json(result);
   }));
