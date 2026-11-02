@@ -88,12 +88,14 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
         input.password,
         row?.password_hash ?? `scrypt:${"0".repeat(32)}:${"0".repeat(128)}`,
       );
-      if (!row || row.archived || !matches)
+      if (!row || row.archived || !matches) {
+        limitAuth(`login-account:${input.phone ?? input.email}`, 10);
         throw new HttpError(
           401,
           "invalid_login",
           "رقم الهاتف أو البريد أو كلمة المرور غير صحيحة",
         );
+      }
       const result = await transaction(pool, async (client) => {
         const locked = await client.query(
           "SELECT * FROM users WHERE id=$1 FOR SHARE",
