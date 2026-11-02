@@ -14,7 +14,7 @@ const optionalId = (value: unknown) =>
   value === undefined ? null : id(typeof value === "string" ? value : "");
 
 const shortcutInput = z.object({
-  pageKeys: z.array(z.string().max(120)).max(40).refine(
+  pageKeys: z.array(z.string().max(120)).max(41).refine(
     keys => new Set(keys).size === keys.length, "لا يمكن تكرار الصفحة",
   ),
 }).strict();
