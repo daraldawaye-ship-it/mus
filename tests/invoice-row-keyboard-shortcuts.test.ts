@@ -11,14 +11,14 @@ const rowStart = source.indexOf('data-line-key={line.key}',tableStart);
 const rowEnd = source.indexOf('<td className={kind === "sale" ?',rowStart);
 const rowKeys = source.slice(rowStart,rowEnd);
 
-test("Delete removes a selected invoice draft row while keeping native Delete in editable fields", () => {
+test("Delete removes a draft row even when the caret is inside a field", () => {
   assert.ok(tableStart > 0 && rowStart > tableStart);
   assert.match(rowKeys,/tabIndex=\{locked \? -1 : 0\}/);
   assert.match(rowKeys,/onClickCapture=\{\(event\) =>/);
   assert.match(rowKeys,/event\.currentTarget\.focus\(\)/);
   assert.match(rowKeys,/onKeyDown=\{\(event\) =>/);
   assert.match(rowKeys,/event\.key === "Delete"/);
-  assert.match(rowKeys,/if \(editable && !event\.ctrlKey\) return/);
+  assert.doesNotMatch(rowKeys, /if \(editable && !event\.ctrlKey\) return/);
   assert.match(rowKeys,/event\.preventDefault\(\)/);
   assert.match(rowKeys,/deleteLine\(line\)/);
   assert.match(lineActions,/function deleteLine\(line: DraftLine\)\s*\{\s*if \(locked\) return/);
