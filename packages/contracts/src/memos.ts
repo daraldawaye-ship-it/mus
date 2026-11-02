@@ -1,13 +1,14 @@
 import { z } from "zod";
 import type { Page } from "./index.ts";
 
-export const memoTypeSchema = z.enum(["task", "inquiry", "review", "approval"]);
+export const memoTypeSchema = z.enum(["task", "inquiry", "review", "approval", "item_return"]);
 export type MemoType = z.infer<typeof memoTypeSchema>;
 export const memoTypeLabels: Record<MemoType, string> = {
   task: "تكليف",
   inquiry: "استفسار",
   review: "مراجعة",
   approval: "طلب اعتماد",
+  item_return: "إرجاع صنف",
 };
 export const memoFollowerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("employee"), employeeId: z.number().int().positive(), accessLevel: z.enum(["view", "comment"]) }).strict(),
