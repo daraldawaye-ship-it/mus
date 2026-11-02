@@ -1,0 +1,40 @@
+name: Invoice Side and Unit Addition CI
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+    paths:
+      - "apps/api/src/services/item-unit-history.ts"
+      - "apps/api/src/services/my-cashbox-transfers.ts"
+      - "apps/api/src/routes-items.ts"
+      - "apps/api/src/routes-commerce.ts"
+      - "apps/web/src/InvoiceSideOverview.tsx"
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "apps/web/src/styles.css"
+      - "tests/item-unit-history-and-invoice-side.test.ts"
+      - ".github/workflows/invoice-side-unit-addition-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/services/item-unit-history.ts"
+      - "apps/api/src/services/my-cashbox-transfers.ts"
+      - "apps/api/src/routes-items.ts"
+      - "apps/api/src/routes-commerce.ts"
+      - "apps/web/src/InvoiceSideOverview.tsx"
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "apps/web/src/styles.css"
+      - "tests/item-unit-history-and-invoice-side.test.ts"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx tsx --test tests/item-unit-history-and-invoice-side.test.ts
