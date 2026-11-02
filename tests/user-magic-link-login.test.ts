@@ -56,11 +56,11 @@ test("quick-login fragment is removed before same-origin JSON redemption", () =>
   assert.match(page,/acceptRegistration\(session\)/);
   assert.match(app,/Route path="\/quick-login" element=\{<QuickLoginPage \/>\}/);
   assert.match(client,/path !== "\/auth\/login-link\/redeem"/);
-  assert.match(publicPage,/minLength=\\{3\\}/);
+  assert.match(publicPage,/minLength=\{3\}/);
   assert.doesNotMatch(publicPage,/label="كلمة المرور الحالية"/);
-  assert.doesNotMatch(publicPage,/passwords\\.currentPassword/);
+  assert.doesNotMatch(publicPage,/passwords\.currentPassword/);
   const routes = read("apps/api/src/routes-auth.ts");
-  assert.doesNotMatch(routes,/passwordMatches\\(input\\.currentPassword/);
-  assert.match(routes,/DELETE FROM sessions WHERE user_id=\\$1 AND token_hash<>\\$2/);
+  assert.doesNotMatch(routes,/passwordMatches\(input\.currentPassword/);
+  assert.match(routes,/DELETE FROM sessions WHERE user_id=\$1 AND token_hash<>\$2/);
 
 });
