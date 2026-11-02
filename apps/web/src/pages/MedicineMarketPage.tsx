@@ -639,6 +639,13 @@ export function MedicineMarketPage({
   const visibleTypes = types.filter(type=>!isMarketAdministrativeKind(type.key));
   const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
+  const dosageList = useQuery({
+    queryKey: ["medicine-market", user?.id, "fixed-dosage-forms"],
+    queryFn: ({signal}) => api<Page<MarketCard>>(
+      `${ROOT}/cards?kind=dosage-form&pageSize=100`, {signal}),
+    enabled: tab === "catalog" && !!permissions?.canConfigure,
+    staleTime: 60_000,
+  });
   const write = (values: Record<string, string | null>) =>
     setParams((old) => {
       const p = new URLSearchParams(old);
@@ -745,6 +752,7 @@ export function MedicineMarketPage({
   };
   async function create(event: FormEvent) {
     event.preventDefault();
+    if (isMarketAdministrativeKind(newKind)) { setError("الكروت المرجعية ثابتة، ولا تُضاف من واجهة السوق"); return; }
     const payload = { kind: newKind, name: newName.trim() };
     await mutate(
       async () => {
@@ -869,7 +877,7 @@ export function MedicineMarketPage({
           {permissions?.canContribute ? (
             <Button
               onClick={() => {
-                setNewKind((kind as Kind) || "medicine");
+                setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
                 setNewName("");
                 setCreateOpen(true);
                 setError("");
@@ -909,6 +917,32 @@ export function MedicineMarketPage({
       {message && <Notice tone="success">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {meta.error && <Notice tone="error">{errorMessage(meta.error)}</Notice>}
+      {tab === "catalog" && permissions?.canConfigure && (
+        <section className="medicine-market-admin-references" aria-label="البيانات المرجعية الثابتة">
+          <h2>البيانات المرجعية للإدارة</h2>
+          <p className="medicine-market-muted">للاطلاع والاختيار فقط. إضافة وتصحيح القوائم تتم إداريًا، وليس من أزرار كروت المستخدمين.</p>
+          <div className="medicine-market-reference-cards">
+            <details>
+              <summary>الدول ({references.filter(entry=>entry.kind==="country").length})</summary>
+              <ul>{references.filter(entry=>entry.kind==="country").map(entry=>
+                <li key={entry.code}>{entry.name}</li>)}</ul>
+            </details>
+            <details>
+              <summary>المحافظات والمدن ({references.filter(entry=>entry.kind==="governorate").length} محافظة)</summary>
+              <ul>{references.filter(entry=>entry.kind==="governorate").map(governorate=>
+                <li key={governorate.code}>
+                  <strong>{governorate.name}</strong>
+                  {references.filter(city=>city.kind==="city" && city.parentCode===governorate.code)
+                    .map(city=><span key={city.code}> — {city.name}</span>)}
+                </li>)}</ul>
+            </details>
+            <details>
+              <summary>الأشكال الصيدلانية ({dosageList.data?.total ?? 0})</summary>
+              <ul>{dosageList.data?.items.map(card=><li key={card.id}>{card.name}</li>)}</ul>
+            </details>
+          </div>
+        </section>
+      )}
       {tab === "catalog" && (
         <>
           <div className="medicine-market-toolbar">
@@ -1241,7 +1275,7 @@ export function MedicineMarketPage({
                         <p>{c.text}</p>
                       </article>
                     ))}
-                    {permissions?.canContribute && !card.archived ? (
+                    {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived ? (
                       <form
                         className="stack"
                         onSubmit={(e) => {
@@ -1324,7 +1358,7 @@ export function MedicineMarketPage({
                   {permissions?.canContribute && (
                     <Button
                       onClick={() => {
-                        setNewKind((kind as Kind) || "medicine");
+                        setNewKind(isMarketAdministrativeKind(kind as Kind) ? "medicine" : ((kind as Kind) || "medicine"));
                         setNewName(q);
                         setCreateOpen(true);
                       }}
