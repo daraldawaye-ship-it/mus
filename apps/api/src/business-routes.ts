@@ -36,6 +36,7 @@ import { shortcutRoutes } from "./routes-shortcuts.ts";
 import { commerceRoutes } from "./routes-commerce.ts";
 import { stagedInvoiceReadRoutes } from "./routes-staged-invoice-read.ts";
 import { doctorRoutes } from "./routes-doctors.ts";
+import { doctorSalesReportRoutes } from "./routes-doctor-sales-report.ts";
 import { saleCustomerRoutes } from "./routes-sale-customers.ts";
 import { configurationRoutes } from "./routes-configuration.ts";
 import { controlRoutes } from "./routes-control.ts";
@@ -99,6 +100,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     openingInventoryRoutes(pool),
     commerceOptionRoutes(pool),
     doctorRoutes(pool),
+    doctorSalesReportRoutes(pool),
     saleCustomerRoutes(pool),
     commerceRoutes(pool),
     stagedInvoiceReadRoutes(pool),
