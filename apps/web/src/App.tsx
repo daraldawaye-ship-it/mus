@@ -241,6 +241,9 @@ const ItemFormDifferencesPage = lazy(() =>
 const ItemStatisticsReportPage = lazy(() =>
   import("./pages/ItemStatisticsReportPage").then(m=>({default:m.ItemStatisticsReportPage})),
 );
+const DoctorSalesReportPage = lazy(() =>
+  import("./pages/DoctorSalesReportPage").then(m=>({default:m.DoctorSalesReportPage})),
+);
 const ItemOptionsListPage = lazy(() =>
   import("./pages/ItemOptionsListPage").then(m=>({default:m.ItemOptionsListPage})),
 );
@@ -357,6 +360,7 @@ const companySections = [
   "my-cashbox-ledger",
   "items",
   "item-statistics-report",
+  "doctor-sales-report",
   "item-options-list",
   "central-access",
   "item",
@@ -743,6 +747,10 @@ function CompanyContent({
     case "item-statistics-report":
       return <Suspense fallback={<Notice>جارٍ تحميل تقرير إحصائيات الأصناف…</Notice>}>
         <ItemStatisticsReportPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "doctor-sales-report":
+      return <Suspense fallback={<Notice>جارٍ تحميل مبيعات الأطباء والجهات…</Notice>}>
+        <DoctorSalesReportPage key={context.company.id} context={context}/>
       </Suspense>;
     case "item-options-list":
       return <Suspense fallback={<Notice>جارٍ تحميل قائمة الأصناف…</Notice>}>
