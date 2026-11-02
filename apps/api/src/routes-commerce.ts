@@ -26,6 +26,7 @@ import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
 import { adenToday, assertMobileInvoiceCreation, assertYerWhenCurrencyHidden, controlValue } from "./services/control-values.ts";
+import { resolveInvoicePostingDate } from "./services/invoice-posting-date.ts";
 
 async function readCommerce<T>(
   pool: Pool,
@@ -569,11 +570,24 @@ export function commerceRoutes(pool: Pool): Router {
           if (!retry) {
             await assertMobileInvoiceCreation(client, companyId, input.kind, req.headers["user-agent"]);
             const dateControl = input.kind === "sale" ? "edit_sales_date" : "edit_purchases_date";
-            if (!(await controlValue(client, companyId, dateControl)))
-              postingInput = { ...input, documentDate: await adenToday(client) };
+            const canEditDate = !!(await controlValue(client, companyId, dateControl));
+            const postedDate = resolveInvoicePostingDate(
+              input.documentDate,
+              canEditDate ? input.documentDate : await adenToday(client),
+              canEditDate,
+              null,
+            );
+            if (postedDate !== input.documentDate)
+              postingInput = { ...input, documentDate: postedDate };
             await assertYerWhenCurrencyHidden(client, companyId, input.currencyId);
           } else if (existing.rows[0]?.documentDate) {
-            postingInput = { ...input, documentDate: existing.rows[0].documentDate };
+            postingInput = {
+              ...input,
+              documentDate: resolveInvoicePostingDate(
+                input.documentDate, input.documentDate, false,
+                existing.rows[0].documentDate,
+              ),
+            };
           }
           validationMs = performance.now() - checksStarted;
           const postingStarted = performance.now();
