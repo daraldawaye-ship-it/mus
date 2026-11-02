@@ -9,6 +9,8 @@ on:
       - "apps/api/src/routes-medicine-market.ts"
       - "apps/web/src/pages/MedicineMarketPage.tsx"
       - "tests/medicine-market-reference-pharmacies.test.ts"
+      - "tests/medicine-market-native.test.ts"
+      - "tests/medicine-market-isolation.test.ts"
       - ".github/workflows/medicine-market-references-ci.yml"
   pull_request:
     paths:
@@ -18,6 +20,8 @@ on:
       - "apps/api/src/routes-medicine-market.ts"
       - "apps/web/src/pages/MedicineMarketPage.tsx"
       - "tests/medicine-market-reference-pharmacies.test.ts"
+      - "tests/medicine-market-native.test.ts"
+      - "tests/medicine-market-isolation.test.ts"
 jobs:
   verify:
     runs-on: ubuntu-latest
