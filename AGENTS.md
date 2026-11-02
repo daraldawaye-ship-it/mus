@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+## Sales save dialog compact customer/doctor fields (2026-11-02)
+
+The sales invoice doctor/customer save modal (`doctorPromptOpen`) must match newer forms: show **all four field labels inside** their controls, not separate labels above. Reuse `field floating-ready`, `data-label-raised="true"` and scoped CSS `invoice-customer-doctor-form`. Place the **customer number** and **customer name** fields adjacent in a two-column `invoice-customer-identity-row` on desktop; stack on screens <=680px. Remove the verbose `السهمان ↑ ↓ للتنقل، وEnter للاختيار...` paragraph and redundant long placeholders. **Do not** change keyboard ArrowUp/ArrowDown/Enter selection, doctor auto creation, customer number matching, offline queue, or posting permissions; hiding explanation is display-only. See `docs/INVOICE_SALES_CUSTOMER_DOCTOR_MODAL_LAYOUT.md` and `tests/invoice-sales-save-modal-layout.test.ts`.
+
+
 
 ## Signed header discounts even on net-negative sales or purchases (2026-11-02)
 
