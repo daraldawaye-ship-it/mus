@@ -3725,21 +3725,21 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, o
           <div className="invoice-customer-identity-row">
             <div className="field floating-ready" data-label-raised="true">
               <label htmlFor={fixedInputId("invoice-sale-customer-number")}>رقم العميل (اختياري)</label>
-            <input id={fixedInputId("invoice-sale-customer-number")} type="text" inputMode="numeric"
-              ref={customerField} maxLength={30} autoComplete="off"
-              value={saleCustomerNumber}
-              onChange={event=>{
-                setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
-                setSaleCustomerName("");
-                setSaleCustomerMatched(false);
-                setDoctorError("");
-              }}/>
+              <input id={fixedInputId("invoice-sale-customer-number")} type="text" inputMode="numeric"
+                ref={customerField} maxLength={30} autoComplete="off"
+                value={saleCustomerNumber}
+                onChange={event=>{
+                  setSaleCustomerNumber(normalizeDigits(event.target.value).replace(/[^0-9]/g,""));
+                  setSaleCustomerName("");
+                  setSaleCustomerMatched(false);
+                  setDoctorError("");
+                }}/>
             </div>
             <div className="field floating-ready" data-label-raised="true">
               <label htmlFor={fixedInputId("invoice-sale-customer-name")}>اسم العميل (اختياري)</label>
-            <input id={fixedInputId("invoice-sale-customer-name")} type="text" maxLength={240}
-              value={saleCustomerName}
-              readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
+              <input id={fixedInputId("invoice-sale-customer-name")} type="text" maxLength={240}
+                value={saleCustomerName}
+                readOnly={saleCustomerMatched} onChange={event=>setSaleCustomerName(event.target.value)}/>
             </div>
           </div>
           {doctorError&&<Notice tone="error">{doctorError}</Notice>}
