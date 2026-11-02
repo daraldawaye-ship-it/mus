@@ -47,7 +47,7 @@ test("periodic stocktake interval has a 1.5-day SQL minimum", async () => {
 
 test("zero stock outside returns is excluded unless a newer card request exists", async () => {
   assert.match(settlementDuePredicate, /stats\.stock_without_returns/);
-  assert.match(settlementDuePredicate, /manualStocktakeRequestPredicate/);
+  assert.match(settlementDuePredicate, /i\\.stocktake_required_at/);
   assert.match(manualStocktakeRequestPredicate, /last_count\.created_at IS NULL/);
 
   const db = new PGlite();
