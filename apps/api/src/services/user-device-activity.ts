@@ -41,3 +41,22 @@ export async function recordPushConfirmation(
     SET last_push_confirmed_at=EXCLUDED.last_push_confirmed_at`,
     [userId,kind]);
 }
+
+/** Reported by a foreground client, not an authoritative OS entitlement.
+ * A device may change permissions while the site is closed. */
+export async function recordReportedPushPermission(
+  db: Database, userId: number, kind: DeviceKind,
+  permission: "granted" | "denied" | "default" | "unsupported",
+): Promise<void> {
+  await db.query(`
+    INSERT INTO user_device_activity
+      (user_id,device_kind,last_push_permission,last_push_permission_checked_at)
+    VALUES($1,$2,$3,clock_timestamp())
+    ON CONFLICT(user_id,device_kind) DO UPDATE
+    SET last_push_permission=EXCLUDED.last_push_permission,
+        last_push_permission_checked_at=EXCLUDED.last_push_permission_checked_at
+    WHERE user_device_activity.last_push_permission IS DISTINCT FROM EXCLUDED.last_push_permission
+       OR user_device_activity.last_push_permission_checked_at IS NULL
+       OR user_device_activity.last_push_permission_checked_at < clock_timestamp()-interval '5 minutes'`,
+    [userId,kind,permission]);
+}
