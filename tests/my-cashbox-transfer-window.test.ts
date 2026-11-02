@@ -19,7 +19,7 @@ function mockClient(results: Array<{ rows: Record<string, unknown>[] }>) {
   };
 }
 
-test("both transfer kinds use rolling 24 hours and closings use rolling 72 hours", async () => {
+test("both transfer kinds use rolling 24 hours and closings use rolling 14 hours", async () => {
   const now = new Date("2026-11-02T12:00:00.000Z");
   const records = mockClient([
     { rows: [{ id: 91 }] },
@@ -43,7 +43,7 @@ test("both transfer kinds use rolling 24 hours and closings use rolling 72 hours
   const result = await listMyCashboxTransfers(records.client, 2, 77);
   assert.equal(result.hasEmployee, true);
   assert.equal(result.transferWindowStartAt, "2026-11-01T12:00:00.000Z");
-  assert.equal(result.closingWindowStartAt, "2026-10-30T12:00:00.000Z");
+  assert.equal(result.closingWindowStartAt, "2026-11-01T22:00:00.000Z");
   assert.equal(result.pouch.total, "120.25");
   assert.equal(result.electronic.total, "30");
   assert.equal(result.closings.count, 3);
