@@ -26,6 +26,7 @@ import { passwordHash } from "./services/auth.ts";
 import { emitNotification } from "./services/notifications.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordUserPresence } from "./services/user-presence.ts";
+import { recordReportedPushPermission, requestDevice } from "./services/user-device-activity.ts";
 
 export function publicRoutes(pool: Pool): Router {
   const router = Router();
@@ -33,6 +34,12 @@ export function publicRoutes(pool: Pool): Router {
   router.post("/presence/heartbeat", handler(async (req, res) => {
     const user = actor(req);
     await recordUserPresence(pool, user.id);
+    const notificationPermission = req.body?.notificationPermission;
+    if (notificationPermission === "granted" || notificationPermission === "denied" ||
+        notificationPermission === "default" || notificationPermission === "unsupported") {
+      await recordReportedPushPermission(pool,user.id,requestDevice(req),notificationPermission)
+        .catch(() => {});
+    }
     res.json({ ok: true });
   }));
   // Presence aggregates authenticated general and company activity, never attendance.
@@ -100,7 +107,9 @@ export function publicRoutes(pool: Pool): Router {
           COALESCE((
             SELECT jsonb_object_agg(d.device_kind,
               jsonb_build_object('lastLoginAt',d.last_login_at,
-                                 'lastPushConfirmedAt',d.last_push_confirmed_at))
+                                 'lastPushConfirmedAt',d.last_push_confirmed_at,
+                                 'lastPushPermission',d.last_push_permission,
+                                 'lastPushPermissionCheckedAt',d.last_push_permission_checked_at))
             FROM user_device_activity d WHERE d.user_id=users.id
           ),'{}'::jsonb) AS device_activity,
           COALESCE((
