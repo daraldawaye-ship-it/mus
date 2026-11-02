@@ -4502,16 +4502,16 @@ test("signed header discounts post negative sales and purchase invoices while pr
   const sold=await invoice(f,s,invoiceBody(s,item.id,{
     kind:"sale",counterpartyAccountId:s.customer.id,
     discount:"0",
-    lines:[{itemId:item.id,unit:1,quantity:"2"}],
+    lines:[{itemId:item.id,unit:1,quantity:"3"}],
   }));
-  assert.equal(sold.total,"200");
+  assert.equal(sold.total,"300");
 
-  for (const discount of ["10","-10"]) {
+  for (const discount of ["0","10","-10"]) {
     const linked=await invoice(f,s,invoiceBody(s,item.id,{
       kind:"sale",counterpartyAccountId:s.customer.id,discount,
       lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sold.lines[0]!.id}],
     }));
-    assert.equal(linked.total,discount==="10"?"-110":"-90");
+    assert.equal(linked.total,discount==="10"?"-110":discount==="-10"?"-90":"-100");
     const row=(await f.pool.query(
       "SELECT discount::text AS discount,manual_discount::text AS manual FROM invoice_lines WHERE company_id=$1 AND id=$2",
       [s.company.id,linked.lines[0]!.id],
