@@ -32,20 +32,22 @@ test("all invoice side event rows show relative duration over smaller dated time
   assert.doesNotMatch(ui, /hour12:\s*false/);
 });
 
-test("cashbox closing shortages and overages show only exact date/time without elapsed wording", () => {
+test("cashbox shortage and surplus closes show exact date and 12-hour time only, last 14 hours", () => {
   const ui = readFileSync("apps/web/src/InvoiceSideOverview.tsx", "utf8");
   const css = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(ui, /آخر 14 ساعة/);
+  assert.doesNotMatch(ui, /آخر 3 أيام/);
   const begin = ui.indexOf("transfers.data.closings.items.map");
   const end = ui.indexOf("</tbody>", begin);
   assert.ok(begin > 0 && end > begin, "closing rows should exist");
   const closingRows = ui.slice(begin, end);
-  assert.match(closingRows, /<time dateTime=\\{entry\\.createdAt\\} className="invoice-side-closing-datetime">/);
-  assert.match(closingRows, /invoiceSideDateTime\\(entry\\.createdAt\\)/);
+  assert.match(closingRows, /<time dateTime=\{entry\.createdAt\} className="invoice-side-closing-datetime">/);
+  assert.match(closingRows, /invoiceSideDateTime\(entry\.createdAt\)/);
   assert.doesNotMatch(closingRows, /EventTimestamp|invoiceSideElapsed|منذ/);
-  assert.match(css, /\\.invoice-side-closing-datetime\\s*\\{/);
+  assert.match(css, /\.invoice-side-closing-datetime\s*\{/);
   const transfersStart = ui.indexOf("section.items.map");
   const transfersEnd = ui.indexOf("</tbody>", transfersStart);
   assert.match(ui.slice(transfersStart, transfersEnd),
-    /<EventTimestamp value=\\{entry\\.createdAt\\} nowMs=\\{clockNow\\} \\/>/);
-  assert.match(ui, /<EventTimestamp value=\\{row\\.lastCheckedInAt\\} nowMs=\\{clockNow\\} \\/>/);
+    /<EventTimestamp value=\{entry\.createdAt\} nowMs=\{clockNow\} \/>/);
+  assert.match(ui, /<EventTimestamp value=\{row\.lastCheckedInAt\} nowMs=\{clockNow\} \/>/);
 });
