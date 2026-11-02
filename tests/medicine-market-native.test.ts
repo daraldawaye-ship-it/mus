@@ -19,7 +19,8 @@ test("native market database has an independent migration set and bounded connec
     assert.equal((await db.query("SHOW lock_timeout")).rows[0].lock_timeout, "750ms");
     const again = await createMarketDatabase(url!, schema);
     await again.end();
-    assert.equal((await db.query("SELECT count(*)::int n FROM market_schema_migrations")).rows[0].n, 1);
+    assert.equal((await db.query("SELECT count(*)::int n FROM market_schema_migrations")).rows[0].n, 3);
+    assert.equal((await db.query("SELECT count(*)::int n FROM medicine_market_cards WHERE kind='pharmacy'")).rows[0].n, 70);
   } finally {
     await db.end();
     const cleanup = new Pool({ connectionString: url });
