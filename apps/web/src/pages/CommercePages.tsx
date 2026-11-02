@@ -81,6 +81,7 @@ import {
 } from "../purchase-drafts";
 import { fastLocalInvoiceItems, warmLocalInvoiceItems } from "../offline-shared-items";
 import { isOfflineNow } from "../connection-mode";
+import { adenInvoiceToday, invoiceDateAtSave } from "../invoice-save-date";
 import {
   Button,
   Card,
@@ -123,10 +124,7 @@ const itemLabel = (item: { code: string; name: string }) =>
 const amount = (value: string) => (
   <bdi className="financial-number">{formatMoney(value)}</bdi>
 );
-const today = () => {
-  const date=new Date();
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-};
+const today = adenInvoiceToday;
 function filter(
   setParams: ReturnType<typeof useSearchParams>[1],
   key: string,
@@ -1608,7 +1606,27 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   });
 
   const invalidate = useCommerceChanges(companyId);
-  const [documentDate, setDocumentDate] = useState(() => restored?.documentDate ?? today());
+  // Keep the original payload of an uncertain POST for safe retries.
+  // Ordinary saved drafts must start with the current Yemen business date.
+  const [documentDate, setDocumentDate] = useState(() =>
+    restored?.pending?.documentDate ?? today());
+  const manuallyEditedDate = useRef(false);
+  useEffect(() => {
+    const refresh = () => {
+      if (!manuallyEditedDate.current && !pending.current) {
+        const current = today();
+        setDocumentDate(previous => previous === current ? previous : current);
+      }
+    };
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
   const [currency, setCurrency] = useState<CompanyCurrency | null>(restored?.currency ?? null);
   const defaultYer = useDefaultYerCurrency(companyId, "commerce-options");
   const currencyManuallyChosen = useRef(restored?.manualCurrency ?? false);
@@ -2050,7 +2068,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     }
     const form = draft.form;
     pending.current = null;
-    setDocumentDate(form.documentDate);
+    // Opening an old purchase draft preserves its lines, not its stale date.
+    manuallyEditedDate.current = false;
+    setDocumentDate(today());
     setAccount(form.account);
     setSupplier(form.supplier);
     setSupplierReceiptNumber(form.supplierReceiptNumber);
@@ -2626,6 +2646,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     accountManuallyChosen.current = false;
     setOriginal(null);
     setShowOriginalPicker(false);
+    manuallyEditedDate.current = false;
     setDocumentDate(today());
     setCurrency(null);
     setBranch(null);
@@ -2682,6 +2703,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     accountManuallyChosen.current = false;
     setOriginal(null);
     setShowOriginalPicker(false);
+    manuallyEditedDate.current = false;
     setDocumentDate(today());
     setDescription("");
     setDiscount("0");
@@ -2745,10 +2767,13 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         setDoctorPromptOpen(true);
         return;
       }
+      const saveDate = invoiceDateAtSave(documentDate,
+        allowDateEdit && manuallyEditedDate.current);
+      if (saveDate !== documentDate) setDocumentDate(saveDate);
       const parsed = invoiceSchema.safeParse({
         idempotencyKey: crypto.randomUUID(),
         kind,
-        documentDate,
+        documentDate: saveDate,
         currencyId: currency?.id,
         branchId: branch?.id,
         locationId: location?.id,
@@ -3025,7 +3050,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                   required
                   value={documentDate}
                   disabled={locked || !allowDateEdit}
-                  onChange={(event) => setDocumentDate(event.target.value)}
+                  onChange={(event) => {
+                    manuallyEditedDate.current = true;
+                    setDocumentDate(event.target.value);
+                  }}
                 />
                 {kind !== "sale" && <Button
                   variant="secondary"
