@@ -83,51 +83,24 @@ WITH supplied(name,address,phones,source_domain,notes) AS (
   lower(regexp_replace(translate(s.name,'أإآٱى','ااااي'),'[[:space:]]+',' ','g')) AS normalized,
   md5('market-pharmacy-list-2026-11-02:' || s.name) AS uid,
   (SELECT trim(m.value) FROM unnest(string_to_array(s.phones,',')) WITH ORDINALITY AS m(value,seq)
-   WHERE trim(m.value) ~ '^7[0-9]{8}
-)
-INSERT INTO medicine_market_cards(
- kind,name,normalized_name,data,status,created_by,idempotency_key
-)
-SELECT
- 'pharmacy',name,normalized,
- jsonb_strip_nulls(jsonb_build_object(
-   'phone',mobile_phone,
-   'address',address,
-   'countryCode','YE','governorateCode','YE-AMANA','cityCode','YE-AMANA-SANAA',
-   'sourceNotes','الاسم والموقع ورقم الموبايل إن توفر واردة من قائمة المالك بتاريخ 02/11/2026؛ ورد فيها اسم المصدر ' ||
-     source_domain || ' دون رابط مباشر، ولم يُتحقق من البيانات مباشرة.' ||
-     CASE WHEN notes='24h' THEN ' ورد أن الفرع يخدم 24 ساعة؛ لم تؤكد ساعات العمل.' 
-     WHEN notes LIKE 'partial:%' THEN ' رقم إضافي ناقص (' || substring(notes from 10) || ') ولم يُسجل كرقم صالح.'
-     ELSE '' END
- )),
- 'published',0,
- (substring(uid,1,8)||'-'||substring(uid,9,4)||'-'||substring(uid,13,4)||'-'||
-  substring(uid,17,4)||'-'||substring(uid,21,12))::uuid
-FROM prepared
-ON CONFLICT DO NOTHING;
- ORDER BY m.seq LIMIT 1) AS mobile_phone
+    WHERE trim(m.value) ~ '^7[0-9]{8}$' ORDER BY m.seq LIMIT 1) AS mobile_phone,
+  (SELECT trim(m.value) FROM unnest(string_to_array(s.phones,',')) WITH ORDINALITY AS m(value,seq)
+    WHERE trim(m.value) ~ '^0[0-9]{7,8}$' ORDER BY m.seq LIMIT 1) AS landline_phone
  FROM supplied s
 )
-INSERT INTO medicine_market_cards(
- kind,name,normalized_name,data,status,created_by,idempotency_key
-)
-SELECT
- 'pharmacy',name,normalized,
+INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,created_by,idempotency_key)
+SELECT 'pharmacy',name,normalized,
  jsonb_strip_nulls(jsonb_build_object(
-   'phone',nullif(split_part(phones,',',1),''),
+   'phone',mobile_phone,
+   'landlinePhone',landline_phone,
    'address',address,
    'countryCode','YE','governorateCode','YE-AMANA','cityCode','YE-AMANA-SANAA',
-   'contacts',COALESCE((
-     SELECT jsonb_agg(jsonb_build_object('name','الصيدلية',
-       'role',CASE WHEN x.ordinality=1 THEN 'الهاتف الرئيسي' ELSE 'هاتف إضافي' END,
-       'phone',trim(x.value)) ORDER BY x.ordinality)
-     FROM unnest(string_to_array(nullif(phones,''),',')) WITH ORDINALITY AS x(value,ordinality)
-   ),'[]'::jsonb),
-   'sourceNotes','الاسم والموقع والرقم واردة من قائمة المالك بتاريخ 02/11/2026؛ ورد فيها اسم المصدر ' ||
-     source_domain || ' دون رابط مباشر، ولم يُتحقق من البيانات مباشرة.' ||
-     CASE WHEN notes='24h' THEN ' ورد أن الفرع يخدم 24 ساعة؛ لم تؤكد ساعات العمل.' 
-     WHEN notes LIKE 'partial:%' THEN ' رقم إضافي ناقص (' || substring(notes from 10) || ') ولم يُسجل كرقم صالح.'
-     ELSE '' END
+   'sourceNotes','الاسم والموقع والأرقام وردت من قائمة المالك بتاريخ 02/11/2026؛ المصدر المذكور ' ||
+      source_domain || ' دون رابط مباشر؛ لم يُتحقق من البيانات مباشرة. ' ||
+      'تم اختيار رقم موبايل واحد ورقم هاتف ثابت واحد كحد أقصى بصيغتهما المحلية، دون مفتاح دولي.' ||
+      CASE WHEN notes='24h' THEN ' وُصفت الصيدلية بأنها تعمل 24 ساعة؛ غير مؤكد.'
+        WHEN notes LIKE 'partial:%' THEN ' رُفض الرقم الناقص؛ لم يتم إدخاله.'
+        ELSE '' END
  )),
  'published',0,
  (substring(uid,1,8)||'-'||substring(uid,9,4)||'-'||substring(uid,13,4)||'-'||
