@@ -24,14 +24,6 @@ export function completedInvoiceQuantity(value: string): string {
   return entered ?? "1";
 }
 
-/** Invoice line quantity is stored as an exact integer. When the cell is idle,
- * display one decimal digit without changing inventory/accounting payloads.
- * Do not format while the cashier is typing or during a partial negative sign.
- */
-export function displayInvoiceQuantity(value: string): string {
-  return /^-?\d+$/.test(value) && value !== "-0" ? `${value}.0` : value;
-}
-
 /** Header discount is 0 when cleared. A single '-' becomes '-0' so users
  * can type a negative number without ever storing an empty or invalid field.
  * The trailing '.' is transient while typing six-decimal monetary amounts;
