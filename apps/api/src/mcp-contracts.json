@@ -8315,7 +8315,8 @@
       "dateTo",
       "q",
       "page",
-      "pageSize"
+      "pageSize",
+      "medicalOnly"
     ],
     "source": "routes-doctor-sales-report.ts"
   }
