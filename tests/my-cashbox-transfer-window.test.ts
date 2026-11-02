@@ -62,8 +62,9 @@ test("both transfer kinds use rolling 24 hours and closings use rolling 72 hours
   assert.match(records.queries[4]!.sql, /kind='close'/);
   assert.match(records.queries[4]!.sql, /sum\(GREATEST\(variance_amount,0\)\)/);
   assert.match(records.queries[4]!.sql, /sum\(GREATEST\(-variance_amount,0\)\)/);
-  assert.ok(!records.queries.slice(2).some(q => /kind='close'\s*ORDER BY/.test(q.sql)),
-    "The transfer timeline must not reset on a till closing");
+  assert.doesNotMatch(records.queries[2]!.sql, /kind='close'/);
+  assert.doesNotMatch(records.queries[2]!.sql, /last_closed|close_time|\$4::integer/i);
+  assert.doesNotMatch(records.queries[3]!.sql, /kind='close'/);
 });
 
 test("employee identity is always resolved from authenticated user and company", async () => {
