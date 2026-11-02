@@ -190,17 +190,17 @@ export function ShortcutEditor({user,companyId,open,onClose}:{
     <div className="form-stack">
       <p className="muted">تُحفظ اختصاراتك لحسابك {companyId?"في هذه الشركة":"في الموقع العام"}.
         تعرض القائمة الصفحات المتاحة لك فقط، وتبقى «قائمة الصفحات» متاحة افتراضيًا.
-        التحديد لا يمنح أي صلاحية جديدة.</p>
+        التحديد لا يمنح أي صلاحية جديدة. متابعة التسويات للأصناف تظهر تلقائيًا لكل من لديه صلاحية عرضها، ولا يمكن إخفاؤها من الاختصارات دون تغيير الصلاحية.</p>
       {error&&<Notice tone="error">{error}</Notice>}
       {current.isError&&<Notice tone="error">{errorMessage(current.error)}</Notice>}
       <div className="user-shortcut-options">
         {available.map(entry=><label key={entry.key} className="user-shortcut-option">
-          <input type="checkbox" checked={chosen.includes(entry.key)}
-            disabled={saving}
+          <input type="checkbox" checked={entry.key==="company.settlement-follow-up" || chosen.includes(entry.key)}
+            disabled={saving || entry.key==="company.settlement-follow-up"}
             onChange={event=>setChosen(old=>event.target.checked
               ? [...old.filter(k=>k!==entry.key),entry.key]
               : old.filter(k=>k!==entry.key))}/>
-          <span>{entry.name}</span><small>{entry.section}</small>
+          <span>{entry.name}</span><small>{entry.key==="company.settlement-follow-up"?"اختصار تلقائي مرتبط بصلاحية العرض":entry.section}</small>
         </label>)}
         {directory.isLoading&&<small>جارٍ تحميل قائمة الصفحات…</small>}
       </div>
