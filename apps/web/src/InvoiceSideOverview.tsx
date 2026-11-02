@@ -4,13 +4,18 @@ import { api, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
 
-type View = "pouch" | "electronic" | "present";
+type View = "pouch" | "electronic" | "closings" | "present";
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
 type Transfers = {
   hasEmployee: boolean;
-  lastClosedAt: string | null;
+  transferWindowStartAt: string | null;
+  closingWindowStartAt: string | null;
   pouch: { total: string; count: number; items: Transfer[] };
   electronic: { total: string; count: number; items: Transfer[] };
+  closings: { count: number; shortageTotal: string; surplusTotal: string; items: {
+    id: number; countedCash: string; bookBalance: string; difference: string;
+    shortage: string; surplus: string; notes: string; createdAt: string;
+  }[] };
 };
 type PresentEmployee = {
   employeeId: number;
@@ -21,6 +26,7 @@ type PresentEmployee = {
 const views: { value: View; label: string }[] = [
   { value: "pouch", label: "ترحيلاتي إلى الحافظة" },
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
+  { value: "closings", label: "العجز والزيادة عند الإغلاق" },
   { value: "present", label: "المحضرون حاليًا" },
 ];
 const localTime = (value: string) =>
@@ -56,7 +62,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
     refetchOnWindowFocus: true,
   });
   const selected = views.find(option => option.value === view)!;
-  const section = view === "present" ? null : transfers.data?.[view];
+  const section = view === "pouch" || view === "electronic" ? transfers.data?.[view] : null;
   const presentRows = (presence.data?.items ?? []).filter(row => row.isPresent);
   return (
     <section className="invoice-empty-panel invoice-side-overview" aria-label="خيارات الصندوق والحضور">
@@ -77,7 +83,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
       </details>
       <div className="invoice-side-overview-content">
         {offline && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
-        {view !== "present" ? (
+        {(view === "pouch" || view === "electronic") ? (
           <>
             {!offline && transfers.isLoading && <small>جارٍ تحميل ترحيلاتك…</small>}
             {transfers.isError && !offline && <small role="alert">تعذر قراءة ترحيلات الصندوق. راجع صلاحيات حسابك أو الاتصال.</small>}
@@ -86,7 +92,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
             {transfers.data?.hasEmployee && (
               <>
                 <small className="invoice-side-overview-since">
-                  من آخر إغلاق: {transfers.data.lastClosedAt ? localTime(transfers.data.lastClosedAt) : "منذ بداية تسجيل الحركات"}
+                  آخر 24 ساعة {transfers.data.transferWindowStartAt ? `(من ${localTime(transfers.data.transferWindowStartAt)})` : ""}
                 </small>
                 <div className="invoice-side-overview-total">
                   <span>الإجمالي ({section?.count ?? 0} حركة)</span>
@@ -106,9 +112,46 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                       ))}</tbody>
                     </table>
                     {section.count > section.items.length &&
-                      <small>تظهر آخر {section.items.length} حركة؛ الإجمالي يشمل جميع الحركات بعد الإغلاق.</small>}
+                      <small>تظهر آخر {section.items.length} حركة؛ الإجمالي يشمل جميع الحركات خلال آخر 24 ساعة.</small>}
                   </div>
                 ) : !transfers.isLoading && <small>لا توجد ترحيلات في هذه الفترة.</small>}
+              </>
+            )}
+          </>
+        ) : view === "closings" ? (
+          <>
+            {!offline && transfers.isLoading && <small>جارٍ تحميل إغلاقات صندوقك…</small>}
+            {!offline && transfers.isError && <small role="alert">تعذر عرض العجز والزيادة. راجع صلاحيات حسابك أو الاتصال.</small>}
+            {transfers.data && !transfers.data.hasEmployee &&
+              <small>لا يوجد موظف فعّال مرتبط بحسابك لهذه الشركة.</small>}
+            {transfers.data?.hasEmployee && (
+              <>
+                <small className="invoice-side-overview-since">
+                  آخر 3 أيام {transfers.data.closingWindowStartAt ? `(من ${localTime(transfers.data.closingWindowStartAt)})` : ""}
+                </small>
+                <div className="invoice-side-overview-variances">
+                  <span>العجز <strong><bdi>{formatWholeMoney(transfers.data.closings.shortageTotal)}</bdi></strong></span>
+                  <span>الزيادة <strong><bdi>{formatWholeMoney(transfers.data.closings.surplusTotal)}</bdi></strong></span>
+                </div>
+                <small>عدد الإغلاقات: {transfers.data.closings.count}</small>
+                {transfers.data.closings.items.length > 0 ? (
+                  <div className="invoice-side-overview-scroll" role="region" tabIndex={0}
+                    aria-label="العجز والزيادة عند الإغلاق خلال آخر 3 أيام">
+                    <table>
+                      <thead><tr><th>الإغلاق</th><th>العجز</th><th>الزيادة</th></tr></thead>
+                      <tbody>{transfers.data.closings.items.map(entry => (
+                        <tr key={entry.id} title={`الدفتر: ${formatWholeMoney(entry.bookBalance)}؛ النقد المعدود: ${formatWholeMoney(entry.countedCash)}${entry.notes ? `؛ ${entry.notes}` : ""}`}>
+                          <td>{localTime(entry.createdAt)}
+                            {entry.notes && <small className="invoice-side-overview-note">{entry.notes}</small>}</td>
+                          <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.shortage)}</bdi></td>
+                          <td className="invoice-side-overview-amount"><bdi>{formatWholeMoney(entry.surplus)}</bdi></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                    {transfers.data.closings.count > transfers.data.closings.items.length &&
+                      <small>تظهر آخر {transfers.data.closings.items.length} عملية إغلاق؛ الإجماليات تشمل كل الإغلاقات خلال آخر 3 أيام.</small>}
+                  </div>
+                ) : !transfers.isLoading && <small>لا توجد عمليات إغلاق خلال آخر 3 أيام.</small>}
               </>
             )}
           </>
