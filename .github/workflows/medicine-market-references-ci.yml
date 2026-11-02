@@ -9,6 +9,7 @@ on:
       - "apps/api/src/routes-medicine-market.ts"
       - "apps/web/src/pages/MedicineMarketPage.tsx"
       - "tests/medicine-market-reference-pharmacies.test.ts"
+      - "tests/medicine-market-agents-import.test.ts"
       - "tests/medicine-market-native.test.ts"
       - "tests/medicine-market-isolation.test.ts"
       - ".github/workflows/medicine-market-references-ci.yml"
@@ -20,6 +21,7 @@ on:
       - "apps/api/src/routes-medicine-market.ts"
       - "apps/web/src/pages/MedicineMarketPage.tsx"
       - "tests/medicine-market-reference-pharmacies.test.ts"
+      - "tests/medicine-market-agents-import.test.ts"
       - "tests/medicine-market-native.test.ts"
       - "tests/medicine-market-isolation.test.ts"
 jobs:
@@ -52,5 +54,6 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: node --import tsx --test tests/medicine-market-reference-pharmacies.test.ts
+      - run: node --import tsx --test tests/medicine-market-agents-import.test.ts
       - run: node --import tsx --test tests/medicine-market-isolation.test.ts tests/medicine-market-native.test.ts
       - run: docker build -f Dockerfile.market -t alraesy-market-check .
