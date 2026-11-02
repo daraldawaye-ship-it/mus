@@ -2591,6 +2591,73 @@
     },
     "source": "routes-inventory.ts"
   },
+  "POST /companies/:companyId/stock-transfers/legacy-batch": {
+    "queryFields": [],
+    "bodyContract": "legacyTransferBatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "documentDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "fromLocationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "toLocationId": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "sourceFileId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 25,
+          "items": {
+            "type": "object",
+            "properties": {
+              "legacyId": {
+                "type": "string",
+                "pattern": "^[0-9]{1,30}$"
+              },
+              "quantity": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,39}$"
+              },
+              "idempotencyKey": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "legacyId",
+              "quantity",
+              "idempotencyKey"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "documentDate",
+        "fromLocationId",
+        "toLocationId",
+        "sourceFileId",
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  },
   "POST /companies/:companyId/stock-adjustments": {
     "queryFields": [],
     "bodyContract": "stockAdjustmentSchema",
@@ -3727,7 +3794,10 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["warehouse", "returns"]
+          "enum": [
+            "warehouse",
+            "returns"
+          ]
         }
       },
       "additionalProperties": false
@@ -5828,7 +5898,12 @@
     "source": "routes-transaction-import-staging.ts"
   },
   "GET /companies/:companyId/transaction-import/stage-next": {
-    "queryFields": ["sourceSystem", "dateFrom", "dateTo", "kind"],
+    "queryFields": [
+      "sourceSystem",
+      "dateFrom",
+      "dateTo",
+      "kind"
+    ],
     "source": "routes-transaction-import-staging.ts"
   },
   "POST /companies/:companyId/transaction-import/stage-ack": {
