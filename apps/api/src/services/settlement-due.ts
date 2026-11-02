@@ -6,11 +6,28 @@
  * Periodic interval is never shorter than 1.5 days, for both the displayed
  * countLimit and the shared due predicate (rewards and task candidates).
  */
+// A request from the item card overrides the zero-stock exclusion until it is
+// satisfied by a newer completed adjustment. A never-counted item has no date.
+export const manualStocktakeRequestPredicate = `(
+  i.stocktake_required_at IS NOT NULL
+  AND (last_count.created_at IS NULL OR i.stocktake_required_at > last_count.created_at)
+)`;
+
+// Returns warehouses are excluded by the maintained stock_without_returns
+// projection; a zero net quantity in showroom + non-returns warehouses is not
+// due unless the card explicitly requests a new count. A negative, non-zero
+// showroom balance continues to qualify under the usual negative-stock rule.
 export const settlementDuePredicate = `(
-  last_count.id IS NULL
-  OR ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - last_count.document_date) > count_limit.raw_limit
-  OR COALESCE(stats.stock_showroom, 0) < 0
-  OR (i.stocktake_required_at IS NOT NULL AND i.stocktake_required_at > last_count.created_at)
+  (
+    COALESCE(stats.stock_without_returns, 0) <> 0
+    OR ${manualStocktakeRequestPredicate}
+  )
+  AND (
+    last_count.id IS NULL
+    OR ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - last_count.document_date) > count_limit.raw_limit
+    OR COALESCE(stats.stock_showroom, 0) < 0
+    OR ${manualStocktakeRequestPredicate}
+  )
 )`;
 
 export function settlementFollowUpFrom(importanceParameter: string): string {
