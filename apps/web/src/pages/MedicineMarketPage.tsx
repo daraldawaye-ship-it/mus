@@ -22,7 +22,9 @@ import { api, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
+import { isMarketAdministrativeKind } from "../../../../packages/contracts/src/medicine-market";
 import type {
+  MarketReferenceEntry,
   MarketKind as Kind,
   MarketFieldMeta as FieldDefinition,
   MarketMeta as Meta,
@@ -192,17 +194,52 @@ function RelationPicker({
     </div>
   );
 }
+function ReferencePicker({
+  field, value, references, cardData, onChange, disabled,
+}: {
+  field: FieldDefinition;
+  value: unknown;
+  references: MarketReferenceEntry[];
+  cardData: Record<string,unknown>;
+  onChange: (v: unknown) => void;
+  disabled: boolean;
+}) {
+  const referenceKind =
+    field.key === "countryCode" ? "country" :
+    field.key === "governorateCode" ? "governorate" : "city";
+  const parentCode = referenceKind === "governorate"
+    ? cardData.countryCode : referenceKind === "city"
+      ? cardData.governorateCode : null;
+  const options = references.filter(entry =>
+    entry.kind === referenceKind &&
+    (typeof parentCode !== "string" || entry.parentCode === parentCode));
+  return <Select label={field.label} value={typeof value === "string" ? value : ""}
+    disabled={disabled} onChange={event=>onChange(event.target.value || null)}>
+    <option value="">اختر من القائمة الإدارية</option>
+    {options.map(entry=> <option key={entry.code} value={entry.code}>{entry.name}</option>)}
+    {typeof value === "string" && !options.some(entry=>entry.code===value) && (
+      <option value={value}>{references.find(entry=>entry.code===value)?.name ?? value}</option>
+    )}
+  </Select>;
+}
 function FieldEditor({
   field,
   value,
   onChange,
   disabled,
+  references = [],
+  cardData = {},
 }: {
   field: FieldDefinition;
   value: unknown;
   onChange: (v: unknown) => void;
   disabled: boolean;
+  references?: MarketReferenceEntry[];
+  cardData?: Record<string,unknown>;
 }) {
+  if (field.type === "reference")
+    return <ReferencePicker field={field} value={value} references={references}
+      cardData={cardData} onChange={onChange} disabled={disabled}/>;
   if (field.type === "relation")
     return (
       <RelationPicker
@@ -483,13 +520,19 @@ function FieldValue({
   field,
   value,
   onOpen,
+  references = [],
 }: {
   field: FieldDefinition;
   value: unknown;
   onOpen: (id: number) => void;
+  references?: MarketReferenceEntry[];
 }) {
   if (!present(value))
     return <span className="medicine-market-unset">أكمل هذه المعلومة</span>;
+  if (field.type === "reference" && typeof value === "string") {
+    const reference = references.find(entry=>entry.code===value);
+    return <span className="medicine-market-value-text">{reference?.name ?? value}</span>;
+  }
   if (field.type === "relation" && typeof value === "number")
     return <RelationName id={value} onOpen={onOpen} />;
   if (field.type === "contacts" && Array.isArray(value))
@@ -587,6 +630,9 @@ export function MedicineMarketPage({
   });
   const permissions = meta.data?.permissions;
   const types = meta.data?.types ?? [];
+  // Only public contribution cards are in the browse/create menus.
+  const visibleTypes = types.filter(type=>!isMarketAdministrativeKind(type.key));
+  const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
   const write = (values: Record<string, string | null>) =>
     setParams((old) => {
@@ -881,7 +927,7 @@ export function MedicineMarketPage({
               }
             >
               <option value="">جميع الكروت</option>
-              {types.map((t) => (
+              {visibleTypes.map((t) => (
                 <option value={t.key} key={t.key}>
                   {t.label}
                 </option>
@@ -907,7 +953,7 @@ export function MedicineMarketPage({
             className="medicine-market-category-bar"
             aria-label="تصفية الكروت"
           >
-            {[{ key: "", label: "الكل" }, ...types].map((t) => (
+            {[{ key: "", label: "الكل" }, ...visibleTypes].map((t) => (
               <button
                 key={t.key}
                 type="button"
@@ -965,7 +1011,7 @@ export function MedicineMarketPage({
                           </span>
                           <strong>{card.name}</strong>
                         </div>
-                        {permissions?.canContribute && !card.archived && (
+                        {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived && (
                           <Button
                             variant="ghost"
                             size="compact"
@@ -1011,9 +1057,10 @@ export function MedicineMarketPage({
                                 : card.data[field.key]
                             }
                             onOpen={openCard}
+                            references={references}
                           />
                         </div>
-                        {permissions?.canContribute && !card.archived && (
+                        {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived && (
                           <Button
                             variant="ghost"
                             size="compact"
@@ -1333,6 +1380,10 @@ export function MedicineMarketPage({
                               {f.type === "relation" &&
                               typeof item.data[f.key] === "number" ? (
                                 <RelationName id={item.data[f.key] as number} />
+                              ) : f.type === "reference" &&
+                                  typeof item.data[f.key] === "string" ? (
+                                references.find(v=>v.code===item.data[f.key])?.name ??
+                                readable(item.data[f.key])
                               ) : (
                                 readable(item.data[f.key])
                               )}
@@ -1576,7 +1627,7 @@ export function MedicineMarketPage({
               onChange={(e) => write({ kind: e.target.value, page: null })}
             >
               <option value="">جميع الأنواع</option>
-              {types.map((t) => (
+              {visibleTypes.map((t) => (
                 <option key={t.key} value={t.key}>
                   {t.label}
                 </option>
@@ -1641,7 +1692,7 @@ export function MedicineMarketPage({
             disabled={busy}
             onChange={(e) => setNewKind(e.target.value as Kind)}
           >
-            {types.map((t) => (
+            {visibleTypes.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.label}
               </option>
@@ -1706,6 +1757,8 @@ export function MedicineMarketPage({
             <FieldEditor
               field={edit.field}
               value={edit.value}
+              references={references}
+              cardData={edit.card.data}
               disabled={busy}
               onChange={(value) => setEdit({ ...edit, value })}
             />
