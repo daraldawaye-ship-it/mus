@@ -9,7 +9,7 @@ const menu=readFileSync("apps/web/src/UserMenu.tsx","utf8");
 /** Extract all exact selector declarations so a later CSS block cannot
  * accidentally replace the popup positioning with an in-flow value. */
 function declarationList(css:string,selector:string) {
-  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  return [...css.replace(/\/\*[\s\S]*?\*\//g,"").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter(match=>match[1]!.split(",").some(part=>part.trim()===selector))
     .map(match=>match[2]!);
 }
