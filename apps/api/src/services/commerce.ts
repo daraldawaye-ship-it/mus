@@ -203,6 +203,7 @@ interface PreparedLine {
   price: string;
   gross: bigint;
   discount: bigint;
+  manualDiscount: bigint;
   total: bigint;
   baseTotal: bigint;
   commissionRate: string;
@@ -537,6 +538,7 @@ export async function createInvoice(
       price,
       gross,
       discount,
+      manualDiscount: 0n,
       total: gross - discount,
       baseTotal: 0n,
       commissionRate: "0",
@@ -545,38 +547,31 @@ export async function createInvoice(
       expiryDate,
     });
   }
-  // A header discount applies only to ordinary positive rows. Linked returns
-  // keep their original prorated discount; unlinked returns have no discount.
+  // Distribute the entered signed header discount on the invoice's net
+  // direction. Linked return prorations are separate immutable history: the
+  // new manual share is tracked for each line and does not consume the
+  // original invoice's discounted-refund entitlement.
   checkQuantum(input.discount, currency.decimal_places);
-  const positiveLines = prepared.filter((line) => line.quantity > 0n);
-  if (!positiveLines.length && moneyUnits(input.discount) !== 0n)
-    throw new HttpError(
-      400,
-      "invalid_discount",
-      "الخصم الإضافي يطبق على السطور الموجبة فقط",
+  let totals: ReturnType<typeof calculateInvoiceTotals>;
+  try {
+    totals = calculateInvoiceTotals(
+      prepared.map(line => ({
+        quantity: line.quantity.toString(),
+        unitPrice: line.price,
+        ...(line.quantity < 0n && line.original
+          ? { discount: moneyString(line.discount) } : {}),
+      })),
+      input.discount,
+      currency.decimal_places,
     );
-  if (positiveLines.length) {
-    let totals: ReturnType<typeof calculateInvoiceTotals>;
-    try {
-      totals = calculateInvoiceTotals(
-        positiveLines.map((line) => ({
-          quantity: line.quantity.toString(),
-          unitPrice: line.price,
-        })),
-        input.discount,
-        currency.decimal_places,
-      );
-    } catch (error) {
-      throw new HttpError(
-        400,
-        "invalid_discount",
-        error instanceof Error ? error.message : "الخصم غير صالح",
-      );
-    }
-    for (const [index, line] of positiveLines.entries()) {
-      line.discount = moneyUnits(totals.lineDiscounts[index]);
-      line.total = moneyUnits(totals.lineTotals[index]);
-    }
+  } catch (error) {
+    throw new HttpError(400, "invalid_discount",
+      error instanceof Error ? error.message : "الخصم غير صالح");
+  }
+  for (const [index,line] of prepared.entries()) {
+    line.discount = moneyUnits(totals.lineDiscounts[index]);
+    line.manualDiscount = moneyUnits(totals.lineManualDiscounts[index]);
+    line.total = moneyUnits(totals.lineTotals[index]);
   }
   // Store the effective rate and exact monetary commission at invoice posting.
   // The dated item rule uses the invoice document date, inclusive at both ends.
@@ -828,7 +823,7 @@ export async function createInvoice(
   for (const [index, line] of prepared.entries()) {
     const snapshot = line.original ?? line.item;
     const result = await client.query(
-      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id,commission_rate,commission_amount) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id",
+      "INSERT INTO invoice_lines(company_id,invoice_id,line_number,item_id,item_code,item_name,unit,unit_name,factor2,factor3,purchase_factor,quantity,smallest_quantity,unit_price,gross,discount,total,base_total,expiry_date,original_line_id,commission_rate,commission_amount,manual_discount) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING id",
       [
         companyId,
         invoiceId,
@@ -852,6 +847,7 @@ export async function createInvoice(
         line.original?.id ?? null,
         line.commissionRate,
         moneyString(line.commissionAmount),
+        moneyString(line.manualDiscount),
       ],
     );
     const lineId = result.rows[0].id as number;
