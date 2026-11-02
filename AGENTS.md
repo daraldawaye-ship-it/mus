@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+## Avatar item shortcuts: direct adjustment, transfer, and linked item return memos (2026-11-02)
+
+In the avatar menu's **صنف** tab, preserve the existing history tiles **مشتريات / مبيعات / تسويات / مناقلات / البدائل** and **كرت الصنف**. Add four item-specific quick actions: **تسوية الصنف** and **مناقلة الصنف** (open existing role-gated inventory bottom sheets using the selected item via `ItemQuickInventorySheetHost`, no automatic stock posting); **إرسال مذكرة بالصنف** and **إرسال مذكرة مرتجع** (navigate to existing company memo creation with `new=1&itemId=...&itemName=...&itemMemo=item|return`, pre-link the item and require recipient/explicit send). The latter must set the **actual memo type** `item_return`, displayed **إرجاع صنف**, not just a title; preserve the four previous types in contracts and DB check via migration `175_item_return_memo_type.sql`. Do not bypass per-page permissions, memo idempotency, or existing transfer-follow-up links. Disable item-specific buttons until an item is selected; disable memo buttons when the memo-create page permission is absent. See `docs/AVATAR_ITEM_QUICK_ACTIONS.md` and `tests/avatar-item-quick-actions.test.ts`.
+
+
 ## Sales save dialog compact customer/doctor fields (2026-11-02)
 
 The sales invoice doctor/customer save modal (`doctorPromptOpen`) must match newer forms: show **all four field labels inside** their controls, not separate labels above. Reuse `field floating-ready`, `data-label-raised="true"` and scoped CSS `invoice-customer-doctor-form`. Place the **customer number** and **customer name** fields adjacent in a two-column `invoice-customer-identity-row` on desktop; stack on screens <=680px. Remove the verbose `السهمان ↑ ↓ للتنقل، وEnter للاختيار...` paragraph and redundant long placeholders. **Do not** change keyboard ArrowUp/ArrowDown/Enter selection, doctor auto creation, customer number matching, offline queue, or posting permissions; hiding explanation is display-only. See `docs/INVOICE_SALES_CUSTOMER_DOCTOR_MODAL_LAYOUT.md` and `tests/invoice-sales-save-modal-layout.test.ts`.
