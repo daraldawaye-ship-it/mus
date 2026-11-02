@@ -1,0 +1,40 @@
+name: Zero negative stock without shelf or expiry
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'apps/api/src/routes-inventory.ts'
+      - 'tests/commerce.test.ts'
+      - 'tests/zero-negative-stock.test.ts'
+      - '.github/workflows/zero-negative-stock-ci.yml'
+jobs:
+  zero-negative-stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/zero-negative-stock.test.ts tests/stock-adjustment-count.test.ts
+      - name: Integration test real negative, expiry-tracked count and balanced ledger
+        run: node --import tsx --test --test-name-pattern="zero of negative expiry-tracked stock needs no date" tests/commerce.test.ts

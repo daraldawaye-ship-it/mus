@@ -1638,6 +1638,58 @@ test("zero selected stock location bypasses shelf/expiry requirements and preser
   await assertBalanced(f,s.company.id);
 });
 
+test("zero of negative expiry-tracked stock needs no date, shelf or composition and keeps journals balanced", async t => {
+  const f=await fixture(t),s=await setup(f,"Negative expiry-tracked zero count");
+  const updated=await f.owner.ok<{settings:InventorySettings}>(
+    "PUT",`${s.path}/inventory-settings`,{
+      inventoryAccountId:s.accounts.inventory!.id,
+      salesAccountId:s.accounts.salesRevenue!.id,
+      cogsAccountId:s.accounts.costOfGoodsSold!.id,
+      surplusAccountId:s.accounts.stockSurplus!.id,
+      shortageAccountId:s.accounts.stockShortage!.id,
+      costingMethod:"weighted_average",allowNegative:true,
+      revision:s.settings.revision,
+    },
+  );
+  assert.equal(updated.settings.allowNegative,true);
+  const item=await s.item({
+    factor2:1,factor3:1,hasExpiry:true,nearestExpiryDate:null,
+    purchasePrice:"20",salePrice1:"30",
+  });
+  // Sales can legitimately leave an old item negative even when no expiry
+  // batch was known. Zero is a correction, not a newly purchased dated lot.
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"4"}],
+  }));
+  const snapshot=()=>f.owner.ok<{quantitySmallest:string}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  );
+  assert.equal((await snapshot()).quantitySmallest,"-4");
+  const original=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item;
+  const body={
+    idempotencyKey:randomUUID(),documentDate:"2026-10-19",
+    itemId:item.id,locationId:s.showroom.id,
+    countedUnits:{unit1:"0"},expectedQuantitySmallest:"-4",
+    unit:1 as const,expiryDate:null,zeroLocation:true,
+  };
+  const first=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,body,201);
+  assert.equal(first.operation.movements.reduce((sum,m)=>sum+BigInt(m.quantitySmallest),0n),4n);
+  assert.equal((await snapshot()).quantitySmallest,"0");
+  const current=(await f.owner.ok<{item:Item}>(
+    "GET",`${s.path}/items/${item.id}`)).item;
+  assert.equal(current.nearestExpiryDate,original.nearestExpiryDate);
+  assert.equal(current.shelfId,original.shelfId);
+  assert.equal(current.compositionId,original.compositionId);
+  assert.equal(current.revision,original.revision);
+  const repeated=await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,body,200);
+  assert.equal(repeated.operation.id,first.operation.id);
+  await assertBalanced(f,s.company.id);
+});
+
 test("physical reconciliation accepts a previously negative balance and counts packs plus loose ampoules", async t => {
   const f=await fixture(t),s=await setup(f,"Negative stock physical count");
   const updated=await f.owner.ok<{settings:InventorySettings}>(

@@ -1,0 +1,11 @@
+-- Documentation only; does not touch business data or inventory.
+INSERT INTO explanation_nodes
+  (group_id,parent_id,position,kind,title,body,import_key)
+SELECT g.id,NULL,
+  COALESCE((SELECT max(n.position) FROM explanation_nodes n WHERE n.group_id=g.id AND n.parent_id IS NULL),0)+1,
+  'heading',
+  'تصفير رصيد الصنف السالب دون رف أو انتهاء — 2 نوفمبر 2026',
+  'بلاغ المالك مع صورة: في تسوية صنف رصيده سالب، ضغط الترحيل مع الكمية المعدودة صفر فرُفض بسبب أقرب تاريخ انتهاء للصنف. تصفير الرصيد ليس تسوية زيادة عادية ولا يحتاج رفاً أو تاريخ انتهاء أو تركيباً للصنف. أصل المشكلة: نموذج InventoryPages.tsx كان يعتبر العد إلى صفر تسوية عادية ما لم يُضغط الزر الخاص تصفير الموقع المحدد، والـ API كان يعامل فرق التصفير الموجب من رصيد سالب كزيادة تحتاج تاريخ انتهاء جديداً. الإصلاح: إذا كانت كافة حقول العد للوحدات الفعالة تساوي صفرًا، يعرض زر ترحيل باسم تصفير رصيد الصنف ويطلب تأكيد اسم الصنف والموقع، ويرسل zeroLocation:true وcountedUnits.unit1=0 دون shelfId/nearestExpiryDate/compositionId. يختفي إلزام الرف والانتهاء من الشاشة أثناء التصفير؛ ويبقى زر تصفير الموقع المحدد مستقلاً ويعمل. من جانب الخادم routes-inventory.ts: في zeroLocation ومع delta>0 لمخزون سالب، لا تُطبّق مطالبة تاريخ انتهاء مخزون جديد، ولا يُختلق تاريخ؛ يمرر allowUnknownExpiry:true إلى applyStock لتسجيل الحركة في الدفعة مجهولة التاريخ؛ ويُسمح بتكلفة صفرية إن لزم للتصفير دون تعميم ذلك على زيادات الجرد العادية. لا تعديل بيانات كرت الصنف الحالية مثل الرف أو التركيب أو أقرب انتهاء. تتواصل متطلبات الموقع وصلاحية inventory.post وfinance.post، فحص تغير الرصيد المتوقع، التسلسل الزمني، معاملة قاعدة البيانات والقيد المالي والتدقيق ومنع تكرار العملية؛ عدم طلب الرف/تاريخ الانتهاء ليس إعفاء من الأمان والمحاسبة. الجرد لعدد غير صفري يبقى ملزمًا بشروطه المعتادة. التصفير يخص الموقع المختار فقط ويصل إجمالي الرصيد فيه إلى الصفر، وليس كافة المعارض والمخازن. الاختبارات tests/zero-negative-stock.test.ts وstock-adjustment-count.test.ts مع اختبار PostgreSQL محلي منعزل في commerce.test.ts باسم zero of negative expiry-tracked stock needs no date. الملفان المنفذان InventoryPages.tsx وroutes-inventory.ts؛ لا تغيّر نظام المخزون دون الاختبار المتكامل.',
+  'developer-zero-negative-stock-no-expiry-20261102'
+FROM explanation_groups g WHERE g.slug='site-developer-guide'
+ON CONFLICT(import_key) DO NOTHING;

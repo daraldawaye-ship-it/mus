@@ -627,7 +627,7 @@ export function inventoryRoutes(pool: Pool): Router {
           // while shortage consumes all available batches FEFO without
           // inventing or changing their expiration dates.
           if (aggregateCount) {
-            if (delta > 0n && item.hasExpiry) {
+            if (delta > 0n && item.hasExpiry && !input.zeroLocation) {
               movementExpiryDate =
                 allBatches.find(row => BigInt(row.quantity_smallest)>0n && row.batch_key)?.batch_key
                 || input.nearestExpiryDate
@@ -689,7 +689,7 @@ export function inventoryRoutes(pool: Pool): Router {
                 (numerator / divisor +
                   ((numerator % divisor) * 2n >= divisor ? 1n : 0n)) *
                 quantum(settings.baseDecimalPlaces);
-              if (cost <= 0n)
+              if (cost <= 0n && !input.zeroLocation)
                 conflict(
                   "زيادة الجرد تحتاج تكلفة موجبة بالعملة الأساسية؛ قد تكون التكلفة المدخلة أقل من دقة العملة",
                 );
@@ -704,6 +704,8 @@ export function inventoryRoutes(pool: Pool): Router {
               expiryDate: movementExpiryDate,
               operationId,
               allowExpired: true,
+              // Correcting negative stock to zero does not create a new lot.
+              allowUnknownExpiry: input.zeroLocation && delta > 0n,
             });
             const amount =
               movement.costBase < 0n ? -movement.costBase : movement.costBase;

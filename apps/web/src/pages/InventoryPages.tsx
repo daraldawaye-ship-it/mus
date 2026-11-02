@@ -1313,6 +1313,14 @@ function OperationEditor({
     staleTime: 10_000,
   });
   const batchQuantity = batch.data?.quantitySmallest ?? null;
+  // Counting zero is the same operation as the explicit "zero location"
+  // action. No shelf, expiry or composition is needed for an empty count.
+  // Limit this to valid zero strings; malformed counts still fail validation.
+  const countIsZero = mode === "adjustment" && !!item &&
+    [fields.countUnit1,
+      ...(item.factor2 > 1 ? [fields.countUnit2] : []),
+      ...(item.factor3 > 1 ? [fields.countUnit3] : []),
+    ].every(value => /^0*$/.test(value.trim()));
   function edit<K extends keyof OperationFields>(
     key: K,
     value: OperationFields[K],
@@ -1364,11 +1372,15 @@ function OperationEditor({
       body = submitted.current.body;
       action = submitted.current.mode;
     } else {
+      const zeroCount = mode === "adjustment" && (zeroLocation || countIsZero);
       if (!item || !fromLocation || (mode === "transfer" && !toLocation)) {
         setError("اختر الصنف والمواقع المطلوبة.");
         return;
       }
-      if (mode === "adjustment" && !zeroLocation) {
+      if (zeroCount && !zeroLocation && !window.confirm(
+        `تصفير رصيد "${item.name}" في موقع "${fromLocation.name}" سواء كان سالبًا أو موجبًا؟ لن يتغير الرف أو تاريخ الانتهاء أو تركيب الصنف.`,
+      )) return;
+      if (mode === "adjustment" && !zeroCount) {
         if (!item.compositionId && !selectedComposition) {
           setError("هذا الصنف بدون تركيب؛ اختر التركيب قبل حفظ التسوية.");
           return;
@@ -1409,14 +1421,14 @@ function OperationEditor({
               ...common,
               locationId: fromLocation.id,
               unit: 1,
-              countedUnits: zeroLocation
+              countedUnits: zeroCount
                 ? { unit1: "0" }
                 : {
                     unit1: fields.countUnit1 || "0",
                     ...(item.factor2 > 1 ? { unit2: fields.countUnit2 || "0" } : {}),
                     ...(item.factor3 > 1 ? { unit3: fields.countUnit3 || "0" } : {}),
                   },
-              ...(zeroLocation ? { zeroLocation: true } : {
+              ...(zeroCount ? { zeroLocation: true } : {
                 nearestExpiryDate: item.hasExpiry ? fields.nearestExpiryDate || null : undefined,
                 shelfId: selectedShelf?.id ?? null,
                 ...(!item.compositionId && selectedComposition
@@ -1694,7 +1706,7 @@ function OperationEditor({
                 setDirty(true);
               }}
             />
-            {mode === "adjustment" && item && !item.compositionId && (
+            {mode === "adjustment" && !countIsZero && item && !item.compositionId && (
               <ServerLookup<ItemComposition>
                 companyId={companyId}
                 resource={`/companies/${companyId}/item-compositions?active=true`}
@@ -1776,7 +1788,7 @@ function OperationEditor({
                 )}
               </>
             )}
-            {mode === "adjustment" && (
+            {mode === "adjustment" && !countIsZero && (
               <ServerLookup<{id:number;name:string}>
                 companyId={companyId}
                 resource={`/companies/${companyId}/item-options?type=shelves&archived=false`}
@@ -1791,7 +1803,7 @@ function OperationEditor({
                 emptyLabel="اختر الرف"
               />
             )}
-            {mode === "adjustment" && item?.hasExpiry && (
+            {mode === "adjustment" && !countIsZero && item?.hasExpiry && (
               <ExpiryMonthField
                 label="شهر وسنة أقرب انتهاء في كرت الصنف (إلزامي)"
                 required
@@ -1880,7 +1892,7 @@ function OperationEditor({
                     ? "إعادة تأكيد الطلب نفسه"
                     : mode === "transfer"
                       ? "ترحيل المناقلة"
-                      : "ترحيل تسوية الجرد"}
+                      : countIsZero ? "تصفير رصيد الصنف" : "ترحيل تسوية الجرد"}
               </Button>
               {mode === "adjustment" && (
                 <Button type="button" variant="secondary"
