@@ -214,9 +214,22 @@ function MemosContent({ context }: { context: CompanyContext }) {
         Number(rawItem) > 2147483647) return;
     autoOpened.current = true;
     setLinks({ ...emptyMemoLinks(), itemId: Number(rawItem) });
-    setTitle(`متابعة مناقلة المرتجعات للصنف #${rawItem}`);
-    setBody(transferFollowupText(params));
-    setType("review");
+    const memoIntent = params.get("itemMemo");
+    const itemName = (params.get("itemName") ?? `#${rawItem}`).trim().slice(0, 120) || `#${rawItem}`;
+    if (memoIntent === "return") {
+      setTitle(`إرجاع صنف: ${itemName}`.slice(0, 200));
+      setBody(`طلب إرجاع الصنف «${itemName}».`);
+      setType("item_return");
+    } else if (memoIntent === "item") {
+      setTitle(`مذكرة بشأن الصنف: ${itemName}`.slice(0, 200));
+      setBody(`بخصوص الصنف «${itemName}».`);
+      setType("task");
+    } else {
+      // Existing transfer-reminder links retain their historical behavior.
+      setTitle(`متابعة مناقلة المرتجعات للصنف #${rawItem}`);
+      setBody(transferFollowupText(params));
+      setType("review");
+    }
     setOpen(true);
   }, [params, canCreate, restored]);
   const [type, setType] = useState<MemoType>(restored?.payload.type ?? "task");
