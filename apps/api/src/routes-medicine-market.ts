@@ -176,6 +176,12 @@ function normalizeValue(field: MarketField, value: unknown): unknown {
       return parse(z.number().int().positive().max(2147483647), value);
     case "reference":
       return parse(z.string().trim().min(2).max(48).regex(/^[A-Za-z0-9_-]+$/), value);
+    case "mobile-phone":
+      return parse(z.string().trim().regex(/^7[0-9]{8}$/, "الموبايل يجب أن يبدأ بـ7 ويتكون من 9 أرقام"), value);
+    case "landline-phone":
+      // User's example 014322238 has 9 digits; other supplied local fixed
+      // numbers have 8. Retain both lengths without a country prefix.
+      return parse(z.string().trim().regex(/^0[0-9]{7,8}$/, "الهاتف الثابت يبدأ بـ0 ويتكون من 8 أو 9 أرقام"), value);
     case "contacts":
       return parse(z.array(contact).max(30), value);
     case "ingredients":
