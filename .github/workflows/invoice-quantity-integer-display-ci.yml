@@ -1,0 +1,30 @@
+name: Invoice Quantity Integer Display CI
+on:
+  push:
+    branches:
+      - preview/render-2026-10-23
+    paths:
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "apps/web/src/invoice-number-input.ts"
+      - "tests/invoice-signed-discount-input.test.ts"
+      - ".github/workflows/invoice-quantity-integer-display-ci.yml"
+  pull_request:
+    paths:
+      - "apps/web/src/pages/CommercePages.tsx"
+      - "apps/web/src/invoice-number-input.ts"
+      - "tests/invoice-signed-discount-input.test.ts"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx tsx --test tests/invoice-signed-discount-input.test.ts
