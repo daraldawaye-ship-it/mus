@@ -1638,6 +1638,79 @@ test("zero selected stock location bypasses shelf/expiry requirements and preser
   await assertBalanced(f,s.company.id);
 });
 
+test("historical unit activation only after zeroing every stock batch preserves invoice snapshot", async t => {
+  const f=await fixture(t),s=await setup(f,"Activate unused unit with historical stock");
+  await f.owner.ok<{settings:InventorySettings}>(
+    "PUT",`${s.path}/inventory-settings`,{
+      inventoryAccountId:s.accounts.inventory!.id,
+      salesAccountId:s.accounts.salesRevenue!.id,
+      cogsAccountId:s.accounts.costOfGoodsSold!.id,
+      surplusAccountId:s.accounts.stockSurplus!.id,
+      shortageAccountId:s.accounts.stockShortage!.id,
+      costingMethod:"weighted_average",allowNegative:true,
+      revision:s.settings.revision,
+    },
+  );
+  const item=await s.item({
+    unit1Name:"باكت",unit2Name:"",factor2:1,
+    unit3Name:"",factor3:1,purchaseFactor:1,
+    purchasePrice:"20",salePrice1:"30",hasExpiry:true,
+  });
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"2"}],
+  }));
+  const path=`${s.path}/items/${item.id}`;
+  const newUnit={
+    changes:{unit2Name:"أمبولة",factor2:5},
+    expected:{unit2Name:"",factor2:1},
+    mode:"last-write-wins",
+  };
+  assert.equal((await f.owner.request("PATCH",path,newUnit)).status,409,
+    "must not enable a new unit with -2 still outstanding");
+  const snapshot=()=>f.owner.ok<{quantitySmallest:string}>(
+    "GET",`${s.path}/stock-count-snapshot?itemId=${item.id}&locationId=${s.showroom.id}`,
+  );
+  assert.equal((await snapshot()).quantitySmallest,"-2");
+  await f.owner.ok<{operation:StockOperation}>(
+    "POST",`${s.path}/stock-adjustments`,{
+      idempotencyKey:randomUUID(),documentDate:"2026-10-19",
+      itemId:item.id,locationId:s.showroom.id,
+      countedUnits:{unit1:"0"},expectedQuantitySmallest:"-2",
+      unit:1,expiryDate:null,zeroLocation:true,
+    },201);
+  assert.equal((await snapshot()).quantitySmallest,"0");
+  const stockMovementCount=BigInt((await f.pool.query<{n:string}>(
+    "SELECT count(*)::text AS n FROM stock_movements WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  )).rows[0]!.n);
+  const changed=await f.owner.ok<{item:Item}>("PATCH",path,newUnit);
+  assert.equal(changed.item.unit2Name,"أمبولة");
+  assert.equal(changed.item.factor2,5);
+  const current=(await f.owner.ok<{item:Item}>("GET",path)).item;
+  assert.equal(current.unit2Name,"أمبولة");
+  assert.equal(current.factor2,5);
+  assert.equal((await snapshot()).quantitySmallest,"0");
+  const lines=await f.pool.query<{factor2:number}>(
+    "SELECT factor2 FROM invoice_lines WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  );
+  assert.ok(lines.rows.length>0);
+  assert.ok(lines.rows.every(line=>line.factor2===1),
+    "invoice unit snapshots must remain under their original conversion");
+  assert.equal(BigInt((await f.pool.query<{n:string}>(
+    "SELECT count(*)::text AS n FROM stock_movements WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  )).rows[0]!.n),stockMovementCount);
+  assert.equal((await f.owner.request("PATCH",path,{
+    changes:{factor2:6},expected:{factor2:5},mode:"last-write-wins",
+  })).status,409,"an already active historical factor remains immutable");
+  assert.equal((await f.owner.request("PATCH",path,{
+    changes:{unit1Name:"علبة"},expected:{unit1Name:"باكت"},mode:"last-write-wins",
+  })).status,409,"historical first unit remains immutable");
+  await assertBalanced(f,s.company.id);
+});
+
 test("zero of negative expiry-tracked stock needs no date, shelf or composition and keeps journals balanced", async t => {
   const f=await fixture(t),s=await setup(f,"Negative expiry-tracked zero count");
   const updated=await f.owner.ok<{settings:InventorySettings}>(
