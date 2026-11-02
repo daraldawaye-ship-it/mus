@@ -1,5 +1,12 @@
 # Alraesy — rebuilt foundation
 
+## Units after stock history and invoice side panel (2026-11-02)
+
+When an item has historical stock movements, allow only activating a previously inactive second/third unit after verifying **every authoritative stock_balances batch in all locations is exactly zero**; never change existing active units, the first unit or expiry policy. Field-level autosave may save an inactive unit's name before its factor. Keep historical posted invoice conversion snapshots and accounting intact. See `apps/api/src/services/item-unit-history.ts` and `docs/ITEM_ZERO_STOCK_UNITS_AND_INVOICE_SIDEBAR.md`.
+
+The second (formerly empty) sidebar panel on sales invoices holds an expandable quick-view selector: **my pouch transfers since my last till close**, **my electronic-wallet transfers since my last till close**, and **currently present staff**. The historical timeline must be scoped from the authenticated actor's employee, not an employee ID supplied by the browser. Only query these views on selection; enforce company and attendance-page permissions. Totals cover all operations since last close and the table displays the newest 50 per kind; never include offline pending transfers as posted. Reuse `apps/web/src/InvoiceSideOverview.tsx` and the existing attendance API; add future views there, not more large blank panels. Confirm GitHub CI and Render live after modifying these parts.
+
+
 ## Item-card Zod defaults regression (2026-11-01)
 
 Field PATCH decoding must NEVER inject defaults for omitted card fields. Zod 4 `itemFields.partial()` did so and turned a one-field edit into an update of dozens of unrelated columns. Use the explicit default-free partial shape built from `itemFields.shape`, unwrapping `ZodDefault` with `removeDefault()` before `optional()`; assert `Object.keys(parsed.changes)` exactly equals input keys. Also, when `mode === "last-write-wins"`, `fullInput` is null: only compare `fullInput!.revision` if `!fieldPatch`. After each successful edit of commissionRate, clearanceFrom or clearanceTo, queue a notification even if the other clearance fields are empty; commission earnings still require complete valid rate/date range. See `docs/ITEM_CARD_FIELD_CONCURRENCY.md`.
