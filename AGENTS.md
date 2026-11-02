@@ -1,5 +1,10 @@
 # Alraesy — rebuilt foundation
 
+
+## Signed header discounts even on net-negative sales or purchases (2026-11-02)
+
+The owner specifically requires the sales AND purchase invoice discount field to accept both positive and negative numbers even when every line or the net gross is negative (a return). Do not disable the input on `hasPositiveLines` or quietly coerce its value to zero. Allocate the manually entered header discount to returned lines if gross<0, otherwise to positive lines, keeping `net = gross - discount`; linked return prorations still inherit their original invoice discount. The `invoice_lines.manual_discount` amount is separate from the prorated historical discount, and database integrity refund limits must exclude it. A negative adjustment must not flip a negative return line positive, and nonzero discounts on zero-gross invoices are blocked. The signed behavior applies to sale and purchase without changing signed quantity rules, existing item unit prices, or posted history. See `docs/INVOICE_NUMERIC_FIELDS_AND_SIGNED_DISCOUNT.md`, migration `174_signed_negative_invoice_discounts.sql`, and isolated PostgreSQL CI `signed-negative-invoice-discount-ci.yml`.
+
 ## Invoice quantity text must be an integer (2026-11-02 correction)
 
 The owner explicitly rejected showing `1.0` or `15.0` in sales/purchase invoice quantity cells when fractions are forbidden. Show the original integer string (`1`, `15`, `-5`) without appending a decorative decimal, including when the field is not focused. The former `displayInvoiceQuantity` presentation helper was removed. Keep no-empty/no-zero validation, negative return quantities, and the unchanged backend integer-only schema. The 2026-11-02 one-decimal display experiment is superseded; see `docs/INVOICE_NUMERIC_FIELDS_AND_SIGNED_DISCOUNT.md`.
