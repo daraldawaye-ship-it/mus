@@ -1,0 +1,28 @@
+name: Owner-issued hourly login links and password rules
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-auth.ts'
+      - 'apps/api/src/routes-public.ts'
+      - 'apps/api/src/http.ts'
+      - 'apps/api/migrations/20261102_user_magic_login_links.sql'
+      - 'apps/web/src/QuickLoginPage.tsx'
+      - 'apps/web/src/pages/PublicPages.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/api.tsx'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/user-magic-link-login.test.ts'
+      - '.github/workflows/user-magic-link-ci.yml'
+jobs:
+  user-login-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/user-magic-link-login.test.ts
