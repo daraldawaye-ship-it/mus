@@ -1,5 +1,9 @@
 # Alraesy — rebuilt foundation
 
+## Invoice quantity text must be an integer (2026-11-02 correction)
+
+The owner explicitly rejected showing `1.0` or `15.0` in sales/purchase invoice quantity cells when fractions are forbidden. Show the original integer string (`1`, `15`, `-5`) without appending a decorative decimal, including when the field is not focused. The former `displayInvoiceQuantity` presentation helper was removed. Keep no-empty/no-zero validation, negative return quantities, and the unchanged backend integer-only schema. The 2026-11-02 one-decimal display experiment is superseded; see `docs/INVOICE_NUMERIC_FIELDS_AND_SIGNED_DISCOUNT.md`.
+
 ## Units after stock history and invoice side panel (2026-11-02)
 
 When an item has historical stock movements, allow only activating a previously inactive second/third unit after verifying **every authoritative stock_balances batch in all locations is exactly zero**; never change existing active units, the first unit or expiry policy. Field-level autosave may save an inactive unit's name before its factor. Keep historical posted invoice conversion snapshots and accounting intact. See `apps/api/src/services/item-unit-history.ts` and `docs/ITEM_ZERO_STOCK_UNITS_AND_INVOICE_SIDEBAR.md`.
