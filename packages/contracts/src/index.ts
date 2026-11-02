@@ -609,10 +609,7 @@ export const ownerPasswordResetSchema = z
   .object({ newPassword: passwordSchema })
   .strict();
 export const passwordChangeSchema = z
-  .object({
-    currentPassword: z.string().min(1).max(128),
-    newPassword: passwordSchema,
-  })
+  .object({ newPassword: passwordSchema })
   .strict();
 export const userPatchSchema = z
   .object({
