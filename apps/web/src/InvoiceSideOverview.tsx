@@ -134,7 +134,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
             {transfers.data?.hasEmployee && (
               <>
                 <small className="invoice-side-overview-since">
-                  آخر 3 أيام {transfers.data.closingWindowStartAt ? `(من ${invoiceSideDateTime(transfers.data.closingWindowStartAt)})` : ""}
+                  آخر 14 ساعة {transfers.data.closingWindowStartAt ? `(من ${invoiceSideDateTime(transfers.data.closingWindowStartAt)})` : ""}
                 </small>
                 <div className="invoice-side-overview-variances">
                   <span>العجز <strong><bdi>{formatWholeMoney(transfers.data.closings.shortageTotal)}</bdi></strong></span>
@@ -143,7 +143,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                 <small>عدد الإغلاقات: {transfers.data.closings.count}</small>
                 {transfers.data.closings.items.length > 0 ? (
                   <div className="invoice-side-overview-scroll" role="region" tabIndex={0}
-                    aria-label="العجز والزيادة عند الإغلاق خلال آخر 3 أيام">
+                    aria-label="العجز والزيادة عند الإغلاق خلال آخر 14 ساعة">
                     <table>
                       <thead><tr><th>الإغلاق</th><th>العجز</th><th>الزيادة</th></tr></thead>
                       <tbody>{transfers.data.closings.items.map(entry => (
@@ -158,9 +158,9 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
                       ))}</tbody>
                     </table>
                     {transfers.data.closings.count > transfers.data.closings.items.length &&
-                      <small>تظهر آخر {transfers.data.closings.items.length} عملية إغلاق؛ الإجماليات تشمل كل الإغلاقات خلال آخر 3 أيام.</small>}
+                      <small>تظهر آخر {transfers.data.closings.items.length} عملية إغلاق؛ الإجماليات تشمل كل الإغلاقات خلال آخر 14 ساعة.</small>}
                   </div>
-                ) : !transfers.isLoading && <small>لا توجد عمليات إغلاق خلال آخر 3 أيام.</small>}
+                ) : !transfers.isLoading && <small>لا توجد عمليات إغلاق خلال آخر 14 ساعة.</small>}
               </>
             )}
           </>
