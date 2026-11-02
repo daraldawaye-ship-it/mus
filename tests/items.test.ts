@@ -1919,3 +1919,37 @@ test("item stocktake request is server-stamped and cannot be edited manually", a
     row.before_value.value === null
   ));
 });
+
+test("atomic new unit activation persists name and conversion at zero stock", async (t) => {
+  const f = await fixture(t);
+  const company = await f.company("Atomic unit test company");
+  const curr = await currency(f, company.id);
+  const original = await item(f, company.id, curr.id, {
+    unit1Name:"باكت", unit2Name:"", factor2:1,
+    unit3Name:"", factor3:1, defaultSaleUnit:1,
+  });
+  const path = `/companies/${company.id}/items/${original.id}`;
+  const payload={
+    changes:{unit2Name:"أمبولة",factor2:5},
+    expected:{unit2Name:"",factor2:1},
+    mode:"last-write-wins",
+  };
+  const saved=(
+    await f.owner.ok<{item:Item}>("PATCH",path,payload)
+  ).item;
+  assert.equal(saved.unit2Name,"أمبولة");
+  assert.equal(saved.factor2,5);
+  assert.equal(saved.defaultSaleUnit,1);
+  assert.equal(saved.salePrice1,original.salePrice1);
+  assert.equal(saved.salePrice2,original.salePrice2);
+  const fetched=(await f.owner.ok<{item:Item}>("GET",path)).item;
+  assert.equal(fetched.unit2Name,"أمبولة");
+  assert.equal(fetched.factor2,5);
+  const stock=(await f.pool.query(
+    "SELECT count(*)::int AS total FROM stock_movements WHERE company_id=$1 AND item_id=$2",
+    [company.id,original.id],
+  )).rows[0]?.total;
+  assert.equal(stock,0,"editing unit definition must never move stock");
+  // Once active, historical conversion values remain protected on a card
+  // with movement history; the server's existing guard is unchanged.
+});
