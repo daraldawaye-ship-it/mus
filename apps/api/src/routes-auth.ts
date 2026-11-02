@@ -27,6 +27,7 @@ import { randomUUID } from "node:crypto";
 import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
+import { recordDeviceLogin } from "./services/user-device-activity.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
   const router = Router();
@@ -64,6 +65,8 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           ]);
         return { user, ...(await createSession(client, user.id)) };
       });
+      // Observability must never prevent a successful registration.
+      await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
       setSessionCookie(res, result.token, secure);
       res.status(201).json({ user: result.user, csrf: result.csrf });
     }),
@@ -113,6 +116,8 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           ]);
         return { user, ...(await createSession(client, user.id)) };
       });
+      // The login event is distinct from subsequent presence heartbeats.
+      await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
       setSessionCookie(res, result.token, secure);
       res.json({ user: result.user, csrf: result.csrf });
     }),
