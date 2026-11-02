@@ -1,0 +1,21 @@
+name: Explicit zero button only
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/InventoryPages.tsx'
+      - 'tests/zero-negative-stock.test.ts'
+      - 'apps/api/migrations/20261102_zero_button_explicit_only.sql'
+      - '.github/workflows/zero-button-explicit-only-ci.yml'
+jobs:
+  zero-only-with-button:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/zero-negative-stock.test.ts tests/stock-adjustment-count.test.ts
