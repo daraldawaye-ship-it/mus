@@ -121,7 +121,7 @@ export function publicRoutes(pool: Pool): Router {
           ),'[]'::jsonb) AS active_push_devices
           FROM users WHERE ${filter}
           ORDER BY ${query.order}
-          LIMIT ${parameters.length + 1} OFFSET ${parameters.length + 2}`,
+          LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
         [...parameters, query.pageSize, query.offset],
       );
       await audit(pool, user, "users.view", "user", null, null, null);
