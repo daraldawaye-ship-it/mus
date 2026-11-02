@@ -509,6 +509,8 @@ interface SalesPointForm {
   saleCustomerMatched: boolean;
   pending: InvoiceInput | null;
   unknown: boolean;
+  /** Request reached the posting step but might not have returned before reload. */
+  savingInFlight?: boolean;
   manualAccount: boolean;
   manualCurrency: boolean;
   manualBranch: boolean;
@@ -1808,7 +1810,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [savedOfflineInvoice, setSavedOfflineInvoice] = useState<PrintableInvoice | null>(null);
   const [saving, setSaving] = useState(false);
-  const [unknown, setUnknown] = useState(restored?.unknown ?? false);
+  const [unknown, setUnknown] = useState(
+    Boolean(restored?.unknown || (restored?.savingInFlight && restored.pending)));
   const [localQueued, setLocalQueued] = useState(false);
   const pending = useRef<InvoiceInput | null>(restored?.pending ?? null);
   const [doctorPromptOpen,setDoctorPromptOpen]=useState(false);
@@ -2104,6 +2107,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       description, discount, lines, doctorSelected, doctorQuery,
       saleCustomerQuery, saleCustomerNumber, saleCustomerName, saleCustomerMatched,
       pending: pending.current, unknown,
+      savingInFlight: saving && !!pending.current,
       manualAccount: accountManuallyChosen.current,
       manualCurrency: currencyManuallyChosen.current,
       manualBranch: branchManuallyChosen.current,
