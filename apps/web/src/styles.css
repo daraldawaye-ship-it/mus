@@ -2599,6 +2599,26 @@ ul {
 }
 .invoice-side-overview-scroll th { position: sticky; top: 0; background: var(--surface); }
 .invoice-side-overview-amount { direction: ltr; font-variant-numeric: tabular-nums; }
+.invoice-side-event-time {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  max-width: 100%;
+  line-height: 1.35;
+}
+.invoice-side-event-elapsed {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.invoice-side-event-datetime {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  direction: ltr;
+}
 .invoice-side-overview-note { display: block; opacity: .8; overflow-wrap: anywhere; }
 .invoice-side-overview-variances {
   display: grid;
