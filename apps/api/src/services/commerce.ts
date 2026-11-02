@@ -419,7 +419,7 @@ export async function createInvoice(
       )
         conflict("مردود المبيعات يرجع إلى معرض فاتورة الأصل");
       const previous = await client.query(
-        "SELECT COALESCE(sum(-quantity),0)::text AS quantity,COALESCE(sum(-discount),0)::text AS discount FROM invoice_lines WHERE company_id=$1 AND original_line_id=$2",
+        "SELECT COALESCE(sum(-quantity),0)::text AS quantity,COALESCE(sum(-discount+manual_discount),0)::text AS discount FROM invoice_lines WHERE company_id=$1 AND original_line_id=$2",
         [companyId, original.id],
       );
       const returned = BigInt(previous.rows[0].quantity),
