@@ -1,0 +1,31 @@
+name: Doctor Sales Report CI
+on:
+  push:
+    branches: [preview/render-2026-10-23]
+    paths:
+      - "apps/api/src/services/doctor-sales-report.ts"
+      - "apps/api/src/routes-doctor-sales-report.ts"
+      - "apps/api/src/business-routes.ts"
+      - "apps/api/src/mcp-contracts.json"
+      - "apps/web/src/pages/DoctorSalesReportPage.tsx"
+      - "apps/web/src/App.tsx"
+      - "packages/contracts/src/pages.ts"
+      - "tests/doctor-sales-report.test.ts"
+      - ".github/workflows/doctor-sales-report-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  doctor-sales:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/doctor-sales-report.test.ts
