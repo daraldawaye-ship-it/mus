@@ -60,3 +60,20 @@ export async function recordReportedPushPermission(
        OR user_device_activity.last_push_permission_checked_at < clock_timestamp()-interval '5 minutes'`,
     [userId,kind,permission]);
 }
+
+
+/** Last confirmed foreground interaction, separately by user and device class.
+ * PostgreSQL throttles writes across concurrent tabs/servers to once per
+ * five minutes per user/device kind; ordinary API traffic does not count. */
+export async function recordDeviceActivity(
+  db: Database, userId: number, kind: DeviceKind,
+): Promise<void> {
+  await db.query(`
+    INSERT INTO user_device_activity(user_id,device_kind,last_activity_at)
+    VALUES($1,$2,clock_timestamp())
+    ON CONFLICT(user_id,device_kind) DO UPDATE
+    SET last_activity_at=EXCLUDED.last_activity_at
+    WHERE user_device_activity.last_activity_at IS NULL
+       OR user_device_activity.last_activity_at <= clock_timestamp()-interval '5 minutes'`,
+    [userId,kind]);
+}

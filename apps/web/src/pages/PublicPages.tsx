@@ -657,6 +657,7 @@ type PublicFlag = "archived" | "suspended" | "editor" | "monitor";
 type DeviceKind = "desktop_browser" | "mobile_browser" | "android_app" | "iphone_app";
 type DeviceTimes = {
   lastLoginAt: string | null;
+  lastActivityAt: string | null;
   lastPushConfirmedAt: string | null;
   lastPushPermission?: "granted" | "denied" | "default" | "unsupported" | null;
   lastPushPermissionCheckedAt?: string | null;
@@ -665,11 +666,11 @@ type TrackedUser = User & {
   deviceActivity?: Partial<Record<DeviceKind, DeviceTimes>>;
   activePushDevices?: DeviceKind[];
 };
-const loginColumns: { kind: DeviceKind; header: string }[] = [
-  { kind: "desktop_browser", header: "آخر دخول من متصفح لابتوب" },
-  { kind: "mobile_browser", header: "آخر دخول من متصفح هاتف" },
-  { kind: "android_app", header: "آخر دخول من تطبيق أندرويد" },
-  { kind: "iphone_app", header: "آخر دخول من تطبيق آيفون" },
+const activityColumns: { kind: DeviceKind; header: string }[] = [
+  { kind: "desktop_browser", header: "آخر نشاط من متصفح لابتوب" },
+  { kind: "mobile_browser", header: "آخر نشاط من متصفح هاتف" },
+  { kind: "android_app", header: "آخر نشاط من تطبيق أندرويد" },
+  { kind: "iphone_app", header: "آخر نشاط من تطبيق آيفون" },
 ];
 function lastPushCell(record: TrackedUser, kinds: DeviceKind[]) {
   const dates = kinds.map(kind => record.deviceActivity?.[kind]?.lastPushConfirmedAt)
@@ -885,7 +886,7 @@ function UserList() {
     ).map((flag) => ({
       accessorKey: flag,
       header: flagLabels[flag],
-      enableSorting: flag === "archived" || flag === "suspended",
+      enableSorting: true,
       size: flag === "suspended" ? 180 : 110,
       cell: ({ row }) => (
         <Select
@@ -976,20 +977,20 @@ function UserList() {
       {
         accessorKey: "owner",
         header: "مالك المنصة",
-        enableSorting: false,
+        enableSorting: true,
         size: 120,
         cell: ({ row }) => (row.original.owner ? "نعم · محمي" : "لا"),
       },
       ...flags,
-      ...loginColumns.map(({kind,header}): ColumnDef<TrackedUser, unknown> => ({
-        id: `device-login-${kind}`, header, size: 220, enableSorting: false,
+      ...activityColumns.map(({kind,header}): ColumnDef<TrackedUser, unknown> => ({
+        id: `device-activity-${kind}`, header, size: 220, enableSorting: true,
         cell: ({row}) => {
-          const value = row.original.deviceActivity?.[kind]?.lastLoginAt;
+          const value = row.original.deviceActivity?.[kind]?.lastActivityAt;
           return value ? dateLabel(value) : "—";
         },
       })),
       { id: "app-push", header: "آخر تفعيل إشعارات التطبيق",
-        size: 225, enableSorting: false,
+        size: 225, enableSorting: true,
         cell: ({row}) => lastPushCell(row.original, ["android_app","iphone_app"]) },
       { id: "laptop-push", header: "آخر تفعيل إشعارات اللابتوب",
         size: 225, enableSorting: false,
@@ -1007,7 +1008,7 @@ function UserList() {
     <>
       <PageHeader
         title="المستخدمون"
-        description="إدارة حسابات الموقع، وآخر تسجيل دخول بحسب الجهاز، وآخر تأكيد لربط الإشعارات."
+        description="آخر نشاط وتفاعل فعلي في الموقع لكل جهاز (تحديث بحد أقصى مرة كل 5 دقائق)، مع حالة الإشعارات. اضغط رأس العمود لترتيب جميع النتائج."
         actions={
           <div className="actions">
             <Link to="/users/last-present" className="button button-secondary">آخر المتواجدين</Link>
@@ -1048,7 +1049,7 @@ function UserList() {
             <option value="true">مؤرشف</option>
           </Select>
         </div>
-        <p className="muted">تبدأ تواريخ الدخول المفصّلة من تفعيل هذه الميزة؛ (—) يعني أنه لا توجد بيانات مؤكدة. المقصود بتطبيق أندرويد أو آيفون هو تطبيق الويب المثبّت. حالة إذن الإشعارات مأخوذة من آخر فحص أرسله جهاز نشط، وقد تصبح قديمة أثناء إغلاق الموقع؛ و«اشتراك مرتبط» لا يضمن استلام الإشعارات.</p>
+        <p className="muted">تبدأ تواريخ النشاط المفصّلة من تفعيل تتبع النشاط؛ لا يُعدّ تسجيل الدخول وحده نشاطًا في هذه الأعمدة، وتُحدّث أثناء الاستخدام كل خمس دقائق على الأكثر؛ (—) يعني أنه لا توجد بيانات مؤكدة. المقصود بتطبيق أندرويد أو آيفون هو تطبيق الويب المثبّت. حالة إذن الإشعارات مأخوذة من آخر فحص أرسله جهاز نشط، وقد تصبح قديمة أثناء إغلاق الموقع؛ و«اشتراك مرتبط» لا يضمن استلام الإشعارات.</p>
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
         {list.error && <Notice tone="error">{messageOf(list.error)}</Notice>}
         <DataTable

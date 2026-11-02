@@ -1,4 +1,4 @@
-name: User device login and notifications checks
+name: User device activity and notifications checks
 on:
   pull_request:
     paths:
@@ -7,11 +7,15 @@ on:
       - 'apps/api/src/routes-social-auth.ts'
       - 'apps/api/src/routes-push.ts'
       - 'apps/api/src/routes-public.ts'
+      - 'apps/api/src/services/lists.ts'
       - 'apps/api/migrations/20261102_user_device_activity.sql'
+      - 'apps/api/migrations/20261102_user_device_last_activity.sql'
       - 'apps/web/src/device-kind.ts'
       - 'apps/web/src/pages/PublicPages.tsx'
+      - 'apps/web/src/PresenceHeartbeat.tsx'
       - 'apps/web/src/api.tsx'
       - 'tests/user-device-activity.test.ts'
+      - 'tests/user-device-last-activity.test.ts'
       - '.github/workflows/user-device-activity-ci.yml'
 jobs:
   user-devices:
@@ -25,4 +29,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/user-device-activity.test.ts
+      - run: node --import tsx --test tests/user-device-activity.test.ts tests/user-device-last-activity.test.ts

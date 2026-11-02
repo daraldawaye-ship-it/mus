@@ -3,7 +3,7 @@ import { api, sessionRequiresLogin } from "./api";
 import { isOfflineNow } from "./connection-mode";
 
 /** A modest foreground signal, not a time clock or proof of physical presence.
- * No activity history, keystrokes, page URLs, or employee data are sent.
+ * No activity history, keystrokes, page URLs, or employee data are sent.\n * One compact heartbeat per five minutes at most while the user is active.
  */
 export function PresenceHeartbeat({ userId }: { userId: number | null }) {
   useEffect(() => {
@@ -11,10 +11,16 @@ export function PresenceHeartbeat({ userId }: { userId: number | null }) {
     let lastInteraction = Date.now();
     let lastSent = 0;
     let inflight = false;
-    const interaction = () => { lastInteraction = Date.now(); };
+    // One foreground ping per five minutes, including busy invoice editors.
+    // Moving/clicking/typing does not itself create a database write.
+    const intervalMs = 5 * 60_000;
+    const interaction = () => {
+      lastInteraction = Date.now();
+      if (lastInteraction - lastSent >= intervalMs) void beat();
+    };
     const beat = async () => {
       const now = Date.now();
-      if (inflight || now - lastSent < 60_000 ||
+      if (inflight || now - lastSent < intervalMs ||
           now - lastInteraction > 5 * 60_000 ||
           document.visibilityState !== "visible" || !navigator.onLine ||
           isOfflineNow() || sessionRequiresLogin()) return;
@@ -35,7 +41,7 @@ export function PresenceHeartbeat({ userId }: { userId: number | null }) {
     window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onResume);
     void beat();
-    const interval = window.setInterval(() => { void beat(); }, 65_000);
+    const interval = window.setInterval(() => { void beat(); }, 60_000);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("pointerdown", interaction);
