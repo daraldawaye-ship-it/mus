@@ -474,9 +474,6 @@ export function inventoryRoutes(pool: Pool): Router {
               operationId,
               originalMovementId: batch.movementId,
               allowExpired: true,
-              // A zero reconciliation of historical negative stock is NOT
-              // a new lot: it must not demand or invent an expiry date.
-              allowUnknownExpiry: input.zeroLocation && delta > 0n,
             });
           return {
             created: true,
@@ -707,6 +704,8 @@ export function inventoryRoutes(pool: Pool): Router {
               expiryDate: movementExpiryDate,
               operationId,
               allowExpired: true,
+              // Correcting negative stock to zero does not create a new lot.
+              allowUnknownExpiry: input.zeroLocation && delta > 0n,
             });
             const amount =
               movement.costBase < 0n ? -movement.costBase : movement.costBase;
