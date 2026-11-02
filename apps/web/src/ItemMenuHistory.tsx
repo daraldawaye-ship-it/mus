@@ -4,6 +4,7 @@ import type { ItemCompositionPeers } from "../../../packages/contracts/src/index
 import { api } from "./api";
 
 type ItemMenuView = "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
+export type ItemMenuQuickAction = "adjustment" | "transfer" | "memo" | "memo-return";
 type HistoryRow = {
   lineId: number;
   documentId: number;
@@ -26,7 +27,7 @@ const actions: { key: ItemMenuView; label: string }[] = [
 /** The search stays in place. The five scalable navigation-style tiles are
  * replaced by a page of ten real records; tapping the top Item tab resets them. */
 export function ItemMenuHistory({
-  userId, companyId, itemId, itemName, resetKey, onEditItem,
+  userId, companyId, itemId, itemName, resetKey, onEditItem, onQuickAction, canCreateMemo,
 }: {
   userId: number;
   companyId: number;
@@ -34,6 +35,8 @@ export function ItemMenuHistory({
   itemName: string | null;
   resetKey: number;
   onEditItem: (itemId: number) => void;
+  onQuickAction: (action: ItemMenuQuickAction, itemId: number, itemName: string) => void;
+  canCreateMemo: boolean;
 }) {
   const [view, setView] = useState<ItemMenuView | null>(null);
   const [page, setPage] = useState(1);
@@ -73,6 +76,22 @@ export function ItemMenuHistory({
           onClick={() => { if (itemId) onEditItem(itemId); }}>
           <span>كرت الصنف</span>
         </button>
+        {([
+          ["adjustment", "تسوية الصنف"],
+          ["transfer", "مناقلة الصنف"],
+          ["memo", "إرسال مذكرة بالصنف"],
+          ["memo-return", "إرسال مذكرة مرتجع"],
+        ] as const).map(([key,label]) => (
+          <button type="button" className="user-menu-tile" key={key}
+            disabled={!itemId || (key.startsWith("memo") && !canCreateMemo)}
+            title={!itemId ? "اختر صنفًا من البحث أولًا" :
+              key.startsWith("memo") && !canCreateMemo ? "ليست لديك صلاحية إنشاء المذكرات" :
+              `${label}: ${itemName ?? ""}`}
+            onClick={() => {if(itemId)onQuickAction(key,itemId,itemName??`#${itemId}`);}}>
+            <span>{label}</span>
+          </button>
+        ))}
+
       </div>
     );
   }
