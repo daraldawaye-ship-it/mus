@@ -280,24 +280,35 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
     {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيارات المشتركة…</small>}
     {temporaryOrder.error && <Notice tone="error">{temporaryOrder.error}</Notice>}
-    {!optionsCollapsed && <Card title="خيارات قائمة الأصناف">
+    {!optionsCollapsed && <Card title="خيارات قائمة الأصناف" className="item-options-filters-card">
       <form onSubmit={apply}>
-        <div className="form-grid">
-          <Field label="بحث عن صنف بالاسم أو الرمز أو الباركود" type="search"
-            maxLength={120} value={search} onChange={event => setSearch(event.target.value)} />
-          <Select label="حالة الصنف" value={active}
-            onChange={event => change("active", event.target.value)}>
-            <option value="active">الفعال</option>
-            <option value="archived">المؤرشف</option>
-            <option value="all">الكل</option>
-          </Select>
-          {ranges.map(({ key, label }) =>
-            <Field key={key} label={label} type="number" step="any"
-              placeholder="بدون حد" value={draft[key]}
-              onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} />
-          )}
+        <div className="item-options-filter-scroll" role="region"
+          aria-label="مرر لعرض جميع خيارات تصفية الأصناف" tabIndex={0}>
+          <div className="item-options-filter-grid">
+            <label className="item-options-filter-field">
+              <span className="item-options-filter-label">بحث عن صنف بالاسم أو الرمز أو الباركود</span>
+              <input type="search" maxLength={120} value={search}
+                placeholder="اكتب الاسم أو الرمز" onChange={event => setSearch(event.target.value)} />
+            </label>
+            <label className="item-options-filter-field">
+              <span className="item-options-filter-label">حالة الصنف</span>
+              <select value={active} onChange={event => change("active", event.target.value)}>
+                <option value="active">الفعال</option>
+                <option value="archived">المؤرشف</option>
+                <option value="all">الكل</option>
+              </select>
+            </label>
+            {ranges.map(({ key, label }) =>
+              <label className="item-options-filter-field" key={key}>
+                <span className="item-options-filter-label" title={label}>{label}</span>
+                <input type="number" step="any" placeholder="بدون حد"
+                  value={draft[key]}
+                  onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} />
+              </label>
+            )}
+          </div>
         </div>
-        <div className="form-actions">
+        <div className="form-actions item-options-filter-actions">
           <label className="checkbox">
             <input type="checkbox" checked={draft.excludeZero}
               onChange={event => setDraft(previous => ({ ...previous, excludeZero: event.target.checked }))} />

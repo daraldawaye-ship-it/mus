@@ -7030,3 +7030,87 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .notification-record.is-quick-message .notification-message {
   white-space: pre-wrap;
 }
+
+/* Item list: visible viewport is about 2.5 compact fields/rows; all remaining
+   filters scroll INSIDE the card instead of pushing the results offscreen.
+   Labels remain INSIDE the input/select even when the value is 1 or blank. */
+.item-options-filters-card .item-options-filter-scroll {
+  --item-filter-row-height: 52px;
+  --item-filter-gap: 8px;
+  height: calc(var(--item-filter-row-height) * 2.5 + var(--item-filter-gap) * 2);
+  max-height: min(146px, calc(100dvh - 210px));
+  min-height: 88px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-gutter: stable;
+  padding: 1px 5px 1px 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.item-options-filters-card .item-options-filter-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.item-options-filter-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: var(--item-filter-row-height);
+  gap: var(--item-filter-gap);
+  padding: 2px 0 5px;
+}
+.item-options-filter-field {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+}
+.item-options-filter-field .item-options-filter-label {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  inset-inline: 11px 28px;
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.item-options-filter-field > input,
+.item-options-filter-field > select {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding-block: 21px 5px;
+  padding-inline: 11px;
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.item-options-filter-field > select {
+  padding-inline-end: 25px;
+}
+.item-options-filter-field:focus-within .item-options-filter-label {
+  color: var(--primary);
+}
+.item-options-filters-card .item-options-filter-actions {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 560px) {
+  .item-options-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .item-options-filters-card .item-options-filter-scroll { max-height: 146px; }
+}
+@media print {
+  .item-options-filters-card .item-options-filter-scroll { overflow: visible; height: auto; max-height: none; }
+}
