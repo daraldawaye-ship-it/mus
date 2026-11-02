@@ -93,12 +93,6 @@ export const invoiceSchema = z
           message: "أدخل سعر سطر مردود المشتريات غير المرتبط بأصل",
         });
     }
-    if (value.lines.every((line) => BigInt(line.quantity) < 0n) && value.discount !== "0")
-      context.addIssue({
-        code: "custom",
-        path: ["discount"],
-        message: "خصم الفاتورة يخص السطور الموجبة فقط؛ خصم المردود المرتبط يؤخذ من الأصل",
-      });
   });
 /** Discard an unnumbered customer name before persisting a sale invoice. */
 export function normalizeSaleCustomer<T extends {
@@ -196,68 +190,83 @@ function amount(value: bigint): string {
     .replace(/0+$/, "");
   return `${negative ? "-" : ""}${magnitude / 1_000_000n}${fraction ? `.${fraction}` : ""}`;
 }
-/** Signed line totals; header discount applies only to positive lines. */
+/** Distribute the entered header discount according to the gross invoice sign.
+ * A net-negative invoice applies the new amount to returning lines; the
+ * inherited discount of a linked return is kept separately and never replaced.
+ * The optional `discount` on a negative line is the existing inherited
+ * reversal, not the user-entered extra header amount.
+ */
 export function calculateInvoiceTotals(
   lines: { quantity: string; unitPrice: string; discount?: string }[],
   discount: string,
   decimalPlaces: number,
 ) {
-  if (
-    !Number.isInteger(decimalPlaces) ||
-    decimalPlaces < 0 ||
-    decimalPlaces > 6
-  )
+  if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 6)
     throw new Error("دقة العملة غير صالحة");
   const step = 10n ** BigInt(6 - decimalPlaces);
-  const quantities = lines.map((line) => BigInt(invoiceQuantitySchema.parse(line.quantity)));
-  const grossLines = lines.map((line, index) => {
+  const quantities = lines.map(line => BigInt(invoiceQuantitySchema.parse(line.quantity)));
+  const grossLines = lines.map((line,index) => {
     const price = units(amountSchema.parse(line.unitPrice));
     if (price % step !== 0n) throw new Error("سعر السطر يتجاوز دقة العملة");
     return quantities[index] * price;
   });
-  const gross = grossLines.reduce((sum, value) => sum + value, 0n);
-  const positiveGross = grossLines.reduce((sum, value) => sum + (value > 0n ? value : 0n), 0n);
+  const gross = grossLines.reduce((sum,value)=>sum+value,0n);
+  const inherited = lines.map((line,index) => {
+    if (quantities[index] >= 0n || line.discount === undefined) return 0n;
+    const text = normalizeDigits(line.discount.trim()).replace(/٫/g,".");
+    const inheritedValue = units(invoiceDiscountSchema.parse(text));
+    if (inheritedValue < grossLines[index] || inheritedValue % step !== 0n)
+      throw new Error("خصم المردود غير مطابق لقيمة السطر أو دقة العملة");
+    return inheritedValue;
+  });
   const discountUnits = units(invoiceDiscountSchema.parse(discount));
-  if (discountUnits % step !== 0n || discountUnits > positiveGross)
-    throw new Error("الخصم يتجاوز إجمالي السطور الموجبة أو دقة العملة");
-  if (positiveGross === 0n && discountUnits !== 0n)
-    throw new Error("الخصم يتطلب سطورًا موجبة");
-  // Allocate the absolute magnitude first. Negative discount is a separately
-  // credited extra amount, spread across positive sale lines for consistent
-  // line totals and monetary clearance; returns retain their original rule.
+  if (discountUnits % step !== 0n)
+    throw new Error("الخصم يتجاوز دقة العملة");
+  if (gross === 0n && discountUnits !== 0n)
+    throw new Error("لا يُطبَّق خصم إضافي على فاتورة إجماليها صفر");
+  const applyToReturns = gross < 0n;
+  const candidates = grossLines.map((value,index) =>
+    applyToReturns ? value < 0n : value > 0n);
+  // Positive discount on positive sales must not exceed their gross.
+  // Negative discount on a refund must not reverse the refund into a sale.
+  const capacities = grossLines.map((value,index) =>
+    !candidates[index] ? 0n : applyToReturns
+      ? -(value - inherited[index])
+      : value);
+  const maxReduction = capacities.reduce((sum,value)=>sum+value,0n);
+  if ((!applyToReturns && discountUnits > maxReduction) ||
+      (applyToReturns && discountUnits < -maxReduction))
+    throw new Error("قيمة الخصم تتجاوز المبلغ المتاح للفواتير أو المردود");
   const magnitude = discountUnits < 0n ? -discountUnits : discountUnits;
-  const positiveShares = grossLines.map((value) =>
-    positiveGross === 0n || value <= 0n ? 0n :
-      ((magnitude * value) / positiveGross / step) * step,
-  );
-  let remaining = magnitude - positiveShares.reduce((sum, value) => sum + value, 0n);
-  for (let index = 0; remaining > 0n && index < positiveShares.length; index++) {
-    if (grossLines[index] > 0n &&
-        (discountUnits < 0n || positiveShares[index] + step <= grossLines[index])) {
-      positiveShares[index] += step;
+  const limited = applyToReturns ? discountUnits < 0n : discountUnits > 0n;
+  const weights = grossLines.map((value,index) =>
+    !candidates[index] ? 0n : limited ? capacities[index] :
+      value < 0n ? -value : value);
+  const weightTotal = weights.reduce((sum,value)=>sum+value,0n);
+  if (magnitude > 0n && weightTotal <= 0n)
+    throw new Error("لا يوجد سطر صالح لتوزيع الخصم");
+  const manualParts = weights.map(value =>
+    value === 0n ? 0n : ((magnitude * value) / weightTotal / step) * step);
+  let remaining = magnitude - manualParts.reduce((sum,value)=>sum+value,0n);
+  for (let index=0; remaining>0n && index<manualParts.length; index++) {
+    if (weights[index] && (!limited || manualParts[index] + step <= capacities[index])) {
+      manualParts[index] += step;
       remaining -= step;
     }
   }
-  if (remaining !== 0n) throw new Error("تعذر توزيع الخصم");
-  const shares = positiveShares.map(value => discountUnits < 0n ? -value : value);
-  for (const [index, line] of lines.entries()) {
-    if (quantities[index] >= 0n || line.discount === undefined) continue;
-    const text = normalizeDigits(line.discount.trim()).replace(/٫/g, ".");
-    const inherited = (text.startsWith("-") ? -1n : 1n) * units(amountSchema.parse(text.replace(/^-/, "")));
-    // A return of an original NEGATIVE discount must reverse it as a
-    // positive adjustment. The original invoice is checked again by the
-    // server for quantity and total refund bounds.
-    if (inherited < grossLines[index] || inherited % step !== 0n)
-      throw new Error("خصم المردود غير مطابق لقيمة السطر أو دقة العملة");
-    shares[index] = inherited;
-  }
-  const totalDiscount = shares.reduce((sum, value) => sum + value, 0n);
+  if (remaining!==0n) throw new Error("تعذر توزيع الخصم دون تجاوز قيمة السطور");
+  const manual = manualParts.map(value=>discountUnits<0n ? -value : value);
+  const shares = manual.map((value,index)=>value+inherited[index]);
+  const totalDiscount = shares.reduce((sum,value)=>sum+value,0n);
   return {
     gross: amount(gross),
     discount: amount(totalDiscount),
-    total: amount(gross - totalDiscount),
+    total: amount(gross-totalDiscount),
     lineDiscounts: shares.map(amount),
-    lineTotals: grossLines.map((value, index) => amount(value - shares[index])),
+    // Store the explicitly entered share independently from linked-return
+    // prorated discounts to keep historical refund limits intact.
+    lineManualDiscounts: manual.map(amount),
+    lineTotals: grossLines.map((value,index)=>amount(value-shares[index])),
   };
 }
 export const commerceCatalog = { invoiceKinds, invoiceKindLabels };
