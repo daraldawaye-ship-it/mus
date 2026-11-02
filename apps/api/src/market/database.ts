@@ -17,7 +17,7 @@ export async function createMarketDatabase(url: string, schema = "market") {
       if ((await db.query("SELECT to_regclass('companies') existing")).rows[0].existing) throw new Error("Refusing to initialize market over company schema");
       await db.query("CREATE TABLE IF NOT EXISTS market_schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
       const directory = new URL("../../market-migrations/", import.meta.url);
-      for (const name of (await readdir(directory)).filter(n => /^\d+_[a-z_]+\.sql$/.test(n)).sort()) {
+      for (const name of (await readdir(directory)).filter(n => /^\d+_[a-z0-9_]+\.sql$/.test(n)).sort()) {
         if ((await db.query("SELECT 1 FROM market_schema_migrations WHERE version=$1", [name])).rowCount) continue;
         await db.query(await readFile(new URL(name, directory), "utf8"));
         await db.query("INSERT INTO market_schema_migrations(version) VALUES($1)", [name]);
