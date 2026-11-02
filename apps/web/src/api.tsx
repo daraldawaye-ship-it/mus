@@ -59,7 +59,7 @@ export async function api<T>(
   }
   // A disconnected employee may switch locally, but the old employee\'s
   // server cookie must never issue reads or writes on their behalf.
-  if (freshOnlineLoginRequired && path !== "/auth/login" && path !== "/auth/register") {
+  if (freshOnlineLoginRequired && path !== "/auth/login" && path !== "/auth/register" && path !== "/auth/login-link/redeem") {
     const saved = await fallbackRead();
     if (saved !== undefined) return saved;
     throw new TypeError("يرجى تسجيل الدخول عبر الإنترنت لاستعادة الاتصال ومزامنة العمليات.");

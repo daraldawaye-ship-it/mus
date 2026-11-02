@@ -123,6 +123,8 @@ export const auditActionLabels = {
   "owner.create": "إنشاء مالك المنصة",
   "user.register": "إنشاء حساب عام",
   "auth.login": "تسجيل الدخول",
+  "auth.loginLinkIssue": "إنشاء رابط دخول مؤقت لمستخدم",
+  "auth.loginLinkRedeem": "الدخول برابط مؤقت",
   "auth.logout": "تسجيل الخروج",
   "auth.password": "تغيير كلمة المرور",
   "user.profile": "تعديل الملف الشخصي",
@@ -286,6 +288,8 @@ export const publicAuditActions: AuditAction[] = [
   "owner.create",
   "user.register",
   "auth.login",
+  "auth.loginLinkIssue",
+  "auth.loginLinkRedeem",
   "auth.logout",
   "auth.password",
   "user.profile",
@@ -564,7 +568,7 @@ const image = z.union([
 ]);
 export const passwordSchema = z
   .string()
-  .min(12, "كلمة المرور يجب ألا تقل عن 12 حرفًا")
+  .min(3, "كلمة المرور يجب ألا تقل عن 3 أحرف أو أرقام")
   .max(128);
 const profileFields = z
   .object({ name, displayName: text(120), email: optionalEmail, phone, image })
@@ -605,10 +609,7 @@ export const ownerPasswordResetSchema = z
   .object({ newPassword: passwordSchema })
   .strict();
 export const passwordChangeSchema = z
-  .object({
-    currentPassword: z.string().min(1).max(128),
-    newPassword: passwordSchema,
-  })
+  .object({ newPassword: passwordSchema })
   .strict();
 export const userPatchSchema = z
   .object({

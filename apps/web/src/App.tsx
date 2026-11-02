@@ -62,6 +62,7 @@ import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
+import { QuickLoginPage } from "./QuickLoginPage";
 import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
 import { AttendanceCurrentlyPresent } from "./AttendanceCurrentlyPresent";
 import { ConnectionModeControl } from "./ConnectionModeControl";
@@ -1164,6 +1165,7 @@ function Workspace() {
                   : <HomePage />
               } />
               <Route path="/login" element={<AuthPage mode="login" />} />
+              <Route path="/quick-login" element={<QuickLoginPage />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route path="/medicine-market" element={<PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل سوق الأدوية…</Notice>}><MedicineMarketPage key={user?.id ?? "guest"} /></Suspense></PageRouteGuard>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
