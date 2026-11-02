@@ -4489,3 +4489,50 @@ test("required stock-count reconciliations credit configured points once per new
   assert.equal((await wallet()).points, "44",
     "A repeated count of a no-longer-due item earns no new reward");
 });
+
+test("signed header discounts post negative sales and purchase invoices while preserving linked returns", async t => {
+  const f=await fixture(t), s=await setup(f,"Signed refunds"), item=await s.item({
+    hasExpiry:false,factor2:1,factor3:1,purchaseFactor:1,
+    unit2Name:"",unit3Name:"",salePrice1:"100",purchasePrice:"100",
+  });
+  const bought=await invoice(f,s,invoiceBody(s,item.id,{
+    lines:[{itemId:item.id,unit:1,quantity:"10",unitPrice:"100"}],
+  }));
+  assert.equal(bought.total,"1000");
+  const sold=await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    discount:"0",
+    lines:[{itemId:item.id,unit:1,quantity:"2"}],
+  }));
+  assert.equal(sold.total,"200");
+
+  for (const discount of ["10","-10"]) {
+    const saleReturn=await invoice(f,s,invoiceBody(s,item.id,{
+      kind:"sale",counterpartyAccountId:s.customer.id,discount,
+      lines:[{itemId:item.id,unit:1,quantity:"-1"}],
+    }));
+    assert.equal(saleReturn.total,discount==="10"?"-110":"-90");
+    assert.equal(saleReturn.discount,discount);
+    assert.equal(saleReturn.returning,true);
+    const purchaseReturn=await invoice(f,s,invoiceBody(s,item.id,{
+      kind:"purchase",discount,
+      lines:[{itemId:item.id,unit:1,quantity:"-1",unitPrice:"100"}],
+    }));
+    assert.equal(purchaseReturn.total,discount==="10"?"-110":"-90");
+    assert.equal(purchaseReturn.discount,discount);
+    assert.equal(purchaseReturn.returning,true);
+  }
+  for (const discount of ["10","-10"]) {
+    const linked=await invoice(f,s,invoiceBody(s,item.id,{
+      kind:"sale",counterpartyAccountId:s.customer.id,discount,
+      lines:[{itemId:item.id,unit:1,quantity:"-1",originalLineId:sold.lines[0]!.id}],
+    }));
+    assert.equal(linked.total,discount==="10"?"-110":"-90");
+    const row=(await f.pool.query(
+      "SELECT discount::text AS discount,manual_discount::text AS manual FROM invoice_lines WHERE company_id=$1 AND id=$2",
+      [s.company.id,linked.lines[0]!.id],
+    )).rows[0];
+    assert.equal(Number(row.manual),Number(discount),"manual header amount must be tracked separately");
+  }
+  await assertBalanced(f,s.company.id);
+});
