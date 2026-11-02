@@ -2600,6 +2600,27 @@ ul {
 .invoice-side-overview-scroll th { position: sticky; top: 0; background: var(--surface); }
 .invoice-side-overview-amount { direction: ltr; font-variant-numeric: tabular-nums; }
 .invoice-side-overview-note { display: block; opacity: .8; overflow-wrap: anywhere; }
+.invoice-side-overview-variances {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.invoice-side-overview-variances > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+}
+.invoice-side-overview-variances strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  direction: ltr;
+  text-align: start;
+}
 .invoice-side-overview-presence-count { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 .invoice-side-overview-presence { padding: 0; margin: 0; list-style: none; }
 .invoice-side-overview-presence li {
