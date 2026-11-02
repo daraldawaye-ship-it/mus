@@ -1706,7 +1706,7 @@ function OperationEditor({
                 setDirty(true);
               }}
             />
-            {mode === "adjustment" && item && !item.compositionId && (
+            {mode === "adjustment" && !countIsZero && item && !item.compositionId && (
               <ServerLookup<ItemComposition>
                 companyId={companyId}
                 resource={`/companies/${companyId}/item-compositions?active=true`}
