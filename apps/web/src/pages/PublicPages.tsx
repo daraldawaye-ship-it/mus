@@ -430,7 +430,6 @@ function ProfileForms({ user }: { user: User }) {
   } | null>(null);
   const revision = useRef(0);
   const [passwords, setPasswords] = useState({
-    currentPassword: "",
     newPassword: "",
     confirmation: "",
   });
@@ -497,14 +496,12 @@ function ProfileForms({ user }: { user: User }) {
       await api("/auth/password", {
         method: "POST",
         body: {
-          currentPassword: passwords.currentPassword,
           newPassword: passwords.newPassword,
         },
         signal: guard.signal,
       });
       if (guard.isCurrent() && passwordRevision.current === sentRevision) {
         setPasswords({
-          currentPassword: "",
           newPassword: "",
           confirmation: "",
         });
@@ -592,25 +589,13 @@ function ProfileForms({ user }: { user: User }) {
       <SocialProviderOptions intent="link"/>
       <Card
         title="تغيير كلمة المرور"
-        description="تحتاج إلى كلمة المرور الحالية لتأكيد التغيير."
+        description="يمكنك تعيين كلمة جديدة دون إدخال السابقة؛ ستخرج بقية الأجهزة من الحساب."
       >
         <form
           onSubmit={savePassword}
           className="form-grid"
           aria-busy={passwordSaving}
         >
-          <Field
-            label="كلمة المرور الحالية"
-            name="currentPassword"
-            type="password"
-            autoComplete="current-password"
-            value={passwords.currentPassword}
-            onChange={(event) =>
-              updatePassword("currentPassword", event.target.value)
-            }
-            required
-            maxLength={128}
-          />
           <Field
             label="كلمة المرور الجديدة"
             name="newPassword"
