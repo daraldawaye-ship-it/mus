@@ -72,6 +72,10 @@ import { enteredInvoiceQuantity, completedInvoiceQuantity, enteredInvoiceDiscoun
 import { usePageDirectory } from "../page-directory";
 import { queueOfflineOperation } from "../offline-storage";
 import {
+  listSalesPointDrafts, saveSalesPointDraft, deleteSalesPointDraft, flushSalesPointDrafts,
+  type SalesPointDraft,
+} from "../sales-point-drafts";
+import {
   listPurchaseWorkDrafts, savePurchaseWorkDraft, deletePurchaseWorkDraft,
   type PurchaseWorkDraft,
 } from "../purchase-drafts";
@@ -486,6 +490,25 @@ interface DraftLine {
   originalSource?: InvoiceLine;
   sourceItem?: Item;
   selectedByShortcut?: boolean;
+}
+interface SalesPointForm {
+  documentDate: string;
+  account: Account | null;
+  currency: CompanyCurrency | null;
+  branch: Branch | null;
+  location: Location | null;
+  original: Invoice | null;
+  description: string;
+  discount: string;
+  lines: DraftLine[];
+  doctorSelected: Doctor | null;
+  doctorQuery: string;
+  saleCustomerQuery: string;
+  saleCustomerNumber: string;
+  saleCustomerName: string;
+  saleCustomerMatched: boolean;
+  pending: InvoiceInput | null;
+  unknown: boolean;
 }
 
 function emptyLine(returning = false): DraftLine {
@@ -1291,15 +1314,49 @@ export function InvoicePage({ context }: { context: CompanyContext }) {
     </InvoiceWorkspace>
   );
 }
-type InvoicePointStatus = { dirty: boolean; saving: boolean; unknown: boolean; itemCount: number };
+type InvoicePointStatus = { dirty: boolean; saving: boolean; unknown: boolean; itemCount: number; storageError?: boolean };
 const MAX_OPEN_INVOICE_POINTS = 10;
 
 /** Each mounted point owns its invoice data and idempotency state.
  * The single parent route blocker protects the drafts in every point. */
 function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; kind: InvoiceKind }) {
-  const [points, setPoints] = useState<string[]>(() => [crypto.randomUUID()]);
-  const [activePoint, setActivePoint] = useState(() => points[0]!);
+  const { user } = useSession();
+  const companyId = context.company.id;
+  const [points, setPoints] = useState<string[]>(() => kind === "sale" ? [] : [crypto.randomUUID()]);
+  const [activePoint, setActivePoint] = useState(() => points[0] ?? "");
+  const [pointCreatedAt, setPointCreatedAt] = useState<Record<string, string>>({});
+  const [restoredPoints, setRestoredPoints] = useState<Record<string, SalesPointForm>>({});
+  const [ready, setReady] = useState(kind !== "sale");
+  const [deviceError, setDeviceError] = useState("");
   const [pointItems, setPointItems] = useState<Record<string, Pick<Item,"id"|"name"> | null>>({});
+  // Wait for the correct signed-in employee's local records before mounting editors.
+  // Otherwise a blank first render would overwrite the saved invoice.
+  useEffect(() => {
+    if (kind !== "sale" || !user?.id) return;
+    let cancelled = false;
+    void listSalesPointDrafts<SalesPointForm>(user.id, companyId).then(saved => {
+      if (cancelled) return;
+      const valid = saved.filter(point => point.form && Array.isArray(point.form.lines)).slice(0, MAX_OPEN_INVOICE_POINTS);
+      const ids = valid.length ? valid.map(point => point.id) : [crypto.randomUUID()];
+      setPoints(ids);
+      setActivePoint(ids[0]!);
+      setPointCreatedAt(Object.fromEntries(valid.map(point => [point.id, point.createdAt])));
+      setRestoredPoints(Object.fromEntries(valid.map(point => [point.id, point.form])));
+      setPointItems(Object.fromEntries(valid.map(point => {
+        const line = point.form.lines.find(row => row.itemId > 0);
+        return [point.id, line ? {id: line.itemId, name: line.itemName} : null];
+      })));
+      setReady(true);
+    }).catch(error => {
+      if (cancelled) return;
+      const id = crypto.randomUUID();
+      setPoints([id]);
+      setActivePoint(id);
+      setDeviceError("تعذر استعادة فواتير المبيعات من هذا الجهاز: " + errorMessage(error));
+      setReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [kind, companyId, user?.id]);
   const [statuses, setStatuses] = useState<Record<string, InvoicePointStatus>>({});
   const draftSavers = useRef(new Map<string, () => Promise<boolean>>());
   const [leavingBusy, setLeavingBusy] = useState(false);
@@ -1333,7 +1390,8 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
     setStatuses(current => {
       const prior = current[id];
       if (prior?.dirty === next.dirty && prior.saving === next.saving &&
-        prior.unknown === next.unknown && prior.itemCount === next.itemCount) return current;
+        prior.unknown === next.unknown && prior.itemCount === next.itemCount &&
+        prior.storageError === next.storageError) return current;
       return { ...current, [id]: next };
     });
   }, []);
@@ -1343,10 +1401,27 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
     hasPendingDraft && (currentLocation.pathname !== nextLocation.pathname ||
       currentLocation.search !== nextLocation.search));
   const addPoint = () => {
-    if (points.length >= MAX_OPEN_INVOICE_POINTS) return;
+    if (!ready || points.length >= MAX_OPEN_INVOICE_POINTS) return;
     const id = crypto.randomUUID();
+    setPointCreatedAt(previous => ({...previous, [id]: new Date().toISOString()}));
     setPoints(previous => [...previous, id]);
     setActivePoint(id);
+  };
+  const leaveWithLocalSalesDrafts = async () => {
+    if (kind !== "sale" || blocker.state !== "blocked" || leavingBusy) return;
+    if (Object.values(statuses).some(status => status.saving || status.unknown)) return;
+    setLeavingBusy(true);
+    setLeavingError("");
+    try {
+      await flushSalesPointDrafts();
+      if (deviceError || Object.values(statuses).some(status => status.storageError))
+        throw new Error("تعذر حفظ بعض نقاط المبيعات على الجهاز؛ لا يمكن ضمان استعادتها.");
+      if (blocker.state === "blocked") blocker.proceed();
+    } catch (error) {
+      setLeavingError(errorMessage(error));
+    } finally {
+      setLeavingBusy(false);
+    }
   };
   const closePoint = async (id: string) => {
     const status = statuses[id];
@@ -1360,6 +1435,14 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
         ? "يوجد صنف واحد في فاتورة المشتريات. هل تريد إغلاق الفاتورة دون حفظ؟"
         : "هذه النقطة تحتوي فاتورة غير محفوظة. هل تريد إغلاقها وفقدان بياناتها؟")) return;
     if (points.length <= 1) return;
+    if (kind === "sale" && user?.id) {
+      try {
+        await deleteSalesPointDraft(user.id, companyId, id);
+      } catch (error) {
+        setDeviceError("تعذر حذف المسودة المحلية: " + errorMessage(error));
+        return;
+      }
+    }
     const remaining = points.filter(point => point !== id);
     setPoints(remaining);
     draftSavers.current.delete(id);
@@ -1379,7 +1462,12 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   return (
     <InvoiceWorkspace context={context} kind={kind}
       selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}>
-      <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير">
+      {kind === "sale" && !ready && <Notice>جارٍ استعادة فواتير المبيعات المحفوظة على الجهاز…</Notice>}
+      {deviceError && <Notice tone="error">{deviceError}</Notice>}
+      {kind === "sale" && ready && !deviceError && <p className="muted">
+        تُحفظ نقاط المبيعات تلقائيًا على هذا الجهاز لكل مستخدم؛ لا تُرحّل الفاتورة حتى تضغط حفظ.
+      </p>}
+      {ready && <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير">
         {points.map((id, index) => (
           <div key={id} className={`invoice-point-tab${id === activePoint ? " is-active" : ""}`}>
             <button type="button" role="tab" aria-selected={id === activePoint}
@@ -1402,12 +1490,13 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
           title="فتح فاتورة أخرى في نفس التطبيق">
           <Plus size={15} /> فاتورة أخرى
         </button>
-      </div>
-      {points.map(id => (
+      </div>}
+      {ready && points.map(id => (
         <div key={id} id={`invoice-point-panel-${id}`} role="tabpanel"
           aria-hidden={id !== activePoint}
           style={{ display: id === activePoint ? undefined : "none" }}>
           <InvoiceEditor context={context} tabId={id} active={id === activePoint}
+            restored={restoredPoints[id] ?? null} pointCreatedAt={pointCreatedAt[id]}
             onStatusChange={updateStatus}
             onRegisterDraftSaver={registerDraftSaver}
             onChooseItem={item => setPointItems(previous => ({ ...previous, [id]: item }))} />
@@ -1419,7 +1508,7 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
           ? Object.values(statuses).some(status => status.dirty && status.itemCount > 1)
             ? "توجد مشتريات مكتوبة بأكثر من سطر. هل تريد حفظ الفواتير مؤقتًا قبل المغادرة؟ يمكنك فتحها لاحقًا دون ترحيل."
             : "هل تريد الخروج من فاتورة المشتريات؟ يوجد صنف واحد أو بيانات لم تُحفظ."
-          : "توجد فاتورة غير محفوظة في نقطة واحدة على الأقل، أو عملية حفظ لم تتأكد نتيجتها."}</p>
+          : "توجد فواتير مبيعات مكتوبة محفوظة محليًا على هذا الجهاز. يمكنك الرجوع إليها عند العودة للصفحة بعد اكتمال الحفظ المحلي."}</p>
         {leavingError && <Notice tone="error">{leavingError}</Notice>}
         <div className="form-actions">
           <Button variant="secondary" onClick={() => {
@@ -1430,21 +1519,28 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
               onClick={() => { void saveAllAndLeave(); }}>
               {leavingBusy ? "جارٍ حفظ المسودات…" : "حفظ مؤقت ثم الخروج"}
             </Button>}
-          <Button variant="danger" disabled={leavingBusy || Object.values(statuses).some(status => status.saving || status.unknown)}
+          {kind === "sale" ? <Button disabled={leavingBusy ||
+            Object.values(statuses).some(status => status.saving || status.unknown)}
+            onClick={() => { void leaveWithLocalSalesDrafts(); }}>
+            {leavingBusy ? "التحقق من الحفظ المحلي…" : "مغادرة مع إبقاء الفواتير على الجهاز"}
+          </Button> : <Button variant="danger" disabled={leavingBusy ||
+            Object.values(statuses).some(status => status.saving || status.unknown)}
             onClick={() => { if (blocker.state === "blocked") blocker.proceed(); }}>
-            {kind === "purchase" ? "نعم، الخروج دون حفظ" : "مغادرة دون حفظ"}
-          </Button>
+            نعم، الخروج دون حفظ
+          </Button>}
         </div>
       </Dialog>
     </InvoiceWorkspace>
   );
 }
 
-function InvoiceEditor({ context, onChooseItem, tabId, active, onStatusChange, onRegisterDraftSaver }: {
+function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCreatedAt, onStatusChange, onRegisterDraftSaver }: {
   context: CompanyContext;
   onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void;
   tabId: string;
   active: boolean;
+  restored: SalesPointForm | null;
+  pointCreatedAt?: string;
   onStatusChange: (id: string, status: InvoicePointStatus) => void;
   onRegisterDraftSaver: (id: string, save: (() => Promise<boolean>) | null) => void;
 }) {
