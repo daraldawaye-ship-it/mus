@@ -44,21 +44,21 @@ test("broadcast targets server-derived actual attendance or all active company e
   assert.match(route,/await companyAccess\(client,user,input\.companyId!\)/);
   assert.match(route,/owner OR kind='admin'/);
   assert.match(route,/AND id<>\$1/);
-  assert.match(route,/scope="company"|scope="global"|scope="company"/);
+  assert.match(route,/companyScoped=input.kind/);
 });
 
-test("each recipient receives an existing chat notification, not a detached notification", () => {
+test("quick broadcasts create independent notifications only, never chat messages", () => {
   const route=read("apps/api/src/routes-quick-messages.ts");
-  const chat=read("apps/api/src/services/chat.ts");
-  const notifications=read("apps/api/src/services/chat-notifications.ts");
-  assert.match(route,/await sendChatMessage\(client,user,peerId/);
-  assert.match(route,/clientMessageId:messageIdFor/);
+  const notifications=read("apps/api/src/services/notifications.ts");
+  assert.match(route,/await emitNotification\(client/);
+  assert.match(route,/recipientUserId:recipient.userId,explicitSubjectOnly:true/);
+  assert.match(route,/subjectEmployeeId:recipient.employeeId/);
+  assert.match(route,/subjectUserId:recipient.userId/);
+  assert.match(route,/subjectKey:"quick:"\+user.id\+":"\+input.clientRequestId/);
   assert.match(route,/pg_advisory_xact_lock/);
   assert.match(route,/user_quick_messages/);
-  assert.match(chat,/await notifyChatRecipient\(client/);
-  assert.match(notifications,/await emitNotification\(client/);
-  assert.match(notifications,/CHAT_DIRECT_COMPANY/);
-  assert.match(notifications,/CHAT_DIRECT_GLOBAL/);
+  assert.doesNotMatch(route,/sendChatMessage|chatMessages|chat_conversations|CHAT_DIRECT|\/chat"/);
+  assert.match(notifications,/export async function emitNotification/);
 });
 
 test("private notes are owner-scoped; no content in notifications or shared audit; viewer deferred", () => {
