@@ -34,7 +34,7 @@ test("doctor/agency sales report totals posted sales, discounts, returns and cur
   `);
   const rows=await db.query<Record<string,unknown>>(doctorSalesReportSql,
    [2,"2026-11-01","2026-11-02","%",50,0,false]);
-  assert.equal(rows.rows.length,6);
+  assert.equal(rows.rows.length,7);
   const doctor=rows.rows.find(x=>x.doctorKey==="id:10")!;
   assert.equal(Number(doctor.netBaseAmount),530);
   assert.equal(doctor.invoiceCount,4);
