@@ -56,3 +56,19 @@ test("large readable, mobile responsive and print-hidden banner", () => {
   assert.equal(manifest.id, "/");
   assert.equal(manifest.scope, "/");
 });
+
+test("installed PWA accepts direct-link routes using one existing app window when browser captures link", () => {
+  const manifest = JSON.parse(read("apps/web/public/site.webmanifest"));
+  const app = read("apps/web/src/App.tsx");
+  const directLogin = read("apps/web/src/QuickLoginPage.tsx");
+  assert.equal(manifest.id, "/");
+  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.scope, "/");
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.launch_handler?.client_mode, "navigate-existing");
+  assert.equal(manifest.capture_links, undefined, "do not rely on obsolete capture_links");
+  assert.equal(manifest.protocol_handlers, undefined, "do not invent a custom scheme");
+  assert.match(app, /Route path="\\/quick-login"/);
+  assert.match(directLogin, /window\\.location\\.hash\\.slice\\(1\\)/);
+  assert.match(directLogin, /window\\.history\\.replaceState/);
+});
