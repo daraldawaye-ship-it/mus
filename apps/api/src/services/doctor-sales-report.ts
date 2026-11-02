@@ -4,7 +4,7 @@
  * Aggregate across currencies in each doctor's company base currency, while
  * also showing original-currency breakdowns rather than adding unlike money.
  *
- * Database parameters: companyId, from, to, nameLike, limit, offset.
+ * Database parameters: companyId, from, to, nameLike, limit, offset, medicalOnly.
  */
 export const doctorSalesReportSql = `
 WITH eligible AS MATERIALIZED (
@@ -32,6 +32,13 @@ WITH eligible AS MATERIALIZED (
     AND i.document_date >= $2::date AND i.document_date <= $3::date
     AND COALESCE(NULLIF(btrim(d.name),''),NULLIF(btrim(i.doctor_name),''),'غير محدد')
       ILIKE $4 ESCAPE '\\'
+    -- The compact three-day list excludes entity cards and unnamed invoices.
+    -- It retains both named unclassified cards and legacy named snapshots.
+    AND ($7::boolean = false OR (
+      (d.kind IN ('doctor','nurse') OR d.kind IS NULL)
+      AND NULLIF(btrim(COALESCE(NULLIF(d.name,''),i.doctor_name)), '') IS NOT NULL
+      AND btrim(COALESCE(NULLIF(d.name,''),i.doctor_name)) <> 'غير محدد'
+    ))
 ),
 per_currency AS (
   SELECT doctor_key,MIN(doctor_name) AS doctor_name,
