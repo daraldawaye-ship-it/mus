@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import {
   settlementDuePredicate,
+  manualStocktakeRequestPredicate,
   settlementFollowUpFrom,
 } from "../apps/api/src/services/settlement-due.ts";
 
@@ -38,6 +39,48 @@ test("periodic stocktake interval has a 1.5-day SQL minimum", async () => {
         Math.abs(Number(result.rows[0]?.days) - c.expected) < 0.000001,
         `importance=${c.importance}, monthlySales=${c.monthlySales}`,
       );
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("zero stock outside returns is excluded unless a newer card request exists", async () => {
+  assert.match(settlementDuePredicate, /stats\.stock_without_returns/);
+  assert.match(settlementDuePredicate, /manualStocktakeRequestPredicate/);
+  assert.match(manualStocktakeRequestPredicate, /last_count\.created_at IS NULL/);
+
+  const db = new PGlite();
+  try {
+    const older = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const newer = new Date(Date.now() + 86_400_000).toISOString();
+    const cases = [
+      { description: "no balance and never adjusted", nonReturns: "0", showroom: "0", adjustment: null, elapsed: 0, requested: null, expected: false },
+      { description: "only returns has stock, never adjusted", nonReturns: "0", showroom: "0", adjustment: null, elapsed: 0, requested: null, expected: false },
+      { description: "zero non-returns stock after overdue adjustment", nonReturns: "0", showroom: "0", adjustment: older, elapsed: 12, requested: null, expected: false },
+      { description: "zero net stock even with negative showroom", nonReturns: "0", showroom: "-2", adjustment: older, elapsed: 12, requested: null, expected: false },
+      { description: "zero stock and manual request newer than last adjustment", nonReturns: "0", showroom: "0", adjustment: older, elapsed: 0, requested: newer, expected: true },
+      { description: "zero stock and manual request older than last adjustment", nonReturns: "0", showroom: "0", adjustment: newer, elapsed: 0, requested: older, expected: false },
+      { description: "zero stock, no adjustment, manual request", nonReturns: "0", showroom: "0", adjustment: null, elapsed: 0, requested: newer, expected: true },
+      { description: "positive stock and never counted", nonReturns: "5", showroom: "5", adjustment: null, elapsed: 0, requested: null, expected: true },
+      { description: "positive stock but last adjustment within 1.5 days", nonReturns: "5", showroom: "5", adjustment: older, elapsed: 1, requested: null, expected: false },
+      { description: "positive stock due after periodic limit", nonReturns: "5", showroom: "5", adjustment: older, elapsed: 2, requested: null, expected: true },
+      { description: "negative nonzero stock triggers stocktake", nonReturns: "-5", showroom: "-5", adjustment: newer, elapsed: 0, requested: null, expected: true },
+    ];
+    for (const c of cases) {
+      const result = await db.query<{ due: boolean }>(
+        `SELECT (${settlementDuePredicate}) AS due
+        FROM (SELECT $1::timestamptz AS stocktake_required_at) i
+        CROSS JOIN (SELECT
+          $2::integer AS id,
+          ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date - $3::integer) AS document_date,
+          $4::timestamptz AS created_at
+        ) last_count
+        CROSS JOIN (SELECT $5::numeric AS stock_without_returns, $6::numeric AS stock_showroom) stats
+        CROSS JOIN (SELECT $7::numeric AS raw_limit) count_limit`,
+        [c.requested, c.adjustment === null ? null : 123, c.elapsed, c.adjustment, c.nonReturns, c.showroom, 1.5],
+      );
+      assert.equal(result.rows[0]?.due, c.expected, c.description);
     }
   } finally {
     await db.close();
