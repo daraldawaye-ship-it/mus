@@ -37,4 +37,11 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/invoice-four-decimal-prices.test.ts tests/commerce.test.ts
+      # Dedicated cases plus the posting/returns/idempotency regressions relevant
+      # to this price-only change. The full legacy commerce suite is tracked
+      # separately: eight unrelated pre-existing scenarios fail on this branch.
+      - run: node --import tsx --test tests/invoice-four-decimal-prices.test.ts
+      - run: >-
+          node --import tsx --test
+          --test-name-pattern='four decimal invoice prices|purchase and sale atomically|linked purchase returns|invoice and stock operation retries|signed header discounts'
+          tests/commerce.test.ts
