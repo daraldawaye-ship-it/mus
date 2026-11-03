@@ -213,3 +213,6 @@ The owner requested company-level «الأجهزة المعتمدة» to **recog
 ## Sales invoice customer cell correction — 2026-11-03
 
 When clicking the customer cell (even empty) in a *posted sales invoice list*, open a modal for optional customer name and optional number. Edit only invoice.sale_customer_id/number/name snapshots through company-scoped, commerce.manage-gated PATCH, optimistic comparison and audit; do not repost invoice, mutate customer cards, stock, balances or rewards. Blank/number-only/name-only/both must work; updating an existing invoice must be visible in list/detail/print. See docs/INVOICE_CUSTOMER_CELL_MODAL.md.
+
+
+Invoice list direct printing (2026-11-03): render a «طباعة» column next to «عرض» for sales and purchases. Use the existing `/companies/:companyId/invoices/:id?print=1` print-ready route from a new tab instead of requiring the user to manually open an invoice, preserving CompanyPrintHeader and InvoicePrintSheet; do not use hidden iframe print hacks.
