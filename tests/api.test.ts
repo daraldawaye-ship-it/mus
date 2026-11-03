@@ -4070,7 +4070,7 @@ test("item options filter immutable previous-year sale times and mutable reserve
   const third=await add(co.id,"Last year unavailable","source-2025-c","7");
   const other=await add(foreign.id,"Other company","source-2025-a","3");
   await f.pool.query(
-    "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($4,$2,999)",
+    "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($3,$2,999)",
     [co.id,"source-2025-a",foreign.id],
   );
   type ItemsList={result:{rows:{itemId:number;reserveQuantity:string;saleTimesPreviousYear:string}[];total:number}};
