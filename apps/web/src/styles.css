@@ -4684,8 +4684,8 @@ a.notification-quick-title:hover { text-decoration: underline; }
     align-items: baseline;
     justify-content: space-between;
     gap: 4mm;
-    width: 100%;
-    margin: 3mm 0 0;
+    width: min(100%, 135mm);
+    margin: 3mm 0 0 auto;
     padding: 0;
     border: 0;
     background: transparent;
