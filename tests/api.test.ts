@@ -4078,12 +4078,30 @@ test("item options filter immutable previous-year sale times and mutable reserve
     "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($3,$2,999)",
     [co.id,"source-2025-a",foreign.id],
   );
-  type ItemsList={result:{rows:{itemId:number;reserveQuantity:string;saleTimesPreviousYear:string}[];total:number}};
+  type ItemsList={result:{rows:{itemId:number;revision:number;purchaseFactor:number;reserveQuantity:string;reserveCoverageDays:string|null;purchaseFactorCoverageDays:string|null;saleTimesPreviousYear:string}[];total:number}};
   async function list(url:string){
     return (await platform.client.ok<ItemsList>("GET",url)).result;
   }
   const basic=await list(prefix+"/item-options-list");
   assert.equal(basic.total,3);
+  const original = basic.rows.find(row => row.itemId === first)!;
+  assert.equal(original.purchaseFactor,1);
+  assert.equal(original.reserveCoverageDays,"9999");
+  assert.equal(original.purchaseFactorCoverageDays,"9999");
+  const changedFactor = await platform.client.ok<{result:{purchaseFactor:number;revision:number}}>(
+    "PATCH",`${prefix}/items/${first}/purchase-factor`,
+    {revision:original.revision,purchaseFactor:5});
+  assert.equal(changedFactor.result.purchaseFactor,5);
+  assert.equal((await platform.client.request("PATCH",`${prefix}/items/${first}/purchase-factor`,
+    {revision:original.revision,purchaseFactor:7})).status,409);
+  assert.equal((await platform.client.request("PATCH",`${prefix}/items/${first}/purchase-factor`,
+    {revision:changedFactor.result.revision,purchaseFactor:0})).status,400);
+  const factorOnly = await list(prefix+"/item-options-list?purchaseFactorMin=5&purchaseFactorMax=5");
+  assert.equal(factorOnly.total,1);
+  assert.equal(factorOnly.rows[0]!.itemId,first);
+  assert.equal(factorOnly.rows[0]!.purchaseFactor,5);
+  const coverageOnly = await list(prefix+"/item-options-list?purchaseFactorCoverageMin=9999&reserveCoverageMin=9999");
+  assert.equal(coverageOnly.total,3);
   assert.deepEqual(new Map(basic.rows.map(row=>[row.itemId,row.saleTimesPreviousYear])),
     new Map([[first,"482"],[second,"0"],[third,"0"]]));
   const range=await list(prefix+"/item-options-list?previousYearMin=480&previousYearMax=500");
