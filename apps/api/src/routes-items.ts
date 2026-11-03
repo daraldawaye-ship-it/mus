@@ -18,6 +18,7 @@ import {
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
 import { addsOnlyPreviouslyInactiveUnits, editsSecondaryUnitsWithoutRescalingStock } from "./services/item-unit-history.ts";
+import { rebaseWholeUnitStock } from "./services/item-unit-rebase.ts";
 import { readCompositionStatistics } from "./services/composition-statistics.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
@@ -930,6 +931,7 @@ export function itemRoutes(pool: Pool): Router {
             if (balance.rowCount)
               conflict("لا يمكن أرشفة صنف له كمية في المخزون؛ صفّر رصيد جميع المواقع بالتسوية أولًا");
           }
+          let needsUnitRebase = false;
           const unitFields = [
             "unit1Name",
             "unit2Name",
@@ -956,8 +958,20 @@ export function itemRoutes(pool: Pool): Router {
               // divisible by its unchanged smallest-unit multiplier. Never
               // change that multiplier on existing stock without a separately
               // audited conversion operation.
-              if (!stablePack)
-                conflict("لا يمكن تغيير عدد الحبات في الوحدة الأولى والصنف له رصيد. يمكنك تعديل الوحدتين الثانية والثالثة إذا بقي إجمالي معامل التحويل ثابتًا.");
+              if (!stablePack) {
+                // Whole first-unit stock can be rebased inside this same item
+                // transaction. Each batch will receive a zero-cost conversion
+                // movement; the physical first-unit quantity and ledger value
+                // remain identical. Inventory posting permission is required.
+                const oldPack = BigInt(before.factor2) * BigInt(before.factor3);
+                const newPack = BigInt(input.factor2) * BigInt(input.factor3);
+                if (oldPack === newPack ||
+                    before.unit1Name !== input.unit1Name ||
+                    before.hasExpiry !== input.hasExpiry)
+                  conflict("لا يمكن تعديل الوحدة الأولى أو تاريخ الانتهاء أثناء تحويل الوحدات.");
+                await companyAccess(client, user, companyId, "inventory.post", true);
+                needsUnitRebase = true;
+              }
               const pack = BigInt(before.factor2) * BigInt(before.factor3);
               const fractional = await client.query(
                 `SELECT 1 FROM stock_balances
@@ -994,6 +1008,8 @@ export function itemRoutes(pool: Pool): Router {
               conflict("هذا الصنف محدد أورجنال في كرت التركيب؛ ألغِ تعيين الأورجنال قبل نقل الصنف أو فك ارتباطه.");
           }
           await checkItemReferences(client, companyId, fields, before);
+          if (needsUnitRebase)
+            await rebaseWholeUnitStock(client, companyId, rowId, user, before, fields);
           // The SQL itself writes only the touched columns for field patches;
           // unrelated values remain untouched even at the column level.
           const columnsToUpdate = fieldPatch
