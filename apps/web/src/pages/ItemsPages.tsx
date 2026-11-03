@@ -61,6 +61,7 @@ import { ImageUpload } from "../ImageUpload";
 import { itemActiveFilter, itemActiveQueryValue } from "../item-active-filter";
 import { formatMoney } from "../format-money";
 import { firstUnitStockText } from "../sale-stock-quantity";
+import { positiveIntegerInput } from "../positive-integer-input";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
 import { useSharedItemSelection } from "../shared-item-selection";
@@ -1139,7 +1140,7 @@ function initialItemFields(item: Item | null): ItemFields {
     settlementDisplayDate: item?.settlementDisplayDate ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     reorderLimit: item?.reorderLimit ?? "0",
-    orderQuantity: item?.orderQuantity ?? "0",
+    orderQuantity: item?.orderQuantity ?? "1",
     reserveQuantity: item?.reserveQuantity ?? "0",
     searchKeys: item?.searchKeys ?? "",
     shortcut: item?.shortcut ?? "",
@@ -2175,11 +2176,12 @@ function ItemEditor({
             />
             <Field
               label="عامل وحدة الشراء"
+              type="number" min={1} step={1}
               inputMode="numeric"
               dir="ltr"
               value={fields.purchaseFactor}
               disabled={disabled}
-              onChange={(event) => edit("purchaseFactor", event.target.value)}
+              onChange={(event) => edit("purchaseFactor", positiveIntegerInput(event.target.value, fields.purchaseFactor, 1_000_000n))}
               hint="قيمة محفوظة للشراء، لا تدخل في معاينة تحويل الوحدات."
             />
             <Field
@@ -2193,12 +2195,13 @@ function ItemEditor({
             />
             <Field
               label="كمية الطلب"
+              type="number" min={1} step={1}
               inputMode="numeric"
               dir="ltr"
               value={fields.orderQuantity}
               disabled={disabled}
-              onChange={(event) => edit("orderQuantity", event.target.value)}
-              hint={`بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
+              onChange={(event) => edit("orderQuantity", positiveIntegerInput(event.target.value, fields.orderQuantity, 10n ** 22n - 1n))}
+              hint={`عدد صحيح يبدأ من 1 بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
             />
             <Field
               label="كمية احتياط"
