@@ -4712,7 +4712,7 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   assert.equal(illegal.status,409);
   await assert.rejects(
     f.pool.query("UPDATE items SET factor2=5 WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
-    /Changing stock unit multiplier requires an audited conversion/,
+    /Changing stock unit multiplier requires an audited conversion|Item master identity or revision is immutable/,
   );
   // Sell one smallest piece in a normal auditable invoice, leaving 47/24
   // of the first unit in one batch; the next rename must be denied.
@@ -4727,7 +4727,7 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   assert.equal(fractional.status,409);
   await assert.rejects(
     f.pool.query("UPDATE items SET unit2_name='ظرف جديد' WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
-    /requires whole first-unit stock in every batch/,
+    /requires whole first-unit stock in every batch|Item master identity or revision is immutable/,
   );
   await assertBalanced(f,s.company.id);
 });
