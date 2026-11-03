@@ -1,3 +1,6 @@
+## Item options list: purchase factor and separate sufficiency (2026-11-04)
+The owner requested a +/− editable column for purchase_factor (integer >=1), plus independent reserve-quantity and purchase-factor sufficiency days. Only the scoped item-options-list edit role can PATCH the factor, with row lock, revision check and audit. Both indicators use itemCoverageJoin sales/day windows and are informational only: the factor is interpreted as a notional smallest-unit count for comparison and MUST NOT alter stock, unit conversion, invoice totals, pricing or historical accounting. Preset numeric fields default blank to preserve older shared filters. See docs/ITEM_OPTIONS_PURCHASE_FACTOR_AND_COVERAGE.md.
+
 # Alraesy — rebuilt foundation
 
 ## Posted-sale customer snapshot corrections: PostgreSQL trigger exception (2026-11-04)
