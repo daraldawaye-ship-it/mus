@@ -4,6 +4,7 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index";
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
+import { formatKnownDeviceCode } from "../device-display-code";
 
 type DeviceCategory = "unclassified" | "pharmacy" | "employee";
 type DeviceRow = {
@@ -96,6 +97,8 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
         body: { name: name.trim(), category, approved, revision },
       });
       await queryClient.invalidateQueries({ queryKey: ["approved-devices", user?.id, companyId] });
+      // A just-renamed device should show its new name when the avatar is reopened.
+      void queryClient.invalidateQueries({ queryKey: ["my-device-identity", user?.id, companyId] });
       setEditingId(null);
       setNotice("تم حفظ بيانات الجهاز. لم تتغير أي صلاحيات للدخول أو للصفحات.");
     } catch (reason) {
@@ -125,7 +128,7 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
       <Card>
         <form onSubmit={submitSearch} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
           <div style={{ flex: "1 1 220px" }}>
-            <Field label="بحث باسم الجهاز أو المتصفح أو آخر مستخدم" value={searchText}
+            <Field label="بحث باسم الجهاز أو رمزه أو المتصفح أو آخر مستخدم" value={searchText}
               onChange={(event) => setSearchText(event.target.value)} maxLength={80} />
           </div>
           <Button type="submit">بحث</Button>
@@ -142,6 +145,7 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
         {devices.data?.items.map((item) => (
           <Card key={item.id} title={item.name || "جهاز غير مسمى"} description={categoryNames[item.category]}>
             <div style={{ display: "grid", gap: 5 }}>
+              <span><strong>رمز الجهاز:</strong> <bdi dir="ltr">{formatKnownDeviceCode(item.id)}</bdi></span>
               <span><strong>حالة التوثيق:</strong> {item.approved ? "معتمد" : "بانتظار التوثيق"}</span>
               <span><strong>نوع الوصول:</strong> {kindNames[item.deviceKind]}</span>
               <span><strong>النظام والمتصفح:</strong> {item.operatingSystem} — {item.browser}</span>

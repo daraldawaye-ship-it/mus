@@ -448,3 +448,25 @@
   .user-menu-quick-options { width: min(280px, calc(100% - 6px)); }
 }
 @media print { .user-menu-quick-options { display: none !important; } }
+
+/* The device's authenticated company-registry label/code occupies the left
+   part of the settings identity row, without showing the raw installation UUID. */
+.user-menu-account-identity .user-menu-identity-text {min-width:0;flex:0 1 auto;}
+.user-menu-account-identity .user-menu-identity-text strong,
+.user-menu-account-identity .user-menu-identity-text small {
+  display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.user-menu-device-identity {
+  margin-inline-start:auto;min-width:0;max-width:48%;
+  flex:0 1 48%;display:flex;align-items:center;justify-content:flex-end;
+  gap:4px;color:var(--text);text-align:start;font-size:11px;
+}
+.user-menu-device-label {display:flex;flex-direction:column;min-width:0;gap:2px;}
+.user-menu-device-label strong {max-width:100%;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-menu-device-caption,.user-menu-device-identity small {font-size:10px;color:var(--muted);}
+.user-menu-device-copy,.user-menu-device-retry {background:transparent;color:var(--text);
+  cursor:pointer;border:1px solid var(--border);border-radius:5px;padding:5px;flex:none;}
+.user-menu-device-feedback {font-size:9px;color:var(--muted);max-width:85px;}
+@media (max-width: 430px) {
+  .user-menu-device-identity {max-width:45%;flex-basis:45%;}
+}

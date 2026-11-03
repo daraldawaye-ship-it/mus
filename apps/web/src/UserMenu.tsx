@@ -20,6 +20,7 @@ import { api } from "./api";
 import { readMenuNavigation, saveMenuNavigation } from "./menu-navigation-cache";
 import { allowedAvatarTabs } from "./avatar-menu-permissions";
 import { refreshEntireApp } from "./app-force-refresh";
+import { UserMenuDeviceIdentity } from "./UserMenuDeviceIdentity";
 import "./user-menu-tabs.css";
 
 function Avatar({ user, large = false }: { user: User; large?: boolean }) {
@@ -268,6 +269,8 @@ export function UserMenu({
                     <strong title={user.displayName}>{user.displayName}</strong>
                     <small title={user.email} dir="ltr">{user.email}</small>
                   </span>
+                  <UserMenuDeviceIdentity key={`${user.id}:${companyId ?? "general"}`}
+                    userId={user.id} companyId={companyId} />
                 </div>
 
               </>
