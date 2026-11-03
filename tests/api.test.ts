@@ -4070,21 +4070,21 @@ test("item options filter immutable previous-year sale times and mutable reserve
   const third=await add(co.id,"Last year unavailable","source-2025-c","7");
   const other=await add(foreign.id,"Other company","source-2025-a","3");
   await f.pool.query(
-    "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($1,$3,0),($4,$2,999)",
-    [co.id,"source-2025-a","source-2025-b",foreign.id],
+    "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($4,$2,999)",
+    [co.id,"source-2025-a",foreign.id],
   );
-  type ItemsList={result:{rows:{itemId:number;reserveQuantity:string;saleTimesPreviousYear:string|null}[];total:number}};
+  type ItemsList={result:{rows:{itemId:number;reserveQuantity:string;saleTimesPreviousYear:string}[];total:number}};
   async function list(url:string){
     return (await platform.client.ok<ItemsList>("GET",url)).result;
   }
   const basic=await list(prefix+"/item-options-list");
   assert.equal(basic.total,3);
   assert.deepEqual(new Map(basic.rows.map(row=>[row.itemId,row.saleTimesPreviousYear])),
-    new Map([[first,"482"],[second,"0"],[third,null]]));
+    new Map([[first,"482"],[second,"0"],[third,"0"]]));
   const range=await list(prefix+"/item-options-list?previousYearMin=480&previousYearMax=500");
   assert.equal(range.total,1); assert.equal(range.rows[0]!.itemId,first);
   const zero=await list(prefix+"/item-options-list?previousYearMin=0&previousYearMax=0");
-  assert.equal(zero.total,1); assert.equal(zero.rows[0]!.itemId,second);
+  assert.equal(zero.total,2); assert.deepEqual(zero.rows.map(row=>row.itemId).sort((a,b)=>a-b),[second,third].sort((a,b)=>a-b));
   const reserve=await list(prefix+"/item-options-list?reserveMin=8&reserveMax=15");
   assert.equal(reserve.total,1); assert.equal(reserve.rows[0]!.itemId,second);
   const both=await list(prefix+"/item-options-list?reserveMin=2&reserveMax=8&previousYearMin=400&previousYearMax=500");
