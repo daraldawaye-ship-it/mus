@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import type { ItemCompositionPeers, Page } from "../../../packages/contracts/src/index";
 import { stockMovementKindLabels, type StockMovement } from "../../../packages/contracts/src/inventory";
 import { signedStockMovementQuantity } from "./stock-movement-display";
@@ -185,8 +186,8 @@ export function ItemMenuHistory({
             </div>
           ))}
           {isMovement && itemId && !waiting && !failed && (
-            <a href={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
-              className="user-menu-item-history-more">عرض جميع حركات الصنف</a>
+            <Link to={`/companies/${companyId}/stock-movements?itemId=${itemId}`}
+              className="user-menu-item-history-more">عرض جميع حركات الصنف</Link>
           )}
           {(page > 1 || hasMore) && !waiting && !failed && (
             <div className="user-menu-item-history-pager">
