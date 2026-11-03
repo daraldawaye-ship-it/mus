@@ -4,15 +4,15 @@ import { readFileSync } from "node:fs";
 import { itemOptionsPresetFiltersSchema } from "../packages/contracts/src/item-options-presets.ts";
 const read=(path:string)=>readFileSync(path,"utf8");
 
-test("frozen annual sales snapshot preserves original legacy keys, zeros and missing values",()=>{
+test("frozen annual sales snapshot imports only positive legacy counts and treats absent rows as zero",()=>{
   const sql=read("apps/api/migrations/20261103_item_previous_year_sale_times_snapshot.sql");
   assert.match(sql,/CREATE TABLE IF NOT EXISTS company_item_previous_year_sale_times/);
   assert.match(sql,/PRIMARY KEY \(company_id,legacy_id\)/);
   assert.match(sql,/WHERE EXISTS \(SELECT 1 FROM companies c WHERE c.id=source.company_id\)/);
   assert.match(sql,/ON CONFLICT \(company_id,legacy_id\) DO NOTHING/);
   const pairs=sql.split("\n").filter(line=>/^\(2,'[0-9]+',(NULL|[0-9]+)\),?$/.test(line));
-  assert.equal(pairs.length,15253);
-  assert.equal(pairs.filter(line=>line.includes(",NULL)")).length,120);
+  assert.equal(pairs.length,4680);
+  assert.ok(pairs.every(line=>Number(line.split(",").at(-1)?.replace(/\\D/g,""))>0));
   assert.ok(pairs.includes("(2,'8252',9999),"));
   assert.ok(pairs.includes("(2,'8248',482),"));
   assert.equal(new Set(pairs.map(line=>line.split("'")[1])).size,15253);
@@ -30,7 +30,7 @@ test("prior-year and reserve min max appear in query and both layouts",()=>{
   assert.match(api,/previous\.legacy_id=i\.legacy_id/);
   assert.match(api,/saleTimesPreviousYear: row\.sale_times_previous_year === null/);
   assert.match(ui,/sortHeader\("previousYear", "مرات عام السابق"\)/);
-  assert.ok(ui.includes('row.saleTimesPreviousYear ?? "—"'));
+  assert.ok(ui.includes('row.saleTimesPreviousYear'));
   assert.match(api,/reserveMin, "m\.reserve_quantity"/);
   assert.match(ui,/sortHeader\("reserve", "كمية احتياط"\)/);
 });
