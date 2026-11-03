@@ -12,37 +12,45 @@ BEGIN
     RAISE EXCEPTION 'Operational history cannot be deleted' USING ERRCODE='23514';
   END IF;
 
-  IF TG_TABLE_NAME='invoices' AND OLD.financial_document_id IS NOT NULL THEN
-    IF TG_OP='UPDATE'
-      AND OLD.kind='sale' AND NEW.kind='sale'
-      AND current_setting('alraesy.sale_customer_snapshot_update',true)
-        = OLD.company_id::text || ':' || OLD.id::text
-      AND (to_jsonb(NEW) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
-          = (to_jsonb(OLD) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
-    THEN
-      RETURN NEW;
+  -- Keep the record-specific trigger branches separate. PostgreSQL may
+  -- evaluate boolean subexpressions eagerly, so an OLD invoice row must
+  -- never try to read invoice_lines-only fields such as OLD.invoice_id.
+  IF TG_TABLE_NAME='invoices' THEN
+    IF OLD.financial_document_id IS NOT NULL THEN
+      IF TG_OP='UPDATE'
+        AND OLD.kind='sale' AND NEW.kind='sale'
+        AND current_setting('alraesy.sale_customer_snapshot_update',true)
+          = OLD.company_id::text || ':' || OLD.id::text
+        AND (to_jsonb(NEW) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
+            = (to_jsonb(OLD) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
+      THEN
+        RETURN NEW;
+      END IF;
+      RAISE EXCEPTION 'Posted invoices are immutable' USING ERRCODE='23514';
     END IF;
-    RAISE EXCEPTION 'Posted invoices are immutable' USING ERRCODE='23514';
+    RETURN NEW;
   END IF;
 
-  IF TG_TABLE_NAME='invoice_lines' AND TG_OP<>'INSERT'
-    AND EXISTS(
-      SELECT 1 FROM invoices
-      WHERE company_id=OLD.company_id AND id=OLD.invoice_id
-        AND financial_document_id IS NOT NULL
-    )
-  THEN
-    RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
-  END IF;
-  IF TG_TABLE_NAME='invoice_lines'
-    AND EXISTS(
+  IF TG_TABLE_NAME='invoice_lines' THEN
+    IF TG_OP<>'INSERT' THEN
+      IF EXISTS(
+        SELECT 1 FROM invoices
+        WHERE company_id=OLD.company_id AND id=OLD.invoice_id
+          AND financial_document_id IS NOT NULL
+      ) THEN
+        RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
+      END IF;
+    END IF;
+    IF EXISTS(
       SELECT 1 FROM invoices
       WHERE company_id=NEW.company_id AND id=NEW.invoice_id
         AND financial_document_id IS NOT NULL
-    )
-  THEN
-    RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
+    ) THEN
+      RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
   END IF;
+
   IF TG_TABLE_NAME='stock_movements' THEN
     RAISE EXCEPTION 'Stock movements are immutable' USING ERRCODE='23514';
   END IF;
