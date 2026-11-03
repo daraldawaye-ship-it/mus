@@ -813,7 +813,7 @@ export async function createInvoice(
       doctor?.name ?? null,
       saleCustomer?.id ?? null,
       saleCustomer?.customer_number ?? (input.kind==="sale" && importContext ? input.saleCustomerNumber || null : null),
-      saleCustomer?.name ?? (input.kind==="sale" && importContext ? input.saleCustomerName || null : null),
+      saleCustomer?.name ?? (input.kind==="sale" ? input.saleCustomerName || null : null),
     ],
   );
   const invoiceId = inserted.rows[0].id as number;
