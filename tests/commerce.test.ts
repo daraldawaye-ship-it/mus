@@ -4660,3 +4660,17 @@ test("signed header discounts post negative sales and purchase invoices while pr
   }
   await assertBalanced(f,s.company.id);
 });
+
+
+test("four decimal invoice prices post balanced stock and preserve price snapshots", async(t)=>{
+ const f=await fixture(t), s=await setup(f), item=await s.item();
+ const body=invoiceBody(s,item.id,{lines:[{itemId:item.id,unit:1,quantity:"84",unitPrice:"92.8571",expiryDate:"2027-01-31"}]});
+ const posted=await invoice(f,s,body);
+ assert.equal(posted.lines[0]!.unitPrice,"92.8571");
+ assert.equal(posted.total,"7800");
+ assert.equal(posted.lines[0]!.smallestQuantity,"2016");
+ assert.equal((await invoice(f,s,body)).id,posted.id);
+ const returned=await invoice(f,s,invoiceBody(s,item.id,{lines:[{itemId:item.id,unit:1,quantity:"-84",originalLineId:posted.lines[0]!.id}]}));
+ assert.equal(returned.total,"-7800");
+ assert.equal((await balances(f,s,item.id))[0]!.quantitySmallest,"0");
+});

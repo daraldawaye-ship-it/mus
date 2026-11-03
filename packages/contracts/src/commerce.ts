@@ -200,6 +200,21 @@ function amount(value: bigint): string {
     .replace(/0+$/, "");
   return `${negative ? "-" : ""}${magnitude / 1_000_000n}${fraction ? `.${fraction}` : ""}`;
 }
+/** Unit prices retain at least four decimals; money rounds only after multiplication. */
+export function invoiceLineGross(quantity: string, unitPrice: string, decimalPlaces: number): string {
+  if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 6)
+    throw new Error("دقة العملة غير صالحة");
+  const price = units(amountSchema.parse(unitPrice));
+  const priceStep = 10n ** BigInt(6 - Math.max(4, decimalPlaces));
+  if (price % priceStep !== 0n)
+    throw new Error("سعر السطر يقبل حتى أربع خانات عشرية");
+  const raw = BigInt(invoiceQuantitySchema.parse(quantity)) * price;
+  const step = 10n ** BigInt(6 - decimalPlaces);
+  const magnitude = raw < 0n ? -raw : raw;
+  const rounded = ((magnitude + step / 2n) / step) * step;
+  return amount(raw < 0n ? -rounded : rounded);
+}
+
 /** Distribute the entered header discount according to the gross invoice sign.
  * A net-negative invoice applies the new amount to returning lines; the
  * inherited discount of a linked return is kept separately and never replaced.
@@ -216,9 +231,7 @@ export function calculateInvoiceTotals(
   const step = 10n ** BigInt(6 - decimalPlaces);
   const quantities = lines.map(line => BigInt(invoiceQuantitySchema.parse(line.quantity)));
   const grossLines = lines.map((line,index) => {
-    const price = units(amountSchema.parse(line.unitPrice));
-    if (price % step !== 0n) throw new Error("سعر السطر يتجاوز دقة العملة");
-    return quantities[index] * price;
+    return units(invoiceLineGross(line.quantity, line.unitPrice, decimalPlaces));
   });
   const gross = grossLines.reduce((sum,value)=>sum+value,0n);
   const inherited = lines.map((line,index) => {
