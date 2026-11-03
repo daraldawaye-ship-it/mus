@@ -42,7 +42,7 @@ test("the editor and server keep unnumbered names in the invoice snapshot", () =
 test("printed and detail views display name-only customers independently of ledger account", () => {
   const print = readFileSync("apps/web/src/InvoicePrintSheet.tsx", "utf8");
   const editor = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
-  assert.match(print, /!purchase && invoice\.saleCustomerName\?\.trim\(\)/);
+  assert.match(print, /invoice\.saleCustomerName\?\.trim\(\) \?/);
   assert.match(print, /<dt>اسم العميل<\/dt><dd>\{invoice\.saleCustomerName\}<\/dd>/);
   assert.match(editor, /\(invoice\.saleCustomerNumber \|\| invoice\.saleCustomerName\)/);
 });
