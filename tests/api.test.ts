@@ -4044,9 +4044,9 @@ test("company-shared item option presets persist, isolate tenants, and require a
   assert.deepEqual(listed.items[0].filters,filters);
   assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",otherBase)).items,[]);
   assert.equal((await platform.client.request("POST",base,{name:"الأصناف المتوفرة",filters})).status,409);
-  assert.equal((await platform.client.request("DELETE",`${otherBase}/${created.item.id}`)).status,404);
-  assert.equal((await outsider.client.request("DELETE",`${base}/${created.item.id}`)).status,403);
-  await platform.client.ok("DELETE",`${base}/${created.item.id}`);
+  assert.equal((await platform.client.request("DELETE",`${otherBase}/${created.item.id}`,{})).status,404);
+  assert.equal((await outsider.client.request("DELETE",`${base}/${created.item.id}`,{})).status,403);
+  await platform.client.ok("DELETE",`${base}/${created.item.id}`,{});
   assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",base)).items,[]);
-  assert.equal((await platform.client.request("DELETE",`${base}/${created.item.id}`)).status,404);
+  assert.equal((await platform.client.request("DELETE",`${base}/${created.item.id}`,{})).status,404);
 });
