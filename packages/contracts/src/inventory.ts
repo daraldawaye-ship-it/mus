@@ -130,6 +130,7 @@ export const stockMovementKinds = [
   "transfer_out",
   "adjustment_surplus",
   "adjustment_shortage",
+  "unit_rebase",
   "reversal",
 ] as const;
 export type StockMovementKind = (typeof stockMovementKinds)[number];
@@ -142,6 +143,7 @@ export const stockMovementKindLabels: Record<StockMovementKind, string> = {
   transfer_out: "مناقلة صادرة",
   adjustment_surplus: "زيادة جرد",
   adjustment_shortage: "عجز جرد",
+  unit_rebase: "تحويل الوحدة",
   reversal: "عكس حركة",
 };
 /** Full location snapshot for the chosen item; includes empty locations. */
@@ -213,7 +215,7 @@ export interface StockMovement {
 export interface StockOperation {
   id: number;
   companyId: number;
-  kind: "transfer" | "adjustment";
+  kind: "transfer" | "adjustment" | "unit_rebase";
   documentDate: string;
   description: string;
   financialDocumentId: number | null;
