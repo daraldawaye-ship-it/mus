@@ -395,6 +395,24 @@ function InvoiceList({
         ),
       },
       {
+        id: "print",
+        header: "طباعة",
+        size: 75,
+        enableSorting: false,
+        cell: ({ row }) => (
+          // Reuse the existing receipt page's auto-print flow: it waits
+          // for the saved invoice and protected letterhead before printing.
+          // A separate tab keeps the invoice list, search and scroll intact.
+          <Link
+            to={`${invoicePath(companyId, row.original.id)}?print=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`طباعة الفاتورة ${row.original.number} مباشرة`}
+            title="طباعة مباشرة دون مغادرة قائمة الفواتير"
+          >طباعة</Link>
+        ),
+      },
+      {
         id: "open",
         header: "عرض",
         size: 65,
