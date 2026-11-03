@@ -584,7 +584,6 @@ function MovementsList({ context }: { context: CompanyContext }) {
   );
   const columns = useMemo<ColumnDef<StockMovement, unknown>[]>(
     () => [
-      { accessorKey: "id", header: "الحركة", size: 85 },
       { accessorKey: "documentDate", header: "التاريخ", size: 120 },
       {
         accessorKey: "kind",
@@ -593,29 +592,10 @@ function MovementsList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => stockMovementKindLabels[row.original.kind],
       },
       {
-        accessorKey: "itemCode",
-        header: "رمز الصنف",
-        size: 115,
-        cell: ({ row }) => exact(row.original.itemCode),
-      },
-      {
         accessorKey: "itemName",
         header: "الصنف",
         size: 200,
         cell: ({ row }) => <ValueCell>{row.original.itemName}</ValueCell>,
-      },
-      {
-        accessorKey: "doctorName",
-        header: "الطبيب أو الجهة",
-        size: 170,
-        enableSorting: false,
-        cell: ({ row }) => row.original.doctorName
-          ? row.original.doctorId
-            ? <Link to={`/companies/${companyId}/doctors?focus=${row.original.doctorId}`}>
-                {row.original.doctorName}
-              </Link>
-            : <ValueCell>{row.original.doctorName}</ValueCell>
-          : "—",
       },
       {
         accessorKey: "supplierAccountName",
@@ -627,12 +607,6 @@ function MovementsList({ context }: { context: CompanyContext }) {
           {["prior_purchase","item_estimate"].includes(row.original.supplierInferenceSource ?? "") &&
             <small className="muted"> (تقديري)</small>}
         </ValueCell>,
-      },
-      {
-        accessorKey: "locationName",
-        header: "الموقع",
-        size: 165,
-        cell: ({ row }) => <ValueCell>{row.original.locationName}</ValueCell>,
       },
       {
         accessorKey: "expiryDate",
@@ -681,6 +655,38 @@ function MovementsList({ context }: { context: CompanyContext }) {
             })}
           </ValueCell>
         ),
+      },
+      {
+        accessorKey: "createdByName",
+        header: "بواسطة من",
+        size: 165,
+        cell: ({ row }) => <ValueCell>{row.original.createdByName || "—"}</ValueCell>,
+      },
+      { accessorKey: "id", header: "الحركة", size: 85 },
+      {
+        accessorKey: "itemCode",
+        header: "رمز الصنف",
+        size: 115,
+        cell: ({ row }) => exact(row.original.itemCode),
+      },
+      {
+        accessorKey: "doctorName",
+        header: "الطبيب أو الجهة",
+        size: 170,
+        enableSorting: false,
+        cell: ({ row }) => row.original.doctorName
+          ? row.original.doctorId
+            ? <Link to={`/companies/${companyId}/doctors?focus=${row.original.doctorId}`}>
+                {row.original.doctorName}
+              </Link>
+            : <ValueCell>{row.original.doctorName}</ValueCell>
+          : "—",
+      },
+      {
+        accessorKey: "locationName",
+        header: "الموقع",
+        size: 165,
+        cell: ({ row }) => <ValueCell>{row.original.locationName}</ValueCell>,
       },
     ],
     [companyId],
