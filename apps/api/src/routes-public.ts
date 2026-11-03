@@ -3,6 +3,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
 import {
   appearanceSchema,
+  ownerUserSchema,
   userPatchSchema,
   ownerPasswordResetSchema,
   userKinds,
@@ -66,6 +67,25 @@ export function publicRoutes(pool: Pool): Router {
       name: row.name,
       lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     })) });
+  }));
+  // Owner-created public identities do not implicitly become company employees.
+  router.post("/users", handler(async (req, res) => {
+    const input = parse(ownerUserSchema, req.body);
+    const created = await transaction(pool, async client => {
+      const owner = await currentActor(client, actor(req));
+      ownerOnly(owner);
+      await assertRequestPagesEnabled(client, req, true);
+      await assertPhoneAvailable(client, input.phone);
+      const secretHash = await passwordHash(input.password);
+      const result = await client.query(
+        "INSERT INTO users(name,display_name,phone,email,phone_login_key,password_hash) VALUES($1,$2,$3,$4,$3,$5) RETURNING *",
+        [input.name, input.displayName || input.name, input.phone, input.email, secretHash],
+      );
+      const newUser = userDTO(result.rows[0]);
+      await audit(client, owner, "user.register", "user", newUser.id, null, newUser);
+      return newUser;
+    });
+    res.status(201).json({ user: created });
   }));
   router.get(
     "/users",
