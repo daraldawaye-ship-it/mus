@@ -79,7 +79,7 @@ export async function masterPage<T>(
     { ...columns, ...options?.sortColumns },
     fallback,
   );
-  const parameters: unknown[] = [companyId, searchPattern(query.q)];
+  const parameters: unknown[] = [companyId, searchPattern(query.q, optionKind === "item" || !!searchPlan)];
   const prefix = query.q && searchPlan ? `${searchPlan.withSql} ` : "";
   const search = searchPlan
     ? (query.q ? searchPlan.predicate : "$2::text IS NOT NULL")
