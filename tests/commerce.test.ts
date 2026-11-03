@@ -4873,7 +4873,7 @@ test("posted sale customer snapshot edits pass the immutable DB guard without ch
     expectedSaleCustomerId:null,expectedSaleCustomerNumber:null,expectedSaleCustomerName:null,
   });
   assert.deepEqual(saved.customer,{
-    saleCustomerId:null,saleCustomerNumber:null,saleCustomerName:"مصطفى",unchanged:false,
+    id:sale.id,saleCustomerId:null,saleCustomerNumber:null,saleCustomerName:"مصطفى",unchanged:false,
   });
   const after=(await f.owner.ok<{invoice:Invoice}>(
     "GET",`${s.path}/invoices/${sale.id}`
