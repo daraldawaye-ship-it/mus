@@ -205,6 +205,8 @@ export const auditActionLabels = {
   "clearance.return-queue": "إحالة مرتجع تصريف لمراجعة الإدارة",
   "clearance.return-reviewed": "مراجعة الإدارة لمرتجع التصريف",
   "item.field.update": "تعديل حقل في كرت الصنف",
+  "item.options-preset.create": "حفظ فلتر أصناف مشترك",
+  "item.options-preset.delete": "حذف فلتر أصناف مشترك",
   "invoice.post": "حفظ وترحيل فاتورة",
   "memo.feature-rule": "تعديل قاعدة متابعة المذكرات",
   "memo.feature-trigger": "تحقق قاعدة ميزات مرتبطة بالمذكرات",
@@ -319,6 +321,8 @@ export const publicAuditActions: AuditAction[] = [
   "page.settings",
 ];
 export const companyAuditActions: AuditAction[] = [
+  "item.options-preset.create",
+  "item.options-preset.delete",
   "question.create",
   "question.update",
   "question.answer",
