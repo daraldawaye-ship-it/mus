@@ -203,3 +203,8 @@ Before implementing or documenting a website feature, consult `docs/DEVELOPER_GU
 ## Separated-word item search (2026-11-03)
 
 Owner request: typing "فادين مصوص" must find item "فادين كول اقراص مصوص" both in sales/purchase invoice search and item lists. Search words match **in order** even when other name words intervene. For item-only master searches, `searchPattern(q, true)` converts whitespace separators into SQL `%`, after escaping the user's literal LIKE wildcards. The optimized item lookup `itemLookupSearchPlan` still works with this bound pattern. The complete offline snapshot uses `matchesOrderedItemWords` against the preordered in-memory index; no per-keystroke stock/sales aggregation. The filtered item list uses the same pattern. Do not change search start at three characters, exact code/barcode or shortcut matching, popularity+stock ranking, pagination, or permission gating. Tests: `tests/invoice-item-word-search.test.ts`; details: `docs/ITEM_NAME_GAPPED_WORD_SEARCH.md`.
+
+
+## Company device registration — 2026-11-03
+
+The owner requested company-level «الأجهزة المعتمدة» to **recognize and document pharmacy/employee devices now, with device-specific permissions deferred**. The device-installation UUID is persisted locally and only its SHA-256 is stored server-side, scoped per company. Manual names, category and approved/documented marker do not control login or offline behavior. Keep employee/owner page controls, audit and revision checks. Do not use browser UUID/UA as hardware attestation. See docs/COMPANY_KNOWN_DEVICES.md.
