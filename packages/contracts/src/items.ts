@@ -25,6 +25,10 @@ export const itemWholeQuantitySchema = z
     z.string().regex(/^\d{1,22}$/, "الكمية عدد صحيح موجب أو صفر حتى 22 رقمًا"),
   )
   .transform((value) => BigInt(value).toString());
+export const itemOrderQuantitySchema = itemWholeQuantitySchema.refine(
+  value => BigInt(value) >= 1n,
+  "كمية الطلب يجب أن تكون عددًا صحيحًا لا يقل عن 1",
+);
 const phone = z
   .string()
   .trim()
@@ -171,7 +175,7 @@ const itemFields = z
     purchaseFactor: itemFactorSchema.default(1),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
-    orderQuantity: itemWholeQuantitySchema.default("0"),
+    orderQuantity: itemOrderQuantitySchema.default("1"),
     reserveQuantity: itemWholeQuantitySchema.default("0"),
     searchKeys: z.string().trim().max(1000).default(""),
     purchaseNotes: z.string().trim().max(1000).default(""),
@@ -478,7 +482,7 @@ export const itemCatalog = {
     settlementDisplayDate: null,
     purchaseFactor: 1,
     reorderLimit: "0",
-    orderQuantity: "0",
+    orderQuantity: "1",
     reserveQuantity: "0",
     hasExpiry: true,
     active: true,

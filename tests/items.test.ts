@@ -203,7 +203,7 @@ function itemBody(currencyId: number, overrides: Record<string, unknown> = {}) {
     purchaseFactor: 1,
     currencyId,
     reorderLimit: "0",
-    orderQuantity: "0",
+    orderQuantity: "1",
     searchKeys: "",
     purchaseNotes: "",
     orderStoppedUntil: null,
@@ -474,7 +474,7 @@ test("item defaults, automatic codes and normalized audit values are generated i
   assert.equal(one.salePrice1, "0");
   assert.equal(one.purchasePrice, "0");
   assert.equal(one.reorderLimit, "0");
-  assert.equal(one.orderQuantity, "0");
+  assert.equal(one.orderQuantity, "1");
   assert.equal(one.revision, 1);
   assert.equal(one.createdBy, f.user.id);
   assert(Number.isFinite(Date.parse(one.createdAt)));
@@ -1795,7 +1795,7 @@ test("item field audit records independent before/after events and rejects stale
     after: row.after_value.value,
   })), [
     { field: "shelf", before: "ا-1", after: "ب-6" },
-    { field: "orderQuantity", before: "0", after: "10" },
+    { field: "orderQuantity", before: "1", after: "10" },
   ]);
   assert.deepEqual(fields.map(row => row.after_value.label), ["الرف الحالي", "كمية الطلب"]);
   assert.equal(audit.rows.filter(row => row.action === "item.update").length, 2,
