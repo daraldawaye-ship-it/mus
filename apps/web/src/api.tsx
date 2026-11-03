@@ -288,7 +288,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const request=++epoch.current;
     await client.cancelQueries();
     client.clear();
-    await setOfflineLoginRequired(false);
+    // An IndexedDB permission/quota denial must not turn a successful server
+    // login (including a one-use link already consumed) into a false failure.
+    // Local offline resume is optional; online sessions stay authoritative.
+    await setOfflineLoginRequired(false).catch(() => {});
     freshOnlineLoginRequired=false;
     if (epoch.current !== request) return;
     await applyLiveSession(result,request);
