@@ -41,6 +41,7 @@ import { StagedMovementsPanel } from "../StagedInvoiceViews";
 import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { firstUnitStockText } from "../sale-stock-quantity";
+import { signedStockMovementQuantity } from "../stock-movement-display";
 import {
   Button,
   Card,
@@ -641,9 +642,9 @@ function MovementsList({ context }: { context: CompanyContext }) {
       },
       {
         accessorKey: "quantitySmallest",
-        header: "التغير بأصغر جزء",
-        size: 155,
-        cell: ({ row }) => exact(row.original.quantitySmallest),
+        header: "الكمية (+ دخول / − خروج) — أصغر جزء",
+        size: 195,
+        cell: ({ row }) => exact(signedStockMovementQuantity(row.original.quantitySmallest)),
       },
       {
         accessorKey: "costBase",
@@ -687,8 +688,8 @@ function MovementsList({ context }: { context: CompanyContext }) {
   return (
     <>
       <PageHeader
-        title="حركات المخزون"
-        description="سجل ثابت للحركات الواردة والصادرة؛ الإشارة السالبة تعني خروج الكمية أو القيمة."
+        title="حركة الأصناف"
+        description="جميع حركات الأصناف المرحلة من مبيعات ومشتريات وتسويات ومناقلات؛ الدخول موجب والخروج سالب، مع التصفية من تاريخ إلى تاريخ."
         actions={
           <InventoryLinks
             companyId={companyId}
@@ -717,7 +718,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
           sorting={list.sorting}
           onSortingChange={list.setSorting}
           loading={list.loading}
-          ariaLabel="حركات المخزون"
+          ariaLabel="حركة الأصناف"
         />
       </Card>
       <StagedMovementsPanel companyId={companyId} q={list.query}

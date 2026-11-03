@@ -676,7 +676,7 @@ page(
 );
 page(
   "company.stock-movements",
-  "حركات المخزون",
+  "حركة الأصناف",
   "التقارير",
   "/companies/:companyId/stock-movements",
   { view: permission("inventory.view") },

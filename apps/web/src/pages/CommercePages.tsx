@@ -1,4 +1,6 @@
 import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice-item-search.ts";
+import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
+import { signedStockMovementQuantity } from "../stock-movement-display";
 import {
   lazy,
   Suspense,
@@ -1159,7 +1161,7 @@ function OriginalInvoicePicker({
   );
 }
 
-type ItemInfoView = "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
+type ItemInfoView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
 type ItemInfoHistoryRow = {
   lineId: string | number;
   documentId: string | number;
@@ -1180,6 +1182,7 @@ function alternativeFirstUnitText(
   return quantity.includes(".") ? quantity : quantity + ".0";
 }
 const itemInfoViews: { value: ItemInfoView; label: string }[] = [
+  { value: "movement", label: "حركة الصنف" },
   { value: "purchase", label: "مشتريات الصنف" },
   { value: "sale", label: "مبيعات الصنف" },
   { value: "adjustment", label: "تسويات الصنف" },
@@ -1217,7 +1220,17 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
       `/companies/${companyId}/item-history/${selectedItemId}?type=${view}`,
       { signal },
     ),
-    enabled: !!userId && !!selectedItemId && view !== "alternatives",
+    enabled: !!userId && !!selectedItemId && view !== "alternatives" && view !== "movement",
+    staleTime: 10000,
+  });
+  const movements = useQuery<Page<StockMovement>>({
+    queryKey: ["invoice-item-stock-movements", userId, companyId, selectedItemId],
+    queryFn: ({signal}) => api<Page<StockMovement>>(
+      `/companies/${companyId}/stock-movements?${new URLSearchParams({
+        itemId: String(selectedItemId), page: "1", pageSize: "20",
+        sort: "documentDate:desc,id:desc",
+      })}`, {signal}),
+    enabled: !!userId && !!selectedItemId && view === "movement",
     staleTime: 10000,
   });
   const alternatives = useQuery<{ peers: ItemCompositionPeers }>({
@@ -1297,6 +1310,36 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
                     <small>تظهر أول {peers.pageSize} أصناف من أصل {peers.total}. استعرض البقية من كرت الصنف.</small>}
                 </>
               )}
+            </>
+          ) : view === "movement" ? (
+            <>
+              {movements.isLoading && <small>جارٍ تحميل حركة الصنف…</small>}
+              {movements.isError && <small>تعذر عرض حركة الصنف؛ تحتاج صلاحية عرض حركات المخزون.</small>}
+              {movements.data?.items.length === 0 && <small>لا توجد حركات مخزون مرحلة لهذا الصنف.</small>}
+              {!!movements.data?.items.length && (
+                <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label="جدول حركة الصنف">
+                  <table className="invoice-item-options-table">
+                    <colgroup><col style={{width:"29%"}}/><col style={{width:"43%"}}/><col style={{width:"28%"}}/></colgroup>
+                    <thead><tr><th>التاريخ</th><th>نوع الحركة والموقع</th>
+                      <th className="invoice-item-options-number">الكمية (+ دخول / − خروج)</th>
+                    </tr></thead>
+                    <tbody>{movements.data.items.map(row => (
+                      <tr key={row.id}>
+                        <td dir="ltr">{row.documentDate}</td>
+                        <td title={row.locationName}>{stockMovementKindLabels[row.kind]} — {row.locationName}</td>
+                        <td className="invoice-item-options-number">
+                          <bdi dir="ltr">{signedStockMovementQuantity(row.quantitySmallest)}</bdi>
+                        </td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {movements.data && movements.data.total > movements.data.pageSize && (
+                <small>تظهر آخر {movements.data.pageSize} حركة من أصل {movements.data.total}.</small>
+              )}
+              {!!selectedItemId && <Link to={`/companies/${companyId}/stock-movements?itemId=${selectedItemId}`}
+                className="invoice-item-options-link">عرض جميع الحركات وتحديد الفترة</Link>}
             </>
           ) : (
             <>
