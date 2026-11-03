@@ -35,6 +35,7 @@ test("sales invoice list starts with opening, printing, net, account and date", 
     {accessorKey:"documentDate",header:"التاريخ"},
     col("return","العملية"),
     {accessorKey:"counterpartyAccountName",header:"الحساب"},
+    col("saleCustomer","العميل"),
     {accessorKey:"currencyCode",header:"العملة"},
     {accessorKey:"total",header:"الصافي"},
     col("print","طباعة"), col("open","فتح"),
@@ -43,7 +44,7 @@ test("sales invoice list starts with opening, printing, net, account and date", 
   const key=(c:ColumnDef<Row,unknown>): string =>
     "id" in c && typeof c.id==="string" ? c.id :
       "accessorKey" in c ? String(c.accessorKey) : "";
-  const wanted=["open","print","total","counterpartyAccountName","documentDate","number","description"];
+  const wanted=["open","print","total","counterpartyAccountName","saleCustomer","documentDate","number","description"];
   assert.deepEqual(arrangeInvoiceListColumns("sale",input).map(key),wanted);
   assert.deepEqual(actionColumnsFirst(arrangeInvoiceListColumns("sale",input)).map(key),wanted);
   assert.equal(arrangeInvoiceListColumns("purchase",input),input);

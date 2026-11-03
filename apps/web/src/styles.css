@@ -7190,3 +7190,52 @@ a.notification-quick-title:hover { text-decoration: underline; }
   outline: 2px solid currentColor;
   outline-offset: -2px;
 }
+
+
+/* Printing from the invoice list uses the same invoice print sheet as the
+   viewer, but never switches route or opens an additional browser tab. */
+.invoice-list-print-trigger {
+  appearance: none;
+  border: 0;
+  padding: 2px 4px;
+  color: var(--link, var(--primary));
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.invoice-list-print-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.invoice-list-print-root {
+  position: fixed;
+  top: 0;
+  left: -12000px;
+  width: 210mm;
+  visibility: hidden;
+  pointer-events: none;
+  background: #fff;
+}
+@media print {
+  body.invoice-list-print-active > #root { display: none !important; }
+  body.invoice-list-print-active > .invoice-list-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    visibility: visible !important;
+    pointer-events: auto;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+}

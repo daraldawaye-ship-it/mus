@@ -25,7 +25,7 @@ export function arrangeInvoiceListColumns<T>(
   const key = (column: ColumnDef<T, unknown>): string =>
     "id" in column && typeof column.id === "string" ? column.id :
       "accessorKey" in column && typeof column.accessorKey === "string" ? column.accessorKey : "";
-  const first = ["open", "print", "total", "counterpartyAccountName", "documentDate"];
+  const first = ["open", "print", "total", "counterpartyAccountName", "saleCustomer", "documentDate"];
   const visible = columns.filter(column => !["return", "currencyCode"].includes(key(column)));
   return [
     ...first.flatMap(id => visible.filter(column => key(column) === id)),
