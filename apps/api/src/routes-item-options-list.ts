@@ -11,6 +11,7 @@ import { readItems } from "./services/items.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { canReadItemCoverage, addItemCoverageToPage, itemCoverageJoin } from "./services/item-coverage.ts";
 import { stagedDailyActivitySql, activityColumns } from "./services/staged-activity-sql.ts";
+import { searchPattern } from "./services/lists.ts";
 
 const optionalNumber = z.preprocess(
   value => value === "" ? undefined : value,
@@ -51,7 +52,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   const asOf = (await client.query(
     "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
   )).rows[0].today as string;
-  const values: Array<string | number> = [companyId, asOf, options.q, options.active];
+  const values: Array<string | number> = [companyId, asOf,
+    options.q ? searchPattern(options.q, true) : "", options.active];
   const predicates: string[] = [];
   const range = (value: string | undefined, column: string, op: ">=" | "<=") => {
     if (value === undefined) return;
@@ -92,11 +94,11 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
       WHERE i.company_id=$1
-        AND ($3::text='' OR i.code ILIKE '%'||$3||'%' OR i.name ILIKE '%'||$3||'%'
+        AND ($3::text='' OR i.code ILIKE $3 OR i.name ILIKE $3
              OR EXISTS (SELECT 1 FROM items source_item WHERE source_item.id=i.id
                         AND source_item.company_id=i.company_id
-                        AND (source_item.english_name ILIKE '%'||$3||'%'
-                             OR source_item.barcode ILIKE '%'||$3||'%')))
+                        AND (source_item.english_name ILIKE $3
+                             OR source_item.barcode ILIKE $3)))
         AND ($4::text='all' OR ($4='active' AND i.active) OR ($4='archived' AND NOT i.active))
     ),
     staged AS (${stagedDailyActivitySql("$2::date")}),
