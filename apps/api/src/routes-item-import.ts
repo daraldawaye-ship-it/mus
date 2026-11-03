@@ -185,10 +185,11 @@ export function itemImportRoutes(pool:Pool):Router{
       const auditTuples=planned.map((row,index)=>{
         auditValues.push(row.id,row.previous,row.factor);
         const at=index*3+4;
-        return `($2,$3,'company',$1,'item.field.update','item',
-                 ${at}::integer,
-                 jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',${at+1}::integer,'source','Table13.xlsx'),
-                 jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',${at+2}::integer,'source','Table13.xlsx'))`;
+        return "($2,$3,'company',$1,'item.field.update','item',$" + at + "::integer," +
+          "jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',$" + (at+1) +
+          "::integer,'source','Table13.xlsx')," +
+          "jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',$" + (at+2) +
+          "::integer,'source','Table13.xlsx'))";
       });
       await client.query(
         `INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,
