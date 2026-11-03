@@ -3996,7 +3996,8 @@ test("owner password reset applies to public users without employee memberships"
   assert.equal((await platform.client.request("POST", resetPath, { newPassword: "ab" })).status, 400);
 
   await platform.client.ok("POST", resetPath, { newPassword });
-  assert.equal((await ordinary.client.request("GET", "/profile")).status, 401);
+  const expiredSession = await ordinary.client.ok<{user:User|null}>("GET", "/auth/session");
+  assert.equal(expiredSession.user, null);
   const fresh = f.client();
   assert.equal((await fresh.request("POST", "/auth/login", {
     email: ordinary.user.email, password,
