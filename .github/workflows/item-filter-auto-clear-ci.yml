@@ -1,0 +1,25 @@
+name: Item filters clear shared selection on apply
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/pages/ItemOptionsListPage.tsx'
+      - 'apps/web/src/shared-item-selection.ts'
+      - 'tests/item-options-filter-auto-clear.test.ts'
+      - '.github/workflows/item-filter-auto-clear-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  item-filter-auto-clear:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/item-options-filter-auto-clear.test.ts tests/item-list-compact-scroll-filters.test.ts tests/item-previous-year-filters.test.ts
