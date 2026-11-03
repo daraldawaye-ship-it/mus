@@ -1,0 +1,41 @@
+name: Posted Sale Customer Snapshot Guard CI
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/api/migrations/20261104_z_posted_sale_customer_snapshot_guard.sql'
+      - 'tests/commerce.test.ts'
+      - 'tests/invoice-customer-modal.test.ts'
+      - '.github/workflows/posted-sale-customer-guard-ci.yml'
+permissions:
+  contents: read
+jobs:
+  posted-customer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/invoice-customer-modal.test.ts tests/sale-customer-name-only.test.ts
+      - run: node --import tsx --test --test-name-pattern='posted sale customer snapshot edits pass the immutable DB guard' tests/commerce.test.ts
