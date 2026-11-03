@@ -52,7 +52,6 @@ export const userKindLabels: Record<UserKind, string> = {
 };
 export const employeeRoleLabels: Record<EmployeeRole, string> = {
   employee: "موظف",
-  company_device: "جهاز الشركة",
   administrative: "إداري",
   accountant: "محاسب",
   sales: "مبيعات",
@@ -426,6 +425,7 @@ export const auditTargetLabels: Record<string, string> = {
   user: "مستخدم",
   company: "شركة",
   employee: "موظف",
+  company_device: "جهاز الشركة",
   appearance: "مظهر",
   audit: "سجل التدقيق",
   account: "حساب",
