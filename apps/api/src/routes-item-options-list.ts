@@ -98,7 +98,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,
-             previous.sale_times AS sale_times_previous_year,
+             COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
@@ -155,7 +155,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     saleTimesMonth: String(row.sale_times_month),
     saleTimesFourMonths: String(row.sale_times_four_months),
     saleTimesAllTime: String(row.sale_times_all_time),
-    saleTimesPreviousYear: row.sale_times_previous_year === null ? null : String(row.sale_times_previous_year),
+    saleTimesPreviousYear: String(row.sale_times_previous_year),
     approximateCoverageDays: needsCoverageJoin ? String(row.coverage_before) : null,
     coverageAfterReserveDays: needsCoverageJoin ? String(row.coverage_after_reserve) : null,
   }));
