@@ -355,7 +355,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 
   return <div className="wallet-page">
     <PageHeader title="قائمة الأصناف"
-      description="تصفية الأصناف حسب المتوفر ومرات المبيعات والكفاية — دون احتساب مخازن المرتجعات في المتوفر"
+      description="تصفية الأصناف حسب المتوفر والاحتياطي ومرات المبيعات والسنة السابقة والكفاية — دون احتساب مخازن المرتجعات"
       actions={<>
         <Button onClick={() => printSelection("selected")}
           disabled={!canView || !temporarySelection.items.length}>
@@ -553,6 +553,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
               </div>
               <div className="item-options-mobile-stat">
+                <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
               </div>
             </div>
@@ -566,10 +569,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <th scope="col">اختيار مؤقت</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
-            <th scope="col">كمية احتياط</th>
+            {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
+            {sortHeader("previousYear", "مرات عام السابق")}
             {sortHeader("coverage", "الكفاية (يوم)")}
           </tr></thead>
           <tbody>
@@ -592,9 +596,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><bdi>{row.saleTimesMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
+              <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={8}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={9}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
