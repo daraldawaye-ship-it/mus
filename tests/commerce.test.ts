@@ -4674,3 +4674,58 @@ test("four decimal invoice prices post balanced stock and preserve price snapsho
  assert.equal(returned.total,"-7800");
  assert.equal((await balances(f,s,item.id))[0]!.quantitySmallest,"0");
 });
+
+
+test("whole first-unit stock permits secondary edits without stock/history reinterpretation", async(t)=>{
+  const f=await fixture(t),s=await setup(f),it=await s.item();
+  const posted=await invoice(f,s,invoiceBody(s,it.id));
+  assert.equal(posted.lines[0]!.factor2,2);
+  assert.equal(posted.lines[0]!.factor3,12);
+  const path=`${s.path}/items/${it.id}`;
+  const stockBefore=await f.pool.query<{quantity_smallest:string}>(
+    "SELECT quantity_smallest::text FROM stock_balances WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  );
+  assert.equal(stockBefore.rows[0]!.quantity_smallest,"48");
+  const modified=await f.owner.ok<{item:Item}>("PATCH",path,{
+    changes:{unit2Name:"ظرف",unit3Name:"قرص",factor2:4,factor3:6},
+    expected:{},mode:"last-write-wins",
+  });
+  assert.equal(modified.item.unit2Name,"ظرف");
+  assert.equal(modified.item.factor2,4);
+  assert.equal(modified.item.factor3,6);
+  const stockAfter=await f.pool.query<{quantity_smallest:string}>(
+    "SELECT quantity_smallest::text FROM stock_balances WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  );
+  assert.deepEqual(stockAfter.rows,stockBefore.rows);
+  const historical=await f.pool.query<{factor2:number;factor3:number}>(
+    "SELECT factor2,factor3 FROM invoice_lines WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id,posted.id],
+  );
+  assert.equal(historical.rows[0]!.factor2,2);
+  assert.equal(historical.rows[0]!.factor3,12);
+  const illegal=await f.owner.request("PATCH",path,{
+    changes:{factor2:5},expected:{},mode:"last-write-wins",
+  });
+  assert.equal(illegal.status,409);
+  await assert.rejects(
+    f.pool.query("UPDATE items SET factor2=5 WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
+    /Changing stock unit multiplier requires an audited conversion/,
+  );
+  // Sell one smallest piece in a normal auditable invoice, leaving 47/24
+  // of the first unit in one batch; the next rename must be denied.
+  await invoice(f,s,invoiceBody(s,it.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:"2027-01-31"}],
+  }));
+  const fractional=await f.owner.request("PATCH",path,{
+    changes:{unit2Name:"ظرف جديد"},expected:{},mode:"last-write-wins",
+  });
+  assert.equal(fractional.status,409);
+  await assert.rejects(
+    f.pool.query("UPDATE items SET unit2_name='ظرف جديد' WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
+    /requires whole first-unit stock in every batch/,
+  );
+  await assertBalanced(f,s.company.id);
+});
