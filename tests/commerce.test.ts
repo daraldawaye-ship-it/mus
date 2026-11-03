@@ -4718,7 +4718,7 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   // of the first unit in one batch; the next rename must be denied.
   await invoice(f,s,invoiceBody(s,it.id,{
     kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
-    lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:"2027-01-31"}],
+    lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:null}],
   }));
   const fractional=await f.owner.request("PATCH",path,{
     changes:{unit2Name:"ظرف جديد"},expected:{unit2Name:"ظرف"},
