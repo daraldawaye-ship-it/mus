@@ -26,13 +26,15 @@ const querySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(20).max(100).default(50),
   stockMin: optionalNumber, stockMax: optionalNumber,
+  reserveMin: optionalNumber, reserveMax: optionalNumber,
   monthMin: optionalNumber, monthMax: optionalNumber,
   fourMonthsMin: optionalNumber, fourMonthsMax: optionalNumber,
   allTimeMin: optionalNumber, allTimeMax: optionalNumber,
+  previousYearMin: optionalNumber, previousYearMax: optionalNumber,
   coverageMin: optionalNumber, coverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
-  sortBy: z.enum(["code", "name", "stock", "month", "fourMonths", "allTime", "coverage"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "month", "fourMonths", "allTime", "previousYear", "coverage"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -63,12 +65,16 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   };
   range(options.stockMin, "m.available_unit1", ">=");
   range(options.stockMax, "m.available_unit1", "<=");
+  range(options.reserveMin, "m.reserve_quantity", ">=");
+  range(options.reserveMax, "m.reserve_quantity", "<=");
   range(options.monthMin, "m.sale_times_month", ">=");
   range(options.monthMax, "m.sale_times_month", "<=");
   range(options.fourMonthsMin, "m.sale_times_four_months", ">=");
   range(options.fourMonthsMax, "m.sale_times_four_months", "<=");
   range(options.allTimeMin, "m.sale_times_all_time", ">=");
   range(options.allTimeMax, "m.sale_times_all_time", "<=");
+  range(options.previousYearMin, "m.sale_times_previous_year", ">=");
+  range(options.previousYearMax, "m.sale_times_previous_year", "<=");
   if (options.excludeZero) predicates.push("m.available_smallest <> 0");
 
   // The existing item coverage calculation is only joined before pagination
@@ -80,20 +86,24 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   range(options.coverageMax, coverageColumn, "<=");
   const orders: Record<Options["sortBy"], string> = {
     code: "f.code", name: "f.name", stock: "f.available_unit1",
+    reserve: "f.reserve_quantity", previousYear: "f.sale_times_previous_year",
     month: "f.sale_times_month", fourMonths: "f.sale_times_four_months",
     allTime: "f.sale_times_all_time",
     coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
   };
-  const order = `${orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}, f.code ASC, f.id ASC`;
+  const order = `${orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
   values.push(options.pageSize, (options.page - 1) * options.pageSize);
   const limit = `$${values.length - 1}`, offset = `$${values.length}`;
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,
+             COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
+      LEFT JOIN company_item_previous_year_sale_times previous
+        ON previous.company_id=i.company_id AND previous.legacy_id=i.legacy_id
       WHERE i.company_id=$1
         AND ($3::text='' OR i.code ILIKE $3 OR i.name ILIKE $3
              OR EXISTS (SELECT 1 FROM items source_item WHERE source_item.id=i.id
@@ -145,6 +155,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     saleTimesMonth: String(row.sale_times_month),
     saleTimesFourMonths: String(row.sale_times_four_months),
     saleTimesAllTime: String(row.sale_times_all_time),
+    saleTimesPreviousYear: String(row.sale_times_previous_year),
     approximateCoverageDays: needsCoverageJoin ? String(row.coverage_before) : null,
     coverageAfterReserveDays: needsCoverageJoin ? String(row.coverage_after_reserve) : null,
   }));
@@ -158,7 +169,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth,
       saleTimesFourMonths: row.saleTimesFourMonths,
-      saleTimesAllTime: row.saleTimesAllTime,
+      saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
       coverageAfterReserveDays: row.coverageAfterReserveDays,
     })),

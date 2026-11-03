@@ -4041,7 +4041,7 @@ test("company-shared item option presets persist, isolate tenants, and require a
   const listed = await platform.client.ok<{items:{id:number;name:string;filters:typeof filters}[]}>("GET",base);
   assert.equal(listed.items.length,1);
   assert.equal(listed.items[0].id,created.item.id);
-  assert.deepEqual(listed.items[0].filters,filters);
+  assert.deepEqual(listed.items[0].filters,{...filters,reserveMin:"",reserveMax:"",previousYearMin:"",previousYearMax:""});
   assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",otherBase)).items,[]);
   assert.equal((await platform.client.request("POST",base,{name:"الأصناف المتوفرة",filters})).status,409);
   assert.equal((await platform.client.request("DELETE",`${otherBase}/${created.item.id}`,{})).status,404);
@@ -4049,4 +4049,50 @@ test("company-shared item option presets persist, isolate tenants, and require a
   await platform.client.ok("DELETE",`${base}/${created.item.id}`,{});
   assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",base)).items,[]);
   assert.equal((await platform.client.request("DELETE",`${base}/${created.item.id}`,{})).status,404);
+});
+
+test("item options filter immutable previous-year sale times and mutable reserve independently",async(t)=>{
+  const f=await fixture(t);
+  const platform=await owner(f);
+  const co=await company(platform.client,"Previous-year pharmacy");
+  const foreign=await company(platform.client,"Other pharmacy");
+  const prefix=`/companies/${co.id}`;
+  async function add(companyId:number,name:string,legacyId:string,reserveQuantity:string){
+    const currencyPage=await platform.client.ok<Page<{id:number;code:string}>>("GET",`/companies/${companyId}/currencies`);
+    const currencyId=currencyPage.items.find(row=>row.code==="YER")!.id;
+    const result=await platform.client.ok<{item:{id:number}}>("POST",`/companies/${companyId}/items`,{
+      name,legacyId,reserveQuantity,currencyId,idempotencyKey:randomUUID(),hasExpiry:false,
+    },201);
+    return result.item.id;
+  }
+  const first=await add(co.id,"Last year many", "source-2025-a","3");
+  const second=await add(co.id,"Last year zero", "source-2025-b","12");
+  const third=await add(co.id,"Last year unavailable","source-2025-c","7");
+  const other=await add(foreign.id,"Other company","source-2025-a","3");
+  await f.pool.query(
+    "INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times) VALUES ($1,$2,482),($3,$2,999)",
+    [co.id,"source-2025-a",foreign.id],
+  );
+  type ItemsList={result:{rows:{itemId:number;reserveQuantity:string;saleTimesPreviousYear:string}[];total:number}};
+  async function list(url:string){
+    return (await platform.client.ok<ItemsList>("GET",url)).result;
+  }
+  const basic=await list(prefix+"/item-options-list");
+  assert.equal(basic.total,3);
+  assert.deepEqual(new Map(basic.rows.map(row=>[row.itemId,row.saleTimesPreviousYear])),
+    new Map([[first,"482"],[second,"0"],[third,"0"]]));
+  const range=await list(prefix+"/item-options-list?previousYearMin=480&previousYearMax=500");
+  assert.equal(range.total,1); assert.equal(range.rows[0]!.itemId,first);
+  const zero=await list(prefix+"/item-options-list?previousYearMin=0&previousYearMax=0");
+  assert.equal(zero.total,2); assert.deepEqual(zero.rows.map(row=>row.itemId).sort((a,b)=>a-b),[second,third].sort((a,b)=>a-b));
+  const reserve=await list(prefix+"/item-options-list?reserveMin=8&reserveMax=15");
+  assert.equal(reserve.total,1); assert.equal(reserve.rows[0]!.itemId,second);
+  const both=await list(prefix+"/item-options-list?reserveMin=2&reserveMax=8&previousYearMin=400&previousYearMax=500");
+  assert.equal(both.total,1); assert.equal(both.rows[0]!.itemId,first);
+  const sorted=await list(prefix+"/item-options-list?sortBy=previousYear&sortDir=desc");
+  assert.deepEqual(sorted.rows.map(row=>row.itemId),[first,second,third]);
+  const otherList=await list(`/companies/${foreign.id}/item-options-list?previousYearMin=900`);
+  assert.equal(otherList.total,1); assert.equal(otherList.rows[0]!.itemId,other);
+  assert.equal((await platform.client.request("GET",prefix+"/item-options-list?reserveMin=bad")).status,400);
+  assert.equal((await platform.client.request("GET",prefix+"/item-options-list?previousYearMax=bad")).status,400);
 });

@@ -18,12 +18,16 @@ import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOption
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
   { key: "stockMax", label: "الكمية المتوفرة (بدون مخازن المرتجعات) إلى" },
+  { key: "reserveMin", label: "الكمية احتياط من" },
+  { key: "reserveMax", label: "الكمية احتياط إلى" },
   { key: "monthMin", label: "المبيعات مرات في شهر من" },
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
   { key: "fourMonthsMax", label: "المبيعات مرات في 4 أشهر إلى" },
   { key: "allTimeMin", label: "المبيعات مرات منذ البداية من" },
   { key: "allTimeMax", label: "المبيعات مرات منذ البداية إلى" },
+  { key: "previousYearMin", label: "مرات عام السابق من" },
+  { key: "previousYearMax", label: "مرات عام السابق إلى" },
   { key: "coverageMin", label: "الكفاية من (يوم)" },
   { key: "coverageMax", label: "الكفاية إلى (يوم)" },
 ] as const;
@@ -32,9 +36,11 @@ type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: bool
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
+    reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
     monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
+    previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
     useReserve: params.get("useReserve") !== "false",
@@ -45,7 +51,8 @@ type Row = {
   revision: number; reserveQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
-  saleTimesAllTime: string; approximateCoverageDays: string | null;
+  saleTimesAllTime: string; saleTimesPreviousYear: string;
+  approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
 };
 type Response = {
@@ -53,8 +60,10 @@ type Response = {
 };
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
-  ["stock", "الكمية المتوفرة"], ["month", "مرات المبيعات في شهر"],
+  ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
+  ["month", "مرات المبيعات في شهر"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["allTime", "مرات المبيعات منذ البداية"],
+  ["previousYear", "مرات عام السابق"],
   ["coverage", "الكفاية"],
 ] as const;
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
@@ -346,7 +355,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
 
   return <div className="wallet-page">
     <PageHeader title="قائمة الأصناف"
-      description="تصفية الأصناف حسب المتوفر ومرات المبيعات والكفاية — دون احتساب مخازن المرتجعات في المتوفر"
+      description="تصفية الأصناف حسب المتوفر والاحتياطي ومرات المبيعات والسنة السابقة والكفاية — دون احتساب مخازن المرتجعات"
       actions={<>
         <Button onClick={() => printSelection("selected")}
           disabled={!canView || !temporarySelection.items.length}>
@@ -544,6 +553,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
               </div>
               <div className="item-options-mobile-stat">
+                <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
               </div>
             </div>
@@ -557,10 +569,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <th scope="col">اختيار مؤقت</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
-            <th scope="col">كمية احتياط</th>
+            {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
+            {sortHeader("previousYear", "مرات عام السابق")}
             {sortHeader("coverage", "الكفاية (يوم)")}
           </tr></thead>
           <tbody>
@@ -583,9 +596,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><bdi>{row.saleTimesMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
+              <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={8}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={9}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
