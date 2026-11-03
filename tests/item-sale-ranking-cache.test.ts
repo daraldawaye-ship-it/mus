@@ -431,12 +431,17 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
   await daily(f, c.id, products[8]!.id, today, "30");
   await daily(f, c.id, products[4]!.id, today, "12");
   await daily(f, c.id, products[11]!.id, today, "5");
-  // Invoice sorting now uses sold quantity + saleable stock, not occurrence counts.
-  // Seed quantity as well as invoice counts so the fixture exercises that rank.
-  await f.pool.query(
-    "UPDATE item_daily_activity SET sale_quantity=sale_invoices WHERE company_id=$1 AND item_id=ANY($2::integer[])",
-    [c.id, [products[8]!.id, products[4]!.id, products[11]!.id]],
-  );
+  // This lookup reads the materialized quantity+stock rank, rather than
+  // recalculating sales during typing. Seed that snapshot explicitly here.
+  for (const [index, quantity] of [[8, "30"], [4, "12"], [11, "5"]] as const) {
+    await f.pool.query(
+      `INSERT INTO item_sale_rankings(company_id,item_id,as_of_date,net_sale_invoices,net_sale_quantity)
+       VALUES($1,$2,$3::date,0,$4::numeric)
+       ON CONFLICT(company_id,item_id,as_of_date)
+       DO UPDATE SET net_sale_quantity=EXCLUDED.net_sale_quantity`,
+      [c.id, products[index]!.id, today, quantity],
+    );
+  }
   const ordered = [products[8]!, products[4]!, products[11]!,
     ...products.filter((_, index) => ![8, 4, 11].includes(index))];
   const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleQuantityPlusStock:desc,code:asc&pageSize=5`;
