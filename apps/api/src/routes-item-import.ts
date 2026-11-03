@@ -167,7 +167,7 @@ export function itemImportRoutes(pool:Pool):Router{
       const args:unknown[]=[companyId];
       const replacements=planned.map((row,index)=>{
         args.push(row.id,row.factor);
-        return `(${index*2+2}::integer,${index*2+3}::integer)`;
+        return "($" + (index*2+2) + "::integer,$" + (index*2+3) + "::integer)";
       });
       const updated=await client.query<{id:number}>(
         `UPDATE items i
