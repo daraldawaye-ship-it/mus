@@ -54,6 +54,19 @@ test("quick-login fragment is removed before same-origin JSON redemption", () =>
   assert.match(page,/window\.history\.replaceState\(window\.history\.state, "", "\/quick-login"\)/);
   assert.match(page,/api<SessionResponse>\("\/auth\/login-link\/redeem"/);
   assert.match(page,/acceptRegistration\(session\)/);
+  assert.match(page,/const tokenRef = useRef<string \| null>\(null\)/,
+    "Bearer token is memory-only after removing the fragment");
+  assert.match(page,/async function redeemLink\(\)/,
+    "Redemption requires an explicit handler");
+  assert.match(page,/onClick=\{\(\) => void redeemLink\(\)\}/,
+    "Only a real button click is allowed to redeem the link");
+  assert.ok(page.indexOf("async function redeemLink()") < page.indexOf('api<SessionResponse>("/auth/login-link/redeem"'),
+    "Redemption must not happen from useEffect while previews are rendering");
+  assert.doesNotMatch(page,/useEffect\(\(\) => \{[\s\S]*?void \(async \(\) =>/,
+    "Opening/preloading the page must never auto-redeem a token");
+  assert.match(client,/await setOfflineLoginRequired\(false\)\.catch\(\(\) => \{\}\)/,
+    "Failed IndexedDB storage may not reject a successful online login");
+
   assert.match(app,/Route path="\/quick-login" element=\{<QuickLoginPage \/>\}/);
   assert.match(client,/path !== "\/auth\/login-link\/redeem"/);
   assert.match(publicPage,/minLength=\{3\}/);
