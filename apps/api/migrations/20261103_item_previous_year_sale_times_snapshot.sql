@@ -13,7 +13,8 @@ CREATE INDEX IF NOT EXISTS item_previous_year_sale_times_filter_idx
   ON company_item_previous_year_sale_times(company_id,sale_times,legacy_id)
   WHERE sale_times IS NOT NULL;
 INSERT INTO company_item_previous_year_sale_times(company_id,legacy_id,sale_times)
-VALUES
+SELECT source.company_id,source.legacy_id,source.sale_times
+FROM (VALUES
 (2,'1',0),
 (2,'8247',1),
 (2,'8248',482),
@@ -15267,4 +15268,6 @@ VALUES
 (2,'35613',0),
 (2,'35614',0),
 (2,'35615',0)
+) AS source(company_id,legacy_id,sale_times)
+WHERE EXISTS (SELECT 1 FROM companies c WHERE c.id=source.company_id)
 ON CONFLICT (company_id,legacy_id) DO NOTHING;
