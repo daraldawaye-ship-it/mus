@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Notice } from "./ui";
 import { api } from "./api";
 
@@ -29,6 +30,7 @@ export function UserMenuQuickCompose({
 }) {
   const current=quickMessageOptions.find(option=>option.kind===kind)!;
   const privateNote=kind==="private_note";
+  const queryClient=useQueryClient();
   const [title,setTitle]=useState("");
   const [body,setBody]=useState("");
   const [pending,setPending]=useState(false);
@@ -52,6 +54,7 @@ export function UserMenuQuickCompose({
     try {
       const response=await api<Result>("/quick-messages",{method:"POST",body:payload});
       setResult(response);
+      if(privateNote) void queryClient.invalidateQueries({queryKey:["private-notes"]});
     }catch(cause) {
       setError(cause instanceof Error?cause.message:"تعذر الإرسال؛ أعد المحاولة بنفس الطلب");
     }finally {setPending(false);}
@@ -59,7 +62,7 @@ export function UserMenuQuickCompose({
   return <Dialog open onClose={close} title={current.label}>
     {result?<div className="form-stack">
       <Notice>{privateNote
-        ?"تم حفظ المذكرة الخاصة في حسابك دون مشاركتها أو إرسال إشعارات للآخرين. سيتم إضافة مكان عرضها لاحقًا."
+        ?"تم حفظ المذكرة الخاصة في حسابك. ستظهر في «ملاحظاتي الخاصة» بالشاشة الجانبية دون مشاركتها مع أحد."
         :"تم نشر التنبيه في قسم التنبيهات لدى "+result.recipients+" من المستلمين."}</Notice>
       <div className="form-actions"><Button onClick={onClose}>إغلاق</Button></div>
     </div>:<form className="form-stack" onSubmit={event=>void submit(event)}>

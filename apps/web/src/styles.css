@@ -7295,3 +7295,19 @@ a.notification-quick-title:hover { text-decoration: underline; }
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
+
+/* Account-private notes in the lower invoice sidebar. */
+.invoice-side-private-notes {display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0;flex:1 1 auto;}
+.invoice-side-private-actions {display:flex;align-items:center;justify-content:space-between;gap:7px;}
+.invoice-side-private-actions > div {display:flex;gap:4px;flex-wrap:wrap;}
+.invoice-side-private-actions button,.invoice-side-private-pagination button {border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);padding:5px 7px;cursor:pointer;font:inherit;}
+.invoice-side-private-actions button.is-selected {background:var(--surface-raised,var(--border));font-weight:700;}
+.invoice-side-private-actions button.invoice-side-private-add {flex:none;min-width:31px;min-height:30px;background:var(--primary);color:var(--on-primary);font-size:20px;font-weight:700;line-height:1;}
+.invoice-side-private-list {display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.invoice-side-private-card {padding:8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);min-width:0;}
+.invoice-side-private-card-heading {display:flex;align-items:flex-start;gap:8px;justify-content:space-between;}
+.invoice-side-private-card-heading strong {min-width:0;overflow-wrap:anywhere;font-size:12px;}
+.invoice-side-private-card-heading button {flex:none;font:inherit;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text);cursor:pointer;padding:3px 6px;}
+.invoice-side-private-card p {white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0;font-size:11px;line-height:1.55;}
+.invoice-side-private-card > small {color:var(--muted);font-size:9px;}
+.invoice-side-private-pagination {display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;}

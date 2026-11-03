@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { transaction } from "./db.ts";
-import { actor, handler, parse } from "./http.ts";
+import { actor, handler, id, parse } from "./http.ts";
 import { HttpError, deny } from "./errors.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { effectiveTemplate, emitNotification } from "./services/notifications.ts";
@@ -33,6 +33,68 @@ export const quickNotificationTypes = {
  * idempotency key per sender and request. */
 export function quickMessagesRoutes(pool: Pool): Router {
   const router = Router();
+  // Private notes always belong to the authenticated account, never the company.
+  router.get("/private-notes",handler(async(req,res)=>{
+    const pageRaw=req.query.page??"1",sizeRaw=req.query.pageSize??"20",archived=req.query.archived??"0";
+    if(typeof pageRaw!=="string"||!/^[1-9]\\d*$/.test(pageRaw)||
+       typeof sizeRaw!=="string"||!/^[1-9]\\d*$/.test(sizeRaw)||
+       (archived!=="0"&&archived!=="1"))
+      throw new HttpError(400,"invalid_query","طلب عرض الملاحظات غير صالح");
+    const page=Number(pageRaw),pageSize=Number(sizeRaw);
+    if(!Number.isSafeInteger(page)||page>100000||
+       !Number.isSafeInteger(pageSize)||pageSize>50)
+      throw new HttpError(400,"invalid_query","عدد صفحات الملاحظات غير صالح");
+    const result=await transaction(pool,async(client)=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      if(user.suspended)deny("هذا الحساب موقوف");
+      const archivedOnly=archived==="1";
+      const filter="user_id=$1 AND (archived_at IS NOT NULL)=$2";
+      const count=await client.query("SELECT count(*)::integer AS total FROM user_private_notes WHERE "+filter,
+        [user.id,archivedOnly]);
+      const rows=await client.query(
+        'SELECT id,title,body,created_at AS "createdAt",archived_at AS "archivedAt" '+
+        "FROM user_private_notes WHERE "+filter+
+        " ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4",
+        [user.id,archivedOnly,pageSize,(page-1)*pageSize],
+      );
+      return {items:rows.rows,total:count.rows[0].total,page,pageSize};
+    });
+    res.json(result);
+  }));
+  router.patch("/private-notes/:id/archive",handler(async(req,res)=>{
+    const noteId=id(req.params.id);
+    const saved=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req),false);
+      if(user.suspended)deny("هذا الحساب موقوف");
+      const updated=await client.query(
+        "UPDATE user_private_notes SET archived_at=COALESCE(archived_at,clock_timestamp()) "+
+        "WHERE user_id=$1 AND id=$2 RETURNING id",
+        [user.id,noteId],
+      );
+      if(!updated.rowCount)throw new HttpError(404,"not_found","الملاحظة غير موجودة في حسابك");
+      await audit(client,user,"quick.privateNoteArchive","user_private_note",noteId,
+        null,{ownerId:user.id,archived:true},null);
+      return {ok:true,id:noteId};
+    });
+    res.json(saved);
+  }));
+  router.patch("/private-notes/:id/restore",handler(async(req,res)=>{
+    const noteId=id(req.params.id);
+    const saved=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req),false);
+      if(user.suspended)deny("هذا الحساب موقوف");
+      const updated=await client.query(
+        "UPDATE user_private_notes SET archived_at=NULL WHERE user_id=$1 AND id=$2 RETURNING id",
+        [user.id,noteId],
+      );
+      if(!updated.rowCount)throw new HttpError(404,"not_found","الملاحظة غير موجودة في حسابك");
+      await audit(client,user,"quick.privateNoteRestore","user_private_note",noteId,
+        null,{ownerId:user.id,archived:false},null);
+      return {ok:true,id:noteId};
+    });
+    res.json(saved);
+  }));
   router.post("/quick-messages", handler(async (req,res) => {
     const input = parse(quickMessageSchema, req.body);
     const result = await transaction(pool, async client => {

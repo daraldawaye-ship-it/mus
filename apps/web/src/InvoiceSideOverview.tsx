@@ -5,9 +5,10 @@ import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
 import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
 import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
+import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "pouch" | "electronic" | "closings" | "present" | "recentSales";
+type View = "privateNotes" | "pouch" | "electronic" | "closings" | "present" | "recentSales";
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
 type Transfers = {
   hasEmployee: boolean;
@@ -27,6 +28,7 @@ type PresentEmployee = {
   lastCheckedInAt: string | null;
 };
 const views: { value: View; label: string }[] = [
+  { value: "privateNotes", label: "ملاحظاتي الخاصة" },
   { value: "pouch", label: "ترحيلاتي إلى الحافظة" },
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
   { value: "closings", label: "العجز والزيادة عند الإغلاق" },
@@ -47,7 +49,7 @@ function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
 export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
-  const [view, setView] = useState<View>("pouch");
+  const [view, setView] = useState<View>("privateNotes");
   const [clockNow, setClockNow] = useState(() => Date.now());
   useEffect(() => {
     const tick = window.setInterval(() => setClockNow(Date.now()), 60_000);
@@ -93,8 +95,10 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
         </div>
       </details>
       <div className="invoice-side-overview-content">
-        {offline && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
-        {(view === "pouch" || view === "electronic") ? (
+        {offline && view !== "privateNotes" && <small>هذه البيانات الحية تُحدّث عند عودة الاتصال بالإنترنت.</small>}
+        {view === "privateNotes" ? (
+          <InvoiceSidePrivateNotes />
+        ) : (view === "pouch" || view === "electronic") ? (
           <>
             {!offline && transfers.isLoading && <small>جارٍ تحميل ترحيلاتك…</small>}
             {transfers.isError && !offline && <small role="alert">تعذر قراءة ترحيلات الصندوق. راجع صلاحيات حسابك أو الاتصال.</small>}
