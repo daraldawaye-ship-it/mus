@@ -21,6 +21,8 @@ test("sales totals are borderless inline label/value pairs, while purchases reta
   assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{\s*display: flex;\s*flex-direction: row;/);
   assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary > div\s*\{\s*display: inline-flex;\s*flex-direction: row;/);
   assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{[^}]*border: 0;/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{[^}]*width: min\(100%, 135mm\);/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{[^}]*margin: 3mm 0 0 auto;/);
   assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary > div\s*\{[^}]*border: 0;/);
   assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary \.invoice-print-net\s*\{[^}]*background: transparent;/);
   assert.match(print, /purchase \? `الصافي \(\$\{invoice\.currencyCode\}\)` : "الصافي:"/);
