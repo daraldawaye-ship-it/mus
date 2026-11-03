@@ -277,7 +277,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setPresetBusy(true);
     setPresetMessage(null);
     try {
-      await api(`${presetBase}/${preset.id}`,{method:"DELETE"});
+      await api(`${presetBase}/${preset.id}`,{method:"DELETE",body:{}});
       setSelectedPresetId("");
       setPresetMessage({tone:"success",text:`حُذف الفلتر «${preset.name}» من القوائم المشتركة.`});
       await presetsQuery.refetch();
