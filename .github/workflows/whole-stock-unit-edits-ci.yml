@@ -7,6 +7,7 @@ on:
       - 'apps/api/migrations/20261104_whole_stock_secondary_unit_edits.sql'
       - 'apps/web/src/pages/ItemsPages.tsx'
       - 'tests/items.test.ts'
+      - 'tests/commerce.test.ts'
       - 'tests/item-unit-history-and-invoice-side.test.ts'
       - 'tests/item-new-unit-atomic.test.ts'
       - '.github/workflows/whole-stock-unit-edits-ci.yml'
@@ -41,4 +42,5 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: node --import tsx --test tests/item-unit-history-and-invoice-side.test.ts tests/item-new-unit-atomic.test.ts
-      - run: node --import tsx --test --test-name-pattern='whole first-unit stock permits|atomic new unit activation' tests/items.test.ts
+      - run: node --import tsx --test --test-name-pattern='atomic new unit activation' tests/items.test.ts
+      - run: node --import tsx --test --test-name-pattern='whole first-unit stock permits secondary edits' tests/commerce.test.ts
