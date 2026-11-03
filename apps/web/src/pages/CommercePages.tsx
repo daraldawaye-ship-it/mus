@@ -1396,7 +1396,7 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
           context={context} kind={kind} selectedItemId={selectedItemId}
           selectedItemName={selectedItemName} userId={user?.id} />
-        {kind === "sale" ? <InvoiceSideOverview companyId={companyId} /> :
+        {kind === "sale" ? <InvoiceSideOverview context={context} /> :
           <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
       </aside>}
     </div>
