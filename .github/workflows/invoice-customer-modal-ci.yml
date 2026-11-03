@@ -4,10 +4,14 @@ on:
     paths:
       - 'apps/api/src/routes-commerce.ts'
       - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/InvoiceSideOverview.tsx'
+      - 'apps/web/src/InvoiceSideRecentSales.tsx'
+      - 'apps/web/src/InvoiceListPrintJob.tsx'
       - 'apps/web/src/styles.css'
       - 'packages/contracts/src/commerce.ts'
       - 'packages/contracts/src/index.ts'
       - 'tests/invoice-customer-modal.test.ts'
+      - 'tests/invoice-side-recent-sales.test.ts'
       - '.github/workflows/invoice-customer-modal-ci.yml'
 jobs:
   invoice-customer-modal:
@@ -21,4 +25,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/invoice-customer-modal.test.ts tests/sale-customer-name-only.test.ts
+      - run: node --import tsx --test tests/invoice-customer-modal.test.ts tests/sale-customer-name-only.test.ts tests/invoice-side-recent-sales.test.ts

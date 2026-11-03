@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
+import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
+import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "pouch" | "electronic" | "closings" | "present";
+type View = "pouch" | "electronic" | "closings" | "present" | "recentSales";
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
 type Transfers = {
   hasEmployee: boolean;
@@ -29,6 +31,7 @@ const views: { value: View; label: string }[] = [
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
   { value: "closings", label: "العجز والزيادة عند الإغلاق" },
   { value: "present", label: "المحضرون حاليًا" },
+  { value: "recentSales", label: "آخر فواتير المبيعات" },
 ];
 function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
   return <span className="invoice-side-event-time">
@@ -41,7 +44,8 @@ function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
  * fetches, so item lookup and invoice entry do not wait for these reports.
  * Both queries retain the website's existing authentication and permissions.
  */
-export function InvoiceSideOverview({ companyId }: { companyId: number }) {
+export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
+  const companyId = context.company.id;
   const { user } = useSession();
   const [view, setView] = useState<View>("pouch");
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -55,7 +59,7 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
     queryKey: ["invoice-side-cashbox", user?.id, companyId],
     queryFn: ({ signal }) => api<Transfers>(
       `/companies/${companyId}/sales/my-cashbox-transfers`, { signal }),
-    enabled: !!user && view !== "present" && !offline,
+    enabled: !!user && (view === "pouch" || view === "electronic" || view === "closings") && !offline,
     staleTime: 5000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
@@ -164,6 +168,8 @@ export function InvoiceSideOverview({ companyId }: { companyId: number }) {
               </>
             )}
           </>
+        ) : view === "recentSales" ? (
+          <InvoiceSideRecentSales context={context} />
         ) : (
           <>
             {!offline && presence.isLoading && <small>جارٍ تحميل المحضرين…</small>}

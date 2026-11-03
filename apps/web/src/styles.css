@@ -7239,3 +7239,59 @@ a.notification-quick-title:hover { text-decoration: underline; }
     box-shadow: none !important;
   }
 }
+
+/* Five newest sale invoices in the second invoice sidebar panel.
+   Keep all four columns legible without widening the invoice entry area. */
+.invoice-side-recent-sales {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.invoice-side-recent-scroll { overflow: auto; width: 100%; }
+.invoice-side-recent-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 10px;
+  direction: rtl;
+}
+.invoice-side-recent-table th,
+.invoice-side-recent-table td {
+  box-sizing: border-box;
+  padding: 5px 2px;
+  text-align: start;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.invoice-side-recent-table th { font-weight: 700; white-space: nowrap; }
+.invoice-side-recent-account { overflow-wrap: anywhere; line-height: 1.35; }
+.invoice-side-recent-table button.invoice-side-recent-action,
+.invoice-side-recent-table button.invoice-side-recent-customer {
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 3px 1px;
+  max-width: 100%;
+  min-width: 0;
+  text-align: start;
+}
+.invoice-side-recent-table button.invoice-side-recent-action { text-decoration: underline; white-space: nowrap; }
+.invoice-side-recent-table button.invoice-side-recent-customer {
+  display: block;
+  width: 100%;
+  min-height: 27px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  color: var(--text);
+}
+.invoice-side-recent-table button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
