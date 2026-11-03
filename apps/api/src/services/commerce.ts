@@ -3,6 +3,7 @@ import type { PoolClient, QueryResultRow } from "pg";
 import type { z } from "zod";
 import {
   calculateInvoiceTotals,
+  invoiceLineGross,
   normalizeRate,
   type Invoice,
   type InvoiceLine,
@@ -478,7 +479,7 @@ export async function createInvoice(
             line.unitPrice !== price
           )
             conflict("سعر مردود المبيعات المباشر من كرت الصنف.");
-          checkQuantum(price, currency.decimal_places);
+          checkQuantum(price, Math.max(4, currency.decimal_places));
           if (!item.has_expiry && expiryDate !== null)
             conflict("الصنف لا يتتبع تاريخ الانتهاء.");
           // A direct customer return has no historical invoice allocation;
@@ -517,7 +518,7 @@ export async function createInvoice(
           conflict("أدخل سعر الشراء بعملة الفاتورة؛ العملة تختلف عن سعر الكرت");
         price = line.unitPrice ?? normalizeRate(item.purchase_price);
       }
-      checkQuantum(price, currency.decimal_places);
+      checkQuantum(price, Math.max(4, currency.decimal_places));
       if (
         item.has_expiry &&
         input.kind === "purchase" &&
@@ -528,7 +529,7 @@ export async function createInvoice(
       if (!item.has_expiry && expiryDate !== null)
         conflict("الصنف لا يستخدم دفعات انتهاء");
     }
-    const gross = quantity * moneyUnits(price);
+    const gross = moneyUnits(invoiceLineGross(quantity.toString(), price, currency.decimal_places));
     assertAmount(gross);
     prepared.push({
       item,
