@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { actor, handler, id, parse } from "./http.ts";
-import { itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
+import { itemFactorSchema, itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
 import { itemOptionsPresetCreateSchema, itemOptionsPresetFiltersSchema } from "../../../packages/contracts/src/item-options-presets.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -27,14 +27,17 @@ const querySchema = z.object({
   pageSize: z.coerce.number().int().min(20).max(100).default(50),
   stockMin: optionalNumber, stockMax: optionalNumber,
   reserveMin: optionalNumber, reserveMax: optionalNumber,
+  purchaseFactorMin: optionalNumber, purchaseFactorMax: optionalNumber,
   monthMin: optionalNumber, monthMax: optionalNumber,
   fourMonthsMin: optionalNumber, fourMonthsMax: optionalNumber,
   allTimeMin: optionalNumber, allTimeMax: optionalNumber,
   previousYearMin: optionalNumber, previousYearMax: optionalNumber,
   coverageMin: optionalNumber, coverageMax: optionalNumber,
+  reserveCoverageMin: optionalNumber, reserveCoverageMax: optionalNumber,
+  purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "month", "fourMonths", "allTime", "previousYear", "coverage"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -67,6 +70,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   range(options.stockMax, "m.available_unit1", "<=");
   range(options.reserveMin, "m.reserve_quantity", ">=");
   range(options.reserveMax, "m.reserve_quantity", "<=");
+  range(options.purchaseFactorMin, "m.purchase_factor", ">=");
+  range(options.purchaseFactorMax, "m.purchase_factor", "<=");
   range(options.monthMin, "m.sale_times_month", ">=");
   range(options.monthMax, "m.sale_times_month", "<=");
   range(options.fourMonthsMin, "m.sale_times_four_months", ">=");
@@ -79,17 +84,26 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
 
   // The existing item coverage calculation is only joined before pagination
   // when the user filters on coverage; otherwise enrich the 20-100 rows returned.
-  const needsCoverageJoin = options.coverageMin !== undefined
-    || options.coverageMax !== undefined || options.sortBy === "coverage";
+  const needsCoverageJoin = [
+    options.coverageMin, options.coverageMax,
+    options.reserveCoverageMin, options.reserveCoverageMax,
+    options.purchaseFactorCoverageMin, options.purchaseFactorCoverageMax,
+  ].some(value => value !== undefined)
+    || ["coverage", "reserveCoverage", "purchaseFactorCoverage"].includes(options.sortBy);
   const coverageColumn = options.useReserve ? "m.coverage_after_reserve" : "m.coverage_before";
   range(options.coverageMin, coverageColumn, ">=");
   range(options.coverageMax, coverageColumn, "<=");
+  range(options.reserveCoverageMin, "m.reserve_coverage_days", ">=");
+  range(options.reserveCoverageMax, "m.reserve_coverage_days", "<=");
+  range(options.purchaseFactorCoverageMin, "m.purchase_factor_coverage_days", ">=");
+  range(options.purchaseFactorCoverageMax, "m.purchase_factor_coverage_days", "<=");
   const orders: Record<Options["sortBy"], string> = {
     code: "f.code", name: "f.name", stock: "f.available_unit1",
-    reserve: "f.reserve_quantity", previousYear: "f.sale_times_previous_year",
+    reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
     month: "f.sale_times_month", fourMonths: "f.sale_times_four_months",
     allTime: "f.sale_times_all_time",
     coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
+    reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
   };
   const order = `${orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
   values.push(options.pageSize, (options.page - 1) * options.pageSize);
@@ -97,7 +111,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
-             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,
+             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
@@ -135,8 +149,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
              COALESCE(s.four_months,0) AS sale_times_four_months,
              COALESCE(s.all_time,0) AS sale_times_all_time,
              ${needsCoverageJoin
-               ? "coverage.approximate_coverage_days AS coverage_before, coverage.coverage_after_reserve_days AS coverage_after_reserve"
-               : "NULL::numeric AS coverage_before, NULL::numeric AS coverage_after_reserve"}
+               ? "coverage.approximate_coverage_days AS coverage_before, coverage.coverage_after_reserve_days AS coverage_after_reserve, coverage.reserve_coverage_days, coverage.purchase_factor_coverage_days"
+               : "NULL::numeric AS coverage_before, NULL::numeric AS coverage_after_reserve, NULL::numeric AS reserve_coverage_days, NULL::numeric AS purchase_factor_coverage_days"}
       FROM candidate i LEFT JOIN sales s ON s.item_id=i.id
       ${needsCoverageJoin ? itemCoverageJoin : ""}
     ),
@@ -148,7 +162,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
   const selected = rows.filter(row => row.id !== null).map(row => ({
     id: Number(row.id), code: String(row.code), name: String(row.name),
     active: Boolean(row.active), revision: Number(row.revision),
-    reserveQuantity: String(row.reserve_quantity),
+    reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
     factor2: Number(row.factor2), factor3: Number(row.factor3),
     availableSmallest: String(row.available_smallest),
     availableUnit1: String(row.available_unit1),
@@ -158,6 +172,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     saleTimesPreviousYear: String(row.sale_times_previous_year),
     approximateCoverageDays: needsCoverageJoin ? String(row.coverage_before) : null,
     coverageAfterReserveDays: needsCoverageJoin ? String(row.coverage_after_reserve) : null,
+    reserveCoverageDays: needsCoverageJoin ? String(row.reserve_coverage_days) : null,
+    purchaseFactorCoverageDays: needsCoverageJoin ? String(row.purchase_factor_coverage_days) : null,
   }));
   const enriched = needsCoverageJoin ? selected
     : await addItemCoverageToPage(client, companyId, selected);
@@ -165,6 +181,7 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     rows: enriched.map(row => ({
       itemId: row.id, code: row.code, name: row.name, active: row.active,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
+      purchaseFactor: row.purchaseFactor,
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth,
@@ -172,6 +189,8 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
       saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
       coverageAfterReserveDays: row.coverageAfterReserveDays,
+      reserveCoverageDays: row.reserveCoverageDays,
+      purchaseFactorCoverageDays: row.purchaseFactorCoverageDays,
     })),
     total: Number(rows[0]?.total ?? 0), page: options.page,
     pageSize: options.pageSize, asOf,
@@ -296,6 +315,46 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         { field: "reserveQuantity", value: String(row.reserve_quantity) },
         { field: "reserveQuantity", value: String(updated.reserve_quantity) }, companyId);
       return { itemId, revision: Number(updated.revision), reserveQuantity: String(updated.reserve_quantity) };
+    });
+    res.json({ result });
+  }));
+
+  // Planning/reference value only: never touch inventory or invoice pricing.
+  router.patch("/companies/:companyId/items/:itemId/purchase-factor", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const itemId = id(req.params.itemId);
+    const input = parse(z.object({
+      revision: z.number().int().positive(),
+      purchaseFactor: itemFactorSchema,
+    }).strict(), req.body);
+    const result = await transaction(pool, async client => {
+      const user = await currentActor(client, actor(req));
+      await companyAccess(client, user, companyId, "items.view");
+      const entries = await directoryEntries(client, user, companyId);
+      const listPage = entries.find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage, "edit");
+      const row = (await client.query(
+        "SELECT revision, purchase_factor FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId, itemId],
+      )).rows[0];
+      if (!row) throw new HttpError(404, "item_not_found", "الصنف غير موجود");
+      if (Number(row.revision) !== input.revision)
+        throw new HttpError(409, "stale_item", "عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
+      if (Number(row.purchase_factor) === input.purchaseFactor)
+        return { itemId, revision: Number(row.revision), purchaseFactor: input.purchaseFactor };
+      const updated = (await client.query(
+        `UPDATE items SET purchase_factor=$3::integer,
+              revision=revision+1, updated_at=clock_timestamp()
+          WHERE company_id=$1 AND id=$2 AND revision=$4
+          RETURNING revision,purchase_factor`,
+        [companyId, itemId, input.purchaseFactor, input.revision],
+      )).rows[0];
+      if (!updated) throw new HttpError(409, "stale_item", "تغيرت نسخة الصنف؛ حدّث القائمة.");
+      await audit(client, user, "item.field.update", "item", itemId,
+        { field: "purchaseFactor", value: Number(row.purchase_factor) },
+        { field: "purchaseFactor", value: Number(updated.purchase_factor) }, companyId);
+      return { itemId, revision: Number(updated.revision), purchaseFactor: Number(updated.purchase_factor) };
     });
     res.json({ result });
   }));
