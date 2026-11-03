@@ -17,15 +17,17 @@ test("purchase work drafts have separate durable IndexedDB data with scoped owne
 });
 
 test("purchase form restores all header fields and all lines, allows several saved drafts",()=>{
-  for(const field of ["documentDate","account","supplier","supplierReceiptNumber","currency","branch","location","original","description","discount"]){
+  for(const field of ["account","supplier","supplierReceiptNumber","currency","branch","location","original","description","discount"]){
     assert.match(invoice,new RegExp("set"+field.charAt(0).toUpperCase()+field.slice(1)+"\\(form\\."+field+"\\)"));
   }
+  // Older drafts restore today's Aden date rather than a stale prior-day header.
+  assert.match(invoice,/setDocumentDate\(today\(\)\)/);
   assert.match(invoice,/setLines\(form\.lines\.length \? form\.lines : \[emptyLine\(\)\]\)/);
   assert.match(invoice,/listPurchaseWorkDrafts<PurchaseDraftForm>/);
   assert.match(invoice,/activePurchaseDraftId \?\? undefined/);
   assert.match(invoice,/resetInvoiceValues\(\);\s*setDraftNotice\("تم الحفظ الأولي وتصفير الفاتورة\."\)/);
   assert.match(invoice,/setActivePurchaseDraftId\(draft\.id\)/);
-  assert.match(invoice,/setLastSavedFingerprint\(JSON\.stringify\(form\)\)/);
+  assert.match(invoice,/setLastSavedFingerprint\(JSON\.stringify\(\{ \.\.\.form, documentDate: today\(\) \}\)\)/);
   assert.match(invoice,/setDraftListOpen/);
   assert.match(invoice,/فتح ومواصلة/);
   assert.match(invoice,/حفظ أولي/);
@@ -48,7 +50,7 @@ test("purchase navigations automatically save every changed point and only warn 
   assert.doesNotMatch(invoice,/نعم، الخروج دون حفظ/);
   assert.match(invoice,/حفظها مؤقتًا قبل إغلاق النقطة/);
   assert.match(invoice,/draftFingerprint !== lastSavedFingerprint/);
-  assert.match(invoice,/editorDirty && !saving && !unknown/);
+  assert.match(invoice,/!editorDirty && !saving && !unknown && !draftSaving/);
   assert.match(invoice,/savePurchaseWorkDraft\([\s\S]*?activePurchaseDraftId \?\? undefined/);
   const beforeLeave=invoice.slice(invoice.indexOf("async function savePurchaseBeforeLeaving()"),
     invoice.indexOf("async function openPurchaseDraft("));
@@ -77,7 +79,7 @@ test("purchase draft choices are in the existing Actions drop-down; list opens i
 
 test("temporary save resets only after the IndexedDB write resolves",()=>{
   const save = invoice.slice(invoice.indexOf('async function savePurchaseTemporarily()'),
-    invoice.indexOf('async function openPurchaseDraft('));
+    invoice.indexOf('// Unlike the manual "حفظ أولي" button'));
   assert.match(save,/await savePurchaseWorkDraft\(/);
   assert.match(save,/if \(!guard\.isCurrent\(\)\) return false;/);
   assert.match(save,/resetInvoiceValues\(\)/);
