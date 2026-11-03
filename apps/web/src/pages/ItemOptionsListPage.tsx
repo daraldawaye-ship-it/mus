@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -84,6 +84,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [filterError, setFilterError] = useState("");
+  const applyingFilterRef = useRef(false);
+  const [applyingFilter, setApplyingFilter] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
@@ -193,6 +195,34 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       return next;
     });
   };
+  // Both ad-hoc and named filters start a new company-wide selection round.
+  // Keep deletion on the existing edit-authorized API; read-only employees may
+  // still browse filters, but cannot modify the shared selection.
+  async function runFilterApplication(applyFilters: () => void) {
+    if (!canView || applyingFilterRef.current) return;
+    if (temporarySelection.updating) {
+      setFilterError("يوجد اختيار مؤقت قيد الحفظ. أعد تطبيق الفلتر بعد اكتماله.");
+      return;
+    }
+    applyingFilterRef.current = true;
+    setApplyingFilter(true);
+    try {
+      // Always clear in PostgreSQL even if this device currently shows zero:
+      // another employee could have selected items since our last refresh.
+      if (canEditReserve && !(await temporarySelection.clear())) {
+        setFilterError("تعذر تصفير الاختيارات المشتركة؛ لم يُطبَّق الفلتر. حاول مجددًا.");
+        return;
+      }
+      setFilterError("");
+      setActionMessage("");
+      applyFilters();
+    } catch (cause) {
+      setFilterError(`تعذر تطبيق الفلتر وتصفير المختار: ${errorMessage(cause)}`);
+    } finally {
+      applyingFilterRef.current = false;
+      setApplyingFilter(false);
+    }
+  }
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const invalid = ranges.find(({ key }) =>
@@ -201,8 +231,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       setFilterError(`حقل «${invalid.label}» غير صالح. أدخل رقمًا حتى 6 منازل عشرية، أو اتركه فارغًا.`);
       return;
     }
-    setFilterError("");
-    setParams(previous => {
+    void runFilterApplication(() => setParams(previous => {
       const next = new URLSearchParams(previous);
       for (const { key } of ranges) {
         const value = draft[key].trim();
@@ -217,7 +246,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       if (!draft.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
       next.delete("page");
       return next;
-    });
+    }));
   }
   // Save draft controls, including un-applied range edits, but not page number.
   function currentPresetFilters(): ItemOptionsPresetFilters | null {
@@ -264,6 +293,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       return;
     }
     const values = filters.data;
+    void runFilterApplication(() => {
     const next = new URLSearchParams();
     next.set("active",values.active);
     next.set("sortBy",values.sortBy);
@@ -279,6 +309,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setPresetMessage(null);
     setOptionsCollapsed(false);
     setParams(next);
+    });
   }
   async function deletePreset(preset: ItemOptionsPreset) {
     if (!canDeletePresets || presetBusy) return;
@@ -420,11 +451,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               onChange={event => setDraft(previous => ({ ...previous, useReserve: event.target.checked }))} />
             استخدام الكفاية مع الاحتياطي
           </label>
-          <Button type="submit" disabled={!canView}>تطبيق الخيارات</Button>
+          <Button type="submit" disabled={!canView || applyingFilter || temporarySelection.updating}>
+            {applyingFilter ? "جارٍ تطبيق الخيارات…" : "تطبيق الخيارات"}
+          </Button>
           <Button type="button" variant="secondary" onClick={reset}>إعادة الافتراضيات</Button>
         </div>
       </form>
     </Card>}
+    {canEditReserve && <p className="muted">عند تطبيق الخيارات أو أي فلتر محفوظ، يُصفَّر الاختيار المؤقت كاملًا لدى جميع مستخدمي الشركة، دون حذف مسودات الطلبيات.</p>}
     {canView && <Card title="الفلاتر المحفوظة للجميع">
       <p className="muted">أي موظف يستطيع حفظ مجموعة فلاتر باسم، ويستطيع جميع مستخدمي الشركة استدعاءها من أي جهاز. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
       <div className="form-actions">
@@ -436,8 +470,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name}</option>)}
           </select>
         </label>
-        <Button type="button" disabled={!selectedPreset} onClick={()=>{if(selectedPreset) applyPreset(selectedPreset);}}>
-          تطبيق الفلتر
+        <Button type="button" disabled={!selectedPreset || applyingFilter || temporarySelection.updating}
+          onClick={()=>{if(selectedPreset) void applyPreset(selectedPreset);}}>
+          {applyingFilter ? "جارٍ تطبيق الفلتر…" : "تطبيق الفلتر"}
         </Button>
         {canDeletePresets && <Button type="button" variant="danger" disabled={!selectedPreset || presetBusy}
           onClick={()=>{if(selectedPreset) void deletePreset(selectedPreset);}}>
