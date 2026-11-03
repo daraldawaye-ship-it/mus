@@ -29,6 +29,7 @@ import { InvoiceItemActionsDropdown, type InvoiceItemAction } from "../InvoiceIt
 import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReportSheet } from "../InvoiceItemActionSheets";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
+import { arrangeInvoiceListColumns } from "../table-column-order";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
@@ -283,7 +284,7 @@ function InvoiceList({
     });
   }
   const columns = useMemo<ColumnDef<Invoice, unknown>[]>(
-    () => [
+    () => arrangeInvoiceListColumns<Invoice>(kind, [
       {
         accessorKey: "number",
         header: "رقم الفاتورة",
@@ -317,7 +318,7 @@ function InvoiceList({
       },
       {
         accessorKey: "counterpartyAccountName",
-        header: kind === "sale" ? "العميل / الحساب" : "حساب السداد / الذمة",
+        header: kind === "sale" ? "الحساب" : "حساب السداد / الذمة",
         size: 190,
         enableSorting: false,
         cell: ({ row }) => (
@@ -414,14 +415,14 @@ function InvoiceList({
       },
       {
         id: "open",
-        header: "عرض",
+        header: kind === "sale" ? "فتح" : "عرض",
         size: 65,
         enableSorting: false,
         cell: ({ row }) => (
           <Link to={invoicePath(companyId, row.original.id)}>فتح</Link>
         ),
       },
-    ],
+    ]),
     [companyId, kind, canEditCustomer],
   );
   return (
@@ -523,7 +524,7 @@ function InvoiceList({
           onSortingChange={list.setSorting}
           onPageChange={list.setPage}
           onPageSizeChange={list.setPageSize}
-          selectionMode="single"
+          selectionMode={kind === "sale" ? "none" : "single"}
         />
       </Card>
       <Dialog open={editingCustomer !== null}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ColumnDef } from "@tanstack/react-table";
-import { actionColumnsFirst } from "../apps/web/src/table-column-order.ts";
+import { actionColumnsFirst, arrangeInvoiceListColumns } from "../apps/web/src/table-column-order.ts";
 
 type Row = { id: number; name: string };
 const col = (id: string, header?: string): ColumnDef<Row, unknown> => ({ id, header: header ?? id });
@@ -27,4 +27,24 @@ test("lists lacking row actions or already ordered keep their identity", () => {
   assert.equal(actionColumnsFirst(plain), plain);
   const leading = [col("actions"), col("name"), col("id")];
   assert.equal(actionColumnsFirst(leading), leading);
+});
+
+test("sales invoice list starts with opening, printing, net, account and date", () => {
+  const input: ColumnDef<Row, unknown>[] = [
+    {accessorKey:"number",header:"رقم الفاتورة"},
+    {accessorKey:"documentDate",header:"التاريخ"},
+    col("return","العملية"),
+    {accessorKey:"counterpartyAccountName",header:"الحساب"},
+    {accessorKey:"currencyCode",header:"العملة"},
+    {accessorKey:"total",header:"الصافي"},
+    col("print","طباعة"), col("open","فتح"),
+    {accessorKey:"description",header:"الملاحظات"},
+  ];
+  const key=(c:ColumnDef<Row,unknown>): string =>
+    "id" in c && typeof c.id==="string" ? c.id :
+      "accessorKey" in c ? String(c.accessorKey) : "";
+  const wanted=["open","print","total","counterpartyAccountName","documentDate","number","description"];
+  assert.deepEqual(arrangeInvoiceListColumns("sale",input).map(key),wanted);
+  assert.deepEqual(actionColumnsFirst(arrangeInvoiceListColumns("sale",input)).map(key),wanted);
+  assert.equal(arrangeInvoiceListColumns("purchase",input),input);
 });

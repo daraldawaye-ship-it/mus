@@ -303,7 +303,7 @@ interface TableProps<T> {
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   loading?: boolean;
-  selectionMode?: "single" | "multi" | "os";
+  selectionMode?: "single" | "multi" | "os" | "none";
   onSelectionChange?: (ids: string[]) => void;
   /** Notify the caller of the actual record clicked, including row actions. */
   onRowInteract?: (row: T) => void;
@@ -329,6 +329,7 @@ export function DataTable<T>({
   getRowId,
   ariaLabel = "جدول البيانات",
 }: TableProps<T>) {
+  const selectable = selectionMode !== "none";
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const anchor = useRef<string | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
@@ -354,6 +355,7 @@ export function DataTable<T>({
     event?: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
     checkbox = false,
   ) => {
+    if (!selectable) return;
     let next = { ...selected };
     if (selectionMode === "single") next = { [id]: !selected[id] };
     else if (selectionMode === "os" && event?.shiftKey && anchor.current) {
@@ -406,23 +408,23 @@ export function DataTable<T>({
       <div className="table-tools">
         <span>
           {totalKnown ? total.toLocaleString("ar") : "جارٍ حساب العدد…"} سجل{" "}
-          <span className="muted">
+          {selectable && <span className="muted">
             ·{" "}
             {Object.values(selected)
               .filter(Boolean)
               .length.toLocaleString("ar")}{" "}
             محدد
-          </span>
+          </span>}
         </span>
         <span className="muted">Shift لإضافة ترتيب آخر</span>
       </div>
       <div className="table-scroll">
         <table
           aria-label={ariaLabel}
-          style={{ minWidth: `${table.getTotalSize() + 33}px` }}
+          style={{ minWidth: `${table.getTotalSize() + (selectable ? 33 : 0)}px` }}
         >
           <colgroup>
-            <col style={{ width: 33 }} />
+            {selectable && <col style={{ width: 33 }} />}
             {table.getAllLeafColumns().map((column) => (
               <col key={column.id} style={{ width: column.getSize() }} />
             ))}
@@ -430,7 +432,7 @@ export function DataTable<T>({
           <thead>
             {table.getHeaderGroups().map((group) => (
               <tr key={group.id}>
-                <th className="selection-cell">
+                {selectable && <th className="selection-cell">
                   {selectionMode !== "single" && (
                     <input
                       type="checkbox"
@@ -449,7 +451,7 @@ export function DataTable<T>({
                       }}
                     />
                   )}
-                </th>
+                </th>}
                 {group.headers.map((header) => {
                   const priority = sorting.findIndex(
                     (item) => item.id === header.column.id,
@@ -508,10 +510,11 @@ export function DataTable<T>({
               <tr
                 key={row.id}
                 data-row-id={row.id}
-                aria-selected={!!selected[row.id]}
+                aria-selected={selectable ? !!selected[row.id] : undefined}
                 onClickCapture={() => onRowInteract?.(row.original)}
                 onClick={(event) => {
                   if (
+                    selectable &&
                     !(event.target as HTMLElement).closest(
                       "button,input,select,a",
                     )
@@ -519,7 +522,7 @@ export function DataTable<T>({
                     choose(row.id, event);
                 }}
               >
-                <td className="selection-cell">
+                {selectable && <td className="selection-cell">
                   <input
                     type={selectionMode === "single" ? "radio" : "checkbox"}
                     aria-label={`اختيار السجل ${row.id}`}
@@ -537,7 +540,7 @@ export function DataTable<T>({
                       );
                     }}
                   />
-                </td>
+                </td>}
                 {row.getVisibleCells().map((cell) => {
                   const original = columns.find(
                     (column) =>

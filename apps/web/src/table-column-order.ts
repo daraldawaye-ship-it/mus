@@ -16,3 +16,19 @@ export function actionColumnsFirst<T>(
     return columns;
   return [...actions, ...columns.filter((column) => !isRowAction(column))];
 }
+
+/** Presentation-only order for the sales invoice list; purchases remain unchanged. */
+export function arrangeInvoiceListColumns<T>(
+  kind: "sale" | "purchase", columns: ColumnDef<T, unknown>[],
+): ColumnDef<T, unknown>[] {
+  if (kind !== "sale") return columns;
+  const key = (column: ColumnDef<T, unknown>): string =>
+    "id" in column && typeof column.id === "string" ? column.id :
+      "accessorKey" in column && typeof column.accessorKey === "string" ? column.accessorKey : "";
+  const first = ["open", "print", "total", "counterpartyAccountName", "documentDate"];
+  const visible = columns.filter(column => !["return", "currencyCode"].includes(key(column)));
+  return [
+    ...first.flatMap(id => visible.filter(column => key(column) === id)),
+    ...visible.filter(column => !first.includes(key(column))),
+  ];
+}
