@@ -26,6 +26,8 @@ const ranges = [
   { key: "fourMonthsMax", label: "المبيعات مرات في 4 أشهر إلى" },
   { key: "allTimeMin", label: "المبيعات مرات منذ البداية من" },
   { key: "allTimeMax", label: "المبيعات مرات منذ البداية إلى" },
+  { key: "previousYearMin", label: "مرات عام السابق من" },
+  { key: "previousYearMax", label: "مرات عام السابق إلى" },
   { key: "coverageMin", label: "الكفاية من (يوم)" },
   { key: "coverageMax", label: "الكفاية إلى (يوم)" },
 ] as const;
@@ -34,9 +36,11 @@ type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: bool
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
+    reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
     monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
+    previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
     useReserve: params.get("useReserve") !== "false",
@@ -47,7 +51,8 @@ type Row = {
   revision: number; reserveQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
-  saleTimesAllTime: string; approximateCoverageDays: string | null;
+  saleTimesAllTime: string; saleTimesPreviousYear: string | null;
+  approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
 };
 type Response = {
@@ -55,8 +60,10 @@ type Response = {
 };
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
-  ["stock", "الكمية المتوفرة"], ["month", "مرات المبيعات في شهر"],
+  ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
+  ["month", "مرات المبيعات في شهر"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["allTime", "مرات المبيعات منذ البداية"],
+  ["previousYear", "مرات عام السابق"],
   ["coverage", "الكفاية"],
 ] as const;
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
