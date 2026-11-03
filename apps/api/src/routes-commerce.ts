@@ -5,6 +5,7 @@ import {
   documentDateSchema,
   invoiceKinds,
   invoiceSchema,
+  invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
@@ -414,6 +415,61 @@ export function commerceRoutes(pool: Pool): Router {
       }),
     ),
   );
+  // Editing a posted sale customer's invoice snapshot does not repost an
+  // invoice, modify its accounting counterpart, stock, amounts, or rewards.
+  router.patch(`${base}/invoices/:id/sale-customer`, handler(async (req, res) => {
+    const invoiceId = id(req.params.id);
+    const input = parse(invoiceSaleCustomerPatchSchema, req.body);
+    const saved = await mutateMaster(pool, req, "commerce.manage",
+      async (client, user, companyId) => {
+        const result = await client.query(
+          "SELECT id,kind,sale_customer_id,sale_customer_number,sale_customer_name " +
+          "FROM invoices WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [companyId, invoiceId],
+        );
+        const original = result.rows[0];
+        if (!original)
+          throw new HttpError(404, "not_found", "الفاتورة غير موجودة في هذه الشركة");
+        if (original.kind !== "sale")
+          throw new HttpError(400, "sale_only", "تعديل بيانات العميل متاح لفواتير المبيعات فقط");
+        if (original.sale_customer_id !== input.expectedSaleCustomerId ||
+            original.sale_customer_number !== input.expectedSaleCustomerNumber ||
+            original.sale_customer_name !== input.expectedSaleCustomerName)
+          throw new HttpError(409, "conflict", "تغيّرت بيانات العميل في هذه الفاتورة. حدّث القائمة قبل إعادة الحفظ.");
+
+        const number = input.saleCustomerNumber || null;
+        const name = input.saleCustomerName || null;
+        let customerId: number | null = null;
+        if (number) {
+          // Link an existing directory card if it matches exactly.
+          // Do not create/rename a customer card through a posted invoice correction.
+          const matched = await client.query(
+            "SELECT id FROM sale_customers WHERE company_id=$1 AND customer_number=$2",
+            [companyId, number],
+          );
+          customerId = matched.rows[0]?.id ?? null;
+        }
+        if (original.sale_customer_id === customerId &&
+            original.sale_customer_number === number &&
+            original.sale_customer_name === name)
+          return { id: invoiceId, saleCustomerId: customerId,
+            saleCustomerNumber: number, saleCustomerName: name, unchanged: true };
+        await client.query(
+          "UPDATE invoices SET sale_customer_id=$1,sale_customer_number=$2,sale_customer_name=$3 " +
+          "WHERE company_id=$4 AND id=$5",
+          [customerId, number, name, companyId, invoiceId],
+        );
+        await audit(client, user, "invoice.customer.update", "invoice", invoiceId,
+          {saleCustomerId: original.sale_customer_id,
+            saleCustomerNumber: original.sale_customer_number,
+            saleCustomerName: original.sale_customer_name},
+          {saleCustomerId: customerId, saleCustomerNumber: number, saleCustomerName: name},
+          companyId);
+        return { id: invoiceId, saleCustomerId: customerId,
+          saleCustomerNumber: number, saleCustomerName: name, unchanged: false };
+      });
+    res.json({ customer: saved });
+  }));
   router.get(`${base}/memo-feature-impact`,handler(async(req,res)=>{
     const kind=req.query.kind;
     if(kind!=="sale"&&kind!=="purchase")

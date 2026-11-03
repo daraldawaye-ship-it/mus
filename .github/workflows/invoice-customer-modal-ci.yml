@@ -1,0 +1,24 @@
+name: Sales invoice customer cell editing
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/routes-commerce.ts'
+      - 'apps/web/src/pages/CommercePages.tsx'
+      - 'apps/web/src/styles.css'
+      - 'packages/contracts/src/commerce.ts'
+      - 'packages/contracts/src/index.ts'
+      - 'tests/invoice-customer-modal.test.ts'
+      - '.github/workflows/invoice-customer-modal-ci.yml'
+jobs:
+  invoice-customer-modal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/invoice-customer-modal.test.ts tests/sale-customer-name-only.test.ts

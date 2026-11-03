@@ -94,6 +94,16 @@ export const invoiceSchema = z
         });
     }
   });
+/** Header-only correction for an already posted sale invoice.
+ * Either customer field may be empty. Expected snapshots prevent stale tabs
+ * overwriting a change made on another device. No accounting data is edited. */
+export const invoiceSaleCustomerPatchSchema = z.object({
+  saleCustomerNumber: z.string().trim().regex(/^\d{0,30}$/, "رقم العميل يجب أن يكون أرقامًا فقط حتى 30 رقمًا"),
+  saleCustomerName: z.string().trim().max(240),
+  expectedSaleCustomerId: id.nullable(),
+  expectedSaleCustomerNumber: z.string().nullable(),
+  expectedSaleCustomerName: z.string().nullable(),
+}).strict();
 /** The optional name is part of the invoice snapshot, even without a customer number. */
 export function normalizeSaleCustomer<T extends {
   kind:"sale"|"purchase";
