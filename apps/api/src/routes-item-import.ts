@@ -16,6 +16,21 @@ const bodySchema=z.object({
   currency:z.literal("YER"),
   items:z.array(z.unknown()).min(1).max(100),
 }).strict();
+/**
+ * Owner-authorized one-time Table13 purchase-factor import. The spreadsheet
+ * stays private in Drive and reaches the authorized API as small batches.
+ * This is not invoice or stock import: only the item master purchase factor
+ * and its revision can change.
+ */
+const table13PurchaseFactorsSchema=z.object({
+  source:z.literal("Table13.xlsx"),
+  dryRun:z.boolean().default(true),
+  items:z.array(z.object({
+    legacyId:z.string().regex(/^[0-9]{1,100}$/),
+    purchaseFactor:z.number().int().min(1).max(1_000_000),
+  }).strict()).min(1).max(100),
+}).strict();
+
 const simplified=(s:string)=>s.normalize("NFKC")
   .replace(/[\s\u0640]/g,"").replace(/[أإآ]/g,"ا").toLowerCase();
 
@@ -103,6 +118,89 @@ export function itemImportRoutes(pool:Pool):Router{
     });
     res.status(200).json(result);
   }));
+
+  router.post("/companies/:companyId/items/purchase-factor-import",handler(async(req,res)=>{
+    const payload=parse(table13PurchaseFactorsSchema,req.body);
+    const result=await mutateMaster(pool,req,"items.manage",async(client,user,companyId)=>{
+      // This particular import is approved for Dar Al Dawa only.
+      if(companyId!==2) throw new HttpError(403,"wrong_company","هذا الترحيل مخصص لشركة دار الدواء فقط.");
+      const company=await client.query("SELECT name FROM companies WHERE id=$1",[companyId]);
+      if(!simplified(String(company.rows[0]?.name??"")).includes("دارالدواء"))
+        throw new HttpError(409,"wrong_company","الشركة المحددة لا تطابق صيدلية دار الدواء.");
+
+      const byLegacy=new Map<string,number>();
+      for(const row of payload.items){
+        if(byLegacy.has(row.legacyId))
+          throw new HttpError(400,"duplicate_legacy_id",`معرف مكرر في الدفعة: ${row.legacyId}`);
+        byLegacy.set(row.legacyId,row.purchaseFactor);
+      }
+      const legacyIds=[...byLegacy.keys()];
+      // Lock rows on writes; preflight reads never touch the item masters.
+      const matching=await client.query<{
+        id:number;legacy_id:string;purchase_factor:number;
+      }>(
+        `SELECT id,legacy_id,purchase_factor FROM items
+          WHERE company_id=$1 AND legacy_id=ANY($2::text[])
+          ORDER BY id${payload.dryRun?"":" FOR UPDATE"}`,
+        [companyId,legacyIds],
+      );
+      const found=new Map<string,{id:number;factor:number}>();
+      for(const row of matching.rows){
+        if(found.has(row.legacy_id))
+          throw new HttpError(409,"ambiguous_legacy_id",
+            `المعرف ${row.legacy_id} يخص أكثر من صنف؛ لم تُحفظ الدفعة.`);
+        found.set(row.legacy_id,{id:row.id,factor:Number(row.purchase_factor)});
+      }
+      const missingLegacyIds=legacyIds.filter(value=>!found.has(value));
+      const planned=[...byLegacy.entries()].flatMap(([legacyId,factor])=>{
+        const current=found.get(legacyId);
+        return current && current.factor!==factor
+          ? [{id:current.id,legacyId,previous:current.factor,factor}]
+          : [];
+      });
+      if(payload.dryRun || !planned.length)
+        return {source:payload.source,dryRun:payload.dryRun,
+          received:legacyIds.length,matched:found.size,
+          alreadyCorrect:found.size-planned.length,wouldChange:planned.length,
+          updated:0,missingLegacyIds};
+
+      const args:unknown[]=[companyId];
+      const replacements=planned.map((row,index)=>{
+        args.push(row.id,row.factor);
+        return `(${index*2+2}::integer,${index*2+3}::integer)`;
+      });
+      const updated=await client.query<{id:number}>(
+        `UPDATE items i
+            SET purchase_factor=updates.factor,
+                revision=i.revision+1,
+                updated_at=clock_timestamp()
+           FROM (VALUES ${replacements.join(",")}) AS updates(id,factor)
+          WHERE i.company_id=$1 AND i.id=updates.id
+          RETURNING i.id`,args);
+      if(updated.rowCount!==planned.length)
+        throw new HttpError(409,"import_conflict","تغيّرت نتائج المطابقة أثناء الحفظ، وأُلغيت الدفعة.");
+
+      // Per-item audit trail records exact previous/new value and the actor.
+      const auditValues:unknown[]=[companyId,user.id,user.displayName||user.name];
+      const auditTuples=planned.map((row,index)=>{
+        auditValues.push(row.id,row.previous,row.factor);
+        const at=index*3+4;
+        return `($2,$3,'company',$1,'item.field.update','item',
+                 ${at}::integer,
+                 jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',${at+1}::integer,'source','Table13.xlsx'),
+                 jsonb_build_object('field','purchaseFactor','label','عامل وحدة الشراء','value',${at+2}::integer,'source','Table13.xlsx'))`;
+      });
+      await client.query(
+        `INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,
+                                   target_type,target_id,before_value,after_value)
+         VALUES ${auditTuples.join(",")}`,auditValues);
+      return {source:payload.source,dryRun:false,received:legacyIds.length,
+        matched:found.size,alreadyCorrect:found.size-planned.length,
+        wouldChange:planned.length,updated:planned.length,missingLegacyIds};
+    });
+    res.json({result});
+  }));
+
   return router;
 }
 
