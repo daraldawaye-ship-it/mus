@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { actor, handler, id, parse } from "./http.ts";
@@ -174,7 +174,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
   // Presets are shared across every user/device of this company, never attached
   // to a user's local storage or used as a substitute for item access rights.
   const checkPresetsAccess = async (
-    client: PoolClient, req: Parameters<ReturnType<typeof handler>>[0], companyId: number,
+    client: PoolClient, req: Request, companyId: number,
     edit = false,
   ) => {
     const user = await currentActor(client, actor(req));
