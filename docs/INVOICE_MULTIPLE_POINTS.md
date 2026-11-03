@@ -15,3 +15,6 @@ The cashier wants to serve two or three customers without opening the installed 
 ## Testing/operations
 The Render Dockerfile runs `npm run check && npm run build` as part of its build. Always verify deployment `live` and `/api/health` after publishing. Browser acceptance checks: create point 1 with item A, open point 2 with item B, return to point 1 and confirm its lines and totals remain; save point 2 and confirm point 1 unchanged; keyboard Ctrl+S acts only on the active point; test closing dirty point, route-change warnings, and offline saving.
 Source commits: `a0e749ee774ae6dfd72c369326cc40da100d6db8` (TSX) and `14dc8e3bf55036ae7be931f594cd05709a40116c` (CSS).
+
+### Safe silent exit (3 November 2026)
+In-app links from Sales or Purchases no longer ask to confirm leaving when snapshots can be committed. Each sales point is written explicitly, then the IndexedDB queue is flushed; purchase points are saved to the existing purchase-drafts list with the original form, even if it only contains header fields. Navigation proceeds only after successful local storage. A retry/error dialog is reserved for failed persistence or uncertain postings. Purchase drafts are reopened via Actions > Saved Drafts. Explicitly closing/discarding an individual point remains a separate action with its existing confirmation.

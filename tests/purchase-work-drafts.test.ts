@@ -35,16 +35,26 @@ test("purchase form restores all header fields and all lines, allows several sav
   assert.match(invoice,/void deletePurchaseWorkDraft\(user\.id, companyId, activePurchaseDraftId\)/);
 });
 
-test("multirow purchase navigations offer local save; single row confirms leaving",()=>{
+test("purchase navigations automatically save every changed point and only warn on failure",()=>{
   assert.match(invoice,/status\.dirty && status\.itemCount > 1/);
   assert.match(invoice,/onRegisterDraftSaver=\{registerDraftSaver\}/);
   assert.match(invoice,/for \(const id of points\)/);
   assert.match(invoice,/await save\(\)/);
-  assert.match(invoice,/حفظ مؤقت ثم الخروج/);
-  assert.match(invoice,/يوجد صنف واحد في فاتورة المشتريات/);
+  assert.match(invoice,/savePurchaseBeforeLeaving/);
+  assert.match(invoice,/automaticLeaveStarted/);
+  assert.match(invoice,/kind === "sale" \? leaveWithLocalSalesDrafts\(\) : saveAllAndLeave\(\)/);
+  assert.match(invoice,/open=\{blocker\.state === "blocked" && !!leavingError\}/);
+  assert.doesNotMatch(invoice,/مغادرة مع إبقاء الفواتير على الجهاز/);
+  assert.doesNotMatch(invoice,/نعم، الخروج دون حفظ/);
   assert.match(invoice,/حفظها مؤقتًا قبل إغلاق النقطة/);
   assert.match(invoice,/draftFingerprint !== lastSavedFingerprint/);
   assert.match(invoice,/editorDirty && !saving && !unknown/);
+  assert.match(invoice,/savePurchaseWorkDraft\([\s\S]*?activePurchaseDraftId \?\? undefined/);
+  const beforeLeave=invoice.slice(invoice.indexOf("async function savePurchaseBeforeLeaving()"),
+    invoice.indexOf("async function openPurchaseDraft("));
+  assert.match(beforeLeave,/await savePurchaseWorkDraft\(/);
+  assert.doesNotMatch(beforeLeave,/resetInvoiceValues\(\)/);
+  assert.match(beforeLeave,/setLastSavedFingerprint\(JSON\.stringify\(captured\)\)/);
   assert.match(invoice,/onStatusChange\(tabId, \{ dirty: editorDirty/);
 });
 
