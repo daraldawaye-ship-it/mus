@@ -78,3 +78,18 @@ test("endpoint is registered and an on-site developer guide entry is deployed wi
   assert.match(app,/quickMessagesRoutes\(pool\)/);
   assert.match(migration,/developer-avatar-quick-message-20261102/);
 });
+
+test("all quick-message and private-note modals close on submit without a success modal", () => {
+  const modal=read("apps/web/src/UserMenuQuickCompose.tsx");
+  const app=read("apps/web/src/App.tsx");
+  const delivery=read("apps/web/src/QuickMessageDelivery.tsx");
+  assert.match(modal,/queueQuickMessageDelivery\(payload,user\.id,queryClient\);\s*onClose\(\)/);
+  assert.doesNotMatch(modal,/setResult\(|<Notice>\{privateNote/);
+  assert.match(app,/<QuickMessageDeliveryStatus userId=\{user\?\.id \?\? null\}/);
+  assert.match(delivery,/api\("\/quick-messages",\{method:"POST",body:item\.request\}\)/);
+  assert.match(delivery,/retryQuickMessageDelivery\(job\.id,userId\)/);
+  assert.match(delivery,/clientRequestId/);
+  assert.match(delivery,/status==="failed"/);
+  assert.match(delivery,/invalidateQueries\(\{queryKey:\["private-notes"\]\}\)/);
+  assert.doesNotMatch(delivery,/localStorage|sessionStorage/);
+});

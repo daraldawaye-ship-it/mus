@@ -34,7 +34,9 @@ test("notes and archive actions are account-private with no destructive deletion
 test("personal notes reuse avatar composer and do not leak content to audit",()=>{
   const compose=read("apps/web/src/UserMenuQuickCompose.tsx");
   const route=read("apps/api/src/routes-quick-messages.ts");
-  assert.match(compose,/invalidateQueries\(\{queryKey:\["private-notes"\]\}\)/);
+  const delivery=read("apps/web/src/QuickMessageDelivery.tsx");
+  assert.match(compose,/queueQuickMessageDelivery/);
+  assert.match(delivery,/invalidateQueries\(\{queryKey:\["private-notes"\]\}\)/);
   assert.match(route,/quick.privateNoteArchive/);
   assert.match(route,/quick.privateNoteRestore/);
   assert.match(route,/\{ownerId:user.id,archived:true\}/);

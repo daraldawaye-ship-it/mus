@@ -7327,3 +7327,42 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .invoice-side-private-list {min-width:0;max-width:100%;}
 .invoice-side-private-card {width:100%;box-sizing:border-box;overflow:hidden;}
+
+/* Immediate-close quick messages report delivery outside the modal. A failed
+   request remains retryable with the same idempotency UUID. */
+.quick-message-delivery-status {
+  position: fixed;
+  z-index: 1400;
+  bottom: 60px;
+  inset-inline-start: 18px;
+  width: min(360px, calc(100vw - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.quick-message-delivery-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 4px 14px var(--shadow);
+  pointer-events: auto;
+  font-size: 12px;
+}
+.quick-message-delivery-card.failed {border-color: var(--danger,#cc5c5c);}
+.quick-message-delivery-card span {flex:1 1 100%;overflow-wrap:anywhere;}
+.quick-message-delivery-card button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 4px 7px;
+  cursor: pointer;
+  font: inherit;
+}

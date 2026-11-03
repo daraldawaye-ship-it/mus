@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Dialog, Notice } from "./ui";
-import { api } from "./api";
+import { Button, Dialog } from "./ui";
+import { useSession } from "./api";
+import { queueQuickMessageDelivery, type QuickMessagePayload } from "./QuickMessageDelivery";
 
 export type QuickMessageKind =
   | "system_change" | "present_employees" | "all_employees"
@@ -15,14 +16,6 @@ export const quickMessageOptions: readonly {kind:QuickMessageKind;label:string;c
   {kind:"private_note",label:"مذكرة خاصة بي",company:false},
 ];
 
-type QuickMessagePayload = {
-  kind:QuickMessageKind;
-  companyId?:number;
-  title?:string;
-  text:string;
-  clientRequestId:string;
-};
-type Result={sent?:boolean;saved?:boolean;recipients:number;id?:number};
 export function UserMenuQuickCompose({
   kind,companyId,onClose,
 }:{
@@ -31,16 +24,13 @@ export function UserMenuQuickCompose({
   const current=quickMessageOptions.find(option=>option.kind===kind)!;
   const privateNote=kind==="private_note";
   const queryClient=useQueryClient();
+  const { user } = useSession();
   const [body,setBody]=useState("");
-  const [pending,setPending]=useState(false);
-  const [error,setError]=useState("");
-  const [result,setResult]=useState<Result|null>(null);
   // Retain exact payload/UUID when reply is uncertain: retry must not duplicate.
   const frozen=useRef<QuickMessagePayload|null>(null);
-  function close() { if(!pending) onClose(); }
-  async function submit(event:FormEvent<HTMLFormElement>) {
+  function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if(pending||result||!body.trim())return;
+    if(frozen.current||!body.trim()||!user)return;
     if(current.company&&!companyId)return;
     const payload=frozen.current??{
       kind,...(current.company&&companyId?{companyId}:{}),
@@ -49,39 +39,29 @@ export function UserMenuQuickCompose({
       text:body.trim(),clientRequestId:crypto.randomUUID(),
     };
     frozen.current=payload;
-    setPending(true);setError("");
-    try {
-      const response=await api<Result>("/quick-messages",{method:"POST",body:payload});
-      setResult(response);
-      if(privateNote) void queryClient.invalidateQueries({queryKey:["private-notes"]});
-    }catch(cause) {
-      setError(cause instanceof Error?cause.message:"تعذر الإرسال؛ أعد المحاولة بنفس الطلب");
-    }finally {setPending(false);}
+    // Dispatch is owned by the workspace, not this modal. Close synchronously
+    // while keeping the exact request UUID for a safe retry on network failure.
+    queueQuickMessageDelivery(payload,user.id,queryClient);
+    onClose();
   }
-  return <Dialog open onClose={close} title={current.label}>
-    {result?<div className="form-stack">
-      <Notice>{privateNote
-        ?"تم حفظ المذكرة الخاصة في حسابك. ستظهر في «ملاحظاتي الخاصة» بالشاشة الجانبية دون مشاركتها مع أحد."
-        :"تم نشر التنبيه في قسم التنبيهات لدى "+result.recipients+" من المستلمين."}</Notice>
-      <div className="form-actions"><Button onClick={onClose}>إغلاق</Button></div>
-    </div>:<form className="form-stack" onSubmit={event=>void submit(event)}>
+  return <Dialog open onClose={onClose} title={current.label}>
+    <form className="form-stack" onSubmit={submit}>
       {kind==="present_employees"&&<p className="muted">تصل الرسالة بإشعار إلى الموظفين المحضّرين حاليًا والذين لم يسجّلوا انصرافهم.</p>}
       {kind==="all_employees"&&<p className="muted">تصل الرسالة بإشعار لكل موظف فعّال في الشركة، عدا حسابك.</p>}
       {(kind==="system_change"||kind==="app_manager")&&<p className="muted">يظهر نص الرسالة واسمك للإدارة في قسم التنبيهات، دون دردشة.</p>}
       {privateNote&&<p className="muted">مذكرة لا يراها أحد غيرك، ولا يذهب عنها إشعار لأي مستخدم.</p>}
-      {error&&<Notice tone="error">{error}</Notice>}
       <label className="field">
         <span>{privateNote?"الملاحظة":"نص الرسالة"}</span>
         <textarea className="memo-textarea" rows={6} maxLength={3500} required
-          value={body} disabled={pending||!!frozen.current} onChange={e=>setBody(e.target.value)}
+          value={body} onChange={e=>setBody(e.target.value)}
           placeholder={privateNote?"اكتب ملاحظتك هنا":"اكتب رسالتك هنا"}/>
       </label>
       <div className="form-actions">
-        <Button type="button" variant="secondary" onClick={close} disabled={pending}>إلغاء</Button>
-        <Button type="submit" disabled={pending||!body.trim()}>
-          {pending?"جارٍ الحفظ…":frozen.current?"إعادة محاولة نفس الإرسال":privateNote?"حفظ خاص":"إرسال مع إشعار"}
+        <Button type="button" variant="secondary" onClick={onClose}>إلغاء</Button>
+        <Button type="submit" disabled={!body.trim()}>
+          {privateNote?"حفظ خاص":"إرسال مع إشعار"}
         </Button>
       </div>
-    </form>}
+    </form>
   </Dialog>;
 }
