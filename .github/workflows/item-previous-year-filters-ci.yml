@@ -1,0 +1,44 @@
+name: Previous year and reserve item filters
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/20261103_item_previous_year_sale_times_snapshot.sql'
+      - 'apps/api/src/routes-item-options-list.ts'
+      - 'apps/web/src/pages/ItemOptionsListPage.tsx'
+      - 'packages/contracts/src/item-options-presets.ts'
+      - 'tests/api.test.ts'
+      - 'tests/item-previous-year-filters.test.ts'
+      - '.github/workflows/item-previous-year-filters-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  previous-year:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tijara_test
+          POSTGRES_PASSWORD: tijara_test
+          POSTGRES_DB: tijara_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tijara_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tijara_test:tijara_test@localhost:5432/tijara_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/item-previous-year-filters.test.ts tests/item-list-compact-scroll-filters.test.ts
+      - run: node --import tsx --test --test-name-pattern="(item options filter immutable previous-year sale times|company-shared item option presets)" tests/api.test.ts
