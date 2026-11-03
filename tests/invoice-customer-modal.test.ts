@@ -81,7 +81,7 @@ test("invoice list print column directly starts existing header-ready receipt pr
   const columns = frontend.match(/id: "print",[\s\S]*?id: "open"/)?.[0];
   assert.ok(columns, "print column must appear next to view column");
   assert.match(columns, /header: "طباعة"/);
-  assert.match(columns, /invoicePath\(companyId, row\.original\.id\)\}\\?print=1/);
+  assert.ok(columns.includes('invoicePath(companyId, row.original.id)}?print=1'));
   assert.match(columns, /target="_blank"/);
   assert.match(frontend, /searchParams\.get\("print"\) === "1"/);
   assert.match(frontend, /!printReady \|\| printRequestedFor\.current === invoiceId/);
