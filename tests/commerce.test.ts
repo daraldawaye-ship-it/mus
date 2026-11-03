@@ -4689,7 +4689,8 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   assert.equal(stockBefore.rows[0]!.quantity_smallest,"48");
   const modified=await f.owner.ok<{item:Item}>("PATCH",path,{
     changes:{unit2Name:"ظرف",unit3Name:"قرص",factor2:4,factor3:6},
-    expected:{},mode:"last-write-wins",
+    expected:{unit2Name:"شريط",unit3Name:"حبة",factor2:2,factor3:12},
+    mode:"last-write-wins",
   });
   assert.equal(modified.item.unit2Name,"ظرف");
   assert.equal(modified.item.factor2,4);
@@ -4706,7 +4707,7 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   assert.equal(historical.rows[0]!.factor2,2);
   assert.equal(historical.rows[0]!.factor3,12);
   const illegal=await f.owner.request("PATCH",path,{
-    changes:{factor2:5},expected:{},mode:"last-write-wins",
+    changes:{factor2:5},expected:{factor2:4},mode:"last-write-wins",
   });
   assert.equal(illegal.status,409);
   await assert.rejects(
@@ -4720,7 +4721,8 @@ test("whole first-unit stock permits secondary edits without stock/history reint
     lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:"2027-01-31"}],
   }));
   const fractional=await f.owner.request("PATCH",path,{
-    changes:{unit2Name:"ظرف جديد"},expected:{},mode:"last-write-wins",
+    changes:{unit2Name:"ظرف جديد"},expected:{unit2Name:"ظرف"},
+    mode:"last-write-wins",
   });
   assert.equal(fractional.status,409);
   await assert.rejects(
