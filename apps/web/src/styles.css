@@ -4676,31 +4676,42 @@ a.notification-quick-title:hover { text-decoration: underline; }
     border-top: 1px solid #555;
     background: #efefef;
   }
-  /* A sales receipt has one horizontal summary row, not three stacked rows.
-     Purchase receipts retain their existing three-row layout. */
+  /* Sales totals are three inline label/value pairs on one borderless line.
+     Purchase summaries preserve their original three-row table-style layout. */
   .invoice-print-sheet--sale .invoice-print-summary {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4mm;
     width: 100%;
     margin: 3mm 0 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     direction: rtl;
+    white-space: nowrap;
+    break-inside: avoid;
   }
   .invoice-print-sheet--sale .invoice-print-summary > div {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1mm;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 1.5mm;
     min-width: 0;
-    padding: 1.5mm 1mm;
-    text-align: center;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    white-space: nowrap;
   }
   .invoice-print-sheet--sale .invoice-print-summary > div + div {
-    border-top: 0;
-    border-right: 1px solid #aaa;
+    border: 0;
   }
   .invoice-print-sheet--sale .invoice-print-summary .invoice-print-net {
-    border-top: 0;
+    border: 0;
+    background: transparent;
   }
   .invoice-print-acknowledgements--sale {
     display: flex;
