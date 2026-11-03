@@ -136,7 +136,8 @@ export const marketTypes: MarketType[] = [
     key: "scientific-name",
     label: "الأسماء العلمية",
     fields: [
-      f("name", "الاسم العلمي"),
+      f("name", "الاسم العلمي بالعربي"),
+      f("englishName", "الاسم العلمي بالإنجليزي"),
       image,
       f("details", "التفاصيل", "textarea"),
       f("wikipediaEn", "ويكيبيديا الإنجليزية", "url"),
