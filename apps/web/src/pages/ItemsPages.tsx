@@ -1377,11 +1377,28 @@ function ItemEditor({
     const wasInactive = unitPair?.[1] === "factor2"
       ? (lastSavedSnapshot.current?.factor2 ?? 1) <= 1
       : (lastSavedSnapshot.current?.factor3 ?? 1) <= 1;
+    // If both factors were edited, persist them atomically only when their
+    // product stays constant. A first blur may fail individually, but the
+    // second edit can still save the complete corrected pair (even if the
+    // previous single-field request was marked blocked).
+    const newSecond = itemFactorSchema.safeParse(fields.factor2);
+    const newThird = itemFactorSchema.safeParse(fields.factor3);
+    const last = lastSavedSnapshot.current;
+    const jointFactors = item && unitPair && last &&
+      editedFields.current.has("factor2") &&
+      editedFields.current.has("factor3") &&
+      newSecond.success && newThird.success &&
+      newSecond.data * newThird.data === last.factor2 * last.factor3;
     const selectedFields: EditableItemField[] = selectedField
-      ? unitPair && wasInactive && (parsedUnitFactor?.data ?? 1) > 1
-        ? unitPair.filter(field => editedFields.current.has(field) &&
-            !blockedFields.current.has(field))
-        : [selectedField]
+      ? jointFactors
+        ? (["factor2", "factor3", "unit2Name", "unit3Name"] as EditableItemField[])
+          .filter(field => editedFields.current.has(field) &&
+            (field === "factor2" || field === "factor3" ||
+              !blockedFields.current.has(field)))
+        : unitPair && wasInactive && (parsedUnitFactor?.data ?? 1) > 1
+          ? unitPair.filter(field => editedFields.current.has(field) &&
+              !blockedFields.current.has(field))
+          : [selectedField]
       : [];
     // A factor cannot activate before its name is stored. For a name that
     // has not been saved yet, ensure both touched values travel atomically.
