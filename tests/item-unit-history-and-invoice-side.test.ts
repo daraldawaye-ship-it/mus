@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { addsOnlyPreviouslyInactiveUnits } from "../apps/api/src/services/item-unit-history.ts";
+import { addsOnlyPreviouslyInactiveUnits, editsSecondaryUnitsWithoutRescalingStock } from "../apps/api/src/services/item-unit-history.ts";
 
 const original = {
   unit1Name: "باكت", unit2Name: "", unit3Name: "",
@@ -69,4 +69,27 @@ test("invoice side reports do not permit choosing another employee", () => {
   assert.match(ui, /العجز والزيادة عند الإغلاق/);
   assert.match(ui, /آخر 24 ساعة/);
   assert.match(ui, /آخر 14 ساعة/);
+});
+
+test("whole first-unit quantities permit second and third unit edits only with an unchanged smallest-unit multiplier",()=>{
+  const before={unit1Name:"باكت",unit2Name:"شريط",unit3Name:"حبة",
+    factor2:2,factor3:12,hasExpiry:true};
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,unit2Name:"ظرف",unit3Name:"قرص",factor2:4,factor3:6,
+  }),true);
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,unit2Name:"ظرف",
+  }),true);
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,factor2:3,
+  }),false,"cannot silently change first-unit physical stock");
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,unit1Name:"علبة",
+  }),false);
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,hasExpiry:false,
+  }),false);
+  assert.equal(editsSecondaryUnitsWithoutRescalingStock(before,{
+    ...before,unit3Name:"",
+  }),false);
 });
