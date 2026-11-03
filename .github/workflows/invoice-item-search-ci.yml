@@ -7,6 +7,11 @@ on:
       - 'apps/web/src/EntityMenuSearch.tsx'
       - 'apps/api/src/routes-commerce-options.ts'
       - 'apps/api/src/services/masters.ts'
+      - 'apps/api/src/services/lists.ts'
+      - 'apps/api/src/routes-item-options-list.ts'
+      - 'apps/web/src/offline-shared-items.ts'
+      - 'packages/contracts/src/invoice-item-search.ts'
+      - 'tests/invoice-item-word-search.test.ts'
       - 'tests/browser-invoice-focus.ts'
       - 'tests/item-sale-ranking-cache.test.ts'
       - '.github/workflows/invoice-item-search-ci.yml'
@@ -42,6 +47,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Verify separated-word item lookup
+        run: node --import tsx --test tests/invoice-item-word-search.test.ts
       - run: npm run build
       - name: Verify fast paginated invoice item suggestions
         run: node --import tsx --test --test-name-pattern="invoice quick lookup uses bounded pages" tests/item-sale-ranking-cache.test.ts

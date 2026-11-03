@@ -431,9 +431,20 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
   await daily(f, c.id, products[8]!.id, today, "30");
   await daily(f, c.id, products[4]!.id, today, "12");
   await daily(f, c.id, products[11]!.id, today, "5");
+  // This lookup reads the materialized quantity+stock rank, rather than
+  // recalculating sales during typing. Seed that snapshot explicitly here.
+  for (const [index, quantity] of [[8, "30"], [4, "12"], [11, "5"]] as const) {
+    await f.pool.query(
+      `INSERT INTO item_sale_rankings(company_id,item_id,as_of_date,net_sale_invoices,net_sale_quantity)
+       VALUES($1,$2,$3::date,0,$4::numeric)
+       ON CONFLICT(company_id,item_id,as_of_date)
+       DO UPDATE SET net_sale_quantity=EXCLUDED.net_sale_quantity`,
+      [c.id, products[index]!.id, today, quantity],
+    );
+  }
   const ordered = [products[8]!, products[4]!, products[11]!,
     ...products.filter((_, index) => ![8, 4, 11].includes(index))];
-  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
+  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleQuantityPlusStock:desc,code:asc&pageSize=5`;
   type FastPage = Page<Item> & { hasMore: boolean };
   // The invoice does not search until the third character; the older test
   // still expected 1/2-character results and was failing even before this PR.
@@ -455,10 +466,24 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
     assert.deepEqual([first.total, second.total, last.total], [6, 11, 12]);
     assert.deepEqual([...first.items, ...second.items, ...last.items].map(value => value.id),
       ordered.map(value => value.id),
-      `Fast lookup must sort '${term}' by monthly sale frequency with active/company scope`);
+      `Fast lookup must sort '${term}' by net sold quantity and stock with active/company scope`);
   }
   const legacy = await f.owner.ok<Page<Item>>(
     "GET", `/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent("صن")}&pageSize=5`,
   );
   assert.equal(legacy.total, 12, "Normal list endpoints retain exact totals");
+  // Integration regression: omit middle words, keeping existing typeahead
+  // and item-card search routing plus company/active constraints intact.
+  const gapped = await f.item(c.id, currency.id, {
+    name: "فادين كول اقراص مصوص",
+  });
+  const gappedQuery = encodeURIComponent("فادين مصوص");
+  const invoiceMatch = await f.owner.ok<FastPage>(
+    "GET", `${url}&q=${gappedQuery}&page=1`,
+  );
+  assert.deepEqual(invoiceMatch.items.map(value => value.id), [gapped.id]);
+  const catalogMatch = await f.owner.ok<Page<Item>>(
+    "GET", `/companies/${c.id}/items?q=${gappedQuery}`,
+  );
+  assert.deepEqual(catalogMatch.items.map(value => value.id), [gapped.id]);
 });

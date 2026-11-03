@@ -57,5 +57,11 @@ export function listQuery(
     order: orders.join(", "),
   };
 }
-export const searchPattern = (q: string): string =>
-  `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+/** Preserve literal %, _ and backslashes; only spaces between item-name words
+ * become SQL wildcards, e.g. "فادين مصوص" -> "%فادين%مصوص%". */
+export const searchPattern = (q: string, wordGaps = false): string => {
+  const escaped = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+  return `%${wordGaps
+    ? q.trim().split(/\s+/u).map(escaped).join("%")
+    : escaped(q)}%`;
+};
