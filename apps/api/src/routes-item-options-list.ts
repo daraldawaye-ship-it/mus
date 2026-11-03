@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { actor, handler, id, parse } from "./http.ts";
 import { itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
+import { itemOptionsPresetCreateSchema, itemOptionsPresetFiltersSchema } from "../../../packages/contracts/src/item-options-presets.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
@@ -169,6 +170,81 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
 /** Read-only, company-scoped, server-paginated stock and sales filters. */
 export function itemOptionsListRoutes(pool: Pool): Router {
   const router = Router();
+  const presetsPath = "/companies/:companyId/item-options-list/presets";
+  // Presets are shared across every user/device of this company, never attached
+  // to a user's local storage or used as a substitute for item access rights.
+  const checkPresetsAccess = async (
+    client: PoolClient, req: Parameters<ReturnType<typeof handler>>[0], companyId: number,
+    edit = false,
+  ) => {
+    const user = await currentActor(client, actor(req));
+    await companyAccess(client, user, companyId, "items.view");
+    const entries = await directoryEntries(client, user, companyId);
+    const listPage = entries.find(page => page.key === "company.item-options-list");
+    if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+    assertDirectoryAccess(listPage, edit && !user.owner ? "edit" : "view");
+    return user;
+  };
+  router.get(presetsPath, handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const items = await transaction(pool, async client => {
+      await checkPresetsAccess(client, req, companyId);
+      const rows = await client.query(
+        `SELECT p.id,p.name,p.filters,p.created_by,p.created_at,
+                COALESCE(NULLIF(u.display_name,''),u.name) AS created_by_name
+           FROM company_item_options_presets p
+           JOIN users u ON u.id=p.created_by
+          WHERE p.company_id=$1 ORDER BY lower(p.name),p.id`,
+        [companyId],
+      );
+      return rows.rows.map(row => ({
+        id: Number(row.id), name: String(row.name),
+        filters: itemOptionsPresetFiltersSchema.parse(row.filters),
+        createdBy: Number(row.created_by),
+        createdByName: String(row.created_by_name),
+        createdAt: (row.created_at as Date).toISOString(),
+      }));
+    });
+    res.json({ items });
+  }));
+  router.post(presetsPath, handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const input = parse(itemOptionsPresetCreateSchema, req.body);
+    const saved = await transaction(pool, async client => {
+      const user = await checkPresetsAccess(client, req, companyId);
+      // A case-insensitive unique index also resolves simultaneous submissions.
+      const inserted = await client.query(
+        `INSERT INTO company_item_options_presets(company_id,name,filters,created_by)
+         VALUES($1,$2,$3::jsonb,$4)
+         ON CONFLICT DO NOTHING RETURNING id,name,created_at`,
+        [companyId,input.name,JSON.stringify(input.filters),user.id],
+      );
+      if (!inserted.rowCount) throw new HttpError(409, "preset_exists",
+        "يوجد فلتر محفوظ بنفس الاسم في هذه الشركة؛ اختر اسمًا مختلفًا.");
+      const row = inserted.rows[0];
+      await audit(client,user,"item.options-preset.create","itemOptionsPreset",
+        Number(row.id),null,{name:input.name,filters:input.filters},companyId);
+      return {id:Number(row.id),name:String(row.name),filters:input.filters,
+        createdBy:user.id,createdByName:user.displayName,
+        createdAt:(row.created_at as Date).toISOString()};
+    });
+    res.status(201).json({ item:saved });
+  }));
+  router.delete(`${presetsPath}/:presetId`, handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const presetId = id(req.params.presetId);
+    await transaction(pool, async client => {
+      const user = await checkPresetsAccess(client, req, companyId, true);
+      const deleted = await client.query(
+        "DELETE FROM company_item_options_presets WHERE id=$1 AND company_id=$2 RETURNING id,name,filters",
+        [presetId,companyId],
+      );
+      if (!deleted.rowCount) throw new HttpError(404,"preset_not_found","الفلتر المحفوظ غير موجود");
+      await audit(client,user,"item.options-preset.delete","itemOptionsPreset",presetId,
+        {name:deleted.rows[0].name,filters:deleted.rows[0].filters},null,companyId);
+    });
+    res.json({ok:true});
+  }));
   // Update only reserve quantity; respect card revision and audit every edit.
   // Never send the full card on a row-level edit.
   router.patch("/companies/:companyId/items/:itemId/reserve-quantity", handler(async (req, res) => {
