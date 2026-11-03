@@ -112,9 +112,9 @@ export function InvoicePrintSheet({
         </tbody>
       </table>
       <div className="invoice-print-summary">
-        <div><span>الإجمالي قبل الخصم</span><strong>{money(invoice.gross)}</strong></div>
-        <div><span>الخصم</span><strong>{money(invoice.discount)}</strong></div>
-        <div className="invoice-print-net"><span>{purchase ? `الصافي (${invoice.currencyCode})` : "الصافي"}</span>
+        <div><span>{purchase ? "الإجمالي قبل الخصم" : "الإجمالي قبل الخصم:"}</span><strong>{money(invoice.gross)}</strong></div>
+        <div><span>{purchase ? "الخصم" : "الخصم:"}</span><strong>{money(invoice.discount)}</strong></div>
+        <div className="invoice-print-net"><span>{purchase ? `الصافي (${invoice.currencyCode})` : "الصافي:"}</span>
           <strong>{money(invoice.total)}</strong></div>
       </div>
       {purchase ? (
