@@ -4839,3 +4839,119 @@ test("rebase whole first-unit stock on activation of second unit preserves packs
   )).rows[0]!.q,"29");
   await assertBalanced(f,s.company.id);
 });
+
+test("posted sale customer snapshot edits pass the immutable DB guard without changing amounts or stock",async(t)=>{
+  const f=await fixture(t),s=await setup(f,"Posted customer correction test");
+  const it=await s.item();
+  const purchase=await invoice(f,s,invoiceBody(s,it.id));
+  const sale=await invoice(f,s,invoiceBody(s,it.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    saleCustomerNumber:"",saleCustomerName:"",
+    lines:[{itemId:it.id,unit:1,quantity:"1",unitPrice:"1000",expiryDate:null}],
+  }));
+  const customerPath=`${s.path}/invoices/${sale.id}/sale-customer`;
+  const initial=(await f.owner.ok<{invoice:Invoice}>(
+    "GET",`${s.path}/invoices/${sale.id}`
+  )).invoice;
+  assert.equal(initial.saleCustomerNumber,null);
+  assert.equal(initial.saleCustomerName,null);
+  assert(initial.financialDocumentId!==null);
+  const initialMovements=(await f.pool.query<{count:number}>(
+    "SELECT count(*)::int AS count FROM stock_movements WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id,sale.id]
+  )).rows[0]!.count;
+  const initialAccounting=(await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM financial_document_lines WHERE company_id=$1 AND document_id=ANY($2::int[])",
+    [s.company.id,[sale.financialDocumentId,sale.costDocumentId].filter(Boolean)],
+  )).rows[0]!.n;
+
+  // The exact use case from the user's phone screenshot: a name by itself.
+  const saved=await f.owner.ok<{customer:{
+    saleCustomerId:number|null;saleCustomerNumber:string|null;saleCustomerName:string|null;unchanged:boolean;
+  }}>("PATCH",customerPath,{
+    saleCustomerNumber:"",saleCustomerName:"مصطفى",
+    expectedSaleCustomerId:null,expectedSaleCustomerNumber:null,expectedSaleCustomerName:null,
+  });
+  assert.deepEqual(saved.customer,{
+    id:sale.id,saleCustomerId:null,saleCustomerNumber:null,saleCustomerName:"مصطفى",unchanged:false,
+  });
+  const after=(await f.owner.ok<{invoice:Invoice}>(
+    "GET",`${s.path}/invoices/${sale.id}`
+  )).invoice;
+  assert.equal(after.saleCustomerName,"مصطفى");
+  assert.equal(after.saleCustomerNumber,null);
+  assert.equal(after.saleCustomerId,null);
+  assert.equal(after.total,initial.total);
+  assert.equal(after.gross,initial.gross);
+  assert.equal(after.discount,initial.discount);
+  assert.equal(after.financialDocumentId,initial.financialDocumentId);
+  assert.equal(after.costDocumentId,initial.costDocumentId);
+  assert.equal(after.varianceDocumentId,initial.varianceDocumentId);
+  assert.deepEqual(after.lines,initial.lines);
+  assert.equal((await f.pool.query<{count:number}>(
+    "SELECT count(*)::int AS count FROM stock_movements WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id,sale.id],
+  )).rows[0]!.count,initialMovements);
+  assert.equal((await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM financial_document_lines WHERE company_id=$1 AND document_id=ANY($2::int[])",
+    [s.company.id,[sale.financialDocumentId,sale.costDocumentId].filter(Boolean)],
+  )).rows[0]!.n,initialAccounting);
+  assert.equal((await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM audit_events WHERE company_id=$1 AND target_id=$2 AND action='invoice.customer.update'",
+    [s.company.id,sale.id],
+  )).rows[0]!.n,1);
+
+  const stale=await f.owner.request("PATCH",customerPath,{
+    saleCustomerNumber:"",saleCustomerName:"آخر",
+    expectedSaleCustomerId:null,expectedSaleCustomerNumber:null,expectedSaleCustomerName:null,
+  });
+  assert.equal(stale.status,409,"stale editing cannot overwrite another cashier's update");
+  const second=await f.owner.ok<{customer:{saleCustomerName:string|null}}>("PATCH",customerPath,{
+    saleCustomerNumber:"123",saleCustomerName:"مصطفى",
+    expectedSaleCustomerId:null,expectedSaleCustomerNumber:null,expectedSaleCustomerName:"مصطفى",
+  });
+  assert.equal(second.customer.saleCustomerName,"مصطفى");
+  const cleared=await f.owner.ok<{customer:{saleCustomerName:string|null;saleCustomerNumber:string|null}}>(
+    "PATCH",customerPath,{
+      saleCustomerNumber:"",saleCustomerName:"",
+      expectedSaleCustomerId:null,expectedSaleCustomerNumber:"123",expectedSaleCustomerName:"مصطفى",
+    }
+  );
+  assert.equal(cleared.customer.saleCustomerName,null);
+  assert.equal(cleared.customer.saleCustomerNumber,null);
+  const purchasePatch=await f.owner.request("PATCH",`${s.path}/invoices/${purchase.id}/sale-customer`,{
+    saleCustomerNumber:"",saleCustomerName:"يجب الرفض",
+    expectedSaleCustomerId:null,expectedSaleCustomerNumber:null,expectedSaleCustomerName:null,
+  });
+  assert.equal(purchasePatch.status,400,"purchase customer modification is forbidden");
+  await assert.rejects(
+    f.pool.query("UPDATE invoices SET sale_customer_name='غير مصرح' WHERE company_id=$1 AND id=$2",
+      [s.company.id,sale.id]),
+    /Posted invoices are immutable/,
+  );
+  await assert.rejects(
+    f.pool.query("UPDATE invoices SET total=total+1 WHERE company_id=$1 AND id=$2",
+      [s.company.id,sale.id]),
+    /Posted invoices are immutable/,
+  );
+  const conn=await f.pool.connect();
+  try{
+    await conn.query("BEGIN");
+    await conn.query("SELECT set_config('alraesy.sale_customer_snapshot_update',$1,true)",[
+      `${s.company.id}:${sale.id}`,
+    ]);
+    await assert.rejects(conn.query(
+      "UPDATE invoices SET total=total+1,sale_customer_name='غير مصرح' WHERE company_id=$1 AND id=$2",
+      [s.company.id,sale.id],
+    ),/Posted invoices are immutable/);
+  } finally {
+    await conn.query("ROLLBACK");
+    conn.release();
+  }
+  await assert.rejects(
+    f.pool.query("DELETE FROM invoices WHERE company_id=$1 AND id=$2",
+      [s.company.id,sale.id]),
+    /Operational history cannot be deleted/,
+  );
+  await assertBalanced(f,s.company.id);
+});

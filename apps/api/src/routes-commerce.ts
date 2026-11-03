@@ -454,6 +454,14 @@ export function commerceRoutes(pool: Pool): Router {
             original.sale_customer_name === name)
           return { id: invoiceId, saleCustomerId: customerId,
             saleCustomerNumber: number, saleCustomerName: name, unchanged: true };
+        // The DB protects posted invoices. Permit ONLY this sale customer
+        // snapshot correction for the exact company and invoice in the current
+        // transaction. The trigger independently rejects every unrelated
+        // posted-invoice column and never changes posted ledger or stock.
+        await client.query(
+          "SELECT set_config('alraesy.sale_customer_snapshot_update',$1,true)",
+          [`${companyId}:${invoiceId}`],
+        );
         await client.query(
           "UPDATE invoices SET sale_customer_id=$1,sale_customer_number=$2,sale_customer_name=$3 " +
           "WHERE company_id=$4 AND id=$5",
