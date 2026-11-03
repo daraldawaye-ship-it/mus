@@ -1,5 +1,6 @@
 import { sharedItemsAllowed, sharedItemsLiveAllowed } from "./offline-shared";
 import { isOfflineNow } from "./connection-mode";
+import { matchesOrderedItemWords } from "../../../packages/contracts/src/invoice-item-search.ts";
 import { compareItemsBySavedSales, compareItemsBySaleQuantityAndStock, readSaleRankSnapshot } from "./offline-storage";
 type Cursor = { since:string;afterId:number };
 type Progress = { cursor:Cursor;count:number;complete:boolean };
@@ -92,6 +93,7 @@ export async function fastLocalInvoiceItems<T>(
   if(!index || (!isOfflineNow() && index.asOfDate!==adenDate()) ||
       !sharedItemsAllowed(companyId,userId))return undefined;
   const term=normalized(q.get("q"));
+  const words=term.split(/\s+/u);
   const page=Math.max(1,Number(q.get("page"))||1);
   const pageSize=Math.min(100,Math.max(1,Number(q.get("pageSize"))||20));
   const needed=page*pageSize+1;
@@ -103,7 +105,7 @@ export async function fastLocalInvoiceItems<T>(
   const exactCount=matches.length;
   if(exactCount<needed)for(const item of index.ordered){
     if(item.code===term || item.barcode===term)continue;
-    if(item.text.includes(term)){
+    if(matchesOrderedItemWords(item.text,words)){
       matches.push(item.card);
       if(matches.length>=needed)break;
     }
@@ -172,13 +174,14 @@ export async function lookupSharedItem<T>(path:string,userId:number):Promise<T|u
   if (card) return data.length?{item:data[0].value} as T:undefined;
   if (!opts) return undefined;
   const q=new URLSearchParams(path.split("?")[1]);
-  const search=(q.get("q")??"").trim().toLowerCase();
+  const words=normalized(q.get("q")).split(/\s+/u).filter(Boolean);
   const filtered=data.map(x=>x.value).filter(x=>
     (!q.get("id")||String(x.id)===q.get("id")) &&
     (!q.get("shortcut")||String(x.shortcut??"").toUpperCase()===q.get("shortcut")!.toUpperCase()) &&
     (q.get("active")!=="true"||x.active!==false) &&
-    (!search||["name","englishName","code","barcode","searchKeys"].some(k=>
-      String(x[k]??"").toLowerCase().includes(search))));
+    (!words.length||["name","englishName","compositionArabicName",
+      "compositionEnglishName","code","barcode","searchKeys"].some(k=>
+      matchesOrderedItemWords(normalized(x[k]),words))));
   if(q.get("sort")?.startsWith("saleQuantityPlusStock:desc")){
     const snapshot=await readSaleRankSnapshot(userId,companyId);
     if(snapshot?.priorities)
