@@ -4013,3 +4013,40 @@ test("owner password reset applies to public users without employee memberships"
   ));
   assertNoSecrets(auditPage);
 });
+
+
+test("company-shared item option presets persist, isolate tenants, and require authorized deletion", async (t) => {
+  const f = await fixture(t);
+  const platform = await owner(f);
+  const companyA = await company(platform.client,"Shared item filters A");
+  const companyB = await company(platform.client,"Shared item filters B");
+  const outsider = await register(f,"item-filter-outsider@example.test");
+  const base = `/companies/${companyA.id}/item-options-list/presets`;
+  const otherBase = `/companies/${companyB.id}/item-options-list/presets`;
+  const filters = {
+    q:"",active:"active",stockMin:"",stockMax:"10",monthMin:"1",monthMax:"5",
+    fourMonthsMin:"",fourMonthsMax:"",allTimeMin:"",allTimeMax:"",
+    coverageMin:"",coverageMax:"",excludeZero:true,useReserve:false,
+    sortBy:"allTime",sortDir:"desc",
+  };
+  assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",base)).items,[]);
+  assert.equal((await outsider.client.request("GET",base)).status,403);
+  assert.equal((await outsider.client.request("POST",base,{name:"غير مصرح",filters})).status,403);
+  assert.equal((await platform.client.request("POST",base,{name:"بدون اسم",filters:{...filters,stockMax:"not-a-number"}})).status,400);
+  const created = await platform.client.ok<{item:{id:number;name:string;filters:typeof filters}}>(
+    "POST",base,{name:"  الأصناف المتوفرة  ",filters},201);
+  assert.equal(created.item.name,"الأصناف المتوفرة");
+  assert.equal(created.item.filters.stockMin,"");
+  assert.equal(created.item.filters.stockMax,"10");
+  const listed = await platform.client.ok<{items:{id:number;name:string;filters:typeof filters}[]}>("GET",base);
+  assert.equal(listed.items.length,1);
+  assert.equal(listed.items[0].id,created.item.id);
+  assert.deepEqual(listed.items[0].filters,filters);
+  assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",otherBase)).items,[]);
+  assert.equal((await platform.client.request("POST",base,{name:"الأصناف المتوفرة",filters})).status,409);
+  assert.equal((await platform.client.request("DELETE",`${otherBase}/${created.item.id}`,{})).status,404);
+  assert.equal((await outsider.client.request("DELETE",`${base}/${created.item.id}`,{})).status,403);
+  await platform.client.ok("DELETE",`${base}/${created.item.id}`,{});
+  assert.deepEqual((await platform.client.ok<{items:unknown[]}>("GET",base)).items,[]);
+  assert.equal((await platform.client.request("DELETE",`${base}/${created.item.id}`,{})).status,404);
+});

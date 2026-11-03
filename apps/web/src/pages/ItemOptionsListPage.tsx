@@ -13,6 +13,7 @@ import { useTemporaryItemList } from "../temporary-item-list";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
+import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOptionsPresetFilters } from "../../../../packages/contracts/src/item-options-presets.ts";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -74,6 +75,22 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [draft, setDraft] = useState<Draft>(() => readDraft(params));
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [filterError, setFilterError] = useState("");
+  const [presetName, setPresetName] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [presetMessage, setPresetMessage] = useState<{tone:"error"|"success";text:string}|null>(null);
+  const presetBase = `/companies/${companyId}/item-options-list/presets`;
+  const presetsQuery = useQuery({
+    queryKey: ["company-item-options-presets", companyId, user?.id],
+    queryFn: ({signal}) => api<{items:ItemOptionsPreset[]}>(presetBase,{signal}),
+    enabled: !!user && canView,
+    staleTime: 0,
+    refetchInterval: 60_000,
+  });
+  const presets = presetsQuery.data?.items ?? [];
+  const selectedPreset = presets.find(row => String(row.id) === selectedPresetId);
+  const canDeletePresets = Boolean(user?.owner || canEditReserve);
+
   const paramsKey = params.toString();
   useEffect(() => {
     setDraft(readDraft(new URLSearchParams(paramsKey)));
@@ -192,6 +209,81 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       next.delete("page");
       return next;
     });
+  }
+  // Save draft controls, including un-applied range edits, but not page number.
+  function currentPresetFilters(): ItemOptionsPresetFilters | null {
+    const candidate = {
+      q: search.trim(), active, sortBy, sortDir,
+      ...Object.fromEntries(ranges.map(({key}) => [key,draft[key].trim()])),
+      excludeZero: draft.excludeZero,
+      useReserve: draft.useReserve,
+    };
+    const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
+    if (!result.success) {
+      setPresetMessage({tone:"error",text:"تحقق من حدود الفلاتر (حتى 6 منازل عشرية) ثم أعد الحفظ."});
+      return null;
+    }
+    return result.data;
+  }
+  async function savePreset() {
+    if (!canView || presetBusy) return;
+    const name = presetName.trim();
+    if (!name || name.length > 80) {
+      setPresetMessage({tone:"error",text:"اكتب اسمًا للفلتر المحفوظ لا يزيد عن 80 حرفًا."});
+      return;
+    }
+    const filters = currentPresetFilters();
+    if (!filters) return;
+    setPresetBusy(true);
+    setPresetMessage(null);
+    try {
+      const result = await api<{item:ItemOptionsPreset}>(presetBase,{
+        method:"POST", body:{name,filters},
+      });
+      setPresetName("");
+      setSelectedPresetId(String(result.item.id));
+      setPresetMessage({tone:"success",text:`حُفظ الفلتر «${result.item.name}» وأصبح متاحًا لجميع مستخدمي الشركة.`});
+      await presetsQuery.refetch();
+    } catch(cause) {
+      setPresetMessage({tone:"error",text:errorMessage(cause)});
+    } finally { setPresetBusy(false); }
+  }
+  function applyPreset(preset: ItemOptionsPreset) {
+    const filters = itemOptionsPresetFiltersSchema.safeParse(preset.filters);
+    if (!filters.success) {
+      setPresetMessage({tone:"error",text:"الفلاتر المحفوظة غير صالحة. اختر مجموعة أخرى."});
+      return;
+    }
+    const values = filters.data;
+    const next = new URLSearchParams();
+    next.set("active",values.active);
+    next.set("sortBy",values.sortBy);
+    next.set("sortDir",values.sortDir);
+    next.set("pageSize",String(pageSize));
+    if(values.q) next.set("q",values.q);
+    for(const {key} of ranges) next.set(key,values[key]);
+    if(values.excludeZero) next.set("excludeZero","true");
+    if(!values.useReserve) next.set("useReserve","false");
+    setDraft(readDraft(next));
+    setSearch(values.q);
+    setFilterError("");
+    setPresetMessage(null);
+    setOptionsCollapsed(false);
+    setParams(next);
+  }
+  async function deletePreset(preset: ItemOptionsPreset) {
+    if (!canDeletePresets || presetBusy) return;
+    if (!window.confirm(`هل تريد حذف الفلتر المشترك «${preset.name}» من الشركة للجميع؟`)) return;
+    setPresetBusy(true);
+    setPresetMessage(null);
+    try {
+      await api(`${presetBase}/${preset.id}`,{method:"DELETE",body:{}});
+      setSelectedPresetId("");
+      setPresetMessage({tone:"success",text:`حُذف الفلتر «${preset.name}» من القوائم المشتركة.`});
+      await presetsQuery.refetch();
+    } catch(cause) {
+      setPresetMessage({tone:"error",text:errorMessage(cause)});
+    } finally { setPresetBusy(false); }
   }
   function reset() {
     setFilterError("");
@@ -323,6 +415,42 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           <Button type="button" variant="secondary" onClick={reset}>إعادة الافتراضيات</Button>
         </div>
       </form>
+    </Card>}
+    {canView && <Card title="الفلاتر المحفوظة للجميع">
+      <p className="muted">أي موظف يستطيع حفظ مجموعة فلاتر باسم، ويستطيع جميع مستخدمي الشركة استدعاءها من أي جهاز. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
+      <div className="form-actions">
+        <label className="item-options-filter-field" style={{flex:"1 1 230px"}}>
+          <span className="item-options-filter-label">الفلاتر المشتركة المحفوظة</span>
+          <select aria-label="الفلاتر المشتركة المحفوظة" value={selectedPresetId}
+            onChange={event=>setSelectedPresetId(event.target.value)}>
+            <option value="">اختر فلترًا محفوظًا</option>
+            {presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name}</option>)}
+          </select>
+        </label>
+        <Button type="button" disabled={!selectedPreset} onClick={()=>{if(selectedPreset) applyPreset(selectedPreset);}}>
+          تطبيق الفلتر
+        </Button>
+        {canDeletePresets && <Button type="button" variant="danger" disabled={!selectedPreset || presetBusy}
+          onClick={()=>{if(selectedPreset) void deletePreset(selectedPreset);}}>
+          حذف الفلتر
+        </Button>}
+        <Button type="button" variant="secondary" disabled={presetsQuery.isFetching}
+          onClick={()=>void presetsQuery.refetch()}>تحديث الفلاتر</Button>
+      </div>
+      {selectedPreset && <small className="muted">أضافه: {selectedPreset.createdByName}</small>}
+      <form className="form-actions" onSubmit={event=>{event.preventDefault();void savePreset();}}>
+        <label className="item-options-filter-field" style={{flex:"1 1 230px"}}>
+          <span className="item-options-filter-label">اسم الفلتر الجديد</span>
+          <input type="text" required maxLength={80} value={presetName}
+            placeholder="مثال: أصناف تحتاج طلبية"
+            onChange={event=>setPresetName(event.target.value)} />
+        </label>
+        <Button type="submit" disabled={presetBusy || !presetName.trim()}>
+          {presetBusy?"جارٍ الحفظ…":"حفظ الخيارات الحالية باسم"}
+        </Button>
+      </form>
+      {presetsQuery.error && <Notice tone="error">{errorMessage(presetsQuery.error)}</Notice>}
+      {presetMessage && <Notice tone={presetMessage.tone}>{presetMessage.text}</Notice>}
     </Card>}
     {filterError && <Notice tone="error">{filterError}</Notice>}
     {resultQuery.error && <Notice tone="error">
