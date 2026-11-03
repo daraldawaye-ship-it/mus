@@ -51,7 +51,7 @@ type Row = {
   revision: number; reserveQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
-  saleTimesAllTime: string; saleTimesPreviousYear: string | null;
+  saleTimesAllTime: string; saleTimesPreviousYear: string;
   approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
 };
@@ -553,7 +553,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
               </div>
               <div className="item-options-mobile-stat">
-                <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi>
+                <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
               </div>
               <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
