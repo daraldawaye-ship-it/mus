@@ -61,7 +61,7 @@ test("quick broadcasts create independent notifications only, never chat message
   assert.match(notifications,/export async function emitNotification/);
 });
 
-test("private notes are owner-scoped; no content in notifications or shared audit; viewer deferred", () => {
+test("private notes are owner-scoped; no content in notifications or shared audit", () => {
   const route=read("apps/api/src/routes-quick-messages.ts");
   const migration=read("apps/api/migrations/20261102_avatar_quick_messages.sql");
   assert.match(route,/user_private_notes WHERE user_id=\$1 AND client_request_id=\$2/);

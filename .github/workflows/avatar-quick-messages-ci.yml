@@ -4,6 +4,11 @@ on:
     paths:
       - 'apps/web/src/UserMenu.tsx'
       - 'apps/web/src/UserMenuQuickCompose.tsx'
+      - 'apps/web/src/InvoiceSideOverview.tsx'
+      - 'apps/web/src/InvoiceSidePrivateNotes.tsx'
+      - 'apps/web/src/styles.css'
+      - 'apps/api/migrations/20261103_private_notes_archive.sql'
+      - 'tests/invoice-side-private-notes.test.ts'
       - 'apps/web/src/user-menu-tabs.css'
       - 'apps/api/src/routes-quick-messages.ts'
       - 'apps/api/src/app.ts'
@@ -23,4 +28,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/avatar-quick-messages.test.ts
+      - run: node --import tsx --test tests/avatar-quick-messages.test.ts tests/invoice-side-private-notes.test.ts
