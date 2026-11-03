@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
-import { transaction } from "./db.ts";
+import { transaction, type Database } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, companyAccess } from "./policies/access.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
@@ -41,7 +41,7 @@ export function summarizeDeviceAgent(raw: string): { browser: string; os: string
   return { browser, os };
 }
 
-async function checkDevicePage(pool: Pool, user: ReturnType<typeof actor>, companyId: number, action: "view" | "edit") {
+async function checkDevicePage(pool: Database, user: ReturnType<typeof actor>, companyId: number, action: "view" | "edit") {
   await companyAccess(pool, user, companyId);
   const entry = (await directoryEntries(pool, user, companyId))
     .find((item) => item.key === "company.approved-devices");
@@ -118,7 +118,7 @@ export function companyDeviceRoutes(pool: Pool): Router {
     const input = parse(editSchema, req.body);
     const updated = await transaction(pool, async (client) => {
       const user = await currentActor(client, actor(req));
-      await checkDevicePage(client as Pool, user, companyId, "edit");
+      await checkDevicePage(client, user, companyId, "edit");
       const before = await client.query(
         "SELECT * FROM company_known_devices WHERE id=$1 AND company_id=$2 FOR UPDATE",
         [deviceId, companyId],
