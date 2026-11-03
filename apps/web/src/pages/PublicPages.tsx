@@ -1173,7 +1173,7 @@ function UserList() {
             {loginLinkCopied ? "تم نسخ الرابط" : "نسخ الرابط"}
           </Button>
         </>}>
-        <p>الرابط صالح حتى {loginLink ? dateLabel(loginLink.expiresAt) : "—"}، ويعمل مرة واحدة فقط. يمكنك نسخه وإرساله للمستخدم عبر رسالة SMS أو واتساب.</p>
+        <p>الرابط صالح حتى {loginLink ? dateLabel(loginLink.expiresAt) : "—"}، ويعمل مرة واحدة عند تأكيد المستخدم الدخول من الصفحة، وليس بمجرد فتح الرابط أو معاينته. يمكنك نسخه وإرساله عبر واتساب أو رسالة SMS. إنشاء رابط جديد لهذا الحساب يلغي الرابط السابق.</p>
         <Field label="رابط الدخول المباشر" type="text" dir="ltr" readOnly
           value={loginLink?.url ?? ""} onFocus={event => event.target.select()} />
         <Notice tone="warning">من يمتلك هذا الرابط يستطيع الدخول للحساب حتى استخدامه أو انتهاء الساعة. إنشاء رابط جديد لهذا المستخدم يلغي الرابط السابق؛ أرسله للمستخدم المقصود فقط.</Notice>
