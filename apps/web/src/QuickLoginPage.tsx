@@ -2,48 +2,68 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { SessionResponse } from "../../../packages/contracts/src/index";
 import { api, useSession } from "./api";
-import { Card, Notice, PageHeader } from "./ui";
+import { Button, Card, Notice, PageHeader } from "./ui";
 
-/** The bearer token lives only in the URL fragment, which is never sent in
- * an HTTP path/query or Referrer. Remove it before making the POST request. */
+/** A link preview, browser prefetch, or opening the page must never use the
+ * single-use credential. Keep it only in memory and remove the URL fragment
+ * immediately so it never reaches server paths, logs or referrers. */
 export function QuickLoginPage() {
   const { acceptRegistration } = useSession();
   const navigate = useNavigate();
-  const started = useRef(false);
+  const tokenRef = useRef<string | null>(null);
+  const initialized = useRef(false);
+  const [validToken, setValidToken] = useState(false);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(true);
+  const [busy, setBusy] = useState(false);
+
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    if (initialized.current) return;
+    initialized.current = true;
     const token = window.location.hash.slice(1);
     window.history.replaceState(window.history.state, "", "/quick-login");
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
-      setError("رابط الدخول غير صالح. اطلب رابطًا جديدًا من إدارة الموقع.");
-      setBusy(false);
+      setError("رابط الدخول غير مكتمل أو غير صالح. افتح الرابط الأصلي كاملاً أو اطلب رابطًا جديدًا من الإدارة.");
       return;
     }
-    void (async () => {
-      try {
-        const session = await api<SessionResponse>("/auth/login-link/redeem", {
-          method: "POST", body: { token },
-        });
-        await acceptRegistration(session);
-        navigate("/", { replace: true });
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "تعذر الدخول بالرابط.");
-        setBusy(false);
-      }
-    })();
-  }, [acceptRegistration, navigate]);
+    tokenRef.current = token;
+    setValidToken(true);
+  }, []);
+
+  async function redeemLink() {
+    const token = tokenRef.current;
+    if (!token || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      // Claim the link only when the intended user explicitly presses Login.
+      const session = await api<SessionResponse>("/auth/login-link/redeem", {
+        method: "POST", body: { token },
+      });
+      tokenRef.current = null;
+      await acceptRegistration(session);
+      navigate("/", { replace: true });
+    } catch (cause) {
+      // Keep the in-memory token on transient failures for an intentional retry.
+      // The server may have consumed it if a response was lost; a fresh link
+      // can still be issued by the owner without exposing bearer credentials.
+      setError(cause instanceof Error ? cause.message : "تعذر تسجيل الدخول بالرابط.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <>
     <PageHeader title="دخول مباشر إلى الحساب"
-      description="يعمل الرابط مرة واحدة، وتنتهي صلاحيته بعد ساعة من إنشائه." />
+      description="الرابط صالح لساعة من إنشائه ولمرة واحدة. فتحه وحده لا يستهلكه؛ اضغط الزر أدناه للدخول." />
     <Card>
-      {busy ? <p>جارٍ الدخول إلى الحساب باستخدام الرابط الشخصي…</p> :
-        <Notice tone="error">{error}</Notice>}
-      {!busy && <Link className="button button-secondary" to="/login">
+      {validToken && <Button onClick={() => void redeemLink()} disabled={busy || !tokenRef.current}>
+        {busy ? "جارٍ تسجيل الدخول…" : "دخول إلى الحساب"}
+      </Button>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {error && <p className="muted">إذا أُنشئ رابط آخر لنفس الحساب، يتوقف الرابط السابق. ويمكنك تسجيل الدخول برقم الهاتف وكلمة المرور بدل الرابط.</p>}
+      <Link className="button button-secondary" to="/login">
         تسجيل الدخول بكلمة المرور
-      </Link>}
+      </Link>
     </Card>
   </>;
 }
