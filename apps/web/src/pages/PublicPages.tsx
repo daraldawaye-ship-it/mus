@@ -724,6 +724,43 @@ function UserList() {
   const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState("");
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    name: "", phone: "", password: "", displayName: "",
+  });
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+  function closeCreateDialog() {
+    if (createBusy) return;
+    setCreateOpen(false);
+    setCreateDraft({name:"", phone:"", password:"", displayName:""});
+    setCreateError("");
+  }
+  async function saveNewUser() {
+    if (!user?.owner || createBusy) return;
+    if (createDraft.password.length < 3 || createDraft.password.length > 128) {
+      setCreateError("كلمة المرور يجب أن تتكون من 3 إلى 128 حرفًا أو رقمًا.");
+      return;
+    }
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      const result = await api<{user:User}>("/users", {
+        method:"POST", body:{...createDraft, email:""}, signal:guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      setCreateOpen(false);
+      setCreateDraft({name:"",phone:"",password:"",displayName:""});
+      setNotice({tone:"success",text:`أُضيف المستخدم ${result.user.displayName} بنجاح.`});
+      void list.refetch();
+    } catch (cause) {
+      if (guard.isCurrent()) setCreateError(messageOf(cause));
+    } finally {
+      if (guard.isCurrent()) setCreateBusy(false);
+    }
+  }
+
   // Public identities are independent of employees. Only the platform owner
   // may reset another user's sign-in password.
   const [loginLink, setLoginLink] = useState<{
@@ -1039,6 +1076,11 @@ function UserList() {
         description="آخر نشاط وتفاعل فعلي في الموقع لكل جهاز (تحديث بحد أقصى مرة كل 5 دقائق)، مع حالة الإشعارات. اضغط رأس العمود لترتيب جميع النتائج."
         actions={
           <div className="actions">
+            {user?.owner && <Button onClick={() => {
+              setCreateDraft({name:"",phone:"",password:"",displayName:""});
+              setCreateError("");
+              setCreateOpen(true);
+            }}><UserPlus size={16} aria-hidden="true" /> إضافة مستخدم</Button>}
             <Link to="/users/last-present" className="button button-secondary">آخر المتواجدين</Link>
             <Button variant="secondary"
               onClick={() => { void list.refetch(); }} disabled={list.loading}>تحديث</Button>
@@ -1096,6 +1138,33 @@ function UserList() {
           ariaLabel="جدول المستخدمين العامين"
         />
       </Card>
+      <Dialog open={createOpen} title="إضافة مستخدم" onClose={closeCreateDialog}
+        footer={<>
+          <Button variant="secondary" disabled={createBusy} onClick={closeCreateDialog}>إلغاء</Button>
+          <Button type="submit" form="new-public-user-form" disabled={createBusy}>
+            {createBusy ? "جارٍ الحفظ…" : "حفظ المستخدم"}
+          </Button>
+        </>}>
+        <form id="new-public-user-form" className="form-grid" onSubmit={event => {
+          event.preventDefault();
+          void saveNewUser();
+        }}>
+          <Field label="الاسم" name="name" required maxLength={120} disabled={createBusy}
+            value={createDraft.name} onChange={event => setCreateDraft(previous => ({...previous,name:event.target.value}))}/>
+          <Field label="الرقم" name="phone" type="tel" dir="ltr" required maxLength={40}
+            disabled={createBusy} value={createDraft.phone}
+            onChange={event => setCreateDraft(previous => ({...previous,phone:event.target.value}))}/>
+          <Field label="كلمة المرور" name="password" type="password" autoComplete="new-password"
+            required minLength={3} maxLength={128} disabled={createBusy}
+            value={createDraft.password} onChange={event => setCreateDraft(previous => ({...previous,password:event.target.value}))}/>
+          <Field label="الاسم للعرض" name="displayName" maxLength={120} disabled={createBusy}
+            value={createDraft.displayName}
+            onChange={event => setCreateDraft(previous => ({...previous,displayName:event.target.value}))}
+            hint="اختياري؛ يستخدم الاسم إذا تُرك فارغًا."/>
+          <p className="form-full muted">إنشاء المستخدم لا يمنحه صلاحيات شركة أو يضيفه إلى الموظفين تلقائيًا. كلمة المرور تقبل من 3 إلى 128 حرفًا أو رقمًا.</p>
+          {createError && <Notice tone="error">{createError}</Notice>}
+        </form>
+      </Dialog>
       <Dialog open={Boolean(loginLink)} title={loginLink ? `رابط دخول: ${loginLink.name}` : "رابط دخول"}
         onClose={() => {setLoginLink(null);setLoginLinkCopied(false);}}
         footer={<>
@@ -1117,7 +1186,7 @@ function UserList() {
           <>
             <Button type="button" variant="secondary" disabled={passwordBusy}
               onClick={closePasswordDialog}>إلغاء</Button>
-            <Button type="button" disabled={passwordBusy || newPassword.length < 12 || newPassword.length > 128 || newPassword !== passwordConfirmation}
+            <Button type="button" disabled={passwordBusy || newPassword.length < 3 || newPassword.length > 128 || newPassword !== passwordConfirmation}
               onClick={() => void savePasswordReset()}>
               {passwordBusy ? "جارٍ التغيير…" : "حفظ كلمة المرور"}
             </Button>
