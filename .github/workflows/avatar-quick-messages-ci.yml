@@ -4,9 +4,11 @@ on:
     paths:
       - 'apps/web/src/UserMenu.tsx'
       - 'apps/web/src/UserMenuQuickCompose.tsx'
+      - 'apps/web/src/QuickMessageDelivery.tsx'
       - 'apps/web/src/InvoiceSideOverview.tsx'
       - 'apps/web/src/InvoiceSidePrivateNotes.tsx'
       - 'apps/web/src/styles.css'
+      - 'apps/web/src/App.tsx'
       - 'apps/api/migrations/20261103_private_notes_archive.sql'
       - 'tests/invoice-side-private-notes.test.ts'
       - 'apps/web/src/user-menu-tabs.css'

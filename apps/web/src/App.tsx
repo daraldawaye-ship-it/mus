@@ -58,6 +58,7 @@ import {
 } from "./page-directory";
 import { AppearanceButton, AppearanceProvider } from "./theme";
 import { UserMenu } from "./UserMenu";
+import { QuickMessageDeliveryStatus } from "./QuickMessageDelivery";
 import { enqueueCompanyActivation } from "./last-company-activation";
 import { NotificationBell } from "./NotificationBell";
 import { AppSetup } from "./AppSetup";
@@ -1364,6 +1365,7 @@ function Workspace() {
         </div>
       </div>
       <PresenceHeartbeat userId={user?.id ?? null} />
+      <QuickMessageDeliveryStatus userId={user?.id ?? null} />
       <AppUpdatePrompt />
       <Dialog
         open={drawer}
