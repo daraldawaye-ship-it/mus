@@ -6,7 +6,6 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
-import type { SessionResponse } from "../packages/contracts/src/index.ts";
 
 const dbUrl=process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const origin="http://localhost";
