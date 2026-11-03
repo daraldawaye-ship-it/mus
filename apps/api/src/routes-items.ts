@@ -17,7 +17,7 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
-import { addsOnlyPreviouslyInactiveUnits } from "./services/item-unit-history.ts";
+import { addsOnlyPreviouslyInactiveUnits, editsSecondaryUnitsWithoutRescalingStock } from "./services/item-unit-history.ts";
 import { readCompositionStatistics } from "./services/composition-statistics.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
@@ -943,21 +943,33 @@ export function itemRoutes(pool: Pool): Router {
               "SELECT 1 FROM stock_movements WHERE company_id=$1 AND item_id=$2 LIMIT 1",
               [companyId, rowId],
             );
-            if (history.rowCount) {
-              // Historical units and expiry rules stay immutable. Only the
-              // addition of an unused second/third unit is safe at zero stock.
-              if (!addsOnlyPreviouslyInactiveUnits(before, input))
-                conflict("لا يمكن تعديل الوحدات السابقة أو عواملها بعد وجود حركات؛ يمكن فقط إضافة وحدة جديدة عندما يصبح رصيد الصنف صفرًا في كل المواقع.");
-              // Verify the authoritative batches, not just a cached company
-              // total: opposing negative/positive location balances cannot
-              // falsely appear as zero. Item row lock serializes stock writes.
-              const remaining = await client.query(
+            // Check all authoritative location/batch rows under the locked
+            // item transaction; the SQL trigger independently enforces this.
+            const remaining = await client.query(
+              `SELECT 1 FROM stock_balances
+               WHERE company_id=$1 AND item_id=$2 AND quantity_smallest<>0 LIMIT 1`,
+              [companyId, rowId],
+            );
+            const stablePack = editsSecondaryUnitsWithoutRescalingStock(before, input);
+            if (remaining.rowCount) {
+              // An integral quantity in the first unit means EVERY batch is
+              // divisible by its unchanged smallest-unit multiplier. Never
+              // change that multiplier on existing stock without a separately
+              // audited conversion operation.
+              if (!stablePack)
+                conflict("لا يمكن تغيير عدد الحبات في الوحدة الأولى والصنف له رصيد. يمكنك تعديل الوحدتين الثانية والثالثة إذا بقي إجمالي معامل التحويل ثابتًا.");
+              const pack = BigInt(before.factor2) * BigInt(before.factor3);
+              const fractional = await client.query(
                 `SELECT 1 FROM stock_balances
-                 WHERE company_id=$1 AND item_id=$2 AND quantity_smallest<>0 LIMIT 1`,
-                [companyId, rowId],
+                 WHERE company_id=$1 AND item_id=$2
+                   AND MOD(quantity_smallest,$3::numeric)<>0 LIMIT 1`,
+                [companyId, rowId, pack.toString()],
               );
-              if (remaining.rowCount)
-                conflict("لإضافة وحدة جديدة يجب أن تكون كمية الصنف صفرًا في جميع المخازن والمعارض والدفعات.");
+              if (fractional.rowCount)
+                conflict("لا يمكن تعديل الوحدات: توجد كمية كسرية في الوحدة الأولى بأحد المخازن أو دفعات الصنف.");
+            } else if (history.rowCount && !stablePack &&
+                       !addsOnlyPreviouslyInactiveUnits(before, input)) {
+              conflict("الوحدات التاريخية محمية؛ يمكن تعديل الثانية والثالثة دون تغيير إجمالي معامل التجزئة، أو إضافة وحدة خاملة جديدة عندما يكون المخزون صفرًا.");
             }
           }
           const fields = {
