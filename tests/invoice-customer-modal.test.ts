@@ -76,14 +76,19 @@ test("list has editable click targets for empty and filled cells and a two-field
   assert.match(frontend, /expectedSaleCustomerId: current\.saleCustomerId/);
 });
 
-test("invoice list print column directly starts existing header-ready receipt print", () => {
+test("invoice list prints in the current tab with the shared prepared-letterhead sheet", () => {
   const frontend = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
   const columns = frontend.match(/id: "print",[\s\S]*?id: "open"/)?.[0];
   assert.ok(columns, "print column must appear next to view column");
   assert.match(columns, /header: "طباعة"/);
-  assert.ok(columns.includes('invoicePath(companyId, row.original.id)}?print=1'));
-  assert.match(columns, /target="_blank"/);
-  assert.match(frontend, /searchParams\.get\("print"\) === "1"/);
-  assert.match(frontend, /!printReady \|\| printRequestedFor\.current === invoiceId/);
-  assert.match(frontend, /window\.print\(\)/);
+  assert.match(columns, /onClick=\{\(\) => setPrintJob\(current =>/);
+  assert.doesNotMatch(columns, /target="_blank"/);
+  assert.match(frontend, /<InvoiceListPrintJob key=\{printJob\.sequence\}/);
+  const job = readFileSync("apps/web/src/InvoiceListPrintJob.tsx", "utf8");
+  assert.match(job, /createPortal\(/);
+  assert.match(job, /<InvoicePrintSheet/);
+  assert.match(job, /onLetterheadReady=/);
+  assert.match(job, /addEventListener\("afterprint", onClose\)/);
+  assert.match(job, /window\.print\(\)/);
+  assert.doesNotMatch(job, /<iframe|window\.open\(/);
 });

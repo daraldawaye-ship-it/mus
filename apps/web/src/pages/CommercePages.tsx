@@ -30,6 +30,7 @@ import { InvoiceItemAdjustmentSheet, InvoiceItemTransferSheet, InvoiceItemReport
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { arrangeInvoiceListColumns } from "../table-column-order";
+import { InvoiceListPrintJob } from "../InvoiceListPrintJob";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
@@ -197,6 +198,7 @@ function InvoiceList({
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [customerEditError, setCustomerEditError] = useState("");
   const [customerEditSuccess, setCustomerEditSuccess] = useState("");
+  const [printJob, setPrintJob] = useState<{invoiceId:number; sequence:number} | null>(null);
   const canEditCustomer = kind === "sale" && commerceAccess(context, true);
 
   useEffect(() => {
@@ -401,16 +403,15 @@ function InvoiceList({
         size: 75,
         enableSorting: false,
         cell: ({ row }) => (
-          // Reuse the existing receipt page's auto-print flow: it waits
-          // for the saved invoice and protected letterhead before printing.
-          // A separate tab keeps the invoice list, search and scroll intact.
-          <Link
-            to={`${invoicePath(companyId, row.original.id)}?print=1`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`طباعة الفاتورة ${row.original.number} مباشرة`}
-            title="طباعة مباشرة دون مغادرة قائمة الفواتير"
-          >طباعة</Link>
+          <button type="button" className="invoice-list-print-trigger"
+            aria-label={`طباعة الفاتورة ${row.original.number} من هذه الصفحة`}
+            title="الطباعة دون فتح تبويب أو مغادرة قائمة الفواتير"
+            onClick={() => setPrintJob(current => ({
+              invoiceId: row.original.id,
+              sequence: (current?.sequence ?? 0) + 1,
+            }))}>
+            طباعة
+          </button>
         ),
       },
       {
@@ -527,6 +528,9 @@ function InvoiceList({
           selectionMode={kind === "sale" ? "none" : "single"}
         />
       </Card>
+      {printJob && <InvoiceListPrintJob key={printJob.sequence}
+        context={context} invoiceId={printJob.invoiceId}
+        onClose={() => setPrintJob(null)} />}
       <Dialog open={editingCustomer !== null}
         title={`بيانات عميل الفاتورة ${editingCustomer?.number ?? ""}`}
         onClose={() => { if (!savingCustomer) setEditingCustomer(null); }}>
