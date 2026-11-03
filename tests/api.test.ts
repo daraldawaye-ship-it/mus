@@ -4057,9 +4057,9 @@ test("item options filter immutable previous-year sale times and mutable reserve
   const co=await company(platform.client,"Previous-year pharmacy");
   const foreign=await company(platform.client,"Other pharmacy");
   const prefix=`/companies/${co.id}`;
-  const currencyPage=await platform.client.ok<Page<{id:number;code:string}>>("GET",prefix+"/currencies");
-  const currencyId=currencyPage.items.find(row=>row.code==="YER")!.id;
   async function add(companyId:number,name:string,legacyId:string,reserveQuantity:string){
+    const currencyPage=await platform.client.ok<Page<{id:number;code:string}>>("GET",`/companies/${companyId}/currencies`);
+    const currencyId=currencyPage.items.find(row=>row.code==="YER")!.id;
     const result=await platform.client.ok<{item:{id:number}}>("POST",`/companies/${companyId}/items`,{
       name,legacyId,reserveQuantity,currencyId,idempotencyKey:randomUUID(),hasExpiry:false,
     },201);
