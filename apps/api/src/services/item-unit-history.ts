@@ -28,3 +28,24 @@ export function addsOnlyPreviouslyInactiveUnits(
   if (next.factor3 > 1 && !next.unit3Name.trim()) return false;
   return true;
 }
+
+/**
+ * Edit second/third unit labels or redistribute their factors without changing
+ * how many authoritative smallest units constitute ONE first unit. When stock
+ * is non-zero, the caller/DB trigger additionally require every batch's
+ * smallest quantity to be divisible by the unchanged pack multiplier.
+ *
+ * Changing the pack multiplier with stock would silently alter physical stock;
+ * it needs a separate explicitly audited conversion workflow, not a card PATCH.
+ */
+export function editsSecondaryUnitsWithoutRescalingStock(
+  before: UnitStructure, next: UnitStructure,
+): boolean {
+  if (before.unit1Name !== next.unit1Name || before.hasExpiry !== next.hasExpiry) return false;
+  if (BigInt(before.factor2) * BigInt(before.factor3) !==
+      BigInt(next.factor2) * BigInt(next.factor3)) return false;
+  if (next.factor3 > 1 && next.factor2 <= 1) return false;
+  if (next.factor2 > 1 && !next.unit2Name.trim()) return false;
+  if (next.factor3 > 1 && !next.unit3Name.trim()) return false;
+  return true;
+}

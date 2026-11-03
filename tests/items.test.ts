@@ -1956,3 +1956,4 @@ test("atomic new unit activation persists name and conversion at zero stock", as
   // Once active, historical conversion values remain protected on a card
   // with movement history; the server's existing guard is unchanged.
 });
+
