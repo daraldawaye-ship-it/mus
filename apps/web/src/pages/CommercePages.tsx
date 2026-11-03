@@ -188,6 +188,16 @@ function InvoiceList({
         ?.invoiceSaved ?? null,
   );
   const [showSaved, setShowSaved] = useState(!!saved);
+  const { user } = useSession();
+  const client = useQueryClient();
+  const [editingCustomer, setEditingCustomer] = useState<Invoice | null>(null);
+  const [editingCustomerNumber, setEditingCustomerNumber] = useState("");
+  const [editingCustomerName, setEditingCustomerName] = useState("");
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [customerEditError, setCustomerEditError] = useState("");
+  const [customerEditSuccess, setCustomerEditSuccess] = useState("");
+  const canEditCustomer = kind === "sale" && commerceAccess(context, true);
+
   useEffect(() => {
     if (!saved) return;
     navigation(route.pathname + route.search, { replace: true, state: null });
@@ -211,6 +221,37 @@ function InvoiceList({
     `company:${companyId}:invoices:${kind}`,
     kind === "sale" ? "id:desc" : "id:asc",
   );
+  async function saveCustomerChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCustomer || savingCustomer || !canEditCustomer) return;
+    const current = editingCustomer;
+    setSavingCustomer(true);
+    setCustomerEditError("");
+    try {
+      await api(`/companies/${companyId}/invoices/${current.id}/sale-customer`, {
+        method: "PATCH",
+        body: {
+          saleCustomerNumber: editingCustomerNumber.trim(),
+          saleCustomerName: editingCustomerName.trim(),
+          expectedSaleCustomerId: current.saleCustomerId,
+          expectedSaleCustomerNumber: current.saleCustomerNumber,
+          expectedSaleCustomerName: current.saleCustomerName,
+        },
+      });
+      setEditingCustomer(null);
+      setCustomerEditSuccess(`تم حفظ بيانات العميل في الفاتورة ${current.number}.`);
+      await Promise.all([
+        list.refetch(),
+        client.invalidateQueries({
+          queryKey: ["commerce", user?.id, companyId, "invoice", current.id],
+        }),
+      ]);
+    } catch (reason) {
+      setCustomerEditError(errorMessage(reason));
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
   function setSaleDate(key: "dateFrom" | "dateTo", value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -305,11 +346,26 @@ function InvoiceList({
         header:"العميل",
         size:170,
         enableSorting:false,
-        cell:({row})=>row.original.saleCustomerId
-          ? <Link to={`/companies/${companyId}/sale-customers?focus=${row.original.saleCustomerId}`}>
-              {row.original.saleCustomerNumber} — {row.original.saleCustomerName}
-            </Link> : row.original.saleCustomerName ||
-              row.original.saleCustomerNumber || "—",
+        cell: ({ row }) => {
+          const invoice = row.original;
+          const label = [invoice.saleCustomerName, invoice.saleCustomerNumber]
+            .filter(Boolean).join(" — ") || "—";
+          if (!canEditCustomer) return <ValueCell>{label}</ValueCell>;
+          return (
+            <button type="button" className="invoice-list-customer-trigger"
+              title="إضافة أو تعديل بيانات العميل"
+              aria-label={`إضافة أو تعديل عميل الفاتورة ${invoice.number}`}
+              onClick={() => {
+                setEditingCustomer(invoice);
+                setEditingCustomerNumber(invoice.saleCustomerNumber ?? "");
+                setEditingCustomerName(invoice.saleCustomerName ?? "");
+                setCustomerEditError("");
+                setCustomerEditSuccess("");
+              }}>
+              {label}
+            </button>
+          );
+        },
       } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
@@ -348,7 +404,7 @@ function InvoiceList({
         ),
       },
     ],
-    [companyId, kind],
+    [companyId, kind, canEditCustomer],
   );
   return (
     <>
@@ -367,6 +423,7 @@ function InvoiceList({
           )
         }
       />
+      {customerEditSuccess && <Notice tone="success">{customerEditSuccess}</Notice>}
       {showSaved && saved && (
         <Notice tone="success">
           تم حفظ الفاتورة وترحيل المخزون والقيد بنجاح.{" "}
@@ -451,6 +508,38 @@ function InvoiceList({
           selectionMode="single"
         />
       </Card>
+      <Dialog open={editingCustomer !== null}
+        title={`بيانات عميل الفاتورة ${editingCustomer?.number ?? ""}`}
+        onClose={() => { if (!savingCustomer) setEditingCustomer(null); }}>
+        {editingCustomer && (
+          <form className="form-stack" onSubmit={event => void saveCustomerChange(event)}>
+            <div className="invoice-customer-identity-row">
+              <Field label="رقم العميل (اختياري)" inputMode="numeric" autoComplete="off"
+                maxLength={30} value={editingCustomerNumber} autoFocus
+                onChange={event => setEditingCustomerNumber(
+                  normalizeDigits(event.target.value).replace(/[^0-9]/g, "")
+                )} disabled={savingCustomer} />
+              <Field label="اسم العميل (اختياري)" autoComplete="off"
+                maxLength={240} value={editingCustomerName}
+                onChange={event => setEditingCustomerName(event.target.value)}
+                disabled={savingCustomer} />
+            </div>
+            <small className="muted">
+              يمكنك الحفظ بالاسم فقط أو الرقم فقط، وكلاهما اختياري.
+              إفراغ الحقلين يزيل بيانات العميل من هذه الفاتورة فقط.
+              لا تتغير الحسابات أو المبالغ أو المخزون.
+            </small>
+            {customerEditError && <Notice tone="error">{customerEditError}</Notice>}
+            <div className="form-actions">
+              <Button type="submit" disabled={savingCustomer}>
+                {savingCustomer ? "جارٍ الحفظ…" : "حفظ"}
+              </Button>
+              <Button type="button" variant="secondary" disabled={savingCustomer}
+                onClick={() => setEditingCustomer(null)}>إلغاء</Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
       <StagedInvoicesPanel companyId={companyId} kind={kind} q={list.query}
         dateFrom={dateFrom} dateTo={dateTo}
         supplierQ={params.get("supplierQ")??""} payerQ={params.get("payerQ")??""}
