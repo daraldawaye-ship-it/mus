@@ -38,7 +38,7 @@ test("purchase form restores all header fields and all lines, allows several sav
 });
 
 test("purchase navigations automatically save every changed point and only warn on failure",()=>{
-  assert.match(invoice,/status\.dirty && status\.itemCount > 1/);
+  assert.match(invoice,/status\?\.dirty && kind === "purchase" && status\.itemCount > 1/);
   assert.match(invoice,/onRegisterDraftSaver=\{registerDraftSaver\}/);
   assert.match(invoice,/for \(const id of points\)/);
   assert.match(invoice,/await save\(\)/);
