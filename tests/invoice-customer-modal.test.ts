@@ -75,3 +75,15 @@ test("list has editable click targets for empty and filled cells and a two-field
   assert.match(frontend, /saleCustomerName: editingCustomerName\.trim\(\)/);
   assert.match(frontend, /expectedSaleCustomerId: current\.saleCustomerId/);
 });
+
+test("invoice list print column directly starts existing header-ready receipt print", () => {
+  const frontend = readFileSync("apps/web/src/pages/CommercePages.tsx", "utf8");
+  const columns = frontend.match(/id: "print",[\s\S]*?id: "open"/)?.[0];
+  assert.ok(columns, "print column must appear next to view column");
+  assert.match(columns, /header: "طباعة"/);
+  assert.match(columns, /invoicePath\(companyId, row\.original\.id\)\}\\?print=1/);
+  assert.match(columns, /target="_blank"/);
+  assert.match(frontend, /searchParams\.get\("print"\) === "1"/);
+  assert.match(frontend, /!printReady \|\| printRequestedFor\.current === invoiceId/);
+  assert.match(frontend, /window\.print\(\)/);
+});
