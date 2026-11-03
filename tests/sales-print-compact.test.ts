@@ -17,10 +17,15 @@ test("only purchase receipts retain branch, location, and currency details", () 
   assert.match(print, /<div><dt>العملة<\/dt>/);
 });
 
-test("sales totals share one horizontal row without changing purchase structure", () => {
-  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{\s*display: grid;/);
-  assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(print, /purchase \? `الصافي \(\$\{invoice\.currencyCode\}\)` : "الصافي"/);
+test("sales totals are borderless inline label/value pairs, while purchases retain old layout", () => {
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{\s*display: flex;\s*flex-direction: row;/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary > div\s*\{\s*display: inline-flex;\s*flex-direction: row;/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary\s*\{[^}]*border: 0;/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary > div\s*\{[^}]*border: 0;/);
+  assert.match(styles, /\.invoice-print-sheet--sale \.invoice-print-summary \.invoice-print-net\s*\{[^}]*background: transparent;/);
+  assert.match(print, /purchase \? `الصافي \(\$\{invoice\.currencyCode\}\)` : "الصافي:"/);
+  assert.match(print, /purchase \? "الإجمالي قبل الخصم" : "الإجمالي قبل الخصم:"/);
+  assert.match(print, /purchase \? "الخصم" : "الخصم:"/);
 });
 
 test("sales acknowledgement is one line without receiver section", () => {
