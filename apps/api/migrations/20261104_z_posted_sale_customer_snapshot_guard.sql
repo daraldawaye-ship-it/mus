@@ -1,58 +1,37 @@
--- Fix 2026-11-04: the public invoice customer-correction endpoint existed
--- but a preexisting posted-invoice trigger rejected every UPDATE.
+-- The customer-correction endpoint must work on posted sales, but a later
+-- commerce migration (009_zero_net_invoices.sql) protects posted invoices
+-- with OLD.posted rather than financial_document_id.
 --
--- Only the approved customer snapshot columns of a POSTED SALE can change,
--- and only inside a transaction explicitly scoped to that company/invoice.
--- All amounts, line items, accounting, stock, payment and metadata remain
--- immutable. No past invoices or financial rows are rewritten by migration.
-CREATE OR REPLACE FUNCTION protect_operational_history()
-RETURNS trigger LANGUAGE plpgsql AS $$
+-- Patch precisely the existing live trigger definition in-place. Do NOT
+-- replace protect_operational_history wholesale: it also guards invoice
+-- INSERT/POST status, invoice lines and stock movement INSERT provenance.
+-- Audit and concurrency checks remain in routes-commerce.ts.
+DO $migration$
+DECLARE
+  source text;
+  changed text;
+  old_term text := $old$IF OLD.posted THEN RAISE EXCEPTION 'Posted invoices are immutable' USING ERRCODE='23514'; END IF;$old$;
+  new_term text := $new$IF OLD.posted THEN
+       IF TG_OP='UPDATE'
+         AND OLD.kind='sale' AND NEW.kind='sale'
+         AND current_setting('alraesy.sale_customer_snapshot_update',true)
+             = OLD.company_id::text || ':' || OLD.id::text
+         AND (to_jsonb(NEW) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
+             = (to_jsonb(OLD) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
+       THEN
+         RETURN NEW;
+       END IF;
+       RAISE EXCEPTION 'Posted invoices are immutable' USING ERRCODE='23514';
+     END IF;$new$;
 BEGIN
-  IF TG_OP='DELETE' THEN
-    RAISE EXCEPTION 'Operational history cannot be deleted' USING ERRCODE='23514';
+  SELECT pg_get_functiondef('protect_operational_history()'::regprocedure)
+    INTO source;
+  IF source IS NULL OR strpos(source,old_term)=0
+     OR strpos(source,'alraesy.sale_customer_snapshot_update')>0
+  THEN
+    RAISE EXCEPTION 'Unexpected posted-invoice history guard; review before permitting customer edits';
   END IF;
-
-  -- Keep the record-specific trigger branches separate. PostgreSQL may
-  -- evaluate boolean subexpressions eagerly, so an OLD invoice row must
-  -- never try to read invoice_lines-only fields such as OLD.invoice_id.
-  IF TG_TABLE_NAME='invoices' THEN
-    IF OLD.financial_document_id IS NOT NULL THEN
-      IF TG_OP='UPDATE'
-        AND OLD.kind='sale' AND NEW.kind='sale'
-        AND current_setting('alraesy.sale_customer_snapshot_update',true)
-          = OLD.company_id::text || ':' || OLD.id::text
-        AND (to_jsonb(NEW) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
-            = (to_jsonb(OLD) - 'sale_customer_id' - 'sale_customer_number' - 'sale_customer_name')
-      THEN
-        RETURN NEW;
-      END IF;
-      RAISE EXCEPTION 'Posted invoices are immutable' USING ERRCODE='23514';
-    END IF;
-    RETURN NEW;
-  END IF;
-
-  IF TG_TABLE_NAME='invoice_lines' THEN
-    IF TG_OP<>'INSERT' THEN
-      IF EXISTS(
-        SELECT 1 FROM invoices
-        WHERE company_id=OLD.company_id AND id=OLD.invoice_id
-          AND financial_document_id IS NOT NULL
-      ) THEN
-        RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
-      END IF;
-    END IF;
-    IF EXISTS(
-      SELECT 1 FROM invoices
-      WHERE company_id=NEW.company_id AND id=NEW.invoice_id
-        AND financial_document_id IS NOT NULL
-    ) THEN
-      RAISE EXCEPTION 'Posted invoice lines are immutable' USING ERRCODE='23514';
-    END IF;
-    RETURN NEW;
-  END IF;
-
-  IF TG_TABLE_NAME='stock_movements' THEN
-    RAISE EXCEPTION 'Stock movements are immutable' USING ERRCODE='23514';
-  END IF;
-  RETURN NEW;
-END $$;
+  changed := replace(source,old_term,new_term);
+  EXECUTE changed;
+END
+$migration$;
