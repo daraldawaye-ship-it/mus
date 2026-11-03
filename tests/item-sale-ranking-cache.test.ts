@@ -467,4 +467,18 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
     "GET", `/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent("صن")}&pageSize=5`,
   );
   assert.equal(legacy.total, 12, "Normal list endpoints retain exact totals");
+  // Integration regression: omit middle words, keeping existing typeahead
+  // and item-card search routing plus company/active constraints intact.
+  const gapped = await f.item(c.id, currency.id, {
+    name: "فادين كول اقراص مصوص",
+  });
+  const gappedQuery = encodeURIComponent("فادين مصوص");
+  const invoiceMatch = await f.owner.ok<FastPage>(
+    "GET", `${url}&q=${gappedQuery}&page=1`,
+  );
+  assert.deepEqual(invoiceMatch.items.map(value => value.id), [gapped.id]);
+  const catalogMatch = await f.owner.ok<Page<Item>>(
+    "GET", `/companies/${c.id}/items?q=${gappedQuery}`,
+  );
+  assert.deepEqual(catalogMatch.items.map(value => value.id), [gapped.id]);
 });
