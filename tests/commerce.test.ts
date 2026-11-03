@@ -4718,10 +4718,13 @@ test("whole first-unit stock permits secondary edits without stock/history reint
     f.pool.query("UPDATE items SET factor2=5 WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
     /Changing stock unit multiplier requires an audited conversion|Item master identity or revision is immutable/,
   );
-  // Sell one smallest piece in a normal auditable invoice, leaving 59/30
-  // of the first unit in one batch; the next rename must be denied.
+  // Sell one smallest piece after this TODAY-dated rebase; backdated
+  // invoices are correctly rejected by weighted average chronology.
+  const conversionDate=(await f.pool.query<{date:string}>(
+    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS date",
+  )).rows[0]!.date;
   await invoice(f,s,invoiceBody(s,it.id,{
-    kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    documentDate:conversionDate,kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
     lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:null}],
   }));
   const fractional=await f.owner.request("PATCH",path,{
@@ -4814,10 +4817,12 @@ test("rebase whole first-unit stock on activation of second unit preserves packs
     "SELECT count(*)::int AS n FROM stock_operations WHERE company_id=$1 AND kind='unit_rebase'",
     [s.company.id],
   )).rows[0]!.n,1);
-  // Sell one piece: first-unit stock is now fractional 29/10. Another
-  // pack-factor change must fail without creating a journal or rebase.
+  // Sell one piece after today's conversion, leaving 29/10 packs.
+  const conversionDate=(await f.pool.query<{date:string}>(
+    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS date",
+  )).rows[0]!.date;
   await invoice(f,s,invoiceBody(s,it.id,{
-    kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    documentDate:conversionDate,kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
     lines:[{itemId:it.id,unit:2,quantity:"1",unitPrice:"110",expiryDate:null}],
   }));
   const fractional=await f.owner.request("PATCH",path,{
