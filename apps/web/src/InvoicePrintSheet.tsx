@@ -58,10 +58,11 @@ export function InvoicePrintSheet({
         <div><dt>التاريخ</dt><dd><bdi dir="ltr">{invoice.documentDate}</bdi></dd></div>
         <div><dt>{purchase ? "المورد / الحساب" : "العميل / الحساب"}</dt>
           <dd>{invoice.counterpartyAccountName}</dd></div>
-        <div><dt>رقم الحساب</dt><dd><bdi>{invoice.counterpartyAccountCode}</bdi></dd></div>
-        {!purchase && invoice.saleCustomerName?.trim() && (
+        {purchase ? (
+          <div><dt>رقم الحساب</dt><dd><bdi>{invoice.counterpartyAccountCode}</bdi></dd></div>
+        ) : invoice.saleCustomerName?.trim() ? (
           <div><dt>اسم العميل</dt><dd>{invoice.saleCustomerName}</dd></div>
-        )}
+        ) : null}
         {purchase && (
           <>
             <div><dt>رقم وصل المورد</dt><dd>{invoice.supplierReceiptNumber || "—"}</dd></div>
@@ -70,9 +71,13 @@ export function InvoicePrintSheet({
             )}
           </>
         )}
-        <div><dt>الفرع</dt><dd>{invoice.branchName}</dd></div>
-        <div><dt>الموقع</dt><dd>{invoice.locationName}</dd></div>
-        <div><dt>العملة</dt><dd>{invoice.currencyCode}</dd></div>
+        {purchase && (
+          <>
+            <div><dt>الفرع</dt><dd>{invoice.branchName}</dd></div>
+            <div><dt>الموقع</dt><dd>{invoice.locationName}</dd></div>
+            <div><dt>العملة</dt><dd>{invoice.currencyCode}</dd></div>
+          </>
+        )}
       </dl>
       {invoice.description && (
         <div className="invoice-print-notes">
@@ -109,16 +114,23 @@ export function InvoicePrintSheet({
       <div className="invoice-print-summary">
         <div><span>الإجمالي قبل الخصم</span><strong>{money(invoice.gross)}</strong></div>
         <div><span>الخصم</span><strong>{money(invoice.discount)}</strong></div>
-        <div className="invoice-print-net"><span>الصافي ({invoice.currencyCode})</span>
+        <div className="invoice-print-net"><span>{purchase ? `الصافي (${invoice.currencyCode})` : "الصافي"}</span>
           <strong>{money(invoice.total)}</strong></div>
       </div>
-      <div className="invoice-print-acknowledgements">
-        <div><strong>أُعدّت بواسطة: {invoice.createdByName}</strong>
-          <span>التوقيع: __________________</span></div>
-        <div><strong>المستلم</strong>
-          <span>الاسم: __________________</span>
-          <span>التوقيع: __________________</span></div>
-      </div>
+      {purchase ? (
+        <div className="invoice-print-acknowledgements">
+          <div><strong>أُعدّت بواسطة: {invoice.createdByName}</strong>
+            <span>التوقيع: __________________</span></div>
+          <div><strong>المستلم</strong>
+            <span>الاسم: __________________</span>
+            <span>التوقيع: __________________</span></div>
+        </div>
+      ) : (
+        <div className="invoice-print-acknowledgements invoice-print-acknowledgements--sale">
+          <strong>أُعدّت بواسطة: {invoice.createdByName}</strong>
+          <span>التوقيع: __________________</span>
+        </div>
+      )}
       <div className="invoice-print-timestamp">
         وقت الإصدار: <bdi dir="ltr">{new Date(invoice.createdAt).toLocaleString("en-GB", {
           timeZone: "Asia/Aden", hour12: false,
