@@ -2822,6 +2822,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         branchName:branch?.name ?? "",
         locationName:location?.name ?? "",
         doctorName:kind==="sale" ? doctorSelected?.name ?? enteredDoctorName ?? null : null,
+        saleCustomerNumber:kind==="sale" ? submission.saleCustomerNumber || null : null,
+        saleCustomerName:kind==="sale" ? submission.saleCustomerName || null : null,
         currencyCode:currency?.code ?? "",
         description:submission.description ?? "",
         gross:totals.gross,discount:totals.discount,total:totals.total,
