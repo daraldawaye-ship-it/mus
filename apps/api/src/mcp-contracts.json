@@ -2775,6 +2775,33 @@
     "queryFields": [],
     "source": "routes-item-activity-report.ts"
   },
+  "POST /companies/:companyId/items/purchase-factor-import": {
+    "queryFields": [],
+    "bodyContract": "table13PurchaseFactorsSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "source": {"type": "string", "const": "Table13.xlsx"},
+        "dryRun": {"type": "boolean", "default": true},
+        "items": {
+          "type": "array", "minItems": 1, "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "legacyId": {"type": "string", "pattern": "^[0-9]{1,100}$"},
+              "purchaseFactor": {"type": "integer", "minimum": 1, "maximum": 1000000}
+            },
+            "required": ["legacyId", "purchaseFactor"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["source", "items"],
+      "additionalProperties": false
+    },
+    "source": "routes-item-import.ts"
+  },
   "POST /companies/:companyId/items/import-batch": {
     "queryFields": [],
     "bodyContract": "bodySchema",
