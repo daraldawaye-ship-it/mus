@@ -64,7 +64,15 @@ export const itemCoverageJoin = `
      CASE WHEN coverage_rate.after_reserve = 0 THEN 0::numeric
        WHEN coverage_rate.sales <= 0 THEN 9999::numeric
        ELSE round(coverage_rate.after_reserve * coverage_rate.days / coverage_rate.sales,2)
-     END AS coverage_after_reserve_days
+     END AS coverage_after_reserve_days,
+     CASE WHEN i.reserve_quantity <= 0 THEN 0::numeric
+       WHEN coverage_rate.sales <= 0 THEN 9999::numeric
+       ELSE round(i.reserve_quantity * coverage_rate.days / coverage_rate.sales,2)
+     END AS reserve_coverage_days,
+     CASE WHEN i.purchase_factor <= 0 THEN 0::numeric
+       WHEN coverage_rate.sales <= 0 THEN 9999::numeric
+       ELSE round(i.purchase_factor * coverage_rate.days / coverage_rate.sales,2)
+     END AS purchase_factor_coverage_days
  ) coverage`;
 
 export const itemCoverageSelect =
@@ -81,10 +89,15 @@ export async function addItemCoverageToPage<T extends { id: number }>(
   companyId: number,
   items: T[],
   itemIdOf: (item: T) => number = item => item.id,
-): Promise<Array<T & Pick<ItemCoverage, "approximateCoverageDays" | "coverageAfterReserveDays">>> {
+): Promise<Array<T & Pick<ItemCoverage, "approximateCoverageDays" | "coverageAfterReserveDays"> & {
+  reserveCoverageDays: string | null;
+  purchaseFactorCoverageDays: string | null;
+}>> {
   if (!items.length) return [];
   const rows = (await client.query(
-    `SELECT i.id ${itemCoverageSelect}
+    `SELECT i.id ${itemCoverageSelect},
+       coverage.reserve_coverage_days::text AS reserve_coverage_days,
+       coverage.purchase_factor_coverage_days::text AS purchase_factor_coverage_days
      FROM items i ${itemCoverageJoin}
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
     [companyId, items.map(itemIdOf)],
@@ -92,10 +105,15 @@ export async function addItemCoverageToPage<T extends { id: number }>(
   const values = new Map(rows.map(row => [row.id as number, {
     approximateCoverageDays: normalizeRate(row.approximate_coverage_days),
     coverageAfterReserveDays: normalizeRate(row.coverage_after_reserve_days),
+    reserveCoverageDays: normalizeRate(row.reserve_coverage_days),
+    purchaseFactorCoverageDays: normalizeRate(row.purchase_factor_coverage_days),
   }]));
   return items.map(item => ({
     ...item,
-    ...(values.get(itemIdOf(item)) ?? { approximateCoverageDays: null, coverageAfterReserveDays: null }),
+    ...(values.get(itemIdOf(item)) ?? {
+      approximateCoverageDays: null, coverageAfterReserveDays: null,
+      reserveCoverageDays: null, purchaseFactorCoverageDays: null,
+    }),
   }));
 }
 

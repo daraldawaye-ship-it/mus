@@ -12,6 +12,7 @@ import { rememberRecentEntity } from "../recent-entities";
 import { useTemporaryItemList } from "../temporary-item-list";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
+import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOptionsPresetFilters } from "../../../../packages/contracts/src/item-options-presets.ts";
 
@@ -20,6 +21,8 @@ const ranges = [
   { key: "stockMax", label: "الكمية المتوفرة (بدون مخازن المرتجعات) إلى" },
   { key: "reserveMin", label: "الكمية احتياط من" },
   { key: "reserveMax", label: "الكمية احتياط إلى" },
+  { key: "purchaseFactorMin", label: "عامل وحدة الشراء من" },
+  { key: "purchaseFactorMax", label: "عامل وحدة الشراء إلى" },
   { key: "monthMin", label: "المبيعات مرات في شهر من" },
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
@@ -30,6 +33,10 @@ const ranges = [
   { key: "previousYearMax", label: "مرات عام السابق إلى" },
   { key: "coverageMin", label: "الكفاية من (يوم)" },
   { key: "coverageMax", label: "الكفاية إلى (يوم)" },
+  { key: "reserveCoverageMin", label: "كفاية الكمية الاحتياط من (يوم)" },
+  { key: "reserveCoverageMax", label: "كفاية الكمية الاحتياط إلى (يوم)" },
+  { key: "purchaseFactorCoverageMin", label: "كفاية عامل وحدة الشراء من (يوم)" },
+  { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
 type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: boolean };
@@ -37,23 +44,28 @@ function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
     reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
+    purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
     monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
+    reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
+    purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
     useReserve: params.get("useReserve") !== "false",
   };
 }
 type Row = {
   itemId: number; code: string; name: string; active: boolean;
-  revision: number; reserveQuantity: string;
+  revision: number; reserveQuantity: string; purchaseFactor: number;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
   approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
+  reserveCoverageDays: string | null;
+  purchaseFactorCoverageDays: string | null;
 };
 type Response = {
   result: { rows: Row[]; total: number; page: number; pageSize: number; asOf: string };
@@ -61,10 +73,12 @@ type Response = {
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
+  ["purchaseFactor", "عامل وحدة الشراء"],
   ["month", "مرات المبيعات في شهر"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["allTime", "مرات المبيعات منذ البداية"],
   ["previousYear", "مرات عام السابق"],
-  ["coverage", "الكفاية"],
+  ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
+  ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -578,6 +592,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   revision={row.revision} reserveQuantity={row.reserveQuantity}
                   canEdit={canEditReserve} />
               </div>
+              <div className="item-options-mobile-stat item-options-reserve-stat">
+                <span>عامل وحدة الشراء</span>
+                <ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId}
+                  revision={row.revision} purchaseFactor={row.purchaseFactor}
+                  canEdit={canEditReserve} />
+              </div>
               <div className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
@@ -593,6 +613,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
               </div>
+              <div className="item-options-mobile-stat">
+                <span>كفاية الاحتياط/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
+              </div>
             </div>
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
@@ -605,11 +631,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
             {sortHeader("reserve", "كمية احتياط")}
+            {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
             {sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
             {sortHeader("coverage", "الكفاية (يوم)")}
+            {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
+            {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
           </tr></thead>
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}
@@ -628,13 +657,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
                 reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></td>
+               <td><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
+                 itemId={row.itemId} revision={row.revision}
+                 purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
               <td><bdi>{row.saleTimesMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
               <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
+               <td><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
+               <td><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={9}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={12}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -650,6 +684,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         الحقول الفارغة لا تضع أي حد أعلى أو أدنى، وتُحتسب مرات البيع صافي عدد فواتير البيع
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
         تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
+        كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
       </small>
     </Card>
     <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أسماء الأصناف دون ترويسة أو ترقيم">
