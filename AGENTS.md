@@ -208,3 +208,8 @@ Owner request: typing "فادين مصوص" must find item "فادين كول ا
 ## Company device registration — 2026-11-03
 
 The owner requested company-level «الأجهزة المعتمدة» to **recognize and document pharmacy/employee devices now, with device-specific permissions deferred**. The device-installation UUID is persisted locally and only its SHA-256 is stored server-side, scoped per company. Manual names, category and approved/documented marker do not control login or offline behavior. Keep employee/owner page controls, audit and revision checks. Do not use browser UUID/UA as hardware attestation. See docs/COMPANY_KNOWN_DEVICES.md.
+
+
+## Sales invoice customer cell correction — 2026-11-03
+
+When clicking the customer cell (even empty) in a *posted sales invoice list*, open a modal for optional customer name and optional number. Edit only invoice.sale_customer_id/number/name snapshots through company-scoped, commerce.manage-gated PATCH, optimistic comparison and audit; do not repost invoice, mutate customer cards, stock, balances or rewards. Blank/number-only/name-only/both must work; updating an existing invoice must be visible in list/detail/print. See docs/INVOICE_CUSTOMER_CELL_MODAL.md.
