@@ -431,9 +431,15 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
   await daily(f, c.id, products[8]!.id, today, "30");
   await daily(f, c.id, products[4]!.id, today, "12");
   await daily(f, c.id, products[11]!.id, today, "5");
+  // Invoice sorting now uses sold quantity + saleable stock, not occurrence counts.
+  // Seed quantity as well as invoice counts so the fixture exercises that rank.
+  await f.pool.query(
+    "UPDATE item_daily_activity SET sale_quantity=sale_invoices WHERE company_id=$1 AND item_id=ANY($2::integer[])",
+    [c.id, [products[8]!.id, products[4]!.id, products[11]!.id]],
+  );
   const ordered = [products[8]!, products[4]!, products[11]!,
     ...products.filter((_, index) => ![8, 4, 11].includes(index))];
-  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleTimes:desc,code:asc&pageSize=5`;
+  const url = `/companies/${c.id}/commerce-options?type=items&fast=1&sort=saleQuantityPlusStock:desc,code:asc&pageSize=5`;
   type FastPage = Page<Item> & { hasMore: boolean };
   // The invoice does not search until the third character; the older test
   // still expected 1/2-character results and was failing even before this PR.
@@ -455,7 +461,7 @@ test("invoice quick lookup uses bounded pages for short names while keeping long
     assert.deepEqual([first.total, second.total, last.total], [6, 11, 12]);
     assert.deepEqual([...first.items, ...second.items, ...last.items].map(value => value.id),
       ordered.map(value => value.id),
-      `Fast lookup must sort '${term}' by monthly sale frequency with active/company scope`);
+      `Fast lookup must sort '${term}' by net sold quantity and stock with active/company scope`);
   }
   const legacy = await f.owner.ok<Page<Item>>(
     "GET", `/companies/${c.id}/commerce-options?type=items&q=${encodeURIComponent("صن")}&pageSize=5`,
