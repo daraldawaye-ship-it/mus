@@ -4706,15 +4706,19 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   );
   assert.equal(historical.rows[0]!.factor2,2);
   assert.equal(historical.rows[0]!.factor3,12);
-  const illegal=await f.owner.request("PATCH",path,{
+  const rebased=await f.owner.ok<{item:Item}>("PATCH",path,{
     changes:{factor2:5},expected:{factor2:4},mode:"last-write-wins",
   });
-  assert.equal(illegal.status,409);
+  assert.equal(rebased.item.factor2,5);
+  assert.equal((await f.pool.query<{q:string}>(
+    "SELECT quantity_smallest::text AS q FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!.q,"60","2 whole first units remain 2 after changing 24 to 30 smallest units each");
   await assert.rejects(
     f.pool.query("UPDATE items SET factor2=5 WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
     /Changing stock unit multiplier requires an audited conversion|Item master identity or revision is immutable/,
   );
-  // Sell one smallest piece in a normal auditable invoice, leaving 47/24
+  // Sell one smallest piece in a normal auditable invoice, leaving 59/30
   // of the first unit in one batch; the next rename must be denied.
   await invoice(f,s,invoiceBody(s,it.id,{
     kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
@@ -4789,7 +4793,7 @@ test("rebase whole first-unit stock on activation of second unit preserves packs
   );
   assert.equal(ops.rows.length,1);
   assert.deepEqual(ops.rows.map(o=>({kind:o.kind,delta:o.delta,cost:o.cost_base})),
-    [{kind:"unit_rebase",delta:"27",cost:"0"}]);
+    [{kind:"unit_rebase",delta:"27",cost:"0.000000"}]);
   assert.equal(ops.rows[0]!.factor2,1);
   assert.equal(ops.rows[0]!.factor3,1);
   const afterCount=(await f.pool.query<{n:number}>(
