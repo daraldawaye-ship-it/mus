@@ -31,7 +31,6 @@ export function UserMenuQuickCompose({
   const current=quickMessageOptions.find(option=>option.kind===kind)!;
   const privateNote=kind==="private_note";
   const queryClient=useQueryClient();
-  const [title,setTitle]=useState("");
   const [body,setBody]=useState("");
   const [pending,setPending]=useState(false);
   const [error,setError]=useState("");
@@ -45,10 +44,10 @@ export function UserMenuQuickCompose({
     if(current.company&&!companyId)return;
     const payload=frozen.current??{
       kind,...(current.company&&companyId?{companyId}:{}),
-      ...(privateNote?{title:title.trim()}:{}),
+      // Retain the database title field internally for future use.
+      ...(privateNote?{title:"ملاحظة خاصة"}:{}),
       text:body.trim(),clientRequestId:crypto.randomUUID(),
     };
-    if(privateNote&&!payload.title) {setError("اكتب عنوان المذكرة");return;}
     frozen.current=payload;
     setPending(true);setError("");
     try {
@@ -71,20 +70,15 @@ export function UserMenuQuickCompose({
       {(kind==="system_change"||kind==="app_manager")&&<p className="muted">يظهر نص الرسالة واسمك للإدارة في قسم التنبيهات، دون دردشة.</p>}
       {privateNote&&<p className="muted">مذكرة لا يراها أحد غيرك، ولا يذهب عنها إشعار لأي مستخدم.</p>}
       {error&&<Notice tone="error">{error}</Notice>}
-      {privateNote&&<label className="field">
-        <span>عنوان المذكرة</span>
-        <input value={title} maxLength={200} required disabled={pending||!!frozen.current}
-          onChange={e=>setTitle(e.target.value)} placeholder="عنوان المذكرة الخاصة"/>
-      </label>}
       <label className="field">
-        <span>{privateNote?"نص المذكرة":"نص الرسالة"}</span>
+        <span>{privateNote?"الملاحظة":"نص الرسالة"}</span>
         <textarea className="memo-textarea" rows={6} maxLength={3500} required
           value={body} disabled={pending||!!frozen.current} onChange={e=>setBody(e.target.value)}
-          placeholder={privateNote?"اكتب مذكرتك هنا":"اكتب رسالتك هنا"}/>
+          placeholder={privateNote?"اكتب ملاحظتك هنا":"اكتب رسالتك هنا"}/>
       </label>
       <div className="form-actions">
         <Button type="button" variant="secondary" onClick={close} disabled={pending}>إلغاء</Button>
-        <Button type="submit" disabled={pending||!body.trim()||(privateNote&&!title.trim())}>
+        <Button type="submit" disabled={pending||!body.trim()}>
           {pending?"جارٍ الحفظ…":frozen.current?"إعادة محاولة نفس الإرسال":privateNote?"حفظ خاص":"إرسال مع إشعار"}
         </Button>
       </div>

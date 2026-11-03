@@ -21,6 +21,20 @@ export const quickMessageSchema = z.object({
   if (value.kind === "private_note" && !value.title)
     context.addIssue({ code: "custom", path: ["title"], message: "اكتب عنوان المذكرة الشخصية" });
 });
+/** Strict decimal pagination. Backslash-d must match digits, not the letters "\d". */
+export function parsePrivateNotesListQuery(query: Record<string, unknown>) {
+  const pageRaw=query.page??"1",sizeRaw=query.pageSize??"20",archived=query.archived??"0";
+  if(typeof pageRaw!=="string"||!/^[1-9]\d*$/.test(pageRaw)||
+     typeof sizeRaw!=="string"||!/^[1-9]\d*$/.test(sizeRaw)||
+     (archived!=="0"&&archived!=="1"))
+    throw new HttpError(400,"invalid_query","طلب عرض الملاحظات غير صالح");
+  const page=Number(pageRaw),pageSize=Number(sizeRaw);
+  if(!Number.isSafeInteger(page)||page>100000||
+     !Number.isSafeInteger(pageSize)||pageSize>50)
+    throw new HttpError(400,"invalid_query","عدد صفحات الملاحظات غير صالح");
+  return {page,pageSize,archivedOnly:archived==="1"};
+}
+
 /** Independent notifications; no chat or chat permissions are used. */
 export const quickNotificationTypes = {
   system_change: {code:"QUICK_SYSTEM_CHANGE",title:"طلب تعديل النظام"},
@@ -33,22 +47,13 @@ export const quickNotificationTypes = {
  * idempotency key per sender and request. */
 export function quickMessagesRoutes(pool: Pool): Router {
   const router = Router();
-  // Private notes always belong to the authenticated account, never the company.
+  // Private notes belong to the authenticated user, never a company.
   router.get("/private-notes",handler(async(req,res)=>{
-    const pageRaw=req.query.page??"1",sizeRaw=req.query.pageSize??"20",archived=req.query.archived??"0";
-    if(typeof pageRaw!=="string"||!/^[1-9]\\d*$/.test(pageRaw)||
-       typeof sizeRaw!=="string"||!/^[1-9]\\d*$/.test(sizeRaw)||
-       (archived!=="0"&&archived!=="1"))
-      throw new HttpError(400,"invalid_query","طلب عرض الملاحظات غير صالح");
-    const page=Number(pageRaw),pageSize=Number(sizeRaw);
-    if(!Number.isSafeInteger(page)||page>100000||
-       !Number.isSafeInteger(pageSize)||pageSize>50)
-      throw new HttpError(400,"invalid_query","عدد صفحات الملاحظات غير صالح");
+    const {page,pageSize,archivedOnly}=parsePrivateNotesListQuery(req.query);
     const result=await transaction(pool,async(client)=>{
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
       const user=await currentActor(client,actor(req),false);
       if(user.suspended)deny("هذا الحساب موقوف");
-      const archivedOnly=archived==="1";
       const filter="user_id=$1 AND (archived_at IS NOT NULL)=$2";
       const count=await client.query("SELECT count(*)::integer AS total FROM user_private_notes WHERE "+filter,
         [user.id,archivedOnly]);

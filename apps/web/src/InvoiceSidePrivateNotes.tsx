@@ -57,7 +57,7 @@ export function InvoiceSidePrivateNotes() {
     </div>
     {offline&&<small>الملاحظات تحتاج إلى اتصال لعرض أحدث نسخة وحفظها.</small>}
     {notes.isLoading&&!offline&&<small>جارٍ تحميل ملاحظاتك الخاصة…</small>}
-    {notes.isError&&!offline&&<Notice tone="error">تعذر تحميل ملاحظاتك. <Button
+    {notes.isError&&!offline&&<Notice tone="error">تعذر تحميل ملاحظاتك: {errorMessage(notes.error)} <Button
       type="button" variant="secondary" size="compact" onClick={()=>void notes.refetch()}>
         إعادة المحاولة</Button></Notice>}
     {failure&&<small role="alert">{failure}</small>}
@@ -65,14 +65,13 @@ export function InvoiceSidePrivateNotes() {
       <small>{archived?"لا توجد ملاحظات مؤرشفة.":"لا توجد ملاحظات نشطة. اضغط + لإضافة أول ملاحظة."}</small>}
     <div className="invoice-side-private-list">
       {(notes.data?.items??[]).map(note=><article key={note.id} className="invoice-side-private-card">
-        <div className="invoice-side-private-card-heading">
-          <strong>{note.title}</strong>
+        <p className="invoice-side-private-note-text">{note.body}</p>
+        <div className="invoice-side-private-card-footer">
+          <small>{new Date(note.createdAt).toLocaleString("ar-YE",{timeZone:"Asia/Aden"})}</small>
           <button type="button" disabled={workingId!==null||offline}
-            aria-label={(archived?"استعادة":"أرشفة")+" الملاحظة "+note.title}
+            aria-label={(archived?"استعادة":"أرشفة")+" الملاحظة رقم "+note.id}
             onClick={()=>void update(note)}>{workingId===note.id?"جارٍ…":archived?"استعادة":"أرشفة"}</button>
         </div>
-        <p>{note.body}</p>
-        <small>{new Date(note.createdAt).toLocaleString("ar-YE",{timeZone:"Asia/Aden"})}</small>
       </article>)}
     </div>
     {!!notes.data&&notes.data.total>notes.data.pageSize&&
