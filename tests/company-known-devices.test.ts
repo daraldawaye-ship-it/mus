@@ -31,3 +31,29 @@ test("user agent display classification is informational", () => {
   );
   assert.deepEqual(summarizeDeviceAgent(""), { browser: "متصفح غير معروف", os: "غير معروف" });
 });
+
+test("discovery returns the registered device's name and stable ID without new permissions", () => {
+  const route = readFileSync("apps/api/src/routes-company-devices.ts", "utf8");
+  const menu = readFileSync("apps/web/src/UserMenu.tsx", "utf8");
+  const label = readFileSync("apps/web/src/UserMenuDeviceIdentity.tsx", "utf8");
+  const registry = readFileSync("apps/web/src/pages/CompanyApprovedDevicesPage.tsx", "utf8");
+  assert.match(route,/RETURNING id,label/);
+  assert.match(route,/res\.json\(\{ ok: true, id: recordId\.id, name: recordId\.name \}\)/);
+  assert.match(route,/await companyAccess\(client, user, companyId\)/);
+  assert.match(menu,/<UserMenuDeviceIdentity/);
+  assert.match(label,/browserInstallationId\(\)/);
+  assert.match(label,/approved-devices\/discover/);
+  assert.match(label,/refetchOnMount:"always"/);
+  assert.match(label,/navigator\.clipboard\.writeText\(code\)/);
+  assert.doesNotMatch(label,/>\{installationId\}</);
+  assert.match(registry,/formatKnownDeviceCode\(item\.id\)/);
+  assert.match(route,/lpad\(d\.id::text,GREATEST\(6,length\(d\.id::text\)\),'0'\)/);
+});
+test("human-readable device codes are unique per global registry sequence", async () => {
+  const { formatKnownDeviceCode } = await import("../apps/web/src/device-display-code.ts");
+  assert.equal(formatKnownDeviceCode("1"),"DEV-000001");
+  assert.equal(formatKnownDeviceCode("432"),"DEV-000432");
+  assert.equal(formatKnownDeviceCode("1000000"),"DEV-1000000");
+  assert.notEqual(formatKnownDeviceCode("1"),formatKnownDeviceCode("2"));
+  assert.equal(formatKnownDeviceCode(""),"");
+});

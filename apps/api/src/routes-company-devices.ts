@@ -70,18 +70,19 @@ export function companyDeviceRoutes(pool: Pool): Router {
         "device_kind=EXCLUDED.device_kind,browser=EXCLUDED.browser,operating_system=EXCLUDED.operating_system, " +
         "last_user_id=EXCLUDED.last_user_id, " +
         "last_seen_at=clock_timestamp() " +
-        "RETURNING id",
+        "RETURNING id,label",
         [companyId, identityHash, kind, browser, os, user.id],
       );
       const deviceRowId = device.rows[0].id as string;
+      const deviceName = device.rows[0].label as string;
       await client.query(
         "INSERT INTO company_known_device_users(device_id,user_id) VALUES($1,$2) " +
         "ON CONFLICT(device_id,user_id) DO UPDATE SET last_seen_at=clock_timestamp()",
         [deviceRowId, user.id],
       );
-      return deviceRowId;
+      return { id: deviceRowId, name: deviceName };
     });
-    res.json({ ok: true, id: recordId });
+    res.json({ ok: true, id: recordId.id, name: recordId.name });
   }));
 
   router.get("/companies/:companyId/approved-devices", handler(async (req, res) => {
@@ -92,7 +93,8 @@ export function companyDeviceRoutes(pool: Pool): Router {
     const pattern = "%" + input.q + "%";
     const params = [companyId, pattern];
     const where = "d.company_id=$1 AND " +
-      "($2='%%' OR d.label ILIKE $2 OR d.browser ILIKE $2 OR d.operating_system ILIKE $2 " +
+      "($2='%%' OR d.label ILIKE $2 OR ('DEV-' || lpad(d.id::text,GREATEST(6,length(d.id::text)),'0')) ILIKE $2 " +
+      "OR d.browser ILIKE $2 OR d.operating_system ILIKE $2 " +
       "OR COALESCE(NULLIF(u.display_name,''),u.name) ILIKE $2)";
     const count = await pool.query(
       "SELECT count(*)::integer AS total FROM company_known_devices d " +
