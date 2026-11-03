@@ -203,7 +203,7 @@ function itemBody(currencyId: number, overrides: Record<string, unknown> = {}) {
     purchaseFactor: 1,
     currencyId,
     reorderLimit: "0",
-    orderQuantity: "0",
+    orderQuantity: "1",
     searchKeys: "",
     purchaseNotes: "",
     orderStoppedUntil: null,
