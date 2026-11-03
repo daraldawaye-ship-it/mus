@@ -18,6 +18,8 @@ import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOption
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
   { key: "stockMax", label: "الكمية المتوفرة (بدون مخازن المرتجعات) إلى" },
+  { key: "reserveMin", label: "الكمية احتياط من" },
+  { key: "reserveMax", label: "الكمية احتياط إلى" },
   { key: "monthMin", label: "المبيعات مرات في شهر من" },
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
