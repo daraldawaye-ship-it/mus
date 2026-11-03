@@ -31,6 +31,7 @@ import {
   LogIn,
   Menu,
   MessageSquare,
+  MonitorSmartphone,
   MapPin,
   Package,
   Settings2,
@@ -63,6 +64,7 @@ import { AppSetup } from "./AppSetup";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
+import { CompanyDeviceDiscovery } from "./company-device-discovery";
 import { QuickLoginPage } from "./QuickLoginPage";
 import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
 import { AttendanceCurrentlyPresent } from "./AttendanceCurrentlyPresent";
@@ -316,6 +318,7 @@ const InvoicePage = lazy(() =>
     default: module.InvoicePage,
   })),
 );
+const CompanyApprovedDevicesPage = lazy(() => import("./pages/CompanyApprovedDevicesPage").then(m => ({ default: m.CompanyApprovedDevicesPage })));
 const companySections = [
   "archive",
   "chat",
@@ -339,6 +342,7 @@ const companySections = [
   "control",
   "overview",
   "employees",
+  "approved-devices",
   "settings",
   "letterhead",
   "audit",
@@ -429,6 +433,7 @@ function Navigation({
     "company.configuration": <ShieldCheck size={17} />,
     "company.control": <Settings2 size={17} />,
     "company.employees": <Users size={17} />,
+    "company.approved-devices": <MonitorSmartphone size={17} />,
     "company.attendance": <FileClock size={17} />,
     "company.attendance-current": <Users size={17} />,
     "company.wallet": <Wallet size={17} />,
@@ -715,6 +720,8 @@ function CompanyContent({
       );
     case "employees":
       return <EmployeesPage key={context.company.id} context={context} />;
+    case "approved-devices":
+      return <Suspense fallback={<Notice>جارٍ تحميل الأجهزة المعتمدة…</Notice>}><CompanyApprovedDevicesPage context={context} /></Suspense>;
     case "settings":
       return <CompanySettingsPage key={context.company.id} context={context} />;
     case "letterhead":
@@ -1158,6 +1165,9 @@ function Workspace() {
             </div>
           </header>
           <InstallBanner />
+          {user && inCompany && company.data && !company.isError && (
+            <CompanyDeviceDiscovery userId={user.id} companyId={companyId} />
+          )}
           <main className="main-content" ref={main} tabIndex={-1}>
             {sessionError && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}

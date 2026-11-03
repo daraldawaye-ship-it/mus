@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
+import { companyDeviceRoutes } from "./routes-company-devices.ts";
 import { walletRoutes } from "./routes-wallet.ts";
 import { notificationRoutes } from "./routes-notifications.ts";
 import { memoFeatureRuleRoutes } from "./memoFeatureRuleRoutes.ts";
@@ -66,6 +67,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     pageAvailabilityGate(pool),
     publicRoutes(pool),
     companyRoutes(pool),
+    companyDeviceRoutes(pool),
     attendanceRoutes(pool),
     attendanceAdjustmentRoutes(pool),
     employeeAttendanceRoutes(pool),

@@ -476,6 +476,7 @@ export async function requestPageKeys(
     resource = rest.split("/")[0];
   const names: Record<string, string> = {
     employees: "employees",
+    "approved-devices": "approved-devices",
     attendance: "attendance",
     wallet: "wallet",
     "reward-tasks": "reward-tasks",

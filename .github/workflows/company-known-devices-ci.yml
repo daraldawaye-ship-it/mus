@@ -1,0 +1,27 @@
+name: Company known devices checks
+on:
+  pull_request:
+    paths:
+      - 'apps/api/migrations/20261103_company_known_devices.sql'
+      - 'apps/api/src/routes-company-devices.ts'
+      - 'apps/api/src/business-routes.ts'
+      - 'apps/api/src/services/pages.ts'
+      - 'packages/contracts/src/pages.ts'
+      - 'apps/web/src/company-device-discovery.tsx'
+      - 'apps/web/src/pages/CompanyApprovedDevicesPage.tsx'
+      - 'apps/web/src/App.tsx'
+      - 'tests/company-known-devices.test.ts'
+      - '.github/workflows/company-known-devices-ci.yml'
+jobs:
+  company-known-devices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: node --import tsx --test tests/company-known-devices.test.ts
