@@ -86,3 +86,19 @@ test("sale editors restore before mounting, autosave changes, and clear a confir
   assert.match(source, /await flushSalesPointDrafts\(\)/);
   assert.match(source, /restored\?\.lines\?\.length/);
 });
+
+test("sales invoice navigation flushes all local points without a confirmation dialog", () => {
+  const source = readFileSync(new URL("../apps/web/src/pages/CommercePages.tsx", import.meta.url), "utf8");
+  const start=source.indexOf("const leaveWithLocalSalesDrafts");
+  const end=source.indexOf("const closePoint",start);
+  const leave=source.slice(start,end);
+  assert.match(leave,/for \(const id of points\)/);
+  assert.match(leave,/draftSavers\.current\.get\(id\)/);
+  assert.match(leave,/await save\(\)/);
+  assert.match(leave,/await flushSalesPointDrafts\(\)/);
+  assert.match(leave,/automaticLeaveStarted/);
+  assert.match(source,/async function saveSalesBeforeLeaving\(\)/);
+  assert.match(source,/open=\{blocker\.state === "blocked" && !!leavingError\}/);
+  assert.doesNotMatch(source,/title="مغادرة الفواتير"/);
+  assert.match(source,/status => status\.unknown/);
+});

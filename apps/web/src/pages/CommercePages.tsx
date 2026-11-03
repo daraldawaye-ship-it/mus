@@ -1488,11 +1488,12 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
     setLeavingError("");
     try {
       // Every changed point must be saved, not only the active invoice.
+      // Purchase drafts are committed to IndexedDB before the route proceeds.
       for (const id of points) {
         if (!statuses[id]?.dirty) continue;
         const save = draftSavers.current.get(id);
         if (!save || !(await save())) {
-          setLeavingError("تعذر حفظ جميع فواتير المشتريات مؤقتًا. لم تغادر الصفحة.");
+          setLeavingError("تعذر الحفظ المحلي لإحدى فواتير المشتريات. لم تغادر الصفحة.");
           return;
         }
       }
@@ -1526,13 +1527,19 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   };
   const leaveWithLocalSalesDrafts = async () => {
     if (kind !== "sale" || blocker.state !== "blocked" || leavingBusy) return;
-    if (Object.values(statuses).some(status => status.saving || status.unknown)) return;
     setLeavingBusy(true);
     setLeavingError("");
     try {
+      // An editor's latest form may have changed before its autosave effect ran.
+      // Write every mounted point explicitly and wait for IndexedDB commit.
+      for (const id of points) {
+        const save = draftSavers.current.get(id);
+        if (!save || !(await save()))
+          throw new Error("تعذر حفظ إحدى فواتير المبيعات على الجهاز.");
+      }
       await flushSalesPointDrafts();
-      if (deviceError || Object.values(statuses).some(status => status.storageError))
-        throw new Error("تعذر حفظ بعض نقاط المبيعات على الجهاز؛ لا يمكن ضمان استعادتها.");
+      if (deviceError)
+        throw new Error("تعذر التحقق من استعادة مسودات هذا الجهاز؛ لم نغادر الصفحة.");
       if (blocker.state === "blocked") blocker.proceed();
     } catch (error) {
       setLeavingError(errorMessage(error));
@@ -1540,6 +1547,22 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
       setLeavingBusy(false);
     }
   };
+  // Navigate without a confirmation dialog only after ALL local drafts commit.
+  // A failed write or uncertain server posting must never silently discard data.
+  const automaticLeaveStarted = useRef(false);
+  useEffect(() => {
+    if (blocker.state !== "blocked" || leavingBusy || leavingError || automaticLeaveStarted.current)
+      return;
+    const statusesNow = Object.values(statuses);
+    if (statusesNow.some(status => status.saving)) return;
+    if (statusesNow.some(status => status.unknown)) {
+      setLeavingError("توجد فاتورة لم تتأكد نتيجة ترحيلها. تأكد من حالتها قبل مغادرة الصفحة لتجنب التكرار.");
+      return;
+    }
+    automaticLeaveStarted.current = true;
+    void (kind === "sale" ? leaveWithLocalSalesDrafts() : saveAllAndLeave())
+      .finally(() => { automaticLeaveStarted.current = false; });
+  }, [blocker.state, leavingBusy, leavingError, statuses, kind]);
   const closePoint = async (id: string) => {
     const status = statuses[id];
     if (status?.saving || status?.unknown) return;
@@ -1617,32 +1640,22 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
             onChooseItem={item => setPointItems(previous => ({ ...previous, [id]: item }))} />
         </div>
       ))}
-      <Dialog open={blocker.state === "blocked"} title="مغادرة الفواتير"
+      {/* Normal navigation has no leave message. A modal appears only if
+          persistence failed or a posting outcome is still unknown. */}
+      <Dialog open={blocker.state === "blocked" && !!leavingError}
+        title="تعذر الخروج بأمان"
         onClose={() => { if (blocker.state === "blocked") blocker.reset(); }}>
-        <p>{kind === "purchase"
-          ? Object.values(statuses).some(status => status.dirty && status.itemCount > 1)
-            ? "توجد مشتريات مكتوبة بأكثر من سطر. هل تريد حفظ الفواتير مؤقتًا قبل المغادرة؟ يمكنك فتحها لاحقًا دون ترحيل."
-            : "هل تريد الخروج من فاتورة المشتريات؟ يوجد صنف واحد أو بيانات لم تُحفظ."
-          : "توجد فواتير مبيعات مكتوبة محفوظة محليًا على هذا الجهاز. يمكنك الرجوع إليها عند العودة للصفحة بعد اكتمال الحفظ المحلي."}</p>
         {leavingError && <Notice tone="error">{leavingError}</Notice>}
+        <p>لم نغادر الصفحة حفاظًا على بيانات الفاتورة.</p>
         <div className="form-actions">
           <Button variant="secondary" onClick={() => {
             if (blocker.state === "blocked") blocker.reset();
+            setLeavingError("");
           }}>البقاء في الفواتير</Button>
-          {kind === "purchase" && Object.values(statuses).some(status => status.dirty && status.itemCount > 1) &&
-            <Button disabled={leavingBusy || Object.values(statuses).some(status => status.saving || status.unknown)}
-              onClick={() => { void saveAllAndLeave(); }}>
-              {leavingBusy ? "جارٍ حفظ المسودات…" : "حفظ مؤقت ثم الخروج"}
-            </Button>}
-          {kind === "sale" ? <Button disabled={leavingBusy ||
-            Object.values(statuses).some(status => status.saving || status.unknown)}
-            onClick={() => { void leaveWithLocalSalesDrafts(); }}>
-            {leavingBusy ? "التحقق من الحفظ المحلي…" : "مغادرة مع إبقاء الفواتير على الجهاز"}
-          </Button> : <Button variant="danger" disabled={leavingBusy ||
-            Object.values(statuses).some(status => status.saving || status.unknown)}
-            onClick={() => { if (blocker.state === "blocked") blocker.proceed(); }}>
-            نعم، الخروج دون حفظ
-          </Button>}
+          <Button disabled={leavingBusy || Object.values(statuses).some(status => status.saving || status.unknown)}
+            onClick={() => { setLeavingError(""); }}>
+            إعادة محاولة الحفظ والخروج
+          </Button>
         </div>
       </Dialog>
     </InvoiceWorkspace>
@@ -2165,9 +2178,34 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       if (guard.isCurrent()) setDraftSaving(false);
     }
   }
+  // Unlike the manual "حفظ أولي" button, leaving the page preserves the
+  // purchase editor as-is (even header-only drafts) and does not reset it.
+  // The next visit can open the stored form from Actions > saved drafts.
+  async function savePurchaseBeforeLeaving(): Promise<boolean> {
+    if (kind !== "purchase" || !user?.id || saving || unknown || localQueued || draftSaving)
+      return false;
+    const captured = purchaseDraftForm;
+    try {
+      const saved = await savePurchaseWorkDraft(
+        user.id, companyId, captured,
+        captured.lines.filter(line => !!line.itemId).length,
+        captured.supplier?.name ?? captured.account?.name ?? "فاتورة مشتريات",
+        activePurchaseDraftId ?? undefined,
+      );
+      if (!guard.isCurrent()) return false;
+      setActivePurchaseDraftId(saved.id);
+      setLastSavedFingerprint(JSON.stringify(captured));
+      void refreshPurchaseDrafts().catch(() => {});
+      window.dispatchEvent(new Event("alraesy-purchase-drafts-changed"));
+      return true;
+    } catch (reason) {
+      if (guard.isCurrent()) setError("فشل حفظ مسودة المشتريات قبل الخروج: " + errorMessage(reason));
+      return false;
+    }
+  }
   useEffect(() => {
     if (kind !== "purchase") return;
-    onRegisterDraftSaver(tabId, savePurchaseTemporarily);
+    onRegisterDraftSaver(tabId, savePurchaseBeforeLeaving);
     return () => onRegisterDraftSaver(tabId, null);
   });
 
@@ -2255,6 +2293,34 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     branch, location, original, description, discount, lines, doctorSelected,
     doctorQuery, saleCustomerQuery, saleCustomerNumber, saleCustomerName,
     saleCustomerMatched, unknown, saving]);
+  async function saveSalesBeforeLeaving(): Promise<boolean> {
+    if (kind !== "sale" || !user?.id || saving || unknown) return false;
+    const form: SalesPointForm = {
+      documentDate, account, currency, branch, location, original,
+      description, discount, lines, doctorSelected, doctorQuery,
+      saleCustomerQuery, saleCustomerNumber, saleCustomerName, saleCustomerMatched,
+      pending: pending.current, unknown,
+      savingInFlight: saving && !!pending.current,
+      manualAccount: accountManuallyChosen.current,
+      manualCurrency: currencyManuallyChosen.current,
+      manualBranch: branchManuallyChosen.current,
+      manualLocation: locationManuallyChosen.current,
+    };
+    try {
+      await saveSalesPointDraft(user.id, companyId, tabId, salesPointCreated.current, form);
+      if (guard.isCurrent()) setSalesStorageError("");
+      return true;
+    } catch (reason) {
+      if (guard.isCurrent())
+        setSalesStorageError("تعذر حفظ فاتورة المبيعات قبل الخروج: " + errorMessage(reason));
+      return false;
+    }
+  }
+  useEffect(() => {
+    if (kind !== "sale") return;
+    onRegisterDraftSaver(tabId, saveSalesBeforeLeaving);
+    return () => onRegisterDraftSaver(tabId, null);
+  });
   useEffect(() => {
     onStatusChange(tabId, { dirty: editorDirty, saving: saving || draftSaving,
       unknown, itemCount: selectedLines.length, storageError: !!salesStorageError });

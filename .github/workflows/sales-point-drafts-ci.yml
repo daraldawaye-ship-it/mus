@@ -8,6 +8,7 @@ on:
       - 'apps/web/src/pages/CommercePages.tsx'
       - 'apps/web/src/sales-point-drafts.ts'
       - 'tests/sales-point-drafts.test.ts'
+      - 'tests/purchase-work-drafts.test.ts'
       - '.github/workflows/sales-point-drafts-ci.yml'
   workflow_dispatch:
 
@@ -27,4 +28,4 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/sales-point-drafts.test.ts
+      - run: node --import tsx --test tests/sales-point-drafts.test.ts tests/purchase-work-drafts.test.ts
