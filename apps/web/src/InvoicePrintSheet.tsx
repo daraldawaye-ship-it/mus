@@ -7,6 +7,7 @@ export type PrintableInvoice = Pick<Invoice,
   "kind" | "returning" | "documentDate" | "counterpartyAccountName" |
   "counterpartyAccountCode" | "supplierReceiptNumber" | "supplierAccountName" |
   "branchName" | "locationName" | "doctorName" | "currencyCode" |
+  "saleCustomerName" | "saleCustomerNumber" |
   "description" | "gross" | "discount" | "total" |
   "createdByName" | "createdAt"> & {
     number?: string | null;
@@ -58,6 +59,9 @@ export function InvoicePrintSheet({
         <div><dt>{purchase ? "المورد / الحساب" : "العميل / الحساب"}</dt>
           <dd>{invoice.counterpartyAccountName}</dd></div>
         <div><dt>رقم الحساب</dt><dd><bdi>{invoice.counterpartyAccountCode}</bdi></dd></div>
+        {!purchase && invoice.saleCustomerName?.trim() && (
+          <div><dt>اسم العميل</dt><dd>{invoice.saleCustomerName}</dd></div>
+        )}
         {purchase && (
           <>
             <div><dt>رقم وصل المورد</dt><dd>{invoice.supplierReceiptNumber || "—"}</dd></div>

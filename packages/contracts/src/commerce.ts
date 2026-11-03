@@ -94,14 +94,14 @@ export const invoiceSchema = z
         });
     }
   });
-/** Discard an unnumbered customer name before persisting a sale invoice. */
+/** The optional name is part of the invoice snapshot, even without a customer number. */
 export function normalizeSaleCustomer<T extends {
   kind:"sale"|"purchase";
   saleCustomerNumber:string;
   saleCustomerName:string;
 }>(value:T):T {
-  return value.kind==="sale" && !value.saleCustomerNumber && value.saleCustomerName
-    ? {...value,saleCustomerName:""} : value;
+  // Keep this helper for existing callers: name-only sales must not be discarded.
+  return value;
 }
 export type InvoiceInput = z.input<typeof invoiceSchema>;
 export interface InvoiceLine {

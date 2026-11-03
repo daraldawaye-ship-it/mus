@@ -308,7 +308,8 @@ function InvoiceList({
         cell:({row})=>row.original.saleCustomerId
           ? <Link to={`/companies/${companyId}/sale-customers?focus=${row.original.saleCustomerId}`}>
               {row.original.saleCustomerNumber} — {row.original.saleCustomerName}
-            </Link> : "—",
+            </Link> : row.original.saleCustomerName ||
+              row.original.saleCustomerNumber || "—",
       } satisfies ColumnDef<Invoice,unknown>] : []),
       {
         accessorKey: "locationName",
@@ -2782,7 +2783,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         doctorId: kind === "sale" ? selectedDoctorId ?? null : null,
         doctorName: kind === "sale" ? enteredDoctorName : "",
         saleCustomerNumber: kind === "sale" ? saleCustomerNumber : "",
-        saleCustomerName: kind === "sale" && saleCustomerNumber ? saleCustomerName.trim() : "",
+        saleCustomerName: kind === "sale" ? saleCustomerName.trim() : "",
         supplierReceiptNumber: kind === "purchase" ? supplierReceiptNumber : "",
         description,
         discount,
@@ -2821,6 +2822,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         branchName:branch?.name ?? "",
         locationName:location?.name ?? "",
         doctorName:kind==="sale" ? doctorSelected?.name ?? enteredDoctorName ?? null : null,
+        saleCustomerNumber:kind==="sale" ? submission.saleCustomerNumber || null : null,
+        saleCustomerName:kind==="sale" ? submission.saleCustomerName || null : null,
         currencyCode:currency?.code ?? "",
         description:submission.description ?? "",
         gross:totals.gross,discount:totals.discount,total:totals.total,
@@ -4295,12 +4298,12 @@ function InvoiceViewer({
               ? <Link to={`/companies/${companyId}/doctors?focus=${invoice.doctorId}`}>{invoice.doctorName}</Link>
               : invoice.doctorName}</span>
           )}
-          {invoice.kind === "sale" && invoice.saleCustomerNumber && (
+          {invoice.kind === "sale" && (invoice.saleCustomerNumber || invoice.saleCustomerName) && (
             <span>العميل: {invoice.saleCustomerId
               ? <Link to={`/companies/${companyId}/sale-customers?focus=${invoice.saleCustomerId}`}>
                   <bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}
                 </Link>
-              : <><bdi>{invoice.saleCustomerNumber}</bdi> — {invoice.saleCustomerName}</>}</span>
+              : <>{invoice.saleCustomerNumber && <><bdi>{invoice.saleCustomerNumber}</bdi>{invoice.saleCustomerName ? " — " : ""}</>}{invoice.saleCustomerName}</>}</span>
           )}
           <span>
             العملة: <bdi>{invoice.currencyCode}</bdi>
