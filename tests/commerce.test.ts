@@ -4706,18 +4706,25 @@ test("whole first-unit stock permits secondary edits without stock/history reint
   );
   assert.equal(historical.rows[0]!.factor2,2);
   assert.equal(historical.rows[0]!.factor3,12);
-  const illegal=await f.owner.request("PATCH",path,{
+  const rebased=await f.owner.ok<{item:Item}>("PATCH",path,{
     changes:{factor2:5},expected:{factor2:4},mode:"last-write-wins",
   });
-  assert.equal(illegal.status,409);
+  assert.equal(rebased.item.factor2,5);
+  assert.equal((await f.pool.query<{q:string}>(
+    "SELECT quantity_smallest::text AS q FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!.q,"60","2 whole first units remain 2 after changing 24 to 30 smallest units each");
   await assert.rejects(
     f.pool.query("UPDATE items SET factor2=5 WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
     /Changing stock unit multiplier requires an audited conversion|Item master identity or revision is immutable/,
   );
-  // Sell one smallest piece in a normal auditable invoice, leaving 47/24
-  // of the first unit in one batch; the next rename must be denied.
+  // Sell one smallest piece after this TODAY-dated rebase; backdated
+  // invoices are correctly rejected by weighted average chronology.
+  const conversionDate=(await f.pool.query<{date:string}>(
+    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS date",
+  )).rows[0]!.date;
   await invoice(f,s,invoiceBody(s,it.id,{
-    kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    documentDate:conversionDate,kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
     lines:[{itemId:it.id,unit:3,quantity:"1",unitPrice:"50",expiryDate:null}],
   }));
   const fractional=await f.owner.request("PATCH",path,{
@@ -4729,5 +4736,106 @@ test("whole first-unit stock permits secondary edits without stock/history reint
     f.pool.query("UPDATE items SET unit2_name='ظرف جديد' WHERE company_id=$1 AND id=$2",[s.company.id,it.id]),
     /requires whole first-unit stock in every batch|Item master identity or revision is immutable/,
   );
+  await assertBalanced(f,s.company.id);
+});
+
+
+test("rebase whole first-unit stock on activation of second unit preserves packs, valuation and history", async(t)=>{
+  const f=await fixture(t),s=await setup(f,"Atomic rebase sample");
+  const it=await s.item({
+    name:"حفاظات كونفي بيبي رقم 2 عبوة 10",
+    unit1Name:"شده",unit2Name:"حبه",unit3Name:"",
+    factor2:1,factor3:1,hasExpiry:false,
+    salePrice1:"1100",salePrice2:"110",purchaseFactor:10,
+  });
+  const purchase=await invoice(f,s,invoiceBody(s,it.id,{
+    lines:[{itemId:it.id,unit:1,quantity:"3",unitPrice:"800",expiryDate:null}],
+  }));
+  const beforeVal=(await f.pool.query<{quantity_smallest:string;value_base:string}>(
+    "SELECT quantity_smallest::text,value_base::text FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!;
+  assert.equal(beforeVal.quantity_smallest,"3");
+  const beforeMovements=(await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM stock_movements WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!.n;
+  const path=`${s.path}/items/${it.id}`;
+  const converted=await f.owner.ok<{item:Item}>("PATCH",path,{
+    changes:{factor2:10},expected:{factor2:1},mode:"last-write-wins",
+  });
+  assert.equal(converted.item.factor2,10);
+  assert.equal(converted.item.factor3,1);
+  assert.equal(converted.item.purchaseFactor,10);
+  const afterVal=(await f.pool.query<{quantity_smallest:string;value_base:string}>(
+    "SELECT quantity_smallest::text,value_base::text FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!;
+  assert.equal(afterVal.quantity_smallest,"30");
+  assert.equal(afterVal.value_base,beforeVal.value_base);
+  const balance=await balances(f,s,it.id);
+  assert.equal(balance.reduce((n,b)=>n+BigInt(b.quantitySmallest),0n),30n);
+  assert.equal(balance[0]!.quantityUnit1.decimal,"3");
+  const historical=(await f.pool.query(
+    "SELECT factor2,factor3,quantity FROM invoice_lines WHERE company_id=$1 AND invoice_id=$2",
+    [s.company.id,purchase.id],
+  )).rows[0]!;
+  assert.equal(historical.factor2,1);
+  assert.equal(historical.factor3,1);
+  assert.equal(String(historical.quantity),"3");
+  const ops=await f.pool.query<{
+    kind:string;delta:string;cost_base:string;factor2:number;factor3:number
+  }>(
+    `SELECT o.kind,m.quantity_smallest::text AS delta,m.cost_base::text AS cost_base,
+       (o.creation_payload->'before'->>'factor2')::int AS factor2,
+       (o.creation_payload->'after'->>'factor3')::int AS factor3
+     FROM stock_operations o JOIN stock_movements m
+      ON m.company_id=o.company_id AND m.operation_id=o.id
+     WHERE o.company_id=$1 AND o.kind='unit_rebase' AND m.item_id=$2`,
+    [s.company.id,it.id],
+  );
+  assert.equal(ops.rows.length,1);
+  assert.deepEqual(ops.rows.map(o=>({kind:o.kind,delta:o.delta,cost:o.cost_base})),
+    [{kind:"unit_rebase",delta:"27",cost:"0.000000"}]);
+  assert.equal(ops.rows[0]!.factor2,1);
+  assert.equal(ops.rows[0]!.factor3,1);
+  const afterCount=(await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM stock_movements WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!.n;
+  assert.equal(afterCount,beforeMovements+1);
+  const auditEvent=await f.pool.query(
+    "SELECT 1 FROM audit_events WHERE company_id=$1 AND action='stock.unit_rebase' AND target_type='stockOperation'",
+    [s.company.id],
+  );
+  assert.equal(auditEvent.rowCount,1);
+  // Repeated saved value is idempotent: no additional conversion movements.
+  await f.owner.ok("PATCH",path,{
+    changes:{factor2:10},expected:{factor2:10},mode:"last-write-wins",
+  });
+  assert.equal((await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM stock_operations WHERE company_id=$1 AND kind='unit_rebase'",
+    [s.company.id],
+  )).rows[0]!.n,1);
+  // Sell one piece after today's conversion, leaving 29/10 packs.
+  const conversionDate=(await f.pool.query<{date:string}>(
+    "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS date",
+  )).rows[0]!.date;
+  await invoice(f,s,invoiceBody(s,it.id,{
+    documentDate:conversionDate,kind:"sale",counterpartyAccountId:s.customer.id,supplierAccountId:null,
+    lines:[{itemId:it.id,unit:2,quantity:"1",unitPrice:"110",expiryDate:null}],
+  }));
+  const fractional=await f.owner.request("PATCH",path,{
+    changes:{factor2:12},expected:{factor2:10},mode:"last-write-wins",
+  });
+  assert.equal(fractional.status,409,JSON.stringify(fractional.body));
+  assert.equal((await f.pool.query<{n:number}>(
+    "SELECT count(*)::int AS n FROM stock_operations WHERE company_id=$1 AND kind='unit_rebase'",
+    [s.company.id],
+  )).rows[0]!.n,1);
+  assert.equal((await f.pool.query<{q:string}>(
+    "SELECT quantity_smallest::text AS q FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,it.id],
+  )).rows[0]!.q,"29");
   await assertBalanced(f,s.company.id);
 });
