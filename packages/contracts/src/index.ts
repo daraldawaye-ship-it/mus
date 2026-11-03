@@ -52,6 +52,7 @@ export const userKindLabels: Record<UserKind, string> = {
 };
 export const employeeRoleLabels: Record<EmployeeRole, string> = {
   employee: "موظف",
+  company_device: "جهاز الشركة",
   administrative: "إداري",
   accountant: "محاسب",
   sales: "مبيعات",
@@ -250,6 +251,7 @@ export const auditActionLabels = {
   "stock.transfer": "ترحيل مناقلة مخزون",
   "stock.adjustment": "ترحيل تسوية جرد",
   "page.settings": "تعديل إعدادات صفحة",
+  "company.device.update": "تعديل بيانات وتوثيق جهاز الشركة",
   "configuration.options.seed": "إنشاء تعريفات الخيارات الأساسية تلقائيًا",
   "configuration.roles.seed": "إنشاء أدوار الشركة الأساسية تلقائيًا",
   "configuration.options.create": "إضافة خيار جديد",
@@ -368,6 +370,7 @@ export const companyAuditActions: AuditAction[] = [
   "centralAccess.update",
   "centralAccess.reset",
   "page.settings",
+  "company.device.update",
   "invoice.post",
   "inventory.settings",
   "stock.transfer",
