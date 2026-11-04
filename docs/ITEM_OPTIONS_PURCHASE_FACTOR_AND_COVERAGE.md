@@ -13,3 +13,14 @@
 
 
 See also docs/ITEM_OPTIONS_UNSELECTED_FULL_FILTER_DRAFT.md for the later 2026-11-04 reversal of the order-draft button (all unselected from full filtered results, cap 2,000; unchanged item purchase-factor semantics).
+
+## الكمية المطلوبة لاستكمال الكفاية — 4 نوفمبر 2026
+
+- نطاق التغيير: قائمة الأصناف `/companies/:companyId/item-options-list` فقط، دون حركات أو قيود مالية أو أوامر شراء آلية.
+- حقول خيارات الأرقام أصبحت `type=text` و`inputMode=decimal` لإزالة أسهم الزيادة والنقصان في `type=number` مع الاحتفاظ بالتحقق الرقمي الحالي.
+- الافتراضيات الجديدة عند غياب الرابط/إعادة الافتراضيات: «المبيعات مرات في شهر من» = 1، «الكفاية إلى» = يومين (2)، مع إبقاء افتراضي المتوفر السابق 1 إلى 1. القيمة الفارغة التي يضعها المستخدم صراحةً لا تتحول إلى الافتراضي.
+- عمود جديد «الكمية المطلوبة (أصغر وحدة)» على الهاتف والكمبيوتر؛ يستخدم حد الكفاية «إلى» المطبَّق فعليًا كهدف بالأيام. إذا فُرغ هذا الحقل صراحةً يصبح الهدف 30 يومًا (شهرًا).
+- حساب الهدف: `desired = max(0, (netSoldSmallest / baseDays) * targetDays + (useReserve ? reserveQuantity : 0) - stockShowroomAndWarehouse)`. يستخدم `baseDays = 120` ومبيعات أربعة أشهر عندما تكون مبيعات الشهر الواحد أقل من وحدتين، وإلا `baseDays = 30` ومبيعات الشهر؛ مطابق لمعدل الكفاية القائم، ويستثني مخازن المرتجعات.
+- كمية الطلب المعروضة `ceil(desired / max(1,purchaseFactor)) * max(1,purchaseFactor)`؛ لا يوجد كسر ولا اقتراح لكمية موجبة أقل من عامل وحدة الشراء؛ إذا كفى المخزون تظهر 0. عامل الشراء هنا مضاعف أصغر وحدة لأغراض التخطيط فقط، وليس عامل تحويل وحدة أو قيمة مخزنية.
+- API صفحة القائمة يُضيف `requiredPurchaseQuantity` بعد اختيار الصفحة (حد 100 صنف) عبر `requiredPurchaseQuantitiesToPage` في `item-coverage.ts`. لا تُنفذ أية كتابة للمخزون أو الفواتير، ولا ترحيل إلى مسودة طلبية تلقائيًا.
+- اختبارات الانحدار: `tests/item-options-purchase-factor-coverage.test.ts`.
