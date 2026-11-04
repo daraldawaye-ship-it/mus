@@ -209,13 +209,13 @@ function InvoiceList({
     const timer = window.setTimeout(() => setShowSaved(false), 4000);
     return () => window.clearTimeout(timer);
   }, [saved, navigation]);
-  // Only query the selected day on opening Sales; "allDates" deliberately
-  // distinguishes requesting history from the initial, date-free URL.
-  const salesAllDates = kind === "sale" && params.get("allDates") === "1";
-  const salesDefaultToday = kind === "sale" && !salesAllDates &&
+  // Both sales and purchases default to today's invoices. "allDates"
+  // distinguishes explicitly viewing history from an initial date-free URL.
+  const allDates = params.get("allDates") === "1";
+  const defaultToday = !allDates &&
     !params.has("dateFrom") && !params.has("dateTo");
-  const dateFrom = params.get("dateFrom") ?? (salesDefaultToday ? today() : "");
-  const dateTo = params.get("dateTo") ?? (salesDefaultToday ? today() : "");
+  const dateFrom = params.get("dateFrom") ?? (defaultToday ? today() : "");
+  const dateTo = params.get("dateTo") ?? (defaultToday ? today() : "");
   const filters = new URLSearchParams({ kind });
   if (dateFrom) filters.set("dateFrom", dateFrom);
   if (dateTo) filters.set("dateTo", dateTo);
@@ -224,7 +224,7 @@ function InvoiceList({
   const list = usePagedQuery<Invoice>(
     `/companies/${companyId}/invoices?${filters}`,
     `company:${companyId}:invoices:${kind}`,
-    kind === "sale" ? "id:desc" : "id:asc",
+    "id:desc",
   );
   async function saveCustomerChange(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -257,7 +257,7 @@ function InvoiceList({
       setSavingCustomer(false);
     }
   }
-  function setSaleDate(key: "dateFrom" | "dateTo", value: string) {
+  function setInvoiceDate(key: "dateFrom" | "dateTo", value: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
       const from = previous.get("dateFrom") ?? (previous.get("allDates") === "1" ? "" : today());
@@ -271,7 +271,7 @@ function InvoiceList({
       return next;
     });
   }
-  function setSalesDateMode(mode: "today" | "all") {
+  function setInvoiceDateMode(mode: "today" | "all") {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
       if (mode === "today") {
@@ -484,8 +484,7 @@ function InvoiceList({
             type="date"
             value={dateFrom}
             onChange={(event) =>
-              kind === "sale" ? setSaleDate("dateFrom", event.target.value)
-                : filter(setParams, "dateFrom", event.target.value)
+              setInvoiceDate("dateFrom", event.target.value)
             }
           />
           <Field
@@ -493,20 +492,17 @@ function InvoiceList({
             type="date"
             value={dateTo}
             onChange={(event) =>
-              kind === "sale" ? setSaleDate("dateTo", event.target.value)
-                : filter(setParams, "dateTo", event.target.value)
+              setInvoiceDate("dateTo", event.target.value)
             }
           />
-          {kind === "sale" && (
-            <div className="form-actions">
-              <Button variant="secondary" size="compact" onClick={() => setSalesDateMode("today")}>
-                فواتير اليوم
-              </Button>
-              <Button variant="secondary" size="compact" onClick={() => setSalesDateMode("all")}>
-                جميع التواريخ
-              </Button>
-            </div>
-          )}
+          <div className="form-actions">
+            <Button variant="secondary" size="compact" onClick={() => setInvoiceDateMode("today")}>
+              فواتير اليوم
+            </Button>
+            <Button variant="secondary" size="compact" onClick={() => setInvoiceDateMode("all")}>
+              جميع التواريخ
+            </Button>
+          </div>
         </div>
         {list.error && (
           <Notice tone="error">
