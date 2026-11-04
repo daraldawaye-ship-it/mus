@@ -42,7 +42,10 @@ const querySchema = z.object({
 }).strip();
 type Options = z.infer<typeof querySchema>;
 
-async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>, companyId: number, options: Options) {
+async function filteredItems(
+  client: PoolClient, user: ReturnType<typeof actor>, companyId: number,
+  options: Options, unselectedForDraft = false,
+) {
   const entries = await directoryEntries(client, user, companyId);
   const visible = (key: string) => {
     const entry = entries.find(page => page.key === key);
@@ -106,7 +109,11 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
   };
   const order = `${orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
-  values.push(options.pageSize, (options.page - 1) * options.pageSize);
+  // Draft export deliberately ignores list pagination; its entire filtered
+  // company-wide complement is fetched in ONE authorized query. Never quietly
+  // return only the first 50/100 or truncate a large result.
+  if (!unselectedForDraft)
+    values.push(options.pageSize, (options.page - 1) * options.pageSize);
   const limit = `$${values.length - 1}`, offset = `$${values.length}`;
   const sql = `
     WITH candidate AS (
@@ -155,10 +162,31 @@ async function filteredItems(client: PoolClient, user: ReturnType<typeof actor>,
       ${needsCoverageJoin ? itemCoverageJoin : ""}
     ),
     filtered AS (SELECT * FROM metrics m ${predicates.length ? `WHERE ${predicates.join(" AND ")}` : ""})
+    ${unselectedForDraft ? `
+    SELECT f.id, f.code, f.name
+    FROM filtered f
+    WHERE NOT EXISTS (
+      SELECT 1 FROM company_item_temporary_selections chosen
+      WHERE chosen.company_id=$1 AND chosen.item_id=f.id
+    )
+    ORDER BY ${order} LIMIT 2001
+    ` : `
     SELECT counts.total, f.*
     FROM (SELECT COUNT(*)::integer AS total FROM filtered) counts
-    LEFT JOIN LATERAL (SELECT * FROM filtered f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE`;
+    LEFT JOIN LATERAL (SELECT * FROM filtered f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
+    `}`;
   const rows = (await client.query(sql, values)).rows;
+  if (unselectedForDraft) {
+    if (rows.length > 2000) throw new HttpError(413, "too_many_draft_items",
+      "تتجاوز القائمة 2000 صنف غير مختار؛ ضيّق خيارات التصفية ثم أعد المحاولة. لم تُضف مسودة جزئية.");
+    return {
+      items: rows.map(row => ({
+        id: Number(row.id), code: String(row.code), name: String(row.name),
+      })),
+      total: rows.length,
+      asOf,
+    };
+  }
   const selected = rows.filter(row => row.id !== null).map(row => ({
     id: Number(row.id), code: String(row.code), name: String(row.name),
     active: Boolean(row.active), revision: Number(row.revision),
@@ -356,6 +384,15 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         { field: "purchaseFactor", value: Number(updated.purchase_factor) }, companyId);
       return { itemId, revision: Number(updated.revision), purchaseFactor: Number(updated.purchase_factor) };
     });
+    res.json({ result });
+  }));
+  // This read-only endpoint uses exactly the same applied filters/sort as the
+  // table, but excludes the shared selection at SQL level on EVERY page.
+  // It never creates a purchase order or changes shared checkmarks.
+  router.get("/companies/:companyId/item-options-list/unselected", handler(async (req, res) => {
+    const options = parse(querySchema, req.query);
+    const result = await readItems(pool, req,
+      (client, companyId) => filteredItems(client, actor(req), companyId, options, true));
     res.json({ result });
   }));
   router.get("/companies/:companyId/item-options-list", handler(async (req, res) => {

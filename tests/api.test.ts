@@ -4061,6 +4061,7 @@ test("item options filter immutable previous-year sale times and mutable reserve
   const platform=await owner(f);
   const co=await company(platform.client,"Previous-year pharmacy");
   const foreign=await company(platform.client,"Other pharmacy");
+  const outsider = await register(f,"unselected-list-outsider@example.test");
   const prefix=`/companies/${co.id}`;
   async function add(companyId:number,name:string,legacyId:string,reserveQuantity:string){
     const currencyPage=await platform.client.ok<Page<{id:number;code:string}>>("GET",`/companies/${companyId}/currencies`);
@@ -4118,4 +4119,25 @@ test("item options filter immutable previous-year sale times and mutable reserve
   assert.equal(otherList.total,1); assert.equal(otherList.rows[0]!.itemId,other);
   assert.equal((await platform.client.request("GET",prefix+"/item-options-list?reserveMin=bad")).status,400);
   assert.equal((await platform.client.request("GET",prefix+"/item-options-list?previousYearMax=bad")).status,400);
+
+  // Draft candidates must include all filtered pages even if a caller asks
+  // for a later page, and must exclude shared checkmarks in PostgreSQL.
+  const unselectedBase = prefix+"/item-options-list/unselected?page=99&pageSize=20";
+  type UnselectedResult={result:{items:{id:number;code:string;name:string}[];total:number}};
+  const allUnselected = await platform.client.ok<UnselectedResult>("GET",unselectedBase);
+  assert.equal(allUnselected.result.total,3);
+  assert.deepEqual(new Set(allUnselected.result.items.map(item=>item.id)),
+    new Set([first,second,third]));
+  await platform.client.ok("PATCH",`${prefix}/item-temporary-selection/${second}`,{checked:true});
+  const afterCheck = await platform.client.ok<UnselectedResult>("GET",unselectedBase);
+  assert.equal(afterCheck.result.total,2);
+  assert.deepEqual(new Set(afterCheck.result.items.map(item=>item.id)),
+    new Set([first,third]));
+  const filteredUnselected = await platform.client.ok<UnselectedResult>("GET",
+    unselectedBase+"&previousYearMin=480&previousYearMax=500");
+  assert.equal(filteredUnselected.result.total,1);
+  assert.equal(filteredUnselected.result.items[0]!.id,first);
+  assert.equal((await platform.client.request("GET",
+    unselectedBase+"&reserveMin=bad")).status,400);
+  assert.equal((await outsider.client.request("GET",unselectedBase)).status,403);
 });

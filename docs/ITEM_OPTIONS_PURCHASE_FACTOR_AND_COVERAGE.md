@@ -10,3 +10,6 @@
 - توجد اختبارات موثقة في `tests/item-options-purchase-factor-coverage.test.ts`، ويجري TypeScript والبناء ضمن Docker لـ Render قبل التشغيل.
 
 إذا اعتمد معنى محدد لمعادلة تحويل عامل الشراء إلى وحدة أخرى لاحقًا، تُراجع معادلة كفاية هذا العمود فقط، دون تعديل عمليات البيع والمخزون.
+
+
+See also docs/ITEM_OPTIONS_UNSELECTED_FULL_FILTER_DRAFT.md for the later 2026-11-04 reversal of the order-draft button (all unselected from full filtered results, cap 2,000; unchanged item purchase-factor semantics).

@@ -82,6 +82,35 @@ export function useTemporaryItemList(
       return next;
     }), [mutate]);
 
+  // Bulk additions must be all-or-nothing. The ordinary addMany operation
+  // may skip items at its storage limit, which must never happen for a
+  // company-wide filtered draft action.
+  const addManyExact = useCallback((incoming: TemporaryChosenItem[]) => {
+    if (!key) return false;
+    try {
+      const before = readItems(key);
+      const seen = new Set(before.map(item => item.id));
+      const next = [...before];
+      for (const item of incoming) {
+        if (seen.has(item.id)) continue;
+        if (next.length >= MAX_ITEMS) {
+          setError(`سعة مسودة الطلبية ${MAX_ITEMS} صنف. احذف من المسودة بعض الأصناف أو ضيّق الفلتر؛ لم يُضف أي صنف من الدفعة.`);
+          return false;
+        }
+        seen.add(item.id);
+        next.push(item);
+      }
+      window.localStorage.setItem(key, JSON.stringify(next));
+      setItems(next);
+      setError("");
+      window.dispatchEvent(new CustomEvent(EVENT, { detail: key }));
+      return true;
+    } catch {
+      setError("تعذر حفظ جميع الأصناف على هذا الجهاز. لم تُحفظ دفعة جزئية؛ تحقق من مساحة التخزين.");
+      return false;
+    }
+  }, [key]);
+
   const clear = useCallback(() => mutate(() => []), [mutate]);
-  return { items, toggle, addMany, clear, error, enabled: !!key };
+  return { items, toggle, addMany, addManyExact, clear, error, enabled: !!key };
 }
