@@ -35,6 +35,8 @@ export const itemOptionsPresetFiltersSchema = z.object({
   excludeZero: z.boolean(),
   // Old saved presets without this field must keep the new safe default.
   excludeOrderStopped: z.boolean().default(true),
+  // Drafts are stored on the current device; older presets default to excluding them.
+  excludeOrderDrafts: z.boolean().default(true),
   useReserve: z.boolean(),
   sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
