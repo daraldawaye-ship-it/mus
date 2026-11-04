@@ -172,3 +172,34 @@ test("rounded first-unit quantities are also exact multiples of smallest-unit pu
   assert.deepEqual(expected(17n,12n,12n), {firstUnits:2n,smallest:24n});
   assert.deepEqual(expected(17n,100n,1n), {firstUnits:1n,smallest:100n});
 });
+
+
+test("item-options totals aggregate all filtered items by currency; derived sorts are database-wide", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const schema = read("packages/contracts/src/item-options-presets.ts");
+  assert.match(api, /replenishment AS MATERIALIZED/);
+  assert.match(api, /FROM filtered f\s+JOIN items i/);
+  assert.match(api, /SUM\(order_value\)::text/);
+  assert.match(api, /GROUP BY currency_code/);
+  assert.match(api, /jsonb_agg\(jsonb_build_object\(/);
+  assert.match(api, /requiredPurchaseValueTotals:/);
+  assert.match(api, /SELECT \* FROM replenishment f ORDER BY \$\{order\} LIMIT \$\{limit\} OFFSET \$\{offset\}/);
+  assert.match(api, /options\.coverageMax \?\? "30"/);
+  assert.match(api, /options\.useReserve \? "true" : "false"/);
+  assert.match(api, /purchasePrice: "f\.purchase_price"/);
+  assert.match(api, /saleQuantityMonth: "f\.sale_quantity_month"/);
+  assert.match(api, /requiredPurchaseQuantity: "f\.order_quantity_first_unit"/);
+  assert.match(api, /requiredPurchaseValue: "f\.order_value"/);
+  assert.match(api, /coverageWithRequired: "f\.projected_coverage_days"/);
+  for(const key of [
+    "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity",
+    "requiredPurchaseValue", "coverageWithRequired"
+  ]) {
+    assert.ok(ui.includes(`sortHeader("${key}"`), "sortable header: " + key);
+    assert.ok(schema.includes(`"${key}"`), "saved preset sort: " + key);
+  }
+  assert.match(ui, /إجمالي قيمة المطلوب:/);
+  assert.match(ui, /result\.requiredPurchaseValueTotals\.map/);
+  assert.match(ui, /formatAmountGroup\(entry\.value\)/);
+});
