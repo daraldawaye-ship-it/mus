@@ -206,7 +206,7 @@ async function filteredItems(
     availableUnit1: String(row.available_unit1),
     saleTimesMonth: String(row.sale_times_month),
     // Keep exact cached quantity but hide decimal zeros in the display.
-    saleQuantityMonth: String(row.sale_quantity_month).replace(/\.0+$/, ""),
+    saleQuantityMonth: String(row.sale_quantity_month).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     saleTimesFourMonths: String(row.sale_times_four_months),
     saleTimesAllTime: String(row.sale_times_all_time),
     saleTimesPreviousYear: String(row.sale_times_previous_year),
