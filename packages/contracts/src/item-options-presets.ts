@@ -19,6 +19,9 @@ export const itemOptionsPresetFiltersSchema = z.object({
   monthMax: numericRange,
   fourMonthsMin: numericRange,
   fourMonthsMax: numericRange,
+  // Old saved filters had no rolling-year condition; keep their matched set.
+  yearMin: numericRange.default(""),
+  yearMax: numericRange.default(""),
   allTimeMin: numericRange,
   allTimeMax: numericRange,
   previousYearMin: numericRange.default(""),
@@ -33,7 +36,7 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // Old saved presets without this field must keep the new safe default.
   excludeOrderStopped: z.boolean().default(true),
   useReserve: z.boolean(),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
 }).strict();
 export const itemOptionsPresetCreateSchema = z.object({
