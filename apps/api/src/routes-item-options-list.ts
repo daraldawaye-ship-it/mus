@@ -122,12 +122,12 @@ async function filteredItems(
   // return only the first 50/100 or truncate a large result.
   if (!unselectedForDraft)
     values.push(options.pageSize, (options.page - 1) * options.pageSize);
-  const limit = `${values.length - 1}`, offset = `${values.length}`;
+  const limit = "$" + (values.length - 1), offset = "$" + values.length;
   // Totals always cover the entire matching filter, never the requested page.
   // Keep the replenishment target and reserve switch identical to the row values.
   if (!unselectedForDraft) values.push(options.coverageMax ?? "30", options.useReserve ? "true" : "false");
-  const targetParam = `${values.length - 1}`;
-  const reserveParam = `${values.length}`;
+  const targetParam = "$" + (values.length - 1);
+  const reserveParam = "$" + values.length;
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
