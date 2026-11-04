@@ -57,7 +57,7 @@ export function createMarketApp(pool: Pool, secret: string) {
     },
   };
   app.use("/api", medicineMarketRoutes(pool, access, true));
-  app.use((_req, res) => res.status(404).json({ error: { code: "not_found", message: "المسار غير موجود" } }));
+  app.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "المسار غير موجود", ...(req.auth?.user.owner ? {route: req.path, service: "market-staging-v1"} : {}) } }));
   const errors: ErrorRequestHandler = (error: unknown, _req, res, next) => {
     if (res.headersSent) return next(error);
     if (error instanceof HttpError) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
@@ -72,4 +72,3 @@ export function createMarketApp(pool: Pool, secret: string) {
   app.use(errors);
   return app;
 }
-
