@@ -9,7 +9,7 @@ import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
-import { useTemporaryItemList } from "../temporary-item-list";
+import { useTemporaryItemList, type TemporaryChosenItem } from "../temporary-item-list";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
@@ -87,6 +87,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const temporaryOrder = useTemporaryItemList(companyId, user?.id, "order");
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
   const [showOrderDraft, setShowOrderDraft] = useState(false);
+  const [addingUnselected, setAddingUnselected] = useState(false);
+  const [bulkAddError, setBulkAddError] = useState("");
   const [printMode, setPrintMode] = useState<"selected" | "order">("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
@@ -194,11 +196,39 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     if (await temporarySelection.clear())
       setActionMessage("تم تصفير الاختيارات المشتركة على مستوى الشركة، ويمكن بدء مهمة جديدة من أي جهاز.");
   }
-  function addToOrderDraft() {
-    if (!temporarySelection.items.length) return;
-    if (temporaryOrder.addMany(temporarySelection.items)) {
-      setShowOrderDraft(true);
-      setActionMessage("نُسخت الأصناف المشتركة إلى مسودة الطلبية المحلية على هذا الجهاز دون تكرار؛ لم تُنشأ طلبية شراء رسمية.");
+  // Reverse of the company-wide temporary checkmarks: collect every matching
+  // UNSELECTED item, not just the 50 visible on the current page.
+  async function addUnselectedToOrderDraft() {
+    if (!canView || !result || addingUnselected || resultQuery.isFetching ||
+        temporarySelection.updating || applyingFilter) return;
+    setAddingUnselected(true);
+    setBulkAddError("");
+    setActionMessage("");
+    try {
+      const filters = new URLSearchParams(request);
+      filters.delete("page");
+      filters.delete("pageSize");
+      const response = await api<{ result: { items: TemporaryChosenItem[]; total: number } }>(
+        `/companies/${companyId}/item-options-list/unselected?${filters.toString()}`,
+      );
+      const candidates = response.result.items;
+      if (!candidates.length) {
+        setActionMessage("جميع الأصناف المطابقة للفلاتر محددة مؤقتًا؛ لا توجد أصناف غير مختارة لإضافتها.");
+        return;
+      }
+      // addManyExact refuses overflowing the local working-list capacity
+      // instead of silently keeping only a subset of the filtered results.
+      if (!temporaryOrder.addManyExact(candidates)) return;
+      if (candidates.length <= 100) setShowOrderDraft(true);
+      const previousIds = new Set(temporaryOrder.items.map(item => item.id));
+      const newCount = candidates.filter(item => !previousIds.has(item.id)).length;
+      setActionMessage(
+        `تمت إضافة ${newCount.toLocaleString("en-US")} صنفًا جديدًا إلى المسودة من أصل ${response.result.total.toLocaleString("en-US")} صنف غير مختار في جميع نتائج الفلتر، دون تكرار أو إنشاء طلبية رسمية.`,
+      );
+    } catch (reason) {
+      setBulkAddError(`تعذر إضافة جميع الأصناف غير المختارة: ${errorMessage(reason)}`);
+    } finally {
+      setAddingUnselected(false);
     }
   }
   const change = (key: string, value: string) => {
@@ -426,6 +456,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     {temporarySelection.error && <Notice tone="error">{temporarySelection.error}</Notice>}
     {temporarySelection.updating && <small className="muted" role="status">جارٍ حفظ الاختيارات المشتركة…</small>}
     {temporaryOrder.error && <Notice tone="error">{temporaryOrder.error}</Notice>}
+    {bulkAddError && <Notice tone="error">{bulkAddError}</Notice>}
     {!optionsCollapsed && <Card title="خيارات قائمة الأصناف" className="item-options-filters-card">
       <form onSubmit={apply}>
         <div className="item-options-filter-scroll" role="region"
@@ -518,8 +549,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     <Card title="نتائج قائمة الأصناف">
       <div className="item-options-selection-tools">
         <span>الاختيار المؤقت المشترك للشركة: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
-        <Button variant="secondary" disabled={!temporarySelection.items.length}
-          onClick={addToOrderDraft}>إضافة المختارة إلى مسودة طلبية</Button>
+        <Button variant="secondary"
+          disabled={!canView || !result || !result.total || addingUnselected ||
+            resultQuery.isFetching || applyingFilter || temporarySelection.updating || !temporaryOrder.enabled}
+          onClick={() => void addUnselectedToOrderDraft()}>
+          {addingUnselected ? "جارٍ إضافة كل غير المختارة…" : "إضافة جميع الأصناف غير المختارة إلى مسودة طلبية"}
+        </Button>
         <Button variant="secondary" onClick={() => setShowOrderDraft(value => !value)}>
           {showOrderDraft ? "إخفاء مسودة الطلبية" : `مسودة الطلبية (${temporaryOrder.items.length})`}
         </Button>
