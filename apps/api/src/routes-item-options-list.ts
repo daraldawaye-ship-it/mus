@@ -169,7 +169,7 @@ async function filteredItems(
       SELECT 1 FROM company_item_temporary_selections chosen
       WHERE chosen.company_id=$1 AND chosen.item_id=f.id
     )
-    ORDER BY ${order} LIMIT 50001
+    ORDER BY ${order} LIMIT 2001
     ` : `
     SELECT counts.total, f.*
     FROM (SELECT COUNT(*)::integer AS total FROM filtered) counts
@@ -177,8 +177,8 @@ async function filteredItems(
     `}`;
   const rows = (await client.query(sql, values)).rows;
   if (unselectedForDraft) {
-    if (rows.length > 50000) throw new HttpError(413, "too_many_draft_items",
-      "تتجاوز القائمة 50000 صنف غير مختار؛ ضيّق خيارات التصفية ثم أعد المحاولة. لم تُضف مسودة جزئية.");
+    if (rows.length > 2000) throw new HttpError(413, "too_many_draft_items",
+      "تتجاوز القائمة 2000 صنف غير مختار؛ ضيّق خيارات التصفية ثم أعد المحاولة. لم تُضف مسودة جزئية.");
     return {
       items: rows.map(row => ({
         id: Number(row.id), code: String(row.code), name: String(row.name),
