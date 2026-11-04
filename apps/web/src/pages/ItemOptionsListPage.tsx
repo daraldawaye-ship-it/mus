@@ -704,7 +704,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <col className="item-options-stock-col" />
             <col className="item-options-reserve-col" />
             <col className="item-options-purchase-factor-col" />
-            <col span={9} />
+            <col className="item-options-month-times-col" />
+            <col className="item-options-month-quantity-col" />
+            <col className="item-options-four-months-col" />
+            <col className="item-options-all-time-col" />
+            <col className="item-options-previous-year-col" />
+            <col className="item-options-required-quantity-col" />
+            <col className="item-options-coverage-col" />
+            <col className="item-options-reserve-coverage-col" />
+            <col className="item-options-factor-coverage-col" />
           </colgroup>
           <thead><tr>
             <th scope="col" className="item-options-choice-cell">اختيار</th>
