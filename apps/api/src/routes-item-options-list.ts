@@ -38,7 +38,7 @@ const querySchema = z.object({
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -106,7 +106,12 @@ async function filteredItems(
   const orders: Record<Options["sortBy"], string> = {
     code: "f.code", name: "f.name", stock: "f.available_unit1",
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
-    month: "f.sale_times_month", fourMonths: "f.sale_times_four_months",
+    month: "f.sale_times_month", saleQuantityMonth: "f.sale_quantity_month",
+    purchasePrice: "f.purchase_price",
+    requiredPurchaseQuantity: "f.order_quantity_first_unit",
+    requiredPurchaseValue: "f.order_value",
+    coverageWithRequired: "f.projected_coverage_days",
+    fourMonths: "f.sale_times_four_months",
     allTime: "f.sale_times_all_time",
     coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
@@ -182,29 +187,43 @@ async function filteredItems(
       SELECT 1 FROM company_item_temporary_selections chosen
       WHERE chosen.company_id=$1 AND chosen.item_id=f.id
     )
-    ORDER BY ${order} LIMIT 2001
+    ORDER BY ${["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"].includes(options.sortBy) ? "f.code ASC, f.id ASC" : order} LIMIT 2001
     ` : `
-    , order_costs_by_currency AS (
-      -- Only derived read projections are consulted; there is no invoice or
-      -- stock write. Sum every matched item (even on other pages) by currency.
-      SELECT due.currency_code, SUM(due.purchase_value)::text AS purchase_value
-      FROM (
-        SELECT f.currency_code,
-          round(f.purchase_price * (
-            ceil(greatest(0::numeric,
-              coverage_rate.sales * greatest(${targetParam}::numeric,0) / coverage_rate.days
-              + CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END
-              - coverage_rate.quantity
-            ) / lcm(greatest(i.purchase_factor::bigint,1),
-                     greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric)
-            * lcm(greatest(i.purchase_factor::bigint,1),
-                  greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric
-            / greatest(i.factor2::numeric*i.factor3::numeric,1)
-          ),4) AS purchase_value
-        FROM filtered f JOIN items i ON i.company_id=f.company_id AND i.id=f.id
-        ${itemCoverageJoin}
-      ) due
-      GROUP BY due.currency_code
+    , replenishment AS MATERIALIZED (
+      -- Compute exactly once for EVERY filtered item, allowing a global order
+      -- and aggregate even when only 20/50/100 items appear on screen.
+      SELECT f.*,
+        requested.quantity_smallest / purchase_lot.first_unit_smallest AS order_quantity_first_unit,
+        round(f.purchase_price * (requested.quantity_smallest /
+          purchase_lot.first_unit_smallest),4) AS order_value,
+        CASE WHEN coverage_rate.sales <= 0
+          THEN CASE WHEN greatest(coverage_rate.quantity + requested.quantity_smallest
+                - CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END,0) = 0
+            THEN 0::numeric ELSE 9999::numeric END
+          ELSE round(greatest(coverage_rate.quantity + requested.quantity_smallest
+                - CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END,0)
+                * coverage_rate.days / coverage_rate.sales,2)
+        END AS projected_coverage_days
+      FROM filtered f
+      JOIN items i ON i.company_id=f.company_id AND i.id=f.id
+      ${itemCoverageJoin}
+      CROSS JOIN LATERAL (
+        SELECT greatest(i.factor2::bigint*i.factor3::bigint,1)::numeric AS first_unit_smallest,
+               lcm(greatest(i.purchase_factor::bigint,1),
+                   greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric AS minimum_lot_smallest
+      ) purchase_lot
+      CROSS JOIN LATERAL (
+        SELECT ceil(greatest(0::numeric,
+          coverage_rate.sales * greatest(${targetParam}::numeric,0) / coverage_rate.days
+          + CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END
+          - coverage_rate.quantity
+        ) / purchase_lot.minimum_lot_smallest) * purchase_lot.minimum_lot_smallest
+          AS quantity_smallest
+      ) requested
+    ),
+    order_costs_by_currency AS (
+      SELECT currency_code, SUM(order_value)::text AS purchase_value
+      FROM replenishment GROUP BY currency_code
     )
     SELECT counts.total, currency_totals.required_purchase_value_totals, f.*
     FROM (SELECT COUNT(*)::integer AS total FROM filtered) counts
@@ -214,7 +233,7 @@ async function filteredItems(
         '[]'::jsonb) AS required_purchase_value_totals
       FROM order_costs_by_currency
     ) currency_totals
-    LEFT JOIN LATERAL (SELECT * FROM filtered f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
+    LEFT JOIN LATERAL (SELECT * FROM replenishment f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
     `}`;
   const rows = (await client.query(sql, values)).rows;
   if (unselectedForDraft) {
