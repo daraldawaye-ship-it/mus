@@ -35,16 +35,35 @@ export const itemCoverageJoin = `
  LEFT JOIN item_statistics coverage_stock
    ON coverage_stock.company_id=i.company_id AND coverage_stock.item_id=i.id
  CROSS JOIN LATERAL (
-   SELECT coalesce(sum(d.sale_quantity-d.sale_return_quantity) FILTER (
+   SELECT coalesce(sum(d.net_sales) FILTER (
        WHERE d.document_date >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
          - interval '1 month' + interval '1 day')::date
      ),0) AS month_sales,
-     coalesce(sum(d.sale_quantity-d.sale_return_quantity),0) AS four_month_sales
-   FROM item_daily_activity d
-   WHERE d.company_id=i.company_id AND d.item_id=i.id
-     AND d.document_date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
-     AND d.document_date >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
-       - interval '4 months' + interval '1 day')::date
+     coalesce(sum(d.net_sales),0) AS four_month_sales
+   FROM (
+     -- Planning only: append indexed staged facts and explicit historic unit
+     -- corrections. No adjustments to canonical stock or daily activity.
+     SELECT document_date, sale_quantity-sale_return_quantity AS net_sales
+     FROM item_daily_activity
+     WHERE company_id=i.company_id AND item_id=i.id
+       AND document_date BETWEEN ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+           - interval '4 months' + interval '1 day')::date
+         AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+     UNION ALL
+     SELECT document_date, sale_quantity-sale_return_quantity AS net_sales
+     FROM staged_item_daily_activity_cache
+     WHERE company_id=i.company_id AND item_id=i.id
+       AND document_date BETWEEN ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+           - interval '4 months' + interval '1 day')::date
+         AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+     UNION ALL
+     SELECT document_date, quantity_delta AS net_sales
+     FROM legacy_sales_planning_daily_deltas
+     WHERE company_id=i.company_id AND item_id=i.id
+       AND document_date BETWEEN ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+           - interval '4 months' + interval '1 day')::date
+         AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Aden')::date
+   ) d
  ) coverage_sales
  CROSS JOIN LATERAL (
    SELECT CASE WHEN coverage_sales.month_sales < 2
