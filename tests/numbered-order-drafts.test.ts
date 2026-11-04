@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
-  MAX_NEW_ORDER_DRAFT_ITEMS,
+  MAX_NEW_ORDER_DRAFT_ITEMS, ORDER_DRAFT_LIFETIME_MS,
 } from "../apps/web/src/numbered-order-drafts-core.ts";
 
 const item = (id: number) => ({ id, name: `صنف ${id}`, code: String(id) });
@@ -101,4 +101,48 @@ test("UI shows per-draft print, delete and migration, not a single global draft"
   assert.match(store,/alraesy:order-drafts:v2:/);
   assert.match(store,/readOrderDrafts\(key, oldKey\)/);
   assert.match(store,/window\.localStorage\.setItem\(key, JSON\.stringify\(migrated\)\)/);
+});
+
+
+test("each order draft expires exactly eight hours after its own creation", () => {
+  const start = Date.parse("2026-11-05T10:00:00.000Z");
+  assert.equal(ORDER_DRAFT_LIFETIME_MS, 8 * 60 * 60 * 1000);
+  const first = createNumberedOrderDraft(emptyOrderDraftState(), [item(1)], start);
+  const later = createNumberedOrderDraft(first.state, [item(2)], start + 60_000);
+  assert.equal(first.state.drafts[0].createdAt, new Date(start).toISOString());
+  assert.equal(later.state.drafts[1].createdAt, new Date(start + 60_000).toISOString());
+  const stillThere = normalizeOrderDrafts(later.state, start + ORDER_DRAFT_LIFETIME_MS - 1);
+  assert.deepEqual(stillThere.drafts.map(d => d.id), [1,2]);
+  const afterFirstExpires = normalizeOrderDrafts(later.state, start + ORDER_DRAFT_LIFETIME_MS);
+  assert.deepEqual(afterFirstExpires.drafts.map(d => d.id), [2]);
+  assert.equal(afterFirstExpires.nextId, 3);
+  const afterBothExpire = normalizeOrderDrafts(later.state, start + ORDER_DRAFT_LIFETIME_MS + 60_000);
+  assert.deepEqual(afterBothExpire.drafts, []);
+  assert.equal(afterBothExpire.nextId, 3, "Never reuse old draft number");
+  const newDraft = createNumberedOrderDraft(afterBothExpire, [item(1)], start + ORDER_DRAFT_LIFETIME_MS + 60_000);
+  assert.equal(newDraft.id, 3);
+  assert.equal(newDraft.added, 1, "Expired IDs become eligible for a new order");
+});
+
+test("unknown-age existing drafts receive a fresh, persisted eight-hour window", () => {
+  const now = Date.parse("2026-11-05T10:00:00.000Z");
+  const legacy = {nextId:4, drafts:[{id:3,items:[item(7)]}]};
+  const migrated = normalizeOrderDrafts(legacy, now);
+  assert.equal(migrated.drafts[0].createdAt, new Date(now).toISOString());
+  assert.deepEqual(normalizeOrderDrafts(migrated, now + ORDER_DRAFT_LIFETIME_MS - 1).drafts.map(x=>x.id), [3]);
+  assert.deepEqual(normalizeOrderDrafts(migrated, now + ORDER_DRAFT_LIFETIME_MS).drafts, []);
+  const oldSingle = migrateLegacyOrderDraft([item(8)], now);
+  assert.equal(oldSingle.drafts[0].createdAt,new Date(now).toISOString());
+  assert.deepEqual(normalizeOrderDrafts(oldSingle, now + ORDER_DRAFT_LIFETIME_MS).drafts, []);
+});
+
+test("device-local draft hook persists expiry and handles sleeping tabs", () => {
+  const hook = readFileSync("apps/web/src/numbered-order-drafts.ts", "utf8");
+  assert.match(hook,/refreshOrderDrafts\(key, oldKey\)/);
+  assert.match(hook,/window\.localStorage\.setItem\(key, serialized\)/);
+  assert.match(hook,/Date\.parse\(draft\.createdAt\) \+ ORDER_DRAFT_LIFETIME_MS/);
+  assert.match(hook,/window\.setTimeout/);
+  assert.match(hook,/window\.setInterval\(refreshCurrent, 60_000\)/);
+  assert.match(hook,/document\.addEventListener\("visibilitychange", onVisibility\)/);
+  assert.match(hook,/window\.addEventListener\("focus", refreshCurrent\)/);
 });
