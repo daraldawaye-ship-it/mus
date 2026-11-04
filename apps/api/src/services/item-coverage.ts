@@ -164,11 +164,11 @@ export async function requiredPurchaseQuantitiesToPage(
                 AS minimum_lot_smallest
      ) purchase_lot
      CROSS JOIN LATERAL (
-       SELECT ceil(greatest(0::numeric,
+       SELECT greatest(1::numeric, ceil(greatest(0::numeric,
          coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
          + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
          - coverage_rate.quantity
-       ) / purchase_lot.minimum_lot_smallest) * purchase_lot.minimum_lot_smallest
+       ) / purchase_lot.minimum_lot_smallest)) * purchase_lot.minimum_lot_smallest
          AS quantity_smallest
      ) requested
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
