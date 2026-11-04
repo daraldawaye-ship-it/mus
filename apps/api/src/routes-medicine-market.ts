@@ -1,3 +1,4 @@
+import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { Router, type Request } from "express";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { z } from "zod";
@@ -510,10 +511,11 @@ export interface MarketAccess {
   enabled: typeof defaultEnabled;
 }
 
-export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router {
+export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingIsolated = false): Router {
   const viewer = access?.viewer ?? defaultViewer;
   const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
+  router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
   // Market audit stays with market data after isolation; never joins a company ledger.
   router.get(root + "/audit", handler(async (req, res) => {
     const u = (await viewer(pool, req)) ?? actor(req);
@@ -1207,3 +1209,4 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess): Router 
   );
   return router;
 }
+

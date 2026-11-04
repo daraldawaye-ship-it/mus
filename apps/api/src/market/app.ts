@@ -56,7 +56,7 @@ export function createMarketApp(pool: Pool, secret: string) {
       if (context.disabledPages.includes("public.medicine-market") || context.disabledPages.some(key => key === `public.${section}`)) deny("هذه الصفحة موقوفة حاليًا");
     },
   };
-  app.use("/api", medicineMarketRoutes(pool, access));
+  app.use("/api", medicineMarketRoutes(pool, access, true));
   app.use((_req, res) => res.status(404).json({ error: { code: "not_found", message: "المسار غير موجود" } }));
   const errors: ErrorRequestHandler = (error: unknown, _req, res, next) => {
     if (res.headersSent) return next(error);
@@ -72,3 +72,4 @@ export function createMarketApp(pool: Pool, secret: string) {
   app.use(errors);
   return app;
 }
+

@@ -2782,22 +2782,43 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
-        "source": {"type": "string", "const": "Table13.xlsx"},
-        "dryRun": {"type": "boolean", "default": true},
+        "source": {
+          "type": "string",
+          "const": "Table13.xlsx"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "default": true
+        },
         "items": {
-          "type": "array", "minItems": 1, "maxItems": 100,
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
           "items": {
             "type": "object",
             "properties": {
-              "legacyId": {"type": "string", "pattern": "^[0-9]{1,100}$"},
-              "purchaseFactor": {"type": "integer", "minimum": 1, "maximum": 1000000}
+              "legacyId": {
+                "type": "string",
+                "pattern": "^[0-9]{1,100}$"
+              },
+              "purchaseFactor": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
             },
-            "required": ["legacyId", "purchaseFactor"],
+            "required": [
+              "legacyId",
+              "purchaseFactor"
+            ],
             "additionalProperties": false
           }
         }
       },
-      "required": ["source", "items"],
+      "required": [
+        "source",
+        "items"
+      ],
       "additionalProperties": false
     },
     "source": "routes-item-import.ts"
@@ -8346,5 +8367,46 @@
       "medicalOnly"
     ],
     "source": "routes-doctor-sales-report.ts"
+  },
+  "POST /medicine-market/staging/import": {
+    "source": "routes-market-staging.ts",
+    "queryFields": [],
+    "bodyContract": "stagingImportSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "HTTPS signed transfer URL at sdmntpr*.oaiusercontent.com /files/<id>/raw. Gzip NDJSON only; no redirects."
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "sha256",
+        "url"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "GET /medicine-market/staging": {
+    "source": "routes-market-staging.ts",
+    "queryFields": []
+  },
+  "GET /medicine-market/staging/:sourceId/rows": {
+    "source": "routes-market-staging.ts",
+    "queryFields": [
+      "after",
+      "section",
+      "pageSize"
+    ]
   }
 }
