@@ -28,6 +28,8 @@ const ranges = [
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
   { key: "fourMonthsMax", label: "المبيعات مرات في 4 أشهر إلى" },
+  { key: "yearMin", label: "المبيعات مرات في عام من" },
+  { key: "yearMax", label: "المبيعات مرات في عام إلى" },
   { key: "allTimeMin", label: "المبيعات مرات منذ البداية من" },
   { key: "allTimeMax", label: "المبيعات مرات منذ البداية إلى" },
   { key: "previousYearMin", label: "مرات عام السابق من" },
@@ -48,6 +50,7 @@ function readDraft(params: URLSearchParams): Draft {
     purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
     monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
+    yearMin: params.get("yearMin") ?? "2", yearMax: params.get("yearMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "1",
@@ -65,7 +68,7 @@ type Row = {
   purchasePrice: string; purchaseCurrencyCode: string;
   requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
-  availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string;
+  availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string; saleTimesYear: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
   approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
@@ -88,7 +91,7 @@ const sortOptions = [
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
   ["purchaseFactor", "عامل وحدة الشراء"],
   ["month", "مرات المبيعات في شهر"], ["saleQuantityMonth", "الكمية المباعة في شهر"],
-  ["fourMonths", "مرات المبيعات في 4 أشهر"], ["allTime", "مرات المبيعات منذ البداية"],
+  ["fourMonths", "مرات المبيعات في 4 أشهر"], ["year", "مرات المبيعات في عام"], ["allTime", "مرات المبيعات منذ البداية"],
   ["previousYear", "مرات عام السابق"],
   ["requiredPurchaseQuantity", "الكمية المطلوبة"],
   ["purchasePrice", "سعر الشراء الافتراضي"],
@@ -162,7 +165,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   for (const { key } of ranges) {
     // Absent parameters get defaults; an explicitly blank value remains unbounded.
     const value = (params.get(key) ??
-      (key === "monthMin" || key === "coverageMax" ? "1" : "")).trim();
+      (key === "monthMin" || key === "coverageMax" ? "1" : key === "yearMin" ? "2" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
@@ -310,7 +313,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         // Preserve an explicitly empty quantity range so the user can request
         // "without limit" instead of silently restoring the default of 1.
         if (value || key === "stockMin" || key === "stockMax" ||
-            key === "monthMin" || key === "coverageMax")
+            key === "monthMin" || key === "yearMin" || key === "coverageMax")
           next.set(key, value);
         else next.delete(key);
       }
@@ -404,7 +407,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reset() {
     setFilterError("");
     const defaults = new URLSearchParams({
-      monthMin: "1", coverageMax: "1",
+      monthMin: "1", yearMin: "2", coverageMax: "1",
       sortBy: "allTime", sortDir: "desc",
     });
     setDraft(readDraft(defaults));
@@ -699,7 +702,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
               <div className="item-options-mobile-stat">
-                <span>كمية مباعة في شهر (أصغر وحدة)</span><bdi>{row.saleQuantityMonth}</bdi>
+                <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi>{row.saleQuantityMonth}</bdi>
               </div>
               <div className="item-options-mobile-stat">
                 <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
@@ -764,7 +767,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
             {sortHeader("month", "مبيعات مرات في شهر")}
-            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (أصغر وحدة)")}
+            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (الوحدة الأولى)")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
