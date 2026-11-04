@@ -80,7 +80,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(coverage, /ceil\(greatest\(0::numeric/);
   assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
   assert.match(ui, /monthMin: params\.get\("monthMin"\) \?\? "1"/);
-  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "2"/);
+  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "1"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
   assert.doesNotMatch(ui, /<input type="number" step="any"/);
   assert.match(ui, /colSpan=\{17\}/);
@@ -102,7 +102,7 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)\.replace\(/);
   assert.match(ui, /row\.saleQuantityMonth/);
   assert.match(ui, /stockMin: params\.get\("stockMin"\) \?\? "", stockMax: params\.get\("stockMax"\) \?\? ""/);
-  assert.match(ui, /monthMin: "1", coverageMax: "2"/);
+  assert.match(ui, /monthMin: "1", coverageMax: "1"/);
   assert.match(ui, /<th scope="col" className="item-options-choice-cell">اختيار<\/th>/);
   assert.doesNotMatch(ui, /<th scope="col">اختيار مؤقت<\/th>/);
   assert.doesNotMatch(ui, /<span>\{temporarySelection\.pendingIds\.has\(row\.itemId\) \? "حفظ/);
@@ -202,4 +202,28 @@ test("item-options totals aggregate all filtered items by currency; derived sort
   assert.match(ui, /إجمالي قيمة المطلوب:/);
   assert.match(ui, /result\.requiredPurchaseValueTotals\.map/);
   assert.match(ui, /formatAmountGroup\(entry\.value\)/);
+});
+
+
+test("item-options stop-order control excludes only future card dates by default", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const preset = read("packages/contracts/src/item-options-presets.ts");
+  assert.match(api, /excludeOrderStopped: z\.enum\(\["true", "false"\]\)\.default\("true"\)/);
+  assert.match(api, /i\.order_stopped_until IS NULL OR i\.order_stopped_until <= \$2::date/);
+  assert.match(api, /options\.excludeOrderStopped/);
+  assert.match(api, /clock_timestamp\(\) AT TIME ZONE 'Asia\/Aden'/);
+  // Applied to the candidate CTE used by both listing and bulk draft export.
+  assert.ok(api.indexOf("i.order_stopped_until IS NULL") < api.indexOf("staged AS ("));
+  assert.match(ui, /excludeOrderStopped: params\.get\("excludeOrderStopped"\) !== "false"/);
+  assert.match(ui, /checked=\{draft\.excludeOrderStopped\}/);
+  assert.match(ui, /إيقاف طلب الأصناف الموقوفة حتى تاريخ مستقبلي/);
+  assert.match(ui, /if \(!draft\.excludeOrderStopped\) next\.set\("excludeOrderStopped", "false"\)/);
+  assert.match(ui, /if\(!values\.excludeOrderStopped\) next\.set\("excludeOrderStopped","false"\)/);
+  assert.match(ui, /if \(params\.get\("excludeOrderStopped"\) === "false"\) request\.set\("excludeOrderStopped", "false"\)/);
+  assert.match(preset, /excludeOrderStopped: z\.boolean\(\)\.default\(true\)/);
+  assert.match(ui, /monthMin: "1", coverageMax: "1"/);
+  assert.match(ui, /key === "monthMin" \|\| key === "coverageMax" \? "1"/, "coverage defaults must use one day");
+  // The purchase/value/coverage totals all use filtered, not unfiltered rows.
+  assert.match(api, /FROM filtered f/);
 });
