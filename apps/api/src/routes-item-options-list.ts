@@ -48,7 +48,7 @@ type Options = z.infer<typeof querySchema>;
 /** IDs come only from the user's own browser drafts; POST is a read-only query.
  * No server-side draft store exists, and GET remains backwards compatible. */
 const draftExclusionSchema = z.object({
-  excludedItemIds: z.array(z.number().int().positive().safe()).max(50000),
+  excludedItemIds: z.array(z.number().int().min(1).max(2147483647)).max(50000),
 }).strict();
 
 async function filteredItems(
