@@ -253,7 +253,7 @@ test("monthly sold quantity in item options is FIRST-unit and rolling year count
   assert.match(ui, /yearMin: "2", coverageMax: "1"/);
   assert.match(ui, /key === "yearMin" \? "2"/);
   assert.match(ui, /key === "yearMin" \|\| key === "coverageMax"/);
-  assert.match(schema, /yearMin: numericRange\.default\(" "\)/.source ? /yearMin: numericRange\.default\(" "\)/ : /yearMin: numericRange\.default\(" "\)/);
+  assert.match(schema, /yearMin: numericRange\.default\(""\)/);
   assert.match(schema, /yearMax: numericRange\.default\(""\)/);
   assert.match(coverage, /coverage_rate\.sales/);
   // Example provided in the screenshot: 9722 smallest strip-parts /
