@@ -10,7 +10,7 @@ import { audit } from "./services/audit.ts";
 import { HttpError } from "./errors.ts";
 import { readItems } from "./services/items.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
-import { canReadItemCoverage, addItemCoverageToPage, itemCoverageJoin } from "./services/item-coverage.ts";
+import { canReadItemCoverage, addItemCoverageToPage, itemCoverageJoin, requiredPurchaseQuantitiesToPage } from "./services/item-coverage.ts";
 import { stagedDailyActivitySql, activityColumns } from "./services/staged-activity-sql.ts";
 import { searchPattern } from "./services/lists.ts";
 
@@ -205,11 +205,17 @@ async function filteredItems(
   }));
   const enriched = needsCoverageJoin ? selected
     : await addItemCoverageToPage(client, companyId, selected);
+  // Only the requested page needs replenishment quantities; never alter stock.
+  const requiredQuantities = await requiredPurchaseQuantitiesToPage(
+    client, companyId, selected.map(row => row.id),
+    options.coverageMax ?? "30", options.useReserve,
+  );
   return {
     rows: enriched.map(row => ({
       itemId: row.id, code: row.code, name: row.name, active: row.active,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
+      requiredPurchaseQuantity: requiredQuantities.get(row.id) ?? "0",
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth,
