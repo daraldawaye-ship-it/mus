@@ -30,6 +30,8 @@ export const itemOptionsPresetFiltersSchema = z.object({
   purchaseFactorCoverageMin: numericRange.default(""),
   purchaseFactorCoverageMax: numericRange.default(""),
   excludeZero: z.boolean(),
+  // Old saved presets without this field must keep the new safe default.
+  excludeOrderStopped: z.boolean().default(true),
   useReserve: z.boolean(),
   sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
