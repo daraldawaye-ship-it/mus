@@ -116,7 +116,9 @@ async function filteredItems(
     coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
   };
-  const order = `${orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
+  const draftUsesDerivedSort = unselectedForDraft &&
+    ["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"].includes(options.sortBy);
+  const order = `${draftUsesDerivedSort ? "f.code" : orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
   // Draft export deliberately ignores list pagination; its entire filtered
   // company-wide complement is fetched in ONE authorized query. Never quietly
   // return only the first 50/100 or truncate a large result.
@@ -187,7 +189,7 @@ async function filteredItems(
       SELECT 1 FROM company_item_temporary_selections chosen
       WHERE chosen.company_id=$1 AND chosen.item_id=f.id
     )
-    ORDER BY ${["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"].includes(options.sortBy) ? "f.code ASC, f.id ASC" : order} LIMIT 2001
+    ORDER BY ${order} LIMIT 2001
     ` : `
     , replenishment AS MATERIALIZED (
       -- Compute exactly once for EVERY filtered item, allowing a global order
