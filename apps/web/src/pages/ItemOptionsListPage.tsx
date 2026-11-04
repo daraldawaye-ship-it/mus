@@ -72,15 +72,27 @@ type Row = {
   purchaseFactorCoverageDays: string | null;
 };
 type Response = {
-  result: { rows: Row[]; total: number; page: number; pageSize: number; asOf: string };
+  result: { rows: Row[]; total: number; page: number; pageSize: number; asOf: string;
+    requiredPurchaseValueTotals: Array<{ currencyCode: string; value: string }> };
 };
+/** Group a PostgreSQL numeric string without losing large decimal precision. */
+function formatAmountGroup(amount: string): string {
+  const [whole, fraction = ""] = amount.split(".");
+  const normalized = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  const decimals = fraction.replace(/0+$/, "");
+  return decimals ? `${normalized}.${decimals}` : normalized;
+}
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
   ["purchaseFactor", "عامل وحدة الشراء"],
-  ["month", "مرات المبيعات في شهر"],
+  ["month", "مرات المبيعات في شهر"], ["saleQuantityMonth", "الكمية المباعة في شهر"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["allTime", "مرات المبيعات منذ البداية"],
   ["previousYear", "مرات عام السابق"],
+  ["requiredPurchaseQuantity", "الكمية المطلوبة"],
+  ["purchasePrice", "سعر الشراء الافتراضي"],
+  ["requiredPurchaseValue", "قيمة المطلوب"],
+  ["coverageWithRequired", "الكفاية مع المطلوب"],
   ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
@@ -616,6 +628,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       </div>}
       {result && <p className="muted">
         إجمالي الأصناف المطابقة: <bdi>{result.total.toLocaleString("en-US")}</bdi>
+        {" "}· إجمالي قيمة المطلوب:{" "}
+        {result.requiredPurchaseValueTotals.length ?
+          result.requiredPurchaseValueTotals.map((entry, index) =>
+            <span key={entry.currencyCode}>
+              {index > 0 ? " ؛ " : ""}
+              <bdi>{formatAmountGroup(entry.value)} {entry.currencyCode}</bdi>
+            </span>) : <bdi>0</bdi>}
         {" "}· التاريخ: <bdi>{result.asOf}</bdi>
         {" "}· الصفحة <bdi>{page.toLocaleString("en-US")}</bdi> من <bdi>{pages.toLocaleString("en-US")}</bdi>
       </p>}
@@ -735,15 +754,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
             {sortHeader("month", "مبيعات مرات في شهر")}
-            <th scope="col">الكمية المباعة في شهر (أصغر وحدة)</th>
+            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (أصغر وحدة)")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
-            <th scope="col">الكمية المطلوبة (الوحدة الأولى)</th>
-            <th scope="col">سعر الشراء الافتراضي (الوحدة الأولى)</th>
-            <th scope="col">قيمة المطلوب</th>
+            {sortHeader("requiredPurchaseQuantity", "الكمية المطلوبة (الوحدة الأولى)")}
+            {sortHeader("purchasePrice", "سعر الشراء الافتراضي (الوحدة الأولى)")}
+            {sortHeader("requiredPurchaseValue", "قيمة المطلوب")}
             {sortHeader("coverage", "الكفاية (يوم)")}
-            <th scope="col">الكفاية مع المطلوب (يوم)</th>
+            {sortHeader("coverageWithRequired", "الكفاية مع المطلوب (يوم)")}
             {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
             {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
           </tr></thead>
