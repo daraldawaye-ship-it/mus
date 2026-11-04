@@ -31,7 +31,7 @@ export const itemOptionsPresetFiltersSchema = z.object({
   purchaseFactorCoverageMax: numericRange.default(""),
   excludeZero: z.boolean(),
   useReserve: z.boolean(),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage"]),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
 }).strict();
 export const itemOptionsPresetCreateSchema = z.object({
