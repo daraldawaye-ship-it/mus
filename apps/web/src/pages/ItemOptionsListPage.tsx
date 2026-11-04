@@ -669,10 +669,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {resultQuery.isPending && canView && <Notice>جارٍ تحميل الأصناف المطابقة…</Notice>}
       {result && <>
         <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
-          {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`} role="listitem">
+          {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`}
+            role="listitem" onClick={() => rememberItem(row)}>
             <div className="item-options-mobile-heading">
-              <Link to={`/companies/${companyId}/items/${row.itemId}`}
-                onClick={() => rememberItem(row)}>{row.name}</Link>
+              <Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
               {!row.active && <span className="item-options-mobile-inactive"> (مؤرشف)</span>}
               <label className="item-options-mobile-select">
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
@@ -781,7 +781,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </tr></thead>
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}
-              className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}>
+              className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}
+              onClick={() => rememberItem(row)}>
               <td className="item-options-choice-cell"><label className="item-options-table-choice">
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
@@ -789,8 +790,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
               </label></td>
-              <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
-                onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
+              <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
               <td><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
               <td><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
