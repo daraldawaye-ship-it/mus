@@ -117,6 +117,39 @@ export async function addItemCoverageToPage<T extends { id: number }>(
   }));
 }
 
+
+/**
+ * Read-only suggested replenishment for the selected item-options page.
+ * Match the existing coverage sales window (30/120 days) and stock scope.
+ * Quantity is expressed in the stored smallest unit; purchaseFactor is a
+ * notional minimum order lot and NEVER changes stock or invoice conversions.
+ * The reserve is added back BEFORE rounding so low stock still replenishes it.
+ */
+export async function requiredPurchaseQuantitiesToPage(
+  client: PoolClient,
+  companyId: number,
+  itemIds: number[],
+  targetDays: string,
+  useReserve: boolean,
+): Promise<Map<number, string>> {
+  if (!itemIds.length) return new Map();
+  const rows = (await client.query(
+    `SELECT i.id,
+       (ceil(greatest(0::numeric,
+         coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
+         + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
+         - coverage_rate.quantity
+       ) / greatest(i.purchase_factor,1)) * greatest(i.purchase_factor,1))::text
+         AS required_purchase_quantity
+     FROM items i ${itemCoverageJoin}
+     WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
+    [companyId, itemIds, targetDays, useReserve],
+  )).rows;
+  return new Map(rows.map(row => [
+    Number(row.id), String(row.required_purchase_quantity),
+  ]));
+}
+
 export async function readItemCoverage(
   client: PoolClient,
   user: User,
