@@ -100,7 +100,7 @@ test("UI shows per-draft print, delete and migration, not a single global draft"
   assert.match(store,/alraesy:temporary-items:v1:/);
   assert.match(store,/alraesy:order-drafts:v2:/);
   assert.match(store,/readOrderDrafts\(key, oldKey\)/);
-  assert.match(store,/window\.localStorage\.setItem\(key, JSON\.stringify\(migrated\)\)/);
+  assert.match(store,/window\.localStorage\.setItem\(key, serialized\)/);
 });
 
 
