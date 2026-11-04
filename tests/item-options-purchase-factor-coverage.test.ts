@@ -78,12 +78,12 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(coverage, /CASE WHEN \$4::boolean THEN i\.reserve_quantity/);
   assert.match(coverage, /- coverage_rate\.quantity/);
   assert.match(coverage, /ceil\(greatest\(0::numeric/);
-  assert.match(coverage, /greatest\(i\.purchase_factor,1\)/);
+  assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
   assert.match(ui, /monthMin: params\.get\("monthMin"\) \?\? "1"/);
   assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "2"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
   assert.doesNotMatch(ui, /<input type="number" step="any"/);
-  assert.match(ui, /colSpan=\{14\}/);
+  assert.match(ui, /colSpan=\{17\}/);
   assert.match(ui, /row\.requiredPurchaseQuantity/);
 });
 
@@ -110,16 +110,65 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.match(css, /item-options-choice-col/);
 });
 
-test("item-options register uses compact widths for all 14 columns", () => {
+test("item-options register uses compact widths for all 17 columns", () => {
   const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
   const css = read("apps/web/src/styles.css");
   const columns = ui.slice(ui.indexOf('<colgroup>'), ui.indexOf('</colgroup>'));
-  assert.equal((columns.match(/<col className=/g) ?? []).length, 14);
+  assert.equal((columns.match(/<col className=/g) ?? []).length, 17);
   assert.doesNotMatch(columns, /span=\{9\}/);
-  assert.match(css, /item-options-desktop-table > table \{\s*min-width: 1420px/);
+  assert.match(css, /item-options-desktop-table > table \{\s*min-width: 1410px/);
   assert.doesNotMatch(css, /item-options-desktop-table > table \{\s*min-width: 1850px/);
-  assert.match(css, /col\.item-options-reserve-col,\s*\.item-options-desktop-table col\.item-options-purchase-factor-col \{ width: 124px; \}/);
-  assert.match(css, /item-options-choice-col \{ width: 42px; \}/);
-  assert.match(css, /item-options-month-quantity-col \{ width: 100px; \}/);
-  assert.match(css, /item-options-factor-coverage-col \{ width: 100px; \}/);
+  assert.match(css, /col\.item-options-reserve-col,\s*\.item-options-desktop-table col\.item-options-purchase-factor-col \{ width: 116px; \}/);
+  assert.match(css, /item-options-choice-col \{ width: 38px; \}/);
+  assert.match(css, /item-options-month-quantity-col \{ width: 77px; \}/);
+  assert.match(css, /item-options-factor-coverage-col \{ width: 75px; \}/);
+});
+
+test("item-options purchase price and projected sufficiency use whole first units", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const css = read("apps/web/src/styles.css");
+  assert.match(api, /i\.purchase_price AS purchase_price/);
+  assert.match(api, /JOIN company_currencies currency/);
+  assert.match(api, /purchaseCurrencyCode: String\(row\.currency_code\)/);
+  assert.match(api, /requiredPurchaseValue: requiredQuantities\.get\(row\.id\)\?\.requiredPurchaseValue/);
+  assert.match(api, /coverageWithRequiredDays: requiredQuantities\.get\(row\.id\)\?\.coverageWithRequiredDays/);
+  assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
+  assert.match(coverage, /i\.factor2::bigint \* i\.factor3::bigint/);
+  assert.match(coverage, /requested\.quantity_smallest \/ purchase_lot\.first_unit_smallest/);
+  assert.match(coverage, /round\(i\.purchase_price::numeric/);
+  assert.match(coverage, /coverage_rate\.quantity \+ requested\.quantity_smallest/);
+  for (const label of [
+    "الكمية المطلوبة (الوحدة الأولى)",
+    "سعر الشراء الافتراضي (الوحدة الأولى)",
+    "قيمة المطلوب",
+    "الكفاية مع المطلوب"
+  ]) assert.ok(ui.includes(label), label);
+  assert.match(ui, /row\.purchaseCurrencyCode/);
+  assert.match(ui, /row\.coverageWithRequiredDays/);
+  assert.match(css, /item-options-purchase-price-col/);
+  assert.match(css, /item-options-required-value-col/);
+  assert.match(css, /item-options-coverage-with-required-col/);
+});
+
+test("rounded first-unit quantities are also exact multiples of smallest-unit purchase lots", () => {
+  const gcd = (a: bigint, b: bigint): bigint => b === 0n ? a : gcd(b, a % b);
+  const expected = (shortageSmallest: bigint, firstUnitSmallest: bigint, purchaseFactor: bigint) => {
+    const lot = firstUnitSmallest / gcd(firstUnitSmallest, purchaseFactor) * purchaseFactor;
+    const smallest = ((shortageSmallest + lot - 1n) / lot) * lot;
+    return {firstUnits: smallest / firstUnitSmallest, smallest};
+  };
+  for (const [shortage, first, factor] of [
+    [17n, 12n, 12n], [17n, 12n, 5n], [17n, 100n, 1n],
+    [101n, 100n, 6n], [0n, 12n, 12n]
+  ] as const) {
+    const x = expected(shortage, first, factor);
+    assert.equal(x.smallest % factor, 0n);
+    assert.equal(x.smallest % first, 0n);
+    assert.ok(x.smallest >= shortage);
+    if (shortage > 0n) assert.ok(x.firstUnits >= 1n);
+  }
+  assert.deepEqual(expected(17n,12n,12n), {firstUnits:2n,smallest:24n});
+  assert.deepEqual(expected(17n,100n,1n), {firstUnits:1n,smallest:100n});
 });
