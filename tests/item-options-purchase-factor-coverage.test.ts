@@ -352,3 +352,27 @@ test("legacy wrong first-unit import gets an isolated, source-scoped planning-on
   // Inverse sign on returned packs must also be corrected: -4 packs -> -4 pieces.
   assert.equal(-4*50 + -4*(1-50),-4);
 });
+
+
+test("default-on exclusion removes locally drafted items before counts and amounts", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const preset = read("packages/contracts/src/item-options-presets.ts");
+  assert.match(api, /excludeOrderDrafts: z\.enum\(\["true", "false"\]\)\.default\("true"\)/);
+  assert.match(api, /excludedItemIds: z\.array\(z\.number\(\)\.int\(\)\.min\(1\)\.max\(2147483647\)\)\.max\(50000\)/);
+  assert.match(api, /options\.excludeOrderDrafts && excludedDraftItemIds\.length/);
+  assert.match(api, /NOT \(i\.id = ANY\(/);
+  assert.ok(api.indexOf("NOT (i.id = ANY(") < api.indexOf("filtered AS ("));
+  assert.match(api, /router\.post\("\/companies\/:companyId\/item-options-list\/query"/);
+  assert.match(api, /router\.post\("\/companies\/:companyId\/item-options-list\/unselected\/query"/);
+  assert.match(ui, /excludeOrderDrafts: params\.get\("excludeOrderDrafts"\) !== "false"/);
+  assert.match(ui, /checked=\{draft\.excludeOrderDrafts\}/);
+  assert.match(ui, /استثناء الأصناف المرحّلة إلى مسودات الطلبيات/);
+  assert.match(ui, /temporaryOrder\.drafts\.flatMap/);
+  assert.match(ui, /queryKey: \["item-options-list"[^]*draftExclusionKey\]/);
+  assert.match(ui, /excludedItemIds: excludedDraftItemIds/);
+  assert.match(ui, /if \(!draft\.excludeOrderDrafts\) next\.set\("excludeOrderDrafts", "false"\)/);
+  assert.match(ui, /if\(!values\.excludeOrderDrafts\) next\.set\("excludeOrderDrafts","false"\)/);
+  assert.match(preset, /excludeOrderDrafts: z\.boolean\(\)\.default\(true\)/);
+  assert.match(ui, /مسودات الطلبيات محفوظة على هذا الجهاز فقط، وتُحذف كل مسودة تلقائيًا بعد 8 ساعات/);
+});
