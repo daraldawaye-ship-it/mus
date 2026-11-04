@@ -83,6 +83,29 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "2"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
   assert.doesNotMatch(ui, /<input type="number" step="any"/);
-  assert.match(ui, /colSpan=\{13\}/);
+  assert.match(ui, /colSpan=\{14\}/);
   assert.match(ui, /row\.requiredPurchaseQuantity/);
+});
+
+
+test("monthly sold quantities come directly from precomputed ranking tables", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const css = read("apps/web/src/styles.css");
+  assert.match(api, /assertItemSaleRankingsReady\(client\)/);
+  assert.match(api, /LEFT JOIN item_sale_rankings sale_rank/);
+  assert.match(api, /LEFT JOIN staged_item_sale_rankings staged_rank/);
+  assert.match(api, /sale_rank\.net_sale_quantity/);
+  assert.match(api, /staged_rank\.net_sale_quantity/);
+  assert.match(api, /sale_rank\.net_sale_invoices/);
+  assert.match(api, /staged_rank\.net_sale_invoices/);
+  assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)/);
+  assert.match(ui, /row\.saleQuantityMonth/);
+  assert.match(ui, /stockMin: params\.get\("stockMin"\) \?\? "", stockMax: params\.get\("stockMax"\) \?\? ""/);
+  assert.match(ui, /monthMin: "1", coverageMax: "2"/);
+  assert.match(ui, /<th scope="col" className="item-options-choice-cell">اختيار<\/th>/);
+  assert.doesNotMatch(ui, /<th scope="col">اختيار مؤقت<\/th>/);
+  assert.doesNotMatch(ui, /<span>\{temporarySelection\.pendingIds\.has\(row\.itemId\) \? "حفظ/);
+  assert.match(css, /item-options-reserve-col/);
+  assert.match(css, /item-options-choice-col/);
 });
