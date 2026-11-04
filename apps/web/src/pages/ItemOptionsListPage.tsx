@@ -78,7 +78,7 @@ type Response = {
 /** Group a PostgreSQL numeric string without losing large decimal precision. */
 function formatAmountGroup(amount: string): string {
   const [whole, fraction = ""] = amount.split(".");
-  const normalized = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  const normalized = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const decimals = fraction.replace(/0+$/, "");
   return decimals ? `${normalized}.${decimals}` : normalized;
 }
