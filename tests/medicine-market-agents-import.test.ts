@@ -28,7 +28,7 @@ test("agent import strips cash suffixes, deduplicates agents and preserves disti
     await db.query(readFileSync("apps/api/market-migrations/004_seed_agents_2026.sql","utf8"));
     assert.equal((await db.query("SELECT count(*)::int n FROM medicine_market_cards WHERE kind='agent'")).rows[0].n,583,
       "Repeated import must be idempotent");
-    assert.equal((await db.query("SELECT count(*)::int n FROM market_schema_migrations")).rows[0].n,4);
+    assert.equal((await db.query("SELECT count(*)::int n FROM market_schema_migrations")).rows[0].n,5);
   }finally{
     await db.end();
     const admin=new Pool({connectionString:connection});
