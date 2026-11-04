@@ -5,6 +5,9 @@ on:
       - 'apps/api/migrations/20261103_item_previous_year_sale_times_snapshot.sql'
       - 'apps/api/src/routes-item-options-list.ts'
       - 'apps/web/src/pages/ItemOptionsListPage.tsx'
+      - 'apps/web/src/numbered-order-drafts.ts'
+      - 'apps/web/src/numbered-order-drafts-core.ts'
+      - 'tests/numbered-order-drafts.test.ts'
       - 'packages/contracts/src/item-options-presets.ts'
       - 'tests/api.test.ts'
       - 'tests/item-previous-year-filters.test.ts'
@@ -42,5 +45,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/item-previous-year-filters.test.ts tests/item-list-compact-scroll-filters.test.ts tests/item-options-purchase-factor-coverage.test.ts tests/item-options-unselected-draft.test.ts
+      - run: node --import tsx --test tests/item-previous-year-filters.test.ts tests/item-list-compact-scroll-filters.test.ts tests/item-options-purchase-factor-coverage.test.ts tests/item-options-unselected-draft.test.ts tests/numbered-order-drafts.test.ts
       - run: node --import tsx --test --test-name-pattern="(item options filter immutable previous-year sale times|company-shared item option presets)" tests/api.test.ts
