@@ -39,15 +39,21 @@ const querySchema = z.object({
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
+  excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
+/** IDs come only from the user's own browser drafts; POST is a read-only query.
+ * No server-side draft store exists, and GET remains backwards compatible. */
+const draftExclusionSchema = z.object({
+  excludedItemIds: z.array(z.number().int().positive().safe()).max(50000),
+}).strict();
 
 async function filteredItems(
   client: PoolClient, user: ReturnType<typeof actor>, companyId: number,
-  options: Options, unselectedForDraft = false,
+  options: Options, unselectedForDraft = false, excludedDraftItemIds: number[] = [],
 ) {
   const entries = await directoryEntries(client, user, companyId);
   const visible = (key: string) => {
@@ -66,8 +72,13 @@ async function filteredItems(
   const asOf = (await client.query(
     "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
   )).rows[0].today as string;
-  const values: Array<string | number> = [companyId, asOf,
+  const values: Array<string | number | number[]> = [companyId, asOf,
     options.q ? searchPattern(options.q, true) : "", options.active];
+  // Bind the IDs rather than interpolating them into SQL. This must happen
+  // before LIMIT/OFFSET, for accurate totals, paging and global sort.
+  const excludeDraftParam = options.excludeOrderDrafts && excludedDraftItemIds.length
+    ? (values.push([...new Set(excludedDraftItemIds)]), "$" + values.length)
+    : null;
   const predicates: string[] = [];
   const range = (value: string | undefined, column: string, op: ">=" | "<=") => {
     if (value === undefined) return;
@@ -175,6 +186,7 @@ async function filteredItems(
         -- Card field "يتوقف الطلب حتى تاريخ": a future date blocks
         -- replenishment while this default-on option is enabled.
         AND (${options.excludeOrderStopped ? "i.order_stopped_until IS NULL OR i.order_stopped_until <= $2::date" : "TRUE"})
+        AND (${excludeDraftParam ? `NOT (i.id = ANY(${excludeDraftParam}::integer[]))` : "TRUE"})
     ),
     staged AS (${stagedDailyActivitySql("$2::date")}),
     activity AS (
@@ -491,6 +503,24 @@ export function itemOptionsListRoutes(pool: Pool): Router {
   // This read-only endpoint uses exactly the same applied filters/sort as the
   // table, but excludes the shared selection at SQL level on EVERY page.
   // It never creates a purchase order or changes shared checkmarks.
+  // Browser drafts are device-local, so a body transports IDs without URL
+  // length limits. Same readItems authorization and SQL path as the GET route.
+  router.post("/companies/:companyId/item-options-list/unselected/query", handler(async (req, res) => {
+    const options = parse(querySchema, req.query);
+    const {excludedItemIds} = parse(draftExclusionSchema, req.body);
+    const result = await readItems(pool, req,
+      (client, companyId) => filteredItems(client, actor(req), companyId, options, true, excludedItemIds));
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({result});
+  }));
+  router.post("/companies/:companyId/item-options-list/query", handler(async (req, res) => {
+    const options = parse(querySchema, req.query);
+    const {excludedItemIds} = parse(draftExclusionSchema, req.body);
+    const result = await readItems(pool, req,
+      (client, companyId) => filteredItems(client, actor(req), companyId, options, false, excludedItemIds));
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({result});
+  }));
   router.get("/companies/:companyId/item-options-list/unselected", handler(async (req, res) => {
     const options = parse(querySchema, req.query);
     const result = await readItems(pool, req,
