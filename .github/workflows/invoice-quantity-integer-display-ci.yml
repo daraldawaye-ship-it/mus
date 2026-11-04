@@ -5,6 +5,9 @@ on:
       - preview/render-2026-10-23
     paths:
       - "apps/web/src/pages/CommercePages.tsx"
+      - "apps/web/src/ui.tsx"
+      - "tests/purchase-price-focus-selection.test.ts"
+      - "tests/browser-invoice-focus.ts"
       - "apps/web/src/invoice-number-input.ts"
       - "tests/invoice-signed-discount-input.test.ts"
       - "tests/invoice-sales-save-modal-layout.test.ts"
@@ -36,3 +39,4 @@ jobs:
       - run: npx tsx --test tests/invoice-signed-discount-input.test.ts
       - run: npx tsx --test tests/invoice-sales-save-modal-layout.test.ts
       - run: npx tsx --test tests/invoice-row-keyboard-shortcuts.test.ts
+      - run: npx tsx --test tests/purchase-price-focus-selection.test.ts
