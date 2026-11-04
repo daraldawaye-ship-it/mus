@@ -12,6 +12,7 @@ import { readItems } from "./services/items.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { canReadItemCoverage, addItemCoverageToPage, itemCoverageJoin, requiredPurchaseQuantitiesToPage } from "./services/item-coverage.ts";
 import { stagedDailyActivitySql, activityColumns } from "./services/staged-activity-sql.ts";
+import { assertItemSaleRankingsReady } from "./services/item-sale-ranking.ts";
 import { searchPattern } from "./services/lists.ts";
 
 const optionalNumber = z.preprocess(
@@ -58,6 +59,8 @@ async function filteredItems(
     throw new HttpError(403, "item_filter_denied",
       "تتطلب قائمة الأصناف صلاحيات الأصناف والمبيعات والمشتريات والمخزون والكفاية");
 
+  // Monthly sales data is cached and maintained on invoice posting.
+  await assertItemSaleRankingsReady(client);
   const asOf = (await client.query(
     "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
   )).rows[0].today as string;
@@ -120,11 +123,17 @@ async function filteredItems(
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
+             (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
+             (COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0)) AS sale_quantity_month,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
       LEFT JOIN company_item_previous_year_sale_times previous
         ON previous.company_id=i.company_id AND previous.legacy_id=i.legacy_id
+      LEFT JOIN item_sale_rankings sale_rank ON sale_rank.company_id=i.company_id
+        AND sale_rank.item_id=i.id AND sale_rank.as_of_date=$2::date
+      LEFT JOIN staged_item_sale_rankings staged_rank ON staged_rank.company_id=i.company_id
+        AND staged_rank.item_id=i.id AND staged_rank.as_of_date=$2::date
       WHERE i.company_id=$1
         AND ($3::text='' OR i.code ILIKE $3 OR i.name ILIKE $3
              OR EXISTS (SELECT 1 FROM items source_item WHERE source_item.id=i.id
@@ -143,8 +152,6 @@ async function filteredItems(
     sales AS (
       SELECT d.item_id,
          COALESCE(SUM(d.sale_invoices-d.sale_return_invoices) FILTER(
-           WHERE d.document_date>=($2::date-interval '1 month'+interval '1 day')::date),0) AS month,
-         COALESCE(SUM(d.sale_invoices-d.sale_return_invoices) FILTER(
            WHERE d.document_date>=($2::date-interval '4 months'+interval '1 day')::date),0) AS four_months,
          COALESCE(SUM(d.sale_invoices-d.sale_return_invoices),0) AS all_time
       FROM activity d JOIN candidate i ON i.id=d.item_id
@@ -152,7 +159,6 @@ async function filteredItems(
     ),
     metrics AS (
       SELECT i.*, i.available_smallest/(i.factor2::numeric*i.factor3) AS available_unit1,
-             COALESCE(s.month,0) AS sale_times_month,
              COALESCE(s.four_months,0) AS sale_times_four_months,
              COALESCE(s.all_time,0) AS sale_times_all_time,
              ${needsCoverageJoin
@@ -195,6 +201,7 @@ async function filteredItems(
     availableSmallest: String(row.available_smallest),
     availableUnit1: String(row.available_unit1),
     saleTimesMonth: String(row.sale_times_month),
+    saleQuantityMonth: String(row.sale_quantity_month),
     saleTimesFourMonths: String(row.sale_times_four_months),
     saleTimesAllTime: String(row.sale_times_all_time),
     saleTimesPreviousYear: String(row.sale_times_previous_year),
@@ -218,7 +225,7 @@ async function filteredItems(
       requiredPurchaseQuantity: requiredQuantities.get(row.id) ?? "0",
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
-      saleTimesMonth: row.saleTimesMonth,
+      saleTimesMonth: row.saleTimesMonth, saleQuantityMonth: row.saleQuantityMonth,
       saleTimesFourMonths: row.saleTimesFourMonths,
       saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
