@@ -66,3 +66,23 @@ test("reserve and purchase factor coverage reuse existing sales-rate windows", (
   assert.match(ui, /row\.reserveCoverageDays/);
   assert.match(ui, /row\.purchaseFactorCoverageDays/);
 });
+
+test("item-options replenishment uses the applied coverage target and rounds up to purchase lots", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  assert.match(api, /requiredPurchaseQuantitiesToPage\(/);
+  assert.match(api, /options\.coverageMax \?\? "30"/);
+  assert.match(api, /requiredPurchaseQuantity: requiredQuantities\.get\(row\.id\)/);
+  assert.match(coverage, /coverage_rate\.sales \* greatest\(\$3::numeric,0\) \/ coverage_rate\.days/);
+  assert.match(coverage, /CASE WHEN \$4::boolean THEN i\.reserve_quantity/);
+  assert.match(coverage, /- coverage_rate\.quantity/);
+  assert.match(coverage, /ceil\(greatest\(0::numeric/);
+  assert.match(coverage, /greatest\(i\.purchase_factor,1\)/);
+  assert.match(ui, /monthMin: params\.get\("monthMin"\) \?\? "1"/);
+  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "2"/);
+  assert.match(ui, /<input type="text" inputMode="decimal"/);
+  assert.doesNotMatch(ui, /<input type="number" step="any"/);
+  assert.match(ui, /colSpan=\{13\}/);
+  assert.match(ui, /row\.requiredPurchaseQuantity/);
+});
