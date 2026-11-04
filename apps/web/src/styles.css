@@ -7366,3 +7366,44 @@ a.notification-quick-title:hover { text-decoration: underline; }
   cursor: pointer;
   font: inherit;
 }
+
+
+/* Item options list (2026-11-04): keep the selection checkbox compact and
+   allocate enough real width for reserve and purchase-factor inputs.
+   The table scrolls horizontally instead of truncating editable numbers. */
+.item-options-desktop-table > table {
+  min-width: 1850px;
+  table-layout: fixed;
+}
+.item-options-desktop-table col.item-options-choice-col { width: 52px; }
+.item-options-desktop-table col.item-options-name-col { width: 240px; }
+.item-options-desktop-table col.item-options-stock-col { width: 105px; }
+.item-options-desktop-table col.item-options-reserve-col,
+.item-options-desktop-table col.item-options-purchase-factor-col { width: 176px; }
+.item-options-desktop-table th.item-options-choice-cell,
+.item-options-desktop-table td.item-options-choice-cell {
+  padding-inline: 3px;
+  text-align: center;
+}
+.item-options-desktop-table .item-options-table-choice {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+.item-options-desktop-table .item-reserve-quick-edit { min-width: 0; }
+.item-options-desktop-table .item-reserve-input-wrap { gap: 3px; }
+.item-options-desktop-table .item-reserve-step-button {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+}
+.item-options-desktop-table .item-reserve-quick-edit input {
+  flex: 1 1 70px;
+  width: 70px;
+  min-width: 66px;
+  max-width: 100%;
+  padding-inline: 4px;
+  font-size: 13px;
+}
