@@ -7436,3 +7436,9 @@ a.notification-quick-title:hover { text-decoration: underline; }
   color: var(--muted);
   line-height: 1;
 }
+
+/* In the item-options list, every row is a target for the avatar item shortcut.
+   Existing item links, editable fields and independent selection checkboxes
+   continue to respond to their own clicks. */
+.item-options-desktop-table tbody tr,
+.item-options-mobile-entry { cursor: pointer; }
