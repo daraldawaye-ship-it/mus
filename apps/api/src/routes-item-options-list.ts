@@ -117,7 +117,12 @@ async function filteredItems(
   // return only the first 50/100 or truncate a large result.
   if (!unselectedForDraft)
     values.push(options.pageSize, (options.page - 1) * options.pageSize);
-  const limit = `$${values.length - 1}`, offset = `$${values.length}`;
+  const limit = `${values.length - 1}`, offset = `${values.length}`;
+  // Totals always cover the entire matching filter, never the requested page.
+  // Keep the replenishment target and reserve switch identical to the row values.
+  if (!unselectedForDraft) values.push(options.coverageMax ?? "30", options.useReserve ? "true" : "false");
+  const targetParam = `${values.length - 1}`;
+  const reserveParam = `${values.length}`;
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
@@ -179,8 +184,36 @@ async function filteredItems(
     )
     ORDER BY ${order} LIMIT 2001
     ` : `
-    SELECT counts.total, f.*
+    , order_costs_by_currency AS (
+      -- Only derived read projections are consulted; there is no invoice or
+      -- stock write. Sum every matched item (even on other pages) by currency.
+      SELECT due.currency_code, SUM(due.purchase_value)::text AS purchase_value
+      FROM (
+        SELECT f.currency_code,
+          round(f.purchase_price * (
+            ceil(greatest(0::numeric,
+              coverage_rate.sales * greatest(${targetParam}::numeric,0) / coverage_rate.days
+              + CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END
+              - coverage_rate.quantity
+            ) / lcm(greatest(i.purchase_factor::bigint,1),
+                     greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric)
+            * lcm(greatest(i.purchase_factor::bigint,1),
+                  greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric
+            / greatest(i.factor2::numeric*i.factor3::numeric,1)
+          ),4) AS purchase_value
+        FROM filtered f JOIN items i ON i.company_id=f.company_id AND i.id=f.id
+        ${itemCoverageJoin}
+      ) due
+      GROUP BY due.currency_code
+    )
+    SELECT counts.total, currency_totals.required_purchase_value_totals, f.*
     FROM (SELECT COUNT(*)::integer AS total FROM filtered) counts
+    CROSS JOIN (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'currencyCode',currency_code,'value',purchase_value) ORDER BY currency_code),
+        '[]'::jsonb) AS required_purchase_value_totals
+      FROM order_costs_by_currency
+    ) currency_totals
     LEFT JOIN LATERAL (SELECT * FROM filtered f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
     `}`;
   const rows = (await client.query(sql, values)).rows;
@@ -241,8 +274,11 @@ async function filteredItems(
       reserveCoverageDays: row.reserveCoverageDays,
       purchaseFactorCoverageDays: row.purchaseFactorCoverageDays,
     })),
-    total: Number(rows[0]?.total ?? 0), page: options.page,
-    pageSize: options.pageSize, asOf,
+    total: Number(rows[0]?.total ?? 0),
+    requiredPurchaseValueTotals: (rows[0]?.required_purchase_value_totals ?? []) as Array<{
+      currencyCode: string; value: string;
+    }>,
+    page: options.page, pageSize: options.pageSize, asOf,
   };
 }
 
