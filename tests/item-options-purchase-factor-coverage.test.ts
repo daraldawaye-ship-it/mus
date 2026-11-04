@@ -156,7 +156,7 @@ test("rounded first-unit quantities are also exact multiples of smallest-unit pu
   const gcd = (a: bigint, b: bigint): bigint => b === 0n ? a : gcd(b, a % b);
   const expected = (shortageSmallest: bigint, firstUnitSmallest: bigint, purchaseFactor: bigint) => {
     const lot = firstUnitSmallest / gcd(firstUnitSmallest, purchaseFactor) * purchaseFactor;
-    const smallest = ((shortageSmallest + lot - 1n) / lot) * lot;
+    const smallest = (shortageSmallest === 0n ? 1n : (shortageSmallest + lot - 1n) / lot) * lot;
     return {firstUnits: smallest / firstUnitSmallest, smallest};
   };
   for (const [shortage, first, factor] of [
@@ -167,10 +167,13 @@ test("rounded first-unit quantities are also exact multiples of smallest-unit pu
     assert.equal(x.smallest % factor, 0n);
     assert.equal(x.smallest % first, 0n);
     assert.ok(x.smallest >= shortage);
-    if (shortage > 0n) assert.ok(x.firstUnits >= 1n);
+    assert.ok(x.firstUnits >= 1n);
   }
   assert.deepEqual(expected(17n,12n,12n), {firstUnits:2n,smallest:24n});
   assert.deepEqual(expected(17n,100n,1n), {firstUnits:1n,smallest:100n});
+  assert.deepEqual(expected(0n,12n,12n), {firstUnits:1n,smallest:12n});
+  assert.deepEqual(expected(0n,2n,10n), {firstUnits:5n,smallest:10n});
+  assert.deepEqual(expected(0n,10n,3n), {firstUnits:3n,smallest:30n});
 });
 
 
@@ -274,4 +277,17 @@ test("monthly sold quantity in item options is FIRST-unit and rolling year count
   assert.equal(itemOptionsPresetFiltersSchema.parse({
     ...oldPreset, yearMin: "2", yearMax: "40", sortBy: "year"
   }).sortBy, "year");
+});
+
+
+test("nonzero minimum order is identical in row proposal and full-filter total", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  for (const sql of [api, coverage]) {
+    assert.match(sql, /greatest\(1::numeric, ceil\(greatest\(0::numeric,/);
+    assert.match(sql, /\/ purchase_lot\.minimum_lot_smallest\)\) \* purchase_lot\.minimum_lot_smallest/);
+    assert.match(sql, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
+  }
+  assert.match(api, /SUM\(order_value\)::text/);
+  assert.match(coverage, /required_purchase_quantity/);
 });
