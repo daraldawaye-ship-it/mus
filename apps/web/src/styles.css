@@ -7368,21 +7368,30 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 
 
-/* Item options list (2026-11-04): keep the selection checkbox compact and
-   allocate enough real width for reserve and purchase-factor inputs.
-   The table scrolls horizontally instead of truncating editable numbers. */
+/* Item options register: compact all fourteen columns instead of allocating
+   an enormous 1850px table and nine evenly spaced spare columns.
+   Keep both inline numeric editors readable and scroll only on narrow screens. */
 .item-options-desktop-table > table {
-  min-width: 1850px;
+  min-width: 1420px;
   table-layout: fixed;
 }
-.item-options-desktop-table col.item-options-choice-col { width: 52px; }
-.item-options-desktop-table col.item-options-name-col { width: 240px; }
-.item-options-desktop-table col.item-options-stock-col { width: 105px; }
+.item-options-desktop-table col.item-options-choice-col { width: 42px; }
+.item-options-desktop-table col.item-options-name-col { width: 230px; }
+.item-options-desktop-table col.item-options-stock-col { width: 85px; }
 .item-options-desktop-table col.item-options-reserve-col,
-.item-options-desktop-table col.item-options-purchase-factor-col { width: 176px; }
+.item-options-desktop-table col.item-options-purchase-factor-col { width: 124px; }
+.item-options-desktop-table col.item-options-month-times-col { width: 85px; }
+.item-options-desktop-table col.item-options-month-quantity-col { width: 100px; }
+.item-options-desktop-table col.item-options-four-months-col { width: 85px; }
+.item-options-desktop-table col.item-options-all-time-col { width: 90px; }
+.item-options-desktop-table col.item-options-previous-year-col { width: 82px; }
+.item-options-desktop-table col.item-options-required-quantity-col { width: 105px; }
+.item-options-desktop-table col.item-options-coverage-col { width: 77px; }
+.item-options-desktop-table col.item-options-reserve-coverage-col { width: 90px; }
+.item-options-desktop-table col.item-options-factor-coverage-col { width: 100px; }
 .item-options-desktop-table th.item-options-choice-cell,
 .item-options-desktop-table td.item-options-choice-cell {
-  padding-inline: 3px;
+  padding-inline: 2px;
   text-align: center;
 }
 .item-options-desktop-table .item-options-table-choice {
@@ -7393,17 +7402,18 @@ a.notification-quick-title:hover { text-decoration: underline; }
   margin: 0;
 }
 .item-options-desktop-table .item-reserve-quick-edit { min-width: 0; }
-.item-options-desktop-table .item-reserve-input-wrap { gap: 3px; }
+.item-options-desktop-table .item-reserve-input-wrap { gap: 2px; }
 .item-options-desktop-table .item-reserve-step-button {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 25px;
+  width: 25px;
+  height: 29px;
+  font-size: 19px;
 }
 .item-options-desktop-table .item-reserve-quick-edit input {
-  flex: 1 1 70px;
-  width: 70px;
-  min-width: 66px;
+  flex: 1 1 48px;
+  width: 48px;
+  min-width: 48px;
   max-width: 100%;
-  padding-inline: 4px;
-  font-size: 13px;
+  padding-inline: 3px;
+  font-size: 12px;
 }
