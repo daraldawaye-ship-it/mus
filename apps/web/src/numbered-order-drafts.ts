@@ -3,7 +3,7 @@ import type { TemporaryChosenItem } from "./temporary-item-list";
 import {
   createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
-  type NumberedOrderDraftState,
+  type NumberedOrderDraftState, ORDER_DRAFT_LIFETIME_MS,
 } from "./numbered-order-drafts-core";
 
 const EVENT = "alraesy-numbered-order-drafts-changed";
@@ -29,6 +29,20 @@ function readOrderDrafts(key: string | null, legacy: string | null): NumberedOrd
   }
 }
 
+/** Persist sanitized state, removing expired drafts and stamping older drafts
+ * when the original creation timestamp was not recorded. An empty v2 state
+ * prevents legacy v1 backup from reappearing after expiry. */
+function refreshOrderDrafts(key: string | null, oldKey: string | null): NumberedOrderDraftState {
+  const next = readOrderDrafts(key, oldKey);
+  if (!key || typeof window === "undefined") return next;
+  const serialized = JSON.stringify(next);
+  try {
+    if (window.localStorage.getItem(key) !== serialized)
+      window.localStorage.setItem(key, serialized);
+  } catch { /* Read remains available if a device store is full or blocked. */ }
+  return next;
+}
+
 export function useNumberedOrderDrafts(
   companyId: number, userId: number | string | undefined,
 ) {
@@ -39,33 +53,49 @@ export function useNumberedOrderDrafts(
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setState(readOrderDrafts(key, oldKey));
     setError("");
+    const refreshCurrent = () => setState(refreshOrderDrafts(key, oldKey));
+    refreshCurrent();
     if (!key) return;
-    // Migration is copy-once; keep the old data untouched as a backup.
-    try {
-      if (window.localStorage.getItem(key) === null) {
-        const migrated = readOrderDrafts(key, oldKey);
-        if (migrated.drafts.length)
-          window.localStorage.setItem(key, JSON.stringify(migrated));
-      }
-    } catch {
-      setError("تعذرت تهيئة مسودات الطلبيات المحلية؛ تحقق من مساحة تخزين الجهاز.");
+
+    function onStorage(event: StorageEvent) {
+      if (event.key !== key && event.key !== null) return;
+      refreshCurrent();
     }
-    function refresh(event: Event) {
-      if (event.type === "storage") {
-        const storageEvent = event as StorageEvent;
-        if (storageEvent.key !== key && storageEvent.key !== null) return;
-      } else if ((event as CustomEvent<string>).detail !== key) return;
-      setState(readOrderDrafts(key, oldKey));
+    function onDraftEvent(event: Event) {
+      if ((event as CustomEvent<string>).detail !== key) return;
+      refreshCurrent();
     }
-    window.addEventListener("storage", refresh);
-    window.addEventListener(EVENT, refresh);
+    function onVisibility() {
+      if (document.visibilityState === "visible") refreshCurrent();
+    }
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(EVENT, onDraftEvent);
+    window.addEventListener("focus", refreshCurrent);
+    document.addEventListener("visibilitychange", onVisibility);
+    // Browser timers can be throttled in background tabs; refresh on resume,
+    // so expired drafts cease excluding order candidates immediately.
+    const interval = window.setInterval(refreshCurrent, 60_000);
     return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener(EVENT, refresh);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(EVENT, onDraftEvent);
+      window.removeEventListener("focus", refreshCurrent);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(interval);
     };
   }, [key, oldKey]);
+
+  useEffect(() => {
+    if (!key || !state.drafts.length) return;
+    const nextExpiry = Math.min(...state.drafts.map(draft =>
+      Date.parse(draft.createdAt) + ORDER_DRAFT_LIFETIME_MS));
+    if (!Number.isFinite(nextExpiry)) return;
+    const delay = Math.max(0, Math.min(2_147_483_647, nextExpiry - Date.now() + 40));
+    const timer = window.setTimeout(() => {
+      setState(refreshOrderDrafts(key, oldKey));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [key, oldKey, state.drafts]);
 
   const save = useCallback((next: NumberedOrderDraftState) => {
     if (!key) return false;
