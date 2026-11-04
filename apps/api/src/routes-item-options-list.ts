@@ -122,12 +122,14 @@ async function filteredItems(
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,
+             i.purchase_price AS purchase_price, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
              (COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0)) AS sale_quantity_month,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
+      JOIN company_currencies currency ON currency.company_id=i.company_id AND currency.id=i.currency_id
       LEFT JOIN company_item_previous_year_sale_times previous
         ON previous.company_id=i.company_id AND previous.legacy_id=i.legacy_id
       LEFT JOIN item_sale_rankings sale_rank ON sale_rank.company_id=i.company_id
@@ -197,6 +199,8 @@ async function filteredItems(
     id: Number(row.id), code: String(row.code), name: String(row.name),
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
+    purchasePrice: String(row.purchase_price).replace(/(\\.\\d*?)0+$/, "$1").replace(/\\.$/, ""),
+    purchaseCurrencyCode: String(row.currency_code),
     factor2: Number(row.factor2), factor3: Number(row.factor3),
     availableSmallest: String(row.available_smallest),
     availableUnit1: String(row.available_unit1),
@@ -223,7 +227,10 @@ async function filteredItems(
       itemId: row.id, code: row.code, name: row.name, active: row.active,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
-      requiredPurchaseQuantity: requiredQuantities.get(row.id) ?? "0",
+      purchasePrice: row.purchasePrice, purchaseCurrencyCode: row.purchaseCurrencyCode,
+      requiredPurchaseQuantity: requiredQuantities.get(row.id)?.requiredPurchaseQuantity ?? "0",
+      requiredPurchaseValue: requiredQuantities.get(row.id)?.requiredPurchaseValue ?? "0",
+      coverageWithRequiredDays: requiredQuantities.get(row.id)?.coverageWithRequiredDays ?? "0",
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth, saleQuantityMonth: row.saleQuantityMonth,
