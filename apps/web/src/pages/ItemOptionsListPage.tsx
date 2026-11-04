@@ -46,11 +46,11 @@ function readDraft(params: URLSearchParams): Draft {
     stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
     reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
     purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
-    monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
+    monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
-    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
+    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "2",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
@@ -60,6 +60,7 @@ function readDraft(params: URLSearchParams): Draft {
 type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
+  requiredPurchaseQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
@@ -144,10 +145,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const q = params.get("q")?.trim();
   if (q) request.set("q", q.slice(0, 120));
   for (const { key } of ranges) {
-    // Initial defaults are exactly one first-unit item. A deliberately blank
-    // URL value remains unbounded, unlike an absent parameter.
+    // Absent parameters get defaults; an explicitly blank value remains unbounded.
     const value = (params.get(key) ??
-      (key === "stockMin" || key === "stockMax" ? "1" : "")).trim();
+      (key === "stockMin" || key === "stockMax" || key === "monthMin" ? "1"
+        : key === "coverageMax" ? "2" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
@@ -293,7 +294,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         const value = draft[key].trim();
         // Preserve an explicitly empty quantity range so the user can request
         // "without limit" instead of silently restoring the default of 1.
-        if (value || key === "stockMin" || key === "stockMax")
+        if (value || key === "stockMin" || key === "stockMax" ||
+            key === "monthMin" || key === "coverageMax")
           next.set(key, value);
         else next.delete(key);
       }
@@ -384,7 +386,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reset() {
     setFilterError("");
     const defaults = new URLSearchParams({
-      stockMin: "1", stockMax: "1", sortBy: "allTime", sortDir: "desc",
+      stockMin: "1", stockMax: "1", monthMin: "1", coverageMax: "2",
+      sortBy: "allTime", sortDir: "desc",
     });
     setDraft(readDraft(defaults));
     setSearch("");
@@ -490,7 +493,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {ranges.map(({ key, label }) =>
               <label className="item-options-filter-field" key={key}>
                 <span className="item-options-filter-label" title={label}>{label}</span>
-                <input type="number" step="any"
+                <input type="text" inputMode="decimal"
                   value={draft[key]}
                   onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} />
               </label>
@@ -676,6 +679,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
               </div>
               <div className="item-options-mobile-stat">
+                <span>الكمية المطلوبة (أصغر وحدة)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
               </div>
               <div className="item-options-mobile-stat">
@@ -701,6 +707,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
+            <th scope="col">الكمية المطلوبة (أصغر وحدة)</th>
             {sortHeader("coverage", "الكفاية (يوم)")}
             {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
             {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
@@ -729,11 +736,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
               <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
+              <td><bdi>{row.requiredPurchaseQuantity}</bdi></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
                <td><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
                <td><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={12}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={13}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -749,7 +757,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         الحقول الفارغة لا تضع أي حد أعلى أو أدنى، وتُحتسب مرات البيع صافي عدد فواتير البيع
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
         تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
-        كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
+        الكمية المطلوبة محسوبة للوصول إلى «الكفاية إلى» (أو 30 يومًا إن تُركت فارغة)،
+         وتشمل الاحتياط عند اختياره، وتُقرّب إلى أقرب مضاعف لعامل وحدة الشراء.
+         كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
       </small>
     </Card>
     <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أسماء الأصناف دون ترويسة أو ترقيم">
