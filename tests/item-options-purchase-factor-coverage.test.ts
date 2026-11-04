@@ -99,7 +99,7 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.match(api, /staged_rank\.net_sale_quantity/);
   assert.match(api, /sale_rank\.net_sale_invoices/);
   assert.match(api, /staged_rank\.net_sale_invoices/);
-  assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)/);
+  assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)\.replace\(/);
   assert.match(ui, /row\.saleQuantityMonth/);
   assert.match(ui, /stockMin: params\.get\("stockMin"\) \?\? "", stockMax: params\.get\("stockMax"\) \?\? ""/);
   assert.match(ui, /monthMin: "1", coverageMax: "2"/);
@@ -108,4 +108,18 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.doesNotMatch(ui, /<span>\{temporarySelection\.pendingIds\.has\(row\.itemId\) \? "حفظ/);
   assert.match(css, /item-options-reserve-col/);
   assert.match(css, /item-options-choice-col/);
+});
+
+test("item-options register uses compact widths for all 14 columns", () => {
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const css = read("apps/web/src/styles.css");
+  const columns = ui.slice(ui.indexOf('<colgroup>'), ui.indexOf('</colgroup>'));
+  assert.equal((columns.match(/<col className=/g) ?? []).length, 14);
+  assert.doesNotMatch(columns, /span=\{9\}/);
+  assert.match(css, /item-options-desktop-table > table \{\s*min-width: 1420px/);
+  assert.doesNotMatch(css, /item-options-desktop-table > table \{\s*min-width: 1850px/);
+  assert.match(css, /col\.item-options-reserve-col,\s*\.item-options-desktop-table col\.item-options-purchase-factor-col \{ width: 124px; \}/);
+  assert.match(css, /item-options-choice-col \{ width: 42px; \}/);
+  assert.match(css, /item-options-month-quantity-col \{ width: 100px; \}/);
+  assert.match(css, /item-options-factor-coverage-col \{ width: 100px; \}/);
 });
