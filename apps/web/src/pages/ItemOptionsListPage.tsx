@@ -42,7 +42,7 @@ const ranges = [
   { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
-type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; useReserve: boolean };
+type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean; useReserve: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
@@ -58,6 +58,7 @@ function readDraft(params: URLSearchParams): Draft {
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
     excludeOrderStopped: params.get("excludeOrderStopped") !== "false",
+    excludeOrderDrafts: params.get("excludeOrderDrafts") !== "false",
     useReserve: params.get("useReserve") !== "false",
   };
 }
@@ -170,11 +171,20 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
   if (params.get("excludeOrderStopped") === "false") request.set("excludeOrderStopped", "false");
+  if (params.get("excludeOrderDrafts") === "false") request.set("excludeOrderDrafts", "false");
   if (params.get("useReserve") === "false") request.set("useReserve", "false");
+  // The numbered drafts are intentionally device-local. Pass only their IDs,
+  // so PostgreSQL filters ALL matching items before count, value totals, sort
+  // and pagination. A POST avoids URL-length limits for larger saved drafts.
+  const excludedDraftItemIds = params.get("excludeOrderDrafts") === "false" ? []
+    : Array.from(new Set(temporaryOrder.drafts.flatMap(orderDraft =>
+      orderDraft.items.map(item => item.id)))).sort((a, b) => a - b);
+  const draftExclusionKey = excludedDraftItemIds.join(",");
   const resultQuery = useQuery({
-    queryKey: ["item-options-list", user?.id, companyId, request.toString()],
+    queryKey: ["item-options-list", user?.id, companyId, request.toString(), draftExclusionKey],
     queryFn: ({ signal }) => api<Response>(
-      `/companies/${companyId}/item-options-list?${request.toString()}`, { signal }),
+      `/companies/${companyId}/item-options-list/query?${request.toString()}`,
+      { method: "POST", body: { excludedItemIds: excludedDraftItemIds }, signal }),
     enabled: !!user && canView,
     staleTime: 0,
   });
@@ -232,11 +242,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       filters.delete("page");
       filters.delete("pageSize");
       const response = await api<{ result: { items: TemporaryChosenItem[]; total: number } }>(
-        `/companies/${companyId}/item-options-list/unselected?${filters.toString()}`,
+        `/companies/${companyId}/item-options-list/unselected/query?${filters.toString()}`,
+        { method: "POST", body: { excludedItemIds: excludedDraftItemIds } },
       );
       const candidates = response.result.items;
       if (!candidates.length) {
-        setActionMessage("جميع الأصناف المطابقة للفلاتر محددة مؤقتًا؛ لا توجد أصناف غير مختارة لإضافتها.");
+        setActionMessage("لا توجد أصناف غير مختارة خارج مسودات الطلبيات الحالية تطابق الخيارات.");
         return;
       }
       // Each transfer creates a new numbered draft only for items not already
@@ -320,6 +331,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       if (search.trim()) next.set("q", search.trim()); else next.delete("q");
       if (draft.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
       if (!draft.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
+      if (!draft.excludeOrderDrafts) next.set("excludeOrderDrafts", "false"); else next.delete("excludeOrderDrafts");
       if (!draft.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
       next.delete("page");
       return next;
@@ -332,6 +344,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       ...Object.fromEntries(ranges.map(({key}) => [key,draft[key].trim()])),
       excludeZero: draft.excludeZero,
       excludeOrderStopped: draft.excludeOrderStopped,
+      excludeOrderDrafts: draft.excludeOrderDrafts,
       useReserve: draft.useReserve,
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -381,6 +394,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     for(const {key} of ranges) next.set(key,values[key]);
     if(values.excludeZero) next.set("excludeZero","true");
     if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
+    if(!values.excludeOrderDrafts) next.set("excludeOrderDrafts","false");
     if(!values.useReserve) next.set("useReserve","false");
     setDraft(readDraft(next));
     setSearch(values.q);
@@ -537,6 +551,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               onChange={event => setDraft(previous => ({ ...previous, useReserve: event.target.checked }))} />
             استخدام الكفاية مع الاحتياطي
           </label>
+          <label className="checkbox" title="استبعاد الأصناف الموجودة في أي مسودة طلبية على هذا الجهاز من نتائج القائمة وإجمالي المطلوب والترحيل إلى مسودة جديدة.">
+            <input type="checkbox" checked={draft.excludeOrderDrafts}
+              onChange={event => setDraft(previous => ({ ...previous, excludeOrderDrafts: event.target.checked }))} />
+            استثناء الأصناف المرحّلة إلى مسودات الطلبيات
+          </label>
           <Button type="submit" disabled={!canView || applyingFilter || temporarySelection.updating}>
             {applyingFilter ? "جارٍ تطبيق الخيارات…" : "تطبيق الخيارات"}
           </Button>
@@ -602,11 +621,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         </Button>
       </div>
       {showOrderDraft && <div className="item-options-order-draft">
-        <p className="muted">مسودات الطلبيات محفوظة على هذا الجهاز فقط. كل ترحيل ناجح ينشئ مسودة جديدة، ولا يتكرر الصنف في أي مسودتين.</p>
+        <p className="muted">مسودات الطلبيات محفوظة على هذا الجهاز فقط، وتُحذف كل مسودة تلقائيًا بعد 8 ساعات من إنشائها. كل ترحيل ناجح ينشئ مسودة جديدة، ولا يتكرر الصنف في أي مسودتين.</p>
         {!temporaryOrder.drafts.length && <p>لا توجد مسودات طلبية بعد.</p>}
         {temporaryOrder.drafts.map(orderDraft => <div key={orderDraft.id} className="item-options-order-draft-group">
           <div className="form-actions item-options-order-draft-actions">
             <strong>مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)</strong>
+            <small className="muted" title="تنتهي المسودة بعد 8 ساعات من إنشائها">أُنشئت: {new Date(orderDraft.createdAt).toLocaleString("ar-YE")}</small>
             <Button size="compact" variant="secondary"
               onClick={() => setActiveOrderDraftId(current =>
                 current === orderDraft.id ? null : orderDraft.id)}>
