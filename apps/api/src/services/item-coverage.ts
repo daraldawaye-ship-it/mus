@@ -120,9 +120,11 @@ export async function addItemCoverageToPage<T extends { id: number }>(
 
 /**
  * Read-only replenishment estimate for the selected item-options page.
- * Required quantity is in the smallest active unit, rounded to purchase-factor
- * multiples. Item purchase_price is per FIRST purchase unit (as in purchase
- * invoice item selection), so order value converts smallest to first unit.
+ * Required quantity is DISPLAYED in the first purchase unit as a WHOLE
+ * number. The suggested quantity in smallest units is rounded up to the
+ * least common multiple of factor2*factor3 and purchaseFactor, preserving
+ * whole first units and the existing minimum purchase lot simultaneously.
+ * Item purchase_price is per first purchase unit, not per smallest unit.
  * No stock or financial postings result from these figures.
  */
 export async function requiredPurchaseQuantitiesToPage(
@@ -139,27 +141,35 @@ export async function requiredPurchaseQuantitiesToPage(
   if (!itemIds.length) return new Map();
   const rows = (await client.query(
     `SELECT i.id,
-       requested.quantity::text AS required_purchase_quantity,
-       round(i.purchase_price::numeric * requested.quantity
-         / greatest(i.factor2::numeric * i.factor3::numeric,1),4)::text
+       (requested.quantity_smallest / purchase_lot.first_unit_smallest)::text
+         AS required_purchase_quantity,
+       round(i.purchase_price::numeric
+         * (requested.quantity_smallest / purchase_lot.first_unit_smallest),4)::text
          AS required_purchase_value,
        CASE
          WHEN coverage_rate.sales <= 0 THEN
-           CASE WHEN greatest(coverage_rate.quantity + requested.quantity
+           CASE WHEN greatest(coverage_rate.quantity + requested.quantity_smallest
              - CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END,0) = 0
              THEN 0::numeric ELSE 9999::numeric END
-         ELSE round(greatest(coverage_rate.quantity + requested.quantity
+         ELSE round(greatest(coverage_rate.quantity + requested.quantity_smallest
              - CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END,0)
              * coverage_rate.days / coverage_rate.sales,2)
        END::text AS coverage_with_required_days
      FROM items i ${itemCoverageJoin}
      CROSS JOIN LATERAL (
+       SELECT greatest((i.factor2::bigint * i.factor3::bigint),1)::numeric
+                AS first_unit_smallest,
+         lcm(greatest(i.purchase_factor::bigint,1),
+           greatest(i.factor2::bigint * i.factor3::bigint,1))::numeric
+                AS minimum_lot_smallest
+     ) purchase_lot
+     CROSS JOIN LATERAL (
        SELECT ceil(greatest(0::numeric,
          coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
          + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
          - coverage_rate.quantity
-       ) / greatest(i.purchase_factor,1)) * greatest(i.purchase_factor,1)
-         AS quantity
+       ) / purchase_lot.minimum_lot_smallest) * purchase_lot.minimum_lot_smallest
+         AS quantity_smallest
      ) requested
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
     [companyId, itemIds, targetDays, useReserve],
