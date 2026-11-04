@@ -165,7 +165,7 @@ export async function requiredPurchaseQuantitiesToPage(
     [companyId, itemIds, targetDays, useReserve],
   )).rows;
   const trimZeros = (value: unknown) => String(value).includes(".")
-    ? String(value).replace(/0+$/, "").replace(/\\.$/, "") : String(value);
+    ? String(value).replace(/0+$/, "").replace(/\.$/, "") : String(value);
   return new Map(rows.map(row => [
     Number(row.id), {
       requiredPurchaseQuantity: trimZeros(row.required_purchase_quantity),
