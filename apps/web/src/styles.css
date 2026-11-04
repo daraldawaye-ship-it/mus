@@ -7368,27 +7368,40 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 
 
-/* Item options register: compact all fourteen columns instead of allocating
-   an enormous 1850px table and nine evenly spaced spare columns.
-   Keep both inline numeric editors readable and scroll only on narrow screens. */
+/* Item options register: 17 purpose-sized columns, more compact than the
+   prior 14-column layout (1420px). Keep the two editable fields usable. */
 .item-options-desktop-table > table {
-  min-width: 1420px;
+  min-width: 1410px;
   table-layout: fixed;
 }
-.item-options-desktop-table col.item-options-choice-col { width: 42px; }
-.item-options-desktop-table col.item-options-name-col { width: 230px; }
-.item-options-desktop-table col.item-options-stock-col { width: 85px; }
+.item-options-desktop-table col.item-options-choice-col { width: 38px; }
+.item-options-desktop-table col.item-options-name-col { width: 185px; }
+.item-options-desktop-table col.item-options-stock-col { width: 65px; }
 .item-options-desktop-table col.item-options-reserve-col,
-.item-options-desktop-table col.item-options-purchase-factor-col { width: 124px; }
-.item-options-desktop-table col.item-options-month-times-col { width: 85px; }
-.item-options-desktop-table col.item-options-month-quantity-col { width: 100px; }
-.item-options-desktop-table col.item-options-four-months-col { width: 85px; }
-.item-options-desktop-table col.item-options-all-time-col { width: 90px; }
-.item-options-desktop-table col.item-options-previous-year-col { width: 82px; }
-.item-options-desktop-table col.item-options-required-quantity-col { width: 105px; }
-.item-options-desktop-table col.item-options-coverage-col { width: 77px; }
-.item-options-desktop-table col.item-options-reserve-coverage-col { width: 90px; }
-.item-options-desktop-table col.item-options-factor-coverage-col { width: 100px; }
+.item-options-desktop-table col.item-options-purchase-factor-col { width: 116px; }
+.item-options-desktop-table col.item-options-month-times-col { width: 67px; }
+.item-options-desktop-table col.item-options-month-quantity-col { width: 77px; }
+.item-options-desktop-table col.item-options-four-months-col { width: 67px; }
+.item-options-desktop-table col.item-options-all-time-col { width: 70px; }
+.item-options-desktop-table col.item-options-previous-year-col { width: 70px; }
+.item-options-desktop-table col.item-options-required-quantity-col { width: 83px; }
+.item-options-desktop-table col.item-options-purchase-price-col { width: 84px; }
+.item-options-desktop-table col.item-options-required-value-col { width: 90px; }
+.item-options-desktop-table col.item-options-coverage-col { width: 65px; }
+.item-options-desktop-table col.item-options-coverage-with-required-col { width: 68px; }
+.item-options-desktop-table col.item-options-reserve-coverage-col { width: 72px; }
+.item-options-desktop-table col.item-options-factor-coverage-col { width: 75px; }
+.item-options-desktop-table > table th {
+  padding: 6px 3px;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.item-options-desktop-table > table td {
+  padding: 2px 3px;
+  font-size: 12px;
+}
 .item-options-desktop-table th.item-options-choice-cell,
 .item-options-desktop-table td.item-options-choice-cell {
   padding-inline: 2px;
@@ -7416,4 +7429,10 @@ a.notification-quick-title:hover { text-decoration: underline; }
   max-width: 100%;
   padding-inline: 3px;
   font-size: 12px;
+}
+.item-options-desktop-table .item-options-currency {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1;
 }
