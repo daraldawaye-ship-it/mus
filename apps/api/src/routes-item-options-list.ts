@@ -37,6 +37,7 @@ const querySchema = z.object({
   reserveCoverageMin: optionalNumber, reserveCoverageMax: optionalNumber,
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
+  excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
@@ -155,6 +156,9 @@ async function filteredItems(
                         AND (source_item.english_name ILIKE $3
                              OR source_item.barcode ILIKE $3)))
         AND ($4::text='all' OR ($4='active' AND i.active) OR ($4='archived' AND NOT i.active))
+        -- Card field "يتوقف الطلب حتى تاريخ": a future date blocks
+        -- replenishment while this default-on option is enabled.
+        AND (${options.excludeOrderStopped ? "i.order_stopped_until IS NULL OR i.order_stopped_until <= $2::date" : "TRUE"})
     ),
     staged AS (${stagedDailyActivitySql("$2::date")}),
     activity AS (
