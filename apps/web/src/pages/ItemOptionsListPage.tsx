@@ -219,7 +219,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       // addManyExact refuses overflowing the local working-list capacity
       // instead of silently keeping only a subset of the filtered results.
       if (!temporaryOrder.addManyExact(candidates)) return;
-      if (candidates.length <= 100) setShowOrderDraft(true);
+      setShowOrderDraft(candidates.length <= 100);
       const previousIds = new Set(temporaryOrder.items.map(item => item.id));
       const newCount = candidates.filter(item => !previousIds.has(item.id)).length;
       setActionMessage(
