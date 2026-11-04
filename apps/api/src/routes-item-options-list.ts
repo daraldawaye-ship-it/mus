@@ -31,6 +31,7 @@ const querySchema = z.object({
   purchaseFactorMin: optionalNumber, purchaseFactorMax: optionalNumber,
   monthMin: optionalNumber, monthMax: optionalNumber,
   fourMonthsMin: optionalNumber, fourMonthsMax: optionalNumber,
+  yearMin: optionalNumber, yearMax: optionalNumber,
   allTimeMin: optionalNumber, allTimeMax: optionalNumber,
   previousYearMin: optionalNumber, previousYearMax: optionalNumber,
   coverageMin: optionalNumber, coverageMax: optionalNumber,
@@ -39,7 +40,7 @@ const querySchema = z.object({
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -83,6 +84,8 @@ async function filteredItems(
   range(options.monthMax, "m.sale_times_month", "<=");
   range(options.fourMonthsMin, "m.sale_times_four_months", ">=");
   range(options.fourMonthsMax, "m.sale_times_four_months", "<=");
+  range(options.yearMin, "m.sale_times_year", ">=");
+  range(options.yearMax, "m.sale_times_year", "<=");
   range(options.allTimeMin, "m.sale_times_all_time", ">=");
   range(options.allTimeMax, "m.sale_times_all_time", "<=");
   range(options.previousYearMin, "m.sale_times_previous_year", ">=");
@@ -112,7 +115,7 @@ async function filteredItems(
     requiredPurchaseQuantity: "f.order_quantity_first_unit",
     requiredPurchaseValue: "f.order_value",
     coverageWithRequired: "f.projected_coverage_days",
-    fourMonths: "f.sale_times_four_months",
+    fourMonths: "f.sale_times_four_months", year: "f.sale_times_year",
     allTime: "f.sale_times_all_time",
     coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
@@ -138,7 +141,10 @@ async function filteredItems(
              i.purchase_price AS purchase_price, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
-             (COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0)) AS sale_quantity_month,
+             -- Both cached monthly quantities are in the smallest unit. Convert
+             -- only for display/sort, preserving exact source snapshot values.
+             round((COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0))::numeric
+               / greatest(i.factor2::numeric*i.factor3::numeric,1),4) AS sale_quantity_month,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
@@ -171,6 +177,8 @@ async function filteredItems(
       SELECT d.item_id,
          COALESCE(SUM(d.sale_invoices-d.sale_return_invoices) FILTER(
            WHERE d.document_date>=($2::date-interval '4 months'+interval '1 day')::date),0) AS four_months,
+         COALESCE(SUM(d.sale_invoices-d.sale_return_invoices) FILTER(
+           WHERE d.document_date>=($2::date-interval '1 year'+interval '1 day')::date),0) AS year,
          COALESCE(SUM(d.sale_invoices-d.sale_return_invoices),0) AS all_time
       FROM activity d JOIN candidate i ON i.id=d.item_id
       WHERE d.company_id=$1 GROUP BY d.item_id
@@ -178,6 +186,7 @@ async function filteredItems(
     metrics AS (
       SELECT i.*, i.available_smallest/(i.factor2::numeric*i.factor3) AS available_unit1,
              COALESCE(s.four_months,0) AS sale_times_four_months,
+             COALESCE(s.year,0) AS sale_times_year,
              COALESCE(s.all_time,0) AS sale_times_all_time,
              ${needsCoverageJoin
                ? "coverage.approximate_coverage_days AS coverage_before, coverage.coverage_after_reserve_days AS coverage_after_reserve, coverage.reserve_coverage_days, coverage.purchase_factor_coverage_days"
@@ -266,6 +275,7 @@ async function filteredItems(
     // Keep exact cached quantity but hide decimal zeros in the display.
     saleQuantityMonth: String(row.sale_quantity_month).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     saleTimesFourMonths: String(row.sale_times_four_months),
+    saleTimesYear: String(row.sale_times_year),
     saleTimesAllTime: String(row.sale_times_all_time),
     saleTimesPreviousYear: String(row.sale_times_previous_year),
     approximateCoverageDays: needsCoverageJoin ? String(row.coverage_before) : null,
@@ -292,7 +302,7 @@ async function filteredItems(
       factor2: row.factor2, factor3: row.factor3,
       availableSmallest: row.availableSmallest, availableUnit1: row.availableUnit1,
       saleTimesMonth: row.saleTimesMonth, saleQuantityMonth: row.saleQuantityMonth,
-      saleTimesFourMonths: row.saleTimesFourMonths,
+      saleTimesFourMonths: row.saleTimesFourMonths, saleTimesYear: row.saleTimesYear,
       saleTimesAllTime: row.saleTimesAllTime, saleTimesPreviousYear: row.saleTimesPreviousYear,
       approximateCoverageDays: row.approximateCoverageDays,
       coverageAfterReserveDays: row.coverageAfterReserveDays,
