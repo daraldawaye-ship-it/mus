@@ -291,3 +291,32 @@ test("nonzero minimum order is identical in row proposal and full-filter total",
   assert.match(api, /SUM\(order_value\)::text/);
   assert.match(coverage, /required_purchase_quantity/);
 });
+
+
+test("any item-options row click updates avatar item-shortcut selection without navigating", () => {
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const recent = read("apps/web/src/recent-entities.ts");
+  const menu = read("apps/web/src/EntityMenuSearch.tsx");
+  const css = read("apps/web/src/styles.css");
+  assert.match(ui, /function rememberItem\(row: Row\) \{\s*if \(user\) rememberRecentEntity\(user\.id, companyId, "item"/);
+  assert.match(ui, /<article key=\{row\.itemId\}[\s\S]*?role="listitem" onClick=\{\(\) => rememberItem\(row\)\}>/);
+  assert.match(ui, /<tr key=\{row\.itemId\}[\s\S]*?onClick=\{\(\) => rememberItem\(row\)\}>/);
+  assert.match(ui, /<input type="checkbox" aria-label=\{\`اختيار الصنف/);
+  assert.match(ui, /<ItemReserveQuickEdit/);
+  assert.match(ui, /<ItemPurchaseFactorQuickEdit/);
+  assert.match(recent, /window\.dispatchEvent\(new CustomEvent\(RECENT_ENTITY_EVENT/);
+  assert.match(menu, /window\.addEventListener\(RECENT_ENTITY_EVENT, onChange\)/);
+  assert.match(menu, /setRecent\(detail\.value\)/);
+  assert.match(menu, /<ItemMenuHistory[^>]*userId=\{user\.id\}/);
+  assert.match(css, /\.item-options-desktop-table tbody tr,\s*\.item-options-mobile-entry \{ cursor: pointer; \}/);
+});
+
+test("one day is the fresh-page and reset default, without overwriting explicit filter values", () => {
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "1"/);
+  assert.match(ui, /key === "monthMin" \|\| key === "coverageMax" \? "1"/);
+  assert.match(ui, /monthMin: "1", yearMin: "2", coverageMax: "1"/);
+  // Old links or shared presets can intentionally contain 2: they remain explicit choices.
+  assert.match(ui, /next\.set\(key,values\[key\]\)/);
+  assert.match(ui, /if \(value \|\| key === "stockMin"/);
+});
