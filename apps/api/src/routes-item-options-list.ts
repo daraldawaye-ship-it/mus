@@ -199,7 +199,7 @@ async function filteredItems(
     id: Number(row.id), code: String(row.code), name: String(row.name),
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
-    purchasePrice: String(row.purchase_price).replace(/(\\.\\d*?)0+$/, "$1").replace(/\\.$/, ""),
+    purchasePrice: String(row.purchase_price).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     purchaseCurrencyCode: String(row.currency_code),
     factor2: Number(row.factor2), factor3: Number(row.factor3),
     availableSmallest: String(row.available_smallest),
