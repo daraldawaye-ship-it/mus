@@ -227,3 +227,51 @@ test("item-options stop-order control excludes only future card dates by default
   // The purchase/value/coverage totals all use filtered, not unfiltered rows.
   assert.match(api, /FROM filtered f/);
 });
+
+
+test("monthly sold quantity in item options is FIRST-unit and rolling year count is filtered", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const schema = read("packages/contracts/src/item-options-presets.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  assert.match(api, /sale_rank\.net_sale_quantity/);
+  assert.match(api, /staged_rank\.net_sale_quantity/);
+  assert.match(api, /greatest\(i\.factor2::numeric\*i\.factor3::numeric,1\),4\) AS sale_quantity_month/);
+  assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)/);
+  assert.match(api, /saleQuantityMonth: "f\.sale_quantity_month"/);
+  assert.match(ui, /كمية مباعة في شهر \(الوحدة الأولى\)/);
+  assert.doesNotMatch(ui, /كمية مباعة في شهر \(أصغر وحدة\)/);
+  assert.match(api, /WHERE d\.document_date>=\(\$2::date-interval '1 year'\+interval '1 day'\)::date\),0\) AS year/);
+  assert.match(api, /COALESCE\(s\.year,0\) AS sale_times_year/);
+  assert.match(api, /range\(options\.yearMin, "m\.sale_times_year", ">="\)/);
+  assert.match(api, /range\(options\.yearMax, "m\.sale_times_year", "<="\)/);
+  assert.match(api, /saleTimesYear: String\(row\.sale_times_year\)/);
+  assert.match(api, /year: "f\.sale_times_year"/);
+  assert.match(ui, /\{ key: "fourMonthsMax".*\n.*\{ key: "yearMin", label: "المبيعات مرات في عام من" \}/);
+  assert.match(ui, /\{ key: "yearMax", label: "المبيعات مرات في عام إلى" \}/);
+  assert.match(ui, /yearMin: params\.get\("yearMin"\) \?\? "2"/);
+  assert.match(ui, /yearMin: "2", coverageMax: "1"/);
+  assert.match(ui, /key === "yearMin" \? "2"/);
+  assert.match(ui, /key === "yearMin" \|\| key === "coverageMax"/);
+  assert.match(schema, /yearMin: numericRange\.default\(" "\)/.source ? /yearMin: numericRange\.default\(" "\)/ : /yearMin: numericRange\.default\(" "\)/);
+  assert.match(schema, /yearMax: numericRange\.default\(""\)/);
+  assert.match(coverage, /coverage_rate\.sales/);
+  // Example provided in the screenshot: 9722 smallest strip-parts /
+  // 50 smallest parts per first selling unit = 194.44 first units.
+  assert.equal(9722 / (50 * 1), 194.44);
+  // Days of coverage are unit-neutral when stock and sales are converted together.
+  const daysSmallest = 82 * 30 / 9722;
+  const daysFirst = (82 / 50) * 30 / (9722 / 50);
+  assert.ok(Math.abs(daysSmallest - daysFirst) < 1e-12);
+  const oldPreset = itemOptionsPresetFiltersSchema.parse({
+    q: "", active: "active", stockMin: "", stockMax: "", monthMin: "1",
+    monthMax: "", fourMonthsMin: "", fourMonthsMax: "",
+    allTimeMin: "", allTimeMax: "", coverageMin: "", coverageMax: "1",
+    excludeZero: false, useReserve: true, sortBy: "allTime", sortDir: "desc",
+  });
+  assert.equal(oldPreset.yearMin, "");
+  assert.equal(oldPreset.yearMax, "");
+  assert.equal(itemOptionsPresetFiltersSchema.parse({
+    ...oldPreset, yearMin: "2", yearMax: "40", sortBy: "year"
+  }).sortBy, "year");
+});
