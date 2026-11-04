@@ -4061,6 +4061,7 @@ test("item options filter immutable previous-year sale times and mutable reserve
   const platform=await owner(f);
   const co=await company(platform.client,"Previous-year pharmacy");
   const foreign=await company(platform.client,"Other pharmacy");
+  const outsider = await register(f,"unselected-list-outsider@example.test");
   const prefix=`/companies/${co.id}`;
   async function add(companyId:number,name:string,legacyId:string,reserveQuantity:string){
     const currencyPage=await platform.client.ok<Page<{id:number;code:string}>>("GET",`/companies/${companyId}/currencies`);
