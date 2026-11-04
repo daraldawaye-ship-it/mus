@@ -12,7 +12,7 @@ test("add all unselected is based on full applied filters, never the 50 visible 
   assert.match(body, /filters\.delete\("page"\)/);
   assert.match(body, /filters\.delete\("pageSize"\)/);
   assert.match(body, /item-options-list\/unselected/);
-  assert.match(body, /temporaryOrder\.addManyExact\(candidates\)/);
+  assert.match(body, /temporaryOrder\.createDraft\(candidates\)/);
   assert.doesNotMatch(body, /result\.rows|temporarySelection\.items/);
   assert.match(page, /إضافة جميع الأصناف غير المختارة إلى مسودة طلبية/);
   assert.doesNotMatch(page, /onClick=\{addToOrderDraft\}/);
