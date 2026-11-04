@@ -1,7 +1,8 @@
 import type { TemporaryChosenItem } from "./temporary-item-list";
 
 // Drafts belong only to this user's browser. Nothing here posts invoices/orders.
-export type NumberedOrderDraft = { id: number; items: TemporaryChosenItem[] };
+export type NumberedOrderDraft = { id: number; createdAt: string; items: TemporaryChosenItem[] };
+export const ORDER_DRAFT_LIFETIME_MS = 8 * 60 * 60 * 1000;
 export type NumberedOrderDraftState = { nextId: number; drafts: NumberedOrderDraft[] };
 export const MAX_NEW_ORDER_DRAFT_ITEMS = 2_000;
 
@@ -29,32 +30,41 @@ function uniqueItems(source: unknown, global: Set<number>, limit: number): Tempo
 }
 
 /** Repairs old/corrupt stored duplicates across drafts while preserving the first owner. */
-export function normalizeOrderDrafts(value: unknown): NumberedOrderDraftState {
+export function normalizeOrderDrafts(value: unknown, now = Date.now()): NumberedOrderDraftState {
   if (!value || typeof value !== "object") return emptyOrderDraftState();
   const source = value as Partial<NumberedOrderDraftState>;
   if (!Array.isArray(source.drafts)) return emptyOrderDraftState();
   const seenItemIds = new Set<number>();
+  let highestSeenId = 0;
   const seenDraftIds = new Set<number>();
   const drafts: NumberedOrderDraft[] = [];
   for (const draft of source.drafts) {
     if (!draft || !Number.isSafeInteger(draft.id) || draft.id < 1 ||
         seenDraftIds.has(draft.id)) continue;
     seenDraftIds.add(draft.id);
+    highestSeenId = Math.max(highestSeenId, draft.id);
+    // Previously saved drafts have no creation timestamp; start their first
+    // eight-hour window at migration, rather than deleting them arbitrarily.
+    const rawTime = typeof draft.createdAt === "string"
+      ? Date.parse(draft.createdAt) : NaN;
+    const createdMs = Number.isFinite(rawTime) && rawTime > 0 && rawTime <= now
+      ? rawTime : now;
+    if (createdMs + ORDER_DRAFT_LIFETIME_MS <= now) continue;
     // Existing v1 draft may contain up to 5000 lines; never discard on upgrade.
     const items = uniqueItems(draft.items, seenItemIds, 5_000);
-    drafts.push({ id: draft.id, items });
+    drafts.push({ id: draft.id, createdAt: new Date(createdMs).toISOString(), items });
   }
-  const highest = drafts.reduce((max, draft) => Math.max(max, draft.id), 0);
+  const highest = highestSeenId;
   const storedNext = Number.isSafeInteger(source.nextId) && (source.nextId ?? 0) > 0
     ? source.nextId! : 1;
   return { nextId: Math.max(highest + 1, storedNext), drafts };
 }
 
 /** Import v1's sole local order draft as draft 1; leave legacy key untouched. */
-export function migrateLegacyOrderDraft(legacy: unknown): NumberedOrderDraftState {
+export function migrateLegacyOrderDraft(legacy: unknown, now = Date.now()): NumberedOrderDraftState {
   const items = uniqueItems(legacy, new Set<number>(), 5_000);
   return items.length
-    ? { nextId: 2, drafts: [{ id: 1, items }] }
+    ? { nextId: 2, drafts: [{ id: 1, createdAt: new Date(now).toISOString(), items }] }
     : emptyOrderDraftState();
 }
 
@@ -68,9 +78,9 @@ export type CreateOrderDraftResult = {
 
 /** Never append to an old draft. Create a new numbered draft per successful transfer. */
 export function createNumberedOrderDraft(
-  rawState: NumberedOrderDraftState, incoming: TemporaryChosenItem[],
+  rawState: NumberedOrderDraftState, incoming: TemporaryChosenItem[], now = Date.now(),
 ): CreateOrderDraftResult {
-  const state = normalizeOrderDrafts(rawState);
+  const state = normalizeOrderDrafts(rawState, now);
   const alreadyInDrafts = new Set(state.drafts.flatMap(draft => draft.items.map(item => item.id)));
   const items = uniqueItems(incoming, alreadyInDrafts, MAX_NEW_ORDER_DRAFT_ITEMS + 1);
   const skipped = incoming.length - items.length;
@@ -85,7 +95,7 @@ export function createNumberedOrderDraft(
   };
   const id = state.nextId;
   return {
-    state: { nextId: id + 1, drafts: [...state.drafts, { id, items }] },
+    state: { nextId: id + 1, drafts: [...state.drafts, { id, createdAt: new Date(now).toISOString(), items }] },
     id, added: items.length, skipped, error: null,
   };
 }
