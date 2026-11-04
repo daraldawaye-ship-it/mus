@@ -119,11 +119,11 @@ export async function addItemCoverageToPage<T extends { id: number }>(
 
 
 /**
- * Read-only suggested replenishment for the selected item-options page.
- * Match the existing coverage sales window (30/120 days) and stock scope.
- * Quantity is expressed in the stored smallest unit; purchaseFactor is a
- * notional minimum order lot and NEVER changes stock or invoice conversions.
- * The reserve is added back BEFORE rounding so low stock still replenishes it.
+ * Read-only replenishment estimate for the selected item-options page.
+ * Required quantity is in the smallest active unit, rounded to purchase-factor
+ * multiples. Item purchase_price is per FIRST purchase unit (as in purchase
+ * invoice item selection), so order value converts smallest to first unit.
+ * No stock or financial postings result from these figures.
  */
 export async function requiredPurchaseQuantitiesToPage(
   client: PoolClient,
@@ -131,22 +131,47 @@ export async function requiredPurchaseQuantitiesToPage(
   itemIds: number[],
   targetDays: string,
   useReserve: boolean,
-): Promise<Map<number, string>> {
+): Promise<Map<number, {
+  requiredPurchaseQuantity: string;
+  requiredPurchaseValue: string;
+  coverageWithRequiredDays: string;
+}>> {
   if (!itemIds.length) return new Map();
   const rows = (await client.query(
     `SELECT i.id,
-       (ceil(greatest(0::numeric,
+       requested.quantity::text AS required_purchase_quantity,
+       round(i.purchase_price::numeric * requested.quantity
+         / greatest(i.factor2::numeric * i.factor3::numeric,1),4)::text
+         AS required_purchase_value,
+       CASE
+         WHEN coverage_rate.sales <= 0 THEN
+           CASE WHEN greatest(coverage_rate.quantity + requested.quantity
+             - CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END,0) = 0
+             THEN 0::numeric ELSE 9999::numeric END
+         ELSE round(greatest(coverage_rate.quantity + requested.quantity
+             - CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END,0)
+             * coverage_rate.days / coverage_rate.sales,2)
+       END::text AS coverage_with_required_days
+     FROM items i ${itemCoverageJoin}
+     CROSS JOIN LATERAL (
+       SELECT ceil(greatest(0::numeric,
          coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
          + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
          - coverage_rate.quantity
-       ) / greatest(i.purchase_factor,1)) * greatest(i.purchase_factor,1))::text
-         AS required_purchase_quantity
-     FROM items i ${itemCoverageJoin}
+       ) / greatest(i.purchase_factor,1)) * greatest(i.purchase_factor,1)
+         AS quantity
+     ) requested
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
     [companyId, itemIds, targetDays, useReserve],
   )).rows;
+  const trimZeros = (value: unknown) => String(value).includes(".")
+    ? String(value).replace(/0+$/, "").replace(/\\.$/, "") : String(value);
   return new Map(rows.map(row => [
-    Number(row.id), String(row.required_purchase_quantity),
+    Number(row.id), {
+      requiredPurchaseQuantity: trimZeros(row.required_purchase_quantity),
+      requiredPurchaseValue: trimZeros(row.required_purchase_value),
+      coverageWithRequiredDays: trimZeros(row.coverage_with_required_days),
+    },
   ]));
 }
 
