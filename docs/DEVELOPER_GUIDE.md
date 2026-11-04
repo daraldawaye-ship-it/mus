@@ -419,3 +419,22 @@ Owner-authorized source files are imported only into the independent market data
 POST /medicine-market/staging/import is owner-only, requires enabled market and isolated service context, takes an idempotency UUID, SHA-256 of uncompressed NDJSON, and an HTTPS signed transfer URL restricted to exact sdmntpr*.oaiusercontent.com hosts. Redirects and arbitrary hosts are forbidden. One global database advisory lock bounds imports to one. It validates compressed/uncompressed size, bundle hash, original file hashes/byte counts and row counts, then atomically commits all sources or rolls back. Download URLs are never persisted/logged. A failed/interrupted job can resume using the same UUID and hash with a fresh URL; completed jobs return idempotently. A source drive ID + original SHA cannot be imported twice.
 GET /medicine-market/staging returns job/source counts for the owner; GET /medicine-market/staging/:sourceId/rows reads a bounded source/section cursor. Raw chat and workbook data must never appear in public cards, logs, Git or ordinary user APIs. Source staging is not validation of medical content. The preparation script preserves whole original binaries, source metadata, exact raw JSON message slices (large integers/decimals retained), Excel row coordinates/types/formats and original workbooks. A truncated JSON source can yield complete records with an explicit parse issue; the source itself is never silently repaired.
 Deployment verification is separate from code completion: run market-staging-ci and market-reference CI, deploy BOTH main API and private market service (new MCP routes require main API registration), then import through the authenticated API and compare every source's actual_rows/actual_bytes to its manifest. Never claim import success from deployment alone.
+
+## اتصال Codex وChatGPT عبر OAuth — 4 نوفمبر 2026
+
+عنوان الاتصال هو `https://alraesy-private-preview.onrender.com/mcp` في جميع العملاء. يجب أن تسمح شبكة بيئة Codex بالمضيف `alraesy-private-preview.onrender.com`؛ رفض وسيط الشبكة قبل استجابة الموقع لا يثبت رفض OAuth أو تعطل الموقع. اكتشاف الأدوات متاح دون تسجيل دخول، أما قراءة البيانات وتنفيذ العمليات فتتطلب تفويض الحساب. وجود الأدوات على الخادم لا يجعلها متاحة تلقائيًا في محادثة لم تُربط بالاتصال.
+
+في Codex CLI أضف الاتصال إن لم يكن موجودًا، ثم ابدأ تفويضًا جديدًا بالنطاق المطلوب. المثال التالي للمالك أو المسؤول العام الذي يريد أدوات الجدول العام وأدوات الموقع معًا:
+
+```sh
+codex mcp add alraesy --url https://alraesy-private-preview.onrender.com/mcp --oauth-resource https://alraesy-private-preview.onrender.com/mcp --oauth-client-registration dcr
+codex mcp login alraesy --oauth-client-registration dcr --scopes general_table.read,general_table.write,tijara.read,tijara.write
+```
+
+للقراءة فقط استخدم `--scopes tijara.read`؛ ولحساب الموظف الذي يريد القراءة والتنفيذ ضمن صلاحياته استخدم `--scopes tijara.read,tijara.write`. افتح صفحة التفويض التي ينشئها العميل، وسجّل الدخول إلى الرئيسي بالحساب المقصود، ثم راجع الأذونات واضغط الموافقة صراحةً. لا تتوسع المنح القديمة تلقائيًا، ولا يمنح تفويض المالك لحسابه صلاحيات للآخرين. يظل كل اتصال مرتبطًا بالحساب الذي وافق، وتُراجع عضوية الشركة وصلاحيات الصفحات والإجراءات عند التنفيذ.
+
+يسمح `services/oauth-redirect.ts` في الإنتاج لرد Codex المحلي بصيغة `http://127.0.0.1:<port>/callback` أو `/callback/<suffix>`؛ المنفذ الصريح من 1 إلى 65535، واللاحقة من 1 إلى 128 حرفًا من `[A-Za-z0-9_-]`. تفحص الصيغة الأصلية دون قبول مضيف بديل أو query أو fragment أو مسار مطبّع. تبقى عناوين ChatGPT عبر HTTPS المعتمدة قائمة. التسجيل والتفويض يفحصان العنوان، واستبدال الرمز يتطلب العنوان المسجل نفسه وPKCE S256 والمورد الصحيح. رموز التفويض أحادية الاستخدام؛ لا تضف تجاوزًا للمصادقة أو للصلاحيات لتسهيل اتصال عميل.
+
+في ChatGPT الشخصي أو حساب العمل، استخدم إضافة/إدارة اتصالات MCP عندما يتيحها العميل ومساحة العمل، وأدخل العنوان نفسه واختر OAuth. بعد تحديث أدوات الخادم حدّث قائمة أدوات التطبيق وأعد الاتصال والموافقة على النطاق المطلوب؛ سياسات مساحة العمل قد تحدد إتاحة الاتصال. إلغاء التفويض من صفحة الرئيسي `/oauth/connections` يوقف الاتصال الملغى، ويتطلب ربط حساب آخر موافقته المستقلة. لا ترسل كلمة المرور أو رمز الوصول أو رابط callback المحتوي على رمز التفويض إلى المحادثة أو السجلات أو Git.
+
+التحقق المحدد لهذا التغيير في `tests/oauth-redirect.test.ts` وحالات `Codex OAuth` و`ChatGPT MCP` و`ChatGPT site access` في `tests/api.test.ts`، مع فحص الأنواع والبناء. نشر هذا التعديل يخص خدمة الويب الحالية على Render؛ لا يغير قاعدة الشركات أو قاعدة السوق المستقلة ولا يتطلب إعادة نشر خدمة السوق. تحديث هذا الملف لا يعيد كتابة دليل المطور الموجود في قاعدة البيانات.

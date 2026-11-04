@@ -1623,6 +1623,92 @@ test("ChatGPT MCP read-only OAuth approves per-user access, filters general tabl
   assert.equal((await blocked.json() as {result:{isError:boolean}}).result.isError,true);
 });
 
+test("Codex OAuth production callback preserves full consent, PKCE binding and revocation",async(t)=>{
+  const origin="https://alraesy.example.test";
+  const f=await fixture(t,{production:true,appOrigin:origin}),platform=await owner(f);
+  const {createSession}=await import("../apps/api/src/services/auth.ts");
+  const session=await createSession(f.pool,platform.user.id);
+  const callback="http://127.0.0.1:36477/callback/6M49Wa89rRZK";
+  const fullScope="general_table.read general_table.write tijara.read tijara.write";
+  const register=async(redirect:string)=>fetch(f.baseUrl+"/oauth/register",{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({redirect_uris:[redirect],token_endpoint_auth_method:"none"}),
+  });
+  for(const redirect of ["http://localhost:4321/callback","http://127.0.0.1:4321/other",
+    "http://127.0.0.1.evil.example:4321/callback","https://evil.example/callback"]){
+    assert.equal((await register(redirect)).status,400,redirect);
+  }
+  assert.equal((await f.pool.query("SELECT count(*)::int AS n FROM chatgpt_oauth_clients")).rows[0].n,0);
+  const registration=await register(callback);
+  assert.equal(registration.status,201);
+  const client=await registration.json() as {client_id:string};
+  const verifier="c".repeat(64);
+  const fields={client_id:client.client_id,redirect_uri:callback,response_type:"code",
+    scope:fullScope,state:"codex_state_12345678",resource:origin+"/mcp",
+    code_challenge:createHash("sha256").update(verifier).digest("base64url"),code_challenge_method:"S256"};
+  const authorize=async(values:Record<string,string>,authenticated=true)=>fetch(
+    f.baseUrl+"/oauth/authorize?"+new URLSearchParams(values),
+    {redirect:"manual",headers:authenticated?{cookie:"tijara_session="+session.token}:{}},
+  );
+  assert.equal((await authorize(fields,false)).status,401);
+  assert.equal((await authorize({...fields,code_challenge_method:"plain"})).status,400);
+  assert.equal((await authorize({...fields,redirect_uri:callback.replace(":36477",":36478")})).status,400);
+  const consent=await authorize(fields);
+  assert.equal(consent.status,200);
+  assert.match(await consent.text(),/الموظفين.*الفواتير.*الترحيل/);
+  const approval=async(csrf:string)=>fetch(f.baseUrl+"/oauth/authorize",{
+    method:"POST",redirect:"manual",headers:{"content-type":"application/x-www-form-urlencoded",
+      cookie:"tijara_session="+session.token},body:new URLSearchParams({...fields,csrf}),
+  });
+  assert.equal((await approval("wrong_csrf")).status,403);
+  const approved=await approval(session.csrf);
+  assert.equal(approved.status,302);
+  const redirected=new URL(approved.headers.get("location")!);
+  assert.equal(redirected.origin+redirected.pathname,callback);
+  assert.equal(redirected.searchParams.get("state"),fields.state);
+  assert.equal(redirected.searchParams.get("iss"),origin);
+  const code=redirected.searchParams.get("code")!;
+  const exchange=async(overrides:Record<string,string>={})=>fetch(f.baseUrl+"/oauth/token",{
+    method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,
+      redirect_uri:callback,code,code_verifier:verifier,resource:fields.resource,...overrides}),
+  });
+  assert.equal((await exchange({code_verifier:"x".repeat(64)})).status,400);
+  assert.equal((await exchange({redirect_uri:callback.replace(":36477",":36478")})).status,400);
+  const tokenResponse=await exchange();
+  assert.equal(tokenResponse.status,200);
+  const issued=await tokenResponse.json() as {access_token:string;refresh_token:string;scope:string};
+  assert.equal(issued.scope,fullScope);
+  assert.equal((await exchange()).status,400);
+  const rpc=async(name:string,args:unknown)=>{
+    const response=await fetch(f.baseUrl+"/mcp",{method:"POST",
+      headers:{"content-type":"application/json",authorization:"Bearer "+issued.access_token},
+      body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}})});
+    return await response.json() as any;
+  };
+  const catalog=await rpc("tijara_api_catalog",{operation:"GET /explanations/groups/:groupId/document"});
+  assert.equal(catalog.result.structuredContent.operations[0].operation,
+    "GET /explanations/groups/:groupId/document");
+  const guide=(await f.pool.query("SELECT id FROM explanation_groups WHERE slug='site-developer-guide'")).rows[0];
+  assert(guide);
+  const document=await rpc("tijara_api_read",{operation:"GET /explanations/groups/:groupId/document",
+    pathParams:{groupId:guide.id},query:{offset:0}});
+  assert.equal(document.result.structuredContent.status,200,JSON.stringify(document));
+  assert(document.result.structuredContent.data.total>0);
+  assert(document.result.structuredContent.data.nodes.length>0);
+  const connection=(await f.pool.query("SELECT id FROM chatgpt_oauth_tokens WHERE client_id=$1",[client.client_id])).rows[0];
+  const revoked=await fetch(f.baseUrl+"/oauth/connections/"+connection.id+"/revoke",{
+    method:"POST",redirect:"manual",headers:{"content-type":"application/x-www-form-urlencoded",
+      cookie:"tijara_session="+session.token},body:new URLSearchParams({csrf:session.csrf})});
+  assert.equal(revoked.status,303);
+  assert.equal((await rpc("tijara_api_read",{operation:"GET /companies"})).result.isError,true);
+  const refresh=await fetch(f.baseUrl+"/oauth/token",{method:"POST",
+    headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"refresh_token",client_id:client.client_id,
+      refresh_token:issued.refresh_token,resource:fields.resource})});
+  assert.equal(refresh.status,400);
+});
+
 test("ChatGPT MCP write access needs fresh OAuth approval and audits conflict-safe changes",async(t)=>{
   const f=await fixture(t),platform=await owner(f);
   const {createSession}=await import("../apps/api/src/services/auth.ts");

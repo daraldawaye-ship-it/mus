@@ -1,9 +1,11 @@
-name: ChatGPT connector read/write checks
+name: ChatGPT and Codex connector read/write checks
 on:
   push:
-    branches: [codex/deploy-phase2]
+    branches: ['preview/render-2026-10-23', 'codex/alraesy-codex-oauth-20261104']
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
+      - 'apps/api/src/services/oauth-redirect.ts'
+      - 'apps/api/src/services/mcp-api.ts'
       - 'apps/api/src/app.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
@@ -15,10 +17,13 @@ on:
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
+      - 'tests/oauth-redirect.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   pull_request:
     paths:
       - 'apps/api/src/routes-chatgpt-*.ts'
+      - 'apps/api/src/services/oauth-redirect.ts'
+      - 'apps/api/src/services/mcp-api.ts'
       - 'apps/api/src/app.ts'
       - 'apps/api/src/routes-media.ts'
       - 'apps/api/migrations/023_media_uploads.sql'
@@ -30,6 +35,7 @@ on:
       - 'apps/api/migrations/019_chatgpt_readonly_oauth.sql'
       - 'apps/api/migrations/022_chatgpt_write_scope.sql'
       - 'tests/api.test.ts'
+      - 'tests/oauth-redirect.test.ts'
       - '.github/workflows/chatgpt-oauth.yml'
   workflow_dispatch:
 
@@ -62,8 +68,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      - run: node --import tsx --test tests/oauth-redirect.test.ts
       - run: node --import tsx --test tests/sale-stock-quantity.test.ts
       - run: node --import tsx --test --test-name-pattern="item statistics track finalized stock" tests/api.test.ts
       - run: node --import tsx --test tests/table-column-order.test.ts
       - run: node --import tsx --test tests/profile-image-field.test.ts
-      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|ChatGPT site access|media images)' tests/api.test.ts
+      - run: node --import tsx --test --test-name-pattern='(ChatGPT MCP|ChatGPT site access|Codex OAuth|media images)' tests/api.test.ts

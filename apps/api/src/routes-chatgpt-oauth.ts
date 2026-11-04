@@ -7,6 +7,7 @@ import { currentActor, publicAdmin } from "./policies/access.ts";
 import { tokenHash, authLimiter } from "./services/auth.ts";
 import { oauthScopes, SITE_READ_SCOPE, SITE_WRITE_SCOPE, FULL_READ_SCOPE, FULL_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { HttpError } from "./errors.ts";
+import { oauthRedirectAllowed } from "./services/oauth-redirect.ts";
 
 const SCOPE="general_table.read";
 const WRITE_SCOPE="general_table.read general_table.write";
@@ -19,16 +20,6 @@ const webPage=(title:string,body:string)=>`<!doctype html><html lang="ar" dir="r
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${safe(title)}</title>
 <style>body{font:16px system-ui,Tahoma;background:#f2f5fa;padding:25px;color:#172838}main{max-width:630px;margin:auto;background:white;padding:25px;border-radius:12px}p,li{line-height:1.8}button,a.primary{background:#1468aa;color:white;border:0;border-radius:8px;padding:12px 18px;font:inherit;cursor:pointer;text-decoration:none}</style>
 <main><h2>${safe(title)}</h2>${body}</main></html>`;
-const redirectAllowed=(raw:string,production:boolean)=>{
-  try {
-    const u=new URL(raw);
-    if(u.username||u.password||u.hash)return false;
-    if(!production&&u.protocol==="http:"&&["localhost","127.0.0.1"].includes(u.hostname))return true;
-    return u.protocol==="https:"&&
-      ["chatgpt.com","chat.openai.com","platform.openai.com"].includes(u.hostname)&&
-      (u.pathname.startsWith("/connector/")||u.pathname==="/connector_platform_oauth_redirect");
-  }catch{return false;}
-};
 export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):Router {
   const router=Router(),limit=authLimiter(),sessions=loadSession(pool);
   const resource=origin+"/mcp";
@@ -46,7 +37,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
     limit("chatgpt-register:"+req.ip,20);
     const body=req.body as Record<string,unknown>,uris=body?.redirect_uris;
     if(!Array.isArray(uris)||!uris.length||uris.length>4||
-      !uris.every(u=>typeof u==="string"&&redirectAllowed(u,production))||
+      !uris.every(u=>typeof u==="string"&&oauthRedirectAllowed(u,production))||
       (body.token_endpoint_auth_method!==undefined&&body.token_endpoint_auth_method!=="none")||
       (body.response_types!==undefined&&JSON.stringify(body.response_types)!=='["code"]')||
       (body.grant_types!==undefined&&
@@ -70,7 +61,7 @@ export function chatgptOauthRoutes(pool:Pool,origin:string,production:boolean):R
       throw new HttpError(400,"invalid_request","معلمات تفويض ChatGPT غير صحيحة");
     const row=(await pool.query<{redirect_uris:string[]}>(
       "SELECT redirect_uris FROM chatgpt_oauth_clients WHERE client_id=$1",[clientId])).rows[0];
-    if(!row||!row.redirect_uris.includes(redirectUri))
+    if(!row||!row.redirect_uris.includes(redirectUri)||!oauthRedirectAllowed(redirectUri,production))
       throw new HttpError(400,"invalid_client","تطبيق ChatGPT غير مسجل");
     return {clientId,redirectUri,challenge,state,requested,scope:canonicalScope!};
   }
