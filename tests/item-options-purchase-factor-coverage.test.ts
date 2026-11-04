@@ -320,3 +320,35 @@ test("one day is the fresh-page and reset default, without overwriting explicit 
   assert.match(ui, /next\.set\(key,values\[key\]\)/);
   assert.match(ui, /if \(value \|\| key === "stockMin"/);
 });
+
+
+test("legacy wrong first-unit import gets an isolated, source-scoped planning-only correction", () => {
+  const sql = read("apps/api/migrations/20261105_legacy_sales_planning_quantity_overlay.sql");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  assert.match(sql,/CREATE TABLE legacy_sales_planning_line_deltas/);
+  assert.match(sql,/CREATE TABLE legacy_sales_planning_daily_deltas/);
+  assert.match(sql,/NEW\.source_system='dar-aldawa-legacy-2026-10'/);
+  assert.match(sql,/m\.source_system='dar-aldawa-legacy-2026-10'/);
+  assert.match(sql,/NEW\.unit_price=i\.sale_price2/);
+  assert.match(sql,/l\.unit_price=i\.sale_price2/);
+  assert.match(sql,/NEW\.unit=1/);
+  assert.match(sql,/l\.unit=1/);
+  assert.match(sql,/inv\.kind='sale'/);
+  assert.match(sql,/origin='posted'/);
+  assert.match(sql,/d\.origin='staged'/);
+  assert.match(sql,/NEW\.quantity\*\(i\.factor3::numeric-i\.factor2::numeric\*i\.factor3\)/);
+  assert.match(sql,/l\.quantity\*\(l\.factor3::numeric-l\.factor2::numeric\*l\.factor3\)/);
+  assert.doesNotMatch(sql,/UPDATE (?:invoices|invoice_lines|stock_movements|item_daily_activity) SET/);
+  assert.match(coverage,/FROM item_daily_activity/);
+  assert.match(coverage,/FROM staged_item_daily_activity_cache/);
+  assert.match(coverage,/FROM legacy_sales_planning_daily_deltas/);
+  assert.match(api,/COALESCE\(planning_fix\.month_delta,0\)/);
+  assert.match(api,/SUM\(quantity_delta\) AS month_delta/);
+  // Exact 5 pieces at 100 YER, incorrectly marked 5 packs of 50:
+  const soldOld = 5*50;
+  const correction = 5*(1-50);
+  assert.equal(soldOld+correction,5);
+  // Inverse sign on returned packs must also be corrected: -4 packs -> -4 pieces.
+  assert.equal(-4*50 + -4*(1-50),-4);
+});
