@@ -193,6 +193,28 @@ try {
   await purchaseQuantity.press("Enter");
   const purchasePrice = purchaseRows.first().locator('[id^="invoice-price-"]');
   await focused((await purchasePrice.getAttribute("id"))!);
+  // A long amount is rendered with thousands separators on blur. Its complete
+  // unformatted value must be selected again on keyboard navigation.
+  await purchasePrice.fill("12345");
+  await purchaseQuantity.focus();
+  await purchaseQuantity.press("Enter");
+  await focused((await purchasePrice.getAttribute("id"))!);
+  const longPriceSelection = await purchasePrice.evaluate(element => {
+    const input = element as HTMLInputElement;
+    return { value: input.value, start: input.selectionStart, end: input.selectionEnd };
+  });
+  assert.deepEqual(longPriceSelection, { value: "12345", start: 0, end: 5 },
+    "Entering a purchase price must highlight all digits even above 999");
+  // The three-digit case must retain its previous behaviour.
+  await purchasePrice.fill("123");
+  await purchaseQuantity.focus();
+  await purchaseQuantity.press("Enter");
+  await focused((await purchasePrice.getAttribute("id"))!);
+  const shortPriceSelection = await purchasePrice.evaluate(element => {
+    const input = element as HTMLInputElement;
+    return { value: input.value, start: input.selectionStart, end: input.selectionEnd };
+  });
+  assert.deepEqual(shortPriceSelection, { value: "123", start: 0, end: 3 });
   await purchasePrice.fill("11");
   await purchasePrice.press("Enter");
   const purchaseExpiry = purchaseRows.first().locator('input[id^="invoice-expiry-"]:not([id$="-year"])');

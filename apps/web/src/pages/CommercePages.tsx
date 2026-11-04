@@ -3819,6 +3819,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                             }
                             inputMode="decimal"
                             money
+                            selectOnFocus={kind === "purchase" && !line.originalLineId}
                             readOnly={kind === "sale" || !!line.originalLineId}
                             disabled={!line.itemId}
                             value={line.unitPrice}

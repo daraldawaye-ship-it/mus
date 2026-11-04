@@ -3,6 +3,7 @@ import {
   isValidElement,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -109,6 +110,7 @@ export function Field({
   id,
   className = "",
   money = false,
+  selectOnFocus = false,
   value,
   onFocus,
   onBlur,
@@ -119,7 +121,10 @@ export function Field({
   error?: string;
   /** Group displayed amounts; keep the controlled value unmodified for saving. */
   money?: boolean;
+  /** Keep the complete value selected after grouped money text becomes editable. */
+  selectOnFocus?: boolean;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const generated = useId();
   const fieldId = id ?? generated;
   // A compact label stays above a value, native date control or placeholder.
@@ -131,11 +136,22 @@ export function Field({
     (!focused || props.readOnly)
     ? formatMoney(String(value))
     : value;
+  // For prices >= 1000, focusing strips thousands separators from the
+  // controlled input. React's ensuing value update resets the caret and can
+  // cancel the selection made in onFocus. Re-select AFTER that commit.
+  // Only run on the first focus transition, never while the user is typing.
+  useLayoutEffect(() => {
+    if (!selectOnFocus || !focused) return;
+    const input = inputRef.current;
+    if (input && document.activeElement === input && !input.disabled && !input.readOnly)
+      input.select();
+  }, [selectOnFocus, focused]);
   return (
     <div className={`field floating-ready ${className}`} data-label-raised={labelRaised ? "true" : "false"}>
       <label htmlFor={fieldId}>{label}</label>
       <input
         {...props}
+        ref={inputRef}
         id={fieldId}
         value={displayed}
         onFocus={(event) => {
