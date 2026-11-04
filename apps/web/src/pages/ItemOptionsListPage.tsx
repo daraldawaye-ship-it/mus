@@ -40,7 +40,7 @@ const ranges = [
   { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
-type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: boolean };
+type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; useReserve: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
@@ -50,10 +50,11 @@ function readDraft(params: URLSearchParams): Draft {
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
-    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "2",
+    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
+    excludeOrderStopped: params.get("excludeOrderStopped") !== "false",
     useReserve: params.get("useReserve") !== "false",
   };
 }
@@ -161,10 +162,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   for (const { key } of ranges) {
     // Absent parameters get defaults; an explicitly blank value remains unbounded.
     const value = (params.get(key) ??
-      (key === "monthMin" ? "1" : key === "coverageMax" ? "2" : "")).trim();
+      (key === "monthMin" || key === "coverageMax" ? "1" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
+  if (params.get("excludeOrderStopped") === "false") request.set("excludeOrderStopped", "false");
   if (params.get("useReserve") === "false") request.set("useReserve", "false");
   const resultQuery = useQuery({
     queryKey: ["item-options-list", user?.id, companyId, request.toString()],
@@ -314,6 +316,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       }
       if (search.trim()) next.set("q", search.trim()); else next.delete("q");
       if (draft.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
+      if (!draft.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
       if (!draft.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
       next.delete("page");
       return next;
@@ -325,6 +328,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       q: search.trim(), active, sortBy, sortDir,
       ...Object.fromEntries(ranges.map(({key}) => [key,draft[key].trim()])),
       excludeZero: draft.excludeZero,
+      excludeOrderStopped: draft.excludeOrderStopped,
       useReserve: draft.useReserve,
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -373,6 +377,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     if(values.q) next.set("q",values.q);
     for(const {key} of ranges) next.set(key,values[key]);
     if(values.excludeZero) next.set("excludeZero","true");
+    if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
     if(!values.useReserve) next.set("useReserve","false");
     setDraft(readDraft(next));
     setSearch(values.q);
@@ -399,7 +404,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reset() {
     setFilterError("");
     const defaults = new URLSearchParams({
-      monthMin: "1", coverageMax: "2",
+      monthMin: "1", coverageMax: "1",
       sortBy: "allTime", sortDir: "desc",
     });
     setDraft(readDraft(defaults));
@@ -518,6 +523,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <input type="checkbox" checked={draft.excludeZero}
               onChange={event => setDraft(previous => ({ ...previous, excludeZero: event.target.checked }))} />
             استثناء الأصناف ذات الكمية الصفرية
+          </label>
+          <label className="checkbox" title="عند التفعيل تُستبعد الأصناف التي يكون تاريخ «يتوقف الطلب حتى تاريخ» في كرت الصنف بعد تاريخ اليوم، فلا تدخل في قائمة الطلب أو الإجمالي أو المسودات.">
+            <input type="checkbox" checked={draft.excludeOrderStopped}
+              onChange={event => setDraft(previous => ({ ...previous, excludeOrderStopped: event.target.checked }))} />
+            إيقاف طلب الأصناف الموقوفة حتى تاريخ مستقبلي
           </label>
           <label className="checkbox">
             <input type="checkbox" checked={draft.useReserve}
