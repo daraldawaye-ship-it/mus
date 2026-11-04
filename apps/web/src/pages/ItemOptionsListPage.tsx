@@ -9,7 +9,8 @@ import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
-import { useTemporaryItemList, type TemporaryChosenItem } from "../temporary-item-list";
+import type { TemporaryChosenItem } from "../temporary-item-list";
+import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
@@ -84,12 +85,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const temporarySelection = useSharedItemSelection(companyId, user?.id);
-  const temporaryOrder = useTemporaryItemList(companyId, user?.id, "order");
+  const temporaryOrder = useNumberedOrderDrafts(companyId, user?.id);
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
   const [showOrderDraft, setShowOrderDraft] = useState(false);
+  const [activeOrderDraftId, setActiveOrderDraftId] = useState<number | null>(null);
   const [addingUnselected, setAddingUnselected] = useState(false);
   const [bulkAddError, setBulkAddError] = useState("");
-  const [printMode, setPrintMode] = useState<"selected" | "order">("selected");
+  const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const directory = usePageDirectory(companyId);
@@ -160,16 +162,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const result = resultQuery.data?.result;
   const pages = Math.max(1, Math.ceil((result?.total ?? 0) / pageSize));
   const selectedIds = new Set(temporarySelection.items.map(row => row.id));
-  const printItems = printMode === "selected" ? temporarySelection.items : temporaryOrder.items;
-  function printSelection(mode: "selected" | "order") {
-    const list = mode === "selected" ? temporarySelection.items : temporaryOrder.items;
+  const draftItems = (draftId: number) =>
+    temporaryOrder.drafts.find(draft => draft.id === draftId)?.items ?? [];
+  const printItems = printMode === "selected" ? temporarySelection.items : draftItems(printMode);
+  function printSelection(mode: "selected" | number) {
+    const list = mode === "selected" ? temporarySelection.items : draftItems(mode);
     if (!list.length) return;
     flushSync(() => setPrintMode(mode));
     window.print();
   }
-  async function exportSelectionPdf(mode: "selected" | "order") {
+  async function exportSelectionPdf(mode: "selected" | number) {
     if (exportingPdf) return;
-    const list = mode === "selected" ? temporarySelection.items : temporaryOrder.items;
+    const list = mode === "selected" ? temporarySelection.items : draftItems(mode);
     if (!list.length) return;
     setExportingPdf(true);
     setActionMessage("");
@@ -178,7 +182,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       // is shaped by the device and each A4 page has exactly two columns.
       const pdf = createTwoColumnItemNamesPdf(list.map(item => item.name));
       const today = new Date().toLocaleDateString("en-CA");
-      const filename = `${mode === "selected" ? "selected-items" : "item-order-draft"}-${today}.pdf`;
+      const filename = `${mode === "selected" ? "selected-items" : `item-order-draft-${mode}`}-${today}.pdf`;
       const result = await exportPdfToDevice(pdf, filename);
       if (result === "shared")
         setActionMessage("أُنشئ PDF وتم تسليمه إلى مشاركة الجهاز. يمكنك حفظه في الملفات أو إرساله.");
@@ -216,14 +220,22 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         setActionMessage("جميع الأصناف المطابقة للفلاتر محددة مؤقتًا؛ لا توجد أصناف غير مختارة لإضافتها.");
         return;
       }
-      // addManyExact refuses overflowing the local working-list capacity
-      // instead of silently keeping only a subset of the filtered results.
-      if (!temporaryOrder.addManyExact(candidates)) return;
-      setShowOrderDraft(candidates.length <= 100);
-      const previousIds = new Set(temporaryOrder.items.map(item => item.id));
-      const newCount = candidates.filter(item => !previousIds.has(item.id)).length;
+      // Each transfer creates a new numbered draft only for items not already
+      // present in ANY draft. If all incoming items are duplicates, do not
+      // make an empty draft or change an existing draft.
+      const created = temporaryOrder.createDraft(candidates);
+      if (!created) return;
+      if (created.id === null) {
+        setActionMessage("جميع الأصناف غير المختارة المطابقة موجودة بالفعل في مسودات أخرى؛ لم تُنشأ مسودة فارغة ولم يُكرر أي صنف.");
+        return;
+      }
+      setShowOrderDraft(true);
+      setActiveOrderDraftId(created.added <= 100 ? created.id : null);
       setActionMessage(
-        `تمت إضافة ${newCount.toLocaleString("en-US")} صنفًا جديدًا إلى المسودة من أصل ${response.result.total.toLocaleString("en-US")} صنف غير مختار في جميع نتائج الفلتر، دون تكرار أو إنشاء طلبية رسمية.`,
+        `تم إنشاء مسودة الطلبية ${created.id} بعدد ${created.added.toLocaleString("en-US")} صنف جديد` +
+        (created.skipped ? `؛ جرى تجاهل ${created.skipped.toLocaleString("en-US")} صنف مكرر موجود في مسودات سابقة.`
+          : " دون أي تكرار.") +
+        " لا تُنشأ طلبية شراء رسمية.",
       );
     } catch (reason) {
       setBulkAddError(`تعذر إضافة جميع الأصناف غير المختارة: ${errorMessage(reason)}`);
@@ -556,29 +568,47 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           {addingUnselected ? "جارٍ إضافة كل غير المختارة…" : "إضافة جميع الأصناف غير المختارة إلى مسودة طلبية"}
         </Button>
         <Button variant="secondary" onClick={() => setShowOrderDraft(value => !value)}>
-          {showOrderDraft ? "إخفاء مسودة الطلبية" : `مسودة الطلبية (${temporaryOrder.items.length})`}
+          {showOrderDraft ? "إخفاء مسودات الطلبيات"
+            : `مسودات الطلبيات (${temporaryOrder.drafts.length})`}
         </Button>
       </div>
       {showOrderDraft && <div className="item-options-order-draft">
-        <p className="muted">مسودة محفوظة على هذا المتصفح فقط، ليست طلبية شراء معتمدة.</p>
-        {temporaryOrder.items.map(item => <div key={item.id} className="item-options-order-row">
-          <span>{item.name}</span>
-          <Button size="compact" variant="ghost"
-            onClick={() => temporaryOrder.toggle(item, false)}>إزالة</Button>
+        <p className="muted">مسودات الطلبيات محفوظة على هذا الجهاز فقط. كل ترحيل ناجح ينشئ مسودة جديدة، ولا يتكرر الصنف في أي مسودتين.</p>
+        {!temporaryOrder.drafts.length && <p>لا توجد مسودات طلبية بعد.</p>}
+        {temporaryOrder.drafts.map(orderDraft => <div key={orderDraft.id} className="item-options-order-draft-group">
+          <div className="form-actions item-options-order-draft-actions">
+            <strong>مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)</strong>
+            <Button size="compact" variant="secondary"
+              onClick={() => setActiveOrderDraftId(current =>
+                current === orderDraft.id ? null : orderDraft.id)}>
+              {activeOrderDraftId === orderDraft.id ? "إخفاء الأصناف" : "عرض الأصناف"}
+            </Button>
+            <Button size="compact" variant="secondary" disabled={!orderDraft.items.length}
+              onClick={() => printSelection(orderDraft.id)}>طباعة</Button>
+            <Button size="compact" variant="secondary"
+              disabled={exportingPdf || !orderDraft.items.length}
+              onClick={() => void exportSelectionPdf(orderDraft.id)}>
+              {exportingPdf ? "جارٍ تجهيز PDF…" : "تصدير PDF"}
+            </Button>
+            <Button size="compact" variant="danger"
+              onClick={() => {
+                if (!window.confirm(`هل تريد حذف مسودة الطلبية ${orderDraft.id} بكل أصنافها (${orderDraft.items.length}) من هذا الجهاز؟ لن تُحذف المسودات الأخرى.`))
+                  return;
+                if (temporaryOrder.deleteDraft(orderDraft.id)) {
+                  if (activeOrderDraftId === orderDraft.id) setActiveOrderDraftId(null);
+                  setActionMessage(`حُذفت مسودة الطلبية ${orderDraft.id} فقط. أصبح بالإمكان ترحيل أصنافها في مسودة جديدة.`);
+                }
+              }}>حذف المسودة</Button>
+          </div>
+          {activeOrderDraftId === orderDraft.id && <div className="item-options-order-draft-lines">
+            {orderDraft.items.map(item => <div key={item.id} className="item-options-order-row">
+              <span>{item.name}</span>
+              <Button size="compact" variant="ghost"
+                onClick={() => temporaryOrder.removeItem(orderDraft.id, item.id)}>إزالة</Button>
+            </div>)}
+            {!orderDraft.items.length && <p>هذه المسودة فارغة.</p>}
+          </div>}
         </div>)}
-        {!temporaryOrder.items.length && <p>مسودة الطلبية فارغة.</p>}
-        <div className="form-actions">
-          <Button disabled={!temporaryOrder.items.length}
-            onClick={() => printSelection("order")}>طباعة مسودة الطلبية بعمودين</Button>
-          <Button variant="secondary" disabled={exportingPdf || !temporaryOrder.items.length}
-            onClick={() => void exportSelectionPdf("order")}>
-            {exportingPdf ? "جارٍ تجهيز PDF…" : "تصدير مسودة الطلبية PDF"}
-          </Button>
-          <Button variant="secondary" disabled={!temporaryOrder.items.length}
-            onClick={() => {
-              if (window.confirm("هل تريد تصفير مسودة الطلبية المحفوظة على الجهاز؟")) temporaryOrder.clear();
-            }}>تصفير مسودة الطلبية</Button>
-        </div>
       </div>}
       {result && <p className="muted">
         إجمالي الأصناف المطابقة: <bdi>{result.total.toLocaleString("en-US")}</bdi>
