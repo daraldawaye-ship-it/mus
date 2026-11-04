@@ -43,7 +43,7 @@ type RangeKey = (typeof ranges)[number]["key"];
 type Draft = Record<RangeKey, string> & { excludeZero: boolean; useReserve: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
-    stockMin: params.get("stockMin") ?? "1", stockMax: params.get("stockMax") ?? "1",
+    stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
     reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
     purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
     monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
@@ -62,7 +62,7 @@ type Row = {
   revision: number; reserveQuantity: string; purchaseFactor: number;
   requiredPurchaseQuantity: string;
   factor2: number; factor3: number; availableSmallest: string;
-  availableUnit1: string; saleTimesMonth: string; saleTimesFourMonths: string;
+  availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
   approximateCoverageDays: string | null;
   coverageAfterReserveDays: string | null;
@@ -147,8 +147,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   for (const { key } of ranges) {
     // Absent parameters get defaults; an explicitly blank value remains unbounded.
     const value = (params.get(key) ??
-      (key === "stockMin" || key === "stockMax" || key === "monthMin" ? "1"
-        : key === "coverageMax" ? "2" : "")).trim();
+      (key === "monthMin" ? "1" : key === "coverageMax" ? "2" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
@@ -386,7 +385,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reset() {
     setFilterError("");
     const defaults = new URLSearchParams({
-      stockMin: "1", stockMax: "1", monthMin: "1", coverageMax: "2",
+      monthMin: "1", coverageMax: "2",
       sortBy: "allTime", sortDir: "desc",
     });
     setDraft(readDraft(defaults));
@@ -642,12 +641,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 onClick={() => rememberItem(row)}>{row.name}</Link>
               {!row.active && <span className="item-options-mobile-inactive"> (مؤرشف)</span>}
               <label className="item-options-mobile-select">
-                <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
+                <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
                   disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
-                {temporarySelection.pendingIds.has(row.itemId) ? "جارٍ حفظ الاختيار…" : "اختيار مؤقت"}
               </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
@@ -668,6 +666,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </div>
               <div className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>كمية مباعة في شهر (أصغر وحدة)</span><bdi>{row.saleQuantityMonth}</bdi>
               </div>
               <div className="item-options-mobile-stat">
                 <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
@@ -697,13 +698,22 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         <div className="table-scroll item-options-desktop-table" role="region"
           aria-label="نتائج الأصناف حسب الخيارات">
         <table>
+          <colgroup>
+            <col className="item-options-choice-col" />
+            <col className="item-options-name-col" />
+            <col className="item-options-stock-col" />
+            <col className="item-options-reserve-col" />
+            <col className="item-options-purchase-factor-col" />
+            <col span={9} />
+          </colgroup>
           <thead><tr>
-            <th scope="col">اختيار مؤقت</th>
+            <th scope="col" className="item-options-choice-cell">اختيار</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
             {sortHeader("month", "مبيعات مرات في شهر")}
+            <th scope="col">الكمية المباعة في شهر (أصغر وحدة)</th>
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
@@ -715,13 +725,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           <tbody>
             {result.rows.map(row => <tr key={row.itemId}
               className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}>
-              <td><label className="item-options-table-choice">
-                <input type="checkbox" aria-label={`اختيار مؤقت للصنف ${row.name}`}
+              <td className="item-options-choice-cell"><label className="item-options-table-choice">
+                <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
                   disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
-                <span>{temporarySelection.pendingIds.has(row.itemId) ? "حفظ…" : "اختيار"}</span>
               </label></td>
               <td><Link to={`/companies/${companyId}/items/${row.itemId}`}
                 onClick={() => rememberItem(row)}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
@@ -733,6 +742,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                  itemId={row.itemId} revision={row.revision}
                  purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
               <td><bdi>{row.saleTimesMonth}</bdi></td>
+              <td><bdi>{row.saleQuantityMonth}</bdi></td>
               <td><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
               <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
@@ -741,7 +751,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                <td><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
                <td><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={13}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={14}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
