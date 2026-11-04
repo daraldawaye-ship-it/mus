@@ -61,6 +61,8 @@ type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
   requiredPurchaseQuantity: string;
+  purchasePrice: string; purchaseCurrencyCode: string;
+  requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string;
   saleTimesAllTime: string; saleTimesPreviousYear: string;
@@ -680,10 +682,19 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
               </div>
               <div className="item-options-mobile-stat">
-                <span>الكمية المطلوبة (أصغر وحدة)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
+                <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice} {row.purchaseCurrencyCode}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue} {row.purchaseCurrencyCode}</bdi>
               </div>
               <div className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
+              </div>
+              <div className="item-options-mobile-stat">
+                <span>الكفاية مع المطلوب/يوم</span><bdi>{row.coverageWithRequiredDays}</bdi>
               </div>
               <div className="item-options-mobile-stat">
                 <span>كفاية الاحتياط/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
@@ -710,7 +721,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             <col className="item-options-all-time-col" />
             <col className="item-options-previous-year-col" />
             <col className="item-options-required-quantity-col" />
+            <col className="item-options-purchase-price-col" />
+            <col className="item-options-required-value-col" />
             <col className="item-options-coverage-col" />
+            <col className="item-options-coverage-with-required-col" />
             <col className="item-options-reserve-coverage-col" />
             <col className="item-options-factor-coverage-col" />
           </colgroup>
@@ -725,8 +739,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
-            <th scope="col">الكمية المطلوبة (أصغر وحدة)</th>
+            <th scope="col">الكمية المطلوبة (الوحدة الأولى)</th>
+            <th scope="col">سعر الشراء الافتراضي (الوحدة الأولى)</th>
+            <th scope="col">قيمة المطلوب</th>
             {sortHeader("coverage", "الكفاية (يوم)")}
+            <th scope="col">الكفاية مع المطلوب (يوم)</th>
             {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
             {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
           </tr></thead>
@@ -755,11 +772,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td><bdi>{row.saleTimesAllTime}</bdi></td>
               <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
               <td><bdi>{row.requiredPurchaseQuantity}</bdi></td>
+              <td><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
+              <td><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
               <td><bdi>{coverage(row) ?? "—"}</bdi></td>
+              <td><bdi>{row.coverageWithRequiredDays}</bdi></td>
                <td><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
                <td><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={14}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={17}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -775,8 +795,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         الحقول الفارغة لا تضع أي حد أعلى أو أدنى، وتُحتسب مرات البيع صافي عدد فواتير البيع
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
         تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
-        الكمية المطلوبة محسوبة للوصول إلى «الكفاية إلى» (أو 30 يومًا إن تُركت فارغة)،
-         وتشمل الاحتياط عند اختياره، وتُقرّب إلى أقرب مضاعف لعامل وحدة الشراء.
+        الكمية المطلوبة بالوحدة الأولى محسوبة للوصول إلى «الكفاية إلى» (أو 30 يومًا إن تُركت فارغة)،
+         وتشمل الاحتياط عند اختياره، وتُقرّب لأقرب كمية كاملة بالوحدة الأولى توافق مضاعفات عامل وحدة الشراء.
+         قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
+         «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية إلى المخزون.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
       </small>
     </Card>
