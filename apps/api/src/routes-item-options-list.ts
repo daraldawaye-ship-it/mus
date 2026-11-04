@@ -141,13 +141,23 @@ async function filteredItems(
              i.purchase_price AS purchase_price, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
-             -- Both cached monthly quantities are in the smallest unit. Convert
-             -- only for display/sort, preserving exact source snapshot values.
-             round((COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0))::numeric
+             -- The cached monthly facts remain unchanged. Apply only a verified
+             -- legacy unit correction to planning, then convert to first units.
+             round((COALESCE(sale_rank.net_sale_quantity,0)+COALESCE(staged_rank.net_sale_quantity,0)
+               +COALESCE(planning_fix.month_delta,0))::numeric
                / greatest(i.factor2::numeric*i.factor3::numeric,1),4) AS sale_quantity_month,
              (COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0)) AS available_smallest
       FROM items i
       LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
+      LEFT JOIN (
+        -- A small indexed pre-aggregated planning overlay; not raw invoice lines.
+        -- Historic posted and staged sale mistakes share one source identity.
+        SELECT item_id, SUM(quantity_delta) AS month_delta
+        FROM legacy_sales_planning_daily_deltas
+        WHERE company_id=$1 AND document_date BETWEEN
+          ($2::date-interval '1 month'+interval '1 day')::date AND $2::date
+        GROUP BY item_id
+      ) planning_fix ON planning_fix.item_id=i.id
       JOIN company_currencies currency ON currency.company_id=i.company_id AND currency.id=i.currency_id
       LEFT JOIN company_item_previous_year_sale_times previous
         ON previous.company_id=i.company_id AND previous.legacy_id=i.legacy_id
