@@ -156,6 +156,9 @@ export interface AccountLedgerLine {
   baseCredit: string;
   runningBalance: string;
   counterpartAccounts?: string;
+  /** Snapshot from the related purchase invoice; absent for other ledger rows. */
+  supplierAccountCode?: string | null;
+  supplierAccountName?: string | null;
   reversesDocumentId: number | null;
 }
 export interface AccountLedgerTotals {
