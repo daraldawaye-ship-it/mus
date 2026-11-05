@@ -1,14 +1,140 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import "../doctor-inline-cells.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { Pencil } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
-  doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,isMainDoctorCard,
-  type Doctor,type DoctorKind,type CompanyContext,
+  doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,
+  doctorInlinePatchSchema,isMainDoctorCard,
+  type Doctor,type DoctorKind,type DoctorInlineField,type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import { api,usePagedQuery,useScopeGuard } from "../api";
 import { errorMessage } from "../phase2";
 import { Button,Card,DataTable,Dialog,Field,Notice,PageHeader,Select,ValueCell } from "../ui";
+
+
+/** Click-to-edit cells update only the chosen attribute, never the card's name. */
+function DoctorInlineCell({doctor,field,canEdit,onSaved,onFailure}:{
+  doctor:Doctor;
+  field:DoctorInlineField;
+  canEdit:boolean;
+  onSaved:()=>void;
+  onFailure:(message:string)=>void;
+}) {
+  const labels:Record<DoctorInlineField,string>={
+    sharedName:"الاسم المشترك",kind:"الفئة",department:"الجهة",
+    phone:"رقم الهاتف",searchKeys:"مفاتيح البحث",notes:"ملاحظات",active:"الحالة",
+  };
+  const original=field==="kind"?(doctor.kind??""):
+    field==="active"?(doctor.active?"true":"false"):(doctor[field]??"");
+  const originalText=String(original);
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState(originalText);
+  const [busy,setBusy]=useState(false);
+  const pending=useRef(false);
+  const cancelled=useRef(false);
+  useEffect(()=>{if(!editing)setDraft(originalText);},[originalText,editing]);
+  const shown=field==="kind"?(doctor.kind?doctorKindLabels[doctor.kind]:"بدون فئة — مراجعة"):
+    field==="active"?(doctor.active?"فعّال":"مؤرشف"):
+    (originalText||"—");
+  function cancel(){
+    cancelled.current=true;
+    setDraft(originalText);
+    setEditing(false);
+  }
+  async function save(valueText:string=draft) {
+    if(pending.current||cancelled.current)return;
+    const value=field==="kind"?(valueText||null):
+      field==="active"?(valueText==="true"):valueText.trim();
+    if(value===(field==="kind"?doctor.kind:
+      field==="active"?doctor.active:doctor[field])){
+      setEditing(false);
+      return;
+    }
+    const parsed=doctorInlinePatchSchema.safeParse({
+      field,value,revision:doctor.revision,
+    });
+    if(!parsed.success){
+      onFailure(parsed.error.issues[0]?.message??"تحقق من القيمة");
+      return;
+    }
+    pending.current=true;
+    setBusy(true);
+    try {
+      await api(`/companies/${doctor.companyId}/doctors/${doctor.id}/field`,{
+        method:"PATCH",body:parsed.data,
+      });
+      setEditing(false);
+      onSaved();
+    } catch(err) {
+      onFailure(`لم يحفظ ${labels[field]} لـ ${doctor.name}: ${errorMessage(err)}`);
+      // Keep the new value in the editor so it isn't silently lost.
+    } finally {
+      pending.current=false;
+      setBusy(false);
+    }
+  }
+  if(!canEdit)return <ValueCell>{shown}</ValueCell>;
+  if(!editing)return (
+    <button type="button" className="doctor-inline-trigger"
+      title={`تعديل ${labels[field]} مباشرة`}
+      aria-label={`تعديل ${labels[field]} — ${doctor.name}`}
+      onClick={()=>{
+        cancelled.current=false;
+        setDraft(originalText);
+        setEditing(true);
+      }}>
+      <span className="doctor-inline-value">{shown}</span>
+      <Pencil size={13} aria-hidden="true" className="doctor-inline-pencil"/>
+    </button>
+  );
+  const select=field==="kind"||field==="active";
+  if(select)return (
+    <select autoFocus className="doctor-inline-editor"
+      aria-label={labels[field]} disabled={busy} value={draft}
+      onChange={event=>{
+        setDraft(event.target.value);
+        void save(event.target.value);
+      }}
+      onBlur={()=>{if(!pending.current)void save();}}
+      onKeyDown={event=>{
+        if(event.key==="Escape"){event.preventDefault();cancel();}
+      }}>
+      {field==="kind"?<>
+        <option value="">بدون فئة — مراجعة</option>
+        {doctorKinds.map(kind=><option key={kind} value={kind}>{doctorKindLabels[kind]}</option>)}
+      </>:<>
+        <option value="true">فعّال</option>
+        <option value="false">مؤرشف</option>
+      </>}
+    </select>
+  );
+  const maxLengths:Record<Exclude<DoctorInlineField,"kind"|"active">,number>={
+    sharedName:240,department:240,phone:60,searchKeys:500,notes:2000,
+  };
+  const textField=field as Exclude<DoctorInlineField,"kind"|"active">;
+  const inputProps={
+    autoFocus:true,
+    className:"doctor-inline-editor",
+    "aria-label":labels[field],
+    disabled:busy,
+    value:draft,
+    maxLength:maxLengths[textField],
+    onChange:(event:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>
+      setDraft(event.target.value),
+    onBlur:()=>{void save();},
+    onKeyDown:(event:React.KeyboardEvent<HTMLInputElement|HTMLTextAreaElement>)=>{
+      if(event.key==="Escape"){event.preventDefault();cancel();}
+      else if(event.key==="Enter"&&!(field==="notes"&&event.shiftKey)){
+        event.preventDefault();void save();
+      }
+    },
+  };
+  return field==="notes"
+    ? <textarea {...inputProps} rows={2}/>
+    : <input {...inputProps} type={field==="phone"?"tel":"text"}/>;
+}
 
 function DoctorCard({context,doctor,onClose,onSaved}: {
   context:CompanyContext;doctor:Doctor|null;onClose:()=>void;onSaved:()=>void;
@@ -130,17 +256,20 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
       return next;
     });
   }
+  const inline=(doctor:Doctor,field:DoctorInlineField)=>(
+    <DoctorInlineCell doctor={doctor} field={field} canEdit={mayManage}
+      onSaved={()=>{setNotice("");void list.refetch();}}
+      onFailure={message=>setNotice(message)} />
+  );
   const columns:ColumnDef<Doctor,unknown>[]=[
     {accessorKey:"name",header:"اسم الطبيب أو الجهة",cell:({row})=><ValueCell>{row.original.name}</ValueCell>},
-    {accessorKey:"sharedName",header:"الاسم المشترك",cell:({row})=><ValueCell>
-      {row.original.sharedName||row.original.name}{isMainDoctorCard(row.original.name,row.original.sharedName)?" (رئيسي)":""}
-    </ValueCell>},
-    {accessorKey:"kind",header:"الفئة",cell:({row})=>row.original.kind ? doctorKindLabels[row.original.kind] : "بدون فئة — مراجعة"},
-    {accessorKey:"department",header:"الجهة",cell:({row})=><ValueCell>{row.original.department||"—"}</ValueCell>},
-    {accessorKey:"phone",header:"رقم الهاتف",enableSorting:false,cell:({row})=><ValueCell>{row.original.phone||"—"}</ValueCell>},
-    {accessorKey:"searchKeys",header:"مفاتيح البحث",enableSorting:false,cell:({row})=><ValueCell>{row.original.searchKeys||"—"}</ValueCell>},
-    {accessorKey:"notes",header:"ملاحظات",enableSorting:false,cell:({row})=><ValueCell>{row.original.notes||"—"}</ValueCell>},
-    {accessorKey:"active",header:"الحالة",cell:({row})=>row.original.active?"فعّال":"مؤرشف"},
+    {accessorKey:"sharedName",header:"الاسم المشترك",cell:({row})=>inline(row.original,"sharedName")},
+    {accessorKey:"kind",header:"الفئة",cell:({row})=>inline(row.original,"kind")},
+    {accessorKey:"department",header:"الجهة",cell:({row})=>inline(row.original,"department")},
+    {accessorKey:"phone",header:"رقم الهاتف",enableSorting:false,cell:({row})=>inline(row.original,"phone")},
+    {accessorKey:"searchKeys",header:"مفاتيح البحث",enableSorting:false,cell:({row})=>inline(row.original,"searchKeys")},
+    {accessorKey:"notes",header:"ملاحظات",enableSorting:false,cell:({row})=>inline(row.original,"notes")},
+    {accessorKey:"active",header:"الحالة",cell:({row})=>inline(row.original,"active")},
     ...(mayManage?[{id:"actions",header:"الإجراء",enableSorting:false,
       cell:({row}:{row:{original:Doctor}})=><Button variant="ghost" size="compact"
         onClick={()=>setEditing(row.original)}>تعديل</Button>} satisfies ColumnDef<Doctor,unknown>]:[]),
@@ -149,10 +278,10 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   return <>
     <PageHeader title="كرت الأطباء والجهات" description="الأطباء والممرضون والجهات، دون إنشاء حساب محاسبي."
       actions={mayManage?<Button onClick={()=>setEditing("new")}>إضافة كرت</Button>:undefined}/>
-    {notice&&<Notice tone="success">{notice}</Notice>}
+    {notice&&<Notice tone={notice.startsWith("لم يحفظ")||notice.startsWith("تحقق")?"error":"success"}>{notice}</Notice>}
     {focus!==null && !mayManage && <Notice tone="warning">فتح هذا الكرت للتعديل يحتاج صلاحية إدارة الأطباء والجهات.</Notice>}
     {focused.isError && <Notice tone="error">{errorMessage(focused.error)}</Notice>}
-    <Card title="الأطباء والجهات">
+    <Card title="الأطباء والجهات" description={mayManage?"اضغط على أي حقل لتعديله مباشرة؛ الاسم يتغير من زر «تعديل» فقط.":undefined}>
       <div className="table-filters">
         <Field label="بحث" type="search" value={list.query}
           onChange={event=>list.setQuery(event.target.value)}
