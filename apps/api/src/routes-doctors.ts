@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Pool } from "pg";
-import { doctorInputSchema, doctorPatchSchema, effectiveDoctorSharedName, type Doctor } from "../../../packages/contracts/src/index.ts";
+import { doctorInputSchema, doctorPatchSchema, doctorInlinePatchSchema, effectiveDoctorSharedName, type Doctor } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -77,6 +77,54 @@ export function doctorRoutes(pool: Pool): Router {
     });
     res.status(201).json({doctor});
   }));
+
+  // Inline changes update exactly ONE field so an older table snapshot cannot
+  // replace another employee's more recent changes to unrelated card details.
+  router.patch(`${base}/:id/field`,handler(async(req,res)=>{
+    const input=parse(doctorInlinePatchSchema,req.body),doctorId=id(req.params.id);
+    const doctor=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
+      const old=await client.query(
+        "SELECT * FROM doctors WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId,doctorId],
+      );
+      if(!old.rows[0])missing();
+      if(old.rows[0].revision!==input.revision)
+        conflict("تم تحديث هذا الكرت من مكان آخر؛ أعد تحديث القائمة ثم حاول مجددًا");
+      const columns={
+        sharedName:"shared_name", kind:"kind", department:"department",
+        phone:"phone", searchKeys:"search_keys", notes:"notes", active:"active",
+      } as const;
+      const column=columns[input.field]; // Static allow-list; never accept SQL names from the request.
+      const value=input.field==="sharedName"
+        ? effectiveDoctorSharedName(old.rows[0].name,input.value)
+        : input.value;
+      const original=dto(old.rows[0]);
+      if(original[input.field]===value)return original;
+      const result=await client.query(
+        `UPDATE doctors SET ${column}=$1,revision=revision+1,updated_at=clock_timestamp()
+          WHERE company_id=$2 AND id=$3 RETURNING *`,
+        [value,companyId,doctorId],
+      );
+      const updated=dto(result.rows[0]);
+      if((input.field==="kind" && updated.kind!==null) ||
+         (input.field==="active" && !updated.active)){
+        await client.query(
+          `UPDATE notifications
+             SET completed_at=clock_timestamp(),
+                 read_at=COALESCE(read_at,clock_timestamp()),
+                 snoozed_until=NULL,next_reminder_at=NULL,
+                 revision=revision+1,updated_at=clock_timestamp()
+           WHERE company_id=$1 AND code='SALES_DOCTOR_REVIEW'
+             AND subject_key=$2 AND completed_at IS NULL`,
+          [companyId,`doctor:${doctorId}`],
+        );
+      }
+      await audit(client,user,"doctor.update","doctor",doctorId,original,updated,companyId);
+      return updated;
+    });
+    res.json({doctor});
+  }));
+
   router.patch(`${base}/:id`,handler(async(req,res)=>{
     const input=parse(doctorPatchSchema,req.body),doctorId=id(req.params.id);
     const doctor=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
