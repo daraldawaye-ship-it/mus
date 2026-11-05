@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ChangeEvent, type KeyboardEvent } from "react";
 import "../doctor-inline-cells.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -121,10 +121,10 @@ function DoctorInlineCell({doctor,field,canEdit,onSaved,onFailure}:{
     disabled:busy,
     value:draft,
     maxLength:maxLengths[textField],
-    onChange:(event:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>
+    onChange:(event:ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>
       setDraft(event.target.value),
     onBlur:()=>{void save();},
-    onKeyDown:(event:React.KeyboardEvent<HTMLInputElement|HTMLTextAreaElement>)=>{
+    onKeyDown:(event:KeyboardEvent<HTMLInputElement|HTMLTextAreaElement>)=>{
       if(event.key==="Escape"){event.preventDefault();cancel();}
       else if(event.key==="Enter"&&!(field==="notes"&&event.shiftKey)){
         event.preventDefault();void save();
