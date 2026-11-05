@@ -7613,3 +7613,19 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-options-purchase-note:focus-visible {
   text-decoration: underline;
 }
+
+/* The narrow-screen purchase-planning note follows the requested value as
+   its own readable row, rather than shrinking to one of three tiny cells. */
+@media (max-width: 680px) {
+  .item-options-mobile-stats > .item-options-mobile-purchase-notes {
+    grid-column: 1 / -1;
+    text-align: start;
+    padding: 7px 6px;
+    border-inline-start: 0;
+    border-top: 1px solid var(--border);
+  }
+  .item-options-mobile-purchase-notes > .item-options-purchase-note {
+    margin-top: 4px;
+    max-width: 100%;
+  }
+}
