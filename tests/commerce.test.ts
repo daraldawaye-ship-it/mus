@@ -4967,10 +4967,14 @@ test("audit logs filter today in Yemen and order newest events first",async t=>{
     const current=await f.owner.ok<Page<{id:number;createdAt:string}>>("GET",
       `${path}?dateFrom=${today}&dateTo=${today}&sort=createdAt:desc,id:desc`);
     assert(current.items.length>0, `${path} should include its newly-created audit events`);
-    assert(current.items.every(row=>
-      new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Aden",year:"numeric",month:"2-digit",day:"2-digit"})
-        .format(new Date(row.createdAt))===today
-    ));
+    const inAden=(createdAt:string)=>{
+      const parts=new Intl.DateTimeFormat("en-US",{
+        timeZone:"Asia/Aden",year:"numeric",month:"2-digit",day:"2-digit",
+      }).formatToParts(new Date(createdAt));
+      const part=(type:string)=>parts.find(p=>p.type===type)?.value??"";
+      return `${part("year")}-${part("month")}-${part("day")}`;
+    };
+    assert(current.items.every(row=>inAden(row.createdAt)===today));
     for(let i=1;i<current.items.length;i++){
       assert(new Date(current.items[i-1]!.createdAt).getTime() >=
         new Date(current.items[i]!.createdAt).getTime(),"latest audit event should appear first");
