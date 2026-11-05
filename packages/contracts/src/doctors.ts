@@ -44,3 +44,16 @@ export function effectiveDoctorSharedName(name: string, sharedName?: string | nu
 export function isMainDoctorCard(name: string, sharedName?: string | null): boolean {
   return name.trim() === effectiveDoctorSharedName(name, sharedName);
 }
+
+/** Single-field updates from the directory table must not overwrite other fields. */
+const doctorFieldRevision = z.number().int().positive();
+export const doctorInlinePatchSchema = z.discriminatedUnion("field", [
+  z.object({field:z.literal("sharedName"),value:text(240),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("kind"),value:z.enum(doctorKinds).nullable(),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("department"),value:text(240),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("phone"),value:text(60),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("searchKeys"),value:text(500),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("notes"),value:text(2000),revision:doctorFieldRevision}).strict(),
+  z.object({field:z.literal("active"),value:z.boolean(),revision:doctorFieldRevision}).strict(),
+]);
+export type DoctorInlineField = z.infer<typeof doctorInlinePatchSchema>["field"];
