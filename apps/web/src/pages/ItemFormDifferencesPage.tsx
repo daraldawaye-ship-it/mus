@@ -9,10 +9,13 @@ import { rememberRecentEntity } from "../recent-entities";
 
 const InvoiceItemEditor=lazy(()=>import("./ItemsPages").then(m=>({default:m.InvoiceItemEditor})));
 const CompositionEditorSheet=lazy(()=>import("./ItemCompositionsPage").then(m=>({default:m.CompositionEditorSheet})));
-type SortKey="itemName"|"itemForm"|"compositionName"|"compositionForm";
+type SortKey="itemName"|"itemForm"|"compositionName"|"compositionForm"|"saleTimesYear"|"availableAlternatives"|"availableUnit1";
 const sortLabels:Record<SortKey,string>={
   itemName:"اسم الصنف",itemForm:"شكل الصنف",
   compositionName:"اسم التركيب",compositionForm:"شكل التركيب",
+  saleTimesYear:"مرات المبيعات الصافية — سنة",
+  availableAlternatives:"عدد البدائل المتوفرة",
+  availableUnit1:"الكمية المتوفرة — مجموع الوحدة الأولى",
 };
 
 
@@ -52,7 +55,8 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
       const next=new URLSearchParams(previous);
       const same=sort===key;
       next.set("sort",key);
-      next.set("direction",same&&direction==="asc"?"desc":"asc");
+      const numeric=key==="saleTimesYear"||key==="availableAlternatives"||key==="availableUnit1";
+      next.set("direction",same?(direction==="asc"?"desc":"asc"):(numeric?"desc":"asc"));
       next.delete("page");
       return next;
     });
@@ -125,16 +129,14 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
             <tr>
               {header("itemName")}{header("itemForm")}
               {header("compositionName")}{header("compositionForm")}
-              <th>مرات المبيعات الصافية — سنة</th>
-              <th>عدد البدائل المتوفرة</th>
-              <th>الكمية المتوفرة — مجموع الوحدة الأولى</th>
-              <th>الإجراء</th><th>المراجعة</th>
+              {header("saleTimesYear")}
+              {header("availableAlternatives")}
+              {header("availableUnit1")}
+              <th>الإجراء</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(row=>{
-              const uncertain=row.itemForm==="عام"||row.compositionForm==="عام";
-              const different=row.itemForm!==row.compositionForm;
               return <tr key={row.itemId}>
                 <td>{row.itemName}{!row.itemActive?" (مؤرشف)":""}</td>
                 <td>{row.itemForm}</td>
@@ -144,7 +146,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                 <td dir="ltr"><bdi>{statsNumber(row.availableAlternatives,0)}</bdi></td>
                 <td dir="ltr"><bdi>{statsNumber(row.availableUnit1,3)}</bdi></td>
                 <td>
-                  <div className="form-actions">
+                  <div className="form-differences-inline-actions">
                     <Button variant="secondary" size="compact"
                       onClick={()=>{
                         if (user) rememberRecentEntity(user.id, companyId, "item",
@@ -155,10 +157,9 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                       onClick={()=>setOpened({type:"composition",id:row.compositionId})}>كرت التركيب</Button>
                   </div>
                 </td>
-                <td>{uncertain?"غير مصنف":different?"مختلف":"متطابق"}</td>
               </tr>;
             })}
-            {!rows.length&&!result.isFetching&&<tr><td colSpan={9}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
+            {!rows.length&&!result.isFetching&&<tr><td colSpan={8}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
           </tbody>
         </table>
       </div>
