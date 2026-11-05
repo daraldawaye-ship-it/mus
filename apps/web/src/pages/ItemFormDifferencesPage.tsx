@@ -13,9 +13,9 @@ type SortKey="itemName"|"itemForm"|"compositionName"|"compositionForm"|"saleTime
 const sortLabels:Record<SortKey,string>={
   itemName:"اسم الصنف",itemForm:"شكل الصنف",
   compositionName:"اسم التركيب",compositionForm:"شكل التركيب",
-  saleTimesYear:"مرات المبيعات الصافية — سنة",
-  availableAlternatives:"عدد البدائل المتوفرة",
-  availableUnit1:"الكمية المتوفرة — مجموع الوحدة الأولى",
+  saleTimesYear:"مرات البيع",
+  availableAlternatives:"عدد البدائل",
+  availableUnit1:"الكمية المتوفرة",
 };
 
 
@@ -124,7 +124,17 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
       <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح. الإحصائيات مجموع التركيب بأكمله من الجداول المنفصلة، وتظهر «—» عند عدم توفر صلاحية الاطلاع.</p>
       {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       <div className="table-scroll" role="region" tabIndex={0} aria-label="مراجعة اختلاف الشكل">
-        <table className="data-table">
+        <table className="data-table form-differences-table">
+          <colgroup>
+            <col style={{width:"20%"}} />
+            <col style={{width:"10%"}} />
+            <col style={{width:"24%"}} />
+            <col style={{width:"9%"}} />
+            <col style={{width:"7%"}} />
+            <col style={{width:"7%"}} />
+            <col style={{width:"9%"}} />
+            <col style={{width:"14%"}} />
+          </colgroup>
           <thead>
             <tr>
               {header("itemName")}{header("itemForm")}
