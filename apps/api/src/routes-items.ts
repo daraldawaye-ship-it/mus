@@ -295,7 +295,7 @@ export function itemRoutes(pool: Pool): Router {
             ? 'COALESCE(yearly_sales."saleTimesYear",0)'
             : query.sort==="availableAlternatives"
               ? 'stock_summary."availableAlternatives"'
-              : 'stock_summary."availableUnit1"';
+              : '(stock_summary."availableUnit1")::numeric';
           const sorted=await client.query(
             `WITH matching AS (
               SELECT i.id AS "itemId",i.name AS "itemName",
