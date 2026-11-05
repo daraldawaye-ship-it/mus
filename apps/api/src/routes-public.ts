@@ -8,6 +8,7 @@ import {
   ownerPasswordResetSchema,
   userKinds,
   DEFAULT_APPEARANCE,
+  documentDateSchema,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { assertRequestPagesEnabled, directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
@@ -440,7 +441,7 @@ export async function auditPage(
       targetId: "a.target_id",
       createdAt: "a.created_at",
     },
-    "id:desc",
+    "createdAt:desc,id:desc",
   );
   const parameters: unknown[] = [companyId, searchPattern(query.q)];
   let filter =
@@ -451,6 +452,23 @@ export async function auditPage(
     parameters.push(queryInput.action);
     filter += ` AND a.action=$${parameters.length}`;
   }
+  // Inclusive Yemen-local dates, independent of server/browser time zone.
+  // Use timestamp bounds so audit_events.created_at can use its index.
+  let dateFrom: string | null = null;
+  let dateTo: string | null = null;
+  for (const key of ["dateFrom","dateTo"] as const) {
+    const value = queryInput[key];
+    if (value === undefined || value === "") continue;
+    const date = parse(documentDateSchema,value);
+    if (key === "dateFrom") dateFrom = date;
+    else dateTo = date;
+    parameters.push(date);
+    filter += key === "dateFrom"
+      ? ` AND a.created_at >= (${parameters.length}::date::timestamp AT TIME ZONE 'Asia/Aden')`
+      : ` AND a.created_at < ((${parameters.length}::date + 1)::timestamp AT TIME ZONE 'Asia/Aden')`;
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo)
+    throw new HttpError(400,"invalid_query","تاريخ البداية بعد تاريخ النهاية");
   const count = await pool.query(
     `SELECT count(*)::integer AS total FROM audit_events a WHERE ${filter}`,
     parameters,
