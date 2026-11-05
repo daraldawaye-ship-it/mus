@@ -7579,3 +7579,37 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .item-options-drafts-card .item-options-order-draft-group { padding: 7px 6px; }
   .item-options-order-draft-buttons > .button { font-size: 11px; padding-inline: 5px; }
 }
+
+/* Purchase-planning notes are optional and share the adaptive column selector.
+   Keep only the preview visible; clicking opens the entire item purchase note. */
+.item-options-desktop-table:not(.item-options-fit-columns) > table {
+  min-width: 1630px;
+}
+.item-options-desktop-table col.item-options-purchase-notes-col {
+  width: 210px;
+}
+.item-options-desktop-table td.item-options-purchase-notes-cell {
+  max-width: 210px;
+}
+.item-options-purchase-note {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font-size: inherit;
+  line-height: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.item-options-purchase-note:hover,
+.item-options-purchase-note:focus-visible {
+  text-decoration: underline;
+}
