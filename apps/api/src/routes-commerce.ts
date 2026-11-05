@@ -16,6 +16,8 @@ import {
   createInvoice,
   invoiceDTOs,
   invoiceFrom,
+  invoiceReportDate,
+  purchaseDateJoin,
   invoiceSelect,
   loadInvoice,
 } from "./services/commerce.ts";
@@ -302,7 +304,7 @@ export function commerceRoutes(pool: Pool): Router {
               id: "i.id",
               number: "i.number",
               kind: "i.kind",
-              documentDate: "i.document_date",
+              documentDate: invoiceReportDate,
               total: "i.total",
               currencyCode: "i.currency_code",
               counterpartyAccountName: "i.counterparty_account_name",
@@ -387,7 +389,7 @@ export function commerceRoutes(pool: Pool): Router {
             searchPattern((payerQ as string | undefined) ?? ""),
           ];
           const filter =
-            "i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR i.document_date >= $4::date) AND ($5::date IS NULL OR i.document_date <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)";
+            `i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR ${invoiceReportDate} >= $4::date) AND ($5::date IS NULL OR ${invoiceReportDate} <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)`;
           const count = await client.query(
             `SELECT count(*)::integer AS total ${invoiceFrom} WHERE ${filter}`,
             params,
@@ -425,15 +427,15 @@ export function commerceRoutes(pool: Pool): Router {
     const excludeInvoiceId = excluded === undefined ? null : id(excluded);
     res.json(await readCommerce(pool, req, async (client, companyId) => {
       const result = await client.query<{ id: number; number: string; documentDate: string }>(
-        `SELECT id, number, document_date::text AS "documentDate"
-         FROM invoices
-         WHERE company_id=$1 AND kind='purchase' AND supplier_account_id=$2
+        `SELECT id, number, ${invoiceReportDate}::text AS "documentDate"
+         FROM invoices i ${purchaseDateJoin}
+         WHERE i.company_id=$1 AND kind='purchase' AND supplier_account_id=$2
            AND lower(btrim(coalesce(supplier_receipt_number,'')))=lower($3)
-           AND document_date>=make_date($4,1,1)
-           AND document_date<make_date($4+1,1,1)
+           AND ${invoiceReportDate}>=make_date($4,1,1)
+           AND ${invoiceReportDate}<make_date($4+1,1,1)
            AND ($5::integer IS NULL OR id<>$5::integer)
            AND NOT is_return
-         ORDER BY document_date DESC, id DESC LIMIT 1`,
+         ORDER BY ${invoiceReportDate} DESC, id DESC LIMIT 1`,
         [companyId, supplierAccountId, receiptNumber.trim(), year, excludeInvoiceId],
       );
       return { match: result.rows[0] ?? null };
@@ -462,8 +464,8 @@ export function commerceRoutes(pool: Pool): Router {
         SELECT c.* FROM purchase_invoice_corrections c WHERE company_id=$1 AND $2 IN(original_id,replacement_id,reversal_id)
         UNION SELECT c.* FROM purchase_invoice_corrections c JOIN chain p ON c.company_id=p.company_id
         AND (c.original_id=p.replacement_id OR c.replacement_id=p.original_id))
-        SELECT original_id,reversal_id,replacement_id,actor_id,actor_name,corrected_at,reason,before_invoice,after_invoice,impact
-        FROM chain ORDER BY corrected_at`,[companyId,id(req.params.id)]);
+        SELECT original_id,reversal_id,replacement_id,actor_id,actor_name,corrected_at,reason,before_invoice,after_invoice,impact, pd.invoice_date::text AS "invoiceDate"
+        FROM chain JOIN purchase_correction_dates pd ON pd.company_id=chain.company_id AND pd.invoice_id=chain.replacement_id ORDER BY corrected_at`,[companyId,id(req.params.id)]);
       return {items:rows.rows};
     }));
   }));

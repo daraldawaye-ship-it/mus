@@ -23,6 +23,7 @@ type Line = {
   expiryDate: string;
 };
 type Impact = {
+  invoiceDate?: string;
   documentDate: string;
   oldTotal: string;
   newTotal: string;
@@ -31,6 +32,7 @@ type Impact = {
   ledger: { name: string; code: string; delta: string }[];
 };
 type Entry = {
+  invoiceDate: string;
   original_id: number;
   reversal_id: number;
   replacement_id: number;
@@ -54,7 +56,7 @@ function ImpactTable({ impact }: { impact: Impact }) {
   return (
     <section>
       <p>
-        تاريخ الترحيل {impact.documentDate} · الصافي قبل {impact.oldTotal} وبعد{" "}
+        تاريخ الفاتورة والكشف {impact.invoiceDate ?? impact.documentDate} · تاريخ الترحيل {impact.documentDate} · الصافي قبل {impact.oldTotal} وبعد{" "}
         {impact.newTotal} · الفرق {impact.difference}
       </p>
       <table>
@@ -251,10 +253,10 @@ export function PurchaseCorrection({
           <Link to={base + "/invoices/" + h.reversal_id}>مستند العكس</Link> ·{" "}
           <Link to={base + "/invoices/" + h.replacement_id}>التصحيح</Link>
           <h4>قبل التعديل</h4>
-          <Snapshot v={h.before_invoice} />
+          <Snapshot v={{...h.before_invoice,documentDate:h.invoiceDate}} />
           <h4>بعد التعديل</h4>
-          <Snapshot v={h.after_invoice} />
-          <ImpactTable impact={h.impact} />
+          <Snapshot v={{...h.after_invoice,documentDate:h.invoiceDate}} />
+          <ImpactTable impact={{...h.impact,invoiceDate:h.invoiceDate}} />
         </details>
       ))}
       {allowed && !editing && (

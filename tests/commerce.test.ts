@@ -4980,3 +4980,35 @@ test("purchase correction previews, rolls back, commits once and preserves histo
   assert.equal((await f.pool.query("SELECT 1 FROM notifications WHERE code='PURCHASE_CORRECTED' AND company_id=$1",[s.company.id])).rowCount,1);
   await assertBalanced(f,s.company.id);
 });
+
+test("purchase corrections keep the first invoice date in list and ledger across edits", async t => {
+  const f=await fixture(t), s=await setup(f,"Correction dates"), item=await s.item();
+  await f.owner.ok("PUT",s.path+"/control/edit_purchases_date",{value:true,employeeId:null,revision:null});
+  const initial=invoiceBody(s,item.id);
+  const first=await invoice(f,s,initial);
+  assert.equal(first.documentDate,initial.documentDate);
+  // A later stock movement makes retroactive inventory posting impossible.
+  await invoice(f,s,{...initial,idempotencyKey:randomUUID(),documentDate:"2026-10-13"});
+  let current=first.id;
+  for(const quantity of ["3","4"]){
+    const path=s.path+"/invoices/"+current+"/purchase-correction";
+    const body={reason:"تعديل الكمية",invoice:{...initial,idempotencyKey:randomUUID(),
+      lines:initial.lines.map(line=>({...line,quantity}))}};
+    const preview=await f.owner.ok<{previewHash:string;impact:{documentDate:string;invoiceDate:string}}>("POST",path,body);
+    assert.equal(preview.impact.invoiceDate,first.documentDate);
+    assert(preview.impact.documentDate>first.documentDate);
+    current=(await f.owner.ok<{replacementId:number}>("POST",path,{...body,previewHash:preview.previewHash})).replacementId;
+    const detail=await f.owner.ok<{invoice:Invoice}>("GET",s.path+"/invoices/"+current);
+    assert.equal(detail.invoice.documentDate,first.documentDate);
+    const movement=await f.pool.query("SELECT document_date::text AS date FROM stock_movements WHERE company_id=$1 AND invoice_id=$2",[s.company.id,current]);
+    assert.equal(movement.rows[0].date,preview.impact.documentDate);
+  }
+  const range="dateFrom="+first.documentDate+"&dateTo="+first.documentDate;
+  const list=await f.owner.ok<Page<Invoice>>("GET",s.path+"/invoices?kind=purchase&"+range);
+  assert.equal(list.total,5);
+  assert(list.items.every(i=>i.documentDate===first.documentDate));
+  const ledger=await f.owner.ok<{items:{documentDate:string}[];totals:{closingBalance:string}}>("GET",s.path+"/account-ledger?accountId="+s.supplier.id+"&"+range);
+  assert.equal(ledger.items.length,5);
+  assert(ledger.items.every(i=>i.documentDate===first.documentDate));
+  assert.equal(ledger.totals.closingBalance,"-3200");
+});

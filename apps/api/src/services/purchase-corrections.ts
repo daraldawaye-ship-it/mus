@@ -173,6 +173,7 @@ export async function correctPurchase(
     )
   ).rows;
   const impact = {
+    invoiceDate: original.documentDate,
     documentDate,
     oldTotal: original.total,
     newTotal: replacement.total,
@@ -211,7 +212,7 @@ export async function correctPurchase(
       name,
       input.reason,
       original,
-      replacement,
+      { ...replacement, documentDate: original.documentDate },
       impact,
       requestHash,
     ],

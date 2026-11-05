@@ -75,8 +75,10 @@ function allocate(total: bigint, weights: bigint[], step: bigint): bigint[] {
   if (remaining !== 0n) throw new Error("Invalid exact allocation");
   return result;
 }
-export const invoiceFrom = "FROM invoices i JOIN users u ON u.id=i.created_by";
-export const invoiceSelect = `SELECT i.*,i.document_date::text AS date_text,u.display_name AS created_by_name ${invoiceFrom}`;
+export const invoiceReportDate = "COALESCE(pd.invoice_date,i.document_date)";
+export const purchaseDateJoin = "LEFT JOIN purchase_correction_dates pd ON (pd.company_id,pd.invoice_id)=(i.company_id,i.id)";
+export const invoiceFrom = `FROM invoices i JOIN users u ON u.id=i.created_by ${purchaseDateJoin}`;
+export const invoiceSelect = `SELECT i.*,${invoiceReportDate}::text AS date_text,u.display_name AS created_by_name ${invoiceFrom}`;
 export function invoiceLineDTO(row: QueryResultRow): InvoiceLine {
   return {
     id: row.id,

@@ -278,18 +278,19 @@ export async function readAccountLedger(
     dates.to,
     searchPattern(query.q),
   ];
+  const ledgerDate = "COALESCE(pd.invoice_date,d.document_date)";
   const from =
-    "FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'";
+    "FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id LEFT JOIN purchase_correction_journal_dates pd ON (pd.company_id,pd.document_id)=(d.company_id,d.id) WHERE l.company_id=$1 AND l.account_id=$2 AND d.status<>'draft'";
   const opening = await client.query(
-    `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS balance ${from} AND $3::date IS NOT NULL AND d.document_date < $3::date`,
+    `SELECT COALESCE(sum(l.base_debit-l.base_credit),0)::text AS balance ${from} AND $3::date IS NOT NULL AND ${ledgerDate} < $3::date`,
     [companyId, accountId, dates.from],
   );
   const totals = await client.query(
-    `SELECT COALESCE(sum(l.base_debit),0)::text AS debit,COALESCE(sum(l.base_credit),0)::text AS credit ${from} AND ($3::date IS NULL OR d.document_date >= $3::date) AND ($4::date IS NULL OR d.document_date <= $4::date)`,
+    `SELECT COALESCE(sum(l.base_debit),0)::text AS debit,COALESCE(sum(l.base_credit),0)::text AS credit ${from} AND ($3::date IS NULL OR ${ledgerDate} >= $3::date) AND ($4::date IS NULL OR ${ledgerDate} <= $4::date)`,
     [companyId, accountId, dates.from, dates.to],
   );
   // Compute cumulative balance before filtering/search/paging, so each row retains its true chronological balance.
-  const cte = `WITH full_ledger AS (SELECT l.*,d.number,d.document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY d.document_date,d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${from})`;
+  const cte = `WITH full_ledger AS (SELECT l.*,d.number,${ledgerDate} AS document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY ${ledgerDate},d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${from})`;
   const filter =
     "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.description ILIKE $5 OR f.document_description ILIKE $5)";
   const count = await client.query(
@@ -828,7 +829,7 @@ export function financeRoutes(pool: Pool): Router {
             dates.to,
           ];
           const from =
-            "FROM accounts a LEFT JOIN (SELECT l.account_id,sum(l.base_debit) AS debit,sum(l.base_credit) AS credit FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id WHERE l.company_id=$1 AND d.status<>'draft' AND ($3::date IS NULL OR d.document_date >= $3::date) AND ($4::date IS NULL OR d.document_date <= $4::date) GROUP BY l.account_id) t ON t.account_id=a.id";
+            "FROM accounts a LEFT JOIN (SELECT l.account_id,sum(l.base_debit) AS debit,sum(l.base_credit) AS credit FROM financial_document_lines l JOIN financial_documents d ON d.company_id=l.company_id AND d.id=l.document_id LEFT JOIN purchase_correction_journal_dates pd ON (pd.company_id,pd.document_id)=(d.company_id,d.id) WHERE l.company_id=$1 AND d.status<>'draft' AND ($3::date IS NULL OR COALESCE(pd.invoice_date,d.document_date) >= $3::date) AND ($4::date IS NULL OR COALESCE(pd.invoice_date,d.document_date) <= $4::date) GROUP BY l.account_id) t ON t.account_id=a.id";
           let where =
             "a.company_id=$1 AND a.kind='posting' AND (a.code ILIKE $2 OR a.name ILIKE $2)";
           if (req.query.accountId !== undefined) {
