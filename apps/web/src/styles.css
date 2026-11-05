@@ -7458,3 +7458,124 @@ a.notification-quick-title:hover { text-decoration: underline; }
    continue to respond to their own clicks. */
 .item-options-desktop-table tbody tr,
 .item-options-mobile-entry { cursor: pointer; }
+
+/* Item options — saved-filter labels live INSIDE controls, not on top of
+   values. These fields previously inherited 36px generic control styling
+   outside .item-options-filters-card, causing the label/value overlap. */
+.item-options-presets-card .item-options-preset-field {
+  flex: 1 1 240px;
+  min-width: min(100%, 230px);
+  min-height: 52px;
+  margin: 0;
+  max-width: 100%;
+}
+.item-options-presets-card .item-options-preset-field > input,
+.item-options-presets-card .item-options-preset-field > select {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  margin: 0;
+  padding-block: 23px 5px;
+  padding-inline: 11px;
+  line-height: 18px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+.item-options-presets-card .item-options-preset-field > select {
+  padding-inline-end: 27px;
+}
+.item-options-presets-card .form-actions {
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.item-options-presets-card .form-actions > .button {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.item-options-presets-card .item-options-filter-label {
+  z-index: 2;
+  top: 5px;
+  line-height: 15px;
+}
+
+/* Numbered drafts stay OUTSIDE the results' hidden item list. The summary
+   actions have their own wrapping region so drafts never paint on top of
+   one another, even on narrow browser windows. */
+.item-options-drafts-card { min-width: 0; }
+.item-options-drafts-card .item-options-order-draft {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+}
+.item-options-drafts-card .item-options-order-draft-group {
+  min-width: 0;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.item-options-drafts-card .item-options-order-draft-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.item-options-order-draft-meta {
+  display: flex;
+  flex: 1 1 250px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  line-height: 1.5;
+}
+.item-options-order-draft-meta strong { overflow-wrap: anywhere; }
+.item-options-order-draft-meta small {
+  white-space: normal;
+  color: var(--muted);
+}
+.item-options-order-draft-buttons {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+.item-options-order-draft-buttons > .button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  height: 28px;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.item-options-drafts-card .item-options-order-draft-lines {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  max-height: min(46dvh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+@media (max-width: 860px) {
+  .item-options-order-draft-meta,
+  .item-options-order-draft-buttons { flex-basis: 100%; }
+  .item-options-order-draft-buttons { justify-content: flex-start; }
+}
+@media (max-width: 470px) {
+  .item-options-presets-card .item-options-preset-field { flex-basis: 100%; }
+  .item-options-drafts-card .item-options-order-draft-group { padding: 7px 6px; }
+  .item-options-order-draft-buttons > .button { font-size: 11px; padding-inline: 5px; }
+}
