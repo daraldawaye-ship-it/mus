@@ -276,9 +276,20 @@ async function filteredItems(
   if (unselectedForDraft) {
     if (rows.length > 2000) throw new HttpError(413, "too_many_draft_items",
       "تتجاوز القائمة 2000 صنف غير مختار؛ ضيّق خيارات التصفية ثم أعد المحاولة. لم تُضف مسودة جزئية.");
+    // Save the same FIRST-unit quantity already shown in the list, using
+    // the complete filtered result (not just the currently visible page).
+    // This is a snapshot for the local order draft: never write an invoice.
+    const ids = rows.map(row => Number(row.id));
+    const requested = await requiredPurchaseQuantitiesToPage(
+      client, companyId, ids, options.coverageMax ?? "30", options.useReserve,
+    );
+    if (requested.size !== ids.length)
+      throw new HttpError(409, "order_draft_quantity_unavailable",
+        "تعذر حساب الكمية المطلوبة لكل صنف؛ لم تُنشأ مسودة جزئية.");
     return {
       items: rows.map(row => ({
         id: Number(row.id), code: String(row.code), name: String(row.name),
+        requiredQuantity: requested.get(Number(row.id))!.requiredPurchaseQuantity,
       })),
       total: rows.length,
       asOf,
