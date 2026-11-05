@@ -15,6 +15,10 @@ export const itemOptionsPresetFiltersSchema = z.object({
   reserveMax: numericRange.default(""),
   purchaseFactorMin: numericRange.default(""),
   purchaseFactorMax: numericRange.default(""),
+  purchasePriceMin: numericRange.default(""),
+  purchasePriceMax: numericRange.default(""),
+  requiredPurchaseQuantityMin: numericRange.default(""),
+  requiredPurchaseQuantityMax: numericRange.default(""),
   monthMin: numericRange,
   monthMax: numericRange,
   fourMonthsMin: numericRange,
@@ -43,11 +47,11 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // Optional for backwards compatibility with presets saved before column preferences existed.
   // Shared presets preserve exactly which columns the user chose on any device.
   visibleColumns: z.array(z.enum([
-    "choice", "name", "stock", "reserve", "purchaseFactor", "month",
+    "choice", "name", "purchaseNotes", "stock", "reserve", "purchaseFactor", "month",
     "saleQuantityMonth", "fourMonths", "allTime", "previousYear",
     "requiredPurchaseQuantity", "purchasePrice", "requiredPurchaseValue",
     "coverage", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
-  ])).min(1).max(17).refine(columns => new Set(columns).size === columns.length,
+    ])).min(1).max(18).refine(columns => new Set(columns).size === columns.length,
     "لا يمكن تكرار العمود في مجموعة الحفظ").optional(),
 }).strict();
 export const itemOptionsPresetCreateSchema = z.object({
