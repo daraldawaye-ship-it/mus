@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  normalizeDigits, type CompanyContext,
+  normalizeDigits, type CompanyContext, type Invoice,
 } from "../../../packages/contracts/src/index.ts";
 import { api, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
+import { errorMessage } from "./phase2";
+import { Button, Dialog, Field, Notice } from "./ui";
+import { InvoiceListPrintJob } from "./InvoiceListPrintJob";
 
 type SaleItemMovement = {
   id: number;
@@ -39,10 +42,12 @@ function dayText(value: string) {
   return year && month && day ? day + "/" + month + "/" + year : value;
 }
 
-/** Latest 10 sale *lines* (not invoices), fetched only when chosen in the sales sidebar. */
+/** Latest sale lines: 10 normally, 40 when filtering by invoice net amount. */
 export function InvoiceSideItemMovements({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
+  const queryClient = useQueryClient();
+  const canEditCustomer = context.general || context.permissions.includes("commerce.manage");
   const offline = isOfflineNow();
   const [search, setSearch] = useState("");
   const [netSearch, setNetSearch] = useState("");
@@ -75,6 +80,76 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
     refetchOnWindowFocus: true,
   });
 
+
+  const [printJob, setPrintJob] = useState<{ id: number; sequence: number } | null>(null);
+  const [editing, setEditing] = useState<Invoice | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerNumber, setCustomerNumber] = useState("");
+  const [openingCustomerId, setOpeningCustomerId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [customerError, setCustomerError] = useState("");
+  const [customerSuccess, setCustomerSuccess] = useState("");
+
+  async function openCustomer(invoiceId: number) {
+    if (!canEditCustomer || openingCustomerId !== null) return;
+    setOpeningCustomerId(invoiceId);
+    setCustomerError("");
+    setCustomerSuccess("");
+    try {
+      // Use the current invoice snapshot so concurrent customer edits remain safe.
+      const { invoice } = await api<{ invoice: Invoice }>(
+        "/companies/" + companyId + "/invoices/" + invoiceId,
+      );
+      setEditing(invoice);
+      setCustomerName(invoice.saleCustomerName ?? "");
+      setCustomerNumber(invoice.saleCustomerNumber ?? "");
+    } catch (cause) {
+      setCustomerError(errorMessage(cause));
+    } finally {
+      setOpeningCustomerId(null);
+    }
+  }
+
+  async function saveCustomer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing || !canEditCustomer || saving) return;
+    const invoice = editing;
+    setSaving(true);
+    setCustomerError("");
+    try {
+      await api("/companies/" + companyId + "/invoices/" + invoice.id + "/sale-customer", {
+        method: "PATCH",
+        body: {
+          saleCustomerNumber: customerNumber.trim(),
+          saleCustomerName: customerName.trim(),
+          expectedSaleCustomerId: invoice.saleCustomerId,
+          expectedSaleCustomerNumber: invoice.saleCustomerNumber,
+          expectedSaleCustomerName: invoice.saleCustomerName,
+        },
+      });
+      setEditing(null);
+      setCustomerSuccess("تم حفظ عميل الفاتورة " + invoice.number + ".");
+      await Promise.all([
+        movements.refetch(),
+        queryClient.invalidateQueries({
+          queryKey: ["invoice-side-recent-sales", user?.id, companyId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["commerce", user?.id, companyId, "invoice", invoice.id],
+        }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === "list" && queryKey[1] === user?.id &&
+            String(queryKey[2]).startsWith("company:" + companyId + ":invoices:sale"),
+        }),
+      ]);
+    } catch (cause) {
+      setCustomerError(errorMessage(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="invoice-side-item-movements" aria-label="حركة الأصناف في المبيعات">
       <div className="invoice-side-movement-filters">
@@ -90,7 +165,10 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
       </div>
       {!validNet && <small role="alert">أدخل مبلغ الفاتورة بالأرقام، ويمكن كتابة الكسور.</small>}
       {offline && <small>حركة الأصناف تتطلب الاتصال لتحديث البيانات.</small>}
-      {!offline && validNet && movements.isLoading && <small>جارٍ تحميل آخر 10 أسطر…</small>}
+      {customerSuccess && <small role="status">{customerSuccess}</small>}
+      {customerError && !editing && <small role="alert">{customerError}</small>}
+      {openingCustomerId !== null && <small>جارٍ فتح بيانات العميل…</small>}
+      {!offline && validNet && movements.isLoading && <small>جارٍ تحميل آخر {filters.invoiceTotal ? 40 : 10} سطرًا…</small>}
       {!offline && validNet && movements.isError && (
         <div className="invoice-side-movement-error" role="alert">
           <small>تعذر تحميل حركة الأصناف. راجع الاتصال والصلاحيات.</small>
@@ -99,7 +177,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
       )}
       {validNet && (movements.data?.items.length ?? 0) > 0 && (
         <div className="invoice-side-overview-scroll invoice-side-movement-scroll"
-          role="region" tabIndex={0} aria-label="آخر عشرة أسطر من حركة أصناف المبيعات">
+          role="region" tabIndex={0} aria-label={filters.invoiceTotal ? "آخر أربعين سطرًا من حركة أصناف المبيعات" : "آخر عشرة أسطر من حركة أصناف المبيعات"}>
           <table className="invoice-side-movement-table" dir="rtl">
             <colgroup>
               <col style={{ width: "20%" }} />
@@ -139,9 +217,20 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
                         </tr>
                         <tr className="invoice-side-movement-secondary">
                           <td colSpan={5}>
+                            <span>(<button type="button" className="invoice-side-movement-action"
+                              aria-label={"طباعة الفاتورة " + row.invoiceNumber}
+                              onClick={() => setPrintJob(previous => ({
+                                id: row.invoiceId, sequence: (previous?.sequence ?? 0) + 1,
+                              }))}>طباعة</button>)</span>
                             <span>({row.employeeName || "—"})</span>
                             <span>({row.notes || "—"})</span>
-                            <span>({row.customerName || "—"})</span>
+                            <span>({canEditCustomer ? <button type="button"
+                              className="invoice-side-movement-action invoice-list-customer-trigger"
+                              disabled={openingCustomerId !== null}
+                              aria-label={"تعديل اسم ورقم عميل الفاتورة " + row.invoiceNumber}
+                              title={"تعديل عميل الفاتورة " + row.invoiceNumber}
+                              onClick={() => void openCustomer(row.invoiceId)}>{row.customerName || "—"}</button>
+                              : row.customerName || "—"})</span>
                           </td>
                         </tr>
                       </tbody>
@@ -155,6 +244,31 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
       )}
       {!offline && validNet && !movements.isLoading && !movements.isError &&
         movements.data?.items.length === 0 && <small>لا توجد أسطر أصناف مطابقة للبحث.</small>}
+      {printJob && <InvoiceListPrintJob key={printJob.sequence}
+        context={context} invoiceId={printJob.id} onClose={() => setPrintJob(null)} />}
+      <Dialog open={editing !== null}
+        title={"بيانات عميل الفاتورة " + (editing?.number ?? "")}
+        onClose={() => { if (!saving) setEditing(null); }}>
+        {editing && <form className="form-stack" onSubmit={event => void saveCustomer(event)}>
+          <div className="invoice-customer-identity-row">
+            <Field label="رقم العميل (اختياري)" inputMode="numeric" autoComplete="off"
+              maxLength={30} value={customerNumber} autoFocus disabled={saving}
+              onChange={event => setCustomerNumber(
+                normalizeDigits(event.target.value).replace(/[^0-9]/g, ""),
+              )} />
+            <Field label="اسم العميل (اختياري)" autoComplete="off"
+              maxLength={240} value={customerName} disabled={saving}
+              onChange={event => setCustomerName(event.target.value)} />
+          </div>
+          <small className="muted">يمكن حفظ الاسم وحده أو الرقم وحده أو كليهما؛ ولا تتغير الحسابات أو المخزون.</small>
+          {customerError && <Notice tone="error">{customerError}</Notice>}
+          <div className="form-actions">
+            <Button type="submit" disabled={saving}>{saving ? "جارٍ الحفظ…" : "حفظ"}</Button>
+            <Button type="button" variant="secondary" disabled={saving}
+              onClick={() => setEditing(null)}>إلغاء</Button>
+          </div>
+        </form>}
+      </Dialog>
     </section>
   );
 }
