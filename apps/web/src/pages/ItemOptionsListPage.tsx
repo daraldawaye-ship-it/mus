@@ -195,6 +195,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const draftItems = (draftId: number) =>
     temporaryOrder.drafts.find(draft => draft.id === draftId)?.items ?? [];
   const printItems = printMode === "selected" ? temporarySelection.items : draftItems(printMode);
+  const savedRequiredQuantity = (item: TemporaryChosenItem | OrderDraftItem): string =>
+    "requiredQuantity" in item && typeof item.requiredQuantity === "string"
+      ? item.requiredQuantity : "—";
   function printSelection(mode: "selected" | number) {
     const list = mode === "selected" ? temporarySelection.items : draftItems(mode);
     if (!list.length) return;
@@ -214,7 +217,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         ? list.map(item => item.name)
         : list.map(item => ({
             name: item.name,
-            requiredQuantity: "requiredQuantity" in item ? item.requiredQuantity ?? "—" : "—",
+            requiredQuantity: savedRequiredQuantity(item),
           })));
       const today = new Date().toLocaleDateString("en-CA");
       const filename = `${mode === "selected" ? "selected-items" : `item-order-draft-${mode}`}-${today}.pdf`;
@@ -868,7 +871,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         {printItems.map(item => <div className="item-options-print-row" key={item.id}>
           {printMode !== "selected" &&
             <bdi className="item-options-print-quantity">{
-              "requiredQuantity" in item ? item.requiredQuantity ?? "—" : "—"
+              savedRequiredQuantity(item)
             }</bdi>}
           <span className="item-options-print-name">{item.name}</span>
         </div>)}
