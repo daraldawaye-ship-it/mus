@@ -119,18 +119,19 @@ export async function correctPurchase(
     conflict(
       "تعذر عكس الكمية أو القيمة الأصلية بالكامل بعوامل الوحدات وسعر الصرف الحاليين",
     );
-  const unsafeStock = await client.query(
+  // applyStock already enforces the company's allowNegative setting and values
+  // negative balances atomically. Do not reject a valid correction merely
+  // because the temporary reversal goes negative before the replacement posts.
+  // Keep a separate check that the return uses the original expiry batch.
+  const mismatchedBatch = await client.query(
     `SELECT 1 FROM stock_movements m
       JOIN invoice_lines l ON l.company_id=m.company_id AND l.id=m.invoice_line_id
-      JOIN stock_balances b ON b.company_id=m.company_id AND b.item_id=m.item_id
-        AND b.location_id=m.location_id AND b.batch_key=m.batch_key
-      JOIN stock_item_valuations v ON v.company_id=m.company_id AND v.item_id=m.item_id
-      WHERE m.company_id=$1 AND m.invoice_id=$2 AND (b.quantity_smallest<0 OR v.quantity_smallest<0
-        OR m.batch_key<>COALESCE(l.expiry_date::text,'')) LIMIT 1`,
+      WHERE m.company_id=$1 AND m.invoice_id=$2
+        AND m.batch_key<>COALESCE(l.expiry_date::text,'') LIMIT 1`,
     [companyId,reversal.id],
   );
-  if (unsafeStock.rowCount)
-    conflict("المتوفر من دفعة الأصل لا يكفي لعكس الفاتورة. راجع التسوية مع المحاسب.");
+  if (mismatchedBatch.rowCount)
+    conflict("دفعة عكس المشتريات لا تطابق دفعة الفاتورة الأصلية؛ راجع تاريخ الانتهاء.");
   // Never accept a key that refers to an independently posted invoice.
   if (
     (
