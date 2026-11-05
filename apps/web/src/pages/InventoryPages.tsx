@@ -42,6 +42,7 @@ import { formatMoney } from "../format-money";
 import { usePageDirectory } from "../page-directory";
 import { firstUnitStockText } from "../sale-stock-quantity";
 import { signedStockMovementQuantity } from "../stock-movement-display";
+import { adenInvoiceToday } from "../invoice-save-date";
 import {
   Button,
   Card,
@@ -299,7 +300,10 @@ function updateFilter(
 ) {
   setParams((previous) => {
     const next = new URLSearchParams(previous);
-    value ? next.set(key, value) : next.delete(key);
+    // An explicitly cleared date removes its bound; it must not revert to today's default.
+    if (key === "dateFrom" || key === "dateTo") next.set(key, value);
+    else if (value) next.set(key, value);
+    else next.delete(key);
     next.delete("page");
     return next;
   });
@@ -375,7 +379,7 @@ function StockFilters({
           <Field
             label="من تاريخ"
             type="date"
-            value={params.get("dateFrom") ?? ""}
+            value={params.has("dateFrom") ? params.get("dateFrom") ?? "" : adenInvoiceToday()}
             onChange={(event) =>
               updateFilter(setParams, "dateFrom", event.target.value)
             }
@@ -383,7 +387,7 @@ function StockFilters({
           <Field
             label="إلى تاريخ"
             type="date"
-            value={params.get("dateTo") ?? ""}
+            value={params.has("dateTo") ? params.get("dateTo") ?? "" : adenInvoiceToday()}
             onChange={(event) =>
               updateFilter(setParams, "dateTo", event.target.value)
             }
@@ -576,11 +580,16 @@ function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
   const filters = new URLSearchParams();
-  for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "doctorId", "dateFrom", "dateTo"])
+  for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "doctorId"])
     if (params.get(key)) filters.set(key, params.get(key)!);
+  const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : adenInvoiceToday();
+  const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : adenInvoiceToday();
+  if(dateFrom) filters.set("dateFrom",dateFrom);
+  if(dateTo) filters.set("dateTo",dateTo);
   const list = usePagedQuery<StockMovement>(
     `/companies/${companyId}/stock-movements?${filters}`,
     `company:${companyId}:inventory:movements`,
+    "documentDate:desc,createdAt:desc,id:desc",
   );
   const columns = useMemo<ColumnDef<StockMovement, unknown>[]>(
     () => [
@@ -737,7 +746,7 @@ function MovementsList({ context }: { context: CompanyContext }) {
         />
       </Card>
       <StagedMovementsPanel companyId={companyId} q={list.query}
-        dateFrom={params.get("dateFrom")??""} dateTo={params.get("dateTo")??""}
+        dateFrom={dateFrom} dateTo={dateTo}
         itemId={params.get("itemId")??""} locationId={params.get("locationId")??""}
         kind={params.get("kind")??""} supplierAccountId={params.get("supplierAccountId")??""}
         doctorId={params.get("doctorId")??""} />
