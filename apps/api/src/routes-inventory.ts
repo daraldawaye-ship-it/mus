@@ -346,7 +346,7 @@ export function inventoryRoutes(pool: Pool): Router {
           const query = listQuery(
             req.query,
             movementColumns,
-            "documentDate:desc,id:desc",
+            "documentDate:desc,createdAt:desc,id:desc",
           );
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
           let where =
