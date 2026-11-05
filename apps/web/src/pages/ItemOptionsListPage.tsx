@@ -263,7 +263,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   // UNSELECTED item, not just the 50 visible on the current page.
   async function addUnselectedToOrderDraft() {
     if (!canView || !result || addingUnselected || resultQuery.isFetching ||
-        temporarySelection.updating || applyingFilter) return;
+        temporarySelection.updating || applyingFilter || autoFilterPending) return;
     setAddingUnselected(true);
     setBulkAddError("");
     setActionMessage("");
@@ -324,6 +324,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     const sequence = ++autoFilterSequence.current;
     if (autoFilterTimer.current !== null) clearTimeout(autoFilterTimer.current);
     setAutoFilterPending(true);
+    setSelectedPresetId("");
     autoFilterTimer.current = setTimeout(() => {
       autoFilterTimer.current = null;
       const invalid = ranges.find(({ key }) =>
@@ -457,6 +458,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   }
   function reset() {
     cancelAutoFilter();
+    setSelectedPresetId("");
     setFilterError("");
     const defaults = new URLSearchParams({
       monthMin: "1", yearMin: "2", coverageMax: "1",
@@ -665,27 +667,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {errorMessage(resultQuery.error)}
       {" "}إذا استمرت المشكلة اضغط «إعادة الافتراضيات» ثم «تحديث القائمة».
     </Notice>}
-    <Card title="نتائج قائمة الأصناف">
-      <div className="item-options-selection-tools">
-        <span>الاختيار المؤقت المشترك للشركة: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
-        <Button variant="secondary"
-          disabled={!canView || !result || !result.total || addingUnselected ||
-            resultQuery.isFetching || applyingFilter || temporarySelection.updating || !temporaryOrder.enabled}
-          onClick={() => void addUnselectedToOrderDraft()}>
-          {addingUnselected ? "جارٍ إضافة كل غير المختارة…" : "إضافة جميع الأصناف غير المختارة إلى مسودة طلبية"}
-        </Button>
-        <Button variant="secondary" onClick={() => setShowOrderDraft(value => !value)}>
-          {showOrderDraft ? "إخفاء مسودات الطلبيات"
-            : `مسودات الطلبيات (${temporaryOrder.drafts.length})`}
-        </Button>
-      </div>
-      {showOrderDraft && <div className="item-options-order-draft">
+    <Card title={`مسودات الطلبيات (${temporaryOrder.drafts.length})`}
+      className="item-options-drafts-card">
+      <div className="item-options-order-draft">
         <p className="muted">مسودات الطلبيات محفوظة على هذا الجهاز فقط، وتُحذف كل مسودة تلقائيًا بعد 8 ساعات من إنشائها. كل ترحيل ناجح ينشئ مسودة جديدة، ولا يتكرر الصنف في أي مسودتين.</p>
         {!temporaryOrder.drafts.length && <p>لا توجد مسودات طلبية بعد.</p>}
         {temporaryOrder.drafts.map(orderDraft => <div key={orderDraft.id} className="item-options-order-draft-group">
           <div className="form-actions item-options-order-draft-actions">
-            <strong>مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)</strong>
-            <small className="muted" title="تنتهي المسودة بعد 8 ساعات من إنشائها">أُنشئت: {new Date(orderDraft.createdAt).toLocaleString("ar-YE")}</small>
+            <div className="item-options-order-draft-meta">
+              <strong>مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)</strong>
+              <small className="muted" title="تنتهي المسودة بعد 8 ساعات من إنشائها">أُنشئت: {new Date(orderDraft.createdAt).toLocaleString("ar-YE")}</small>
+            </div>
+            <div className="item-options-order-draft-buttons">
             <Button size="compact" variant="secondary"
               onClick={() => setActiveOrderDraftId(current =>
                 current === orderDraft.id ? null : orderDraft.id)}>
@@ -707,6 +700,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   setActionMessage(`حُذفت مسودة الطلبية ${orderDraft.id} فقط. أصبح بالإمكان ترحيل أصنافها في مسودة جديدة.`);
                 }
               }}>حذف المسودة</Button>
+            </div>
           </div>
           {activeOrderDraftId === orderDraft.id && <div className="item-options-order-draft-lines">
             {orderDraft.items.map(item => <div key={item.id} className="item-options-order-row">
@@ -720,7 +714,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {!orderDraft.items.length && <p>هذه المسودة فارغة.</p>}
           </div>}
         </div>)}
-      </div>}
+      </div>
+    </Card>
+    <Card title="نتائج قائمة الأصناف">
+      <div className="item-options-selection-tools">
+        <span>الاختيار المؤقت المشترك للشركة: <strong>{temporarySelection.items.length.toLocaleString("en-US")}</strong> صنف</span>
+        <Button variant="secondary"
+          disabled={!canView || !result || !result.total || addingUnselected ||
+            resultQuery.isFetching || applyingFilter || autoFilterPending || temporarySelection.updating || !temporaryOrder.enabled}
+          onClick={() => void addUnselectedToOrderDraft()}>
+          {addingUnselected ? "جارٍ إضافة كل غير المختارة…" : "إضافة جميع الأصناف غير المختارة إلى مسودة طلبية"}
+        </Button>
+      </div>
       {result && <p className="muted">
         إجمالي الأصناف المطابقة: <bdi>{result.total.toLocaleString("en-US")}</bdi>
         {" "}· إجمالي قيمة المطلوب:{" "}
