@@ -214,7 +214,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         ? list.map(item => item.name)
         : list.map(item => ({
             name: item.name,
-            requiredQuantity: "requiredQuantity" in item ? item.requiredQuantity : undefined,
+            requiredQuantity: "requiredQuantity" in item ? item.requiredQuantity ?? "—" : "—",
           })));
       const today = new Date().toLocaleDateString("en-CA");
       const filename = `${mode === "selected" ? "selected-items" : `item-order-draft-${mode}`}-${today}.pdf`;
