@@ -5,6 +5,7 @@ import { medicineMarketRoutes, type MarketAccess } from "../routes-medicine-mark
 import { actor } from "../http.ts";
 import { deny, HttpError } from "../errors.ts";
 import { asUser, marketVerifier, type MarketContext } from "./transport.ts";
+import { databaseMonitor, exactTableCount } from "../services/system-monitor.ts";
 
 export function createMarketApp(pool: Pool, secret: string) {
   const app = express(), verify = marketVerifier(secret);
@@ -56,6 +57,17 @@ export function createMarketApp(pool: Pool, secret: string) {
       if (context.disabledPages.includes("public.medicine-market") || context.disabledPages.some(key => key === `public.${section}`)) deny("هذه الصفحة موقوفة حاليًا");
     },
   };
+  // Signed gateway identity is rechecked here. Never allow public market visitors to inspect infrastructure.
+  app.get("/api/medicine-market/admin/monitor", async (req,res) => {
+    if (!req.auth?.user.owner || req.auth.user.archived) return res.status(403).json({error:{code:"forbidden",message:"هذه الصفحة لمالك الموقع فقط"}});
+    res.json(await databaseMonitor(pool,"سوق الأدوية",Number(process.env.MARKET_DATABASE_DISK_GB ?? 5)));
+  });
+  app.get("/api/medicine-market/admin/monitor/count", async (req,res) => {
+    if (!req.auth?.user.owner || req.auth.user.archived) return res.status(403).json({error:{code:"forbidden",message:"هذه الصفحة لمالك الموقع فقط"}});
+    const schema=req.query.schema, table=req.query.table;
+    if (typeof schema!=="string" || typeof table!=="string") return res.status(400).json({error:{code:"invalid_table",message:"حدد الجدول"}});
+    res.json(await exactTableCount(pool,schema,table));
+  });
   app.use("/api", medicineMarketRoutes(pool, access, true));
   app.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "المسار غير موجود", ...(req.auth?.user.owner ? {route: req.path, service: "market-staging-v1"} : {}) } }));
   const errors: ErrorRequestHandler = (error: unknown, _req, res, next) => {
