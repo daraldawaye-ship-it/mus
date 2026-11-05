@@ -16,7 +16,7 @@ type SaleItemMovement = {
   quantity: string;
   gross: string;
   discount: string;
-  invoiceGross: string;
+  invoiceTotal: string;
   employeeName: string;
   notes: string;
   customerName: string;
@@ -38,31 +38,31 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
   const { user } = useSession();
   const offline = isOfflineNow();
   const [search, setSearch] = useState("");
-  const [grossSearch, setGrossSearch] = useState("");
-  const normalizedGross = normalizeDigits(grossSearch).replace(/[\s,،]/g, "");
-  const validGross = normalizedGross === "" || /^-?[0-9]+(?:\.[0-9]{1,6})?$/.test(normalizedGross);
-  const [filters, setFilters] = useState({ q: "", invoiceGross: "" });
+  const [netSearch, setNetSearch] = useState("");
+  const normalizedNet = normalizeDigits(netSearch).replace(/[\s,،]/g, "");
+  const validNet = normalizedNet === "" || /^-?[0-9]+(?:\.[0-9]{1,6})?$/.test(normalizedNet);
+  const [filters, setFilters] = useState({ q: "", invoiceTotal: "" });
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setFilters({ q: search.trim(), invoiceGross: normalizedGross });
+      setFilters({ q: search.trim(), invoiceTotal: normalizedNet });
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [search, normalizedGross]);
+  }, [search, normalizedNet]);
 
   const movements = useQuery<{ items: SaleItemMovement[] }>({
-    queryKey: ["invoice-side-item-movements", user?.id, companyId, filters.q, filters.invoiceGross],
+    queryKey: ["invoice-side-item-movements", user?.id, companyId, filters.q, filters.invoiceTotal],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams();
       if (filters.q) params.set("q", filters.q);
-      if (filters.invoiceGross) params.set("invoiceGross", filters.invoiceGross);
+      if (filters.invoiceTotal) params.set("invoiceTotal", filters.invoiceTotal);
       const suffix = params.toString();
       return api<{ items: SaleItemMovement[] }>(
         "/companies/" + companyId + "/sales/line-movements" + (suffix ? "?" + suffix : ""),
         { signal },
       );
     },
-    enabled: !!user && !offline && validGross,
+    enabled: !!user && !offline && validNet,
     staleTime: 10_000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
@@ -75,22 +75,22 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
           aria-label="بحث باسم الصنف أو العميل أو الملاحظات أو الحساب أو الموظف"
           placeholder="بحث: الصنف، العميل، الملاحظات، الحساب، الموظف"
           onChange={event => setSearch(event.target.value)} />
-        <input type="text" inputMode="decimal" value={grossSearch}
+        <input type="text" inputMode="decimal" value={netSearch}
           aria-label="بحث بإجمالي مبلغ الفاتورة"
-          placeholder="إجمالي الفاتورة" dir="ltr"
-          onChange={event => setGrossSearch(event.target.value)}
-          aria-invalid={!validGross} />
+          placeholder="إجمالي الفاتورة بعد الخصم" dir="ltr"
+          onChange={event => setNetSearch(event.target.value)}
+          aria-invalid={!validNet} />
       </div>
-      {!validGross && <small role="alert">أدخل مبلغ الفاتورة بالأرقام، ويمكن كتابة الكسور.</small>}
+      {!validNet && <small role="alert">أدخل مبلغ الفاتورة بالأرقام، ويمكن كتابة الكسور.</small>}
       {offline && <small>حركة الأصناف تتطلب الاتصال لتحديث البيانات.</small>}
-      {!offline && validGross && movements.isLoading && <small>جارٍ تحميل آخر 10 أسطر…</small>}
-      {!offline && validGross && movements.isError && (
+      {!offline && validNet && movements.isLoading && <small>جارٍ تحميل آخر 10 أسطر…</small>}
+      {!offline && validNet && movements.isError && (
         <div className="invoice-side-movement-error" role="alert">
           <small>تعذر تحميل حركة الأصناف. راجع الاتصال والصلاحيات.</small>
           <button type="button" onClick={() => void movements.refetch()}>إعادة المحاولة</button>
         </div>
       )}
-      {validGross && (movements.data?.items.length ?? 0) > 0 && (
+      {validNet && (movements.data?.items.length ?? 0) > 0 && (
         <div className="invoice-side-overview-scroll invoice-side-movement-scroll"
           role="region" tabIndex={0} aria-label="آخر عشرة أسطر من حركة أصناف المبيعات">
           <table className="invoice-side-movement-table" dir="rtl">
@@ -127,7 +127,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
                           <td><bdi>{dayText(row.documentDate)}</bdi></td>
                           <td>{row.itemName}</td>
                           <td className="invoice-side-movement-numeric"><bdi>{quantityText(row.quantity)}</bdi></td>
-                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.invoiceGross)}</bdi></td>
+                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.invoiceTotal)}</bdi></td>
                           <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.discount)}</bdi></td>
                         </tr>
                         <tr className="invoice-side-movement-secondary">
@@ -146,7 +146,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
           </table>
         </div>
       )}
-      {!offline && validGross && !movements.isLoading && !movements.isError &&
+      {!offline && validNet && !movements.isLoading && !movements.isError &&
         movements.data?.items.length === 0 && <small>لا توجد أسطر أصناف مطابقة للبحث.</small>}
     </section>
   );
