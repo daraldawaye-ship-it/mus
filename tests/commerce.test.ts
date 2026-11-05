@@ -4981,6 +4981,66 @@ test("purchase correction previews, rolls back, commits once and preserves histo
   await assertBalanced(f,s.company.id);
 });
 
+test("purchase correction permits a negative balance only when negative stock is enabled",async t=>{
+  const f=await fixture(t),s=await setup(f,"Purchase correction negative stock");
+  const item=await s.item();
+  const originalBody=invoiceBody(s,item.id);
+  const original=await invoice(f,s,originalBody);
+  // The entire original purchase has already been sold. Nothing remains to
+  // withdraw, but correction must work when the company permits negative stock.
+  await invoice(f,s,invoiceBody(s,item.id,{
+    kind:"sale",counterpartyAccountId:s.customer.id,
+    lines:[{itemId:item.id,unit:1,quantity:"2"}],
+  }));
+  const path=`${s.path}/invoices/${original.id}/purchase-correction`;
+  const payload={reason:"تصحيح فاتورة تم بيع كميتها",invoice:{
+    ...originalBody,idempotencyKey:randomUUID(),
+    lines:originalBody.lines.map(line=>({...line,quantity:"1"})),
+  }};
+  const blocked=await f.owner.request("POST",path,payload);
+  assert.equal(blocked.status,409,"a company with negative stock off must still reject shortages");
+  const updated=await f.owner.ok<{settings:InventorySettings}>(
+    "PUT",`${s.path}/inventory-settings`,{
+      inventoryAccountId:s.accounts.inventory!.id,
+      salesAccountId:s.accounts.salesRevenue!.id,
+      cogsAccountId:s.accounts.costOfGoodsSold!.id,
+      surplusAccountId:s.accounts.stockSurplus!.id,
+      shortageAccountId:s.accounts.stockShortage!.id,
+      costingMethod:"weighted_average",allowNegative:true,
+      revision:s.settings.revision,
+    },
+  );
+  assert.equal(updated.settings.allowNegative,true);
+  const before=await f.pool.query(
+    "SELECT quantity_smallest,value_base FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  );
+  assert.equal(before.rows[0].quantity_smallest,"0");
+  const preview=await f.owner.ok<{previewHash:string;impact:{newTotal:string}}>(
+    "POST",path,payload,
+  );
+  assert.equal(preview.impact.newTotal,"800");
+  const afterPreview=await f.pool.query(
+    "SELECT quantity_smallest FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  );
+  assert.equal(afterPreview.rows[0].quantity_smallest,"0","preview must roll back");
+  const saved=await f.owner.ok<{replacementId:number}>(
+    "POST",path,{...payload,previewHash:preview.previewHash},
+  );
+  const balance=await f.pool.query(
+    "SELECT quantity_smallest FROM stock_item_valuations WHERE company_id=$1 AND item_id=$2",
+    [s.company.id,item.id],
+  );
+  assert.equal(BigInt(balance.rows[0].quantity_smallest),-24n);
+  const detail=await f.owner.ok<{invoice:Invoice}>(
+    "GET",`${s.path}/invoices/${saved.replacementId}`,
+  );
+  assert.equal(detail.invoice.total,"800");
+  assert.match(detail.invoice.purchaseCorrectionNote??"",/فاتورة معدلة من فاتورة رقم/);
+  await assertBalanced(f,s.company.id);
+});
+
 test("purchase corrections keep the first invoice date in list and ledger across edits", async t => {
   const f=await fixture(t), s=await setup(f,"Correction dates"), item=await s.item();
   await f.owner.ok("PUT",s.path+"/control/edit_purchases_date",{value:true,employeeId:null,revision:null});
