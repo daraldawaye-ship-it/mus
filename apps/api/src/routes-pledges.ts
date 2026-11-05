@@ -74,6 +74,62 @@ export function pledgeRoutes(pool: Pool): Router {
     res.json({items:result});
   }));
 
+  // Read-only 24h sidebar, analogous to the cashier's transfer view.
+  // Admins see company activity; employees only their own created pledges
+  // and posted receipt/payment documents. Never create duplicate movements.
+  router.get(base + "/activity", handler(async (req,res)=>{
+    const companyId=id(req.params.companyId);
+    const result=await transaction(pool,async(client)=>{
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const user=await currentActor(client,actor(req),false);
+      const context=await companyAccess(client,user,companyId,"commerce.view");
+      const entries=await client.query(
+        `SELECT kind,customer_name,details,amount,created_at,account_id,document_id
+           FROM (
+             SELECT 'add'::text AS kind,p.customer_name,p.collateral AS details,
+               NULL::text AS amount,p.created_at,
+               p.account_id,NULL::integer AS document_id
+             FROM account_pledges p
+             WHERE p.company_id=$1 AND ($3::boolean OR p.received_by=$2)
+               AND p.created_at>=clock_timestamp()-interval '24 hours'
+             UNION ALL
+             SELECT CASE WHEN SUM(l.base_debit-l.base_credit)>0 THEN 'pay'
+                         ELSE 'receive' END AS kind,
+               p.customer_name,d.description AS details,
+               ABS(SUM(l.base_debit-l.base_credit))::text AS amount,
+               d.created_at, p.account_id,d.id AS document_id
+             FROM financial_documents d
+             JOIN financial_document_lines l
+               ON l.company_id=d.company_id AND l.document_id=d.id
+             JOIN account_pledges p
+               ON p.company_id=l.company_id AND p.account_id=l.account_id
+             WHERE d.company_id=$1 AND d.status='posted'
+               AND d.kind IN ('payment','receipt')
+               AND ($3::boolean OR d.created_by=$2)
+               AND d.created_at>=clock_timestamp()-interval '24 hours'
+             GROUP BY d.id,p.account_id,p.customer_name
+             HAVING SUM(l.base_debit-l.base_credit)<>0
+           ) activity
+           ORDER BY created_at DESC,account_id DESC,document_id DESC NULLS LAST
+           LIMIT 51`,
+        [companyId,user.id,context.general],
+      );
+      return {
+        items:entries.rows.slice(0,50).map(row=>({
+          kind:row.kind as "add"|"pay"|"receive",
+          customerName:row.customer_name as string,
+          details:row.details as string,
+          amount:row.amount as string|null,
+          createdAt:new Date(row.created_at).toISOString(),
+          accountId:row.account_id as number,
+          documentId:row.document_id as number|null,
+        })),
+        hasMore:entries.rows.length>50,
+      };
+    });
+    res.json(result);
+  }));
+
   // A pledge holder may inspect ONLY this pledged account, not the general ledger.
   router.get(base + "/:accountId/ledger", handler(async (req, res) => {
     const companyId = id(req.params.companyId), accountId = id(req.params.accountId);
