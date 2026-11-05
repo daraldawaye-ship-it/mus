@@ -378,7 +378,7 @@ export function commerceRoutes(pool: Pool): Router {
             throw new HttpError(400, "invalid_query", "بحث المورد أو حساب السداد غير صالح");
           // Money filters remain exact decimal strings; numeric comparisons run
           // on PostgreSQL, never through floating point in JavaScript.
-          const amountPattern = /^-?[0-9]{1,22}(?:\\.[0-9]{1,6})?$/;
+          const amountPattern = /^-?[0-9]{1,22}(?:\.[0-9]{1,6})?$/;
           const amountFrom = req.query.amountFrom === "" || req.query.amountFrom === undefined
             ? null : req.query.amountFrom;
           const amountTo = req.query.amountTo === "" || req.query.amountTo === undefined
