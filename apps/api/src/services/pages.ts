@@ -649,7 +649,8 @@ export async function requestPageKeys(
   if (resource === "financial-documents" || resource === "invoices") {
     const financial = resource === "financial-documents";
     let kind: unknown =
-      req.method === "POST" && rest === resource
+      req.method === "POST" &&
+      (rest === resource || (!financial && rest === "invoices/quick-account"))
         ? req.body?.kind
         : req.query.kind;
     const match = rest.match(/^[a-z-]+\/([1-9]\d*)/);
