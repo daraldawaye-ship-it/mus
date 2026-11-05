@@ -627,6 +627,15 @@ function MovementsList({ context }: { context: CompanyContext }) {
         cell: ({ row }) => <bdi>{formatMoney(row.original.costBase)}</bdi>,
       },
       {
+        accessorKey: "invoiceTotal",
+        header: "إجمالي الفاتورة",
+        size: 165,
+        enableSorting: false,
+        cell: ({ row }) => row.original.invoiceTotal !== null
+          ? <ValueCell><bdi>{formatMoney(row.original.invoiceTotal)} {row.original.invoiceCurrencyCode??""}</bdi></ValueCell>
+          : "—",
+      },
+      {
         id: "source",
         header: "المصدر",
         size: 135,
