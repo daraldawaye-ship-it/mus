@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api, useSession } from "./api";
 import { isOfflineNow } from "./connection-mode";
 import { formatWholeMoney } from "./format-money";
@@ -8,7 +9,8 @@ import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
 import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "privateNotes" | "pouch" | "electronic" | "closings" | "present" | "recentSales";
+type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales";
+type PledgeActivity = {items:{kind:"add"|"pay"|"receive";customerName:string;details:string;amount:string|null;createdAt:string;accountId:number;documentId:number|null}[];hasMore:boolean};
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
 type Transfers = {
   hasEmployee: boolean;
@@ -31,6 +33,7 @@ const views: { value: View; label: string }[] = [
   { value: "privateNotes", label: "ملاحظاتي الخاصة" },
   { value: "pouch", label: "ترحيلاتي إلى الحافظة" },
   { value: "electronic", label: "ترحيلاتي إلى الحافظة الإلكترونية" },
+  { value: "pledges", label: "حركات الرهونات — إضافة وقبض وصرف" },
   { value: "closings", label: "العجز والزيادة عند الإغلاق" },
   { value: "present", label: "المحضرون حاليًا" },
   { value: "recentSales", label: "آخر فواتير المبيعات" },
@@ -65,6 +68,12 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
     staleTime: 5000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
+  });
+  const pledges = useQuery<PledgeActivity>({
+    queryKey:["invoice-side-pledge-activity",user?.id,companyId],
+    queryFn:({signal})=>api<PledgeActivity>(`/companies/${companyId}/pledges/activity`,{signal}),
+    enabled:!!user && view==="pledges" && !offline,
+    staleTime:5000,refetchInterval:30_000,refetchOnWindowFocus:true,
   });
   const presence = useQuery<{ items: PresentEmployee[] }>({
     queryKey: ["attendance", companyId, "currently-present"],
@@ -132,6 +141,37 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
                 ) : !transfers.isLoading && <small>لا توجد ترحيلات في هذه الفترة.</small>}
               </>
             )}
+          </>
+        ) : view === "pledges" ? (
+          <>
+            {!offline && pledges.isLoading && <small>جارٍ تحميل حركات الرهونات…</small>}
+            {!offline && pledges.isError && <small role="alert">تعذر عرض حركات الرهونات. راجع الصلاحيات أو الاتصال.</small>}
+            <small className="invoice-side-overview-since">إضافة الرهن والقبض والصرف خلال آخر 24 ساعة من السجلات المرحلة؛ دون إنشاء قيود إضافية.</small>
+            {pledges.data && (pledges.data.items.length ? (
+              <div className="invoice-side-overview-scroll" role="region" tabIndex={0} aria-label="حركات الرهونات">
+                <table>
+                  <thead><tr><th>الحركة والرهن</th><th>المبلغ</th></tr></thead>
+                  <tbody>{pledges.data.items.map((entry,index)=>(
+                    <tr key={`${entry.documentId??"add"}:${entry.accountId}:${index}`} title={entry.details||undefined}>
+                      <td>
+                        <strong>{entry.kind==="add"?"إضافة رهن":entry.kind==="pay"?"صرف مبلغ للرهن":"قبض مبلغ من الرهن"}</strong>
+                        <small className="invoice-side-overview-note">
+                          <Link to={`/companies/${companyId}/account-ledger?accountId=${entry.accountId}&pledge=1`}>
+                            {entry.customerName}
+                          </Link>
+                        </small>
+                        <EventTimestamp value={entry.createdAt} nowMs={clockNow}/>
+                        {entry.details && <small className="invoice-side-overview-note">{entry.details}</small>}
+                      </td>
+                      <td className="invoice-side-overview-amount">
+                        {entry.amount===null?"—":<bdi>{formatWholeMoney(entry.amount)}</bdi>}
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {pledges.data.hasMore&&<small>تظهر آخر 50 حركة فقط من حركات آخر 24 ساعة.</small>}
+              </div>
+            ) : <small>لا توجد إضافات أو عمليات قبض وصرف للرهونات في هذه الفترة.</small>)}
           </>
         ) : view === "closings" ? (
           <>
