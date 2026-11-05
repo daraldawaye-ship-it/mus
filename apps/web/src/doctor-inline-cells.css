@@ -1,0 +1,61 @@
+/* Inline editing is available only to staff with commerce.manage. */
+.doctor-inline-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 30px;
+  padding: 0.2rem 0.3rem;
+  text-align: start;
+  direction: rtl;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: text;
+  font: inherit;
+}
+.doctor-inline-trigger:hover,
+.doctor-inline-trigger:focus-visible {
+  border-color: #74a9e3;
+  background: rgba(112, 161, 220, 0.09);
+}
+.doctor-inline-value {
+  min-width: 0;
+  max-width: 270px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doctor-inline-pencil {
+  opacity: 0.45;
+  flex: none;
+}
+.doctor-inline-trigger:hover .doctor-inline-pencil,
+.doctor-inline-trigger:focus-visible .doctor-inline-pencil {
+  opacity: 1;
+}
+.doctor-inline-editor {
+  width: 100%;
+  min-width: 125px;
+  max-width: 320px;
+  min-height: 34px;
+  padding: 4px 6px;
+  color: inherit;
+  font: inherit;
+  background: var(--surface, #1b2937);
+  border: 1px solid #74a9e3;
+  border-radius: 5px;
+  box-sizing: border-box;
+  direction: rtl;
+}
+.doctor-inline-editor:focus {
+  outline: 2px solid #74a9e3;
+  outline-offset: 1px;
+}
+textarea.doctor-inline-editor {
+  min-width: 200px;
+  min-height: 56px;
+  white-space: pre-wrap;
+  resize: vertical;
+}
