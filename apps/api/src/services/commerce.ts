@@ -122,6 +122,31 @@ export async function invoiceDTOs(
     lineNumber: number; quantity: string; smallestQuantity: string; gross: string;
     total: string; baseTotal: string; costBase: string;
   }> }>(corrections.rows.map(row => [row.invoice_id, row]));
+  // Posted invoice headers are immutable. Describe correction links at read time
+  // so older corrections are visible without rewriting notes, journals or stock.
+  const purchaseLinks = await db.query(
+    `SELECT c.original_id,c.replacement_id,
+            original.number AS original_number,replacement.number AS replacement_number
+       FROM purchase_invoice_corrections c
+       JOIN invoices original ON original.company_id=c.company_id AND original.id=c.original_id
+       JOIN invoices replacement ON replacement.company_id=c.company_id AND replacement.id=c.replacement_id
+      WHERE c.company_id=$1
+        AND (c.original_id=ANY($2::integer[]) OR c.replacement_id=ANY($2::integer[]))
+      ORDER BY c.corrected_at,c.original_id`,
+    [rows[0].company_id, rows.map(row => row.id)],
+  );
+  const purchaseNotes = new Map<number, string[]>();
+  const appendPurchaseNote = (invoiceId: number, note: string) => {
+    const notes = purchaseNotes.get(invoiceId) ?? [];
+    notes.push(note);
+    purchaseNotes.set(invoiceId, notes);
+  };
+  for (const link of purchaseLinks.rows) {
+    appendPurchaseNote(link.original_id,
+      `فاتورة معدلة، تم تعديلها إلى فاتورة رقم ${link.replacement_number}`);
+    appendPurchaseNote(link.replacement_id,
+      `فاتورة معدلة من فاتورة رقم ${link.original_number}`);
+  }
   return rows.map((row) => {
     const correction = correctedByInvoice.get(row.id);
     const correctionLines = new Map(correction?.line_snapshots.map(line => [line.lineNumber,line]) ?? []);
@@ -172,6 +197,7 @@ export async function invoiceDTOs(
     saleCustomerNumber: row.sale_customer_number ?? null,
     saleCustomerName: row.sale_customer_name ?? null,
     description: correction ? row.description + " | مصالحة إشارات المبيعات التاريخية محفوظة في سجل التصحيح" : row.description,
+    purchaseCorrectionNote: purchaseNotes.get(row.id)?.join(" | ") ?? "",
     gross: correction ? moneyString(-moneyUnits(String(row.gross))) : normalizeRate(row.gross),
     discount: normalizeRate(row.discount),
     total: correction ? normalizeRate(correction.corrected_total) : normalizeRate(row.total),
