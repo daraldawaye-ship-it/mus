@@ -459,14 +459,16 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reset() {
     cancelAutoFilter();
     setSelectedPresetId("");
-    setFilterError("");
     const defaults = new URLSearchParams({
       monthMin: "1", yearMin: "2", coverageMax: "1",
       sortBy: "allTime", sortDir: "desc",
     });
-    setDraft(readDraft(defaults));
-    setSearch("");
-    setParams(defaults);
+    void runFilterApplication(() => {
+      setFilterError("");
+      setDraft(readDraft(defaults));
+      setSearch("");
+      setParams(defaults);
+    });
   }
   const coverage = (row: Row) => params.get("useReserve") === "false"
     ? row.approximateCoverageDays : row.coverageAfterReserveDays;
