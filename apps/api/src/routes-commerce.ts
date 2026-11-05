@@ -442,6 +442,47 @@ export function commerceRoutes(pool: Pool): Router {
       );
     }),
   );
+  // Read-only sales sidebar: the newest ten item lines, not the newest invoices.
+  // Keep all filters company-scoped and compare money as PostgreSQL numeric.
+  router.get(base + "/sales/line-movements", handler(async (req, res) => {
+    const q = req.query.q, gross = req.query.invoiceGross;
+    if ((q !== undefined && (typeof q !== "string" || q.length > 120)) ||
+        (gross !== undefined && (typeof gross !== "string" ||
+          !/^-?[0-9]{1,22}(?:\.[0-9]{1,6})?$/.test(gross))))
+      throw new HttpError(400, "invalid_query", "بحث حركة الأصناف أو إجمالي الفاتورة غير صالح");
+    const term = typeof q === "string" ? q.trim() : "";
+    res.json(await readCommerce(pool, req, async (client, companyId) => {
+      const rows = await client.query(
+        `SELECT l.id, i.id AS "invoiceId", i.number AS "invoiceNumber",
+           i.document_date::text AS "documentDate",
+           l.item_name AS "itemName", l.quantity::text AS quantity,
+           l.gross::text AS gross, l.discount::text AS discount,
+           i.gross::text AS "invoiceGross",
+           u.display_name AS "employeeName",
+           COALESCE(i.description, '') AS notes,
+           COALESCE(i.sale_customer_name, '') AS "customerName",
+           i.counterparty_account_name AS "accountName"
+         FROM invoices i
+         JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
+         JOIN users u ON u.id=i.created_by
+         WHERE i.company_id=$1 AND i.kind='sale'
+           AND ($2::text='' OR
+             l.item_name ILIKE $4 OR l.item_code ILIKE $4 OR
+             COALESCE(i.sale_customer_name, '') ILIKE $4 OR
+             COALESCE(i.sale_customer_number, '') ILIKE $4 OR
+             COALESCE(i.description, '') ILIKE $4 OR
+             i.counterparty_account_name ILIKE $4 OR
+             i.counterparty_account_code ILIKE $4 OR
+             u.display_name ILIKE $4)
+           AND ($3::numeric IS NULL OR i.gross=$3::numeric)
+         ORDER BY i.created_at DESC, i.id DESC, l.line_number DESC, l.id DESC
+         LIMIT 10`,
+        [companyId, term, gross ?? null, searchPattern(term)],
+      );
+      return { items: rows.rows };
+    }));
+  }));
+
   // Advisory-only duplicate lookup, scoped to the requesting company.
   router.get(`${base}/invoices/receipt-duplicate`, handler(async (req, res) => {
     const supplierId = req.query.supplierAccountId;
