@@ -107,7 +107,7 @@ export function pledgeRoutes(pool: Pool): Router {
                AND d.kind IN ('payment','receipt')
                AND ($3::boolean OR d.created_by=$2)
                AND d.created_at>=clock_timestamp()-interval '24 hours'
-             GROUP BY d.id,p.account_id,p.customer_name
+             GROUP BY d.id,d.description,d.created_at,p.account_id,p.customer_name
              HAVING SUM(l.base_debit-l.base_credit)<>0
            ) activity
            ORDER BY created_at DESC,account_id DESC,document_id DESC NULLS LAST
