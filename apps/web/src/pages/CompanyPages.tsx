@@ -30,6 +30,7 @@ import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
+import { adenInvoiceToday } from "../invoice-save-date";
 import {
   Button,
   Card,
@@ -1738,11 +1739,16 @@ export function CompanyAuditPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [urlParams, setUrlParams] = useSearchParams();
   const action = urlParams.get("action") ?? "";
+  const dateFrom = urlParams.has("dateFrom") ? urlParams.get("dateFrom") ?? "" : adenInvoiceToday();
+  const dateTo = urlParams.has("dateTo") ? urlParams.get("dateTo") ?? "" : adenInvoiceToday();
   const filters = new URLSearchParams();
   if (action) filters.set("action", action);
+  if (dateFrom) filters.set("dateFrom",dateFrom);
+  if (dateTo) filters.set("dateTo",dateTo);
   const list = usePagedQuery<AuditEvent>(
     `/companies/${companyId}/audit?${filters}`,
     `company:${companyId}:audit`,
+    "createdAt:desc,id:desc",
   );
   const [inspected, setInspected] = useState<AuditEvent | null>(null);
   const columns = useMemo<ColumnDef<AuditEvent, unknown>[]>(
@@ -1808,6 +1814,20 @@ export function CompanyAuditPage({ context }: { context: CompanyContext }) {
       />
       <Card title="أحداث التدقيق">
         <div className="filter-bar">
+          <Field label="من تاريخ" type="date" value={dateFrom}
+            onChange={event=>setUrlParams(previous=>{
+              const next=new URLSearchParams(previous);
+              next.set("dateFrom",event.target.value);
+              next.delete("page");
+              return next;
+            })}/>
+          <Field label="إلى تاريخ" type="date" value={dateTo}
+            onChange={event=>setUrlParams(previous=>{
+              const next=new URLSearchParams(previous);
+              next.set("dateTo",event.target.value);
+              next.delete("page");
+              return next;
+            })}/>
           <Field
             label="بحث في سجل الشركة"
             type="search"
