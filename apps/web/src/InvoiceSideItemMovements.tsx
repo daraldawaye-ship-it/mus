@@ -14,8 +14,7 @@ type SaleItemMovement = {
   documentDate: string;
   itemName: string;
   quantity: string;
-  gross: string;
-  discount: string;
+  invoiceDiscount: string;
   invoiceTotal: string;
   employeeName: string;
   notes: string;
@@ -24,7 +23,15 @@ type SaleItemMovement = {
 };
 
 function quantityText(value: string) {
-  return value.includes(".") ? value.replace(/0+$/, "").replace(/\.$/, "") : value;
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) return value;
+  const [, sign, integer, fraction = ""] = match;
+  const roundedTenths = BigInt(integer) * 10n + BigInt(fraction[0] ?? "0") +
+    (Number(fraction[1] ?? "0") >= 5 ? 1n : 0n);
+  const whole = roundedTenths / 10n;
+  const tenth = roundedTenths % 10n;
+  const result = whole.toString() + (tenth === 0n ? "" : "." + tenth.toString());
+  return sign && roundedTenths !== 0n ? "-" + result : result;
 }
 
 function dayText(value: string) {
@@ -95,18 +102,18 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
           role="region" tabIndex={0} aria-label="آخر عشرة أسطر من حركة أصناف المبيعات">
           <table className="invoice-side-movement-table" dir="rtl">
             <colgroup>
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "30%" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "36%" }} />
+              <col style={{ width: "10%" }} />
               <col style={{ width: "19%" }} />
-              <col style={{ width: "15%" }} />
+              <col style={{ width: "19%" }} />
             </colgroup>
             <thead>
               <tr>
                 <th scope="col">التاريخ</th>
                 <th scope="col">الصنف</th>
-                <th scope="col">الكمية</th>
-                <th scope="col">الإجمالي</th>
+                <th scope="col">كمية</th>
+                <th scope="col">صافي</th>
                 <th scope="col">الخصم</th>
               </tr>
             </thead>
@@ -116,19 +123,19 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
                   <td colSpan={5}>
                     <table className="invoice-side-movement-inner" aria-label={"سطر صنف فاتورة " + row.invoiceNumber}>
                       <colgroup>
-                        <col style={{ width: "24%" }} />
-                        <col style={{ width: "30%" }} />
-                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "16%" }} />
+                        <col style={{ width: "36%" }} />
+                        <col style={{ width: "10%" }} />
                         <col style={{ width: "19%" }} />
-                        <col style={{ width: "15%" }} />
+                        <col style={{ width: "19%" }} />
                       </colgroup>
                       <tbody>
                         <tr className="invoice-side-movement-main">
-                          <td><bdi>{dayText(row.documentDate)}</bdi></td>
-                          <td>{row.itemName}</td>
+                          <td><span className="invoice-side-movement-date" title={dayText(row.documentDate)} dir="ltr">{dayText(row.documentDate)}</span></td>
+                          <td><span className="invoice-side-movement-item" title={row.itemName}>{row.itemName}</span></td>
                           <td className="invoice-side-movement-numeric"><bdi>{quantityText(row.quantity)}</bdi></td>
                           <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.invoiceTotal)}</bdi></td>
-                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.discount)}</bdi></td>
+                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.invoiceDiscount)}</bdi></td>
                         </tr>
                         <tr className="invoice-side-movement-secondary">
                           <td colSpan={5}>
