@@ -324,14 +324,20 @@ export async function createInvoice(
   }
   if (input.kind === "sale" && currency.location_kind !== "showroom")
     conflict("المبيعات ومردوداتها ترحل من معرض الفرع فقط");
+  // Sales may debit an active posting expense account as the invoice counterparty.
+  // Purchases keep their existing restriction; legacy imports retain the old exception.
   if (
     !["asset", "liability"].includes(currency.account_category) &&
     !(
-      importContext?.allowExpenseCounterparty &&
-      currency.account_category === "expense"
+      currency.account_category === "expense" &&
+      (input.kind === "sale" || importContext?.allowExpenseCounterparty)
     )
   )
-    conflict("اختر حساب عميل أو مورد أو صندوق من الأصول أو الالتزامات");
+    conflict(
+      input.kind === "sale"
+        ? "اختر حسابًا حركيًا من الأصول أو الالتزامات أو المصروفات"
+        : "اختر حساب عميل أو مورد أو صندوق من الأصول أو الالتزامات",
+    );
   if (
     [
       settings.inventoryAccountId,
