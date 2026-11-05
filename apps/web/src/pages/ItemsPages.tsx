@@ -697,7 +697,7 @@ function ItemCompositionPeersCard({companyId,itemId}:{companyId:number;itemId:nu
         <>
           <dl className="details-list">
             <dt>التركيب</dt>
-            <dd>{peers.composition.arabicName} ({peers.composition.englishName})
+            <dd>{peers.composition.arabicName}
               {!peers.composition.active&&" · مؤرشف"}
             </dd>
             <dt>العلاقة بين الأصناف</dt>
@@ -1736,7 +1736,7 @@ function ItemEditor({
                 <input id="item-composition-search" type="search" autoComplete="off"
                   disabled={disabled} aria-label="بحث واختيار التركيب"
                   aria-expanded={compositionFocused}
-                  placeholder="ابحث باسم التركيب العربي أو الإنجليزي"
+                  placeholder="ابحث باسم التركيب"
                   value={compositionFocused ? compositionSearch :
                     (fields.compositionId
                       ? compositionDetail.data?.composition.arabicName ??
@@ -1774,7 +1774,7 @@ function ItemEditor({
                     edit("compositionId",option.id);
                     setCompositionSearch("");
                     setCompositionFocused(false);
-                  }}>{option.arabicName} — {option.englishName}</button>)}
+                  }}>{option.arabicName}</button>)}
                 {!compositionOptions.isFetching&&!compositionOptions.error&&
                   !compositionOptions.data?.items.length&&<small>لا توجد تراكيب مطابقة.</small>}
                 <button type="button" onClick={()=>setCompositionFocused(false)}>إغلاق النتائج</button>
@@ -2403,7 +2403,7 @@ function ItemEditor({
             resource={`/companies/${companyId}/item-options?type=compositions&active=true`}
             label="التركيب"
             value={compositionDetail.data?.composition ?? null}
-            display={(option) => `${option.arabicName} — ${option.englishName}`}
+            display={(option) => option.arabicName}
             disabled={disabled}
             onChange={(option) => {
               if (!option) return;
