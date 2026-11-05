@@ -102,8 +102,8 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
           role="region" tabIndex={0} aria-label="آخر عشرة أسطر من حركة أصناف المبيعات">
           <table className="invoice-side-movement-table" dir="rtl">
             <colgroup>
-              <col style={{ width: "16%" }} />
-              <col style={{ width: "36%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "32%" }} />
               <col style={{ width: "10%" }} />
               <col style={{ width: "19%" }} />
               <col style={{ width: "19%" }} />
@@ -123,8 +123,8 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
                   <td colSpan={5}>
                     <table className="invoice-side-movement-inner" aria-label={"سطر صنف فاتورة " + row.invoiceNumber}>
                       <colgroup>
-                        <col style={{ width: "16%" }} />
-                        <col style={{ width: "36%" }} />
+                        <col style={{ width: "20%" }} />
+                        <col style={{ width: "32%" }} />
                         <col style={{ width: "10%" }} />
                         <col style={{ width: "19%" }} />
                         <col style={{ width: "19%" }} />
