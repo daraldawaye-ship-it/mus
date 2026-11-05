@@ -8,6 +8,8 @@ export const doctorKindLabels: Record<DoctorKind,string> = {
 const text = (limit: number) => z.string().trim().max(limit);
 export const doctorInputSchema = z.object({
   name: text(240).min(1, "أدخل اسم الطبيب أو الجهة"),
+  /** Name under which several independent doctor/entity cards are grouped. */
+  sharedName: text(240).optional(),
   kind: z.enum(doctorKinds),
   department: text(240).default(""),
   phone: text(60).default(""),
@@ -23,6 +25,8 @@ export interface Doctor {
   id: number;
   companyId: number;
   name: string;
+  /** Existing cards default to their own name; sharing never merges their IDs. */
+  sharedName: string;
   kind: DoctorKind | null;
   department: string;
   phone: string;
@@ -30,4 +34,13 @@ export interface Doctor {
   notes: string;
   active: boolean;
   revision: number;
+}
+
+/** Empty/missing shared name keeps each card as its own main card. */
+export function effectiveDoctorSharedName(name: string, sharedName?: string | null): string {
+  return sharedName?.trim() || name.trim();
+}
+/** Only a card whose own name equals the shared name is a main card. */
+export function isMainDoctorCard(name: string, sharedName?: string | null): boolean {
+  return name.trim() === effectiveDoctorSharedName(name, sharedName);
 }
