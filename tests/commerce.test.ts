@@ -4956,6 +4956,34 @@ test("posted sale customer snapshot edits pass the immutable DB guard without ch
   await assertBalanced(f,s.company.id);
 });
 
+test("audit logs filter today in Yemen and order newest events first",async t=>{
+  const f=await fixture(t),s=await setup(f,"Audit date filter default");
+  const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:"Asia/Aden",year:"numeric",month:"2-digit",day:"2-digit",
+  }).formatToParts(new Date());
+  const value=(type:string)=>parts.find(p=>p.type===type)?.value??"";
+  const today=`${value("year")}-${value("month")}-${value("day")}`;
+  for(const path of ["/audit",`${s.path}/audit`]){
+    const current=await f.owner.ok<Page<{id:number;createdAt:string}>>("GET",
+      `${path}?dateFrom=${today}&dateTo=${today}&sort=createdAt:desc,id:desc`);
+    assert(current.items.length>0, `${path} should include its newly-created audit events`);
+    assert(current.items.every(row=>
+      new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Aden",year:"numeric",month:"2-digit",day:"2-digit"})
+        .format(new Date(row.createdAt))===today
+    ));
+    for(let i=1;i<current.items.length;i++){
+      assert(new Date(current.items[i-1]!.createdAt).getTime() >=
+        new Date(current.items[i]!.createdAt).getTime(),"latest audit event should appear first");
+    }
+    const old=await f.owner.ok<Page<{id:number}>>("GET",
+      `${path}?dateFrom=2000-01-01&dateTo=2000-01-01`);
+    assert.equal(old.total,0);
+    const invalid=await f.owner.request("GET",
+      `${path}?dateFrom=${today}&dateTo=2000-01-01`);
+    assert.equal(invalid.status,400);
+  }
+});
+
 test("invoice quick-add accepts only seven choices and assigns the secure parent",async t=>{
   const f=await fixture(t),s=await setup(f,"Invoice quick account");
   const parents=await f.pool.query(
