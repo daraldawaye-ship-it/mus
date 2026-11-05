@@ -7696,18 +7696,44 @@ a.notification-quick-title:hover { text-decoration: underline; }
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-/* Keep day/month/year together; narrow right sidebars may scroll horizontally. */
+/* Fit all five columns in the sales sidebar. Clip the year end rather
+   than wrapping a date; clip item names to one line with an ellipsis. */
 .invoice-side-movement-table,
 .invoice-side-movement-inner {
-  min-width: 320px;
+  min-width: 0;
 }
-.invoice-side-movement-inner .invoice-side-movement-main td:first-child,
-.invoice-side-movement-inner .invoice-side-movement-main td:first-child bdi {
+.invoice-side-movement-scroll {
+  overflow-x: hidden;
+}
+.invoice-side-movement-table > thead > tr > th {
+  overflow: hidden;
+  text-overflow: clip;
+}
+.invoice-side-movement-inner .invoice-side-movement-main td {
+  overflow: hidden;
+  min-width: 0;
+}
+.invoice-side-movement-date,
+.invoice-side-movement-item {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: keep-all;
+}
+.invoice-side-movement-date {
+  direction: ltr;
+  text-align: left;
+  text-overflow: clip;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
+}
+.invoice-side-movement-item {
+  text-overflow: ellipsis;
+}
+.invoice-side-movement-inner .invoice-side-movement-numeric {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .invoice-side-movement-inner .invoice-side-movement-secondary td {
