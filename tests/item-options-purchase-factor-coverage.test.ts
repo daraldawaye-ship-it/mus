@@ -376,3 +376,31 @@ test("default-on exclusion removes locally drafted items before counts and amoun
   assert.match(preset, /excludeOrderDrafts: z\.boolean\(\)\.default\(true\)/);
   assert.match(ui, /مسودات الطلبيات محفوظة على هذا الجهاز فقط، وتُحذف كل مسودة تلقائيًا بعد 8 ساعات/);
 });
+
+
+test("bulk order draft saves exactly the first-unit required column, and prints it in both columns", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const page = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const core = read("apps/web/src/numbered-order-drafts-core.ts");
+  const pdf = read("apps/web/src/item-names-pdf.ts");
+  const css = read("apps/web/src/styles.css");
+  assert.match(api,/if \(unselectedForDraft\) \{/);
+  assert.match(api,/const requested = await requiredPurchaseQuantitiesToPage\(/);
+  assert.match(api,/client, companyId, ids, options\.coverageMax \?\? "30", options\.useReserve/);
+  assert.match(api,/requiredQuantity: requested\.get\(Number\(row\.id\)\)!\.requiredPurchaseQuantity/);
+  assert.match(api,/order_draft_quantity_unavailable/);
+  assert.match(page,/items: OrderDraftItem\[\]; total: number/);
+  assert.match(page,/temporaryOrder\.createDraft\(candidates\)/);
+  assert.match(core,/OrderDraftItem = TemporaryChosenItem & \{ requiredQuantity\?: string \}/);
+  assert.match(core,/row\.requiredQuantity/);
+  assert.match(core,/rows\.push\(\{ id: row\.id, name: row\.name, code: row\.code,/);
+  assert.match(page,/className="item-options-order-quantity"/);
+  assert.match(page,/item\.requiredQuantity \?\? "—"/);
+  assert.match(page,/printMode !== "selected"/);
+  assert.match(page,/className="item-options-print-quantity"/);
+  assert.match(page,/requiredQuantity: "requiredQuantity" in item/);
+  assert.match(pdf,/quantityWidth/);
+  assert.match(pdf,/right - quantityWidth/);
+  assert.match(css,/\.item-options-print-row \.item-options-print-quantity/);
+  assert.match(css,/column-count: 2/);
+});
