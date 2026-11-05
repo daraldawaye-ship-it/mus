@@ -269,7 +269,11 @@ export async function readAccountLedger(
       baseCredit: "f.base_credit",
       runningBalance: "f.running_balance",
     },
-    "documentDate:asc,documentId:asc,lineNumber:asc",
+    // Cashbox/pledge statements retain their previous order; ordinary account
+    // statements put the latest date, journal and line first.
+    ownCashbox
+      ? "documentDate:asc,documentId:asc,lineNumber:asc"
+      : "documentDate:desc,documentId:desc,lineNumber:desc",
   );
   const params = [
     companyId,
