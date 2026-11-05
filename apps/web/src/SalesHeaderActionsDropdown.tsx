@@ -3,14 +3,15 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ChevronDown, ListFilter } from "lucide-react";
 
-type Action = "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "payPledge" | "receivePledge" | "original";
+type Action = "addAccount" | "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "payPledge" | "receivePledge" | "original";
 
 export function SalesHeaderActionsDropdown({
-  listUrl, purchaseUrl, canOpenPurchase, canTransfer, canManagePledges, canOperatePledges, canEdit, originalVisible, onAction,
+  listUrl, purchaseUrl, canOpenPurchase, canCreateAccount, canTransfer, canManagePledges, canOperatePledges, canEdit, originalVisible, onAction,
 }: {
   listUrl: string;
   purchaseUrl: string;
   canOpenPurchase: boolean;
+  canCreateAccount: boolean;
   canTransfer: boolean;
   canManagePledges: boolean;
   canOperatePledges: boolean;
@@ -55,6 +56,7 @@ export function SalesHeaderActionsDropdown({
     };
   },[coords]);
   const options:{action:Action;label:string;disabled:boolean}[]=[
+    {action:"addAccount",label:"إضافة حساب",disabled:!canCreateAccount},
     {action:"pouch",label:"ترحيل إلى الحافظة",disabled:!canTransfer},
     {action:"electronic",label:"ترحيل إلى المحفظة الإلكترونية",disabled:!canTransfer},
     {action:"close",label:"إغلاق الصندوق",disabled:!canTransfer},
