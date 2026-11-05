@@ -445,11 +445,11 @@ export function commerceRoutes(pool: Pool): Router {
   // Read-only sales sidebar: the newest ten item lines, not the newest invoices.
   // Keep all filters company-scoped and compare money as PostgreSQL numeric.
   router.get(base + "/sales/line-movements", handler(async (req, res) => {
-    const q = req.query.q, gross = req.query.invoiceGross;
+    const q = req.query.q, net = req.query.invoiceTotal;
     if ((q !== undefined && (typeof q !== "string" || q.length > 120)) ||
-        (gross !== undefined && (typeof gross !== "string" ||
-          !/^-?[0-9]{1,22}(?:\.[0-9]{1,6})?$/.test(gross))))
-      throw new HttpError(400, "invalid_query", "بحث حركة الأصناف أو إجمالي الفاتورة غير صالح");
+        (net !== undefined && (typeof net !== "string" ||
+          !/^-?[0-9]{1,22}(?:\.[0-9]{1,6})?$/.test(net))))
+      throw new HttpError(400, "invalid_query", "بحث حركة الأصناف أو صافي الفاتورة غير صالح");
     const term = typeof q === "string" ? q.trim() : "";
     res.json(await readCommerce(pool, req, async (client, companyId) => {
       const rows = await client.query(
@@ -457,7 +457,7 @@ export function commerceRoutes(pool: Pool): Router {
            i.document_date::text AS "documentDate",
            l.item_name AS "itemName", l.quantity::text AS quantity,
            l.gross::text AS gross, l.discount::text AS discount,
-           i.gross::text AS "invoiceGross",
+           i.total::text AS "invoiceTotal",
            u.display_name AS "employeeName",
            COALESCE(i.description, '') AS notes,
            COALESCE(i.sale_customer_name, '') AS "customerName",
@@ -474,10 +474,10 @@ export function commerceRoutes(pool: Pool): Router {
              i.counterparty_account_name ILIKE $4 OR
              i.counterparty_account_code ILIKE $4 OR
              u.display_name ILIKE $4)
-           AND ($3::numeric IS NULL OR i.gross=$3::numeric)
+           AND ($3::numeric IS NULL OR i.total=$3::numeric)
          ORDER BY i.created_at DESC, i.id DESC, l.line_number DESC, l.id DESC
          LIMIT 10`,
-        [companyId, term, gross ?? null, searchPattern(term)],
+        [companyId, term, net ?? null, searchPattern(term)],
       );
       return { items: rows.rows };
     }));
