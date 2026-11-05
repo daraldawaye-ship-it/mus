@@ -20,7 +20,10 @@ const ROW_BORDER = 0.5;
 const PAGE_CONTENT_HEIGHT = PAGE_HEIGHT - 2 * PAGE_MARGIN_Y;
 
 type PdfPage = { jpeg: Uint8Array; width: number; height: number };
-type PreparedRow = { lines: string[]; height: number };
+type PreparedRow = { lines: string[]; height: number; quantity?: string };
+/** Names-only printing stays supported; numbered order drafts include a
+ * first-unit "الكمية المطلوبة" snapshot, NOT available stock or sold quantity. */
+export type PdfItemNameRow = string | { name: string; requiredQuantity?: string };
 
 /**
  * First fill up to two page-height columns, then balance that page by row
@@ -175,8 +178,11 @@ function canvasJpeg(canvas: HTMLCanvasElement): Uint8Array {
   return bytes;
 }
 
-export function createTwoColumnItemNamesPdf(names: string[]): Blob {
-  const list = names.map(name => name.trim()).filter(Boolean);
+export function createTwoColumnItemNamesPdf(names: PdfItemNameRow[]): Blob {
+  const list = names.map(entry => typeof entry === "string"
+    ? { name: entry.trim(), requiredQuantity: undefined as string | undefined }
+    : { name: entry.name.trim(), requiredQuantity: entry.requiredQuantity })
+    .filter(item => item.name.length > 0);
   if (!list.length) throw new Error("لم يتم اختيار أي صنف.");
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(PAGE_WIDTH * SCALE);
@@ -184,6 +190,7 @@ export function createTwoColumnItemNamesPdf(names: string[]): Blob {
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("متصفح الجهاز لا يدعم إنشاء صفحات PDF.");
   const pages: PdfPage[] = [];
+  let quantityWidth = 0;
   const drawBlank = () => {
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     ctx.fillStyle = "#fff";
@@ -203,9 +210,19 @@ export function createTwoColumnItemNamesPdf(names: string[]): Blob {
     let y = PAGE_MARGIN_Y;
     for (const row of rows) {
       let textY = y + ROW_PADDING;
+      if (quantityWidth > 0) {
+        ctx.save();
+        ctx.fillStyle = "#111";
+        ctx.textAlign = "center";
+        ctx.direction = "ltr";
+        ctx.fillText(row.quantity ?? "—", right - quantityWidth / 2, textY, quantityWidth - 4);
+        ctx.restore();
+      }
       for (const line of row.lines) {
         ctx.fillStyle = "#111";
-        ctx.fillText(line, right, textY, COLUMN_WIDTH);
+        // Each of the TWO original columns contains a narrow quantity field
+        // before the item name (RTL) rather than an extra sheet-wide column.
+        ctx.fillText(line, right - quantityWidth, textY, COLUMN_WIDTH - quantityWidth);
         textY += LINE_HEIGHT;
       }
       y += row.height;
@@ -227,9 +244,17 @@ export function createTwoColumnItemNamesPdf(names: string[]): Blob {
   };
   try {
     drawBlank();
-    const prepared = list.map(name => {
-      const lines = wrapName(ctx, name, COLUMN_WIDTH);
-      return { lines, height: lines.length * LINE_HEIGHT + 2 * ROW_PADDING + ROW_BORDER };
+    // Keep the same two A4 columns. Reserve an aligned subcolumn for the
+    // required quantity only when exporting an order draft.
+    if (list.some(row => row.requiredQuantity !== undefined)) {
+      const widest = Math.max(...list.map(row =>
+        ctx.measureText(row.requiredQuantity ?? "—").width));
+      quantityWidth = Math.max(30, Math.min(65, widest + 10));
+    }
+    const prepared: PreparedRow[] = list.map(row => {
+      const lines = wrapName(ctx, row.name, COLUMN_WIDTH - quantityWidth);
+      return { lines, quantity: row.requiredQuantity,
+        height: lines.length * LINE_HEIGHT + 2 * ROW_PADDING + ROW_BORDER };
     });
     const pageGroups = balanceItemNamesColumns(
       prepared.map(row => row.height), PAGE_CONTENT_HEIGHT,
