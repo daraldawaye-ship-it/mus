@@ -20,6 +20,7 @@ import { readItemActivity } from "./services/item-activity.ts";
 import { addsOnlyPreviouslyInactiveUnits, editsSecondaryUnitsWithoutRescalingStock } from "./services/item-unit-history.ts";
 import { rebaseWholeUnitStock } from "./services/item-unit-rebase.ts";
 import { readCompositionStatistics } from "./services/composition-statistics.ts";
+import { directoryEntries } from "./services/pages.ts";
 import { readItemPurchasePrices } from "./services/item-purchase-prices.ts";
 import { readItemCompositionPeers } from "./services/item-composition-peers.ts";
 import {
@@ -216,6 +217,15 @@ export function itemRoutes(pool: Pool): Router {
         direction:z.enum(["asc","desc"]).default("asc"),
       }).strict(),req.query);
       const result=await readItems(pool,req,async(client,companyId)=>{
+        // Apply the exact same stock/commerce page visibility rules as the
+        // composition-card statistics endpoint; this report must not leak data.
+        const directory=await directoryEntries(client,actor(req),companyId);
+        const permitted=(key:string)=>directory.some(p=>
+          p.key===key&&p.enabled&&p.actionAccess.view);
+        const canViewStock=permitted("company.stock-balances")&&
+          permitted("company.stock-movements");
+        const canViewCommerce=permitted("company.sales")&&
+          permitted("company.purchases")&&permitted("company.invoice");
         // The mapping is hard-coded: no sort expression comes from the client.
         // Sorting occurs before pagination to keep row order stable across pages.
         const sortColumns={
@@ -225,6 +235,13 @@ export function itemRoutes(pool: Pool): Router {
         const order=query.sort
           ? `${sortColumns[query.sort]} ${query.direction.toUpperCase()}, i.id DESC`
           : "i.id DESC";
+        const pageSortColumns={
+          itemName:'paged."itemName"',itemForm:'paged."itemForm"',
+          compositionName:'paged."compositionName"',compositionForm:'paged."compositionForm"',
+        } as const;
+        const pageOrder=query.sort
+          ? `${pageSortColumns[query.sort]} ${query.direction.toUpperCase()}, paged."itemId" DESC`
+          : 'paged."itemId" DESC';
         const filter=query.status==="different"
           ? "AND i.product_form<>'عام' AND f.product_form<>'عام' AND i.product_form<>f.product_form"
           : query.status==="unclassified"
@@ -241,13 +258,48 @@ export function itemRoutes(pool: Pool): Router {
           ${filter}`;
         const binds=[companyId,query.q];
         const total=await client.query(`SELECT count(*)::integer AS total ${where}`,binds);
+        // Compute from the two independent materialized projection tables only,
+        // and only for the paged composition ids. Summing ALL group keys is
+        // required when the composition has higher/lower price bands rather
+        // than an 'all' group.
+        const stockCte=canViewStock ? `, stock_summary AS (
+          SELECT s.composition_id,
+            SUM(s.available_alternatives)::integer AS "availableAlternatives",
+            SUM(s.available_unit1)::text AS "availableUnit1"
+          FROM item_composition_statistics s
+          WHERE s.company_id=$1
+            AND s.composition_id IN (SELECT DISTINCT "compositionId" FROM paged)
+          GROUP BY s.composition_id
+        )` : "";
+        const salesCte=canViewCommerce ? `, yearly_sales AS (
+          SELECT d.composition_id,
+            COALESCE(SUM(d.sale_times),0)::text AS "saleTimesYear"
+          FROM item_composition_daily_statistics d
+          WHERE d.company_id=$1
+            AND d.composition_id IN (SELECT DISTINCT "compositionId" FROM paged)
+            AND d.document_date BETWEEN
+              ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date -
+                INTERVAL '12 months' + INTERVAL '1 day')::date
+              AND (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date
+          GROUP BY d.composition_id
+        )` : "";
         const rows=await client.query(
-          `SELECT i.id AS "itemId",i.name AS "itemName",
-             i.product_form AS "itemForm",i.active AS "itemActive",
-             f.id AS "compositionId",f.arabic_name AS "compositionName",
-             f.product_form AS "compositionForm",f.active AS "compositionActive"
-           ${where}
-           ORDER BY ${order} LIMIT $3 OFFSET $4`,
+          `WITH paged AS (
+            SELECT i.id AS "itemId",i.name AS "itemName",
+              i.product_form AS "itemForm",i.active AS "itemActive",
+              f.id AS "compositionId",f.arabic_name AS "compositionName",
+              f.product_form AS "compositionForm",f.active AS "compositionActive"
+            ${where}
+            ORDER BY ${order} LIMIT $3 OFFSET $4
+          )${stockCte}${salesCte}
+          SELECT paged.*,
+            ${canViewStock?'stock_summary."availableAlternatives"':'NULL::integer'} AS "availableAlternatives",
+            ${canViewStock?'stock_summary."availableUnit1"':'NULL::text'} AS "availableUnit1",
+            ${canViewCommerce?`COALESCE(yearly_sales."saleTimesYear",'0')`:'NULL::text'} AS "saleTimesYear"
+          FROM paged
+          ${canViewStock?'LEFT JOIN stock_summary ON stock_summary.composition_id=paged."compositionId"':''}
+          ${canViewCommerce?'LEFT JOIN yearly_sales ON yearly_sales.composition_id=paged."compositionId"':''}
+          ORDER BY ${pageOrder}`,
           [...binds,query.pageSize,(query.page-1)*query.pageSize],
         );
         return {items:rows.rows,total:total.rows[0].total as number,
