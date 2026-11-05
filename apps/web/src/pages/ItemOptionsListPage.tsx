@@ -903,7 +903,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         </div>
         <div className={`table-scroll item-options-desktop-table${visibleColumns.length < allTableColumns.length ? " item-options-fit-columns" : ""}`} role="region"
           aria-label="نتائج الأصناف حسب الخيارات">
-        <table>
+        <table style={visibleColumns.length < allTableColumns.length ? { minWidth: 0, width: "100%" } : undefined}>
           <colgroup>
             {visibleColumns.includes("choice") && <col className="item-options-choice-col" />}
             {visibleColumns.includes("name") && <col className="item-options-name-col" />}
