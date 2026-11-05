@@ -71,6 +71,7 @@ import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { SalesHeaderActionsDropdown, PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { PledgeDialogs } from "../PledgeDialogs";
+import { InvoiceQuickAccountDialog } from "../InvoiceQuickAccountDialog";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
 import { saleClearanceRate } from "../invoice-clearance-label";
 import { formatMoney, formatWholeMoney } from "../format-money";
@@ -1858,6 +1859,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const receiptRequired = kind==="purchase" && !!account?.accountChoice &&
     Array.isArray(receiptRequiredChoices) && receiptRequiredChoices.includes(account.accountChoice);
   const [pledgeMode, setPledgeMode] = useState<"add"|"list"|"pay"|"receive"|null>(null);
+  const [quickAccountOpen,setQuickAccountOpen]=useState(false);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
@@ -3275,6 +3277,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     listUrl={listPath(companyId, kind)}
                     purchaseUrl={`${invoicePath(companyId,"new")}?kind=purchase`}
                     canOpenPurchase={commerceAccess(context)}
+                    canCreateAccount={!locked && canPost(context) && !isOfflineNow()}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
                     canManagePledges={!locked && commerceAccess(context, true)}
                     canOperatePledges={!locked && !!defaultCashbox && canPost(context) &&
@@ -3285,6 +3288,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     onAction={action => {
                       if(action === "pouch" || action === "electronic" || action === "close")
                         openCashboxAction(action);
+                      else if(action === "addAccount") setQuickAccountOpen(true);
                       else if(action === "addPledge") setPledgeMode("add");
                       else if(action === "listPledges") setPledgeMode("list");
                       else if(action === "payPledge") setPledgeMode("pay");
@@ -3297,6 +3301,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     { label: "قائمة الفواتير", to: listPath(companyId, kind) },
                     { label: "فتح فاتورة مبيعات",
                       to: `${invoicePath(companyId, "new")}?kind=sale` },
+                    { label: "إضافة حساب",
+                      disabled: locked || !canPost(context) || isOfflineNow(),
+                      onClick: () => setQuickAccountOpen(true) },
                     { label: draftSaving ? "جارٍ الحفظ الأولي…" :
                         activePurchaseDraftId ? "تحديث الحفظ الأولي" : "حفظ أولي",
                       disabled: locked,
@@ -4389,6 +4396,16 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         تم إرسال التقرير المرتبط بالصنف.{" "}
         <Link to={`/companies/${companyId}/memos/${reportSentId}`}>فتح التقرير</Link>
       </Notice>}
+      {quickAccountOpen && <InvoiceQuickAccountDialog
+        companyId={companyId} kind={kind}
+        onClose={()=>setQuickAccountOpen(false)}
+        onCreated={newAccount=>{
+          setQuickAccountOpen(false);
+          setItemNotice(`تم إضافة الحساب ${newAccount.name} برمز ${newAccount.code}؛ يمكنك اختياره في الفاتورة.`);
+          // Refresh both the account picker and other account directories.
+          void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
+        }}
+      />}
       {kind === "sale" && <PledgeDialogs
         companyId={companyId}
         mode={pledgeMode}
