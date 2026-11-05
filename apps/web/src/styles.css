@@ -7629,3 +7629,90 @@ a.notification-quick-title:hover { text-decoration: underline; }
     max-width: 100%;
   }
 }
+
+
+/* Sales sidebar: ten most recent sale item lines, each with a compact metadata row. */
+.invoice-side-item-movements {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  gap: 6px;
+}
+.invoice-side-movement-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.invoice-side-movement-filters input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+.invoice-side-movement-filters input[aria-invalid="true"] {
+  border-color: var(--danger, #bd4040);
+}
+.invoice-side-movement-scroll { min-width: 0; flex: 1 1 auto; overflow: auto; }
+.invoice-side-movement-table, .invoice-side-movement-inner {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  direction: rtl;
+  font-size: 10px;
+}
+.invoice-side-movement-table > thead > tr > th {
+  padding: 5px 1px;
+  white-space: nowrap;
+  text-align: start;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.invoice-side-movement-table > tbody > tr > td {
+  padding: 0;
+  border-bottom: 2px solid var(--border);
+}
+.invoice-side-movement-inner .invoice-side-movement-main td {
+  padding: 5px 1px 2px;
+  border: 0;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.invoice-side-movement-numeric {
+  text-align: center !important;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.invoice-side-movement-inner .invoice-side-movement-secondary td {
+  padding: 2px 4px 5px;
+  border: 0;
+  color: var(--muted);
+}
+.invoice-side-movement-secondary td span {
+  display: inline-block;
+  margin-inline-end: 5px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.invoice-side-movement-error button {
+  padding: 3px 7px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
