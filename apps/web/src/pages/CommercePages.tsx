@@ -106,6 +106,11 @@ const InvoiceItemEditor = lazy(() =>
   })),
 );
 
+/** Merge user-entered notes with immutable purchase-correction cross-references. */
+function invoiceDisplayedNotes(invoice: Invoice): string {
+  return [invoice.description, invoice.purchaseCorrectionNote].filter(Boolean).join(" | ");
+}
+
 export function commerceAccess(context: CompanyContext, manage = false) {
   return (
     context.general ||
@@ -398,7 +403,7 @@ function InvoiceList({
         size: 210,
         enableSorting: false,
         cell: ({ row }) => (
-          <ValueCell>{row.original.description || "—"}</ValueCell>
+          <ValueCell>{invoiceDisplayedNotes(row.original) || "—"}</ValueCell>
         ),
       },
       {
@@ -4622,8 +4627,8 @@ function InvoiceViewer({
             </strong>
           </span>
         </div>
-        {invoice.description && (
-          <p className="commerce-invoice-notes">{invoice.description}</p>
+        {invoiceDisplayedNotes(invoice) && (
+          <p className="commerce-invoice-notes">{invoiceDisplayedNotes(invoice)}</p>
         )}
         {invoice.total === "0" && (
           <Notice>
