@@ -306,7 +306,7 @@ export function PurchaseCorrection({
                   label="رقم وصل المورد"
                   value={receiptNumber}
                   maxLength={100}
-                  disabled={locked}
+                  disabled={locked || !supplier}
                   onChange={(event) => setReceiptNumber(event.target.value)}
                 />
                 <PurchaseReceiptDuplicateWarning companyId={v.companyId}

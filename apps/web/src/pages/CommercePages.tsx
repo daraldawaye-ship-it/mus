@@ -3232,7 +3232,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     placeholder="رقم فاتورة المورد"
                     maxLength={100}
                     value={supplierReceiptNumber}
-                    disabled={locked}
+                    disabled={locked || !selectedSupplier}
                     onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
                 )}
