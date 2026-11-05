@@ -376,6 +376,25 @@ export function commerceRoutes(pool: Pool): Router {
           if ([supplierQ, payerQ].some((term) =>
             term !== undefined && (typeof term !== "string" || term.length > 120)))
             throw new HttpError(400, "invalid_query", "بحث المورد أو حساب السداد غير صالح");
+          // Money filters remain exact decimal strings; numeric comparisons run
+          // on PostgreSQL, never through floating point in JavaScript.
+          const amountPattern = /^-?[0-9]{1,22}(?:\\.[0-9]{1,6})?$/;
+          const amountFrom = req.query.amountFrom === "" || req.query.amountFrom === undefined
+            ? null : req.query.amountFrom;
+          const amountTo = req.query.amountTo === "" || req.query.amountTo === undefined
+            ? null : req.query.amountTo;
+          if ([amountFrom,amountTo].some(v => v !== null &&
+              (typeof v !== "string" || !amountPattern.test(v))))
+            throw new HttpError(400,"invalid_query","نطاق مبلغ الفاتورة غير صالح");
+          const amountUnits = (value:string) => {
+            const negative=value.startsWith("-");
+            const [integer,fraction=""]=(negative?value.slice(1):value).split(".");
+            const units=BigInt(integer!)*1000000n + BigInt(fraction.padEnd(6,"0"));
+            return negative?-units:units;
+          };
+          if(amountFrom!==null && amountTo!==null &&
+             amountUnits(amountFrom as string)>amountUnits(amountTo as string))
+            throw new HttpError(400,"invalid_query","بداية المبلغ تتجاوز نهايته");
           const params = [
             companyId,
             searchPattern(query.q),
@@ -387,15 +406,16 @@ export function commerceRoutes(pool: Pool): Router {
             locationId,
             searchPattern((supplierQ as string | undefined) ?? ""),
             searchPattern((payerQ as string | undefined) ?? ""),
+            amountFrom,amountTo,
           ];
           const filter =
-            `i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.supplier_account_name ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR ${invoiceReportDate} >= $4::date) AND ($5::date IS NULL OR ${invoiceReportDate} <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10)`;
+            `i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.counterparty_account_code ILIKE $2 OR COALESCE(i.supplier_account_name,'') ILIKE $2 OR COALESCE(i.supplier_account_code,'') ILIKE $2 OR COALESCE(i.sale_customer_name,'') ILIKE $2 OR COALESCE(i.sale_customer_number,'') ILIKE $2 OR COALESCE(i.doctor_name,'') ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR ${invoiceReportDate} >= $4::date) AND ($5::date IS NULL OR ${invoiceReportDate} <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10) AND ($11::numeric IS NULL OR i.total >= $11::numeric) AND ($12::numeric IS NULL OR i.total <= $12::numeric)`;
           const count = await client.query(
             `SELECT count(*)::integer AS total ${invoiceFrom} WHERE ${filter}`,
             params,
           );
           const rows = await client.query(
-            `${invoiceSelect} WHERE ${filter} ORDER BY ${query.order} LIMIT $11 OFFSET $12`,
+            `${invoiceSelect} WHERE ${filter} ORDER BY ${query.order} LIMIT $13 OFFSET $14`,
             [...params, query.pageSize, query.offset],
           );
           return {
