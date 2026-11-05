@@ -146,3 +146,29 @@ test("device-local draft hook persists expiry and handles sleeping tabs", () => 
   assert.match(hook,/document\.addEventListener\("visibilitychange", onVisibility\)/);
   assert.match(hook,/window\.addEventListener\("focus", refreshCurrent\)/);
 });
+
+
+test("new order drafts retain the exact required quantity from the item-options column", () => {
+  const now = Date.parse("2026-11-05T12:00:00.000Z");
+  const chosen = { ...item(42), requiredQuantity: "24" };
+  const second = { ...item(43), requiredQuantity: "5" };
+  const created = createNumberedOrderDraft(emptyOrderDraftState(), [chosen,second], now);
+  assert.deepEqual(created.state.drafts[0].items, [chosen,second]);
+  const loaded = normalizeOrderDrafts(JSON.parse(JSON.stringify(created.state)), now + 60_000);
+  assert.deepEqual(loaded.drafts[0].items, [chosen,second],
+    "Normalization must not strip the quantity before printing or exporting PDF");
+  const withoutQuantity = createNumberedOrderDraft(emptyOrderDraftState(), [item(7)], now);
+  assert.equal("requiredQuantity" in withoutQuantity.state.drafts[0].items[0], false,
+    "An old name-only draft remains blank instead of inventing a required quantity");
+  const malformed = normalizeOrderDrafts({
+    nextId: 2, drafts: [{ id: 1, createdAt: new Date(now).toISOString(),
+      items: [{ ...item(9), requiredQuantity: "-10" }] }],
+  }, now + 1);
+  assert.equal(malformed.drafts[0].items[0].requiredQuantity, undefined);
+  const withDuplicate = createNumberedOrderDraft(created.state,
+    [{ ...item(42), requiredQuantity:"200" }, {...item(44),requiredQuantity:"3"}], now + 1);
+  assert.equal(withDuplicate.skipped,1);
+  assert.equal(withDuplicate.state.drafts[0].items[0].requiredQuantity,"24",
+    "Importing another draft must not change a previously saved planned order");
+  assert.equal(withDuplicate.state.drafts[1].items[0].requiredQuantity,"3");
+});
