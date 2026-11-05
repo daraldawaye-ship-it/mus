@@ -6621,6 +6621,13 @@ a.notification-quick-title:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
 }
 .item-options-order-row > span { min-width: 0; overflow-wrap: anywhere; }
+.item-options-order-item { display: flex; align-items: baseline; gap: 9px; direction: rtl; }
+.item-options-order-quantity {
+  flex: 0 0 42px; width: 42px; text-align: center;
+  direction: ltr; font-variant-numeric: tabular-nums; font-weight: 700;
+  color: var(--text, inherit); border-inline-end: 1px solid var(--border);
+}
+.item-options-order-item > span { min-width: 0; overflow-wrap: anywhere; }
 .item-options-print-sheet { display: none; }
 @media (max-width: 680px) {
   .item-options-mobile-heading .item-options-mobile-select {
@@ -6659,7 +6666,16 @@ a.notification-quick-title:hover { text-decoration: underline; }
     break-inside: avoid; page-break-inside: avoid;
     color: #111;
   }
-  .item-options-print-row span { overflow-wrap: anywhere; white-space: normal; }
+  .item-options-print-row .item-options-print-quantity {
+    flex: 0 0 11mm; min-width: 11mm; max-width: 11mm;
+    text-align: center; direction: ltr; font-weight: 700;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    border-inline-end: 0.5px solid #ddd;
+    padding-inline: 1mm;
+  }
+  .item-options-print-row .item-options-print-name {
+    min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; white-space: normal;
+  }
 }
 
 /* In-place reserve editing: unit is the item's smallest active unit. */
