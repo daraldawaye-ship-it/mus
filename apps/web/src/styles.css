@@ -5235,6 +5235,34 @@ a.notification-quick-title:hover { text-decoration: underline; }
   border-radius:3px;
 }
 .form-differences-sort>span {font-size:11px;opacity:.75}
+/* Compact headers: let composition names use the freed horizontal space. */
+.form-differences-table {
+  width: 100%;
+  min-width: 950px;
+  table-layout: fixed;
+}
+.form-differences-table th,
+.form-differences-table td {
+  min-width: 0;
+  padding-inline: 5px;
+}
+.form-differences-table th .form-differences-sort {
+  min-width: 0;
+  gap: 3px;
+  padding-inline: 0;
+}
+.form-differences-table td:nth-child(1),
+.form-differences-table td:nth-child(3) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.form-differences-table td:nth-child(5),
+.form-differences-table td:nth-child(6),
+.form-differences-table td:nth-child(7) {
+  white-space: nowrap;
+  text-align: center;
+}
 /* Keep item and composition editing actions on the same row. */
 .form-differences-inline-actions {
   display: inline-flex;
