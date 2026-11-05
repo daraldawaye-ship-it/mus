@@ -172,6 +172,8 @@ export interface Invoice {
   saleCustomerNumber: string | null;
   saleCustomerName: string | null;
   description: string;
+  /** Read-only purchase correction trail; never part of the editable invoice notes. */
+  purchaseCorrectionNote?: string;
   gross: string;
   discount: string;
   total: string;
