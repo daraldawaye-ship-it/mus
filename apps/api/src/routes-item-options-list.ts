@@ -29,6 +29,8 @@ const querySchema = z.object({
   stockMin: optionalNumber, stockMax: optionalNumber,
   reserveMin: optionalNumber, reserveMax: optionalNumber,
   purchaseFactorMin: optionalNumber, purchaseFactorMax: optionalNumber,
+  purchasePriceMin: optionalNumber, purchasePriceMax: optionalNumber,
+  requiredPurchaseQuantityMin: optionalNumber, requiredPurchaseQuantityMax: optionalNumber,
   monthMin: optionalNumber, monthMax: optionalNumber,
   fourMonthsMin: optionalNumber, fourMonthsMax: optionalNumber,
   yearMin: optionalNumber, yearMax: optionalNumber,
@@ -91,6 +93,9 @@ async function filteredItems(
   range(options.reserveMax, "m.reserve_quantity", "<=");
   range(options.purchaseFactorMin, "m.purchase_factor", ">=");
   range(options.purchaseFactorMax, "m.purchase_factor", "<=");
+  // Each price is compared in the currency assigned to that item.
+  range(options.purchasePriceMin, "m.purchase_price", ">=");
+  range(options.purchasePriceMax, "m.purchase_price", "<=");
   range(options.monthMin, "m.sale_times_month", ">=");
   range(options.monthMax, "m.sale_times_month", "<=");
   range(options.fourMonthsMin, "m.sale_times_four_months", ">=");
@@ -118,6 +123,16 @@ async function filteredItems(
   range(options.reserveCoverageMax, "m.reserve_coverage_days", "<=");
   range(options.purchaseFactorCoverageMin, "m.purchase_factor_coverage_days", ">=");
   range(options.purchaseFactorCoverageMax, "m.purchase_factor_coverage_days", "<=");
+  // Required quantities are computed later in replenishment, so filtering
+  // must run before global counting, totals, sorting, paging and draft export.
+  const requiredQuantityPredicates: string[] = [];
+  const requiredQuantityRange = (value: string | undefined, op: ">=" | "<=") => {
+    if (value === undefined) return;
+    values.push(value);
+    requiredQuantityPredicates.push(`f.order_quantity_first_unit ${op} ${values.length}::numeric`);
+  };
+  requiredQuantityRange(options.requiredPurchaseQuantityMin, ">=");
+  requiredQuantityRange(options.requiredPurchaseQuantityMax, "<=");
   const orders: Record<Options["sortBy"], string> = {
     code: "f.code", name: "f.name", stock: "f.available_unit1",
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
@@ -142,14 +157,14 @@ async function filteredItems(
   const limit = "$" + (values.length - 1), offset = "$" + values.length;
   // Totals always cover the entire matching filter, never the requested page.
   // Keep the replenishment target and reserve switch identical to the row values.
-  if (!unselectedForDraft) values.push(options.coverageMax ?? "30", options.useReserve ? "true" : "false");
+  values.push(options.coverageMax ?? "30", options.useReserve ? "true" : "false");
   const targetParam = "$" + (values.length - 1);
   const reserveParam = "$" + values.length;
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,
-             i.purchase_price AS purchase_price, currency.code AS currency_code,
+             i.purchase_price AS purchase_price, i.purchase_notes, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
              -- The cached monthly facts remain unchanged. Apply only a verified
@@ -216,17 +231,8 @@ async function filteredItems(
       FROM candidate i LEFT JOIN sales s ON s.item_id=i.id
       ${needsCoverageJoin ? itemCoverageJoin : ""}
     ),
-    filtered AS (SELECT * FROM metrics m ${predicates.length ? `WHERE ${predicates.join(" AND ")}` : ""})
-    ${unselectedForDraft ? `
-    SELECT f.id, f.code, f.name
-    FROM filtered f
-    WHERE NOT EXISTS (
-      SELECT 1 FROM company_item_temporary_selections chosen
-      WHERE chosen.company_id=$1 AND chosen.item_id=f.id
-    )
-    ORDER BY ${order} LIMIT 2001
-    ` : `
-    , replenishment AS MATERIALIZED (
+    filtered AS (SELECT * FROM metrics m ${predicates.length ? `WHERE ${predicates.join(" AND ")}` : ""}),
+    replenishment AS MATERIALIZED (
       -- Compute exactly once for EVERY filtered item, allowing a global order
       -- and aggregate even when only 20/50/100 items appear on screen.
       SELECT f.*,
@@ -258,19 +264,32 @@ async function filteredItems(
           AS quantity_smallest
       ) requested
     ),
-    order_costs_by_currency AS (
+    eligible AS MATERIALIZED (
+      SELECT f.* FROM replenishment f
+      ${requiredQuantityPredicates.length ? `WHERE ${requiredQuantityPredicates.join(" AND ")}` : ""}
+    )
+    ${unselectedForDraft ? `
+    SELECT f.id, f.code, f.name
+    FROM eligible f
+    WHERE NOT EXISTS (
+      SELECT 1 FROM company_item_temporary_selections chosen
+      WHERE chosen.company_id=$1 AND chosen.item_id=f.id
+    )
+    ORDER BY ${order} LIMIT 2001
+    ` : `
+    , order_costs_by_currency AS (
       SELECT currency_code, SUM(order_value)::text AS purchase_value
-      FROM replenishment GROUP BY currency_code
+      FROM eligible GROUP BY currency_code
     )
     SELECT counts.total, currency_totals.required_purchase_value_totals, f.*
-    FROM (SELECT COUNT(*)::integer AS total FROM filtered) counts
+    FROM (SELECT COUNT(*)::integer AS total FROM eligible) counts
     CROSS JOIN (
       SELECT COALESCE(jsonb_agg(jsonb_build_object(
         'currencyCode',currency_code,'value',purchase_value) ORDER BY currency_code),
         '[]'::jsonb) AS required_purchase_value_totals
       FROM order_costs_by_currency
     ) currency_totals
-    LEFT JOIN LATERAL (SELECT * FROM replenishment f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
+    LEFT JOIN LATERAL (SELECT * FROM eligible f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
     `}`;
   const rows = (await client.query(sql, values)).rows;
   if (unselectedForDraft) {
@@ -300,6 +319,7 @@ async function filteredItems(
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
     purchasePrice: String(row.purchase_price).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
+    purchaseNotes: String(row.purchase_notes ?? ""),
     purchaseCurrencyCode: String(row.currency_code),
     factor2: Number(row.factor2), factor3: Number(row.factor3),
     availableSmallest: String(row.available_smallest),
@@ -329,6 +349,7 @@ async function filteredItems(
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
       purchasePrice: row.purchasePrice, purchaseCurrencyCode: row.purchaseCurrencyCode,
+      purchaseNotes: row.purchaseNotes,
       requiredPurchaseQuantity: requiredQuantities.get(row.id)?.requiredPurchaseQuantity ?? "0",
       requiredPurchaseValue: requiredQuantities.get(row.id)?.requiredPurchaseValue ?? "0",
       coverageWithRequiredDays: requiredQuantities.get(row.id)?.coverageWithRequiredDays ?? "0",
