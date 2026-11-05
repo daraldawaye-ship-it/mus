@@ -126,7 +126,7 @@ const sortOptions = [
   ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["name","اسم الصنف"],["purchaseNotes","ملاحظات عند الشراء"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
@@ -896,11 +896,23 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
-              <div style={hiddenColumnStyle("purchaseNotes")} className="item-options-mobile-stat">
-                <span>ملاحظات عند الشراء</span>{renderPurchaseNote(row)}
-              </div>
               <div style={hiddenColumnStyle("stock")} className="item-options-mobile-stat">
                 <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-mobile-stat">
+                <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi>{row.saleQuantityMonth}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-mobile-stat">
+                <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("purchasePrice")} className="item-options-mobile-stat">
+                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice} {row.purchaseCurrencyCode}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-mobile-stat">
+                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue} {row.purchaseCurrencyCode}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("purchaseNotes")} className="item-options-mobile-stat item-options-mobile-purchase-notes">
+                <span>ملاحظات عند الشراء</span>{renderPurchaseNote(row)}
               </div>
               <div style={hiddenColumnStyle("reserve")} className="item-options-mobile-stat item-options-reserve-stat">
                 <span>كمية احتياط</span>
@@ -917,9 +929,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
-              <div style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-mobile-stat">
-                <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi>{row.saleQuantityMonth}</bdi>
-              </div>
               <div style={hiddenColumnStyle("fourMonths")} className="item-options-mobile-stat">
                 <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
               </div>
@@ -928,15 +937,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </div>
               <div style={hiddenColumnStyle("previousYear")} className="item-options-mobile-stat">
                 <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
-              </div>
-              <div style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-mobile-stat">
-                <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
-              </div>
-              <div style={hiddenColumnStyle("purchasePrice")} className="item-options-mobile-stat">
-                <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice} {row.purchaseCurrencyCode}</bdi>
-              </div>
-              <div style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-mobile-stat">
-                <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue} {row.purchaseCurrencyCode}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverage")} className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
@@ -950,7 +950,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <div style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-mobile-stat">
                 <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
               </div>
-            </div>
+                      </div>
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
         </div>
@@ -959,19 +959,19 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         <table style={visibleColumns.length < allTableColumns.length ? { minWidth: 0, width: "100%" } : undefined}>
           <colgroup>
             {visibleColumns.includes("choice") && <col className="item-options-choice-col" />}
-            {visibleColumns.includes("name") && <col className="item-options-name-col" />}
-            {visibleColumns.includes("purchaseNotes") && <col className="item-options-purchase-notes-col" />}
             {visibleColumns.includes("stock") && <col className="item-options-stock-col" />}
+            {visibleColumns.includes("saleQuantityMonth") && <col className="item-options-month-quantity-col" />}
+            {visibleColumns.includes("name") && <col className="item-options-name-col" />}
             {visibleColumns.includes("reserve") && <col className="item-options-reserve-col" />}
             {visibleColumns.includes("purchaseFactor") && <col className="item-options-purchase-factor-col" />}
             {visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
-            {visibleColumns.includes("saleQuantityMonth") && <col className="item-options-month-quantity-col" />}
             {visibleColumns.includes("fourMonths") && <col className="item-options-four-months-col" />}
             {visibleColumns.includes("allTime") && <col className="item-options-all-time-col" />}
             {visibleColumns.includes("previousYear") && <col className="item-options-previous-year-col" />}
             {visibleColumns.includes("requiredPurchaseQuantity") && <col className="item-options-required-quantity-col" />}
             {visibleColumns.includes("purchasePrice") && <col className="item-options-purchase-price-col" />}
             {visibleColumns.includes("requiredPurchaseValue") && <col className="item-options-required-value-col" />}
+            {visibleColumns.includes("purchaseNotes") && <col className="item-options-purchase-notes-col" />}
             {visibleColumns.includes("coverage") && <col className="item-options-coverage-col" />}
             {visibleColumns.includes("coverageWithRequired") && <col className="item-options-coverage-with-required-col" />}
             {visibleColumns.includes("reserveCoverage") && <col className="item-options-reserve-coverage-col" />}
@@ -979,19 +979,19 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </colgroup>
           <thead><tr>
             <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
-            {sortHeader("name", "اسم الصنف")}
-            <th scope="col" style={hiddenColumnStyle("purchaseNotes")}>ملاحظات عند الشراء</th>
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
+            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (الوحدة الأولى)")}
+            {sortHeader("name", "اسم الصنف")}
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
             {sortHeader("month", "مبيعات مرات في شهر")}
-            {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (الوحدة الأولى)")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
             {sortHeader("requiredPurchaseQuantity", "الكمية المطلوبة (الوحدة الأولى)")}
             {sortHeader("purchasePrice", "سعر الشراء الافتراضي (الوحدة الأولى)")}
             {sortHeader("requiredPurchaseValue", "قيمة المطلوب")}
+            <th scope="col" style={hiddenColumnStyle("purchaseNotes")}>ملاحظات عند الشراء</th>
             {sortHeader("coverage", "الكفاية (يوم)")}
             {sortHeader("coverageWithRequired", "الكفاية مع المطلوب (يوم)")}
             {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
@@ -1008,27 +1008,27 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
               </label></td>
-              <td style={hiddenColumnStyle("name")}><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
-              <td style={hiddenColumnStyle("purchaseNotes")} className="item-options-purchase-notes-cell">{renderPurchaseNote(row)}</td>
               <td style={hiddenColumnStyle("stock")}><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
+              <td style={hiddenColumnStyle("saleQuantityMonth")}><bdi>{row.saleQuantityMonth}</bdi></td>
+              <td style={hiddenColumnStyle("name")}><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
               <td style={hiddenColumnStyle("reserve")}><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
                 reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></td>
-               <td style={hiddenColumnStyle("purchaseFactor")}><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
+              <td style={hiddenColumnStyle("purchaseFactor")}><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
                  itemId={row.itemId} revision={row.revision}
                  purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
               <td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
-              <td style={hiddenColumnStyle("saleQuantityMonth")}><bdi>{row.saleQuantityMonth}</bdi></td>
               <td style={hiddenColumnStyle("fourMonths")}><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td style={hiddenColumnStyle("allTime")}><bdi>{row.saleTimesAllTime}</bdi></td>
               <td style={hiddenColumnStyle("previousYear")}><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("requiredPurchaseQuantity")}><bdi>{row.requiredPurchaseQuantity}</bdi></td>
               <td style={hiddenColumnStyle("purchasePrice")}><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
               <td style={hiddenColumnStyle("requiredPurchaseValue")}><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
+              <td style={hiddenColumnStyle("purchaseNotes")} className="item-options-purchase-notes-cell">{renderPurchaseNote(row)}</td>
               <td style={hiddenColumnStyle("coverage")}><bdi>{coverage(row) ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("coverageWithRequired")}><bdi>{row.coverageWithRequiredDays}</bdi></td>
-               <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
-               <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
             {!result.rows.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
