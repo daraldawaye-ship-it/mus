@@ -1,3 +1,4 @@
+import {PurchaseCorrection} from "../PurchaseCorrection";
 import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice-item-search.ts";
 import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
 import { signedStockMovementQuantity } from "../stock-movement-display";
@@ -4476,6 +4477,7 @@ function InvoiceViewer({
           }
         />
       </div>
+      {invoice.kind==="purchase" && <PurchaseCorrection key={invoice.id} invoice={invoice} canEdit={canPost(context)}/> }
       <Card className="commerce-print-document">
         <InvoicePrintSheet context={context} invoice={invoice} returning={returning}
           onLetterheadReady={() => setPrintReady(true)} />

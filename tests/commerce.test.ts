@@ -4955,3 +4955,28 @@ test("posted sale customer snapshot edits pass the immutable DB guard without ch
   );
   await assertBalanced(f,s.company.id);
 });
+
+test("purchase correction previews, rolls back, commits once and preserves history",async t=>{
+  const f=await fixture(t),s=await setup(f,"Purchase correction"),item=await s.item();
+  const initial=invoiceBody(s,item.id);
+  const original=await invoice(f,s,initial);
+  const path=`/companies/${s.company.id}/invoices/${original.id}/purchase-correction`;
+  const payload={reason:"تصحيح الكمية",invoice:{...initial,idempotencyKey:randomUUID(),
+    lines:initial.lines.map(l=>({...l,quantity:"3"}))}};
+  const count=async()=>Number((await f.pool.query("SELECT count(*) FROM invoices WHERE company_id=$1",[s.company.id])).rows[0].count);
+  const preview=await f.owner.ok<{previewHash:string;impact:{newTotal:string}}>("POST",path,payload);
+  assert.equal(await count(),1);
+  assert.equal(preview.impact.newTotal,"2400");
+  const wrong=await f.owner.request("POST",path,{...payload,previewHash:"a".repeat(64)});
+  assert.equal(wrong.status,409);
+  assert.equal(await count(),1);
+  const confirm={...payload,previewHash:preview.previewHash};
+  const saved=await f.owner.ok<{replacementId:number}>("POST",path,confirm);
+  assert.deepEqual(await f.owner.ok("POST",path,confirm),saved);
+  assert.equal(await count(),3);
+  const history=await f.owner.ok<{items:{before_invoice:Invoice;after_invoice:Invoice}[]}>("GET",path+"s");
+  assert.equal(history.items[0]?.before_invoice.total,original.total);
+  assert.equal(history.items[0]?.after_invoice.id,saved.replacementId);
+  assert.equal((await f.pool.query("SELECT 1 FROM notifications WHERE code='PURCHASE_CORRECTED' AND company_id=$1",[s.company.id])).rowCount,1);
+  await assertBalanced(f,s.company.id);
+});

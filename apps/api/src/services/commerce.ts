@@ -230,6 +230,7 @@ export async function createInvoice(
   user: User,
   input: InvoiceFields,
   importContext?: InvoiceImportContext,
+  purchaseCorrection = false,
 ): Promise<Invoice> {
   input = normalizeSaleCustomer(input);
   // New optional doctor reference must not invalidate a legacy UUID retry.
@@ -1146,7 +1147,7 @@ export async function createInvoice(
     ],
   );
   const invoice = await loadInvoice(client, companyId, invoiceId);
-  if (!importContext) {
+  if (!importContext && !purchaseCorrection) {
     // Durable, committed with the invoice; slow post-processing is not part of
     // the cashier's request. A worker will credit the EXISTING wallet, accrue
     // clearance, and emit notifications, with retry after crash/failure.
@@ -1161,7 +1162,7 @@ export async function createInvoice(
        newlyCreatedDoctor?.id ?? null,newlyCreatedDoctor?.name ?? null,
        reusedArchivedDoctor?.id ?? null,reusedArchivedDoctor?.name ?? null],
     );
-  } else {
+  } else if (importContext) {
     // Existing import batches keep their established atomic posting contract.
     if (newlyCreatedDoctor) {
       await emitNotification(client, {

@@ -678,6 +678,8 @@ export async function requestPageKeys(
     if (typeof kind === "string" && Object.hasOwn(types, kind))
       keys.push(`company.${types[kind as keyof typeof types]}`);
     else keys.push(...Object.values(types).map((name) => `company.${name}`));
+    if (!financial && req.method === "POST" && rest.endsWith("/purchase-correction"))
+      keys.push("company.purchase-new");
     if (financial) keys.push("company.financial-documents");
     if (req.method === "POST" && rest === resource) {
       if (financial) keys.push("company.financial-new");

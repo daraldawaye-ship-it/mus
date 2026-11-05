@@ -7,6 +7,7 @@ import {
   invoiceSchema,
   invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
+import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -415,6 +416,24 @@ export function commerceRoutes(pool: Pool): Router {
       }),
     ),
   );
+  router.post(`${base}/invoices/:id/purchase-correction`, handler(async(req,res)=>{
+    const input=parse(correctionSchema,req.body);
+    res.json(await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
+      await companyAccess(client,user,companyId,"finance.post",true);
+      return correctPurchase(client,companyId,user,id(req.params.id),input,req.headers["user-agent"]);
+    }));
+  }));
+  router.get(`${base}/invoices/:id/purchase-corrections`,handler(async(req,res)=>{
+    res.json(await readCommerce(pool,req,async(client,companyId)=>{
+      const rows=await client.query(`WITH RECURSIVE chain AS (
+        SELECT c.* FROM purchase_invoice_corrections c WHERE company_id=$1 AND $2 IN(original_id,replacement_id,reversal_id)
+        UNION SELECT c.* FROM purchase_invoice_corrections c JOIN chain p ON c.company_id=p.company_id
+        AND (c.original_id=p.replacement_id OR c.replacement_id=p.original_id))
+        SELECT original_id,reversal_id,replacement_id,actor_id,actor_name,corrected_at,reason,before_invoice,after_invoice,impact
+        FROM chain ORDER BY corrected_at`,[companyId,id(req.params.id)]);
+      return {items:rows.rows};
+    }));
+  }));
   // Editing a posted sale customer's invoice snapshot does not repost an
   // invoice, modify its accounting counterpart, stock, amounts, or rewards.
   router.patch(`${base}/invoices/:id/sale-customer`, handler(async (req, res) => {
