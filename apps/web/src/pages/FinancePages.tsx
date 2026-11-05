@@ -1693,12 +1693,14 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const accountId = Number(params.get("accountId")) || 0;
+  const showSupplierAccount = !pledge && params.get("showSupplierAccount") === "1";
   const [selected, setSelected] = useState<Account | null>(null);
   const [choosing, setChoosing] = useState(false);
   const query = new URLSearchParams();
   query.set("accountId", String(accountId));
   for (const key of ["dateFrom", "dateTo"])
     if (params.get(key)) query.set(key, params.get(key)!);
+  if (showSupplierAccount) query.set("showSupplierAccount", "1");
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
     ? Number(params.get("pageSize"))
@@ -1745,7 +1747,8 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
     return () => window.cancelAnimationFrame(frame);
   }, [preparePrint, printQuery.data]);
   const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(
-    () => [
+    () => {
+      const visible: ColumnDef<AccountLedgerLine, unknown>[] = [
       {
         accessorKey: "runningBalance",
         header: "الرصيد",
@@ -1825,8 +1828,19 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
         cell: ({ row }) => money(row.original.baseCredit),
       },
 
-    ],
-    [companyId],
+      ];
+      if (showSupplierAccount) visible.splice(5, 0, {
+        accessorKey: "supplierAccountName",
+        header: "حساب المورد",
+        enableSorting: false,
+        size: 240,
+        cell: ({ row }) => (
+          <ValueCell>{[row.original.supplierAccountCode, row.original.supplierAccountName].filter(Boolean).join(" — ") || "—"}</ValueCell>
+        ),
+      });
+      return visible;
+    },
+    [companyId, showSupplierAccount],
   );
   return (
     <div className="ledger-page">
@@ -1869,6 +1883,16 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
               updateFilter(setParams, "dateTo", event.target.value)
             }
           />
+          {!pledge && (
+            <Button variant="secondary" onClick={() => setParams((previous) => {
+              const next = new URLSearchParams(previous);
+              if (showSupplierAccount) next.delete("showSupplierAccount");
+              else next.set("showSupplierAccount", "1");
+              return next;
+            })}>
+              {showSupplierAccount ? "إخفاء عمود حساب المورد" : "إظهار عمود حساب المورد"}
+            </Button>
+          )}
         </div>
         {!accountId && <Notice>اختر حسابًا لعرض حركاته ورصيده.</Notice>}
         {result.error && (
@@ -1922,13 +1946,14 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       {preparePrint && printQuery.data && (
         <div className="ledger-print-all" aria-label="كشف الحساب الكامل للطباعة">
           <table dir="rtl">
-            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>البيان</th><th>النوع</th><th>التاريخ</th><th>المستند</th><th>العملة</th></tr></thead>
+            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>البيان</th>{showSupplierAccount && <th>حساب المورد</th>}<th>النوع</th><th>التاريخ</th><th>المستند</th><th>العملة</th></tr></thead>
             <tbody>{printQuery.data.map((line, index) => (
               <tr key={`${line.documentId}-${line.id}-${index}`}>
                 <td>{balanceText(line.runningBalance)}</td>
                 <td>{formatMoney(line.baseDebit)}</td>
                 <td>{formatMoney(line.baseCredit)}</td>
                 <td>{line.description}</td>
+                {showSupplierAccount && <td>{[line.supplierAccountCode, line.supplierAccountName].filter(Boolean).join(" — ") || "—"}</td>}
                 <td>{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}</td>
                 <td>{line.documentDate}</td>
                 <td>{line.documentNumber}</td>
