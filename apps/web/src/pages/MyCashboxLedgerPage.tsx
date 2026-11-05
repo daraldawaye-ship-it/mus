@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   documentKindLabels,
@@ -14,6 +14,8 @@ import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import { CashboxVoucherModal } from "./FinancePages";
 import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
+import { InvoiceQuickAccountDialog } from "../InvoiceQuickAccountDialog";
+import { isOfflineNow } from "../connection-mode";
 import { Button, Card, DataTable, Dialog, Notice, PageHeader } from "../ui";
 
 type MyCashboxLedger = Page<AccountLedgerLine> & {
@@ -36,6 +38,7 @@ const balanceText = (amount: string) =>
 
 export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
+  const client = useQueryClient();
   const companyId = context.company.id;
   const isCashier = context.general || !!context.employee?.positions.includes("cashier");
   const allowed =
@@ -46,9 +49,14 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
     isCashier;
   const canViewReceipts = context.general || context.permissions.includes("finance.view");
+  const canAddAccount = (context.general ||
+    (context.permissions.includes("commerce.manage") && context.permissions.includes("finance.post")))
+    && !isOfflineNow();
   const [params, setParams] = useSearchParams();
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const [voucherKind, setVoucherKind] = useState<"receipt" | "payment" | null>(null);
+  const [quickAccountOpen, setQuickAccountOpen] = useState(false);
+  const [accountNotice, setAccountNotice] = useState("");
   const today = todayInAden();
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
@@ -118,6 +126,11 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           title="كشف حساب صندوقي"
           actions={<PageActionsDropdown actions={[
             {
+              label: "إضافة حساب",
+              disabled: !canAddAccount,
+              onClick: () => setQuickAccountOpen(true),
+            },
+            {
               label: "إضافة سند صرف",
               onClick: () => setVoucherKind("payment"),
               disabled: !canCreateVoucher || !result.data?.account,
@@ -144,6 +157,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           ]} label="إجراءات" />}
         />
       </div>
+      {accountNotice && <Notice tone="success">{accountNotice}</Notice>}
       <Card className="my-cashbox-ledger-card">
         <div className="my-cashbox-date-range" role="group" aria-label="فترة كشف حساب صندوقي">
           <label className="my-cashbox-date-field">
@@ -243,6 +257,16 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
           </>
         )}
       </Card>
+      {quickAccountOpen && <InvoiceQuickAccountDialog
+        companyId={companyId}
+        kind="sale"
+        onClose={() => setQuickAccountOpen(false)}
+        onCreated={account => {
+          setQuickAccountOpen(false);
+          setAccountNotice(`تم إضافة الحساب ${account.name} برمز ${account.code}.`);
+          void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
+        }}
+      />}
       {voucherKind && result.data?.account && (
         <CashboxVoucherModal key={voucherKind}
           context={context}
