@@ -3,6 +3,7 @@ import { readFile, writeFile, readdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { guideMcpContracts } from "./mcp-guide-contracts.ts";
 const root = resolve("apps/api/src");
 const contracts: Record<string, unknown> = {};
 for (const file of await readdir(root)) {
@@ -145,6 +146,7 @@ for (const file of await readdir(root)) {
   }
   await visit(source);
 }
+Object.assign(contracts, guideMcpContracts);
 await writeFile(
   resolve(root, "mcp-contracts.json"),
   JSON.stringify(contracts, null, 2) + "\n",

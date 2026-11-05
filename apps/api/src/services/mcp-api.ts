@@ -21,7 +21,7 @@ export const oauthScopes = [
 ];
 
 interface Layer {
-  route?: { path: string; methods: Record<string, boolean> };
+  route?: { path: string | string[]; methods: Record<string, boolean> };
   handle?: { stack?: Layer[] };
 }
 interface Operation {
@@ -33,12 +33,16 @@ export function apiOperations(router: Router): Operation[] {
   const visit = (layers: Layer[]) => {
     for (const layer of layers) {
       if (layer.route) {
-        const { path, methods } = layer.route;
-        // Credential lifecycle stays in the browser's dedicated authentication flow.
-        if (path.includes("password")) continue;
-        for (const method of ["get", "post", "put", "patch", "delete"])
-          if (methods[method])
-            result.push({ method: method.toUpperCase(), path });
+        const { path: routePath, methods } = layer.route;
+        // Express can register public and company aliases on a single route.
+        const paths = Array.isArray(routePath) ? routePath : [routePath];
+        for (const path of paths) {
+          // Credential lifecycle stays in the browser's dedicated authentication flow.
+          if (path.includes("password")) continue;
+          for (const method of ["get", "post", "put", "patch", "delete"])
+            if (methods[method])
+              result.push({ method: method.toUpperCase(), path });
+        }
       } else if (layer.handle?.stack) visit(layer.handle.stack);
     }
   };

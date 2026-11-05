@@ -33,6 +33,12 @@ const createNode = nodeFields.extend({
   groupId: integer, parentId: integer.nullable().default(null),
   afterId: integer.nullable().default(null),
 });
+const documentQuery = z.object({
+  offset:z.coerce.number().int().min(0).max(1000000).default(0),
+  all:z.enum(["true","false"]).optional(),
+}).strict();
+// Publish the same schemas used by the handlers, without duplicating their limits/defaults.
+export const explanationMcpSchemas = { createNode, documentQuery };
 const imageTypes = new Set(["image/png","image/jpeg","image/webp","image/gif","application/pdf"]);
 type Rule = { users?:number[]; kinds?:string[] } | null;
 type NodeRow = QueryResultRow & {id:number;group_id:number;parent_id:number|null;position:number;read_acl:Rule;edit_acl:Rule};
@@ -160,10 +166,7 @@ export function explanationRoutes(pool:Pool):Router {
     const user=actor(req),group=await groupById(pool,id(req.params.groupId));
     const base=groupGrant(user,group);
     requireRead(base.read);
-    const query=parse(z.object({
-      offset:z.coerce.number().int().min(0).max(1000000).default(0),
-      all:z.enum(["true","false"]).optional(),
-    }).strict(),req.query);
+    const query=parse(documentQuery,req.query);
     const rows=(await pool.query(
       "SELECT id,parent_id,position,kind,title,color,font_size,read_acl,edit_acl, "+
       "char_length(body) AS body_chars, "+
