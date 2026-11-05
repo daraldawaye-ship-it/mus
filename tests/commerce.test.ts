@@ -4956,6 +4956,31 @@ test("posted sale customer snapshot edits pass the immutable DB guard without ch
   await assertBalanced(f,s.company.id);
 });
 
+test("invoice directory searches notes and filters exact net totals; movements show full invoice total",async t=>{
+  const f=await fixture(t),s=await setup(f,"Invoice search and movement total");
+  const item=await s.item();
+  const purchase=await invoice(f,s,invoiceBody(s,item.id,{description:"فحص طلب خاص أحمد"}));
+  const route=`${s.path}/invoices`;
+  const matches=await f.owner.ok<Page<Invoice>>("GET",
+    `${route}?kind=purchase&q=${encodeURIComponent("فحص طلب خاص أحمد")}&amountFrom=1600&amountTo=1600`);
+  assert(matches.items.some(row=>row.id===purchase.id));
+  const byAccount=await f.owner.ok<Page<Invoice>>("GET",
+    `${route}?kind=purchase&q=${encodeURIComponent(s.supplier.name)}`);
+  assert(byAccount.items.some(row=>row.id===purchase.id));
+  const tooHigh=await f.owner.ok<Page<Invoice>>("GET",
+    `${route}?kind=purchase&amountFrom=1600.01`);
+  assert(!tooHigh.items.some(row=>row.id===purchase.id));
+  assert.equal((await f.owner.request("GET",
+    `${route}?amountFrom=1700&amountTo=1600`)).status,400);
+  assert.equal((await f.owner.request("GET",
+    `${route}?amountFrom=bad`)).status,400);
+  const movements=await f.owner.ok<Page<StockMovement>>("GET",
+    `${s.path}/stock-movements?invoiceId=${purchase.id}`);
+  assert(movements.items.length>0);
+  assert(movements.items.every(row=>row.invoiceTotal===purchase.total));
+  assert(movements.items.every(row=>row.invoiceCurrencyCode===purchase.currencyCode));
+});
+
 test("purchase correction previews, rolls back, commits once and preserves history",async t=>{
   const f=await fixture(t),s=await setup(f,"Purchase correction"),item=await s.item();
   const initial=invoiceBody(s,item.id);
