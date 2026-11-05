@@ -7696,6 +7696,20 @@ a.notification-quick-title:hover { text-decoration: underline; }
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+/* Keep day/month/year together; narrow right sidebars may scroll horizontally. */
+.invoice-side-movement-table,
+.invoice-side-movement-inner {
+  min-width: 320px;
+}
+.invoice-side-movement-inner .invoice-side-movement-main td:first-child,
+.invoice-side-movement-inner .invoice-side-movement-main td:first-child bdi {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
 .invoice-side-movement-inner .invoice-side-movement-secondary td {
   padding: 2px 4px 5px;
   border: 0;
