@@ -205,6 +205,9 @@ export interface StockMovement {
   kind: StockMovementKind;
   documentDate: string;
   invoiceId: number | null;
+  /** Net total of the entire linked invoice, in its own currency (not this line). */
+  invoiceTotal: string | null;
+  invoiceCurrencyCode: string | null;
   invoiceLineId: number | null;
   originalMovementId: number | null;
   operationId: number | null;
