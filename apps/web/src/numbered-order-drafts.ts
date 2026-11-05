@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import type { TemporaryChosenItem } from "./temporary-item-list";
 import {
   createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
