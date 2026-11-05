@@ -49,7 +49,7 @@ test("sales invoice list starts with opening, printing, net, account and date", 
   assert.deepEqual(actionColumnsFirst(arrangeInvoiceListColumns("sale",input)).map(key),wanted);
   const expectedPurchase = [
     "open", "documentDate", "counterpartyAccountName", "total",
-    "description", "print", "return", "currencyCode", "number",
+    "description", "print", "return", "currencyCode", "saleCustomer", "number",
   ];
   assert.deepEqual(arrangeInvoiceListColumns("purchase",input).map(key), expectedPurchase);
 });
