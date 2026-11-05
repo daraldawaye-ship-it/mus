@@ -61,6 +61,17 @@ export const accountChoices = [
   "followUp",
 ] as const;
 export type AccountChoice = (typeof accountChoices)[number];
+/** The invoice quick-add form is intentionally not a general account editor. */
+export const invoiceQuickAccountChoices = [
+  "company","customer","wholesale","distributor","doctor","pharmacy","expense",
+] as const;
+export const invoiceQuickAccountSchema = z.object({
+  name: accountName,
+  accountChoice: z.enum(invoiceQuickAccountChoices),
+  // Hidden context: used to enforce the correct sales/purchases page access.
+  kind: z.enum(["sale","purchase"]),
+}).strict();
+
 export const accountChoiceLabels: Record<AccountChoice, string> = {
   company: "شركة",
   customer: "عميل",
