@@ -26,8 +26,8 @@ export function arrangeInvoiceListColumns<T>(
       "accessorKey" in column && typeof column.accessorKey === "string" ? column.accessorKey : "";
   if (kind === "purchase") {
     const beforeLast = [
-      "open", "documentDate", "counterpartyAccountName", "supplierAccountName",
-      "total", "description", "print", "supplierReceiptNumber", "return",
+      "open", "documentDate", "total", "supplierAccountName",
+      "counterpartyAccountName", "description", "print", "supplierReceiptNumber", "return",
       "locationName", "currencyCode",
     ];
     return [
