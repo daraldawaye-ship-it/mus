@@ -11,6 +11,7 @@ import { firstUnitStockText } from "../sale-stock-quantity";
 import { rememberRecentEntity } from "../recent-entities";
 import type { TemporaryChosenItem } from "../temporary-item-list";
 import { useNumberedOrderDrafts } from "../numbered-order-drafts";
+import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
@@ -209,7 +210,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     try {
       // Real PDF bytes, not the browser's print-to-PDF dialog; Arabic lettering
       // is shaped by the device and each A4 page has exactly two columns.
-      const pdf = createTwoColumnItemNamesPdf(list.map(item => item.name));
+      const pdf = createTwoColumnItemNamesPdf(mode === "selected"
+        ? list.map(item => item.name)
+        : list.map(item => ({
+            name: item.name,
+            requiredQuantity: "requiredQuantity" in item ? item.requiredQuantity : undefined,
+          })));
       const today = new Date().toLocaleDateString("en-CA");
       const filename = `${mode === "selected" ? "selected-items" : `item-order-draft-${mode}`}-${today}.pdf`;
       const result = await exportPdfToDevice(pdf, filename);
@@ -241,7 +247,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       const filters = new URLSearchParams(request);
       filters.delete("page");
       filters.delete("pageSize");
-      const response = await api<{ result: { items: TemporaryChosenItem[]; total: number } }>(
+      const response = await api<{ result: { items: OrderDraftItem[]; total: number } }>(
         `/companies/${companyId}/item-options-list/unselected/query?${filters.toString()}`,
         { method: "POST", body: { excludedItemIds: excludedDraftItemIds } },
       );
@@ -651,7 +657,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </div>
           {activeOrderDraftId === orderDraft.id && <div className="item-options-order-draft-lines">
             {orderDraft.items.map(item => <div key={item.id} className="item-options-order-row">
-              <span>{item.name}</span>
+              <span className="item-options-order-item">
+                <bdi className="item-options-order-quantity">{item.requiredQuantity ?? "—"}</bdi>
+                <span>{item.name}</span>
+              </span>
               <Button size="compact" variant="ghost"
                 onClick={() => temporaryOrder.removeItem(orderDraft.id, item.id)}>إزالة</Button>
             </div>)}
@@ -854,10 +863,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
       </small>
     </Card>
-    <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أسماء الأصناف دون ترويسة أو ترقيم">
+    <section className="item-options-print-sheet" dir="rtl" aria-label="طباعة أصناف المسودة مع الكمية المطلوبة بالوحدة الأولى">
       <div className="item-options-print-columns">
         {printItems.map(item => <div className="item-options-print-row" key={item.id}>
-          <span>{item.name}</span>
+          {printMode !== "selected" &&
+            <bdi className="item-options-print-quantity">{
+              "requiredQuantity" in item ? item.requiredQuantity ?? "—" : "—"
+            }</bdi>}
+          <span className="item-options-print-name">{item.name}</span>
         </div>)}
       </div>
     </section>
