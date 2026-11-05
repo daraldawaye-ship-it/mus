@@ -28,7 +28,7 @@ function uniqueItems(source: unknown, global: Set<number>, limit: number): Order
     // Never lose the saved quantity during normalization or 8-hour cleanup.
     // Older drafts have no quantity; leave those alone rather than inventing one.
     const requiredQuantity = typeof row.requiredQuantity === "string"
-      && /^[1-9]\\d{0,15}$/.test(row.requiredQuantity)
+      && /^[1-9]\d{0,15}$/.test(row.requiredQuantity)
       ? row.requiredQuantity : undefined;
     rows.push({ id: row.id, name: row.name, code: row.code,
       ...(requiredQuantity ? { requiredQuantity } : {}) });
