@@ -1,7 +1,14 @@
+import "./purchase-correction.css";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Invoice } from "../../../packages/contracts/src/index";
+import {
+  calculateInvoiceTotals,
+  invoiceLineGross,
+  type Invoice,
+} from "../../../packages/contracts/src/index";
+import { Button, Card, Field, Notice } from "./ui";
+import { Plus, Trash2 } from "lucide-react";
 import { api, useSession } from "./api";
 import { ServerLookup, errorMessage } from "./phase2";
 
@@ -207,6 +214,17 @@ export function PurchaseCorrection({
       setBusy(false);
     }
   }
+  const locked = busy || !!preview;
+  let totals;
+  try {
+    totals = calculateInvoiceTotals(
+      lines.filter((l) => l.item),
+      discount,
+      v.decimalPlaces,
+    );
+  } catch {
+    /* Incomplete entries have no total until the amount is valid. */
+  }
   const allowed =
     canEdit &&
     history.isSuccess &&
@@ -247,159 +265,291 @@ export function PurchaseCorrection({
       )}
       {allowed && editing && (
         <form
+          className="commerce-editor purchase-correction-editor"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <fieldset disabled={busy || !!preview}>
-            <legend>تعديل فاتورة مشتريات {v.number}</legend>
-            <ServerLookup
-              companyId={v.companyId}
-              resource={base + "/commerce-options?type=accounts"}
-              label="حساب السداد / الذمة"
-              value={account}
-              onChange={setAccount}
-              display={label}
-              singleInput
-              required
-            />
-            <ServerLookup
-              companyId={v.companyId}
-              resource={base + "/commerce-options?type=accounts"}
-              label="المورد"
-              value={supplier}
-              onChange={setSupplier}
-              display={label}
-              singleInput
-              required
-            />
-            {lines.map((l, i) => (
-              <fieldset key={l.key}>
-                <legend>البند {i + 1}</legend>
+          <Card className="commerce-header-card invoice-kind-purchase">
+            <h2>تعديل فاتورة مشتريات {v.number}</h2>
+            <fieldset disabled={locked} className="commerce-fieldset">
+              <div className="commerce-header-content">
                 <ServerLookup
                   companyId={v.companyId}
-                  resource={base + "/commerce-options?type=items"}
-                  label="الصنف"
-                  searchPlaceholder="ابحث باسم الصنف أو رمزه"
-                  noResultsLabel="لا توجد أصناف مطابقة"
-                  value={l.item}
-                  onChange={(item) => update(i, { item })}
+                  resource={base + "/commerce-options?type=accounts"}
+                  label="حساب السداد / الذمة"
+                  value={account}
+                  onChange={setAccount}
                   display={label}
                   singleInput
                   required
+                  disabled={locked}
                 />
-                <label>
-                  الوحدة{" "}
-                  <select
-                    value={l.unit}
-                    onChange={(e) =>
-                      update(i, { unit: Number(e.target.value) })
-                    }
-                  >
-                    {[1, 2, 3].map((n) => (
-                      <option key={n}>{n}</option>
+                <ServerLookup
+                  companyId={v.companyId}
+                  resource={base + "/commerce-options?type=accounts"}
+                  label="المورد الفعلي"
+                  value={supplier}
+                  onChange={setSupplier}
+                  display={label}
+                  singleInput
+                  required
+                  disabled={locked}
+                />
+                <Field
+                  label="رقم وصل المورد"
+                  value={v.supplierReceiptNumber}
+                  readOnly
+                />
+                <Field
+                  label="تاريخ الفاتورة الأصلية"
+                  value={v.documentDate}
+                  readOnly
+                />
+                <Field label="العملة" value={v.currencyCode} readOnly />
+                <Field label="الفرع" value={v.branchName} readOnly />
+                <Field label="الموقع" value={v.locationName} readOnly />
+              </div>
+            </fieldset>
+          </Card>
+          <Card className="commerce-matrix-card">
+            <fieldset className="commerce-fieldset" disabled={locked}>
+              <div
+                className="commerce-lines-scroll"
+                role="region"
+                aria-label="بنود فاتورة المشتريات"
+              >
+                <table className="commerce-lines commerce-matrix commerce-matrix-purchase">
+                  <colgroup>
+                    {[
+                      "item",
+                      "unit",
+                      "quantity",
+                      "price",
+                      "expiry",
+                      "total",
+                      "delete",
+                    ].map((col) => (
+                      <col key={col} className={"commerce-col-" + col} />
                     ))}
-                  </select>
-                </label>
-                <label>
-                  الكمية{" "}
-                  <input
-                    required
-                    inputMode="numeric"
-                    value={l.quantity}
-                    onChange={(e) => update(i, { quantity: e.target.value })}
-                  />
-                </label>
-                <label>
-                  سعر الوحدة{" "}
-                  <input
-                    required
-                    inputMode="decimal"
-                    value={l.unitPrice}
-                    onChange={(e) => update(i, { unitPrice: e.target.value })}
-                  />
-                </label>
-                <label>
-                  الانتهاء{" "}
-                  <input
-                    type="date"
-                    value={l.expiryDate}
-                    onChange={(e) => update(i, { expiryDate: e.target.value })}
-                  />
-                </label>
-                <button
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      {[
+                        "الصنف",
+                        "الوحدة",
+                        "الكمية",
+                        "سعر الشراء",
+                        "تاريخ الانتهاء",
+                        "إجمالي",
+                        "حذف",
+                      ].map((name) => (
+                        <th key={name} scope="col">
+                          {name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l, i) => {
+                      let gross = "—";
+                      try {
+                        if (l.item)
+                          gross = invoiceLineGross(
+                            l.quantity,
+                            l.unitPrice,
+                            v.decimalPlaces,
+                          );
+                      } catch {
+                        /* Partial numeric input. */
+                      }
+                      const original = v.lines.find(
+                        (row) => row.itemId === l.item?.id,
+                      );
+                      return (
+                        <tr key={l.key}>
+                          <td>
+                            <ServerLookup
+                              companyId={v.companyId}
+                              resource={base + "/commerce-options?type=items"}
+                              label={`صنف البند ${i + 1}`}
+                              searchPlaceholder="اسم الصنف أو رمزه"
+                              noResultsLabel="لا توجد أصناف مطابقة"
+                              value={l.item}
+                              onChange={(item) => update(i, { item })}
+                              display={label}
+                              singleInput
+                              required
+                              disabled={locked}
+                            />
+                          </td>
+                          <td>
+                            <select
+                              aria-label={`وحدة البند ${i + 1}`}
+                              value={l.unit}
+                              onChange={(e) =>
+                                update(i, { unit: Number(e.target.value) })
+                              }
+                            >
+                              {[1, 2, 3].map((n) => (
+                                <option key={n} value={n}>
+                                  {original?.unit === n
+                                    ? original.unitName
+                                    : "الوحدة " + n}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`كمية البند ${i + 1}`}
+                              required
+                              inputMode="numeric"
+                              value={l.quantity}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) =>
+                                update(i, { quantity: e.target.value })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`سعر شراء البند ${i + 1}`}
+                              required
+                              inputMode="decimal"
+                              value={l.unitPrice}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) =>
+                                update(i, { unitPrice: e.target.value })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`انتهاء البند ${i + 1}`}
+                              type="date"
+                              value={l.expiryDate}
+                              onChange={(e) =>
+                                update(i, { expiryDate: e.target.value })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <bdi>{gross}</bdi>
+                          </td>
+                          <td>
+                            <Button
+                              type="button"
+                              size="compact"
+                              variant="ghost"
+                              aria-label={`حذف البند ${i + 1}`}
+                              disabled={locked || lines.length === 1}
+                              onClick={() =>
+                                setLines(
+                                  lines.filter((row) => row.key !== l.key),
+                                )
+                              }
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="commerce-matrix-actions">
+                <Button
                   type="button"
-                  disabled={lines.length === 1}
+                  size="compact"
+                  variant="ghost"
+                  disabled={locked || lines.length >= 100}
                   onClick={() =>
-                    setLines(lines.filter((row) => row.key !== l.key))
+                    setLines([
+                      ...lines,
+                      {
+                        key: crypto.randomUUID(),
+                        item: null,
+                        unit: 1,
+                        quantity: "1",
+                        unitPrice: "",
+                        expiryDate: "",
+                      },
+                    ])
                   }
                 >
-                  حذف البند
-                </button>
-              </fieldset>
-            ))}
-            <button
-              type="button"
-              disabled={lines.length >= 100}
-              onClick={() =>
-                setLines([
-                  ...lines,
-                  {
-                    key: crypto.randomUUID(),
-                    item: null,
-                    unit: 1,
-                    quantity: "1",
-                    unitPrice: "",
-                    expiryDate: "",
-                  },
-                ])
-              }
-            >
-              إضافة بند
-            </button>
-            <label>
-              الخصم{" "}
-              <input
-                required
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-              />
-            </label>
-            <label>
-              سبب التعديل{" "}
-              <textarea
+                  <Plus size={15} /> سطر جديد
+                </Button>
+                <span className="muted">{lines.length} / 100</span>
+              </div>
+            </fieldset>
+          </Card>
+          <footer className="card commerce-save-footer">
+            <div className="commerce-footer-grid">
+              <Field
+                label="سبب التعديل"
                 required
                 maxLength={500}
                 value={reason}
+                disabled={locked}
                 onChange={(e) => setReason(e.target.value)}
               />
-            </label>
-          </fieldset>
-          {preview && <ImpactTable impact={preview.impact} />}
-          {error && <p role="alert">{error}</p>}
-          <button
-            className="button button-primary"
-            disabled={
-              busy ||
-              !reason.trim() ||
-              !supplier ||
-              !account ||
-              lines.some((l) => !l.item)
-            }
-          >
-            {preview ? "اعتماد التصحيح" : "معاينة الفروقات"}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              if (preview) setPreview(null);
-              else setEditing(false);
-            }}
-          >
-            {preview ? "العودة للتعديل" : "إغلاق"}
-          </button>
+              <Field
+                label="الخصم"
+                required
+                money
+                value={discount}
+                disabled={locked}
+                onChange={(e) => setDiscount(e.target.value)}
+              />
+              <div className="commerce-totals" aria-live="polite">
+                <span>
+                  الإجمالي{" "}
+                  <strong>
+                    <bdi>{totals?.gross ?? "—"}</bdi>
+                  </strong>
+                </span>
+                <span>
+                  الصافي{" "}
+                  <strong>
+                    <bdi>
+                      {totals?.total ?? "—"} {v.currencyCode}
+                    </bdi>
+                  </strong>
+                </span>
+              </div>
+            </div>
+            {preview && <ImpactTable impact={preview.impact} />}
+            {error && <Notice tone="error">{error}</Notice>}
+            <div className="commerce-save-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => {
+                  if (preview) setPreview(null);
+                  else setEditing(false);
+                }}
+              >
+                {preview ? "العودة للتعديل" : "إغلاق"}
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  !reason.trim() ||
+                  !supplier ||
+                  !account ||
+                  lines.some((l) => !l.item) ||
+                  !totals
+                }
+              >
+                {preview ? "اعتماد التصحيح" : "معاينة الفروقات"}
+              </Button>
+            </div>
+          </footer>
         </form>
       )}
     </section>

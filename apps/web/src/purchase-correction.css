@@ -1,0 +1,12 @@
+.purchase-correction-editor .commerce-header-content {
+  height: auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr));
+}
+.purchase-correction-editor .commerce-footer-grid {
+  align-items: end;
+}
+@media screen {
+  .commerce-document-page:has(.purchase-correction-editor) > .commerce-print-document {
+    display: none;
+  }
+}
