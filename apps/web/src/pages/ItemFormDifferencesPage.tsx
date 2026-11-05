@@ -20,8 +20,15 @@ type Status="needs-review"|"different"|"unclassified"|"all";
 interface Difference {
   itemId:number;itemName:string;itemForm:ProductForm;itemActive:boolean;
   compositionId:number;compositionName:string;compositionForm:ProductForm;compositionActive:boolean;
+  // Totals for the entire composition, from the same independent projections
+  // used by the composition card; null means unavailable for this user.
+  saleTimesYear:string|null;
+  availableAlternatives:number|null;
+  availableUnit1:string|null;
 }
 interface Results {items:Difference[];total:number;page:number;pageSize:number}
+const statsNumber=(value:string|number|null,digits=0)=>
+  value==null?"—":Number(value).toLocaleString("en-US",{maximumFractionDigits:digits});
 
 export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   const companyId=context.company.id;
@@ -110,7 +117,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
           <option value="all">كل الأصناف المرتبطة بتراكيب</option>
         </Select>
       </div>
-      <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح.</p>
+      <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح. الإحصائيات مجموع التركيب بأكمله من الجداول المنفصلة، وتظهر «—» عند عدم توفر صلاحية الاطلاع.</p>
       {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       <div className="table-scroll" role="region" tabIndex={0} aria-label="مراجعة اختلاف الشكل">
         <table className="data-table">
@@ -118,7 +125,10 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
             <tr>
               {header("itemName")}{header("itemForm")}
               {header("compositionName")}{header("compositionForm")}
-              <th>المراجعة</th><th>الإجراء</th>
+              <th>مرات المبيعات الصافية — سنة</th>
+              <th>عدد البدائل المتوفرة</th>
+              <th>الكمية المتوفرة — مجموع الوحدة الأولى</th>
+              <th>الإجراء</th><th>المراجعة</th>
             </tr>
           </thead>
           <tbody>
@@ -130,7 +140,9 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                 <td>{row.itemForm}</td>
                 <td>{row.compositionName}{!row.compositionActive?" (مؤرشف)":""}</td>
                 <td>{row.compositionForm}</td>
-                <td>{uncertain?"غير مصنف":different?"مختلف":"متطابق"}</td>
+                <td dir="ltr"><bdi>{statsNumber(row.saleTimesYear,0)}</bdi></td>
+                <td dir="ltr"><bdi>{statsNumber(row.availableAlternatives,0)}</bdi></td>
+                <td dir="ltr"><bdi>{statsNumber(row.availableUnit1,3)}</bdi></td>
                 <td>
                   <div className="form-actions">
                     <Button variant="secondary" size="compact"
@@ -143,9 +155,10 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                       onClick={()=>setOpened({type:"composition",id:row.compositionId})}>كرت التركيب</Button>
                   </div>
                 </td>
+                <td>{uncertain?"غير مصنف":different?"مختلف":"متطابق"}</td>
               </tr>;
             })}
-            {!rows.length&&!result.isFetching&&<tr><td colSpan={6}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
+            {!rows.length&&!result.isFetching&&<tr><td colSpan={9}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
           </tbody>
         </table>
       </div>
