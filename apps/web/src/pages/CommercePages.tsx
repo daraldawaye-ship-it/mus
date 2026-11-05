@@ -2112,6 +2112,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       setCashboxError("أدخل مبلغًا غير صفري للترحيل.");
       return;
     }
+    // Enter only opens confirmation; it never posts or queues a transfer itself.
+    // Keep the same idempotencyKey on retry if an earlier result was uncertain.
+    const confirmation = cashboxDraft.kind==="close"
+      ? "هل تريد إغلاق الصندوق وترحيل المبلغ؟"
+      : "هل تريد الترحيل؟";
+    if (!window.confirm(confirmation)) return;
     const path=`/companies/${companyId}/sales/cashbox-operations`;
     const payload={...cashboxDraft,amount};
     async function saveCashboxOnDevice():Promise<boolean> {
