@@ -1713,7 +1713,10 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   query.set("accountId", String(accountId));
   query.set("dateFrom", dateFrom);
   query.set("dateTo", dateTo);
-  if (!pledge) query.set("sort", "documentDate:desc,documentId:desc,lineNumber:desc");
+  if (!pledge) {
+    query.set("sort", "documentDate:desc,documentId:desc,lineNumber:desc");
+    query.set("showCounterpart", "1");
+  }
   if (showSupplierAccount) query.set("showSupplierAccount", "1");
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
@@ -1744,6 +1747,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       const rows: AccountLedgerLine[] = [];
       for (let printPage = 1; printPage <= Math.ceil(total / 100); printPage++) {
         const printParams = new URLSearchParams(query);
+        printParams.delete("showCounterpart"); // Screen-only column, excluded from printed statement.
         printParams.set("page", String(printPage));
         printParams.set("pageSize", "100");
         const response = await api<Page<AccountLedgerLine>>(
@@ -1831,9 +1835,16 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
         size: 240,
         cell: ({ row }) => <ValueCell>{row.original.supplierAccountName || "—"}</ValueCell>,
       });
+      if (!pledge) visible.splice(showSupplierAccount ? 6 : 5, 0, {
+        accessorKey: "counterpartAccounts",
+        header: "الحساب المقابل",
+        enableSorting: false,
+        size: 230,
+        cell: ({ row }) => <ValueCell>{row.original.counterpartAccounts || "—"}</ValueCell>,
+      });
       return visible;
     },
-    [companyId, showSupplierAccount],
+    [companyId, showSupplierAccount, pledge],
   );
   return (
     <div className="ledger-page">
