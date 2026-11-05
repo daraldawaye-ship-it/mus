@@ -4956,6 +4956,49 @@ test("posted sale customer snapshot edits pass the immutable DB guard without ch
   await assertBalanced(f,s.company.id);
 });
 
+test("invoice quick-add accepts only seven choices and assigns the secure parent",async t=>{
+  const f=await fixture(t),s=await setup(f,"Invoice quick account");
+  const parents=await f.pool.query(
+    "SELECT id,code FROM accounts WHERE company_id=$1 AND code IN ('1120000000','5000000000')",
+    [s.company.id],
+  );
+  const parentId=(code:string)=>Number(parents.rows.find(row=>row.code===code)?.id);
+  assert.equal(parents.rows.length,2);
+  const choices=["company","customer","wholesale","distributor","doctor","pharmacy"] as const;
+  for(const choice of choices){
+    const {account}=await f.owner.ok<{account:Account}>("POST",
+      `${s.path}/invoices/quick-account`,
+      {kind:"sale",name:`فاتورة ${choice}`,accountChoice:choice},201,
+    );
+    assert.equal(account.parentId,parentId("1120000000"));
+    assert.equal(account.category,"asset");
+    assert.equal(account.kind,"posting");
+    assert.equal(account.accountChoice,choice);
+    assert.match(account.code,/^112[0-9]{7}$/);
+  }
+  const expense=(await f.owner.ok<{account:Account}>("POST",
+    `${s.path}/invoices/quick-account`,
+    {kind:"purchase",name:"مصروف من الفاتورة",accountChoice:"expense"},201,
+  )).account;
+  assert.equal(expense.parentId,parentId("5000000000"));
+  assert.equal(expense.category,"expense");
+  assert.equal(expense.kind,"posting");
+  assert.equal(expense.normalSide,"debit");
+  for(const payload of [
+    {kind:"sale",name:"حساب غير مخول",accountChoice:"cashbox"},
+    {kind:"sale",name:"تغيير غير مخول",accountChoice:"customer",parentId:parentId("5000000000")},
+    {kind:"sale",name:"تغيير الكود",accountChoice:"customer",code:"1120000001"},
+    {kind:"sale",name:""},
+  ]){
+    assert.equal((await f.owner.request("POST",
+      `${s.path}/invoices/quick-account`,payload)).status,400);
+  }
+  const noFinance=await f.member(s.company.id,["commerce.manage"],995);
+  assert.equal((await noFinance.client.request("POST",
+    `${s.path}/invoices/quick-account`,
+    {kind:"sale",name:"بدون صلاحية مالية",accountChoice:"customer"})).status,403);
+});
+
 test("invoice directory searches notes and filters exact net totals; movements show full invoice total",async t=>{
   const f=await fixture(t),s=await setup(f,"Invoice search and movement total");
   const item=await s.item();
