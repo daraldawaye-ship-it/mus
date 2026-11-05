@@ -5,9 +5,11 @@ import {
   documentDateSchema,
   invoiceKinds,
   invoiceSchema,
+  invoiceQuickAccountSchema,
   invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
 import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
+import { createInvoiceQuickAccount } from "./routes-accounts.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
@@ -293,6 +295,18 @@ export function commerceRoutes(pool: Pool): Router {
       res.json({ items });
     }),
   );
+  // Invoice actions expose a strict quick-add form, never a general ledger
+  // editor. Posting privilege is required, with the specific invoice page.
+  router.post(`${base}/invoices/quick-account`,handler(async(req,res)=>{
+    const input=parse(invoiceQuickAccountSchema,req.body);
+    const account=await mutateMaster(pool,req,"commerce.manage",
+      async(client,user,companyId)=>{
+        await companyAccess(client,user,companyId,"finance.post",true);
+        return createInvoiceQuickAccount(client,user,companyId,input);
+      });
+    res.status(201).json({account});
+  }));
+
   router.get(
     `${base}/invoices`,
     handler(async (req, res) => {
