@@ -309,8 +309,23 @@ export async function readAccountLedger(
     ) c
   ) counterpart ON true` : "";
   const counterpartSelect = ownCashbox ? "COALESCE(counterpart.counterparts, '')" : "''::text";
+  // Resolve the saved supplier snapshot from a purchase invoice linked to this
+  // journal, never from the payment/cashbox account or from today's account name.
+  // Run the lookup only for statements explicitly showing the optional column.
+  const includeSupplierAccount = !ownCashbox && req.query.showSupplierAccount === "1";
+  const supplierJoin = includeSupplierAccount ? `LEFT JOIN LATERAL (
+    SELECT i.supplier_account_code, i.supplier_account_name
+    FROM invoices i
+    WHERE i.company_id=f.company_id AND i.kind='purchase'
+      AND (i.financial_document_id=f.document_id
+        OR i.cost_document_id=f.document_id
+        OR i.variance_document_id=f.document_id)
+    ORDER BY i.id DESC LIMIT 1
+  ) supplier_invoice ON true` : "";
+  const supplierCode = includeSupplierAccount ? "supplier_invoice.supplier_account_code" : "NULL::text";
+  const supplierName = includeSupplierAccount ? "supplier_invoice.supplier_account_name" : "NULL::text";
   const rows = await client.query(
-    `${cte} SELECT f.*,f.document_date::text AS date_text,${counterpartSelect} AS counterpart_accounts FROM full_ledger f ${counterpartJoin} WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
+    `${cte} SELECT f.*,f.document_date::text AS date_text,${counterpartSelect} AS counterpart_accounts,${supplierCode} AS supplier_account_code,${supplierName} AS supplier_account_name FROM full_ledger f ${counterpartJoin} ${supplierJoin} WHERE ${filter} ORDER BY ${query.order} LIMIT $6 OFFSET $7`,
     [...params, query.pageSize, query.offset],
   );
   const items: AccountLedgerLine[] = rows.rows.map((row) => ({
@@ -329,6 +344,8 @@ export async function readAccountLedger(
     baseCredit: normalizeRate(row.base_credit),
     runningBalance: moneyString(moneyUnits(row.running_balance)),
     counterpartAccounts: row.counterpart_accounts,
+    supplierAccountCode: row.supplier_account_code ?? null,
+    supplierAccountName: row.supplier_account_name ?? null,
     reversesDocumentId: row.reverses_document_id,
   }));
   const settings = await client.query(
