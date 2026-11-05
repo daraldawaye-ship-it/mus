@@ -1707,7 +1707,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : today;
   const accountId = Number(params.get("accountId")) || 0;
   const showSupplierAccount = !pledge && params.get("showSupplierAccount") === "1";
-  const [selected, setSelected] = useState<Account | null>(null);
+  const [selected, setSelected] = useState<PickAccount | null>(null);
   const query = new URLSearchParams();
   query.set("accountId", String(accountId));
   query.set("dateFrom", dateFrom);
