@@ -220,13 +220,15 @@ function InvoiceList({
   // distinguishes explicitly viewing history from an initial date-free URL.
   const allDates = params.get("allDates") === "1";
   const defaultToday = !allDates &&
-    !params.has("dateFrom") && !params.has("dateTo");
+    !params.has("dateFrom") && !params.has("dateTo") &&
+    // Searching an older invoice must not silently restrict results to today.
+    !["q","supplierQ","payerQ","amountFrom","amountTo"].some(key=>!!params.get(key));
   const dateFrom = params.get("dateFrom") ?? (defaultToday ? today() : "");
   const dateTo = params.get("dateTo") ?? (defaultToday ? today() : "");
   const filters = new URLSearchParams({ kind });
   if (dateFrom) filters.set("dateFrom", dateFrom);
   if (dateTo) filters.set("dateTo", dateTo);
-  for (const key of ["branchId", "locationId", "supplierQ", "payerQ"])
+  for (const key of ["branchId", "locationId", "supplierQ", "payerQ", "amountFrom", "amountTo"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const list = usePagedQuery<Invoice>(
     `/companies/${companyId}/invoices?${filters}`,
@@ -466,7 +468,9 @@ function InvoiceList({
             type="search"
             value={list.query}
             onChange={(event) => list.setQuery(event.target.value)}
-            placeholder="الرقم أو البيان"
+            placeholder={kind==="sale"
+              ?"رقم الفاتورة أو العميل أو الطبيب أو الملاحظات أو الحساب"
+              :"رقم الفاتورة أو المورد أو الحساب أو الملاحظات"}
           />
           {kind === "purchase" && (
             <>
@@ -486,6 +490,20 @@ function InvoiceList({
               />
             </>
           )}
+          <Field
+            label="مبلغ الفاتورة من"
+            money inputMode="decimal"
+            value={params.get("amountFrom")??""}
+            onChange={event=>filter(setParams,"amountFrom",normalizeDigits(event.target.value))}
+            placeholder="أقل صافي"
+          />
+          <Field
+            label="مبلغ الفاتورة إلى"
+            money inputMode="decimal"
+            value={params.get("amountTo")??""}
+            onChange={event=>filter(setParams,"amountTo",normalizeDigits(event.target.value))}
+            placeholder="أعلى صافي"
+          />
           <Field
             label="من تاريخ"
             type="date"
