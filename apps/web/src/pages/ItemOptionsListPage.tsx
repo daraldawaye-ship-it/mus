@@ -120,6 +120,20 @@ const sortOptions = [
   ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
+const tableColumnOptions = [["choice","اختيار"],["name","اسم الصنف"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+type TableColumn = (typeof tableColumnOptions)[number][0];
+const allTableColumns = tableColumnOptions.map(([id]) => id);
+function readVisibleTableColumns(key: string): TableColumn[] {
+  if (typeof window === "undefined") return allTableColumns;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return allTableColumns;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return allTableColumns;
+    const valid = allTableColumns.filter(id => parsed.includes(id));
+    return valid.length ? valid : allTableColumns;
+  } catch { return allTableColumns; }
+}
 export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -132,6 +146,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+  const columnsStorageKey = `alraesy:item-options-columns:v1:${companyId}:${user?.id ?? "guest"}`;
+  const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
+  const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
+  const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const directory = usePageDirectory(companyId);
   const itemListPage = directory.data?.find(row => row.key === "company.item-options-list");
   const canView = !!itemListPage?.enabled && !!itemListPage.actionAccess.view;
@@ -161,6 +179,25 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const presets = presetsQuery.data?.items ?? [];
   const selectedPreset = presets.find(row => String(row.id) === selectedPresetId);
   const canDeletePresets = Boolean(user?.owner || canEditReserve);
+  useEffect(() => {
+    const next = readVisibleTableColumns(columnsStorageKey);
+    setVisibleColumns(next);
+    setEditingColumns(next);
+    setColumnsDialogOpen(false);
+  }, [columnsStorageKey]);
+  const hiddenColumnStyle = (column: string) =>
+    visibleColumns.includes(column as TableColumn) ? undefined : { display: "none" as const };
+  const openColumnsDialog = () => {
+    setEditingColumns([...visibleColumns]);
+    setColumnsDialogOpen(true);
+  };
+  const applyColumns = () => {
+    if (!editingColumns.length) return;
+    setVisibleColumns(editingColumns);
+    try { window.localStorage.setItem(columnsStorageKey, JSON.stringify(editingColumns)); }
+    catch { /* Private mode may disable local storage. */ }
+    setColumnsDialogOpen(false);
+  };
 
   const paramsKey = params.toString();
   useEffect(() => {
@@ -507,7 +544,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   }
   function sortHeader(column: SortColumn, label: string) {
     const selected = activeSort === column;
-    return <th key={column} aria-sort={selected
+    return <th key={column} style={hiddenColumnStyle(column)} aria-sort={selected
       ? (activeDirection === "asc" ? "ascending" : "descending") : "none"}>
       <button className="sort-button" type="button"
         onClick={() => sortByColumn(column)}
@@ -750,20 +787,57 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {activeDirection === "asc" ? "▲ تصاعدي" : "▼ تنازلي"}
           </Button>
         </div>
+        <Button type="button" variant="secondary" onClick={openColumnsDialog}>
+          الأعمدة ({visibleColumns.length}/{tableColumnOptions.length})
+        </Button>
         <Select label="الأصناف في الصفحة" value={String(pageSize)}
           onChange={event => change("pageSize", event.target.value)}>
           <option value="20">20</option><option value="50">50</option><option value="100">100</option>
         </Select>
       </div>
+      {columnsDialogOpen && <div role="presentation" style={{
+        position: "fixed", inset: 0, zIndex: 1200, display: "flex",
+        alignItems: "center", justifyContent: "center", padding: 12,
+        background: "rgba(0, 0, 0, 0.6)"
+      }} onMouseDown={event => {
+        if (event.target === event.currentTarget) setColumnsDialogOpen(false);
+      }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="item-options-columns-heading"
+          onKeyDown={event => { if (event.key === "Escape") setColumnsDialogOpen(false); }}
+          style={{
+            background: "var(--card-bg, var(--panel, #1c2a36))",
+            color: "inherit", border: "1px solid var(--border, #506070)",
+            borderRadius: 12, padding: 16, width: "min(480px, 100%)",
+            maxHeight: "min(85vh, 740px)", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)"
+          }}>
+          <h3 id="item-options-columns-heading" style={{ marginTop: 0 }}>الأعمدة الظاهرة</h3>
+          <p className="muted">ضع علامة صح على الأعمدة المطلوبة ثم اضغط «موافق». تُحفظ اختياراتك على هذا الجهاز.</p>
+          <div style={{ display: "grid", gap: 10, marginBlock: 16 }}>
+            {tableColumnOptions.map(([key, label]) => <label key={key}
+              style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={editingColumns.includes(key)}
+                onChange={event => setEditingColumns(previous =>
+                  event.target.checked ? [...previous, key] : previous.filter(id => id !== key))} />
+              <span>{label}</span>
+            </label>)}
+          </div>
+          {!editingColumns.length && <Notice tone="warning">اختر عمودًا واحدًا على الأقل.</Notice>}
+          <div className="form-actions">
+            <Button variant="secondary" onClick={() => setEditingColumns([...allTableColumns])}>إظهار الكل</Button>
+            <Button variant="secondary" onClick={() => setColumnsDialogOpen(false)}>إلغاء</Button>
+            <Button disabled={!editingColumns.length} onClick={applyColumns}>موافق</Button>
+          </div>
+        </div>
+      </div>}
       {resultQuery.isPending && canView && <Notice>جارٍ تحميل الأصناف المطابقة…</Notice>}
       {result && <>
         <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
           {result.rows.map(row => <article key={row.itemId} className={`item-options-mobile-entry${selectedIds.has(row.itemId) ? " item-options-chosen-row" : ""}`}
             role="listitem" onClick={() => rememberItem(row)}>
             <div className="item-options-mobile-heading">
-              <Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
-              {!row.active && <span className="item-options-mobile-inactive"> (مؤرشف)</span>}
-              <label className="item-options-mobile-select">
+              <Link style={hiddenColumnStyle("name")} to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>
+              {!row.active && <span style={hiddenColumnStyle("name")} className="item-options-mobile-inactive"> (مؤرشف)</span>}
+              <label className="item-options-mobile-select" style={hiddenColumnStyle("choice")}>
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
                   disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
@@ -772,55 +846,55 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("stock")} className="item-options-mobile-stat">
                 <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
               </div>
-              <div className="item-options-mobile-stat item-options-reserve-stat">
+              <div style={hiddenColumnStyle("reserve")} className="item-options-mobile-stat item-options-reserve-stat">
                 <span>كمية احتياط</span>
                 <ItemReserveQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId}
                   revision={row.revision} reserveQuantity={row.reserveQuantity}
                   canEdit={canEditReserve} />
               </div>
-              <div className="item-options-mobile-stat item-options-reserve-stat">
+              <div style={hiddenColumnStyle("purchaseFactor")} className="item-options-mobile-stat item-options-reserve-stat">
                 <span>عامل وحدة الشراء</span>
                 <ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId}
                   revision={row.revision} purchaseFactor={row.purchaseFactor}
                   canEdit={canEditReserve} />
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-mobile-stat">
                 <span>كمية مباعة في شهر (الوحدة الأولى)</span><bdi>{row.saleQuantityMonth}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("fourMonths")} className="item-options-mobile-stat">
                 <span>4 أشهر</span><bdi>{row.saleTimesFourMonths}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("allTime")} className="item-options-mobile-stat">
                 <span>منذ البداية</span><bdi>{row.saleTimesAllTime}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("previousYear")} className="item-options-mobile-stat">
                 <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-mobile-stat">
                 <span>الكمية المطلوبة (الوحدة الأولى)</span><bdi>{row.requiredPurchaseQuantity}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("purchasePrice")} className="item-options-mobile-stat">
                 <span>سعر الشراء الافتراضي (الوحدة الأولى)</span><bdi>{row.purchasePrice} {row.purchaseCurrencyCode}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-mobile-stat">
                 <span>قيمة المطلوب</span><bdi>{row.requiredPurchaseValue} {row.purchaseCurrencyCode}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("coverage")} className="item-options-mobile-stat">
                 <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("coverageWithRequired")} className="item-options-mobile-stat">
                 <span>الكفاية مع المطلوب/يوم</span><bdi>{row.coverageWithRequiredDays}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("reserveCoverage")} className="item-options-mobile-stat">
                 <span>كفاية الاحتياط/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
               </div>
-              <div className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-mobile-stat">
                 <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
               </div>
             </div>
@@ -831,26 +905,26 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           aria-label="نتائج الأصناف حسب الخيارات">
         <table>
           <colgroup>
-            <col className="item-options-choice-col" />
-            <col className="item-options-name-col" />
-            <col className="item-options-stock-col" />
-            <col className="item-options-reserve-col" />
-            <col className="item-options-purchase-factor-col" />
-            <col className="item-options-month-times-col" />
-            <col className="item-options-month-quantity-col" />
-            <col className="item-options-four-months-col" />
-            <col className="item-options-all-time-col" />
-            <col className="item-options-previous-year-col" />
-            <col className="item-options-required-quantity-col" />
-            <col className="item-options-purchase-price-col" />
-            <col className="item-options-required-value-col" />
-            <col className="item-options-coverage-col" />
-            <col className="item-options-coverage-with-required-col" />
-            <col className="item-options-reserve-coverage-col" />
-            <col className="item-options-factor-coverage-col" />
+            <col style={hiddenColumnStyle("choice")} className="item-options-choice-col" />
+            <col style={hiddenColumnStyle("name")} className="item-options-name-col" />
+            <col style={hiddenColumnStyle("stock")} className="item-options-stock-col" />
+            <col style={hiddenColumnStyle("reserve")} className="item-options-reserve-col" />
+            <col style={hiddenColumnStyle("purchaseFactor")} className="item-options-purchase-factor-col" />
+            <col style={hiddenColumnStyle("month")} className="item-options-month-times-col" />
+            <col style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-month-quantity-col" />
+            <col style={hiddenColumnStyle("fourMonths")} className="item-options-four-months-col" />
+            <col style={hiddenColumnStyle("allTime")} className="item-options-all-time-col" />
+            <col style={hiddenColumnStyle("previousYear")} className="item-options-previous-year-col" />
+            <col style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-required-quantity-col" />
+            <col style={hiddenColumnStyle("purchasePrice")} className="item-options-purchase-price-col" />
+            <col style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-required-value-col" />
+            <col style={hiddenColumnStyle("coverage")} className="item-options-coverage-col" />
+            <col style={hiddenColumnStyle("coverageWithRequired")} className="item-options-coverage-with-required-col" />
+            <col style={hiddenColumnStyle("reserveCoverage")} className="item-options-reserve-coverage-col" />
+            <col style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-factor-coverage-col" />
           </colgroup>
           <thead><tr>
-            <th scope="col" className="item-options-choice-cell">اختيار</th>
+            <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
             {sortHeader("reserve", "كمية احتياط")}
@@ -872,35 +946,35 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {result.rows.map(row => <tr key={row.itemId}
               className={selectedIds.has(row.itemId) ? "item-options-chosen-row" : undefined}
               onClick={() => rememberItem(row)}>
-              <td className="item-options-choice-cell"><label className="item-options-table-choice">
+              <td style={hiddenColumnStyle("choice")} className="item-options-choice-cell"><label className="item-options-table-choice">
                 <input type="checkbox" aria-label={`اختيار الصنف ${row.name}`}
                   checked={selectedIds.has(row.itemId)}
                   disabled={!temporarySelection.enabled || temporarySelection.pendingIds.has(row.itemId)}
                   onChange={event => void temporarySelection.toggle(
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
               </label></td>
-              <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
-              <td><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
-              <td><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
+              <td style={hiddenColumnStyle("name")}><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
+              <td style={hiddenColumnStyle("stock")}><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
+              <td style={hiddenColumnStyle("reserve")}><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
                 reserveQuantity={row.reserveQuantity} canEdit={canEditReserve} /></td>
-               <td><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
+               <td style={hiddenColumnStyle("purchaseFactor")}><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
                  itemId={row.itemId} revision={row.revision}
                  purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
-              <td><bdi>{row.saleTimesMonth}</bdi></td>
-              <td><bdi>{row.saleQuantityMonth}</bdi></td>
-              <td><bdi>{row.saleTimesFourMonths}</bdi></td>
-              <td><bdi>{row.saleTimesAllTime}</bdi></td>
-              <td><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
-              <td><bdi>{row.requiredPurchaseQuantity}</bdi></td>
-              <td><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
-              <td><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
-              <td><bdi>{coverage(row) ?? "—"}</bdi></td>
-              <td><bdi>{row.coverageWithRequiredDays}</bdi></td>
-               <td><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
-               <td><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
+              <td style={hiddenColumnStyle("saleQuantityMonth")}><bdi>{row.saleQuantityMonth}</bdi></td>
+              <td style={hiddenColumnStyle("fourMonths")}><bdi>{row.saleTimesFourMonths}</bdi></td>
+              <td style={hiddenColumnStyle("allTime")}><bdi>{row.saleTimesAllTime}</bdi></td>
+              <td style={hiddenColumnStyle("previousYear")}><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("requiredPurchaseQuantity")}><bdi>{row.requiredPurchaseQuantity}</bdi></td>
+              <td style={hiddenColumnStyle("purchasePrice")}><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
+              <td style={hiddenColumnStyle("requiredPurchaseValue")}><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
+              <td style={hiddenColumnStyle("coverage")}><bdi>{coverage(row) ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("coverageWithRequired")}><bdi>{row.coverageWithRequiredDays}</bdi></td>
+               <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
+               <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
             </tr>)}
-            {!result.rows.length && <tr><td colSpan={17}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
+            {!result.rows.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
         </table>
         </div>
