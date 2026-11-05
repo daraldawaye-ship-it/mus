@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Pool } from "pg";
-import { doctorInputSchema, doctorPatchSchema, type Doctor } from "../../../packages/contracts/src/index.ts";
+import { doctorInputSchema, doctorPatchSchema, effectiveDoctorSharedName, type Doctor } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -10,7 +10,8 @@ import { HttpError, missing } from "./errors.ts";
 
 function dto(row: any): Doctor {
   return {
-    id: row.id, companyId: row.company_id, name: row.name, kind: row.kind,
+    id: row.id, companyId: row.company_id, name: row.name,
+    sharedName: effectiveDoctorSharedName(row.name, row.shared_name), kind: row.kind,
     department: row.department, phone: row.phone, searchKeys: row.search_keys,
     notes: row.notes, active: row.active, revision: row.revision,
   };
@@ -29,6 +30,8 @@ export function doctorRoutes(pool: Pool): Router {
     const sort = String(req.query.sort ?? "name:asc");
     const sorts: Record<string,string> = {
       "name:asc":"name ASC,id ASC","name:desc":"name DESC,id DESC",
+      "sharedName:asc":"shared_name ASC,name ASC,id ASC",
+      "sharedName:desc":"shared_name DESC,name ASC,id ASC",
       "kind:asc":"kind ASC,name ASC,id ASC","kind:desc":"kind DESC,name ASC,id ASC",
       "department:asc":"department ASC,name ASC,id ASC","department:desc":"department DESC,name ASC,id ASC",
       "active:asc":"active ASC,name ASC,id ASC","active:desc":"active DESC,name ASC,id ASC",
@@ -38,7 +41,7 @@ export function doctorRoutes(pool: Pool): Router {
     const rows = await pool.query(
       `SELECT *,count(*) OVER()::int AS total FROM doctors
         WHERE company_id=$1 AND ($2::boolean IS NULL OR active=$2)
-        AND ($3::text='' OR name ILIKE $4 OR department ILIKE $4 OR phone ILIKE $4 OR search_keys ILIKE $4 OR notes ILIKE $4)
+        AND ($3::text='' OR name ILIKE $4 OR shared_name ILIKE $4 OR department ILIKE $4 OR phone ILIKE $4 OR search_keys ILIKE $4 OR notes ILIKE $4)
         ORDER BY ${sorts[sort]} LIMIT $5 OFFSET $6`,
       [companyId, active===undefined?null:active==="true", query, "%" + query.replace(/[\\%_]/g,"\\$&") + "%",
        pageSize, (page-1)*pageSize],
@@ -65,9 +68,9 @@ export function doctorRoutes(pool: Pool): Router {
     const input=parse(doctorInputSchema,req.body);
     const doctor=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
       const result=await client.query(
-        `INSERT INTO doctors(company_id,name,kind,department,phone,search_keys,notes,active,created_by)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [companyId,input.name,input.kind,input.department,input.phone,input.searchKeys,input.notes,input.active,user.id]);
+        `INSERT INTO doctors(company_id,name,shared_name,kind,department,phone,search_keys,notes,active,created_by)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [companyId,input.name,effectiveDoctorSharedName(input.name,input.sharedName),input.kind,input.department,input.phone,input.searchKeys,input.notes,input.active,user.id]);
       const record=dto(result.rows[0]);
       await audit(client,user,"doctor.create","doctor",record.id,null,record,companyId);
       return record;
@@ -80,11 +83,14 @@ export function doctorRoutes(pool: Pool): Router {
       const old=await client.query("SELECT * FROM doctors WHERE company_id=$1 AND id=$2 FOR UPDATE",[companyId,doctorId]);
       if(!old.rows[0])missing();
       if(old.rows[0].revision!==input.revision)conflict("تم تعديل كرت الطبيب من مكان آخر؛ أعد تحميله");
+      const sharedName = input.sharedName === undefined
+        ? effectiveDoctorSharedName(old.rows[0].name, old.rows[0].shared_name)
+        : effectiveDoctorSharedName(input.name, input.sharedName);
       const result=await client.query(
-        `UPDATE doctors SET name=$1,kind=$2,department=$3,phone=$4,search_keys=$5,
-           notes=$6,active=$7,revision=revision+1,updated_at=clock_timestamp()
-           WHERE company_id=$8 AND id=$9 RETURNING *`,
-        [input.name,input.kind,input.department,input.phone,input.searchKeys,input.notes,input.active,companyId,doctorId]);
+        `UPDATE doctors SET name=$1,shared_name=$2,kind=$3,department=$4,phone=$5,search_keys=$6,
+           notes=$7,active=$8,revision=revision+1,updated_at=clock_timestamp()
+           WHERE company_id=$9 AND id=$10 RETURNING *`,
+        [input.name,sharedName,input.kind,input.department,input.phone,input.searchKeys,input.notes,input.active,companyId,doctorId]);
       const updated=dto(result.rows[0]);
       // Completion is shared by all review recipients, including the owner.
       if (updated.kind !== null || !updated.active) {
