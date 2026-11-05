@@ -127,7 +127,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
                           <td><bdi>{dayText(row.documentDate)}</bdi></td>
                           <td>{row.itemName}</td>
                           <td className="invoice-side-movement-numeric"><bdi>{quantityText(row.quantity)}</bdi></td>
-                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.gross)}</bdi></td>
+                          <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.invoiceGross)}</bdi></td>
                           <td className="invoice-side-movement-numeric"><bdi>{formatWholeMoney(row.discount)}</bdi></td>
                         </tr>
                         <tr className="invoice-side-movement-secondary">
