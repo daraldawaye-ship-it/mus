@@ -254,6 +254,7 @@ export function itemRoutes(pool: Pool): Router {
         const where=`FROM items i
           JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id
           WHERE i.company_id=$1
+          AND i.active AND f.active
           AND ($2='' OR i.name ILIKE '%'||$2||'%' OR i.english_name ILIKE '%'||$2||'%'
              OR f.arabic_name ILIKE '%'||$2||'%' OR f.english_name ILIKE '%'||$2||'%'
               OR i.product_form ILIKE '%'||$2||'%' OR f.product_form ILIKE '%'||$2||'%')
