@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
-  doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,
+  doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,isMainDoctorCard,
   type Doctor,type DoctorKind,type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import { api,usePagedQuery,useScopeGuard } from "../api";
@@ -16,6 +16,7 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
   const companyId=context.company.id;
   const guard=useScopeGuard(`company:${companyId}:doctor:${doctor?.id??"new"}`);
   const [name,setName]=useState(doctor?.name??"");
+  const [sharedName,setSharedName]=useState(doctor?.sharedName??doctor?.name??"");
   const [kind,setKind]=useState<DoctorKind|"">(doctor?.kind??(doctor?"":"doctor"));
   const [department,setDepartment]=useState(doctor?.department??"");
   const [phone,setPhone]=useState(doctor?.phone??"");
@@ -31,7 +32,7 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
   async function save(event:FormEvent) {
     event.preventDefault();
     if(saving)return;
-    const data = {name,kind:kind||null,department,phone,searchKeys,notes,active};
+    const data = {name,sharedName:sharedName.trim()||name.trim(),kind:kind||null,department,phone,searchKeys,notes,active};
     // The revision must be included BEFORE validating an existing card.
     const parsed = doctor
       ? doctorPatchSchema.safeParse({...data,revision:doctor.revision})
@@ -54,7 +55,16 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
     <form className="form-stack" onSubmit={event=>void save(event)}>
       {error&&<Notice tone="error">{error}</Notice>}
       <Field label="اسم الطبيب أو الجهة" value={name} autoFocus required maxLength={240}
-        disabled={saving} onChange={event=>setName(event.target.value)}/>
+        disabled={saving} onChange={event=>{
+          if(!sharedName.trim()||sharedName===name)setSharedName(event.target.value);
+          setName(event.target.value);
+        }}/>
+      <Field label="الاسم المشترك" value={sharedName} maxLength={240}
+        disabled={saving} onChange={event=>setSharedName(event.target.value)}
+        placeholder="اكتب الاسم الرئيسي الذي يجمع الكروت المرتبطة"/>
+      <small>{isMainDoctorCard(name,sharedName)
+        ? "هذا كرت رئيسي لأن الاسم يساوي الاسم المشترك."
+        : "هذا الكرت مرتبط بالاسم المشترك؛ الكرت المطابق له في الاسم هو الرئيسي."}</small>
       <Select label="الفئة" value={kind} disabled={saving}
         onChange={event=>setKind(event.target.value as DoctorKind|"")}>
         <option value="" disabled={!doctor}>بدون فئة — يحتاج مراجعة</option>
@@ -122,6 +132,9 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   }
   const columns:ColumnDef<Doctor,unknown>[]=[
     {accessorKey:"name",header:"اسم الطبيب أو الجهة",cell:({row})=><ValueCell>{row.original.name}</ValueCell>},
+    {accessorKey:"sharedName",header:"الاسم المشترك",cell:({row})=><ValueCell>
+      {row.original.sharedName||row.original.name}{isMainDoctorCard(row.original.name,row.original.sharedName)?" (رئيسي)":""}
+    </ValueCell>},
     {accessorKey:"kind",header:"الفئة",cell:({row})=>row.original.kind ? doctorKindLabels[row.original.kind] : "بدون فئة — مراجعة"},
     {accessorKey:"department",header:"الجهة",cell:({row})=><ValueCell>{row.original.department||"—"}</ValueCell>},
     {accessorKey:"phone",header:"رقم الهاتف",enableSorting:false,cell:({row})=><ValueCell>{row.original.phone||"—"}</ValueCell>},
@@ -143,7 +156,7 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
       <div className="table-filters">
         <Field label="بحث" type="search" value={list.query}
           onChange={event=>list.setQuery(event.target.value)}
-          placeholder="الاسم، الجهة، الهاتف، المفاتيح، الملاحظات"/>
+          placeholder="الاسم، الاسم المشترك، الجهة، الهاتف، المفاتيح، الملاحظات"/>
         <Select label="الحالة" value={activeFilter}
           onChange={event=>setParams(prev=>{const next=new URLSearchParams(prev);next.set("active",event.target.value);next.delete("page");return next;})}>
           <option value="true">فعّال</option>
