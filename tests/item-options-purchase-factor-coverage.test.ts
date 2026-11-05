@@ -398,7 +398,7 @@ test("bulk order draft saves exactly the first-unit required column, and prints 
   assert.match(page,/item\.requiredQuantity \?\? "—"/);
   assert.match(page,/printMode !== "selected"/);
   assert.match(page,/className="item-options-print-quantity"/);
-  assert.match(page,/requiredQuantity: "requiredQuantity" in item/);
+  assert.match(page,/requiredQuantity: savedRequiredQuantity\(item\)/);
   assert.match(pdf,/quantityWidth/);
   assert.match(pdf,/right - quantityWidth/);
   assert.match(css,/\.item-options-print-row \.item-options-print-quantity/);
