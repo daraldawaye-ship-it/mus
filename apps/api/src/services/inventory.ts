@@ -258,7 +258,9 @@ export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_tex
   COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) AS effective_supplier_account_name,
   supplier_hint.inference_source AS supplier_inference_source,
   doctor_invoice.doctor_id AS referral_doctor_id,
-  doctor_invoice.doctor_name AS referral_doctor_name ${stockMovementFrom}`;
+  doctor_invoice.doctor_name AS referral_doctor_name,
+  doctor_invoice.total AS linked_invoice_total,
+  doctor_invoice.currency_code AS linked_invoice_currency_code ${stockMovementFrom}`;
 export function stockMovementDTO(row: QueryResultRow): StockMovement {
   return {
     id: row.id,
@@ -282,6 +284,9 @@ export function stockMovementDTO(row: QueryResultRow): StockMovement {
     kind: row.kind,
     documentDate: row.date_text,
     invoiceId: row.invoice_id,
+    invoiceTotal: row.linked_invoice_total === null || row.linked_invoice_total === undefined
+      ? null : normalizeRate(row.linked_invoice_total),
+    invoiceCurrencyCode: row.linked_invoice_currency_code ?? null,
     invoiceLineId: row.invoice_line_id,
     originalMovementId: row.original_movement_id,
     operationId: row.operation_id,
