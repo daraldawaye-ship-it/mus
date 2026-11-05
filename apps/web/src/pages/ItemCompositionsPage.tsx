@@ -57,11 +57,9 @@ export function ItemCompositionsPage({context}: {context: CompanyContext}) {
     return ()=>{cancelled=true;};
   },[companyId,editId,setParams]);
   const columns=useMemo<ColumnDef<ItemComposition,unknown>[]>(()=>[
-    {accessorKey:"arabicName",header:"الاسم العربي",size:210,
+    {accessorKey:"arabicName",header:"اسم التركيب",size:260,
       cell:({row})=><ValueCell>{row.original.arabicName}</ValueCell>},
     {accessorKey:"productForm",header:"الشكل",size:100},
-    {accessorKey:"englishName",header:"الاسم الإنجليزي",size:210,
-      cell:({row})=><ValueCell>{row.original.englishName}</ValueCell>},
     {accessorKey:"description",header:"الشرح",size:260,
       cell:({row})=><ValueCell>{row.original.description||"—"}</ValueCell>},
     {accessorKey:"identicalAlternative",header:"البديل مطابق",size:120,
@@ -414,9 +412,11 @@ function CompositionEditor({
     event.preventDefault();
     if(!canManage||saving)return;
     setError("");
+    // Single visible name; legacy englishName stays synchronized for API compatibility.
+    const payload={...form,englishName:form.arabicName};
     const result=record
-      ? itemCompositionPatchSchema.safeParse({...form,revision})
-      : itemCompositionSchema.safeParse(unknown?submitted.current:{...form,idempotencyKey:key});
+      ? itemCompositionPatchSchema.safeParse({...payload,revision})
+      : itemCompositionSchema.safeParse(unknown?submitted.current:{...payload,idempotencyKey:key});
     if(!result.success){setError(result.error.issues[0]?.message??"تحقق من الحقول");return}
     if(!record)submitted.current=result.data as ItemCompositionInput;
     setSaving(true);
@@ -444,10 +444,8 @@ function CompositionEditor({
         {unknown&&<Notice tone="warning">نتيجة الحفظ غير مؤكدة؛ أعد تأكيد الطلب نفسه لتجنب تكرار التركيب.</Notice>}
         {conflict&&<Notice tone="warning">عدّل مستخدم آخر هذا الكرت.
           <Button variant="secondary" onClick={()=>void reload()}>تحميل النسخة الحالية</Button></Notice>}
-        <Field label="الاسم بالعربي" value={form.arabicName} required maxLength={240}
-          disabled={disabled} onChange={e=>set("arabicName",e.target.value)}/>
-        <Field label="الاسم بالإنجليزي" value={form.englishName} required maxLength={240}
-          disabled={disabled} dir="ltr" onChange={e=>set("englishName",e.target.value)}/>
+        <Field label="اسم التركيب (بالإنجليزية)" value={form.arabicName} required maxLength={240}
+          disabled={disabled} dir="ltr" onChange={e=>set("arabicName",e.target.value)}/>
         <Select label="شكل التركيب" value={form.productForm}
           disabled={disabled} onChange={e=>set("productForm",e.target.value as ProductForm)}>
           {productForms.map(value=><option key={value} value={value}>{value}</option>)}
