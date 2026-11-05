@@ -9,6 +9,7 @@ import {
   accountLinkSchema,
   accountPatchSchema,
   accountSchema,
+  invoiceQuickAccountSchema,
   emptyInitializeSchema,
   type Account,
   type AccountCategory,
@@ -155,6 +156,37 @@ async function insertAccount(
     await masterRow(client, accountSelect, "a", companyId, result.rows[0].id),
   );
 }
+/**
+ * Invoice-side quick account creation: no caller-chosen code, parent, flags
+ * or financial classifications. Only approved choices can reach this helper.
+ */
+export async function createInvoiceQuickAccount(
+  client: PoolClient, user: User, companyId: number,
+  input: ReturnType<typeof invoiceQuickAccountSchema.parse>,
+): Promise<Account> {
+  const expense = input.accountChoice === "expense";
+  const category = expense ? "expense" : "asset";
+  const parentCode = expense ? "5000000000" : "1120000000";
+  const parent = await client.query(
+    `SELECT id,kind,category,active FROM accounts
+       WHERE company_id=$1 AND code=$2 FOR SHARE`,
+    [companyId,parentCode],
+  );
+  if (!parent.rows[0] || parent.rows[0].kind!=="group" ||
+      parent.rows[0].category!==category || !parent.rows[0].active)
+    conflict("مجموعة الحسابات المطلوبة غير مهيأة أو غير فعالة لهذه الشركة");
+  const parentId = Number(parent.rows[0].id);
+  // Serialize quick additions within the same company/parent to prevent two
+  // active cashiers from generating the same automatic account code.
+  await client.query("SELECT pg_advisory_xact_lock($1::integer,$2::integer)",[companyId,parentId]);
+  const account=await insertAccount(client,user,companyId,accountSchema.parse({
+    name:input.name,accountChoice:input.accountChoice,
+    parentId,kind:"posting",category,active:true,cashOrBank:false,
+  }));
+  await audit(client,user,"account.create","account",account.id,null,account,companyId);
+  return account;
+}
+
 interface Seed {
   code: string;
   name: string;
