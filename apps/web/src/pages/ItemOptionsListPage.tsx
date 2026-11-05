@@ -421,6 +421,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       excludeOrderStopped: draft.excludeOrderStopped,
       excludeOrderDrafts: draft.excludeOrderDrafts,
       useReserve: draft.useReserve,
+      visibleColumns: [...visibleColumns],
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
     if (!result.success) {
@@ -446,7 +447,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       });
       setPresetName("");
       setSelectedPresetId(String(result.item.id));
-      setPresetMessage({tone:"success",text:`حُفظ الفلتر «${result.item.name}» وأصبح متاحًا لجميع مستخدمي الشركة.`});
+      setPresetMessage({tone:"success",text:`حُفظت الخيارات والأعمدة المحددة في «${result.item.name}» وأصبحت متاحة لجميع مستخدمي الشركة.`});
       await presetsQuery.refetch();
     } catch(cause) {
       setPresetMessage({tone:"error",text:errorMessage(cause)});
@@ -460,6 +461,17 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     }
     const values = filters.data;
     void runFilterApplication(() => {
+    // Older saved presets have no columns: retain the viewer's current selection.
+    if (values.visibleColumns?.length) {
+      const restoredColumns = allTableColumns.filter(id => values.visibleColumns?.includes(id));
+      if (restoredColumns.length) {
+        setVisibleColumns(restoredColumns);
+        setEditingColumns(restoredColumns);
+        setColumnsDialogOpen(false);
+        try { window.localStorage.setItem(columnsStorageKey, JSON.stringify(restoredColumns)); }
+        catch { /* Private mode may disable local storage. */ }
+      }
+    }
     const next = new URLSearchParams();
     next.set("active",values.active);
     next.set("sortBy",values.sortBy);
@@ -474,20 +486,20 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setDraft(readDraft(next));
     setSearch(values.q);
     setFilterError("");
-    setPresetMessage(null);
+    setPresetMessage({tone:"success",text:`استُعيدت خيارات «${preset.name}»${values.visibleColumns ? " وأعمدتها المحددة" : ""}.`});
     setOptionsCollapsed(false);
     setParams(next);
     });
   }
   async function deletePreset(preset: ItemOptionsPreset) {
     if (!canDeletePresets || presetBusy) return;
-    if (!window.confirm(`هل تريد حذف الفلتر المشترك «${preset.name}» من الشركة للجميع؟`)) return;
+    if (!window.confirm(`هل تريد حذف مجموعة الخيارات والأعمدة «${preset.name}» من الشركة للجميع؟`)) return;
     setPresetBusy(true);
     setPresetMessage(null);
     try {
       await api(`${presetBase}/${preset.id}`,{method:"DELETE",body:{}});
       setSelectedPresetId("");
-      setPresetMessage({tone:"success",text:`حُذف الفلتر «${preset.name}» من القوائم المشتركة.`});
+      setPresetMessage({tone:"success",text:`حُذفت مجموعة «${preset.name}» من القوائم المشتركة.`});
       await presetsQuery.refetch();
     } catch(cause) {
       setPresetMessage({tone:"error",text:errorMessage(cause)});
@@ -662,19 +674,19 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       </form>
     </Card>}
     {canEditReserve && <p className="muted">تُطبّق الخيارات تلقائيًا بعد التعديل، ويُصفَّر الاختيار المؤقت المشترك عند اعتماد الفلتر، دون حذف مسودات الطلبيات.</p>}
-    {canView && <Card title="الفلاتر المحفوظة للجميع" className="item-options-presets-card">
-      <p className="muted">أي موظف يستطيع حفظ مجموعة فلاتر باسم، ويستطيع جميع مستخدمي الشركة استدعاءها من أي جهاز. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
+    {canView && <Card title="الخيارات والأعمدة المحفوظة للجميع" className="item-options-presets-card">
+      <p className="muted">يمكن حفظ الفلاتر وترتيب النتائج والأعمدة الظاهرة في مجموعة واحدة باسم، واستعادتها من أي جهاز لجميع مستخدمي الشركة. المجموعات القديمة دون إعداد أعمدة تحتفظ بالأعمدة الحالية عند فتحها. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
       <div className="form-actions">
         <label className="item-options-filter-field item-options-preset-field">
-          <span className="item-options-filter-label">الفلاتر المشتركة المحفوظة</span>
-          <select aria-label="الفلاتر المشتركة المحفوظة" value={selectedPresetId}
+          <span className="item-options-filter-label">الخيارات والأعمدة المحفوظة</span>
+          <select aria-label="الخيارات والأعمدة المحفوظة" value={selectedPresetId}
             onChange={event => {
                const id = event.target.value;
                setSelectedPresetId(id);
                const choice = presets.find(preset => String(preset.id) === id);
                if (choice) { cancelAutoFilter(); applyPreset(choice); }
              }}>
-            <option value="">اختر فلترًا محفوظًا</option>
+            <option value="">اختر مجموعة محفوظة</option>
             {presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name}</option>)}
           </select>
         </label>
@@ -684,18 +696,18 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           حذف الفلتر
         </Button>}
         <Button type="button" variant="secondary" disabled={presetsQuery.isFetching}
-          onClick={()=>void presetsQuery.refetch()}>تحديث الفلاتر</Button>
+          onClick={()=>void presetsQuery.refetch()}>تحديث المجموعات</Button>
       </div>
       {selectedPreset && <small className="muted">أضافه: {selectedPreset.createdByName}</small>}
       <form className="form-actions" onSubmit={event=>{event.preventDefault();void savePreset();}}>
         <label className="item-options-filter-field item-options-preset-field">
-          <span className="item-options-filter-label">اسم الفلتر الجديد</span>
+          <span className="item-options-filter-label">اسم المجموعة الجديدة</span>
           <input type="text" required maxLength={80} value={presetName}
             placeholder="مثال: أصناف تحتاج طلبية"
             onChange={event=>setPresetName(event.target.value)} />
         </label>
         <Button type="submit" disabled={presetBusy || !presetName.trim()}>
-          {presetBusy?"جارٍ الحفظ…":"حفظ الخيارات الحالية باسم"}
+          {presetBusy?"جارٍ الحفظ…":"حفظ الخيارات والأعمدة المحددة باسم"}
         </Button>
       </form>
       {presetsQuery.error && <Notice tone="error">{errorMessage(presetsQuery.error)}</Notice>}
