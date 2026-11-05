@@ -7747,6 +7747,31 @@ a.notification-quick-title:hover { text-decoration: underline; }
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* Inline print and customer actions in the second line of each sale movement. */
+.invoice-side-movement-secondary td button.invoice-side-movement-action {
+  display: inline;
+  width: auto;
+  min-height: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--primary);
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.invoice-side-movement-secondary td button.invoice-side-movement-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.invoice-side-movement-secondary td button.invoice-side-movement-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
 .invoice-side-movement-error button {
   padding: 3px 7px;
   color: var(--text);
