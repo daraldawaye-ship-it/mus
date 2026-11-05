@@ -1713,7 +1713,10 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   query.set("accountId", String(accountId));
   query.set("dateFrom", dateFrom);
   query.set("dateTo", dateTo);
-  if (!pledge) query.set("sort", "documentDate:desc,documentId:desc,lineNumber:desc");
+  if (!pledge) {
+    query.set("sort", "documentDate:desc,documentId:desc,lineNumber:desc");
+    query.set("showCounterpart", "1");
+  }
   if (showSupplierAccount) query.set("showSupplierAccount", "1");
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = [10, 20, 50, 100].includes(Number(params.get("pageSize")))
@@ -1744,6 +1747,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       const rows: AccountLedgerLine[] = [];
       for (let printPage = 1; printPage <= Math.ceil(total / 100); printPage++) {
         const printParams = new URLSearchParams(query);
+        printParams.delete("showCounterpart"); // Screen-only column, excluded from printed statement.
         printParams.set("page", String(printPage));
         printParams.set("pageSize", "100");
         const response = await api<Page<AccountLedgerLine>>(
@@ -1774,14 +1778,14 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           accessorKey: "baseDebit",
           header: "مدين",
           enableSorting: false,
-          size: 160,
+          size: 120,
           cell: ({ row }) => money(row.original.baseDebit),
         },
         {
           accessorKey: "baseCredit",
           header: "دائن",
           enableSorting: false,
-          size: 160,
+          size: 120,
           cell: ({ row }) => money(row.original.baseCredit),
         },
         {
@@ -1798,6 +1802,15 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           cell: ({ row }) => <ValueCell>{row.original.description || "—"}</ValueCell>,
         },
         {
+          accessorKey: "kind",
+          header: "النوع",
+          enableSorting: false,
+          cell: ({ row }) =>
+            row.original.reversesDocumentId
+              ? "قيد عكسي"
+              : documentKindLabels[row.original.kind],
+        },
+        {
           accessorKey: "documentNumber",
           header: "المستند",
           enableSorting: false,
@@ -1807,15 +1820,6 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
               {row.original.documentNumber}
             </Link>
           ),
-        },
-        {
-          accessorKey: "kind",
-          header: "النوع",
-          enableSorting: false,
-          cell: ({ row }) =>
-            row.original.reversesDocumentId
-              ? "قيد عكسي"
-              : documentKindLabels[row.original.kind],
         },
         {
           accessorKey: "currencyCode",
@@ -1831,9 +1835,16 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
         size: 240,
         cell: ({ row }) => <ValueCell>{row.original.supplierAccountName || "—"}</ValueCell>,
       });
+      if (!pledge) visible.splice(showSupplierAccount ? 6 : 5, 0, {
+        accessorKey: "counterpartAccounts",
+        header: "الحساب المقابل",
+        enableSorting: false,
+        size: 230,
+        cell: ({ row }) => <ValueCell>{row.original.counterpartAccounts || "—"}</ValueCell>,
+      });
       return visible;
     },
-    [companyId, showSupplierAccount],
+    [companyId, showSupplierAccount, pledge],
   );
   return (
     <div className="ledger-page">
@@ -1939,7 +1950,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       {preparePrint && printQuery.data && (
         <div className="ledger-print-all" aria-label="كشف الحساب الكامل للطباعة">
           <table dir="rtl">
-            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{showSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>المستند</th><th>النوع</th><th>العملة</th></tr></thead>
+            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{showSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>النوع</th><th>المستند</th><th>العملة</th></tr></thead>
             <tbody>{printQuery.data.map((line, index) => (
               <tr key={`${line.documentId}-${line.id}-${index}`}>
                 <td>{balanceText(line.runningBalance)}</td>
@@ -1948,8 +1959,8 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
                 <td>{line.documentDate}</td>
                 {showSupplierAccount && <td>{line.supplierAccountName || "—"}</td>}
                 <td>{line.description}</td>
-                <td>{line.documentNumber}</td>
                 <td>{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}</td>
+                <td>{line.documentNumber}</td>
                 <td>{line.currencyCode}</td>
               </tr>
             ))}</tbody>

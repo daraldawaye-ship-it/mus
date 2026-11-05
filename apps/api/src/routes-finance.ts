@@ -301,7 +301,10 @@ export async function readAccountLedger(
     `${cte} SELECT count(*)::integer AS total FROM full_ledger f WHERE ${filter}`,
     params,
   );
-  const counterpartJoin = ownCashbox ? `LEFT JOIN LATERAL (
+  // Cashbox always needs the opposing accounts; ordinary ledgers request them
+  // for the screen-only column, while statement printing skips this join.
+  const includeCounterpart = ownCashbox || req.query.showCounterpart === "1";
+  const counterpartJoin = includeCounterpart ? `LEFT JOIN LATERAL (
     SELECT string_agg(c.account_name, '، ' ORDER BY c.first_line) AS counterparts
     FROM (
       SELECT l2.account_id, min(l2.line_number) AS first_line,
@@ -312,7 +315,7 @@ export async function readAccountLedger(
       GROUP BY l2.account_id
     ) c
   ) counterpart ON true` : "";
-  const counterpartSelect = ownCashbox ? "COALESCE(counterpart.counterparts, '')" : "''::text";
+  const counterpartSelect = includeCounterpart ? "COALESCE(counterpart.counterparts, '')" : "''::text";
   // Resolve the saved supplier snapshot from a purchase invoice linked to this
   // journal, never from the payment/cashbox account or from today's account name.
   // Run the lookup only for statements explicitly showing the optional column.
