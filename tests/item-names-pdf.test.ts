@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { balanceItemNamesColumns } from "../apps/web/src/item-names-pdf.ts";
+import { balanceItemNamesColumns, createTwoColumnItemNamesPdf } from "../apps/web/src/item-names-pdf.ts";
 
 test("short chosen list starts in two columns, not one tall column", () => {
   const groups = balanceItemNamesColumns([19, 19, 19, 19, 19, 19], 770);
@@ -45,4 +45,50 @@ test("mixed long Arabic item names have balanced height rather than item count",
   const a = heights.slice(0, split).reduce((x, y) => x + y, 0);
   const b = heights.slice(split).reduce((x, y) => x + y, 0);
   assert.ok(Math.abs(a - b) <= 23, `imbalanced columns: ${a}, ${b}`);
+});
+
+
+test("PDF draws the required first-unit quantity before the name inside each original column", () => {
+  const previous = globalThis.document;
+  const drawn: Array<{text:string; x:number; y:number}> = [];
+  const ctx = {
+    setTransform() {}, fillRect() {}, beginPath() {}, setLineDash() {},
+    moveTo() {}, lineTo() {}, stroke() {}, save() {}, restore() {},
+    measureText(value: string) { return {width: value.length * 5}; },
+    fillText(text: string, x: number, y: number) { drawn.push({text,x,y}); },
+  };
+  const canvas = {
+    width: 0, height: 0,
+    getContext() { return ctx; },
+    toDataURL() { return "data:image/jpeg;base64,/9j/2Q=="; },
+  };
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: { createElement: () => canvas },
+  });
+  try {
+    const pdf = createTwoColumnItemNamesPdf([
+      {name:"شرائح سكر سيجوي",requiredQuantity:"8"},
+      {name:"محلول ملح 500 مل",requiredQuantity:"12"},
+    ]);
+    assert.equal(pdf.type,"application/pdf");
+    const rightQty = drawn.find(x=>x.text==="8");
+    const rightName = drawn.find(x=>x.text==="شرائح سكر سيجوي");
+    const leftQty = drawn.find(x=>x.text==="12");
+    const leftName = drawn.find(x=>x.text==="محلول ملح 500 مل");
+    assert.ok(rightQty && rightName && leftQty && leftName);
+    assert.ok(rightQty.x > rightName.x,
+      "Arabic right-to-left item layout: quantity precedes item name");
+    assert.ok(leftQty.x > leftName.x);
+    assert.ok(rightQty.x > leftQty.x,
+      "Two balanced PDF columns must stay in their old positions");
+    drawn.length = 0;
+    createTwoColumnItemNamesPdf(["شرائح سكر سيجوي","محلول ملح 500 مل"]);
+    assert.equal(drawn.some(x=>x.text==="8"||x.text==="12"),false,
+      "Regular names-only PDF remains unchanged");
+  } finally {
+    Object.defineProperty(globalThis,"document",{
+      configurable: true, value: previous,
+    });
+  }
 });
