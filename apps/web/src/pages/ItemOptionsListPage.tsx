@@ -805,7 +805,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         <div role="dialog" aria-modal="true" aria-labelledby="item-options-columns-heading"
           onKeyDown={event => { if (event.key === "Escape") setColumnsDialogOpen(false); }}
           style={{
-            background: "var(--card-bg, var(--panel, #1c2a36))",
+            background: "var(--surface)",
             color: "inherit", border: "1px solid var(--border, #506070)",
             borderRadius: 12, padding: 16, width: "min(480px, 100%)",
             maxHeight: "min(85vh, 740px)", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)"
