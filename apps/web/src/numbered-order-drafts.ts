@@ -3,7 +3,7 @@ import type { TemporaryChosenItem } from "./temporary-item-list";
 import {
   createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
-  type NumberedOrderDraftState, ORDER_DRAFT_LIFETIME_MS,
+  type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
 } from "./numbered-order-drafts-core";
 
 const EVENT = "alraesy-numbered-order-drafts-changed";
@@ -111,7 +111,7 @@ export function useNumberedOrderDrafts(
     }
   }, [key]);
 
-  const createDraft = useCallback((incoming: TemporaryChosenItem[]) => {
+  const createDraft = useCallback((incoming: OrderDraftItem[]) => {
     if (!key) return null;
     const before = readOrderDrafts(key, oldKey);
     const created = createNumberedOrderDraft(before, incoming);
