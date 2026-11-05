@@ -404,3 +404,42 @@ test("bulk order draft saves exactly the first-unit required column, and prints 
   assert.match(css,/\.item-options-print-row \.item-options-print-quantity/);
   assert.match(css,/column-count: 2/);
 });
+
+test("item option filters auto-apply without buttons, including saved preset selection", () => {
+  const page = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const css = read("apps/web/src/styles.css");
+  assert.match(page, /function appliedFilterParams\(/);
+  assert.match(page, /function scheduleAutoFilter\(/);
+  assert.match(page, /setTimeout\(\(\) => \{/);
+  assert.match(page, /}, 500\)/);
+  assert.match(page, /setDraft\(next\); scheduleAutoFilter\(next, search\)/);
+  assert.match(page, /scheduleAutoFilter\(draft, event\.target\.value\)/);
+  assert.match(page, /void runFilterApplication\(\(\) => setParams\(previous =>/);
+  assert.match(page, /const choice = presets\.find\(preset => String\(preset\.id\) === id\)/);
+  assert.match(page, /if \(choice\) \{ cancelAutoFilter\(\); applyPreset\(choice\); \}/);
+  assert.doesNotMatch(page, /<Button[^>]*>\s*\{applyingFilter \? "جارٍ تطبيق الخيارات…" : "تطبيق الخيارات"\}/);
+  assert.doesNotMatch(page, /onClick=\{\(\)=>\{if\(selectedPreset\) void applyPreset\(selectedPreset\);\}\}/);
+  assert.match(page, /monthMin: "1", yearMin: "2", coverageMax: "1"/);
+  assert.match(css, /\.item-options-presets-card \.item-options-preset-field > input,/);
+  assert.match(css, /\.item-options-presets-card \.item-options-preset-field > select \{/);
+  assert.match(css, /padding-block: 23px 5px/);
+});
+
+test("numbered order drafts remain visible; only draft ITEMS can be collapsed", () => {
+  const page = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const css = read("apps/web/src/styles.css");
+  const draftIndex = page.indexOf("className=\"item-options-drafts-card\"");
+  const resultsIndex = page.indexOf("<Card title=\"نتائج قائمة الأصناف\">");
+  assert.ok(draftIndex > 0 && resultsIndex > draftIndex,
+    "Draft list is a separate card before results, not nested in a hidden results section");
+  assert.doesNotMatch(page, /showOrderDraft|setShowOrderDraft/);
+  assert.match(page, /مسودات الطلبيات \(\$\{temporaryOrder\.drafts\.length\}\)/);
+  assert.match(page, /activeOrderDraftId === orderDraft\.id \? "إخفاء الأصناف" : "عرض الأصناف"/);
+  assert.match(page, /\{activeOrderDraftId === orderDraft\.id && <div className="item-options-order-draft-lines">/);
+  assert.match(page, /className="item-options-order-draft-meta"/);
+  assert.match(page, /className="item-options-order-draft-buttons"/);
+  assert.match(css, /\.item-options-order-draft-meta \{/);
+  assert.match(css, /\.item-options-order-draft-buttons \{/);
+  assert.match(css, /\.item-options-drafts-card \.item-options-order-draft-lines \{/);
+  assert.match(css, /max-height: min\(46dvh, 420px\)/);
+});
