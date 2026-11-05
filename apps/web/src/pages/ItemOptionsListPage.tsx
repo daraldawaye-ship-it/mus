@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -63,6 +63,24 @@ function readDraft(params: URLSearchParams): Draft {
     useReserve: params.get("useReserve") !== "false",
   };
 }
+/** Preserve explicitly blank ranges, including user-cleared defaults. */
+function appliedFilterParams(previous: URLSearchParams, values: Draft, query: string): URLSearchParams {
+  const next = new URLSearchParams(previous);
+  for (const { key } of ranges) {
+    const value = values[key].trim();
+    if (value || key === "stockMin" || key === "stockMax" ||
+        key === "monthMin" || key === "yearMin" || key === "coverageMax")
+      next.set(key, value);
+    else next.delete(key);
+  }
+  if (query.trim()) next.set("q", query.trim()); else next.delete("q");
+  if (values.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
+  if (!values.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
+  if (!values.excludeOrderDrafts) next.set("excludeOrderDrafts", "false"); else next.delete("excludeOrderDrafts");
+  if (!values.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
+  next.delete("page");
+  return next;
+}
 type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
@@ -108,7 +126,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const temporarySelection = useSharedItemSelection(companyId, user?.id);
   const temporaryOrder = useNumberedOrderDrafts(companyId, user?.id);
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
-  const [showOrderDraft, setShowOrderDraft] = useState(false);
   const [activeOrderDraftId, setActiveOrderDraftId] = useState<number | null>(null);
   const [addingUnselected, setAddingUnselected] = useState(false);
   const [bulkAddError, setBulkAddError] = useState("");
@@ -125,6 +142,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [filterError, setFilterError] = useState("");
   const applyingFilterRef = useRef(false);
   const [applyingFilter, setApplyingFilter] = useState(false);
+  const [autoFilterPending, setAutoFilterPending] = useState(false);
+  const autoFilterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoFilterSequence = useRef(0);
+  const queuedFilterApplication = useRef<(() => void) | null>(null);
   const [presetName, setPresetName] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
@@ -268,7 +289,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         setActionMessage("جميع الأصناف غير المختارة المطابقة موجودة بالفعل في مسودات أخرى؛ لم تُنشأ مسودة فارغة ولم يُكرر أي صنف.");
         return;
       }
-      setShowOrderDraft(true);
       setActiveOrderDraftId(created.added <= 100 ? created.id : null);
       setActionMessage(
         `تم إنشاء مسودة الطلبية ${created.id} بعدد ${created.added.toLocaleString("en-US")} صنف جديد` +
@@ -290,11 +310,44 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       return next;
     });
   };
+  // Debounce typing; only committed changes clear company-wide selection.
+  function cancelAutoFilter() {
+    autoFilterSequence.current += 1;
+    if (autoFilterTimer.current !== null) clearTimeout(autoFilterTimer.current);
+    autoFilterTimer.current = null;
+    setAutoFilterPending(false);
+  }
+  useEffect(() => () => {
+    if (autoFilterTimer.current !== null) clearTimeout(autoFilterTimer.current);
+  }, []);
+  function scheduleAutoFilter(values: Draft, nextSearch: string) {
+    const sequence = ++autoFilterSequence.current;
+    if (autoFilterTimer.current !== null) clearTimeout(autoFilterTimer.current);
+    setAutoFilterPending(true);
+    autoFilterTimer.current = setTimeout(() => {
+      autoFilterTimer.current = null;
+      const invalid = ranges.find(({ key }) =>
+        values[key].trim() && !numberPattern.test(values[key].trim()));
+      if (invalid) {
+        setFilterError(`حقل «${invalid.label}» غير صالح. أدخل رقمًا أو اتركه فارغًا.`);
+        if (sequence === autoFilterSequence.current) setAutoFilterPending(false);
+        return;
+      }
+      void runFilterApplication(() => setParams(previous =>
+        appliedFilterParams(previous, values, nextSearch))).finally(() => {
+        if (sequence === autoFilterSequence.current) setAutoFilterPending(false);
+      });
+    }, 500);
+  }
   // Both ad-hoc and named filters start a new company-wide selection round.
   // Keep deletion on the existing edit-authorized API; read-only employees may
   // still browse filters, but cannot modify the shared selection.
   async function runFilterApplication(applyFilters: () => void) {
-    if (!canView || applyingFilterRef.current) return;
+    if (!canView) return;
+    if (applyingFilterRef.current) {
+      queuedFilterApplication.current = applyFilters;
+      return;
+    }
     if (temporarySelection.updating) {
       setFilterError("يوجد اختيار مؤقت قيد الحفظ. أعد تطبيق الفلتر بعد اكتماله.");
       return;
@@ -316,35 +369,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     } finally {
       applyingFilterRef.current = false;
       setApplyingFilter(false);
+      const queued = queuedFilterApplication.current;
+      queuedFilterApplication.current = null;
+      if (queued) void runFilterApplication(queued);
     }
-  }
-  function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const invalid = ranges.find(({ key }) =>
-      draft[key].trim() && !numberPattern.test(draft[key].trim()));
-    if (invalid) {
-      setFilterError(`حقل «${invalid.label}» غير صالح. أدخل رقمًا حتى 6 منازل عشرية، أو اتركه فارغًا.`);
-      return;
-    }
-    void runFilterApplication(() => setParams(previous => {
-      const next = new URLSearchParams(previous);
-      for (const { key } of ranges) {
-        const value = draft[key].trim();
-        // Preserve an explicitly empty quantity range so the user can request
-        // "without limit" instead of silently restoring the default of 1.
-        if (value || key === "stockMin" || key === "stockMax" ||
-            key === "monthMin" || key === "yearMin" || key === "coverageMax")
-          next.set(key, value);
-        else next.delete(key);
-      }
-      if (search.trim()) next.set("q", search.trim()); else next.delete("q");
-      if (draft.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
-      if (!draft.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
-      if (!draft.excludeOrderDrafts) next.set("excludeOrderDrafts", "false"); else next.delete("excludeOrderDrafts");
-      if (!draft.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
-      next.delete("page");
-      return next;
-    }));
   }
   // Save draft controls, including un-applied range edits, but not page number.
   function currentPresetFilters(): ItemOptionsPresetFilters | null {
@@ -428,6 +456,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     } finally { setPresetBusy(false); }
   }
   function reset() {
+    cancelAutoFilter();
     setFilterError("");
     const defaults = new URLSearchParams({
       monthMin: "1", yearMin: "2", coverageMax: "1",
@@ -517,18 +546,24 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     {temporaryOrder.error && <Notice tone="error">{temporaryOrder.error}</Notice>}
     {bulkAddError && <Notice tone="error">{bulkAddError}</Notice>}
     {!optionsCollapsed && <Card title="خيارات قائمة الأصناف" className="item-options-filters-card">
-      <form onSubmit={apply}>
+      <form onSubmit={event => event.preventDefault()}>
         <div className="item-options-filter-scroll" role="region"
           aria-label="مرر لعرض جميع خيارات تصفية الأصناف" tabIndex={0}>
           <div className="item-options-filter-grid">
             <label className="item-options-filter-field">
               <span className="item-options-filter-label">بحث عن صنف بالاسم أو الرمز أو الباركود</span>
               <input type="search" maxLength={120} value={search}
-                placeholder="اكتب الاسم أو الرمز" onChange={event => setSearch(event.target.value)} />
+                placeholder="اكتب الاسم أو الرمز" onChange={event => {
+                   setSearch(event.target.value);
+                   scheduleAutoFilter(draft, event.target.value);
+                 }} />
             </label>
             <label className="item-options-filter-field">
               <span className="item-options-filter-label">حالة الصنف</span>
-              <select value={active} onChange={event => change("active", event.target.value)}>
+              <select value={active} onChange={event => {
+                   cancelAutoFilter();
+                   void runFilterApplication(() => change("active", event.target.value));
+                 }}>
                 <option value="active">الفعال</option>
                 <option value="archived">المؤرشف</option>
                 <option value="all">الكل</option>
@@ -539,7 +574,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span className="item-options-filter-label" title={label}>{label}</span>
                 <input type="text" inputMode="decimal"
                   value={draft[key]}
-                  onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} />
+                  onChange={event => {
+                     const next = { ...draft, [key]: event.target.value };
+                     setDraft(next); scheduleAutoFilter(next, search);
+                   }} />
               </label>
             )}
           </div>
@@ -547,47 +585,59 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         <div className="form-actions item-options-filter-actions">
           <label className="checkbox">
             <input type="checkbox" checked={draft.excludeZero}
-              onChange={event => setDraft(previous => ({ ...previous, excludeZero: event.target.checked }))} />
+              onChange={event => {
+                 const next = { ...draft, excludeZero: event.target.checked };
+                 setDraft(next); scheduleAutoFilter(next, search);
+               }} />
             استثناء الأصناف ذات الكمية الصفرية
           </label>
           <label className="checkbox" title="عند التفعيل تُستبعد الأصناف التي يكون تاريخ «يتوقف الطلب حتى تاريخ» في كرت الصنف بعد تاريخ اليوم، فلا تدخل في قائمة الطلب أو الإجمالي أو المسودات.">
             <input type="checkbox" checked={draft.excludeOrderStopped}
-              onChange={event => setDraft(previous => ({ ...previous, excludeOrderStopped: event.target.checked }))} />
+              onChange={event => {
+                 const next = { ...draft, excludeOrderStopped: event.target.checked };
+                 setDraft(next); scheduleAutoFilter(next, search);
+               }} />
             إيقاف طلب الأصناف الموقوفة حتى تاريخ مستقبلي
           </label>
           <label className="checkbox">
             <input type="checkbox" checked={draft.useReserve}
-              onChange={event => setDraft(previous => ({ ...previous, useReserve: event.target.checked }))} />
+              onChange={event => {
+                 const next = { ...draft, useReserve: event.target.checked };
+                 setDraft(next); scheduleAutoFilter(next, search);
+               }} />
             استخدام الكفاية مع الاحتياطي
           </label>
           <label className="checkbox" title="استبعاد الأصناف الموجودة في أي مسودة طلبية على هذا الجهاز من نتائج القائمة وإجمالي المطلوب والترحيل إلى مسودة جديدة.">
             <input type="checkbox" checked={draft.excludeOrderDrafts}
-              onChange={event => setDraft(previous => ({ ...previous, excludeOrderDrafts: event.target.checked }))} />
+              onChange={event => {
+                 const next = { ...draft, excludeOrderDrafts: event.target.checked };
+                 setDraft(next); scheduleAutoFilter(next, search);
+               }} />
             استثناء الأصناف المرحّلة إلى مسودات الطلبيات
           </label>
-          <Button type="submit" disabled={!canView || applyingFilter || temporarySelection.updating}>
-            {applyingFilter ? "جارٍ تطبيق الخيارات…" : "تطبيق الخيارات"}
-          </Button>
+          
           <Button type="button" variant="secondary" onClick={reset}>إعادة الافتراضيات</Button>
         </div>
       </form>
     </Card>}
-    {canEditReserve && <p className="muted">عند تطبيق الخيارات أو أي فلتر محفوظ، يُصفَّر الاختيار المؤقت كاملًا لدى جميع مستخدمي الشركة، دون حذف مسودات الطلبيات.</p>}
-    {canView && <Card title="الفلاتر المحفوظة للجميع">
+    {canEditReserve && <p className="muted">تُطبّق الخيارات تلقائيًا بعد التعديل، ويُصفَّر الاختيار المؤقت المشترك عند اعتماد الفلتر، دون حذف مسودات الطلبيات.</p>}
+    {canView && <Card title="الفلاتر المحفوظة للجميع" className="item-options-presets-card">
       <p className="muted">أي موظف يستطيع حفظ مجموعة فلاتر باسم، ويستطيع جميع مستخدمي الشركة استدعاءها من أي جهاز. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
       <div className="form-actions">
-        <label className="item-options-filter-field" style={{flex:"1 1 230px"}}>
+        <label className="item-options-filter-field item-options-preset-field">
           <span className="item-options-filter-label">الفلاتر المشتركة المحفوظة</span>
           <select aria-label="الفلاتر المشتركة المحفوظة" value={selectedPresetId}
-            onChange={event=>setSelectedPresetId(event.target.value)}>
+            onChange={event => {
+               const id = event.target.value;
+               setSelectedPresetId(id);
+               const choice = presets.find(preset => String(preset.id) === id);
+               if (choice) { cancelAutoFilter(); applyPreset(choice); }
+             }}>
             <option value="">اختر فلترًا محفوظًا</option>
             {presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name}</option>)}
           </select>
         </label>
-        <Button type="button" disabled={!selectedPreset || applyingFilter || temporarySelection.updating}
-          onClick={()=>{if(selectedPreset) void applyPreset(selectedPreset);}}>
-          {applyingFilter ? "جارٍ تطبيق الفلتر…" : "تطبيق الفلتر"}
-        </Button>
+        
         {canDeletePresets && <Button type="button" variant="danger" disabled={!selectedPreset || presetBusy}
           onClick={()=>{if(selectedPreset) void deletePreset(selectedPreset);}}>
           حذف الفلتر
@@ -597,7 +647,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       </div>
       {selectedPreset && <small className="muted">أضافه: {selectedPreset.createdByName}</small>}
       <form className="form-actions" onSubmit={event=>{event.preventDefault();void savePreset();}}>
-        <label className="item-options-filter-field" style={{flex:"1 1 230px"}}>
+        <label className="item-options-filter-field item-options-preset-field">
           <span className="item-options-filter-label">اسم الفلتر الجديد</span>
           <input type="text" required maxLength={80} value={presetName}
             placeholder="مثال: أصناف تحتاج طلبية"
