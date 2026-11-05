@@ -1708,7 +1708,6 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   const accountId = Number(params.get("accountId")) || 0;
   const showSupplierAccount = !pledge && params.get("showSupplierAccount") === "1";
   const [selected, setSelected] = useState<Account | null>(null);
-  const [choosing, setChoosing] = useState(false);
   const query = new URLSearchParams();
   query.set("accountId", String(accountId));
   query.set("dateFrom", dateFrom);
@@ -1860,16 +1859,28 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       <Card>
         <div className="table-filters">
           <div className="field">
-            <span className="financial-field-label">الحساب</span>
-            <Button variant="secondary" onClick={() => setChoosing(true)}>
-              {result.data?.account
-                ? accountLabel(result.data.account)
-                : selected?.id === accountId
-                  ? accountLabel(selected)
-                  : accountId > 0
-                    ? `اختيار الحساب الحالي #${accountId}`
-                    : "اختر حسابًا"}
-            </Button>
+            <ServerLookup<PickAccount>
+              companyId={companyId}
+              resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting`}
+              label="الحساب"
+              value={
+                result.data?.account?.id === accountId
+                  ? result.data.account
+                  : selected?.id === accountId
+                    ? selected
+                    : null
+              }
+              display={accountLabel}
+              singleInput
+              searchPlaceholder="ابحث عن الحساب بالاسم أو الرقم"
+              onChange={(item) => {
+                // Keep the current statement visible while the user types.
+                // Only an explicit selection changes the account/filter.
+                if (!item) return;
+                setSelected(item);
+                updateFilter(setParams, "accountId", String(item.id));
+              }}
+            />
           </div>
           <Field
             label="من تاريخ"
@@ -1968,26 +1979,6 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           {!printQuery.data.length && <p>لا توجد حركات مالية مرحلة للحساب.</p>}
         </div>
       )}
-      <Dialog
-        open={choosing}
-        title="اختيار حساب للكشف"
-        onClose={() => setChoosing(false)}
-      >
-        <ServerLookup<Account>
-          companyId={companyId}
-          resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting`}
-          label="الحساب"
-          value={selected}
-          display={accountLabel}
-          onChange={(item) => {
-            if (item) {
-              setSelected(item);
-              updateFilter(setParams, "accountId", String(item.id));
-              setChoosing(false);
-            }
-          }}
-        />
-      </Dialog>
     </div>
   );
 }
