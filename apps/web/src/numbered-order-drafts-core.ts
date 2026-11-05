@@ -1,7 +1,9 @@
 import type { TemporaryChosenItem } from "./temporary-item-list";
 
 // Drafts belong only to this user's browser. Nothing here posts invoices/orders.
-export type NumberedOrderDraft = { id: number; createdAt: string; items: TemporaryChosenItem[] };
+/** A stored quantity is a first-unit planning snapshot from the API. */
+export type OrderDraftItem = TemporaryChosenItem & { requiredQuantity?: string };
+export type NumberedOrderDraft = { id: number; createdAt: string; items: OrderDraftItem[] };
 export const ORDER_DRAFT_LIFETIME_MS = 8 * 60 * 60 * 1000;
 export type NumberedOrderDraftState = { nextId: number; drafts: NumberedOrderDraft[] };
 export const MAX_NEW_ORDER_DRAFT_ITEMS = 2_000;
@@ -9,7 +11,7 @@ export const MAX_NEW_ORDER_DRAFT_ITEMS = 2_000;
 export const emptyOrderDraftState = (): NumberedOrderDraftState =>
   ({ nextId: 1, drafts: [] });
 
-function validItem(value: unknown): value is TemporaryChosenItem {
+function validItem(value: unknown): value is OrderDraftItem {
   if (!value || typeof value !== "object") return false;
   const row = value as Partial<TemporaryChosenItem>;
   return Number.isSafeInteger(row.id) && (row.id ?? 0) > 0
@@ -17,13 +19,19 @@ function validItem(value: unknown): value is TemporaryChosenItem {
     && typeof row.code === "string" && row.code.length <= 100;
 }
 
-function uniqueItems(source: unknown, global: Set<number>, limit: number): TemporaryChosenItem[] {
+function uniqueItems(source: unknown, global: Set<number>, limit: number): OrderDraftItem[] {
   if (!Array.isArray(source)) return [];
-  const rows: TemporaryChosenItem[] = [];
+  const rows: OrderDraftItem[] = [];
   for (const row of source) {
     if (!validItem(row) || global.has(row.id)) continue;
     global.add(row.id);
-    rows.push({ id: row.id, name: row.name, code: row.code });
+    // Never lose the saved quantity during normalization or 8-hour cleanup.
+    // Older drafts have no quantity; leave those alone rather than inventing one.
+    const requiredQuantity = typeof row.requiredQuantity === "string"
+      && /^[1-9]\\d{0,15}$/.test(row.requiredQuantity)
+      ? row.requiredQuantity : undefined;
+    rows.push({ id: row.id, name: row.name, code: row.code,
+      ...(requiredQuantity ? { requiredQuantity } : {}) });
     if (rows.length >= limit) break;
   }
   return rows;
@@ -78,7 +86,7 @@ export type CreateOrderDraftResult = {
 
 /** Never append to an old draft. Create a new numbered draft per successful transfer. */
 export function createNumberedOrderDraft(
-  rawState: NumberedOrderDraftState, incoming: TemporaryChosenItem[], now = Date.now(),
+  rawState: NumberedOrderDraftState, incoming: OrderDraftItem[], now = Date.now(),
 ): CreateOrderDraftResult {
   const state = normalizeOrderDrafts(rawState, now);
   const alreadyInDrafts = new Set(state.drafts.flatMap(draft => draft.items.map(item => item.id)));
