@@ -901,27 +901,27 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </article>)}
           {!result.rows.length && <p className="muted">لا توجد أصناف تطابق الخيارات الحالية.</p>}
         </div>
-        <div className="table-scroll item-options-desktop-table" role="region"
+        <div className={`table-scroll item-options-desktop-table${visibleColumns.length < allTableColumns.length ? " item-options-fit-columns" : ""}`} role="region"
           aria-label="نتائج الأصناف حسب الخيارات">
         <table>
           <colgroup>
-            <col style={hiddenColumnStyle("choice")} className="item-options-choice-col" />
-            <col style={hiddenColumnStyle("name")} className="item-options-name-col" />
-            <col style={hiddenColumnStyle("stock")} className="item-options-stock-col" />
-            <col style={hiddenColumnStyle("reserve")} className="item-options-reserve-col" />
-            <col style={hiddenColumnStyle("purchaseFactor")} className="item-options-purchase-factor-col" />
-            <col style={hiddenColumnStyle("month")} className="item-options-month-times-col" />
-            <col style={hiddenColumnStyle("saleQuantityMonth")} className="item-options-month-quantity-col" />
-            <col style={hiddenColumnStyle("fourMonths")} className="item-options-four-months-col" />
-            <col style={hiddenColumnStyle("allTime")} className="item-options-all-time-col" />
-            <col style={hiddenColumnStyle("previousYear")} className="item-options-previous-year-col" />
-            <col style={hiddenColumnStyle("requiredPurchaseQuantity")} className="item-options-required-quantity-col" />
-            <col style={hiddenColumnStyle("purchasePrice")} className="item-options-purchase-price-col" />
-            <col style={hiddenColumnStyle("requiredPurchaseValue")} className="item-options-required-value-col" />
-            <col style={hiddenColumnStyle("coverage")} className="item-options-coverage-col" />
-            <col style={hiddenColumnStyle("coverageWithRequired")} className="item-options-coverage-with-required-col" />
-            <col style={hiddenColumnStyle("reserveCoverage")} className="item-options-reserve-coverage-col" />
-            <col style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-factor-coverage-col" />
+            {visibleColumns.includes("choice") && <col className="item-options-choice-col" />}
+            {visibleColumns.includes("name") && <col className="item-options-name-col" />}
+            {visibleColumns.includes("stock") && <col className="item-options-stock-col" />}
+            {visibleColumns.includes("reserve") && <col className="item-options-reserve-col" />}
+            {visibleColumns.includes("purchaseFactor") && <col className="item-options-purchase-factor-col" />}
+            {visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
+            {visibleColumns.includes("saleQuantityMonth") && <col className="item-options-month-quantity-col" />}
+            {visibleColumns.includes("fourMonths") && <col className="item-options-four-months-col" />}
+            {visibleColumns.includes("allTime") && <col className="item-options-all-time-col" />}
+            {visibleColumns.includes("previousYear") && <col className="item-options-previous-year-col" />}
+            {visibleColumns.includes("requiredPurchaseQuantity") && <col className="item-options-required-quantity-col" />}
+            {visibleColumns.includes("purchasePrice") && <col className="item-options-purchase-price-col" />}
+            {visibleColumns.includes("requiredPurchaseValue") && <col className="item-options-required-value-col" />}
+            {visibleColumns.includes("coverage") && <col className="item-options-coverage-col" />}
+            {visibleColumns.includes("coverageWithRequired") && <col className="item-options-coverage-with-required-col" />}
+            {visibleColumns.includes("reserveCoverage") && <col className="item-options-reserve-coverage-col" />}
+            {visibleColumns.includes("purchaseFactorCoverage") && <col className="item-options-factor-coverage-col" />}
           </colgroup>
           <thead><tr>
             <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
