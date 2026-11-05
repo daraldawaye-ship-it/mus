@@ -10,6 +10,7 @@ export type PrintableInvoice = Pick<Invoice,
   "saleCustomerName" | "saleCustomerNumber" |
   "description" | "gross" | "discount" | "total" |
   "createdByName" | "createdAt"> & {
+    purchaseCorrectionNote?: string;
     number?: string | null;
     lines: Pick<InvoiceLine, "id" | "itemName" | "quantity" | "unitName" |
       "unitPrice" | "expiryDate" | "total">[];
@@ -43,6 +44,7 @@ export function InvoicePrintSheet({
 }) {
   const purchase = invoice.kind === "purchase";
   const kindLabel = purchase ? "فاتورة مشتريات" : "فاتورة مبيعات";
+  const notes = [invoice.description, invoice.purchaseCorrectionNote].filter(Boolean).join(" | ");
   const columns = printedInvoiceColumns(invoice.kind);
   return (
     <section className={`invoice-print-sheet invoice-print-sheet--${invoice.kind}`} dir="rtl" aria-label="نسخة طباعة الفاتورة">
@@ -79,9 +81,9 @@ export function InvoicePrintSheet({
           </>
         )}
       </dl>
-      {invoice.description && (
+      {notes && (
         <div className="invoice-print-notes">
-          <strong>ملاحظات:</strong> {invoice.description}
+          <strong>ملاحظات:</strong> {notes}
         </div>
       )}
       <table className="invoice-print-matrix">
