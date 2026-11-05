@@ -26,6 +26,7 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { DeviceNotificationSettings } from "../DeviceNotificationSettings";
+import { adenInvoiceToday } from "../invoice-save-date";
 import {
   allowPasswordAutofillOnDevice,
   compactDesktopTextSecret,
@@ -1288,11 +1289,16 @@ export function PublicAuditPage() {
 function AuditList() {
   const [params, setParams] = useSearchParams();
   const actionFilter = params.get("action") ?? "";
+  const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : adenInvoiceToday();
+  const dateTo = params.has("dateTo") ? params.get("dateTo") ?? "" : adenInvoiceToday();
   const filters = new URLSearchParams();
   if (actionFilter) filters.set("action", actionFilter);
+  if (dateFrom) filters.set("dateFrom",dateFrom);
+  if (dateTo) filters.set("dateTo",dateTo);
   const list = usePagedQuery<AuditEvent>(
     `/audit${filters.size ? `?${filters}` : ""}`,
     "public",
+    "createdAt:desc,id:desc",
   );
   const [detail, setDetail] = useState<{
     title: string;
@@ -1414,6 +1420,20 @@ function AuditList() {
       />
       <Card>
         <div className="table-filters">
+          <Field label="من تاريخ" type="date" value={dateFrom}
+            onChange={event=>setParams(previous=>{
+              const next=new URLSearchParams(previous);
+              next.set("dateFrom",event.target.value);
+              next.delete("page");
+              return next;
+            })}/>
+          <Field label="إلى تاريخ" type="date" value={dateTo}
+            onChange={event=>setParams(previous=>{
+              const next=new URLSearchParams(previous);
+              next.set("dateTo",event.target.value);
+              next.delete("page");
+              return next;
+            })}/>
           <Field
             label="البحث في السجل العام"
             type="search"
