@@ -7,9 +7,10 @@ import { formatWholeMoney } from "./format-money";
 import type { CompanyContext } from "../../../packages/contracts/src/index.ts";
 import { InvoiceSideRecentSales } from "./InvoiceSideRecentSales";
 import { InvoiceSidePrivateNotes } from "./InvoiceSidePrivateNotes";
+import { InvoiceSideItemMovements } from "./InvoiceSideItemMovements";
 import { invoiceSideElapsed, invoiceSideDateTime } from "./invoice-side-time";
 
-type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales";
+type View = "privateNotes" | "pouch" | "electronic" | "pledges" | "closings" | "present" | "recentSales" | "itemMovements";
 type PledgeActivity = {items:{kind:"add"|"pay"|"receive";customerName:string;details:string;amount:string|null;createdAt:string;accountId:number;documentId:number|null}[];hasMore:boolean};
 type Transfer = { id: number; kind: "pouch" | "electronic"; amount: string; notes: string; createdAt: string };
 type Transfers = {
@@ -37,6 +38,7 @@ const views: { value: View; label: string }[] = [
   { value: "closings", label: "العجز والزيادة عند الإغلاق" },
   { value: "present", label: "المحضرون حاليًا" },
   { value: "recentSales", label: "آخر فواتير المبيعات" },
+  { value: "itemMovements", label: "حركة الأصناف" },
 ];
 function EventTimestamp({ value, nowMs }: { value: string; nowMs: number }) {
   return <span className="invoice-side-event-time">
@@ -214,6 +216,8 @@ export function InvoiceSideOverview({ context }: { context: CompanyContext }) {
           </>
         ) : view === "recentSales" ? (
           <InvoiceSideRecentSales context={context} />
+        ) : view === "itemMovements" ? (
+          <InvoiceSideItemMovements context={context} />
         ) : (
           <>
             {!offline && presence.isLoading && <small>جارٍ تحميل المحضرين…</small>}
