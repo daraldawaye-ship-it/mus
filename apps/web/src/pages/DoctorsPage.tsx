@@ -37,6 +37,7 @@ function DoctorInlineCell({doctor,field,canEdit,onSaved,onFailure}:{
   useEffect(()=>{if(!editing)setDraft(originalText);},[originalText,editing]);
   const shown=field==="kind"?(doctor.kind?doctorKindLabels[doctor.kind]:"بدون فئة — مراجعة"):
     field==="active"?(doctor.active?"فعّال":"مؤرشف"):
+    field==="sharedName"?`${originalText||doctor.name}${isMainDoctorCard(doctor.name,doctor.sharedName)?" (رئيسي)":""}`:
     (originalText||"—");
   function cancel(){
     cancelled.current=true;
