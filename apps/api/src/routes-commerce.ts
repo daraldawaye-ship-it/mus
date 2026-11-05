@@ -456,7 +456,7 @@ export function commerceRoutes(pool: Pool): Router {
         `SELECT l.id, i.id AS "invoiceId", i.number AS "invoiceNumber",
            i.document_date::text AS "documentDate",
            l.item_name AS "itemName", l.quantity::text AS quantity,
-           l.gross::text AS gross, l.discount::text AS discount,
+           i.discount::text AS "invoiceDiscount",
            i.total::text AS "invoiceTotal",
            u.display_name AS "employeeName",
            COALESCE(i.description, '') AS notes,
