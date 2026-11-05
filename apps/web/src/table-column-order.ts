@@ -17,14 +17,25 @@ export function actionColumnsFirst<T>(
   return [...actions, ...columns.filter((column) => !isRowAction(column))];
 }
 
-/** Presentation-only order for the sales invoice list; purchases remain unchanged. */
+/** Invoice list order: purchase metadata follows print, and invoice number is last. */
 export function arrangeInvoiceListColumns<T>(
   kind: "sale" | "purchase", columns: ColumnDef<T, unknown>[],
 ): ColumnDef<T, unknown>[] {
-  if (kind !== "sale") return columns;
   const key = (column: ColumnDef<T, unknown>): string =>
     "id" in column && typeof column.id === "string" ? column.id :
       "accessorKey" in column && typeof column.accessorKey === "string" ? column.accessorKey : "";
+  if (kind === "purchase") {
+    const beforeLast = [
+      "open", "documentDate", "counterpartyAccountName", "supplierAccountName",
+      "total", "description", "print", "supplierReceiptNumber", "return",
+      "locationName", "currencyCode",
+    ];
+    return [
+      ...beforeLast.flatMap(id => columns.filter(column => key(column) === id)),
+      ...columns.filter(column => !beforeLast.includes(key(column)) && key(column) !== "number"),
+      ...columns.filter(column => key(column) === "number"),
+    ];
+  }
   const first = ["open", "print", "total", "counterpartyAccountName", "saleCustomer", "documentDate"];
   const visible = columns.filter(column => !["return", "currencyCode"].includes(key(column)));
   return [

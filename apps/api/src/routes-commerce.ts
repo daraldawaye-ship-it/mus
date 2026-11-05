@@ -406,6 +406,39 @@ export function commerceRoutes(pool: Pool): Router {
       );
     }),
   );
+  // Advisory-only duplicate lookup, scoped to the requesting company.
+  router.get(`${base}/invoices/receipt-duplicate`, handler(async (req, res) => {
+    const supplierId = req.query.supplierAccountId;
+    const receiptNumber = req.query.receiptNumber;
+    const yearText = req.query.year;
+    const excluded = req.query.excludeInvoiceId;
+    if (typeof supplierId !== "string" || typeof receiptNumber !== "string" ||
+        typeof yearText !== "string" || (excluded !== undefined && typeof excluded !== "string") ||
+        !/^[1-9][0-9]*$/.test(supplierId) || !/^[0-9]{4}$/.test(yearText) ||
+        receiptNumber.trim().length === 0 || receiptNumber.trim().length > 100 ||
+        (excluded !== undefined && !/^[1-9][0-9]*$/.test(excluded)))
+      throw new HttpError(400, "invalid_query", "بيانات فحص رقم الوصل غير صالحة");
+    const year = Number(yearText);
+    if (year < 1900 || year > 2099)
+      throw new HttpError(400, "invalid_query", "سنة الفاتورة غير صالحة");
+    const supplierAccountId = id(supplierId);
+    const excludeInvoiceId = excluded === undefined ? null : id(excluded);
+    res.json(await readCommerce(pool, req, async (client, companyId) => {
+      const result = await client.query<{ id: number; number: string; documentDate: string }>(
+        `SELECT id, number, document_date::text AS "documentDate"
+         FROM invoices
+         WHERE company_id=$1 AND kind='purchase' AND supplier_account_id=$2
+           AND lower(btrim(coalesce(supplier_receipt_number,'')))=lower($3)
+           AND document_date>=make_date($4,1,1)
+           AND document_date<make_date($4+1,1,1)
+           AND ($5::integer IS NULL OR id<>$5::integer)
+           AND NOT is_return
+         ORDER BY document_date DESC, id DESC LIMIT 1`,
+        [companyId, supplierAccountId, receiptNumber.trim(), year, excludeInvoiceId],
+      );
+      return { match: result.rows[0] ?? null };
+    }));
+  }));
   router.get(
     `${base}/invoices/:id`,
     handler(async (req, res) =>

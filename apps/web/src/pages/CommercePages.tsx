@@ -1,4 +1,5 @@
 import {PurchaseCorrection} from "../PurchaseCorrection";
+import {PurchaseReceiptDuplicateWarning} from "../PurchaseReceiptDuplicateWarning";
 import { canSearchInvoiceItem } from "../../../../packages/contracts/src/invoice-item-search.ts";
 import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
 import { signedStockMovementQuantity } from "../stock-movement-display";
@@ -524,7 +525,7 @@ function InvoiceList({
           onSortingChange={list.setSorting}
           onPageChange={list.setPage}
           onPageSizeChange={list.setPageSize}
-          selectionMode={kind === "sale" ? "none" : "single"}
+          selectionMode="none"
         />
       </Card>
       {printJob && <InvoiceListPrintJob key={printJob.sequence}
@@ -3195,9 +3196,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                   singleInput
                   onChange={(value) => {
                     accountManuallyChosen.current = true;
-                    setAccount(value);
-                    if (kind === "purchase" && value?.category === "liability" && !value.cashOrBank)
+                    if (kind === "purchase" && value?.category === "liability" && !value.cashOrBank) {
+                      if (selectedSupplier?.id !== value.id) setSupplierReceiptNumber("");
                       setSupplier(value);
+                    }
+                    setAccount(value);
                   }}
                   display={itemLabel}
                   disabled={locked || hasLinkedLines}
@@ -3210,7 +3213,10 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     label="المورد الفعلي (إلزامي)"
                     required
                     value={selectedSupplier}
-                    onChange={setSupplier}
+                    onChange={value => {
+                      if (selectedSupplier?.id !== value?.id) setSupplierReceiptNumber("");
+                      setSupplier(value);
+                    }}
                     display={itemLabel}
                     pageSize={100}
                     sort="name:asc"
@@ -3229,6 +3235,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     disabled={locked}
                     onChange={(event) => setSupplierReceiptNumber(event.target.value)}
                   />
+                )}
+                {kind === "purchase" && (
+                  <PurchaseReceiptDuplicateWarning companyId={companyId}
+                    supplierAccountId={selectedSupplier?.id ?? null}
+                    receiptNumber={supplierReceiptNumber} documentDate={documentDate} />
                 )}
                 {kind === "sale" ? (
                   <SalesHeaderActionsDropdown

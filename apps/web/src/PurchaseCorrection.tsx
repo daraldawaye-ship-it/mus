@@ -1,5 +1,6 @@
 import "./purchase-correction.css";
 import { useState } from "react";
+import { PurchaseReceiptDuplicateWarning } from "./PurchaseReceiptDuplicateWarning";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -150,6 +151,7 @@ export function PurchaseCorrection({
       : null,
   );
   const [discount, setDiscount] = useState(v.discount);
+  const [receiptNumber, setReceiptNumber] = useState(v.supplierReceiptNumber);
   const [lines, setLines] = useState<Line[]>(() =>
     v.lines.map((l) => ({
       key: crypto.randomUUID(),
@@ -190,7 +192,7 @@ export function PurchaseCorrection({
             currencyId: v.currencyId,
             counterpartyAccountId: account?.id,
             supplierAccountId: supplier?.id,
-            supplierReceiptNumber: v.supplierReceiptNumber,
+            supplierReceiptNumber: receiptNumber,
             description: v.description,
             discount,
             lines: lines.map((l) => ({
@@ -291,7 +293,10 @@ export function PurchaseCorrection({
                   resource={base + "/commerce-options?type=accounts"}
                   label="المورد الفعلي"
                   value={supplier}
-                  onChange={setSupplier}
+                  onChange={(value) => {
+                    if (supplier?.id !== value?.id) setReceiptNumber("");
+                    setSupplier(value);
+                  }}
                   display={label}
                   singleInput
                   required
@@ -299,9 +304,15 @@ export function PurchaseCorrection({
                 />
                 <Field
                   label="رقم وصل المورد"
-                  value={v.supplierReceiptNumber}
-                  readOnly
+                  value={receiptNumber}
+                  maxLength={100}
+                  disabled={locked}
+                  onChange={(event) => setReceiptNumber(event.target.value)}
                 />
+                <PurchaseReceiptDuplicateWarning companyId={v.companyId}
+                  supplierAccountId={supplier?.id ?? null}
+                  receiptNumber={receiptNumber} documentDate={v.documentDate}
+                  excludeInvoiceId={v.id} />
                 <Field
                   label="تاريخ الفاتورة الأصلية"
                   value={v.documentDate}
