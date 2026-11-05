@@ -25,6 +25,10 @@ const ranges = [
   { key: "reserveMax", label: "الكمية احتياط إلى" },
   { key: "purchaseFactorMin", label: "عامل وحدة الشراء من" },
   { key: "purchaseFactorMax", label: "عامل وحدة الشراء إلى" },
+  { key: "purchasePriceMin", label: "سعر الشراء من (بعملة الصنف)" },
+  { key: "purchasePriceMax", label: "سعر الشراء إلى (بعملة الصنف)" },
+  { key: "requiredPurchaseQuantityMin", label: "الكمية المطلوبة من (الوحدة الأولى)" },
+  { key: "requiredPurchaseQuantityMax", label: "الكمية المطلوبة إلى (الوحدة الأولى)" },
   { key: "monthMin", label: "المبيعات مرات في شهر من" },
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
@@ -49,6 +53,8 @@ function readDraft(params: URLSearchParams): Draft {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
     reserveMin: params.get("reserveMin") ?? "", reserveMax: params.get("reserveMax") ?? "",
     purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
+    purchasePriceMin: params.get("purchasePriceMin") ?? "", purchasePriceMax: params.get("purchasePriceMax") ?? "",
+    requiredPurchaseQuantityMin: params.get("requiredPurchaseQuantityMin") ?? "", requiredPurchaseQuantityMax: params.get("requiredPurchaseQuantityMax") ?? "",
     monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     yearMin: params.get("yearMin") ?? "2", yearMax: params.get("yearMax") ?? "",
@@ -85,7 +91,7 @@ type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
   requiredPurchaseQuantity: string;
-  purchasePrice: string; purchaseCurrencyCode: string;
+  purchasePrice: string; purchaseCurrencyCode: string; purchaseNotes: string;
   requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
   availableUnit1: string; saleTimesMonth: string; saleQuantityMonth: string; saleTimesFourMonths: string; saleTimesYear: string;
@@ -120,7 +126,7 @@ const sortOptions = [
   ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["name","اسم الصنف"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["name","اسم الصنف"],["purchaseNotes","ملاحظات عند الشراء"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
@@ -150,6 +156,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
+  const [purchaseNoteDialog, setPurchaseNoteDialog] = useState<{ name: string; notes: string } | null>(null);
   const directory = usePageDirectory(companyId);
   const itemListPage = directory.data?.find(row => row.key === "company.item-options-list");
   const canView = !!itemListPage?.enabled && !!itemListPage.actionAccess.view;
@@ -536,6 +543,17 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function reverseSortDirection() {
     change("sortDir", activeDirection === "asc" ? "desc" : "asc");
   }
+  function renderPurchaseNote(row: Row) {
+    const notes = row.purchaseNotes?.trim() ?? "";
+    if (!notes) return <span>—</span>;
+    const preview = Array.from(notes).slice(0, 30).join("");
+    const short = Array.from(notes).length > 30 ? preview + "…" : preview;
+    return <button type="button" className="item-options-purchase-note"
+      title={notes} aria-label={`عرض ملاحظات الشراء: ${row.name}`}
+      onClick={event => { event.stopPropagation(); setPurchaseNoteDialog({ name: row.name, notes }); }}>
+      {short}
+    </button>;
+  }
   function rememberItem(row: Row) {
     if (user) rememberRecentEntity(user.id, companyId, "item",
       { id: row.itemId, name: row.name });
@@ -841,6 +859,26 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           </div>
         </div>
       </div>}
+      {purchaseNoteDialog && <div role="presentation"
+        style={{
+          position: "fixed", inset: 0, zIndex: 1210, background: "rgba(0,0,0,.65)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+        }}
+        onMouseDown={event => { if (event.target === event.currentTarget) setPurchaseNoteDialog(null); }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="item-purchase-note-title"
+          onKeyDown={event => { if (event.key === "Escape") setPurchaseNoteDialog(null); }}
+          style={{
+            background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)",
+            borderRadius: 10, padding: 16, width: "min(520px, 100%)",
+            maxHeight: "80vh", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+          }}>
+          <h3 id="item-purchase-note-title">ملاحظات عند الشراء — {purchaseNoteDialog.name}</h3>
+          <p style={{ marginBlock: 12 }}>{purchaseNoteDialog.notes}</p>
+          <div className="form-actions">
+            <Button variant="secondary" onClick={() => setPurchaseNoteDialog(null)}>إغلاق</Button>
+          </div>
+        </div>
+      </div>}
       {resultQuery.isPending && canView && <Notice>جارٍ تحميل الأصناف المطابقة…</Notice>}
       {result && <>
         <div className="item-options-mobile-list" role="list" aria-label="قائمة الأصناف للهاتف">
@@ -858,6 +896,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               </label>
             </div>
             <div className="item-options-mobile-stats" aria-label="المتوفر ومرات البيع والكفاية">
+              <div style={hiddenColumnStyle("purchaseNotes")} className="item-options-mobile-stat">
+                <span>ملاحظات عند الشراء</span>{renderPurchaseNote(row)}
+              </div>
               <div style={hiddenColumnStyle("stock")} className="item-options-mobile-stat">
                 <span>المتوفر</span><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi>
               </div>
@@ -919,6 +960,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           <colgroup>
             {visibleColumns.includes("choice") && <col className="item-options-choice-col" />}
             {visibleColumns.includes("name") && <col className="item-options-name-col" />}
+            {visibleColumns.includes("purchaseNotes") && <col className="item-options-purchase-notes-col" />}
             {visibleColumns.includes("stock") && <col className="item-options-stock-col" />}
             {visibleColumns.includes("reserve") && <col className="item-options-reserve-col" />}
             {visibleColumns.includes("purchaseFactor") && <col className="item-options-purchase-factor-col" />}
@@ -938,6 +980,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           <thead><tr>
             <th scope="col" className="item-options-choice-cell" style={hiddenColumnStyle("choice")}>اختيار</th>
             {sortHeader("name", "اسم الصنف")}
+            <th scope="col" style={hiddenColumnStyle("purchaseNotes")}>ملاحظات عند الشراء</th>
             {sortHeader("stock", "المتوفر دون المرتجعات (الوحدة الأولى)")}
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
@@ -966,6 +1009,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                     { id: row.itemId, name: row.name, code: row.code }, event.target.checked)} />
               </label></td>
               <td style={hiddenColumnStyle("name")}><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.name}</Link>{!row.active && " (مؤرشف)"}</td>
+              <td style={hiddenColumnStyle("purchaseNotes")} className="item-options-purchase-notes-cell">{renderPurchaseNote(row)}</td>
               <td style={hiddenColumnStyle("stock")}><bdi>{firstUnitStockText(row.availableSmallest, row)}</bdi></td>
               <td style={hiddenColumnStyle("reserve")}><ItemReserveQuickEdit key={row.itemId} companyId={companyId}
                 itemId={row.itemId} revision={row.revision}
