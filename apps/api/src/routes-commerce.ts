@@ -442,7 +442,7 @@ export function commerceRoutes(pool: Pool): Router {
       );
     }),
   );
-  // Read-only sales sidebar: the newest ten item lines, not the newest invoices.
+  // Read-only sales sidebar: newest ten lines, or forty when matching exact invoice net amount.
   // Keep all filters company-scoped and compare money as PostgreSQL numeric.
   router.get(base + "/sales/line-movements", handler(async (req, res) => {
     const q = req.query.q, net = req.query.invoiceTotal;
@@ -476,7 +476,7 @@ export function commerceRoutes(pool: Pool): Router {
              u.display_name ILIKE $4)
            AND ($3::numeric IS NULL OR i.total=$3::numeric)
          ORDER BY i.created_at DESC, i.id DESC, l.line_number DESC, l.id DESC
-         LIMIT 10`,
+         LIMIT CASE WHEN $3::numeric IS NULL THEN 10 ELSE 40 END`,
         [companyId, term, net ?? null, searchPattern(term)],
       );
       return { items: rows.rows };
