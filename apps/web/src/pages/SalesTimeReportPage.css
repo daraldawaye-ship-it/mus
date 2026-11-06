@@ -44,6 +44,47 @@
   gap: 0.5rem;
 }
 .sales-time-report .sales-time-note { margin-top: 0.75rem; }
+
+/* Let the time matrix size columns by their contents. The global fixed table
+   layout otherwise truncates complete ISO dates to "202..." on phones. */
+.sales-time-report .sales-time-report-matrix {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}
+.sales-time-report .sales-time-report-matrix th,
+.sales-time-report .sales-time-report-matrix td {
+  overflow: visible;
+  text-overflow: clip;
+}
+.sales-time-report .sales-time-report-matrix th:first-child,
+.sales-time-report .sales-time-report-matrix td:first-child {
+  min-width: 104px;
+  text-align: center;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.sales-time-report .sales-time-report-matrix th:nth-child(2),
+.sales-time-report .sales-time-report-matrix td:nth-child(2) {
+  min-width: 64px;
+}
+@media screen and (max-width: 680px) {
+  /* Use a little more of the handset's width while keeping horizontal scrolling. */
+  .sales-time-report .table-scroll {
+    margin-inline: -8px;
+    width: calc(100% + 16px);
+    max-width: none;
+    padding: 0;
+  }
+  .sales-time-report .sales-time-report-matrix {
+    font-size: 13px;
+  }
+  .sales-time-report .sales-time-report-matrix th,
+  .sales-time-report .sales-time-report-matrix td {
+    padding: 0.4rem 0.42rem;
+  }
+}
+
 @media print {
   .sales-time-report .sales-time-report-actions,
   .sales-time-report .sales-time-report-filters {
