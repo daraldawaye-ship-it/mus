@@ -77,12 +77,17 @@ export function financialReportsRoutes(pool: Pool): Router {
         opening: moneyUnits(row.opening), debit: moneyUnits(row.debit), credit: moneyUnits(row.credit),
       }));
       const map = new Map(internal.map((row) => [row.id, row]));
-      const totals: Amounts = { opening: 0n, debit: 0n, credit: 0n };
+      const grand = { openingDebit: 0n, openingCredit: 0n, debit: 0n, credit: 0n, closingDebit: 0n, closingCredit: 0n };
       for (const row of internal) {
         if (row.kind !== "posting") continue;
-        totals.opening += row.opening;
-        totals.debit += row.debit;
-        totals.credit += row.credit;
+        const openingPair = row.opening;
+        const closingPair = row.opening + row.debit - row.credit;
+        grand.openingDebit += openingPair > 0n ? openingPair : 0n;
+        grand.openingCredit += openingPair < 0n ? -openingPair : 0n;
+        grand.debit += row.debit;
+        grand.credit += row.credit;
+        grand.closingDebit += closingPair > 0n ? closingPair : 0n;
+        grand.closingCredit += closingPair < 0n ? -closingPair : 0n;
         let parentId = row.parentId;
         const visited = new Set<number>([row.id]);
         while (parentId !== null && !visited.has(parentId)) {
@@ -110,8 +115,13 @@ export function financialReportsRoutes(pool: Pool): Router {
         kind: row.kind, category: row.category, ...present(row),
       }));
       return { dateFrom: from, dateTo: to, currencyCode: currency, items,
-        totals: present(totals),
-        balanced: totals.debit === totals.credit };
+        totals: {
+          openingDebit: decimal(grand.openingDebit), openingCredit: decimal(grand.openingCredit),
+          debit: decimal(grand.debit), credit: decimal(grand.credit),
+          closingDebit: decimal(grand.closingDebit), closingCredit: decimal(grand.closingCredit),
+        },
+        balanced: grand.openingDebit === grand.openingCredit &&
+          grand.debit === grand.credit && grand.closingDebit === grand.closingCredit };
     });
     res.json(result);
   }));
