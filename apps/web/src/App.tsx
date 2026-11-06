@@ -229,6 +229,12 @@ const AccountBalancesPage = lazy(() =>
     default: module.AccountBalancesPage,
   })),
 );
+const TrialBalancePage = lazy(() =>
+  import("./pages/FinancialReportsPages").then((module) => ({ default: module.TrialBalancePage })),
+);
+const CashFlowsPage = lazy(() =>
+  import("./pages/FinancialReportsPages").then((module) => ({ default: module.CashFlowsPage })),
+);
 const MyCashboxLedgerPage = lazy(() =>
   import("./pages/MyCashboxLedgerPage").then((module) => ({
     default: module.MyCashboxLedgerPage,
@@ -362,6 +368,8 @@ const companySections = [
   "receipts",
   "payments",
   "account-balances",
+  "trial-balance",
+  "cash-flows",
   "account-ledger",
   "my-cashbox-ledger",
   "items",
@@ -480,6 +488,8 @@ function Navigation({
     "company.receipts": <HandCoins size={17} />,
     "company.payments": <Wallet size={17} />,
     "company.account-balances": <Landmark size={17} />,
+    "company.trial-balance": <Scale size={17} />,
+    "company.cash-flows": <TrendingUp size={17} />,
     "company.account-ledger": <FileText size={17} />,
     "company.my-cashbox-ledger": <Landmark size={17} />,
     "company.currencies": <Coins size={17} />,
@@ -913,6 +923,14 @@ function CompanyContent({
           <AccountBalancesPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "trial-balance":
+      return user?.owner ? <Suspense fallback={<Notice>جارٍ تحميل ميزان المراجعة…</Notice>}>
+        <TrialBalancePage key={context.company.id} context={context} />
+      </Suspense> : <Notice tone="error">هذه الصفحة للمالك فقط.</Notice>;
+    case "cash-flows":
+      return user?.owner ? <Suspense fallback={<Notice>جارٍ تحميل التدفقات المالية…</Notice>}>
+        <CashFlowsPage key={context.company.id} context={context} />
+      </Suspense> : <Notice tone="error">هذه الصفحة للمالك فقط.</Notice>;
     case "my-cashbox-ledger":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل كشف حساب صندوقي…</Notice>}>
