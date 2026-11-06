@@ -575,6 +575,16 @@ page(
   { keywords: ["طبيب", "ممرض", "مستشفى", "قسم", "جهات"] },
 );
 page(
+  "company.sales-time-report",
+  "مبيعات الأيام والأوقات",
+  "التقارير",
+  "/companies/:companyId/sales-time-report",
+  { view: permission("commerce.view") },
+  "مبيعات ومردودات وصافي كل يوم حسب الساعة مع فلتر الكل أو النقد أو الآجل.",
+  { type: "report", parentKey: "company.sales",
+    keywords: ["مبيعات اليوم", "ساعات", "أوقات", "تقرير يومي", "نقد", "آجل", "مرتجعات"] },
+);
+page(
   "company.doctor-sales-report",
   "مبيعات الأطباء والجهات",
   "التقارير",
