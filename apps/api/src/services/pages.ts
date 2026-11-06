@@ -256,6 +256,7 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
+            (!["company.trial-balance", "company.cash-flows"].includes(definition.key) || user.owner) &&
             (user.owner || resolveGrant(definition.key, action) !== "deny") &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
