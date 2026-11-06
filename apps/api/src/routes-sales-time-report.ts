@@ -55,7 +55,10 @@ export function salesTimeReportRoutes(pool: Pool): Router {
               ELSE NULL::integer END AS hour,
             i.base_currency_code AS currency_code,
             CASE WHEN fix.invoice_id IS NULL THEN il.base_total
-              ELSE -il.base_total END AS amount
+              ELSE -il.base_total END AS amount,
+            il.discount::numeric AS line_discount,
+            i.exchange_rate::numeric AS exchange_rate,
+            i.base_decimal_places AS base_places
           FROM invoices i
           JOIN invoice_lines il ON il.company_id=i.company_id AND il.invoice_id=i.id
           LEFT JOIN accounts a ON a.company_id=i.company_id
@@ -67,6 +70,13 @@ export function salesTimeReportRoutes(pool: Pool): Router {
             AND ($4::text='all' OR
               ($4::text='cash' AND COALESCE(a.cash_or_bank,false)) OR
               ($4::text='credit' AND NOT COALESCE(a.cash_or_bank,false)))
+        ),
+        adjusted AS (
+          SELECT *,
+            CASE WHEN amount > 0 THEN
+              round(line_discount * exchange_rate, base_places)
+              ELSE 0::numeric END AS discount_amount
+          FROM sales_lines
         )
         SELECT day::text AS "date",hour,
           currency_code AS "currencyCode",
@@ -74,9 +84,11 @@ export function salesTimeReportRoutes(pool: Pool): Router {
           count(DISTINCT invoice_id)::integer AS "invoiceCount",
           count(DISTINCT invoice_id) FILTER (WHERE amount < 0)::integer AS "returnInvoiceCount",
           COALESCE(sum(amount) FILTER (WHERE amount > 0),0)::text AS "sales",
+          COALESCE(sum(amount + discount_amount) FILTER (WHERE amount > 0),0)::text AS "gross",
+          COALESCE(sum(discount_amount),0)::text AS "discount",
           COALESCE(-sum(amount) FILTER (WHERE amount < 0),0)::text AS "returns",
           COALESCE(sum(amount),0)::text AS "net"
-        FROM sales_lines
+        FROM adjusted
         GROUP BY GROUPING SETS (
           (day,hour,currency_code),
           (day,currency_code),
