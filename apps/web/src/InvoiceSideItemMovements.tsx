@@ -42,7 +42,7 @@ function dayText(value: string) {
   return year && month && day ? day + "/" + month + "/" + year : value;
 }
 
-/** Latest sale lines: 10 normally, 40 when filtering by invoice net amount. */
+/** Latest sale lines: 40 for all search modes. */
 export function InvoiceSideItemMovements({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -168,7 +168,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
       {customerSuccess && <small role="status">{customerSuccess}</small>}
       {customerError && !editing && <small role="alert">{customerError}</small>}
       {openingCustomerId !== null && <small>جارٍ فتح بيانات العميل…</small>}
-      {!offline && validNet && movements.isLoading && <small>جارٍ تحميل آخر {filters.invoiceTotal ? 40 : 10} سطرًا…</small>}
+      {!offline && validNet && movements.isLoading && <small>جارٍ تحميل آخر 40 سطرًا…</small>}
       {!offline && validNet && movements.isError && (
         <div className="invoice-side-movement-error" role="alert">
           <small>تعذر تحميل حركة الأصناف. راجع الاتصال والصلاحيات.</small>
@@ -177,7 +177,7 @@ export function InvoiceSideItemMovements({ context }: { context: CompanyContext 
       )}
       {validNet && (movements.data?.items.length ?? 0) > 0 && (
         <div className="invoice-side-overview-scroll invoice-side-movement-scroll"
-          role="region" tabIndex={0} aria-label={filters.invoiceTotal ? "آخر أربعين سطرًا من حركة أصناف المبيعات" : "آخر عشرة أسطر من حركة أصناف المبيعات"}>
+          role="region" tabIndex={0} aria-label="آخر أربعين سطرًا من حركة أصناف المبيعات">
           <table className="invoice-side-movement-table" dir="rtl">
             <colgroup>
               <col style={{ width: "20%" }} />
