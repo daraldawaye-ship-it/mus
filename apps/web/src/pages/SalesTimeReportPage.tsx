@@ -85,13 +85,13 @@ function exportCsv(
     return '"' + safe.replace(/"/g, '""') + '"';
   };
   const headers = [
-    "التاريخ", "اليوم", "العملة",
+    "التاريخ", "اليوم",
     ...positions.map(start => periodLabel(start, interval)),
     ...(showUnknown ? ["الوقت غير معروف"] : []),
     "الإجمالي قبل الخصم", "الخصم", "المرتجعات", "الصافي",
   ];
-  const toRow = (date: string, weekday: string, currency: string, hours: Row[], total: Row) => [
-    date, weekday, currency,
+  const toRow = (date: string, weekday: string, hours: Row[], total: Row) => [
+    date, weekday,
     ...positions.map(start => sumMoney(hours.filter(row =>
       row.hour !== null && row.hour >= start && row.hour < start + interval
     ), "gross")),
@@ -99,13 +99,13 @@ function exportCsv(
     total.gross, total.discount, total.returns, total.net,
   ];
   const hourly = days.flatMap(day =>
-    [toRow(day.date, day.weekday, day.currencyCode, day.hours, day.total)]);
-  const footer = totals.map(total => toRow("إجمالي الفترة", "", total.currencyCode,
+    [toRow(day.date, day.weekday, day.hours, day.total)]);
+  const footer = totals.map(total => toRow("إجمالي الفترة", "",
     days.filter(day => day.currencyCode === total.currencyCode).flatMap(day => day.hours),
     total));
   const csv = "\uFEFF" + [headers, ...hourly, ...footer]
     .map(row => row.map((value, index) =>
-      quote(index <= 2 ? String(value) : formatWholeMoney(value))).join(","))
+      quote(index <= 1 ? String(value) : formatWholeMoney(value))).join(","))
     .join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
@@ -230,7 +230,7 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
       <div className="table-scroll">
         <table className="sales-time-report-matrix">
           <thead><tr>
-            <th>التاريخ</th><th>اليوم</th><th>العملة</th>
+            <th>التاريخ</th><th>اليوم</th>
             {positions.map(start => <th key={start}>{periodLabel(start, group)}</th>)}
             {showUnknown && <th>وقت غير معروف</th>}
             <th>الإجمالي</th><th>الخصم</th><th>المرتجعات</th><th>الصافي</th>
@@ -238,7 +238,6 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
           <tbody>
             {days.map(day => <tr key={day.date + ":" + day.currencyCode}>
               <td dir="ltr">{day.date}</td><td>{day.weekday}</td>
-              <td>{day.currencyCode || "—"}</td>
               {positions.map(start => <td key={start}>{number(slotTotal(day.hours, start))}</td>)}
               {showUnknown && <td>{number(unknownTotal(day.hours))}</td>}
               <td>{number(day.total.gross)}</td>
@@ -252,7 +251,7 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
               const allHours = days.filter(day => day.currencyCode === total.currencyCode)
                 .flatMap(day => day.hours);
               return <tr key={total.currencyCode}>
-                <th colSpan={2}>إجمالي الفترة</th><th>{total.currencyCode || "—"}</th>
+                <th colSpan={2}>إجمالي الفترة</th>
                 {positions.map(start => <th key={start}>{number(slotTotal(allHours, start))}</th>)}
                 {showUnknown && <th>{number(unknownTotal(allHours))}</th>}
                 <th>{number(total.gross)}</th>
