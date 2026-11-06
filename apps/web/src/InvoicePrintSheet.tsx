@@ -12,7 +12,7 @@ export type PrintableInvoice = Pick<Invoice,
   "createdByName" | "createdAt"> & {
     purchaseCorrectionNote?: string;
     number?: string | null;
-    lines: Pick<InvoiceLine, "id" | "itemName" | "quantity" | "unitName" |
+    lines: Pick<InvoiceLine, "id" | "itemName" | "itemEnglishName" | "quantity" | "unitName" |
       "unitPrice" | "expiryDate" | "total">[];
   };
 
@@ -102,7 +102,7 @@ export function InvoicePrintSheet({
         <tbody>
           {invoice.lines.map(line => (
             <tr key={line.id}>
-              <td className="invoice-print-item">{line.itemName}</td>
+              <td className="invoice-print-item"><bdi dir="auto">{purchase ? line.itemName : (line.itemEnglishName?.trim() || line.itemName)}</bdi></td>
               <td className="invoice-print-number">{money(line.quantity)}</td>
               <td>{line.unitName}</td>
               {purchase && <td className="invoice-print-number">—</td>}

@@ -120,6 +120,8 @@ export interface InvoiceLine {
   itemId: number;
   itemCode: string;
   itemName: string;
+  /** Current item-card English name; only used for sales invoice print. */
+  itemEnglishName?: string;
   unit: 1 | 2 | 3;
   unitName: string;
   factor2: number;

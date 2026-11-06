@@ -3080,7 +3080,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         createdByName:user.displayName || user.name,
         createdAt:new Date().toISOString(),
         lines:selectedLines.map((line,index)=>({
-          id:index+1,itemName:line.itemName,quantity:line.quantity,
+          id:index+1,itemName:line.itemName,
+          itemEnglishName:line.sourceItem?.englishName ?? line.originalSource?.itemEnglishName ?? "",
+          quantity:line.quantity,
           unitName:line.unitName,unitPrice:line.unitPrice,
           expiryDate:line.expiryDate,
           total:totals.lineTotals[index] ?? "0",

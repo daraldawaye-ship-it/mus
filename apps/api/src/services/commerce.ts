@@ -86,6 +86,7 @@ export function invoiceLineDTO(row: QueryResultRow): InvoiceLine {
     itemId: row.item_id,
     itemCode: row.item_code,
     itemName: row.item_name,
+    itemEnglishName: row.item_english_name ?? "",
     unit: row.unit,
     unitName: row.unit_name,
     factor2: row.factor2,
@@ -111,7 +112,12 @@ export async function invoiceDTOs(
 ): Promise<Invoice[]> {
   if (!rows.length) return [];
   const lines = await db.query(
-    "SELECT l.*,l.expiry_date::text AS expiry_text FROM invoice_lines l WHERE l.company_id=$1 AND l.invoice_id=ANY($2::integer[]) ORDER BY l.invoice_id,l.line_number",
+    `SELECT l.*,l.expiry_date::text AS expiry_text,
+            card.english_name AS item_english_name
+       FROM invoice_lines l
+       LEFT JOIN items card ON card.company_id=l.company_id AND card.id=l.item_id
+      WHERE l.company_id=$1 AND l.invoice_id=ANY($2::integer[])
+      ORDER BY l.invoice_id,l.line_number`,
     [rows[0].company_id, rows.map((row) => row.id)],
   );
   const corrections = await db.query(
