@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Pool } from "pg";
-import { doctorInputSchema, doctorPatchSchema, doctorInlinePatchSchema, effectiveDoctorSharedName, type Doctor } from "../../../packages/contracts/src/index.ts";
+import { doctorInputSchema, doctorPatchSchema, doctorInlinePatchSchema, doctorBulkSharedNameSchema, effectiveDoctorSharedName, type Doctor } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -125,6 +125,39 @@ export function doctorRoutes(pool: Pool): Router {
     res.json({doctor});
   }));
 
+  // Assign only checked cards to the chosen main card in one audited transaction.
+  // The clicked card is promoted to main even when it was not checked.
+  router.patch(`${base}/bulk-shared-name`,handler(async(req,res)=>{
+    const input=parse(doctorBulkSharedNameSchema,req.body);
+    const result=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{
+      const ids=[...new Set([...input.doctorIds,input.mainDoctorId])].sort((a,b)=>a-b);
+      const current=await client.query(
+        "SELECT * FROM doctors WHERE company_id=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE",
+        [companyId,ids],
+      );
+      // Never partially update when a selected record is missing or outside this company.
+      if(current.rows.length!==ids.length)missing();
+      const main=current.rows.find(row=>row.id===input.mainDoctorId);
+      if(!main)missing();
+      const sharedName=main.name.trim();
+      const changed=current.rows.filter(row=>effectiveDoctorSharedName(row.name,row.shared_name)!==sharedName);
+      if(changed.length){
+        const updated=await client.query(
+          `UPDATE doctors SET shared_name=$1,revision=revision+1,updated_at=clock_timestamp()
+             WHERE company_id=$2 AND id=ANY($3::int[]) RETURNING *`,
+          [sharedName,companyId,changed.map(row=>row.id)],
+        );
+        const after=new Map(updated.rows.map(row=>[row.id,dto(row)]));
+        for(const row of changed){
+          const next=after.get(row.id);
+          if(!next)throw new Error("Missing updated doctor in bulk result");
+          await audit(client,user,"doctor.update","doctor",row.id,dto(row),next,companyId);
+        }
+      }
+      return {mainDoctorId:input.mainDoctorId,sharedName,selected:input.doctorIds.length,updated:changed.length};
+    });
+    res.json({result});
+  }));
   router.patch(`${base}/:id`,handler(async(req,res)=>{
     const input=parse(doctorPatchSchema,req.body),doctorId=id(req.params.id);
     const doctor=await mutateMaster(pool,req,"commerce.manage",async(client,user,companyId)=>{

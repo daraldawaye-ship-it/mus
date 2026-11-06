@@ -22,7 +22,7 @@
 }
 .doctor-inline-value {
   min-width: 0;
-  max-width: 270px;
+  max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -17,6 +17,12 @@ export const doctorInputSchema = z.object({
   notes: text(2000).default(""),
   active: z.boolean().default(true),
 }).strict();
+/** Change the common name of checked cards to the chosen main card name, atomically. */
+export const doctorBulkSharedNameSchema = z.object({
+  mainDoctorId: z.number().int().positive(),
+  doctorIds: z.array(z.number().int().positive()).min(1).max(500),
+}).strict();
+
 export const doctorPatchSchema = doctorInputSchema.extend({
   kind: z.enum(doctorKinds).nullable(),
   revision: z.number().int().positive(),

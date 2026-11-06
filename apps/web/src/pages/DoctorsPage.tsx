@@ -6,7 +6,7 @@ import { Pencil } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   doctorKinds,doctorKindLabels,doctorInputSchema,doctorPatchSchema,
-  doctorInlinePatchSchema,isMainDoctorCard,
+  doctorInlinePatchSchema,doctorBulkSharedNameSchema,isMainDoctorCard,
   type Doctor,type DoctorKind,type DoctorInlineField,type CompanyContext,
 } from "../../../../packages/contracts/src/index";
 import { api,usePagedQuery,useScopeGuard } from "../api";
@@ -238,6 +238,9 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   );
   const [editing,setEditing]=useState<Doctor|"new"|null>(null);
   const [notice,setNotice]=useState("");
+  const [selectedDoctorIds,setSelectedDoctorIds]=useState<string[]>([]);
+  const [mainSavingId,setMainSavingId]=useState<number|null>(null);
+  const [selectionReset,setSelectionReset]=useState(0);
   // Notifications open the existing card; saving the review closes it.
   const focusId = Number(params.get("focus"));
   const focus = Number.isSafeInteger(focusId) && focusId > 0 ? focusId : null;
@@ -262,16 +265,47 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
       onSaved={()=>{setNotice("");void list.refetch();}}
       onFailure={message=>setNotice(message)} />
   );
+    async function setAsMain(doctor:Doctor){
+    if(mainSavingId!==null)return;
+    if(!selectedDoctorIds.length){
+      setNotice("حدد الكروت المطلوب توحيد اسمها المشترك أولًا.");
+      return;
+    }
+    const parsed=doctorBulkSharedNameSchema.safeParse({
+      mainDoctorId:doctor.id,doctorIds:selectedDoctorIds.map(Number),
+    });
+    if(!parsed.success){setNotice("تعذر تحديد الكروت المختارة.");return;}
+    setMainSavingId(doctor.id);
+    setNotice("");
+    try {
+      const response=await api<{result:{sharedName:string;selected:number;updated:number}}>(
+        `/companies/${companyId}/doctors/bulk-shared-name`,
+        {method:"PATCH",body:parsed.data},
+      );
+      setNotice(`تم توحيد الاسم المشترك لـ ${response.result.selected} كرت تحت «${response.result.sharedName}».`);
+      setSelectedDoctorIds([]);
+      setSelectionReset(value=>value+1);
+      await list.refetch();
+    }catch(err){
+      setNotice(`تعذر توحيد الاسم المشترك: ${errorMessage(err)}`);
+    }finally{
+      setMainSavingId(null);
+    }
+  }
   const columns:ColumnDef<Doctor,unknown>[]=[
+    ...(mayManage?[{id:"makeMain",header:"رئيسي",size:78,minSize:72,maxSize:88,enableSorting:false,
+      cell:({row}:{row:{original:Doctor}})=><Button variant="secondary" size="compact"
+        disabled={mainSavingId!==null} onClick={()=>void setAsMain(row.original)}
+        >رئيسي</Button>} satisfies ColumnDef<Doctor,unknown>]:[]),
     {accessorKey:"name",header:"اسم الطبيب أو الجهة",cell:({row})=><ValueCell>{row.original.name}</ValueCell>},
-    {accessorKey:"sharedName",header:"الاسم المشترك",cell:({row})=>inline(row.original,"sharedName")},
+    {accessorKey:"sharedName",header:"الاسم المشترك",size:330,minSize:300,cell:({row})=>inline(row.original,"sharedName")},
     {accessorKey:"kind",header:"الفئة",cell:({row})=>inline(row.original,"kind")},
     {accessorKey:"department",header:"الجهة",cell:({row})=>inline(row.original,"department")},
     {accessorKey:"phone",header:"رقم الهاتف",enableSorting:false,cell:({row})=>inline(row.original,"phone")},
     {accessorKey:"searchKeys",header:"مفاتيح البحث",enableSorting:false,cell:({row})=>inline(row.original,"searchKeys")},
     {accessorKey:"notes",header:"ملاحظات",enableSorting:false,cell:({row})=>inline(row.original,"notes")},
     {accessorKey:"active",header:"الحالة",cell:({row})=>inline(row.original,"active")},
-    ...(mayManage?[{id:"actions",header:"الإجراء",enableSorting:false,
+    ...(mayManage?[{id:"actions",header:"الإجراء",size:68,minSize:60,maxSize:75,enableSorting:false,
       cell:({row}:{row:{original:Doctor}})=><Button variant="ghost" size="compact"
         onClick={()=>setEditing(row.original)}>تعديل</Button>} satisfies ColumnDef<Doctor,unknown>]:[]),
   ];
@@ -279,7 +313,7 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   return <>
     <PageHeader title="كرت الأطباء والجهات" description="الأطباء والممرضون والجهات، دون إنشاء حساب محاسبي."
       actions={mayManage?<Button onClick={()=>setEditing("new")}>إضافة كرت</Button>:undefined}/>
-    {notice&&<Notice tone={notice.startsWith("لم يحفظ")||notice.startsWith("تحقق")?"error":"success"}>{notice}</Notice>}
+    {notice&&<Notice tone={notice.startsWith("لم يحفظ")||notice.startsWith("تحقق")||notice.startsWith("تعذر")||notice.startsWith("حدد")?"error":"success"}>{notice}</Notice>}
     {focus!==null && !mayManage && <Notice tone="warning">فتح هذا الكرت للتعديل يحتاج صلاحية إدارة الأطباء والجهات.</Notice>}
     {focused.isError && <Notice tone="error">{errorMessage(focused.error)}</Notice>}
     <Card title="الأطباء والجهات" description={mayManage?"اضغط على أي حقل لتعديله مباشرة؛ الاسم يتغير من زر «تعديل» فقط.":undefined}>
@@ -295,7 +329,8 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
         </Select>
       </div>
       {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
-      <DataTable columns={columns} data={list.data?.items??[]} total={list.data?.total??0}
+      <DataTable key={selectionReset} columns={columns} data={list.data?.items??[]} total={list.data?.total??0}
+        onSelectionChange={setSelectedDoctorIds}
         page={list.page} pageSize={list.pageSize} onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize} sorting={list.sorting} onSortingChange={list.setSorting}
         loading={list.loading} ariaLabel="كروت الأطباء والجهات" />
