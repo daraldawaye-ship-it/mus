@@ -268,7 +268,7 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
     async function setAsMain(doctor:Doctor){
     if(mainSavingId!==null)return;
     if(!selectedDoctorIds.length){
-      setNotice("حدد الكروت المطلوب توحيد اسمها المشترك أولًا.");
+      setNotice("حدد الكروت المطلوب توحيد اسمها المشترك وفئتها أولًا.");
       return;
     }
     const parsed=doctorBulkSharedNameSchema.safeParse({
@@ -278,11 +278,11 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
     setMainSavingId(doctor.id);
     setNotice("");
     try {
-      const response=await api<{result:{sharedName:string;selected:number;updated:number}}>(
+      const response=await api<{result:{sharedName:string;kind:DoctorKind|null;selected:number;updated:number}}>(
         `/companies/${companyId}/doctors/bulk-shared-name`,
         {method:"PATCH",body:parsed.data},
       );
-      setNotice(`تم توحيد الاسم المشترك لـ ${response.result.selected} كرت تحت «${response.result.sharedName}».`);
+      setNotice(`تم توحيد الاسم المشترك والفئة لـ ${response.result.selected} كرت تحت «${response.result.sharedName}» بفئة «${response.result.kind?doctorKindLabels[response.result.kind]:"بدون فئة"}».`);
       setSelectedDoctorIds([]);
       setSelectionReset(value=>value+1);
       await list.refetch();

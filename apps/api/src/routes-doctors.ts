@@ -125,7 +125,7 @@ export function doctorRoutes(pool: Pool): Router {
     res.json({doctor});
   }));
 
-  // Assign only checked cards to the chosen main card in one audited transaction.
+  // Assign the chosen main card's name and kind to checked cards atomically.
   // The clicked card is promoted to main even when it was not checked.
   router.patch(`${base}/bulk-shared-name`,handler(async(req,res)=>{
     const input=parse(doctorBulkSharedNameSchema,req.body);
@@ -140,13 +140,31 @@ export function doctorRoutes(pool: Pool): Router {
       const main=current.rows.find(row=>row.id===input.mainDoctorId);
       if(!main)missing();
       const sharedName=main.name.trim();
-      const changed=current.rows.filter(row=>effectiveDoctorSharedName(row.name,row.shared_name)!==sharedName);
+      const kind=main.kind;
+      const changed=current.rows.filter(row=>
+        effectiveDoctorSharedName(row.name,row.shared_name)!==sharedName || row.kind!==kind,
+      );
       if(changed.length){
         const updated=await client.query(
-          `UPDATE doctors SET shared_name=$1,revision=revision+1,updated_at=clock_timestamp()
-             WHERE company_id=$2 AND id=ANY($3::int[]) RETURNING *`,
-          [sharedName,companyId,changed.map(row=>row.id)],
+          `UPDATE doctors SET shared_name=$1,kind=$2,revision=revision+1,updated_at=clock_timestamp()
+             WHERE company_id=$3 AND id=ANY($4::int[]) RETURNING *`,
+          [sharedName,kind,companyId,changed.map(row=>row.id)],
         );
+        // A newly classified card no longer needs an outstanding doctor-review reminder.
+        const reviewed=kind===null?[]:changed.filter(row=>row.kind!==kind)
+          .map(row=>`doctor:${row.id}`);
+        if(reviewed.length){
+          await client.query(
+            `UPDATE notifications
+               SET completed_at=clock_timestamp(),
+                   read_at=COALESCE(read_at,clock_timestamp()),
+                   snoozed_until=NULL,next_reminder_at=NULL,
+                   revision=revision+1,updated_at=clock_timestamp()
+             WHERE company_id=$1 AND code='SALES_DOCTOR_REVIEW'
+               AND subject_key=ANY($2::text[]) AND completed_at IS NULL`,
+            [companyId,reviewed],
+          );
+        }
         const after=new Map(updated.rows.map(row=>[row.id,dto(row)]));
         for(const row of changed){
           const next=after.get(row.id);
@@ -154,7 +172,7 @@ export function doctorRoutes(pool: Pool): Router {
           await audit(client,user,"doctor.update","doctor",row.id,dto(row),next,companyId);
         }
       }
-      return {mainDoctorId:input.mainDoctorId,sharedName,selected:input.doctorIds.length,updated:changed.length};
+      return {mainDoctorId:input.mainDoctorId,sharedName,kind,selected:input.doctorIds.length,updated:changed.length};
     });
     res.json({result});
   }));
