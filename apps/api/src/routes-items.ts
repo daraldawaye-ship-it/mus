@@ -1086,15 +1086,17 @@ export function itemRoutes(pool: Pool): Router {
                 await companyAccess(client, user, companyId, "inventory.post", true);
                 needsUnitRebase = true;
               }
-              const pack = BigInt(before.factor2) * BigInt(before.factor3);
-              const fractional = await client.query(
-                `SELECT 1 FROM stock_balances
-                 WHERE company_id=$1 AND item_id=$2
-                   AND MOD(quantity_smallest,$3::numeric)<>0 LIMIT 1`,
-                [companyId, rowId, pack.toString()],
-              );
-              if (fractional.rowCount)
-                conflict("لا يمكن تعديل الوحدات: توجد كمية كسرية في الوحدة الأولى بأحد المخازن أو دفعات الصنف.");
+              if (stablePack) {
+                const pack = BigInt(before.factor2) * BigInt(before.factor3);
+                const fractional = await client.query(
+                  `SELECT 1 FROM stock_balances
+                   WHERE company_id=$1 AND item_id=$2
+                     AND MOD(quantity_smallest,$3::numeric)<>0 LIMIT 1`,
+                  [companyId, rowId, pack.toString()],
+                );
+                if (fractional.rowCount)
+                  conflict("لا يمكن تعديل الوحدات: توجد كمية كسرية في الوحدة الأولى بأحد المخازن أو دفعات الصنف.");
+              }
             } else if (history.rowCount && !stablePack &&
                        !addsOnlyPreviouslyInactiveUnits(before, input)) {
               conflict("الوحدات التاريخية محمية؛ يمكن تعديل الثانية والثالثة دون تغيير إجمالي معامل التجزئة، أو إضافة وحدة خاملة جديدة عندما يكون المخزون صفرًا.");
