@@ -5,7 +5,7 @@ import { FileSpreadsheet, Printer } from "lucide-react";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { adenInvoiceToday } from "../invoice-save-date";
-import { formatMoney } from "../format-money";
+import { formatWholeMoney } from "../format-money";
 import { errorMessage } from "../phase2";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import "./SalesTimeReportPage.css";
@@ -66,11 +66,8 @@ function sumMoney(rows: Row[], key: MoneyField): string {
     "." + String(abs % 1000000n).padStart(6, "0");
 }
 function formatted(value: string): string {
-  const parts = value.split(".");
-  const significant = (parts[1] ?? "").replace(/0+$/, "");
-  // Show two decimal digits like the former system without dropping
-  // any nonzero fractional precision from the underlying report.
-  return formatMoney(parts[0] + "." + significant.padEnd(2, "0"));
+  // Hide fractions in daily report display; keep exact values in the API.
+  return formatWholeMoney(value);
 }
 const number = (value: string) =>
   <span dir="ltr" className="sales-time-amount">{formatted(value)}</span>;
@@ -107,7 +104,9 @@ function exportCsv(
     days.filter(day => day.currencyCode === total.currencyCode).flatMap(day => day.hours),
     total));
   const csv = "\uFEFF" + [headers, ...hourly, ...footer]
-    .map(row => row.map(value => quote(String(value))).join(",")).join("\r\n");
+    .map(row => row.map((value, index) =>
+      quote(index <= 2 ? String(value) : formatWholeMoney(value))).join(","))
+    .join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;

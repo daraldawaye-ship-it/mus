@@ -7,20 +7,33 @@
 .sales-time-report .sales-time-report-matrix td {
   white-space: nowrap;
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border, #d6d6d6);
+  border: 1px solid var(--border);
 }
-.sales-time-report .sales-time-report-matrix th {
-  background: var(--surface-secondary, #f3f5f7);
+.sales-time-report .sales-time-report-matrix thead th,
+.sales-time-report .sales-time-report-matrix tfoot th {
+  background: var(--table-head);
+  color: var(--on-soft);
+}
+.sales-time-report .sales-time-report-matrix tbody tr {
+  background: var(--surface);
+  color: var(--text);
 }
 .sales-time-report .sales-time-report-matrix tbody tr:nth-child(even) {
-  background: var(--surface-secondary, #f7f7f8);
+  background: var(--hover);
+  color: var(--text);
+}
+.sales-time-report .sales-time-report-matrix tbody tr:hover {
+  background: var(--table-selected);
+  color: var(--on-table-selected);
+}
+.sales-time-report .sales-time-report-matrix tbody td,
+.sales-time-report .sales-time-report-matrix tbody td .sales-time-amount {
+  color: inherit;
 }
 .sales-time-report .sales-time-report-matrix tfoot th {
   font-weight: 700;
 }
-.sales-time-report .sales-time-net {
-  font-weight: 700;
-}
+.sales-time-report .sales-time-net { font-weight: 700; }
 .sales-time-report .sales-time-amount {
   display: inline-block;
   white-space: nowrap;
@@ -43,5 +56,18 @@
   .sales-time-report .sales-time-report-matrix th,
   .sales-time-report .sales-time-report-matrix td {
     padding: 0.15rem;
+    border-color: #b8bec5;
+    color: #111 !important;
+  }
+  .sales-time-report .sales-time-report-matrix thead th,
+  .sales-time-report .sales-time-report-matrix tfoot th {
+    background: #e8edf2 !important;
+    color: #111 !important;
+  }
+  .sales-time-report .sales-time-report-matrix tbody tr,
+  .sales-time-report .sales-time-report-matrix tbody tr:nth-child(even),
+  .sales-time-report .sales-time-report-matrix tbody tr:hover {
+    background: #fff !important;
+    color: #111 !important;
   }
 }
