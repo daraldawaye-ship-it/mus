@@ -23,9 +23,12 @@ export function planWholeUnitRebase(
     conflict("تغيير عدد الوحدة يتطلب الحفاظ على الوحدة الأولى ونوع الانتهاء وأسماء الوحدات الفعالة.");
   return rows.map(row => {
     const count = BigInt(row.quantity_smallest);
-    if (count % oldPack !== 0n)
+    if (rows.reduce((total, batch) => total + BigInt(batch.quantity_smallest), 0n) !== 0n && count % oldPack !== 0n)
       conflict("لا يمكن تحويل الوحدة: في أحد المخازن أو الدفعات كمية ليست عددًا صحيحًا بالوحدة الأولى.");
-    const after = count / oldPack * newPack;
+    const scaled = count * newPack;
+    if (scaled % oldPack !== 0n)
+      conflict("لا يمكن تحويل الوحدة: ينتج عن التحويل كسر في أصغر وحدة.");
+    const after = scaled / oldPack;
     if (after >= capacity || after <= -capacity)
       conflict("لا يمكن تحويل الوحدة: كمية المخزون الجديدة تتجاوز حد قاعدة البيانات.");
     return { ...row, quantityAfter: after.toString(), delta: (after - count).toString() };
