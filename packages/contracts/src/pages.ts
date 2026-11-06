@@ -862,6 +862,24 @@ page(
   { type: "report", keywords: ["تقارير", "رصيد"] },
 );
 page(
+  "company.trial-balance",
+  "ميزان المراجعة",
+  "التقارير",
+  "/companies/:companyId/trial-balance",
+  { view: owner, print: owner },
+  "افتتاحي وحركة الفترة والختامي للحسابات بالعملة الأساسية؛ للمالك فقط.",
+  { type: "report", keywords: ["ميزان", "مدين", "دائن", "ميزان مراجعة"] },
+);
+page(
+  "company.cash-flows",
+  "التدفقات المالية",
+  "التقارير",
+  "/companies/:companyId/cash-flows",
+  { view: owner, print: owner },
+  "التدفقات الداخلة والخارجة للصناديق والبنوك بين تاريخين؛ للمالك فقط.",
+  { type: "report", keywords: ["نقدية", "تدفقات", "صندوق", "بنوك"] },
+);
+page(
   "company.account-ledger",
   "كشف حساب",
   "التقارير",
