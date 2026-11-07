@@ -911,7 +911,7 @@ function EmployeeEditor({
   const [phone, setPhone] = useState(employee?.phone ?? "");
   // Legacy role is retained invisibly for backwards-compatible server modules.
   const role = employee?.role ?? "employee";
-  const [positions,setPositions]=useState<EmployeePosition[]>(employee?.positions??[]);
+  const [positions,setPositions]=useState<EmployeePosition[]>(employee?.positions??["employee"]);
   const [active, setActive] = useState(employee?.active ?? true);
   const [createSalesCashbox, setCreateSalesCashbox] = useState(false);
   const [permissions, setPermissions] = useState<Permission[]>(
