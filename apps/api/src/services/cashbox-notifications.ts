@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { emitNotification } from "./notifications.ts";
 
-type CashboxAlertKind="pouch"|"electronic"|"close";
+type CashboxAlertKind="pouch"|"electronic"|"close"|"custody";
 interface CashboxAlert {
   companyId:number;
   operationId:number;
@@ -25,11 +25,13 @@ export async function notifyCompanyCashiers(
     [input.companyId],
   );
   const code=input.kind==="electronic"?"CASHBOX_ELECTRONIC_TRANSFER":
-    input.kind==="pouch"?"CASHBOX_POUCH_TRANSFER":"CASHBOX_CLOSED";
+    (input.kind==="pouch"||input.kind==="custody")?"CASHBOX_POUCH_TRANSFER":"CASHBOX_CLOSED";
   const amount=input.amount+" ر.ي";
   const title=input.kind==="electronic"?"ترحيل إلى المحفظة الإلكترونية":
-    input.kind==="pouch"?"ترحيل مبلغ":"إغلاق الصندوق";
-  const message=input.kind==="electronic"
+    input.kind==="pouch"?"ترحيل مبلغ":input.kind==="custody"?"ترحيل العهدة الإدارية":"إغلاق الصندوق";
+  const message=input.kind==="custody"
+    ? "ترحيل من العهدة الإدارية إلى حافظتها: "+amount+". بانتظار الاستلام."
+    : input.kind==="electronic"
     ? input.employeeName+" رحّل "+amount+" إلى المحفظة الإلكترونية."
     : input.kind==="pouch"
       ? input.employeeName+(input.amount.startsWith("-")
@@ -43,10 +45,10 @@ export async function notifyCompanyCashiers(
       code,companyId:input.companyId,
       subjectEmployeeId:cashier.id,
       recipientUserId:cashier.user_id,
-      subjectKey:"cashbox-operation:"+input.operationId,
-      eventKey:code+":"+input.operationId,
+      subjectKey:(input.kind==="custody"?"administrative-custody-transfer:":"cashbox-operation:")+input.operationId,
+      eventKey:(input.kind==="custody"?"CUSTODY_POUCH_TRANSFER":code)+":"+input.operationId,
       title,message,
-      href:"/companies/"+input.companyId+"/notifications",
+      href:"/companies/"+input.companyId+"/pouch-receipts",
       // No company manager, unrelated employee, or configured follower may
       // receive an event intended for the explicitly designated cashier.
       explicitSubjectOnly:true,
