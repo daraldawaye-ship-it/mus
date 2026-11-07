@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import type { Pool } from "pg";
 import {
   pageActions,
@@ -30,6 +31,26 @@ const searchText = (value: string) =>
     .toLocaleLowerCase("ar");
 export function pageRoutes(pool: Pool): Router {
   const router = Router();
+  router.post(
+    "/page-catalog/visit",
+    handler(async (req, res) => {
+      const input = parse(z.object({
+        pageKey: z.string().regex(/^public\\.[a-z-]+$/).max(100),
+        recordId: z.number().int().positive().nullable().optional(),
+      }).strict(), req.body);
+      await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req), false);
+        const page = (await directoryEntries(client, user, null))
+          .find((entry) => entry.key === input.pageKey);
+        if (!page?.enabled || !page.actionAccess.view)
+          throw new HttpError(403, "forbidden", "الصفحة غير متاحة لهذا المستخدم");
+        await audit(client, user, "page.open", "page", input.recordId ?? null,
+          null, { pageKey: page.key, pageName: page.name,
+            recordId: input.recordId ?? null }, null);
+      });
+      res.json({ recorded: true });
+    }),
+  );
   router.get(
     "/page-catalog",
     handler(async (req, res) => {
