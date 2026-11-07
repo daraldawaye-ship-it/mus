@@ -104,7 +104,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         throw new HttpError(403,"forbidden","ليست لديك صلاحية عرض حركة مبيعات الأطباء والممرضين");
       const day=await client.query<{today:string;minDate:string}>(
         "SELECT (now() AT TIME ZONE 'Asia/Aden')::date::text AS today,"+
-        " ((now() AT TIME ZONE 'Asia/Aden')::date - 10)::text AS \"minDate\"");
+        " ((now() AT TIME ZONE 'Asia/Aden')::date - 9)::text AS \"minDate\"");
       const {today,minDate}=day.rows[0]!;
       if(input.dateFrom<minDate||input.dateTo>today)
         throw new HttpError(400,"invalid_date_range","يُسمح بالتقرير من آخر 10 أيام وحتى اليوم فقط");
@@ -123,7 +123,13 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       const params=[companyId,input.dateFrom,input.dateTo,input.mainName,searchPattern(input.q)];
       const totals=await client.query(
         "SELECT i.currency_code AS \"currencyCode\", count(*)::integer AS count,"+
-        " SUM(COALESCE(fix.corrected_total::numeric,i.total))::text AS total"+
+        " SUM(COALESCE(fix.corrected_total::numeric,i.total))::text AS total,"+
+        " COUNT(*) FILTER (WHERE mark.invoice_id IS NOT NULL)::integer AS \\"accountedCount\\","+
+        " COUNT(*) FILTER (WHERE mark.invoice_id IS NULL)::integer AS \\"unaccountedCount\\","+
+        " COALESCE(SUM(COALESCE(fix.corrected_total::numeric,i.total))"+
+        " FILTER (WHERE mark.invoice_id IS NOT NULL),0)::text AS \\"accountedTotal\\","+
+        " COALESCE(SUM(COALESCE(fix.corrected_total::numeric,i.total))"+
+        " FILTER (WHERE mark.invoice_id IS NULL),0)::text AS \\"unaccountedTotal\\"" +
         where+" GROUP BY i.currency_code ORDER BY i.currency_code",params);
       const rows=await client.query(
         "SELECT i.id,i.number,i.document_date::text AS \"documentDate\","+
@@ -140,6 +146,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         total:totals.rows.reduce((sum,row)=>sum+Number(row.count),0),
         totals:totals.rows.map(row=>({
           currencyCode:row.currencyCode,total:row.total,count:row.count,
+          accountedCount:row.accountedCount,unaccountedCount:row.unaccountedCount,
+          accountedTotal:row.accountedTotal,unaccountedTotal:row.unaccountedTotal,
         })),
         page:input.page,pageSize:input.pageSize,
       };
