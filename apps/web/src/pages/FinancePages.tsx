@@ -1708,6 +1708,29 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
   const accountId = Number(params.get("accountId")) || 0;
   const showSupplierAccount = !pledge && params.get("showSupplierAccount") === "1";
   const [selected, setSelected] = useState<PickAccount | null>(null);
+  const [ledgerSearchText, setLedgerSearchText] = useState("");
+  const didRecordLedgerVisit = useRef(false);
+  // Record a deliberate page mount once, independent of data refreshes or
+  // printing. Backend uses the authenticated user and server time.
+  useEffect(() => {
+    if (pledge || didRecordLedgerVisit.current) return;
+    didRecordLedgerVisit.current = true;
+    void api(`/companies/${companyId}/account-ledger/activity`, {
+      method: "POST",
+      body: { event: "view", accountId: accountId || null },
+    }).catch(() => {});
+  }, [companyId, pledge]);
+  // Debounce real account lookup typing. Never record every keystroke.
+  useEffect(() => {
+    const queryText = ledgerSearchText.trim();
+    if (pledge || queryText.length < 3) return;
+    const timeout = window.setTimeout(() => {
+      void api(`/companies/${companyId}/account-ledger/activity`, {
+        method: "POST", body: { event: "search", query: queryText.slice(0, 120) },
+      }).catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [companyId, pledge, ledgerSearchText]);
   const query = new URLSearchParams();
   query.set("accountId", String(accountId));
   query.set("dateFrom", dateFrom);
@@ -1862,6 +1885,15 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
             <ServerLookup<PickAccount>
               companyId={companyId}
               resource={`/companies/${companyId}/financial-options?type=accounts&kind=posting`}
+              onSearchChange={pledge ? undefined : setLedgerSearchText}
+              onSelect={pledge ? undefined : (item, queryText) => {
+                setLedgerSearchText("");
+                void api(`/companies/${companyId}/account-ledger/activity`, {
+                  method: "POST",
+                  body: { event: "select", accountId: item.id,
+                    query: queryText.trim().slice(0, 120) },
+                }).catch(() => {});
+              }}
               label="الحساب"
               value={
                 result.data?.account?.id === accountId
