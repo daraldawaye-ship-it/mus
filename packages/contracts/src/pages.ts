@@ -894,8 +894,8 @@ page(
   "ميزان المراجعة",
   "التقارير",
   "/companies/:companyId/trial-balance",
-  { view: owner, print: owner },
-  "افتتاحي وحركة الفترة والختامي للحسابات بالعملة الأساسية؛ للمالك فقط.",
+  { view: permission("finance.view"), print: permission("finance.view") },
+  "افتتاحي وحركة الفترة والختامي للحسابات بالعملة الأساسية؛ يخضع لصفحة ميزان المراجعة في مركز الصلاحيات.",
   { type: "report", keywords: ["ميزان", "مدين", "دائن", "ميزان مراجعة"] },
 );
 page(
@@ -903,8 +903,8 @@ page(
   "التدفقات المالية",
   "التقارير",
   "/companies/:companyId/cash-flows",
-  { view: owner, print: owner },
-  "التدفقات الداخلة والخارجة للصناديق والبنوك بين تاريخين؛ للمالك فقط.",
+  { view: permission("finance.view"), print: permission("finance.view") },
+  "التدفقات الداخلة والخارجة للصناديق والبنوك بين تاريخين؛ تخضع لصفحة التدفقات المالية في مركز الصلاحيات.",
   { type: "report", keywords: ["نقدية", "تدفقات", "صندوق", "بنوك"] },
 );
 page(
