@@ -7,7 +7,7 @@ import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
 import { formatWholeMoney } from "../format-money";
 import { adenInvoiceToday } from "../invoice-save-date";
-import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
+import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
 interface MedicalSale {
   id: number;
@@ -21,6 +21,7 @@ interface MedicalSale {
   doctorKind: "doctor" | "nurse";
   doctorId: number;
   notes: string;
+  accounted: boolean;
 }
 interface Result {
   items: MedicalSale[];
@@ -48,6 +49,11 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const directory = usePageDirectory(companyId);
   const access = directory.data?.find(entry => entry.key === "company.doctor-sales-movements");
   const canView = !!access?.enabled && !!access.actionAccess.view;
+  const canMarkAccounted = !!access?.enabled && !!access.actionAccess.edit;
+  const [pendingAccounted, setPendingAccounted] = useState<MedicalSale | null>(null);
+  const [accounting, setAccounting] = useState(false);
+  const [accountingError, setAccountingError] = useState("");
+  const [accountingSuccess, setAccountingSuccess] = useState("");
   const [params, setParams] = useSearchParams();
   const today = adenInvoiceToday();
   const minDate = adenInvoiceToday(new Date(Date.now() - 10 * 86_400_000));
@@ -83,6 +89,26 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
     staleTime: 0, refetchOnWindowFocus: true,
   });
   const records = results.data;
+  async function markAsAccounted() {
+    if (!pendingAccounted || !canMarkAccounted || accounting) return;
+    setAccounting(true);
+    setAccountingError("");
+    try {
+      const response = await api<{ result: { mainName: string; newlyMarked: number } }>(
+        `/companies/${companyId}/doctor-sales-movements/${pendingAccounted.id}/accounted`,
+        { method: "POST" },
+      );
+      setPendingAccounted(null);
+      setAccountingSuccess(
+        `تم تأشير ${response.result.newlyMarked} فاتورة جديدة بـ «محاسب» للـ ${response.result.mainName} حتى التاريخ والوقت المحددين.`
+      );
+      await results.refetch();
+    } catch (error) {
+      setAccountingError(errorMessage(error));
+    } finally {
+      setAccounting(false);
+    }
+  }
   function change(key: string, value: string) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -196,6 +222,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       {!directory.isPending && !canView &&
         <Notice tone="warning">لا تملك صلاحية عرض حركة مبيعات الأطباء والممرضين.</Notice>}
       {results.error && <Notice tone="error">{errorMessage(results.error)}</Notice>}
+      {accountingSuccess && <Notice tone="success">{accountingSuccess}</Notice>}
       {canView && !invalid && (
         <Card title={`الفواتير المطابقة: ${records?.total ?? "…"}`}>
           {results.isPending && <Notice>جارٍ تحميل الفواتير…</Notice>}
@@ -232,7 +259,18 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                         <td><bdi className="financial-number">{formatWholeMoney(row.total)}</bdi></td>
                         <td>{row.accountName || "—"}</td>
                         <td>
-                          <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>
+                          {canMarkAccounted ? (
+                            <button type="button" className="doctor-movements-account-link"
+                              title={`تأشير جميع فواتير ${row.doctorName} حتى هذه الفاتورة بأنها محاسب`}
+                              onClick={() => {
+                                setPendingAccounted(row);
+                                setAccountingError("");
+                                setAccountingSuccess("");
+                              }}>
+                              <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>
+                            </button>
+                          ) : <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>}
+                          {row.accounted && <strong className="doctor-movements-accounted">محاسب</strong>}
                         </td>
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
@@ -257,6 +295,30 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
           )}
         </Card>
       )}
+      <Dialog
+        open={pendingAccounted !== null}
+        title="تأكيد التأشير كمحاسب"
+        onClose={() => { if (!accounting) setPendingAccounted(null); }}
+        footer={<div className="form-actions">
+          <Button variant="secondary" disabled={accounting}
+            onClick={() => setPendingAccounted(null)}>إلغاء</Button>
+          <Button disabled={accounting} onClick={() => void markAsAccounted()}>
+            {accounting ? "جارٍ التأشير…" : "تأكيد التأشير"}
+          </Button>
+        </div>}
+      >
+        {pendingAccounted && (
+          <div className="form-stack">
+            <p>هل تريد تأشير هذه الفاتورة وجميع الفواتير الأقدم منها للطبيب أو الممرض الرئيسي
+              <strong> «{pendingAccounted.doctorName}» </strong>
+              وكروته الفرعية بعبارة «محاسب»؟</p>
+            <p>حتى الفاتورة بتاريخ <bdi dir="ltr">{pendingAccounted.documentDate} {invoiceTime(pendingAccounted.createdAt)}</bdi>
+              ، ويشمل هذا التأشير الفواتير السابقة خارج فترة العرض.</p>
+            <small className="muted">يُسجل اسم منفّذ التأشير وتوقيته، ولا ينتج عنه قيد مالي أو تعديل مخزون.</small>
+            {accountingError && <Notice tone="error">{accountingError}</Notice>}
+          </div>
+        )}
+      </Dialog>
     </>
   );
 }
