@@ -19,7 +19,7 @@ const kindLabels:Record<ResourceKind,string>={
 };
 
 function CentralPositionField({resource,companyId,dimension,onSaved}:{
- resource:Resource;companyId:number;dimension:"view"|"edit";onSaved:()=>void;
+ resource:Resource;companyId:number;dimension:"view"|"edit";onSaved:()=>Promise<unknown>;
 }) {
  const [open,setOpen]=useState(false);
  const [busy,setBusy]=useState(false);
@@ -41,7 +41,7 @@ function CentralPositionField({resource,companyId,dimension,onSaved}:{
      await api("/companies/"+companyId+"/central-access/"+encodeURIComponent(resource.key),{
        method:"PUT",body:{viewPositions,editPositions,revision:resource.policy?.revision??null},
      });
-     onSaved();
+     await onSaved();
    } catch(reason) {setError(errorMessage(reason));}
    finally {setBusy(false);}
  }
@@ -191,10 +191,10 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
            </button>
            <CentralPositionField resource={resource} companyId={companyId}
              dimension="view"
-             onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+             onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
            <CentralPositionField resource={resource} companyId={companyId}
              dimension="edit"
-             onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+             onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
          </div>)}
          {filtered.length===0&&!query.isPending&&<p>لا توجد نتائج.</p>}
        </div>
