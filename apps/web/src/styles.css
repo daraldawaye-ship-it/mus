@@ -2566,6 +2566,27 @@ ul {
   background: var(--surface);
   box-shadow: 0 5px 14px #0004;
 }
+/* Keep the eight sales sidebar choices reachable on shorter screens.
+   Opening the list temporarily uses the lower panel's available height,
+   with its own scroll instead of clipping options below the viewport. */
+.invoice-side-overview-menu[open] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.invoice-side-overview-menu[open] .invoice-side-overview-choices {
+  position: static;
+  inset: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.invoice-side-overview-menu[open] + .invoice-side-overview-content {
+  display: none;
+}
 .invoice-side-overview-choices button {
   width: 100%;
   padding: 7px 8px;
