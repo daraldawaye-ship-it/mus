@@ -121,6 +121,7 @@ export async function companyAccess(
   // legacy permission arrays. Reject direct GET API calls too, including a
   // manually pasted URL, while preserving invoice POST/post/voucher actions.
   const request = permissionRequest.getStore();
+  let centralReadGranted = false;
   if (!actor.owner && request && (request.method === "GET" || request.method === "HEAD")
       && targets.length) {
     const pageTargets = [...new Set(targets.flat()
@@ -130,11 +131,12 @@ export async function companyAccess(
       const policies = await centralPagePolicies(db, companyId,
         pageTargets.map(key => "page:"+key));
       const positions: string[] = row?.position_keys ?? [];
-      if (!targets.every(group => group.some(key => {
+      centralReadGranted = targets.every(group => group.some(key => {
         if (!key.endsWith(":view") || !key.startsWith("company.")) return false;
         return centralPageAllows(policies,
           key.slice(0, -":view".length), "view", actor.owner, positions);
-      })))
+      }));
+      if (!centralReadGranted)
         deny("هذه الصفحة أو بياناتها غير متاحة لصفات الموظف الحالية.");
     }
   }
@@ -183,7 +185,8 @@ export async function companyAccess(
     !permissions.includes("finance.view")
   )
     permissions.push("finance.view");
-  if (permission && !legacy.includes(permission) && !explicitGrant) deny();
+  if (permission && !legacy.includes(permission) && !explicitGrant &&
+      !(centralReadGranted && permission.endsWith(".view"))) deny();
   return {
     company: companyDTO(company.rows[0]),
     employee: row ? employeeDTO(row) : null,
