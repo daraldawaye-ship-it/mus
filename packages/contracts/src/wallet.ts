@@ -46,6 +46,7 @@ export const walletReversalSchema = z
 export const pageVisitEventSchema = z
   .object({
     pageKey: z.string().min(1).max(100),
+    recordId: z.number().int().positive().nullable().optional(),
     idempotencyKey: z.uuid(),
   })
   .strict();
