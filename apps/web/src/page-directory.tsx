@@ -72,7 +72,7 @@ export function PageRouteGuard({
     if (visitedRoute.current === visit) return;
     visitedRoute.current = visit;
     const recordId = entry?.record
-      ? Number(route.pathname.match(/\\/([1-9]\\d*)\\/?$/)?.[1]) || null
+      ? Number(route.pathname.match(new RegExp("/([1-9][0-9]*)/?$"))?.[1]) || null
       : null;
     if (!companyId) {
       void api("/page-catalog/visit", {
