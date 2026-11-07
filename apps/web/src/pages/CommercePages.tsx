@@ -71,6 +71,7 @@ import { useEmployeeCashbox } from "../employee-cashbox";
 import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { SalesHeaderActionsDropdown, PageActionsDropdown } from "../SalesHeaderActionsDropdown";
+import { AdministrativeCustodyTransferButton } from "../AdministrativeCustodyTransferButton";
 import { PledgeDialogs } from "../PledgeDialogs";
 import { InvoiceQuickAccountDialog } from "../InvoiceQuickAccountDialog";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
@@ -3277,6 +3278,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     receiptNumber={supplierReceiptNumber} documentDate={documentDate} />
                 )}
                 {kind === "sale" ? (
+                  <>
                   <SalesHeaderActionsDropdown
                     listUrl={listPath(companyId, kind)}
                     purchaseUrl={`${invoicePath(companyId,"new")}?kind=purchase`}
@@ -3300,6 +3302,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                       else setShowOriginalPicker(shown => !shown);
                     }}
                   />
+                  <AdministrativeCustodyTransferButton companyId={companyId}
+                    disabled={locked || !canPost(context) || !(
+                      context.general || context.permissions.includes("finance.manage")
+                    ) || isOfflineNow() || sessionRequiresLogin()} />
+                  </>
                 ) : (
                   <PageActionsDropdown actions={[
                     { label: "قائمة الفواتير", to: listPath(companyId, kind) },
