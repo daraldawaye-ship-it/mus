@@ -105,7 +105,7 @@ export function QuickLoginPage() {
           استخدام الرابط الملصق
         </Button>
       </div>
-      {error && <Notice tone="error">{error}</Notice>
+      {error && <Notice tone="error">{error}</Notice>}
       {error && <p className="muted">إذا أُنشئ رابط آخر لنفس الحساب، يتوقف الرابط السابق. ويمكنك تسجيل الدخول برقم الهاتف وكلمة المرور بدل الرابط.</p>}
       <Link className="button button-secondary" to="/login">
         تسجيل الدخول بكلمة المرور
