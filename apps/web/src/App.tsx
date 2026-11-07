@@ -517,7 +517,7 @@ function Navigation({
         (entry) =>
           entry.scope === scope &&
           (user?.owner || user?.kind === "admin" ||
-            !["public.users", "public.chat", "company.chat"].includes(entry.key)) &&
+            !["public.users", "public.chat"].includes(entry.key)) &&
           entry.navigation &&
           entry.href &&
           entry.visible &&
