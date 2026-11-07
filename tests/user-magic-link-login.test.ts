@@ -62,14 +62,18 @@ test("quick-login fragment is removed before same-origin JSON redemption", () =>
     "The pasted link must belong to this site");
   assert.match(page,/const tokenRef = useRef<string \| null>\(null\)/,
     "Bearer token is memory-only after removing the fragment");
-  assert.match(page,/async function redeemLink\(\)/,
-    "Redemption requires an explicit handler");
-  assert.match(page,/onClick=\{\(\) => void redeemLink\(\)\}/,
-    "Only a real button click is allowed to redeem the link");
-  assert.ok(page.indexOf("async function redeemLink()") < page.indexOf('api<SessionResponse>("/auth/login-link/redeem"'),
-    "Redemption must not happen from useEffect while previews are rendering");
-  assert.doesNotMatch(page,/useEffect\(\(\) => \{[\s\S]*?void \(async \(\) =>/,
-    "Opening/preloading the page must never auto-redeem a token");
+  assert.match(page,/async function redeemLink\(token: string \| null = tokenRef\.current\)/,
+    "One-use link redemption is available to the auto-login flow");
+  assert.match(page,/void redeemLink\(token\)/,
+    "Opening a complete link automatically starts redemption");
+  assert.match(page,/document\.visibilityState !== "visible"/,
+    "Hidden and prerendered pages should not consume credentials");
+  assert.match(page,/automaticAttemptsRef\.current\.has\(token\)/,
+    "React effect replays must not redeem the same token twice");
+  assert.match(page,/redeemingRef\.current/,
+    "Concurrent redemptions are blocked");
+  assert.match(page,/parsed\.origin !== window\.location\.origin/,
+    "Pasted links must still be same-origin");
   assert.match(client,/await setOfflineLoginRequired\(false\)\.catch\(\(\) => \{\}\)/,
     "Failed IndexedDB storage may not reject a successful online login");
 
