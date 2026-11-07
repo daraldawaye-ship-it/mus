@@ -8036,7 +8036,8 @@
           "default": "",
           "type": "string",
           "maxLength": 1000
-        }
+        },
+        "prescriptionImageReviewed": {"type":"boolean"}
       },
       "required": [
         "decision"
@@ -8440,10 +8441,9 @@
           "type":"array","minItems":1,"maxItems":20,
           "items":{"anyOf":[{"type":"integer","minimum":1},{"type":"null"}]}
         },
-        "imageDataUrl": {"type":"string","minLength":50,"maxLength":700000},
-        "privacyConfirmed": {"type":"boolean","const":true}
+        "imageDataUrl": {"type":"string","minLength":50,"maxLength":700000}
       },
-      "required":["idempotencyKey","prescriptionLines","imageDataUrl","privacyConfirmed"],
+      "required":["idempotencyKey","prescriptionLines","imageDataUrl"],
       "additionalProperties":false
     }
   },
