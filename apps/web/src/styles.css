@@ -4049,6 +4049,28 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .doctor-movements-summary .financial-number {
   font-weight: 700;
 }
+.doctor-movements-account-link {
+  display: inline-block;
+  background: none;
+  border: 0;
+  padding: 2px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.doctor-movements-account-link:hover,
+.doctor-movements-account-link:focus-visible {
+  color: var(--accent);
+}
+.doctor-movements-accounted {
+  display: inline-block;
+  margin-inline-start: 7px;
+  color: var(--accent);
+  white-space: nowrap;
+  font-size: 12px;
+}
 
 
 /* General table: two editable DECIMAL cells, compact and right-aligned.
