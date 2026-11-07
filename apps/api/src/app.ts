@@ -87,9 +87,9 @@ export async function createApp(options: AppOptions = {}) {
   // Reject saturated market traffic before session queries or JSON parsing can consume core resources.
   if (market) {
     const smallMarketBody=express.json({limit:"64kb"});
-    const imageMarketBody=express.json({limit:"160kb"});
+    const imageMarketBody=express.json({limit:"768kb"});
     app.use("/api/medicine-market",market.admission,(req,res,next)=>
-      (req.method==="POST" && /^\/cards\/[1-9]\d*\/images$/.test(req.path)
+      (req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.path) || req.path==="/prescriptions")
        ?imageMarketBody:smallMarketBody)(req,res,next));
   }
   const business = businessRoutes(pool, market?.router);
