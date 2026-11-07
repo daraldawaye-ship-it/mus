@@ -7,6 +7,7 @@ import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { assertRequestPagesEnabled } from "./services/pages.ts";
+import { centralResourcePolicies, centralResourceAllows } from "./services/central-access-authorization.ts";
 import { controlByKey, controlCatalog, validControlValue } from "./services/control-catalog.ts";
 
 const valueInput = z.object({
@@ -50,14 +51,17 @@ export function controlRoutes(pool: Pool): Router {
         if (!user.owner && target.user_id !== user.id)
           fail(403, "forbidden", "لا يمكن عرض كنترول موظف آخر.");
       }
-      const [stored, policies, grants, employees] = await Promise.all([
+      const [stored, policies, grants, employees, centralRoles] = await Promise.all([
         client.query("SELECT id,control_key,employee_id,value,revision FROM company_control_values WHERE company_id=$1", [companyId]),
         client.query("SELECT id,control_key,accountant_allowed,revision FROM company_control_policies WHERE company_id=$1", [companyId]),
         client.query("SELECT control_key,employee_id FROM company_control_editor_grants WHERE company_id=$1", [companyId]),
         user.owner ? client.query("SELECT id,name,role FROM employees WHERE company_id=$1 AND active ORDER BY name,id", [companyId]) : Promise.resolve({rows: []}),
+        centralResourcePolicies(client, companyId, controlCatalog.map(o => "control:"+o.key)),
       ]);
+      const positions = context.employee?.positions ?? [];
       const options = controlCatalog
-        .filter(option => user.owner || option.scope === "employee")
+        .filter(option => centralResourceAllows(
+          centralRoles, "control:"+option.key, "view", user.owner, positions))
         .map(option => {
         const subject = option.scope === "employee" ? employeeId : null;
         const entry = stored.rows.find(row =>
@@ -65,17 +69,14 @@ export function controlRoutes(pool: Pool): Router {
         const policy = policies.rows.find(row => row.control_key === option.key);
         const accountantAllowed = policy?.accountant_allowed ?? !!option.accountantDefault;
         const editorIds = grants.rows.filter(row => row.control_key === option.key).map(row => row.employee_id as number);
-        const allowed = !!context.employee &&
-          ((context.employee.role === "accountant" && accountantAllowed) ||
-           editorIds.includes(context.employee.id));
         return {
           ...option,
           value: entry?.value ?? option.defaultValue,
           revision: entry?.revision ?? null,
-          canEdit: user.owner ||
-            (option.scope === "employee" && !!context.employee &&
-              subject === context.employee.id) ||
-            (allowed && (option.scope === "company" || subject === context.employee?.id)),
+          canEdit: centralResourceAllows(
+            centralRoles, "control:"+option.key, "edit", user.owner, positions) &&
+            (option.scope === "company" || (subject !== null &&
+              (user.owner || subject === context.employee?.id))),
           policy: user.owner ? {
             accountantAllowed,
             employeeIds: editorIds,
@@ -113,23 +114,14 @@ export function controlRoutes(pool: Pool): Router {
       }
       await assertRequestPagesEnabled(client, req, true);
       if (input.employeeId) await employeeAt(client, companyId, input.employeeId);
-      const policy = await client.query(
-        "SELECT accountant_allowed FROM company_control_policies WHERE company_id=$1 AND control_key=$2",
-        [companyId, key],
-      );
-      const grant = context.employee
-        ? await client.query(
-          "SELECT 1 FROM company_control_editor_grants WHERE company_id=$1 AND control_key=$2 AND employee_id=$3",
-          [companyId, key, context.employee.id],
-        )
-        : {rowCount: 0};
-      const canEdit = user.owner ||
-        (option!.scope === "employee" && !!context.employee &&
-          input.employeeId === context.employee.id) ||
-        (!!context.employee &&
-          (context.employee.role === "accountant" &&
-            (policy.rows[0]?.accountant_allowed ?? !!option!.accountantDefault) || !!grant.rowCount) &&
-          (option!.scope === "company" || input.employeeId === context.employee.id));
+       const centralRoles = await centralResourcePolicies(client, companyId,
+        ["control:"+key]);
+      const canEdit = centralResourceAllows(
+        centralRoles, "control:"+key, "edit", user.owner,
+        context.employee?.positions ?? [],
+      ) && (option!.scope === "company" ||
+        (input.employeeId !== null &&
+          (user.owner || input.employeeId === context.employee?.id)));
       if (!canEdit) fail(403, "forbidden", "لم يمنحك المالك صلاحية تعديل هذا الخيار.");
       const current = await client.query(
         "SELECT * FROM company_control_values WHERE company_id=$1 AND control_key=$2 AND employee_id IS NOT DISTINCT FROM $3::integer FOR UPDATE",
