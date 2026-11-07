@@ -15,7 +15,13 @@ export async function awardCompanyPageVisit(
   user: User,
   pageKey: string,
   eventKey: string,
+  recordId: number | null = null,
 ): Promise<{ rewarded: boolean }> {
+  // Only authorized visible pages may produce a visit event. A page visit
+  // is recorded even if PAGE_VISIT rewards are disabled for this page.
+  const page = (await directoryEntries(client, user, companyId))
+    .find((entry) => entry.key === pageKey);
+  if (!page?.enabled || !page.actionAccess.view) return { rewarded: false };
   const previous = await client.query(
     `SELECT id,created_by,task_code,page_key FROM employee_wallet_entries
      WHERE company_id=$1 AND idempotency_key=$2`,
@@ -30,6 +36,8 @@ export async function awardCompanyPageVisit(
       );
     return { rewarded: false };
   }
+  await audit(client, user, "page.open", "page", recordId, null,
+    { pageKey, pageName: page.name, recordId }, companyId);
   const task = await client.query(
     `SELECT s.points::text AS points,s.repeat_rule,s.revision,s.page_key,s.daily_limit
      FROM reward_task_settings s JOIN reward_task_definitions d ON d.code=s.code
@@ -40,9 +48,6 @@ export async function awardCompanyPageVisit(
     [companyId, pageKey],
   );
   if (!task.rows[0]) return { rewarded: false };
-  const page = (await directoryEntries(client, user, companyId))
-    .find((entry) => entry.key === pageKey);
-  if (!page?.enabled || !page.actionAccess.view) return { rewarded: false };
   const employee = await client.query(
     `SELECT e.id,e.name FROM employees e JOIN users u ON u.id=e.user_id
      WHERE e.company_id=$1 AND e.user_id=$2 AND e.active AND NOT u.archived
