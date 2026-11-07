@@ -8427,6 +8427,25 @@
     "pathParams": ["sourceId"],
     "queryFields": []
   },
+  "POST /medicine-market/staging/:sourceId/title-case": {
+    "source": "routes-market-staging.ts",
+    "pathParams": ["sourceId"],
+    "queryFields": [],
+    "bodyContract": "bulkMedicinePromotionSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {"type": "string", "format": "uuid"}
+      },
+      "required": ["idempotencyKey"],
+      "additionalProperties": false
+    }
+  },
+  "GET /medicine-market/staging/:sourceId/title-case-status": {
+    "source": "routes-market-staging.ts",
+    "pathParams": ["sourceId"],
+    "queryFields": []
+  },
   "GET /medicine-market/staging/:sourceId/rows": {
     "source": "routes-market-staging.ts",
     "queryFields": [
