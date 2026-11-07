@@ -758,9 +758,10 @@ function FieldValue({
 
 /** Approval-only photo verification; pending prescriptions are not public. */
 function PrescriptionReviewPhoto({
-  cardId,busy,onApprove,onReject,
+  cardId,busy,onApprove,onReject,proposedImage,
 }:{
   cardId:number;
+  proposedImage?:string;
   busy:boolean;
   onApprove:(inspectedImageUrl:string)=>void;
   onReject:()=>void;
@@ -772,8 +773,8 @@ function PrescriptionReviewPhoto({
     queryFn:({signal})=>api<Detail>(`${ROOT}/cards/${cardId}`,{signal}),
     staleTime:0,
   });
-  const image=typeof result.data?.card.data.image==="string"
-    ?result.data.card.data.image:null;
+  const image=proposedImage??(typeof result.data?.card.data.image==="string"
+    ?result.data.card.data.image:null);
   useEffect(()=>setChecked(false),[image]);
   return <div className="medicine-market-prescription-review">
     <strong>مراجعة صورة الوصفة قبل النشر</strong>
@@ -781,7 +782,7 @@ function PrescriptionReviewPhoto({
     {result.error&&<Notice tone="error">{errorMessage(result.error)}</Notice>}
     {image&&<div className="medicine-market-prescription-review-image">
       <MarketProductImage src={image} trimLegacyPadding={false}
-        alt="صورة الوصفة غير المنشورة، خاصة بالإدارة"
+        alt="صورة الوصفة المراد اعتمادها، خاصة بالإدارة"
         style={{maxHeight:520,maxWidth:"100%",height:"auto",width:"auto"}}/>
       <div className="page-actions">
         <a href={image} target="_blank" rel="noopener noreferrer">فتح الصورة كاملة</a>
@@ -1816,8 +1817,10 @@ export function MedicineMarketPage({
                           : ""}
                       </span>
                       {tab === "review" && row.status === "pending" &&
-                        (row.kind==="prescription" && row.fieldKey==="name"
+                        (row.kind==="prescription" && (row.fieldKey==="name" || row.fieldKey==="image")
                           ?<PrescriptionReviewPhoto cardId={row.cardId} busy={busy}
+                              proposedImage={row.fieldKey==="image" && typeof row.value==="string"
+                                ?row.value:undefined}
                               onApprove={image=>reviewContribution(row,"approve",image)}
                               onReject={()=>reviewContribution(row,"reject")}/>
                           :<div>
