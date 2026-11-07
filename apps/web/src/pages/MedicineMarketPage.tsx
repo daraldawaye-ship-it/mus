@@ -133,7 +133,8 @@ function RelationName({
 }
 /**
  * Same typeahead conventions as invoice sales item search:
- * 3+ characters, short debounce, viewport-safe results, keyboard selection,
+ * Prescription entry starts with the first character; other relations use three. *
+ * Short debounce, viewport-safe results, keyboard selection,
  * no stale suggestions, and paging. The query remains in the isolated market.
  */
 function RelationPicker({
@@ -250,6 +251,9 @@ function RelationPicker({
         }}
       />
     </div>
+    {/* Native showModal() dialogs are in the browser top layer. A portal to
+        document.body sits BEHIND the modal, regardless of z-index. Mount the
+        picker into its dialog to keep search results visible and clickable. */}
     {expanded&&createPortal(
       <div className="medicine-market-lookup-results medicine-market-lookup-floating"
         ref={popup} style={{left:placement.left,top:placement.top,
@@ -287,7 +291,7 @@ function RelationPicker({
             onMouseDown={event=>event.preventDefault()}
             onClick={()=>{setPage(p=>p+1);setActive(0);}}>التالي</button>
         </div>}
-      </div>,document.body)}
+      </div>,anchor.current?.closest("dialog[open]") ?? document.body)}
     {value!==null&&<div className="medicine-market-lookup-chosen">
       <span>المحدد: <RelationName id={value}/></span>
       <button type="button" disabled={disabled}
