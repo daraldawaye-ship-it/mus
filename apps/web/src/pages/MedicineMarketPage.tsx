@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   FlaskConical,
+  FileText,
   Heart,
   MessageCircle,
   Pencil,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { api, useScopeGuard, useSession } from "../api";
-import { MarketImageUpload } from "../MarketImageUpload";
+import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
@@ -91,6 +92,8 @@ const readable = (v: unknown): string =>
 function KindIcon({ kind, size = 22 }: { kind: string; size?: number }) {
   return kind === "medicine" ? (
     <Pill size={size} />
+  ) : kind === "prescription" ? (
+    <FileText size={size} />
   ) : kind === "composition" || kind === "scientific-name" ? (
     <FlaskConical size={size} />
   ) : kind === "doctor" ? (
@@ -220,6 +223,40 @@ function RelationPicker({
     </div>}
   </div>;
 }
+function PrescriptionLinesEditor({
+  value,onChange,disabled,
+}:{
+  value:unknown;
+  onChange:(value:Array<number|null>)=>void;
+  disabled:boolean;
+}){
+  const rows:Array<number|null>=Array.isArray(value)
+    ?value.map(v=>typeof v==="number"&&Number.isInteger(v)&&v>0?v:null)
+    :Array(4).fill(null);
+  const resize=(next:number)=>{
+    const count=Math.max(1,Math.min(20,next));
+    onChange([...rows.slice(0,count),...Array(Math.max(0,count-rows.length)).fill(null)]);
+  };
+  return <div className="medicine-market-prescription-editor">
+    <div className="medicine-market-prescription-count">
+      <strong>عدد أسطر الأدوية: {rows.length}</strong>
+      <div>
+        <Button type="button" variant="secondary" size="compact"
+          disabled={disabled||rows.length<=1} onClick={()=>resize(rows.length-1)}>− حذف سطر</Button>
+        <Button type="button" variant="secondary" size="compact"
+          disabled={disabled||rows.length>=20} onClick={()=>resize(rows.length+1)}>+ إضافة سطر</Button>
+      </div>
+    </div>
+    <p className="medicine-market-muted">اختيار الأصناف اختياري. الأسطر غير المعروفة تبقى ظاهرة للجمهور لإكمالها أو تصحيحها لاحقًا.</p>
+    {rows.map((id,index)=><div key={index} className="medicine-market-prescription-row">
+      <strong>الدواء {index+1}</strong>
+      <RelationPicker kind="medicine" label={"صنف السطر "+(index+1)}
+        value={id} disabled={disabled}
+        onChange={selected=>onChange(rows.map((v,i)=>i===index?selected:v))}/>
+    </div>)}
+  </div>;
+}
+
 function ReferencePicker({
   field, value, references, cardData, onChange, disabled,
 }: {
@@ -257,6 +294,7 @@ function FieldEditor({
   cardData = {},
   cardId,
   onImageBusyChange,
+  cardKind,
 }: {
   field: FieldDefinition;
   value: unknown;
@@ -266,10 +304,14 @@ function FieldEditor({
   cardData?: Record<string,unknown>;
   cardId?:number;
   onImageBusyChange?:(busy:boolean)=>void;
+  cardKind?:Kind;
 }) {
   if(field.key==="image" && cardId)
     return <MarketImageUpload cardId={cardId} value={value} disabled={disabled}
-      onChange={onChange} onBusyChange={onImageBusyChange}/>;
+      onChange={onChange} onBusyChange={onImageBusyChange}
+      prescription={cardKind==="prescription"}/>;
+  if(field.type==="prescription-lines")
+    return <PrescriptionLinesEditor value={value} onChange={onChange} disabled={disabled}/>;
   if (field.type === "reference")
     return <ReferencePicker field={field} value={value} references={references}
       cardData={cardData} onChange={onChange} disabled={disabled}/>;
@@ -559,14 +601,25 @@ function FieldValue({
   value,
   onOpen,
   references = [],
+  cardKind,
 }: {
   field: FieldDefinition;
   value: unknown;
   onOpen: (id: number) => void;
   references?: MarketReferenceEntry[];
+  cardKind?:Kind;
 }) {
   if (!present(value))
     return <span className="medicine-market-unset">أكمل هذه المعلومة</span>;
+  if(field.type==="prescription-lines" && Array.isArray(value))
+    return <ol className="medicine-market-prescription-list">
+      {(value as Array<number|null>).map((v,i)=>
+        <li key={i}><strong>السطر {i+1}</strong> {" "}
+        {typeof v==="number"
+          ?<RelationName id={v} onOpen={onOpen}/>
+          :<span className="medicine-market-unset">صنف غير معروف — متاح لإكماله من الجمهور</span>}
+        </li>)}
+    </ol>;
   if (field.type === "reference" && typeof value === "string") {
     const reference = references.find(entry=>entry.code===value);
     return <span className="medicine-market-value-text">{reference?.name ?? value}</span>;
@@ -607,8 +660,14 @@ function FieldValue({
     );
   if (field.key === "image" && typeof value === "string" &&
       (/^https:\/\//i.test(value) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value)))
-    return <MarketProductImage src={value} alt="صورة الصنف"
-      style={{maxWidth:260,maxHeight:340,width:"auto",height:"auto",objectFit:"contain",borderRadius:8}} />;
+    return <div className="medicine-market-prescription-image">
+      <MarketProductImage src={value} alt={cardKind==="prescription"?"صورة الوصفة الطبية":"صورة الصنف"}
+        style={{maxWidth:cardKind==="prescription"?"100%":260,maxHeight:cardKind==="prescription"?950:340,
+          width:"auto",height:"auto",objectFit:"contain",borderRadius:8}}/>
+      {cardKind==="prescription"&&<a href={value} target="_blank" rel="noopener noreferrer">
+        فتح صورة الوصفة بالحجم الكامل
+      </a>}
+    </div>;
   if (
     field.type === "url" &&
     typeof value === "string" &&
@@ -648,6 +707,16 @@ export function MedicineMarketPage({
   const [createOpen, setCreateOpen] = useState(false),
     [newKind, setNewKind] = useState<Kind>("medicine"),
     [newName, setNewName] = useState("");
+  const [prescriptionFile,setPrescriptionFile]=useState<File|null>(null);
+  const [prescriptionPhotoUrl,setPrescriptionPhotoUrl]=useState<string|null>(null);
+  const [prescriptionPrivacy,setPrescriptionPrivacy]=useState(false);
+  const [prescriptionLines,setPrescriptionLines]=useState<Array<number|null>>([null,null,null,null]);
+  useEffect(()=>{
+    if(!prescriptionFile){setPrescriptionPhotoUrl(null);return;}
+    const preview=URL.createObjectURL(prescriptionFile);
+    setPrescriptionPhotoUrl(preview);
+    return ()=>URL.revokeObjectURL(preview);
+  },[prescriptionFile]);
   const [edit, setEdit] = useState<{
     card: MarketCard;
     field: FieldDefinition;
@@ -736,7 +805,7 @@ export function MedicineMarketPage({
         `${ROOT}/cards?kind=${newKind}&q=${encodeURIComponent(newName.trim())}&pageSize=5`,
         { signal },
       ),
-    enabled: createOpen && newName.trim().length >= 2,
+    enabled: createOpen && newKind!=="prescription" && newName.trim().length >= 2,
   });
   const card = detail.data?.card;
   const fields = types.find((t) => t.key === card?.kind)?.fields ?? [];
@@ -791,6 +860,26 @@ export function MedicineMarketPage({
   async function create(event: FormEvent) {
     event.preventDefault();
     if (isMarketAdministrativeKind(newKind)) { setError("الكروت المرجعية ثابتة، ولا تُضاف من واجهة السوق"); return; }
+    if(newKind==="prescription"){
+      if(!prescriptionFile){setError("اختر صورة الوصفة أولًا");return;}
+      if(!prescriptionPrivacy){setError("أخفِ بيانات المريض وأكد ذلك قبل نشر الصورة");return;}
+      const file=prescriptionFile;
+      const lines=[...prescriptionLines];
+      const signature={kind:newKind,fileName:file.name,fileSize:file.size,lastModified:file.lastModified,lines};
+      await mutate(async()=>{
+        const prepared=await prepareMarketImage(file,"prescription");
+        const created=await api<{card:MarketCard}>(`${ROOT}/prescriptions`,{
+          method:"POST",
+          body:{idempotencyKey:stableKey("create-prescription",signature),
+            imageDataUrl:prepared.dataUrl,prescriptionLines:lines,privacyConfirmed:true},
+        });
+        if(guard.isCurrent())write({card:String(created.card.id),kind:"prescription",page:null});
+      },"تم رفع الوصفة. يمكن للجمهور إكمال الأصناف التي لم تُحدد.",()=>{
+        setCreateOpen(false);setPrescriptionFile(null);setPrescriptionPrivacy(false);
+        setPrescriptionLines([null,null,null,null]);keys.current.delete("create-prescription");
+      });
+      return;
+    }
     const payload = { kind: newKind, name: newName.trim() };
     await mutate(
       async () => {
@@ -1135,6 +1224,7 @@ export function MedicineMarketPage({
                             }
                             onOpen={openCard}
                             references={references}
+                            cardKind={card.kind}
                           />
                         </div>
                         {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived && (
@@ -1158,6 +1248,7 @@ export function MedicineMarketPage({
                                                   "contacts",
                                                   "ingredients",
                                                   "accounting",
+                                                  "prescription-lines",
                                                 ].includes(field.type)
                                               ? []
                                               : ""),
@@ -1448,6 +1539,11 @@ export function MedicineMarketPage({
                             alt={item.name}
                           />
                         )}
+                      {item.kind==="prescription" && Array.isArray(item.data.prescriptionLines) &&
+                        <p className="medicine-market-muted">
+                          {item.data.prescriptionLines.length} أسطر ·
+                          {" "}{item.data.prescriptionLines.filter(x=>typeof x==="number").length} أصناف محددة
+                        </p>}
                       <dl>
                         {previewFields.map((f) => (
                           <div key={f.key}>
@@ -1760,7 +1856,9 @@ export function MedicineMarketPage({
       >
         <form className="stack" onSubmit={(e) => void create(e)}>
           <p className="medicine-market-muted">
-            ابدأ بالاسم فقط، ثم أضف الحقول المتوفرة من داخل الكرت.
+            {newKind==="prescription"
+              ?"ارفع صورة الوصفة بعد إزالة البيانات الشخصية وحدد عدد أسطر الأدوية. الأصناف غير المعروفة تُترك فارغة."
+              :"ابدأ بالاسم فقط، ثم أضف الحقول المتوفرة من داخل الكرت."}
           </p>
           <Select
             label="نوع الكرت"
@@ -1774,15 +1872,35 @@ export function MedicineMarketPage({
               </option>
             ))}
           </Select>
-          <Field
-            label="اسم الكرت"
-            value={newName}
-            maxLength={250}
-            required
-            disabled={busy}
-            autoFocus
-            onChange={(e) => setNewName(e.target.value)}
-          />
+          {newKind==="prescription"?
+            <>
+              <label className="field">
+                <span>صورة الوصفة الطبية</span>
+                <input type="file" accept="image/*" disabled={busy}
+                  onChange={e=>setPrescriptionFile(e.target.files?.[0]??null)}/>
+              </label>
+              {prescriptionPhotoUrl&&<img src={prescriptionPhotoUrl} alt="معاينة الوصفة قبل رفعها"
+                style={{maxWidth:"100%",maxHeight:350,objectFit:"contain"}}/>}
+              <label className="medicine-market-check">
+                <input type="checkbox" checked={prescriptionPrivacy} disabled={busy}
+                  onChange={e=>setPrescriptionPrivacy(e.target.checked)}/>
+                أخفيت اسم المريض ورقم هاتفه وعنوانه وكل بياناته الشخصية من الصورة
+              </label>
+              <PrescriptionLinesEditor value={prescriptionLines}
+                onChange={setPrescriptionLines} disabled={busy}/>
+              <p className="medicine-market-muted">
+                التعرف على الأدوية مشاركة مجتمعية وقد يحتاج إلى تدقيق صيدلاني؛ لا تعتمد على النتائج لصرف علاج.
+              </p>
+            </>
+           :<Field
+              label="اسم الكرت"
+              value={newName}
+              maxLength={250}
+              required
+              disabled={busy}
+              autoFocus
+              onChange={(e) => setNewName(e.target.value)}
+            />}
           {duplicate.data && duplicate.data.items.length > 0 && (
             <div className="medicine-market-duplicate">
               <strong>كروت مشابهة — تأكد قبل الإضافة</strong>
@@ -1801,14 +1919,15 @@ export function MedicineMarketPage({
               ))}
             </div>
           )}
-          <p className="medicine-market-muted">
+          {newKind!=="prescription"&&<p className="medicine-market-muted">
             اسم كل عبوة تجارية يميزها عن العبوات الأخرى. الأسعار والبونص تُضاف
             حقلاً حقلاً وتخضع للمصادقة.
-          </p>
+          </p>}
           {error && <Notice tone="error">{error}</Notice>}
           <div className="page-actions">
-            <Button type="submit" disabled={busy || !newName.trim()}>
-              {busy ? "جارٍ التسجيل…" : "إنشاء الكرت"}
+            <Button type="submit" disabled={busy || (newKind==="prescription"
+              ?!prescriptionFile||!prescriptionPrivacy:!newName.trim())}>
+              {busy ? "جارٍ التسجيل…" : newKind==="prescription"?"نشر الوصفة":"إنشاء الكرت"}
             </Button>
             <Button
               variant="secondary"
@@ -1836,6 +1955,7 @@ export function MedicineMarketPage({
               references={references}
               cardData={edit.card.data}
               cardId={edit.card.id}
+              cardKind={edit.card.kind}
               onImageBusyChange={setImageUploading}
               disabled={busy || imageUploading}
               onChange={(value) => setEdit({ ...edit, value })}
