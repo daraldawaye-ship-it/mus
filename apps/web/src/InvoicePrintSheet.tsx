@@ -13,7 +13,7 @@ export type PrintableInvoice = Pick<Invoice,
     purchaseCorrectionNote?: string;
     number?: string | null;
     lines: Pick<InvoiceLine, "id" | "itemName" | "itemEnglishName" | "quantity" | "unitName" |
-      "unitPrice" | "expiryDate" | "total">[];
+      "unitPrice" | "expiryDate" | "gross" | "total">[];
   };
 
 /** Printed invoice columns are intentionally distinct from data-entry columns.
@@ -108,7 +108,7 @@ export function InvoicePrintSheet({
               {purchase && <td className="invoice-print-number">—</td>}
               <td className="invoice-print-number">{money(line.unitPrice)}</td>
               {purchase && <td className="invoice-print-expiry"><bdi dir="ltr">{printedExpiry(line.expiryDate)}</bdi></td>}
-              <td className="invoice-print-number">{money(line.total)}</td>
+              <td className="invoice-print-number">{money(purchase ? line.total : line.gross)}</td>
             </tr>
           ))}
         </tbody>
