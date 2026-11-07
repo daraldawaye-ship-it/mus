@@ -105,7 +105,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       );
       setPendingAccounted(null);
       setAccountingSuccess(
-        `تم تأشير ${response.result.newlyMarked} فاتورة جديدة بـ «محاسب» للـ ${response.result.mainName} حتى التاريخ والوقت المحددين.`
+        `تم تأشير ${response.result.newlyMarked} فاتورة جديدة بـ «محاسب» للـ ${response.result.mainName} حتى التاريخ والوقت المحددين. قد تكون بعض الفواتير خارج فترة العرض؛ استخدم «عرض آخر 10 أيام» لرؤيتها.`
       );
       await results.refetch();
     } catch (error) {
@@ -119,6 +119,15 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       const next = new URLSearchParams(previous);
       if (value) next.set(key, value); else next.delete(key);
       if (key !== "page") next.delete("page");
+      return next;
+    });
+  }
+  function showLastTenDays() {
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set("dateFrom", minDate);
+      next.set("dateTo", today);
+      next.delete("page");
       return next;
     });
   }
@@ -146,7 +155,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   }
   return (
     <>
-      <PageHeader title="حركة مبيعات الأطباء والممرضين" />
+      <PageHeader title="حركة مبيعات الأطباء والممرضين" actions={<Button variant="secondary" size="compact" onClick={showLastTenDays}>عرض آخر 10 أيام</Button>} />
       <Card>
         <div className="form-grid">
           <Field label="من تاريخ" type="date" value={from} min={minDate} max={today}
@@ -232,6 +241,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                       <th>التاريخ والوقت</th>
                       <th>الطبيب أو الجهة (الرئيسي)</th>
                       <th>الملاحظات</th>
+                      <th>الحالة والتأشير</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -240,27 +250,31 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                         <td><Link to={`/companies/${companyId}/invoices/${row.id}`}>فتح</Link></td>
                         <td><bdi className="financial-number">{formatWholeMoney(row.total)}</bdi></td>
                         <td>{row.accountName || "—"}</td>
-                        <td>
-                          {canMarkAccounted ? (
-                            <button type="button" className="doctor-movements-account-link"
-                              title={`تأشير جميع فواتير ${row.doctorName} حتى هذه الفاتورة بأنها محاسب`}
-                              onClick={() => {
-                                setPendingAccounted(row);
-                                setAccountingError("");
-                                setAccountingSuccess("");
-                              }}>
-                              <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>
-                            </button>
-                          ) : <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>}
-                          {row.accounted && <strong className="doctor-movements-accounted">محاسب</strong>}
-                        </td>
+                        <td><span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span></td>
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
                         </Link></td>
                         <td>{row.notes || "—"}</td>
+                        <td>
+                          {row.accounted ? (
+                            <strong className="doctor-movements-accounted">محاسب</strong>
+                          ) : (
+                            <>
+                              <span className="muted">غير محاسب</span>
+                              {canMarkAccounted && (
+                                <Button variant="secondary" size="compact"
+                                  onClick={() => {
+                                    setPendingAccounted(row);
+                                    setAccountingError("");
+                                    setAccountingSuccess("");
+                                  }}>محاسب حتى هنا</Button>
+                              )}
+                            </>
+                          )}
+                        </td>
                       </tr>
                     ))}
-                    {!records.items.length && <tr><td colSpan={6}>لا توجد فواتير مطابقة للفترة والبحث.</td></tr>}
+                    {!records.items.length && <tr><td colSpan={7}>لا توجد فواتير مطابقة للفترة والبحث.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -295,7 +309,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
               <strong> «{pendingAccounted.doctorName}» </strong>
               وكروته الفرعية بعبارة «محاسب»؟</p>
             <p>حتى الفاتورة بتاريخ <bdi dir="ltr">{pendingAccounted.documentDate} {invoiceTime(pendingAccounted.createdAt)}</bdi>
-              ، ويشمل هذا التأشير الفواتير السابقة خارج فترة العرض.</p>
+              ، ويشمل هذا التأشير الفواتير السابقة خارج فترة العرض، ولا يشمل الفواتير الأحدث منها.</p>
             <small className="muted">يُسجل اسم منفّذ التأشير وتوقيته، ولا ينتج عنه قيد مالي أو تعديل مخزون.</small>
             {accountingError && <Notice tone="error">{accountingError}</Notice>}
           </div>
