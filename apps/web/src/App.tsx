@@ -378,6 +378,7 @@ const companySections = [
   "cash-flows",
   "account-ledger",
   "my-cashbox-ledger",
+  "administrative-custody",
   "items",
   "item-statistics-report",
   "doctor-sales-report",
@@ -502,6 +503,7 @@ function Navigation({
     "company.cash-flows": <TrendingUp size={17} />,
     "company.account-ledger": <FileText size={17} />,
     "company.my-cashbox-ledger": <Landmark size={17} />,
+    "company.administrative-custody": <Landmark size={17} />,
     "company.currencies": <Coins size={17} />,
     "company.exchange-rates": <TrendingUp size={17} />,
     "company.branches": <MapPin size={17} />,
@@ -964,6 +966,13 @@ function CompanyContent({
       return user?.owner ? <Suspense fallback={<Notice>جارٍ تحميل التدفقات المالية…</Notice>}>
         <CashFlowsPage key={context.company.id} context={context} />
       </Suspense> : <Notice tone="error">هذه الصفحة للمالك فقط.</Notice>;
+    case "administrative-custody":
+      return (
+        <Suspense fallback={<Notice>جارٍ تحميل العهدة الإدارية…</Notice>}>
+          <MyCashboxLedgerPage key={context.company.id} context={context}
+            mode="administrativeCustody" />
+        </Suspense>
+      );
     case "my-cashbox-ledger":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل كشف حساب صندوقي…</Notice>}>
