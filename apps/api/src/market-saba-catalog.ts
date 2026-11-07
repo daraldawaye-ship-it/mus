@@ -106,14 +106,15 @@ export async function importSabaCatalog(pool:Pool,input:SabaImportInput,actorId:
      }
      let card=candidates[0];
      if(card){
-       card=await lockAndRead(db,card.id);
-       if(!card){skipped++;report.push({page,sourceName:name,reason:"changed_during_import"});continue;}
+       const current=await lockAndRead(db,card.id);
+       if(!current){skipped++;report.push({page,sourceName:name,reason:"changed_during_import"});continue;}
+       card=current;
        matched++;
        const previous=card.data??{};
        const offers=safeArray(previous.saba2024Offers);
        const updatedOffers=addOffer(offers,offer);
        if(updatedOffers.length===offers.length){duplicatedOffers++;continue;}
-       const updated={...previous,saba2024Offers:updatedOffers,
+       const updated:Record<string,unknown>={...previous,saba2024Offers:updatedOffers,
          saba2024CatalogDate:"2024-08-18",saba2024CatalogFile:"18-08-2024.pdf"};
        const existingAgent=Number(previous.agentId??0);
        if(!existingAgent)updated.agentId=sector.agentId;
