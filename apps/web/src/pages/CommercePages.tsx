@@ -38,6 +38,7 @@ import { InvoiceListPrintJob } from "../InvoiceListPrintJob";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
+  canOperateAdministrativeCustody,
   invoiceLineGross,
   invoiceSchema,
   normalizeDigits,
@@ -3302,10 +3303,6 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                       else setShowOriginalPicker(shown => !shown);
                     }}
                   />
-                  <AdministrativeCustodyTransferButton companyId={companyId}
-                    disabled={locked || !canPost(context) || !(
-                      context.general || context.permissions.includes("finance.manage")
-                    ) || isOfflineNow() || sessionRequiresLogin()} />
                   </>
                 ) : (
                   <PageActionsDropdown actions={[
@@ -3323,6 +3320,11 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                       onClick: () => { setDraftListOpen(true); } },
                   ]} />
                 )}
+                <AdministrativeCustodyTransferButton companyId={companyId}
+                  disabled={locked || !canOperateAdministrativeCustody(context) ||
+                    !directory.data?.find(entry =>
+                      entry.key === "company.administrative-custody")?.actionAccess.post ||
+                    isOfflineNow() || sessionRequiresLogin()} />
                 <Field
                   label="تاريخ الفاتورة"
                   type="date"
