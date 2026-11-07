@@ -589,7 +589,7 @@ page(
   "حركة مبيعات الأطباء والممرضين",
   "المبيعات",
   "/companies/:companyId/doctor-sales-movements",
-  { view: permission("commerce.view") },
+  { view: permission("commerce.view"), edit: permission("commerce.manage") },
   "حركة فواتير مبيعات الطبيب أو الممرض حسب التاريخ مع الوقت والحساب والصافي والملاحظات، والبحث بالاسم الرئيسي للكروت الفرعية.",
   { type: "report", parentKey: "company.sales",
     keywords: ["حركة", "فواتير", "مبيعات", "أطباء", "ممرضين", "اسم مشترك", "رئيسي", "جهة"] },
