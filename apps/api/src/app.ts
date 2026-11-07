@@ -85,7 +85,13 @@ export async function createApp(options: AppOptions = {}) {
   marketAuthPool?.on("error", () => console.error("MARKET_AUTH_CONNECTION_ERROR"));
   const market = marketOptions ? createMarketGateway(marketAuthPool!, marketOptions) : undefined;
   // Reject saturated market traffic before session queries or JSON parsing can consume core resources.
-  if (market) app.use("/api/medicine-market", market.admission, express.json({ limit: "64kb" }));
+  if (market) {
+    const smallMarketBody=express.json({limit:"64kb"});
+    const imageMarketBody=express.json({limit:"160kb"});
+    app.use("/api/medicine-market",market.admission,(req,res,next)=>
+      (req.method==="POST" && /^\/cards\/[1-9]\d*\/images$/.test(req.path)
+       ?imageMarketBody:smallMarketBody)(req,res,next));
+  }
   const business = businessRoutes(pool, market?.router);
   app.use(chatgptMcpRoutes(pool, config.appOrigin, business));
   // Only the authenticated explanation attachment upload needs larger JSON bodies.
