@@ -519,12 +519,15 @@ export async function requestPageKeys(
     "account-balances": "account-balances",
     "account-ledger": "account-ledger",
     "my-cashbox-ledger": "my-cashbox-ledger",
+    "administrative-custody-ledger": "administrative-custody",
     "letterhead": "letterhead",
     audit: "audit",
     "financial-options": "financial-documents",
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
+  if (rest === "sales/administrative-custody-transfers")
+    keys.push("company.administrative-custody");
   if (resource === "account-statistics-report")
     keys.push("company.accounts", "company.account-ledger");
   if (
