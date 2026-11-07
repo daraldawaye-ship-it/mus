@@ -26,7 +26,11 @@ interface MedicalSale {
 interface Result {
   items: MedicalSale[];
   total: number;
-  totals: Array<{ currencyCode: string; total: string; count: number }>;
+  totals: Array<{
+    currencyCode: string; total: string; count: number;
+    accountedTotal: string; unaccountedTotal: string;
+    accountedCount: number; unaccountedCount: number;
+  }>;
   page: number;
   pageSize: number;
 }
@@ -56,8 +60,9 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const [accountingSuccess, setAccountingSuccess] = useState("");
   const [params, setParams] = useSearchParams();
   const today = adenInvoiceToday();
-  const minDate = adenInvoiceToday(new Date(Date.now() - 10 * 86_400_000));
-  const from = params.get("dateFrom") ?? minDate;
+  const minDate = adenInvoiceToday(new Date(Date.now() - 9 * 86_400_000));
+  const defaultFrom = adenInvoiceToday(new Date(Date.now() - 3 * 86_400_000));
+  const from = params.get("dateFrom") ?? defaultFrom;
   const to = params.get("dateTo") ?? today;
   const q = params.get("q") ?? "";
   const mainName = params.get("mainName") ?? "";
@@ -190,7 +195,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
             <option value="100">100</option>
           </Select>
         </div>
-        {invalid && <Notice tone="warning">يمكن اختيار التواريخ من {minDate} إلى {today} فقط، ويجب ألا يتجاوز تاريخ البداية تاريخ النهاية.</Notice>}
+        {invalid && <Notice tone="warning">يسمح بعرض آخر 10 أيام فقط (من {minDate} إلى {today})، ويجب ألا يتجاوز تاريخ البداية تاريخ النهاية.</Notice>}
       </Card>
       {directory.isPending && <Notice>جارٍ التحقق من الصلاحيات…</Notice>}
       {!directory.isPending && !canView &&
@@ -202,18 +207,21 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
           {results.isPending && <Notice>جارٍ تحميل الفواتير…</Notice>}
           {records && (
             <>
-              {(mainName || q) && (
-                <div className="doctor-movements-summary" role="status">
-                  <strong>{mainName || q} — إجمالي صافي الفواتير المطابقة:</strong>
-                  {records.totals.length ? records.totals.map(total => (
-                    <span key={total.currencyCode}>
-                      <bdi className="financial-number">{formatWholeMoney(total.total)}</bdi>
-                      {records.totals.length > 1 ? ` (${total.currencyCode})` : ""}
-                    </span>
-                  )) : <span>0</span>}
-                  <span>عدد الفواتير: {records.total}</span>
-                </div>
-              )}
+              <div className="doctor-movements-summary" role="status">
+                <strong>{mainName || q ? `${mainName || q} — ` : ""}إجماليات صافي الفواتير:</strong>
+                {records.totals.length ? records.totals.map(total => (
+                  <span key={total.currencyCode}>
+                    <strong>المحاسب: </strong>
+                    <bdi className="financial-number">{formatWholeMoney(total.accountedTotal)}</bdi>
+                    {" ("}{total.accountedCount}{" فاتورة) — "}
+                    <strong>غير المحاسب: </strong>
+                    <bdi className="financial-number">{formatWholeMoney(total.unaccountedTotal)}</bdi>
+                    {" ("}{total.unaccountedCount}{" فاتورة)"}
+                    {records.totals.length > 1 ? ` (${total.currencyCode})` : ""}
+                  </span>
+                )) : <span>المحاسب: 0 — غير المحاسب: 0</span>}
+                <span>إجمالي الفواتير: {records.total}</span>
+              </div>
               <div className="table-scroll">
                 <table>
                   <thead>
