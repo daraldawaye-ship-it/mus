@@ -1692,7 +1692,20 @@ export function MedicineMarketPage({
                       .slice(0, 3) ?? [];
                   const image = item.data.image ?? item.data.imageUrl;
                   return (
-                    <article className="medicine-market-card" key={item.id}>
+                    <article className="medicine-market-card" key={item.id}
+                      role="link" tabIndex={0} aria-label={`فتح الكرت: ${item.name}`}
+                      onClick={(event) => {
+                        // Keep real buttons/links handling their own actions.
+                        if ((event.target as Element).closest("button, a, input, select, textarea, [role='button']")) return;
+                        openCard(item.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openCard(item.id);
+                        }
+                      }}>
                       <div className="medicine-market-card-head">
                         <span className="medicine-market-card-icon">
                           <KindIcon kind={item.kind} />
