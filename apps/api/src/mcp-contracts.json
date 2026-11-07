@@ -898,6 +898,16 @@
     "queryFields": [],
     "source": "routes-companies.ts"
   },
+  "GET /companies/:companyId/access-preview/targets": {
+    "pathParams": ["companyId"],
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "GET /companies/:companyId/access-preview/:employeeId/pages": {
+    "pathParams": ["companyId","employeeId"],
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
   "GET /companies/:companyId/employees": {
     "queryFields": [
       "role",
