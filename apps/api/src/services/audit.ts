@@ -17,14 +17,21 @@ const auditMetadataFields = new Set([
   "revision", "createdAt", "updatedAt", "createdBy", "updatedBy",
   "created_at", "updated_at", "lastModified", "lastSeenAt",
 ]);
-function safeFieldValue(value: unknown): unknown {
+function safeFieldValue(value: unknown, depth = 0): unknown {
   if (value === undefined) return null;
   if (typeof value === "string")
     return value.length > 1000 ? value.slice(0, 1000) + "… [مختصر]" : value;
   if (typeof value === "number" || typeof value === "boolean" || value === null)
     return value;
-  const json = JSON.stringify(value);
-  return json.length > 1000 ? json.slice(0, 1000) + "… [مختصر]" : value;
+  if (depth >= 2) return "[بيانات مركبة مختصرة]";
+  if (Array.isArray(value))
+    return value.slice(0, 20).map(item => safeFieldValue(item, depth + 1));
+  if (typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).filter(([key]) => !ignoredAuditFields.test(key))
+        .slice(0, 20).map(([key, item]) => [key, safeFieldValue(item, depth + 1)]),
+    );
+  return String(value);
 }
 async function auditCardFieldChanges(
   db: Database,
