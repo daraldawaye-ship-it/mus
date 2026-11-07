@@ -1,0 +1,79 @@
+/* Medical sales: on phones each invoice occupies two readable detail bands,
+   without the wide desktop table or horizontal scrolling. */
+.doctor-movements-mobile-list { display: none; }
+@media (max-width: 680px) {
+  .doctor-movements-desktop-table { display: none; }
+  .doctor-movements-mobile-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    max-height: calc(100dvh - 320px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .doctor-movements-mobile-entry {
+    min-width: 0;
+    padding: 8px 7px;
+    border-bottom: 1px solid var(--border);
+  }
+  .doctor-movements-mobile-entry:last-child { border-bottom: 0; }
+  .doctor-movements-mobile-line {
+    display: grid;
+    align-items: center;
+    gap: 5px 6px;
+    min-width: 0;
+  }
+  .doctor-movements-mobile-main {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    font-size: 12px;
+  }
+  .doctor-movements-mobile-details {
+    grid-template-columns: auto minmax(0, 1.2fr) minmax(0, .8fr);
+    align-items: start;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .doctor-movements-mobile-name,
+  .doctor-movements-mobile-account,
+  .doctor-movements-mobile-notes {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .doctor-movements-mobile-total,
+  .doctor-movements-mobile-date {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .doctor-movements-mobile-total { font-weight: 700; }
+  .doctor-movements-mobile-open { white-space: nowrap; }
+  .doctor-movements-mobile-status {
+    font-weight: 700;
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+  .doctor-movements-mobile-mark {
+    max-width: 90px;
+    min-height: 28px;
+    padding: 3px 5px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--soft);
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    line-height: 1.2;
+    white-space: normal;
+    cursor: pointer;
+  }
+  .doctor-movements-mobile-mark:focus-visible {
+    outline: 2px solid var(--primary);
+  }
+  .doctor-movements-mobile-empty { padding: 14px 10px; }
+}
