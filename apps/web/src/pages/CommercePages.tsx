@@ -38,6 +38,7 @@ import { InvoiceListPrintJob } from "../InvoiceListPrintJob";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import {
   calculateInvoiceTotals,
+  invoiceLineGross,
   invoiceSchema,
   normalizeDigits,
   type Account,
@@ -3084,6 +3085,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           itemEnglishName:line.sourceItem?.englishName ?? line.originalSource?.itemEnglishName ?? "",
           quantity:line.quantity,
           unitName:line.unitName,unitPrice:line.unitPrice,
+          gross:invoiceLineGross(line.quantity,line.unitPrice,currency?.decimalPlaces ?? 6),
           expiryDate:line.expiryDate,
           total:totals.lineTotals[index] ?? "0",
         })),
