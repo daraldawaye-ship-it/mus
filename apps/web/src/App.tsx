@@ -45,6 +45,7 @@ import type {
   CompanyPage,
 } from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
+import {stopEmployeePreview} from "./employee-preview-mode";
 import {
   pageKeyForLocation,
   pageDefinitions,
@@ -413,18 +414,18 @@ function Navigation({
   context?: CompanyContext;
   close?: () => void;
 }) {
-  const { user } = useSession();
+  const { user, employeePreview } = useSession();
   const directory = usePageDirectory(context?.company.id);
   const entries =
     directory.data ??
-    pageDefinitions.map((definition) => ({
+    (employeePreview ? [] : pageDefinitions.map((definition) => ({
       ...definition,
       href: pageHref(definition, context?.company.id),
       enabled: true,
       actionAccess: {
         view: pageRuleAllows(definition.actions.view, user, context),
       },
-    }));
+    })));
   const icons: Record<string, React.ReactNode> = {
     "public.home": <Home size={17} />,
     "public.medicine-market": <Package size={17} />,
@@ -511,7 +512,7 @@ function Navigation({
     "company.audit": <FileClock size={17} />,
   };
   const links = (scope: "public" | "company") =>
-    [...entries]
+    [...(employeePreview ? entries.filter(e=>e.scope==="company") : entries)]
       .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
       .filter(
         (entry) =>
@@ -1024,6 +1025,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 function Workspace() {
   const {
     user,
+    employeePreview,
     loading: sessionLoading,
     error: sessionError,
     logout,
@@ -1037,6 +1039,7 @@ function Workspace() {
   const scope = inCompany ? `company:${companyId}` : "public";
   const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState(false);
+  const [endingPreview,setEndingPreview]=useState(false);
   const [logoutError, setLogoutError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -1047,6 +1050,25 @@ function Workspace() {
   const activationQueue = useRef<Promise<void>>(Promise.resolve());
   const priorPath = useRef(location.pathname);
   const publicPageVisit = useRef<string | null>(null);
+  async function exitEmployeePreview(){
+    if(!employeePreview||endingPreview)return;
+    setEndingPreview(true);
+    try{
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      const returnCompanyId=employeePreview.companyId;
+      stopEmployeePreview();
+      navigate(`/companies/${returnCompanyId}/central-access`,{replace:true});
+    }finally{setEndingPreview(false);}
+  }
+  // The selected employee preview is intentionally restricted to one company.
+  // Never silently show owner's public pages as an employee.
+  useEffect(()=>{
+    if(!employeePreview)return;
+    if(!location.pathname.startsWith(`/companies/${employeePreview.companyId}/`) &&
+       location.pathname!==`/companies/${employeePreview.companyId}`)
+      navigate(`/companies/${employeePreview.companyId}`,{replace:true});
+  },[employeePreview,location.pathname,navigate]);
   useEffect(() => {
     // Company routes and other public pages are tracked by PageRouteGuard.
     // These few public routes are rendered without that guard.
@@ -1112,7 +1134,7 @@ function Workspace() {
     acknowledgeLogoutRedirect,
   ]);
   useEffect(() => {
-    if (!user || !inCompany || !company.data || company.isError) return;
+    if (!user || employeePreview || !inCompany || !company.data || company.isError) return;
     const userId = user.id;
     const selectedContext = company.data;
     // Do not abort this mutation in the cleanup: moving straight back to the
@@ -1128,7 +1150,7 @@ function Workspace() {
         queryKey: ["list", userId, `company:${companyId}:wallet`],
       });
     }).catch(() => {});
-  }, [companyId, user?.id, !!company.data, company.isError, queryClient]);
+  }, [companyId, user?.id, !!company.data, company.isError, queryClient, employeePreview]);
   if (sessionLoading)
     return (
       <div className="boot-state">
@@ -1210,7 +1232,7 @@ function Workspace() {
                   context={company.data}
                 />
               )}
-              {user && (
+              {user && !employeePreview && (
                 <NotificationBell
                   key={`${user.id}:${scope}`}
                   companyId={
@@ -1254,8 +1276,18 @@ function Workspace() {
               )}
             </div>
           </header>
+          {employeePreview&&<div className="employee-preview-banner" role="status">
+            <div>
+              <strong>تصفح بصلاحيات: {employeePreview.employeeName}</strong>
+              <span>معاينة للقراءة فقط — لا حفظ ولا تعديل ولا ترحيل ولا حذف</span>
+            </div>
+            <Button variant="secondary" disabled={endingPreview}
+              onClick={()=>void exitEmployeePreview()}>
+              {endingPreview?"جارٍ العودة…":"العودة إلى صلاحيات المالك"}
+            </Button>
+          </div>}
           <InstallBanner />
-          {user && inCompany && company.data && !company.isError && (
+          {user && !employeePreview && inCompany && company.data && !company.isError && (
             <CompanyDeviceDiscovery userId={user.id} companyId={companyId} />
           )}
           <main className="main-content" ref={main} tabIndex={-1}>
