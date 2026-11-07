@@ -241,7 +241,7 @@ export async function requestPermissionTargets(
   let page = direct[resource];
   if (resource === "commerce-options" && permission === "inventory.view")
     page = "company.stock-balances";
-  if (resource === "control") action = "view";
+  if (resource === "control") action = verb === "GET" || verb === "HEAD" ? "view" : "edit";
   if (resource === "configuration") {
     action = action === "view" ? "view" : "edit";
     if (detail === "record-options")
