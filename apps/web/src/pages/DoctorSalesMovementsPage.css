@@ -86,3 +86,33 @@
   }
   .doctor-movements-mobile-empty { padding: 14px 10px; }
 }
+
+
+/* Browser zoom reduces CSS viewport width. Preserve the accounting action:
+   a fixed-layout, ellipsis-clipped cell must never hide "محاسب حتى هنا".
+   The existing table-scroll wrapper offers horizontal scrolling if needed. */
+.doctor-movements-desktop-table table {
+  min-width: 1140px;
+}
+.doctor-movements-desktop-table table > :is(thead, tbody) > tr > :nth-child(5) {
+  width: 240px;
+  min-width: 240px;
+}
+.doctor-movements-desktop-table td.doctor-movements-accounting-column {
+  height: auto;
+  max-height: none;
+  padding-block: 4px;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+.doctor-movements-accounting-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+.doctor-movements-accounting-cell button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
