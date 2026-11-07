@@ -63,7 +63,6 @@ export function MarketImageUpload({
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [size,setSize]=useState<number|null>(null);
-  const [privacyOk,setPrivacyOk]=useState(false);
   const preview=typeof value==="string" &&
     (/^https:\/\//i.test(value)||/^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value))
       ?value:null;
@@ -71,10 +70,6 @@ export function MarketImageUpload({
     const file=event.target.files?.[0];
     event.target.value="";
     if(!file)return;
-    if(prescription&&!privacyOk){
-      setError("أخفِ بيانات المريض وأكد ذلك قبل رفع الوصفة");
-      return;
-    }
     setBusy(true);onBusyChange?.(true);setError("");setSize(null);
     try{
       const compressed=await prepareMarketImage(file,prescription?"prescription":"medicine");
@@ -91,11 +86,9 @@ export function MarketImageUpload({
   }
   return <div className="field image-upload">
     <label>{prescription?"صورة الوصفة الطبية — قابلة للاستبدال":"صورة الصنف — رفع من الجهاز"}</label>
-    {prescription&&<label className="medicine-market-check">
-      <input type="checkbox" checked={privacyOk}
-        disabled={disabled||busy} onChange={e=>setPrivacyOk(e.target.checked)}/>
-      أخفيت اسم المريض وبياناته الشخصية من الصورة قبل رفعها للجمهور
-    </label>}
+    {prescription&&<small className="muted">
+      الصورة المرفوعة تظل خاصة قيد مراجعة الإدارة. يمكنك حفظها وتعديلها ثم رفع صورة بديلة قبل اعتماد النشر.
+    </small>}
     <div className="image-upload-controls">
       {preview&&<MarketProductImage className="image-upload-preview" src={preview}
         trimLegacyPadding={!prescription}
@@ -104,7 +97,7 @@ export function MarketImageUpload({
       <input type="file" accept="image/*"
         aria-label={prescription?"اختر صورة بديلة للوصفة":"اختر صورة صنف"}
         onChange={(event)=>void upload(event)}
-        disabled={disabled||busy||(prescription&&!privacyOk)}/>
+        disabled={disabled||busy}/>
       {preview&&!prescription&&<button type="button" disabled={disabled||busy}
         onClick={()=>{onChange(null);setSize(null);setError("");}}>إزالة الصورة</button>}
     </div>
