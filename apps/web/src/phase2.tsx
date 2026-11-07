@@ -100,6 +100,8 @@ export function ServerLookup<T extends { id: number }>({
   label,
   value,
   onChange,
+  onSearchChange,
+  onSelect,
   display,
   disabled = false,
   required = false,
@@ -116,6 +118,9 @@ export function ServerLookup<T extends { id: number }>({
   label: string;
   value: T | null;
   onChange: (value: T | null) => void;
+  /** Optional activity hooks, used only by explicitly audited lookups. */
+  onSearchChange?: (query: string) => void;
+  onSelect?: (value: T, query: string) => void;
   display: (value: T) => string;
   disabled?: boolean;
   required?: boolean;
@@ -217,6 +222,7 @@ export function ServerLookup<T extends { id: number }>({
           {id:next.id,name:record.name ?? display(next)});
       }
     }
+    onSelect?.(next, query);
     onChange(next);
     setEntry(display(next));
     setQuery("");
@@ -241,6 +247,7 @@ export function ServerLookup<T extends { id: number }>({
         onBlur={() => { setLookupOpen(false); if (!value) { setQuery(""); setPage(1); } }}
         onChange={(event) => {
           const text=event.target.value;
+          onSearchChange?.(text);
           setEntry(text); setQuery(text); setPage(1); setHighlight(0); setLookupOpen(true); placePopup();
           if(value) onChange(null);
         }}
