@@ -301,6 +301,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
     { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
     { key: "company.doctor-sales-movements", label: "حركة مبيعات الأطباء والممرضين", href: `/companies/${company.id}/doctor-sales-movements`, action: "view" },
+    { key: "company.administrative-custody", label: "العهدة الإدارية", href: `/companies/${company.id}/administrative-custody`, action: "view" },
     { key: "company.items", label: "الأصناف", href: `/companies/${company.id}/items`, action: "view" },
     { key: "company.item-statistics-report", label: "تقرير إحصائيات الأصناف", href: `/companies/${company.id}/item-statistics-report`, action: "view" },
     { key: "company.item-compositions", label: "تراكيب الأصناف", href: `/companies/${company.id}/item-compositions`, action: "view" },
