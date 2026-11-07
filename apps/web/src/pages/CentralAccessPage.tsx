@@ -152,11 +152,11 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
  if(!context.general)return <Notice tone="warning">تعديل مركز الصلاحيات للمالك أو المدير العام.</Notice>;
  return <>
    <PageHeader title="مركز الصلاحيات وخيارات النظام"
-     description="جميع التعريفات ثابتة برمجيًا. اختر عنصرًا، ثم صفات الموظفين التي يمكنها الاطلاع عليه والتي يمكنها تعديله داخل الشركة."/>
+     description="حقل للعرض وحقل للتعديل لكل عنصر. الحقل الفارغ للمالك وحده؛ وصفة موظف تسمح لجميع الموظفين."/>
    <Notice>
-     هذه هي مرحلة إنشاء الدليل وتخزين إعدادات الصفات. الصلاحيات التشغيلية الحالية لا تتغير
-     بمجرد حفظ اختيار جديد هنا؛ سيتم ربط كل حقل وزر وخادم بالصلاحيات المركزية تدريجيًا
-     بعد اختبارات منع تجاوز الصلاحيات. لا يمنح المركز الآن صلاحيات إضافية.
+     تُطبق صفات عرض صفحات الشركة من هذا المركز في القائمة وفتح الروابط والخادم،
+     ولا تُمنح صلاحيات جديدة لتسجيل المبالغ أو ترحيل الفواتير. ربط الحقول والأزرار الأخرى
+     بالخادم مستقل ولا يتم تجاوز صلاحيات الأعمال القديمة.
    </Notice>
    {query.error&&<Notice tone="error">{errorMessage(query.error)}</Notice>}
    {query.isPending&&<Notice>جارٍ تحميل دليل الصلاحيات…</Notice>}
@@ -182,13 +182,20 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
        </div>
        <p className="muted">عدد النتائج: {filtered.length} من {items.length} عنصر.</p>
        <div className="central-access-list">
-         {filtered.map(resource=><button type="button" key={resource.key}
-           className={`central-access-entry ${selected===resource.key?"selected":""}`}
-           onClick={()=>setSelected(resource.key)}>
-           <span><strong>{resource.name}</strong>
-             <small>{resource.section} — {kindLabels[resource.kind]}</small></span>
-           <span>{resource.policy?"محدد":"افتراضي"}</span>
-         </button>)}
+         {filtered.map(resource=><div key={resource.key}
+           className={`central-access-entry ${selected===resource.key?"selected":""}`}>
+           <button type="button" className="central-access-entry-name"
+             onClick={()=>setSelected(resource.key)}>
+             <strong>{resource.name}</strong>
+             <small>{resource.section} — {kindLabels[resource.kind]}</small>
+           </button>
+           <CentralPositionField resource={resource} companyId={companyId}
+             dimension="view"
+             onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+           <CentralPositionField resource={resource} companyId={companyId}
+             dimension="edit"
+             onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+         </div>)}
          {filtered.length===0&&!query.isPending&&<p>لا توجد نتائج.</p>}
        </div>
      </Card>
