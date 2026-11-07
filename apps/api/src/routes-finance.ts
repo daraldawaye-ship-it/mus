@@ -18,6 +18,8 @@ import {
   type User,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
+import { canOperateAdministrativeCustody } from "../../../packages/contracts/src/pages.ts";
+import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 import { HttpError, missing } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -957,8 +959,8 @@ export function financeRoutes(pool: Pool): Router {
       res.json(result);
     }),
   );
-  // Dedicated statement for the configured company custody asset. Permission
-  // is finance.manage; cashiers' own-cashbox permission is not sufficient.
+  // Dedicated statement for the configured company custody asset.
+  // Access is scoped to the three authorized employee positions and page grants.
   router.get(
     `${base}/administrative-custody-ledger`,
     handler(async (req, res) => {
@@ -966,7 +968,14 @@ export function financeRoutes(pool: Pool): Router {
         await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         const companyId = id(req.params.companyId);
         const user = await currentActor(client, actor(req), false);
-        await companyAccess(client, user, companyId, "finance.manage");
+        const context = await companyAccess(client, user, companyId);
+        if (!canOperateAdministrativeCustody(context))
+          throw new HttpError(403, "custody_permission_denied",
+            "كشف العهدة الإدارية متاح للمبيعات أو إدخال المشتريات أو أمين الصندوق فقط.");
+        const entry = (await directoryEntries(client, user, companyId))
+          .find(page => page.key === "company.administrative-custody");
+        if (!entry) throw new HttpError(403, "custody_page_missing", "صفحة العهدة غير متاحة");
+        assertDirectoryAccess(entry, "view");
         const linked = await client.query(
           "SELECT a.id FROM account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.purpose='administrativeCustody' AND a.active AND a.kind='posting' AND a.category='asset' LIMIT 1",
           [companyId],
