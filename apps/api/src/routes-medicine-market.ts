@@ -56,12 +56,21 @@ const perms = (u: User | null): MarketPermissions => ({
   canConfigure: !!u && !u.suspended && (u.owner || u.kind === "admin"),
   canArchive: !!u && !u.suspended && (u.owner || u.kind === "admin"),
   canSeeMinistry: !!u && (u.owner || u.kind === "admin" || u.monitor),
-  canSeeAccounting: !!u && (u.owner || u.kind === "admin"),
+  canSeeAccounting: !!u && u.owner,
 });
 const canField = (field: MarketField, p: MarketPermissions) =>
   field.visibility === "public" ||
   (field.visibility === "ministry" && p.canSeeMinistry) ||
   (field.visibility === "accounting" && p.canSeeAccounting);
+/** Hide obsolete catalog fields without deleting historical source data. */
+const medicineHiddenKeys = ["governorateCode","cityCode","currency","barcode"] as const;
+const placeKinds = ["pharmacy","wholesaler","agent","doctor","hospital","clinic","college"] as const;
+const placeHiddenKeys = ["countryCode","governorateCode"] as const;
+const isShownOnMarketCard = (kind:string, field:MarketField, p:MarketPermissions) =>
+  canField(field,p) &&
+  !(kind==="medicine" && (medicineHiddenKeys as readonly string[]).includes(field.key)) &&
+  !((placeKinds as readonly string[]).includes(kind) &&
+      (placeHiddenKeys as readonly string[]).includes(field.key));
 const findType = (kind: string) =>
   marketTypes.find((t) => t.key === kind) ?? missing("نوع الكرت غير موجود");
 const findField = (kind: string, key: string) =>
@@ -320,7 +329,7 @@ function cardData(
   return Object.fromEntries(
     Object.entries(row.data as Record<string, unknown>).filter(([k]) => {
       const f = findType(row.kind).fields.find((x) => x.key === k);
-      return f && canField(f, p);
+      return f && isShownOnMarketCard(row.kind, f, p);
     }),
   );
 }
@@ -624,7 +633,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         types: marketTypes.map((t) => ({
           ...t,
           fields: t.fields
-            .filter((f) => canField(f, p))
+            .filter((f) => isShownOnMarketCard(t.key, f, p))
             .map((f) => {
               const v = policies.find(
                 (v) => v.kind === t.key && v.field_key === f.key,
@@ -794,7 +803,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           field = findField(card.kind, input.fieldKey);
         if (isMarketAdministrativeKind(card.kind) && !p.canConfigure)
           deny("لا يمكن للمستخدمين تعديل الكروت الإدارية المرجعية");
-        if (!canField(field, p)) deny();
+        if (!isShownOnMarketCard(card.kind, field, p)) deny();
         const value = normalizeValue(field, input.value),
           expected = normalizeValue(
             { ...field, key: field.key === "name" ? "oldName" : field.key },
@@ -895,16 +904,22 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
             req.query.status,
           )
         : null;
-      const args = [mine ? u.id : null, status, readableKeys(p)];
+      const args = [
+        mine ? u.id : null,status,readableKeys(p),
+        [...medicineHiddenKeys],[...placeKinds],[...placeHiddenKeys],
+      ];
       const condition =
-        "($1::integer IS NULL OR p.author_id=$1) AND ($2::text IS NULL OR p.status=$2) AND p.field_key=ANY($3::text[])";
+        "($1::integer IS NULL OR p.author_id=$1) AND ($2::text IS NULL OR p.status=$2)" +
+        " AND p.field_key=ANY($3::text[])" +
+        " AND NOT (c.kind='medicine' AND p.field_key=ANY($4::text[]))" +
+        " AND NOT (c.kind=ANY($5::text[]) AND p.field_key=ANY($6::text[]))";
       const rows = await pool.query(
         contributionSelect +
-          ` WHERE ${condition} ORDER BY p.id DESC LIMIT $4 OFFSET $5`,
+          ` WHERE ${condition} ORDER BY p.id DESC LIMIT $7 OFFSET $8`,
         [...args, v.pageSize, v.offset],
       );
       const count = await pool.query(
-        `SELECT count(*)::int total FROM medicine_market_contributions p WHERE ${condition}`,
+        `SELECT count(*)::int total FROM medicine_market_contributions p JOIN medicine_market_cards c ON c.id=p.card_id WHERE ${condition}`,
         args,
       );
       res.json({
@@ -941,7 +956,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
             )
           ).rows[0] ?? missing();
         const field = findField(card.kind, c.field_key);
-        if (!canField(field, p)) deny();
+        if (!isShownOnMarketCard(card.kind, field, p)) deny();
         if (c.status !== "pending") {
           if (
             (c.status === "approved" && input.decision === "approve") ||
