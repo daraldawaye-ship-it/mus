@@ -117,27 +117,30 @@ export async function companyAccess(
         companyId,
         permission,
       );
-  // Page visibility is centrally assigned by employee positions, not by
-  // legacy permission arrays. Reject direct GET API calls too, including a
-  // manually pasted URL, while preserving invoice POST/post/voucher actions.
+  // Company page view/edit positions must be enforced against direct API
+  // requests, not just the navigation. Do not reinterpret the "edit" field
+  // as a grant to CREATE/POST/REVERSE a financial or commercial transaction.
   const request = permissionRequest.getStore();
   let centralReadGranted = false;
-  if (!actor.owner && request && (request.method === "GET" || request.method === "HEAD")
-      && targets.length) {
-    const pageTargets = [...new Set(targets.flat()
-      .filter(key => key.startsWith("company.") && key.endsWith(":view"))
-      .map(key => key.slice(0, -":view".length)))];
-    if (pageTargets.length) {
+  const action = request && (request.method === "GET" || request.method === "HEAD")
+    ? "view" : request && (request.method === "PUT" || request.method === "PATCH")
+      ? "edit" : null;
+  if (!actor.owner && action && targets.length) {
+    const suffix = ":"+action;
+    const relevant = targets.map(group => group
+      .filter(key=>key.startsWith("company.") && key.endsWith(suffix)))
+      .filter(group=>group.length);
+    const pages = [...new Set(relevant.flat().map(key=>key.slice(0,-suffix.length)))];
+    if (pages.length) {
       const policies = await centralPagePolicies(db, companyId,
-        pageTargets.map(key => "page:"+key));
+        pages.map(key=>"page:"+key));
       const positions: string[] = row?.position_keys ?? [];
-      centralReadGranted = targets.every(group => group.some(key => {
-        if (!key.endsWith(":view") || !key.startsWith("company.")) return false;
-        return centralPageAllows(policies,
-          key.slice(0, -":view".length), "view", actor.owner, positions);
-      }));
-      if (!centralReadGranted)
-        deny("هذه الصفحة أو بياناتها غير متاحة لصفات الموظف الحالية.");
+      const accepted = relevant.every(group=>group.some(key=>centralPageAllows(
+        policies,key.slice(0,-suffix.length),action,actor.owner,positions,
+      )));
+      if (!accepted)
+        deny("هذه الصفحة أو بياناتها أو تعديلاتها غير متاحة لصفات الموظف الحالية.");
+      centralReadGranted = action==="view";
     }
   }
   if (targets.flat().some((key) => effects.get(key) === "deny"))
