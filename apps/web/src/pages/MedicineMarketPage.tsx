@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { api, useScopeGuard, useSession } from "../api";
+import { MarketImageUpload } from "../MarketImageUpload";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
@@ -229,6 +230,8 @@ function FieldEditor({
   disabled,
   references = [],
   cardData = {},
+  cardId,
+  onImageBusyChange,
 }: {
   field: FieldDefinition;
   value: unknown;
@@ -236,7 +239,12 @@ function FieldEditor({
   disabled: boolean;
   references?: MarketReferenceEntry[];
   cardData?: Record<string,unknown>;
+  cardId?:number;
+  onImageBusyChange?:(busy:boolean)=>void;
 }) {
+  if(field.key==="image" && cardId)
+    return <MarketImageUpload cardId={cardId} value={value} disabled={disabled}
+      onChange={onChange} onBusyChange={onImageBusyChange}/>;
   if (field.type === "reference")
     return <ReferencePicker field={field} value={value} references={references}
       cardData={cardData} onChange={onChange} disabled={disabled}/>;
@@ -572,6 +580,11 @@ function FieldValue({
         ))}
       </div>
     );
+  if (field.key === "image" && typeof value === "string" &&
+      (/^https:\/\//i.test(value) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value)))
+    return <img src={value} alt="صورة الصنف"
+      style={{width:160,height:160,objectFit:"contain",background:"#fff",borderRadius:8}}
+      loading="lazy" />;
   if (
     field.type === "url" &&
     typeof value === "string" &&
@@ -620,6 +633,7 @@ export function MedicineMarketPage({
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
   const [comment, setComment] = useState(""),
     [reviewReason, setReviewReason] = useState("");
   const [policy, setPolicy] = useState<{
@@ -779,7 +793,7 @@ export function MedicineMarketPage({
   }
   async function saveField(event: FormEvent) {
     event.preventDefault();
-    if (!edit) return;
+    if (!edit || imageUploading) return;
     const payload = {
       fieldKey: edit.field.key,
       value: edit.value,
@@ -1402,9 +1416,10 @@ export function MedicineMarketPage({
                         <ChevronLeft size={17} />
                       </button>
                       {typeof image === "string" &&
-                        /^https:\/\//i.test(image) && (
+                        (/^https:\/\//i.test(image) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(image)) && (
                           <img
                             className="medicine-market-card-image"
+                            style={{objectFit:"contain",background:"#fff",aspectRatio:"1/1"}}
                             src={image}
                             alt={item.name}
                             loading="lazy"
@@ -1786,7 +1801,7 @@ export function MedicineMarketPage({
       <Dialog
         open={!!edit}
         onClose={() => {
-          if (!busy) setEdit(null);
+          if (!busy && !imageUploading) setEdit(null);
         }}
         title={edit ? `${edit.field.label} — ${edit.card.name}` : "تعديل حقل"}
         className="medicine-market-dialog"
@@ -1798,7 +1813,9 @@ export function MedicineMarketPage({
               value={edit.value}
               references={references}
               cardData={edit.card.data}
-              disabled={busy}
+              cardId={edit.card.id}
+              onImageBusyChange={setImageUploading}
+              disabled={busy || imageUploading}
               onChange={(value) => setEdit({ ...edit, value })}
             />
             <Field
@@ -1819,12 +1836,12 @@ export function MedicineMarketPage({
             </div>
             {error && <Notice tone="error">{error}</Notice>}
             <div className="page-actions">
-              <Button type="submit" disabled={busy}>
-                {busy ? "جارٍ الإرسال…" : "حفظ المساهمة"}
+              <Button type="submit" disabled={busy || imageUploading}>
+                {busy ? "جارٍ الإرسال…" : imageUploading ? "جارٍ ضغط الصورة ورفعها…" : "حفظ المساهمة"}
               </Button>
               <Button
                 variant="secondary"
-                disabled={busy}
+                disabled={busy || imageUploading}
                 onClick={() => setEdit(null)}
               >
                 إلغاء
