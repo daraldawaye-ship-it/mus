@@ -109,7 +109,7 @@ export async function companyAccess(
     !general && row
       ? await permissionRuleEffects(db, companyId, row.id)
       : new Map<string, "allow" | "deny">();
-  const targets = general
+  const targets = actor.owner
     ? []
     : await requestPermissionTargets(
         db,
