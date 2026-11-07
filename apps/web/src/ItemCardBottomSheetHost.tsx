@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CompanyContext, Item } from "../../../packages/contracts/src/index";
 import { Dialog, Notice } from "./ui";
+import { api } from "./api";
 const Editor = lazy(() => import("./pages/ItemsPages").then(m => ({ default: m.InvoiceItemEditor })));
 const EVENT_NAME = "alraesy:open-item-card-sheet";
 
@@ -16,6 +17,21 @@ export function ItemCardBottomSheetHost({ context }: { context: CompanyContext |
   const [itemId, setItemId] = useState<number | null>(null);
    const client = useQueryClient();
   const companyId = context?.company.id;
+  const lastRecordedCard = useRef<string | null>(null);
+  useEffect(() => {
+    if (!companyId || !itemId) {
+      lastRecordedCard.current = null;
+      return;
+    }
+    const visit = `${companyId}:${itemId}`;
+    if (lastRecordedCard.current === visit) return;
+    lastRecordedCard.current = visit;
+    void api(`/companies/${companyId}/reward-events/page-visit`, {
+      method: "POST",
+      body: { pageKey: "company.item-card", recordId: itemId,
+        idempotencyKey: crypto.randomUUID() },
+    }).catch(() => {});
+  }, [companyId, itemId]);
   useEffect(() => { setItemId(null); }, [companyId]);
   useEffect(() => {
     if (!companyId) return;
