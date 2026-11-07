@@ -35,6 +35,10 @@ export function centralPageAllows(
   if (!policy) return false;
   const allowed = action==="view" || action==="print"
     ? policy.viewPositions : policy.editPositions;
+  // The generic "موظف" selection on company chat means every active
+  // company member. All callers validate company membership before reaching
+  // this page decision; it is not a public or cross-company grant.
+  if (pageKey==="company.chat" && allowed.includes("employee")) return true;
   return allowed.some(key=>positions.includes(key));
 }
 
