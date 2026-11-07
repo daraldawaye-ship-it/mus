@@ -75,8 +75,9 @@ export function pageRoutes(pool: Pool): Router {
         const directory = await directoryEntries(client, user, companyId);
         // Administrators may audit and configure the entire page catalog.
         // Other users should discover only pages they can actually open.
-        // User management and chat are admin-only in page navigation,
-        // while their existing API permissions remain unchanged.
+        // Public user management and public chat keep their existing admin
+        // navigation rule. Company chat is authorized by company-scoped
+        // central page permissions, not by the account's global kind.
         const canInspectCatalog = user.owner;
         const entries = canInspectCatalog
           ? directory
@@ -85,7 +86,7 @@ export function pageRoutes(pool: Pool): Router {
               entry.enabled &&
               entry.actionAccess.view &&
               ((user.kind === "admin") ||
-                !["public.users", "public.chat", "company.chat"].includes(entry.key)),
+                !["public.users", "public.chat"].includes(entry.key)),
             );
         const summary = {
           total: entries.length,
