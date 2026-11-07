@@ -112,10 +112,17 @@ const url = z
       return false;
     }
   }, "استخدم رابط HTTPS صالحًا");
-/** Each line may remain unidentified for the community to complete later. */
-const prescriptionLinesSchema = z.array(
-  z.number().int().positive().max(2147483647).nullable(),
-).min(1).max(20);
+/** Per-line search can target a commercial medicine or a generic composition.
+ * Legacy number/null rows remain valid without a destructive migration. */
+const prescriptionCardId = z.number().int().positive().max(2147483647);
+const prescriptionLineSchema = z.union([
+  prescriptionCardId.nullable(),
+  z.object({
+    kind: z.enum(["medicine","composition"]),
+    id: prescriptionCardId.nullable(),
+  }).strict(),
+]);
+const prescriptionLinesSchema = z.array(prescriptionLineSchema).min(1).max(20);
 const prescriptionCreateSchema = z.object({
   idempotencyKey:z.string().uuid(),
   prescriptionLines:prescriptionLinesSchema,
@@ -236,13 +243,23 @@ async function validateReferences(
 ) {
   if (value === null) return;
   if (field.type === "prescription-lines") {
-    const ids = [...new Set((value as Array<number|null>).filter((x):x is number=>typeof x==="number"))];
-    if(ids.length){
-      const linked=await db.query(
-        "SELECT id FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived AND id=ANY($1::integer[])",
-        [ids],
+    const rows = value as z.infer<typeof prescriptionLinesSchema>;
+    const links = rows.flatMap((line) => {
+      if (line === null) return [];
+      if (typeof line === "number") return [{kind:"medicine" as const,id:line}];
+      return line.id === null ? [] : [{kind:line.kind,id:line.id}];
+    });
+    if (links.length) {
+      const ids = [...new Set(links.map((line)=>line.id))];
+      const found = await db.query<{id:number;kind:string}>(
+        "SELECT id,kind FROM medicine_market_cards WHERE id=ANY($1::integer[])"+
+        " AND kind=ANY($2::text[]) AND status='published' AND NOT archived FOR SHARE",
+        [ids,["medicine","composition"]],
       );
-      if(linked.rowCount!==ids.length) throw new HttpError(400,"invalid_prescription_medicine","أحد أصناف الوصفة غير موجود أو غير منشور");
+      const actual = new Set(found.rows.map((row)=>row.kind+":"+row.id));
+      if (links.some((line)=>!actual.has(line.kind+":"+line.id)))
+        throw new HttpError(400,"invalid_prescription_reference",
+          "اختر صنفًا أو تركيبًا منشورًا وصحيحًا لكل سطر، أو اترك السطر فارغًا");
     }
     return;
   }
