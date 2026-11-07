@@ -1,5 +1,7 @@
 import { useMemo,useState } from "react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
+import {useNavigate} from "react-router-dom";
+import {startEmployeePreview} from "../employee-preview-mode";
 import { employeePositions,employeePositionLabels,type CompanyContext,type EmployeePosition } from "../../../../packages/contracts/src/index.ts";
 import { api,useSession } from "../api";
 import { Button,Card,Field,Notice,PageHeader,Select } from "../ui";
@@ -128,6 +130,36 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
  const companyId=context.company.id;
  const {user}=useSession();
  const client=useQueryClient();
+ const navigate=useNavigate();
+ const [previewEmployee,setPreviewEmployee]=useState("");
+ const [previewBusy,setPreviewBusy]=useState(false);
+ const [previewError,setPreviewError]=useState("");
+ const targets=useQuery({
+   queryKey:["company-employee-preview-targets",user?.id,companyId],
+   queryFn:({signal})=>api<{
+     employees:Array<{employeeId:number;employeeName:string;
+       user:import("../../../../packages/contracts/src/index.ts").User}>
+   }>(`/companies/${companyId}/access-preview/targets`,{signal}),
+   enabled:!!user?.owner,
+   staleTime:30000,
+ });
+ async function activateEmployeePreview(){
+   const target=targets.data?.employees.find(e=>String(e.employeeId)===previewEmployee);
+   if(!target || previewBusy)return;
+   setPreviewBusy(true);setPreviewError("");
+   try{
+     const snapshot=await api<{pages:Array<{key:string;href:string}>}>(
+       `/companies/${companyId}/access-preview/${target.employeeId}/pages`);
+     const destination=snapshot.pages.find(p=>p.key==="company.overview")?.href
+       ??snapshot.pages[0]?.href??`/companies/${companyId}`;
+     await client.cancelQueries();
+     client.clear();
+     startEmployeePreview({companyId,employeeId:target.employeeId,
+       employeeName:target.employeeName,user:target.user});
+     navigate(destination);
+   }catch(reason){setPreviewError(errorMessage(reason));}
+   finally{setPreviewBusy(false);}
+ }
  const query=useQuery({
    queryKey:["central-access",user?.id,companyId],
    queryFn:({signal})=>api<Response>(`/companies/${companyId}/central-access`,{signal}),
@@ -158,6 +190,25 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
      ولا تُمنح صلاحيات جديدة لتسجيل المبالغ أو ترحيل الفواتير. ربط الحقول والأزرار الأخرى
      بالخادم مستقل ولا يتم تجاوز صلاحيات الأعمال القديمة.
    </Notice>
+   {user?.owner&&<Card title="تصفح بصلاحيات موظف — للمالك فقط">
+     <p className="muted">اختبر القوائم والصفحات والبيانات التي يراها الموظف فعلًا. المعاينة مؤقتة للقراءة فقط، ولا تُبدّل حسابك أو كلمة مرور الموظف أو صلاحياته.</p>
+     <div className="central-preview-selector">
+       <Select label="اختر الموظف" value={previewEmployee}
+         disabled={previewBusy||targets.isPending}
+         onChange={event=>setPreviewEmployee(event.target.value)}>
+         <option value="">اختر موظفًا من الشركة</option>
+         {targets.data?.employees.map(e=><option key={e.employeeId}
+           value={String(e.employeeId)}>{e.employeeName} — {e.user.displayName}</option>)}
+       </Select>
+       <Button disabled={previewBusy||!previewEmployee||targets.isPending}
+         onClick={()=>void activateEmployeePreview()}>
+         {previewBusy?"جارٍ فتح المعاينة…":"تصفح بصلاحيات الموظف"}
+       </Button>
+     </div>
+     {targets.error&&<Notice tone="error">{errorMessage(targets.error)}</Notice>}
+     {previewError&&<Notice tone="error">{previewError}</Notice>}
+     <small className="muted">يعرض الخادم صلاحيات العضوية الحالية. أثناء المعاينة يُمنع حفظ الفواتير أو تعديل السجلات أو الترحيل أو الحذف. ويمكن العودة بنقرة واحدة من الشريط العلوي.</small>
+   </Card>}
    {query.error&&<Notice tone="error">{errorMessage(query.error)}</Notice>}
    {query.isPending&&<Notice>جارٍ تحميل دليل الصلاحيات…</Notice>}
    <div className="central-access-layout">
