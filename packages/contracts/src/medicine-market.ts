@@ -1,5 +1,6 @@
 export const marketKinds = [
   "medicine",
+  "prescription",
   "composition",
   "scientific-name",
   "dosage-form",
@@ -41,6 +42,7 @@ export type MarketFieldType =
   | "landline-phone"
   | "contacts"
   | "ingredients"
+  | "prescription-lines"
   | "accounting";
 export interface MarketField {
   key: string;
@@ -77,6 +79,15 @@ const locationRelations = [
 ];
 const directory = [name, phone, address, ...locationRelations, contacts, keywords];
 export const marketTypes: MarketType[] = [
+  {
+    key: "prescription",
+    label: "الوصفات الطبية",
+    fields: [
+      f("name", "الوصفة الطبية"),
+      image,
+      f("prescriptionLines", "أدوية الوصفة وعدد الأسطر", "prescription-lines"),
+    ],
+  },
   {
     key: "medicine",
     label: "الأصناف",
