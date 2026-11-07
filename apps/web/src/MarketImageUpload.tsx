@@ -36,12 +36,13 @@ function squareWebp(bitmap:ImageBitmap):{dataUrl:string;bytes:number}{
 
 /** Browser-side sizing removes original metadata before uploads reach the market database. */
 export function MarketImageUpload({
-  cardId,value,onChange,disabled=false,
+  cardId,value,onChange,disabled=false,onBusyChange,
 }:{
   cardId:number;
   value:unknown;
   onChange:(value:string|null)=>void;
   disabled?:boolean;
+  onBusyChange?:(busy:boolean)=>void;
 }){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
@@ -57,7 +58,7 @@ export function MarketImageUpload({
       setError("اختر صورة من الجهاز بحجم لا يتجاوز 12 ميجابايت");
       return;
     }
-    setBusy(true);setError("");setSize(null);
+    setBusy(true);onBusyChange?.(true);setError("");setSize(null);
     let bitmap:ImageBitmap|null=null;
     try {
       bitmap=await createImageBitmap(file);
@@ -73,7 +74,7 @@ export function MarketImageUpload({
       setError(cause instanceof Error?cause.message:"تعذر ضغط الصورة أو رفعها");
     }finally {
       bitmap?.close();
-      setBusy(false);
+      setBusy(false);onBusyChange?.(false);
     }
   }
   return <div className="field image-upload">
