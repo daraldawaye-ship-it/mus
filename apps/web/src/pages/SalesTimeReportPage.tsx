@@ -123,10 +123,10 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
   const dateFrom = params.get("dateFrom") ?? today;
   const dateTo = params.get("dateTo") ?? today;
   const paymentParam = params.get("payment");
-  const payment: Payment = paymentParam === "cash" || paymentParam === "credit"
-    ? paymentParam : "all";
+  const payment: Payment = paymentParam === "all" || paymentParam === "credit"
+    ? paymentParam : "cash";
   const groupParam = params.get("group");
-  const group: GroupHours = groupParam === "3" ? 3 : groupParam === "1" ? 1 : 6;
+  const group: GroupHours = groupParam === "6" ? 6 : groupParam === "1" ? 1 : 3;
   const positions = useMemo(() =>
     Array.from({ length: 24 / group }, (_, index) => index * group), [group]);
   const daysBetween = (Date.parse(dateTo + "T00:00:00Z") -
