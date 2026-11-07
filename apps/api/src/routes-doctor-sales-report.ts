@@ -177,11 +177,11 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         const added=await client.query<{invoiceId:number}>(
           "INSERT INTO doctor_sales_accounted_invoices"+
           " (company_id,invoice_id,main_name,cutoff_invoice_id,marked_by)"+
-          " SELECT i.company_id,i.id,$3,$2,$4 FROM invoices i"+
+          " SELECT i.company_id,i.id,$3::text,$2,$4 FROM invoices i"+
           " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id"+
           " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true"+
           " AND d.kind=$6"+
-          " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name)=$3"+
+          " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name)=$3::text"+
           " AND (i.created_at,i.id)<=($5::timestamptz,$2::integer)"+
           " ON CONFLICT(company_id,invoice_id) DO NOTHING"+
           " RETURNING invoice_id AS \"invoiceId\"",
