@@ -744,6 +744,12 @@ export function financeRoutes(pool: Pool): Router {
           );
           if(linkedPouchReceipt.rowCount)
             conflict("القيد مرتبط باستلام حركة حافظة؛ لا يمكن عكسه مستقلًا عن سجل الاستلام");
+          const linkedCustodyReceipt=await client.query(
+            "SELECT 1 FROM administrative_custody_receipts WHERE company_id=$1 AND (financial_document_id=$2 OR voucher_document_id=$2)",
+            [companyId,documentId],
+          );
+          if(linkedCustodyReceipt.rowCount)
+            conflict("القيد مرتبط باستلام العهدة الإدارية؛ لا يمكن عكسه منفصلًا عن سجل الاستلام");
           const linkedElectronicReceipt=await client.query(
             "SELECT 1 FROM employee_electronic_receipts WHERE company_id=$1 AND financial_document_id=$2",
             [companyId,documentId],
