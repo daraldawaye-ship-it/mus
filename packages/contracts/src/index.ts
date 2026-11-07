@@ -404,6 +404,7 @@ export const companyAuditActions: AuditAction[] = [
   "itemShelf.update",
   "item.create",
   "item.update",
+  "item.field.update",
   "media.upload",
   "financialDocument.create",
   "financialDocument.update",
