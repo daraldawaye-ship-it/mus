@@ -1,3 +1,4 @@
+import {directoryEntries} from "./services/pages.ts";
 import { initializeCompanyAccounts } from "./routes-accounts.ts";
 import { initializeCompanyCurrencies } from "./routes-currencies.ts";
 import { Router } from "express";
@@ -39,6 +40,44 @@ import { deny, missing, HttpError } from "./errors.ts";
 
 export function companyRoutes(pool: Pool): Router {
   const router = Router();
+  // Only the signed-in platform owner can select an employee to preview.
+  // Return the employee's live user record; never change a session.
+  router.get("/companies/:companyId/access-preview/targets",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const owner=await currentActor(pool,actor(req),false);
+    ownerOnly(owner);
+    const rows=await pool.query(
+      "SELECT e.id AS employee_id,e.name AS employee_name,u.* "+
+      "FROM employees e JOIN users u ON u.id=e.user_id "+
+      "WHERE e.company_id=$1 AND e.active AND NOT u.archived AND NOT u.suspended "+
+      "AND NOT u.owner ORDER BY e.name,e.id",
+      [companyId],
+    );
+    res.json({employees:rows.rows.map(row=>({
+      employeeId:Number(row.employee_id),employeeName:String(row.employee_name),
+      user:userDTO(row),
+    }))});
+  }));
+  // Diagnostic snapshot based on the selected real employee, without
+  // authorizing any writes or impersonated session.
+  router.get("/companies/:companyId/access-preview/:employeeId/pages",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId),employeeId=id(req.params.employeeId);
+    const owner=await currentActor(pool,actor(req),false);
+    ownerOnly(owner);
+    const target=await pool.query(
+      "SELECT u.* FROM employees e JOIN users u ON u.id=e.user_id "+
+      "WHERE e.id=$1 AND e.company_id=$2 AND e.active "+
+      "AND NOT u.archived AND NOT u.suspended AND NOT u.owner",
+      [employeeId,companyId],
+    );
+    if(!target.rowCount)throw new HttpError(404,"employee_not_found","الموظف غير نشط أو غير تابع لهذه الشركة");
+    const employee=userDTO(target.rows[0]);
+    const pages=await directoryEntries(pool,employee,companyId);
+    res.json({employeeId,companyId,pages:pages.filter(entry=>
+      entry.scope==="company" && entry.visible && entry.enabled &&
+      entry.actionAccess.view).map(entry=>({key:entry.key,name:entry.name,href:entry.href}))});
+  }));
+
   router.get(
     "/companies",
     handler(async (req, res) => {
