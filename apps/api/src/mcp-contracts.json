@@ -8427,6 +8427,27 @@
     "pathParams": ["sourceId"],
     "queryFields": []
   },
+  "POST /medicine-market/saba-2024/import": {
+    "source": "routes-market-staging.ts",
+    "pathParams": [],
+    "queryFields": [],
+    "bodyContract": "sabaImportSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {"type":"string","format":"uuid"},
+        "sourceSha256": {"type":"string","const":"211777e825a4e691f65b55a87673033c875c4b574d41257e37ba69a3ce093d99"},
+        "encoded": {"type":"string","minLength":200,"maxLength":14000}
+      },
+      "required": ["idempotencyKey","sourceSha256","encoded"],
+      "additionalProperties": false
+    }
+  },
+  "GET /medicine-market/saba-2024/status": {
+    "source": "routes-market-staging.ts",
+    "pathParams": [],
+    "queryFields": []
+  },
   "GET /medicine-market/staging/:sourceId/arabize-preview": {
     "source": "routes-market-staging.ts",
     "pathParams": ["sourceId"],
