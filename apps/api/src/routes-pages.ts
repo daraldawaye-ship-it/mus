@@ -35,7 +35,8 @@ export function pageRoutes(pool: Pool): Router {
     "/page-catalog/visit",
     handler(async (req, res) => {
       const input = parse(z.object({
-        pageKey: z.string().regex(/^public\\.[a-z-]+$/).max(100),
+        pageKey: z.string().min(8).max(100).refine(value =>
+          value.startsWith("public.") && /^[a-z-]+$/.test(value.slice(7))),
         recordId: z.number().int().positive().nullable().optional(),
       }).strict(), req.body);
       await transaction(pool, async (client) => {
