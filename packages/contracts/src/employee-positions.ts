@@ -3,6 +3,7 @@ import { z } from "zod";
 /** The only assignable job labels; they are code-owned, not user-defined.
  * An employee may carry multiple positions in one company. */
 export const employeePositions = [
+  { key:"employee", label:"موظف" },
   { key:"admin1", label:"إداري 1" },
   { key:"admin2", label:"إداري 2" },
   { key:"sales", label:"مبيعات" },
