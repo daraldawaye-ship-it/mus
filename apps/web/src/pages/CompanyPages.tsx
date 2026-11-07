@@ -301,7 +301,6 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
     { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
     { key: "company.doctor-sales-movements", label: "حركة مبيعات الأطباء والممرضين", href: `/companies/${company.id}/doctor-sales-movements`, action: "view" },
-    { key: "company.administrative-custody", label: "العهدة الإدارية", href: `/companies/${company.id}/administrative-custody`, action: "view" },
     { key: "company.items", label: "الأصناف", href: `/companies/${company.id}/items`, action: "view" },
     { key: "company.item-statistics-report", label: "تقرير إحصائيات الأصناف", href: `/companies/${company.id}/item-statistics-report`, action: "view" },
     { key: "company.item-compositions", label: "تراكيب الأصناف", href: `/companies/${company.id}/item-compositions`, action: "view" },
@@ -310,7 +309,33 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.stock-balances", label: "أرصدة المخزون", href: `/companies/${company.id}/stock-balances`, action: "view" },
   ] as const).filter(shortcut => {
     const page = directory.data?.find(entry => entry.key === shortcut.key);
-    return !!page?.enabled && !!page.actionAccess[shortcut.action];
+    return !!page?.visible && !!page.enabled && !!page.actionAccess[shortcut.action];
+  });
+  // A separate untitled financial shortcuts card sits immediately under
+  // sales/purchases. The central page catalogue remains authoritative for
+  // each destination: this reorganization does not grant any access.
+  const financialShortcuts = ([
+    { key: "company.administrative-custody", label: "العهدة الإدارية", href: `/companies/${company.id}/administrative-custody`, action: "view" },
+    { key: "company.accounts", label: "دليل الحسابات", href: `/companies/${company.id}/accounts`, action: "view" },
+    { key: "company.account-balances", label: "أرصدة الحسابات", href: `/companies/${company.id}/account-balances`, action: "view" },
+    { key: "company.account-ledger", label: "كشف حساب", href: `/companies/${company.id}/account-ledger`, action: "view" },
+    { key: "company.my-cashbox-ledger", label: "كشف حساب صندوقي", href: `/companies/${company.id}/my-cashbox-ledger`, action: "view" },
+    { key: "company.account-statistics", label: "إحصاءات الحسابات", href: `/companies/${company.id}/account-statistics`, action: "view" },
+    { key: "company.sales-time-report", label: "مبيعات الأيام والأوقات", href: `/companies/${company.id}/sales-time-report`, action: "view" },
+    { key: "company.trial-balance", label: "ميزان المراجعة", href: `/companies/${company.id}/trial-balance`, action: "view" },
+    { key: "company.cash-flows", label: "التدفقات المالية", href: `/companies/${company.id}/cash-flows`, action: "view" },
+    { key: "company.financial-documents", label: "العمليات المالية", href: `/companies/${company.id}/financial-documents`, action: "view" },
+    { key: "company.financial-new", label: "إضافة مستند مالي", href: `/companies/${company.id}/financial-documents/new`, action: "create" },
+    { key: "company.journals", label: "قيود اليومية", href: `/companies/${company.id}/journals`, action: "view" },
+    { key: "company.receipts", label: "سندات القبض", href: `/companies/${company.id}/receipts`, action: "view" },
+    { key: "company.payments", label: "سندات الصرف", href: `/companies/${company.id}/payments`, action: "view" },
+    { key: "company.pouch-receipts", label: "استلام الترحيلات", href: `/companies/${company.id}/pouch-receipts`, action: "view" },
+    { key: "company.electronic-receipts", label: "استلام المحفظة الإلكترونية", href: `/companies/${company.id}/electronic-receipts`, action: "view" },
+    { key: "company.currencies", label: "العملات", href: `/companies/${company.id}/currencies`, action: "view" },
+    { key: "company.exchange-rates", label: "أسعار الصرف", href: `/companies/${company.id}/exchange-rates`, action: "view" },
+  ] as const).filter(shortcut => {
+    const page = directory.data?.find(entry => entry.key === shortcut.key);
+    return !!page?.visible && !!page.enabled && !!page.actionAccess[shortcut.action];
   });
   return (
     <>
@@ -322,6 +347,17 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         <Card title="المبيعات والمشتريات">
           <div className="form-actions">
             {commerceShortcuts.map(shortcut => (
+              <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
+                {shortcut.label}
+              </Link>
+            ))}
+          </div>
+        </Card>
+      )}
+      {financialShortcuts.length > 0 && (
+        <Card>
+          <div className="form-actions" role="group" aria-label="الاختصارات المالية">
+            {financialShortcuts.map(shortcut => (
               <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
                 {shortcut.label}
               </Link>
@@ -382,11 +418,6 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       <Card title="إدارة الشركة">
         <div className="form-actions">
           <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
-          {moduleAccess(context, "accounts") && <Link className="button button-secondary" to={`/companies/${company.id}/accounts`}>دليل الحسابات</Link>}
-          {moduleAccess(context, "currencies") && <>
-            <Link className="button button-secondary" to={`/companies/${company.id}/currencies`}>العملات</Link>
-            <Link className="button button-secondary" to={`/companies/${company.id}/exchange-rates`}>أسعار الصرف</Link>
-          </>}
           {moduleAccess(context, "locations") && <>
             <Link className="button button-secondary" to={`/companies/${company.id}/branches`}>الفروع</Link>
             <Link className="button button-secondary" to={`/companies/${company.id}/locations`}>المعارض والمخازن</Link>
