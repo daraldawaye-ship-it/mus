@@ -6604,6 +6604,25 @@ a.notification-quick-title:hover { text-decoration: underline; }
   background:var(--surface); border:1px solid var(--border);
   border-radius:10px; box-shadow:var(--card-shadow); padding:4px;
 }
+.medicine-market-lookup-results.medicine-market-lookup-floating {
+  position:fixed;z-index:8000;display:block;overflow:auto;direction:rtl;
+  background:var(--surface);max-width:calc(100vw - 16px);
+}
+.medicine-market-lookup-result-names {min-width:0;display:grid;gap:2px;text-align:right;overflow:hidden;}
+.medicine-market-lookup-result-names strong,
+.medicine-market-lookup-result-names small {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.medicine-market-lookup-result-names small {text-align:left;color:var(--muted);}
+.medicine-market-lookup-pages {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;
+  position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);font-size:12px;}
+.medicine-market-lookup-pages button {border:1px solid var(--border);background:transparent;
+  border-radius:6px;color:var(--text);padding:4px 11px;cursor:pointer;}
+.medicine-market-lookup-pages button:disabled{opacity:.5;cursor:not-allowed;}
+.medicine-market-prescription-review {display:grid;gap:12px;padding:12px;border:1px solid var(--border);
+  border-radius:10px;min-width:0;}
+.medicine-market-prescription-review-image {display:grid;gap:8px;justify-items:start;max-width:100%;}
+.medicine-market-prescription-review-image img {max-width:100%;object-fit:contain;}
+.medicine-market-prescription-review .page-actions {display:flex;gap:9px;flex-wrap:wrap;}
+.medicine-market-prescription-review a {font-size:12px;text-decoration:underline;}
 .medicine-market-lookup-result {
   display:flex; align-items:center; justify-content:space-between;
   gap:12px; width:100%; text-align:start; padding:10px 12px;
