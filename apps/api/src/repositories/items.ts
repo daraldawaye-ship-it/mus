@@ -69,6 +69,7 @@ export function itemDTO(row: QueryResultRow): Item {
     barcode: row.barcode,
     shortcut: row.shortcut ?? "",
     legacyId: row.legacy_id,
+    marketCardId: row.market_card_id ?? null,
     agentId: row.agent_id,
     supplierAccountId: row.supplier_account_id ?? null,
     supplierInferred: row.supplier_inferred === true,

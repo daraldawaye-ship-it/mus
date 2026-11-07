@@ -150,6 +150,8 @@ const itemFields = z
       "الاختصار خانة أو خانتان من حروف أو أرقام أو رموز؛ الرقم 0 وحده محجوز لإنهاء إدخال المبيعات",
     ).default(""),
     legacyId: z.string().trim().max(100).default(""),
+    // An optional reference for future use; no continuous market linkage.
+    marketCardId: id.nullable().default(null),
     agentId: id.nullable().default(null),
     supplierAccountId: id.nullable().default(null),
     compositionId: id.nullable().default(null),
@@ -238,6 +240,7 @@ export const itemPatchSchema = itemFields
       "الاختصار خانة أو خانتان من حروف أو أرقام أو رموز؛ الرقم 0 وحده محجوز لإنهاء إدخال المبيعات",
     ).optional(),
     legacyId: z.string().trim().max(100).optional(),
+    marketCardId: id.nullable().optional(),
     defaultSaleUnit: defaultSaleUnitSchema.optional(),
     compositionId: id.nullable().optional(),
     shelfId: id.nullable().optional(),
@@ -316,6 +319,7 @@ export interface Item extends ItemIdentity {
   barcode: string;
   shortcut: string;
   legacyId: string;
+  marketCardId: number | null;
   agentId: number | null;
   supplierAccountId: number | null;
   /** True only when the existing item's supplier was inferred from history. */

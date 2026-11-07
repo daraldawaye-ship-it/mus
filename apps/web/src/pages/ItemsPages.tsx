@@ -1081,6 +1081,7 @@ type ItemFields = {
   shelfId: number | null;
   barcode: string;
   legacyId: string;
+  marketCardId: number | null;
   compositionId: number | null;
   unit1Name: string;
   unit2Name: string;
@@ -1121,6 +1122,7 @@ function initialItemFields(item: Item | null): ItemFields {
     shelfId: item?.shelfId ?? null,
     barcode: item?.barcode ?? "",
     legacyId: item?.legacyId ?? "",
+    marketCardId: item?.marketCardId ?? null,
     compositionId: item?.compositionId ?? null,
     unit1Name: item?.unit1Name ?? "باكت",
     unit2Name: item?.unit2Name ?? "",
@@ -2034,6 +2036,20 @@ function ItemEditor({
               value={fields.legacyId}
               disabled={disabled}
               onChange={(event) => edit("legacyId", event.target.value)}
+            />
+            <Field
+              label="ربط الصنف بصنف السوق"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={2147483647}
+              step={1}
+              dir="ltr"
+              placeholder="معرف صنف السوق (اختياري)"
+              hint="معرف مرجعي محفوظ لحين الحاجة فقط؛ لا توجد مزامنة مع سوق الأدوية."
+              value={fields.marketCardId ?? ""}
+              disabled={disabled}
+              onChange={(event) => edit("marketCardId", event.target.value === "" ? null : Number(event.target.value))}
             />
             <Field
               label="الباركود"
