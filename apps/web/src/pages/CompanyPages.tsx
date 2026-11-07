@@ -299,6 +299,13 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.purchases", label: "فواتير المشتريات", href: `/companies/${company.id}/purchases`, action: "view" },
     { key: "company.item-options-list", label: "قائمة الأصناف", href: `/companies/${company.id}/item-options-list`, action: "view" },
     { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
+    { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
+    { key: "company.items", label: "الأصناف", href: `/companies/${company.id}/items`, action: "view" },
+    { key: "company.item-statistics-report", label: "تقرير إحصائيات الأصناف", href: `/companies/${company.id}/item-statistics-report`, action: "view" },
+    { key: "company.item-compositions", label: "تراكيب الأصناف", href: `/companies/${company.id}/item-compositions`, action: "view" },
+    { key: "company.item-form-differences", label: "متابعة اختلاف شكل الصنف والتركيب", href: `/companies/${company.id}/item-form-differences`, action: "view" },
+    { key: "company.settlement-follow-up", label: "متابعة التسويات للأصناف", href: `/companies/${company.id}/settlement-follow-up`, action: "view" },
+    { key: "company.stock-balances", label: "أرصدة المخزون", href: `/companies/${company.id}/stock-balances`, action: "view" },
   ] as const).filter(shortcut => {
     const page = directory.data?.find(entry => entry.key === shortcut.key);
     return !!page?.enabled && !!page.actionAccess[shortcut.action];
