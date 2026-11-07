@@ -11,6 +11,8 @@ import {
 import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
 import { createInvoiceQuickAccount } from "./routes-accounts.ts";
 import { transaction } from "./db.ts";
+import { canOperateAdministrativeCustody } from "../../../packages/contracts/src/pages.ts";
+import { directoryEntries, assertRequestPagesEnabled, assertDirectoryAccess } from "./services/pages.ts";
 import { HttpError } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -739,12 +741,20 @@ export function commerceRoutes(pool: Pool): Router {
     `${base}/sales/administrative-custody-transfers`,
     handler(async (req, res) => {
       const input = parse(administrativeCustodyTransferSchema, req.body);
-      const result = await mutateMaster(pool, req, "finance.manage",
-        async (client, user, companyId) => {
-          await companyAccess(client, user, companyId, "finance.post", true);
-          await companyAccess(client, user, companyId, "commerce.manage", true);
-          return postAdministrativeCustodyTransfer(client, companyId, user, input);
-        });
+      const result = await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req));
+        const companyId = id(req.params.companyId);
+        const context = await companyAccess(client, user, companyId, undefined, true);
+        if (!canOperateAdministrativeCustody(context))
+          throw new HttpError(403, "custody_permission_denied",
+            "ترحيل العهدة الإدارية متاح للمبيعات أو إدخال المشتريات أو أمين الصندوق فقط.");
+        await assertRequestPagesEnabled(client, req, true);
+        const entry = (await directoryEntries(client, user, companyId))
+          .find(page => page.key === "company.administrative-custody");
+        if (!entry) throw new HttpError(403, "custody_page_missing", "صفحة العهدة غير متاحة");
+        assertDirectoryAccess(entry, "post");
+        return postAdministrativeCustodyTransfer(client, companyId, user, input);
+      });
       res.status(201).json(result);
     }),
   );
