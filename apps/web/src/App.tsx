@@ -586,6 +586,7 @@ function CompanyView({
 }) {
   const location = useLocation();
   const { user } = useSession();
+  const queryClient = useQueryClient();
   if (loading && !context)
     return (
       <Card>
@@ -617,6 +618,15 @@ function CompanyView({
               <Button variant="secondary" onClick={() => window.print()}>
                 طباعة التقرير
               </Button>
+              {pageKey === "company.doctor-sales-movements" && (
+                <Button variant="secondary" onClick={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: ["doctor-sales-movements", user?.id, context.company.id],
+                  })
+                }>
+                  تحديث
+                </Button>
+              )}
             </div>
           )}
           <CompanyContent context={context} section={section} />
