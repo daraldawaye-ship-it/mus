@@ -12,6 +12,7 @@ import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import type { MarketAccess } from "./routes-medicine-market.ts";
 import { arabizeMarketName, normalizedArabicSearch } from "./market-arabic-names.ts";
+import { sabaImportSchema, unpackSabaRows, importSabaCatalog } from "./market-saba-catalog.ts";
 import { handler, parse } from "./http.ts";
 import { deny, HttpError, missing } from "./errors.ts";
 
@@ -23,7 +24,7 @@ export const stagingImportSchema = z.object({
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
 const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
-export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema };
+export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema };
 const sourceSchema = z.object({type:z.literal("source"),key:z.string().min(1).max(150),filename:z.string().max(500),driveId:z.string().min(1).max(200),modifiedAt:z.string().max(100),sha256:z.string().regex(/^[a-f0-9]{64}$/),byteSize:z.number().int().min(0).max(100000000),rowCount:z.number().int().min(0).max(500000),metadata:z.record(z.string(),z.unknown())}).strict();
 const rowSchema = z.object({type:z.literal("row"),section:z.string().max(500),position:z.number().int().positive(),payload:z.string().max(4000000)}).strict();
 const chunkSchema = z.object({type:z.literal("chunk"),index:z.number().int().min(0),data:z.string().max(400000).regex(/^[A-Za-z0-9+/]*={0,2}$/)}).strict();
@@ -265,6 +266,32 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     if(!isolated)throw new HttpError(503,"market_isolation_required","الاستقبال متاح في قاعدة السوق المنفصلة فقط");
     return u;
   };
+
+  router.post("/medicine-market/saba-2024/import",handler(async(req,res)=>{
+    const user=await authorize(req);
+    const input=parse(sabaImportSchema,req.body);
+    const {rows,fingerprint}=unpackSabaRows(input);
+    // Imported prices are historical (18 Aug 2024), not live/current prices.
+    const old=await pool.query("SELECT id,source_sha256,data_sha256,status,total,inserted,matched,changed,skipped FROM market_saba_catalog_runs WHERE source_sha256=$1 OR id=$2 ORDER BY created_at DESC LIMIT 2",[input.sourceSha256,input.idempotencyKey]);
+    const previous=old.rows[0];
+    if(previous){
+      if(previous.source_sha256!==input.sourceSha256 || previous.data_sha256!==fingerprint)
+        throw new HttpError(409,"saba_duplicate","ملف سبأ أو مفتاح العملية مرتبط ببيانات مختلفة");
+      res.status(previous.status==="running"?202:200).json(previous);return;
+    }
+    const result=await pool.query(
+      "INSERT INTO market_saba_catalog_runs(id,actor_id,source_sha256,data_sha256,status,total) VALUES($1,$2,$3,$4,'running',$5) RETURNING id,status,total",
+      [input.idempotencyKey,user.id,input.sourceSha256,fingerprint,rows.length],
+    );
+    void importSabaCatalog(pool,input,user.id,user.displayName);
+    res.status(202).json(result.rows[0]);
+  }));
+  router.get("/medicine-market/saba-2024/status",handler(async(req,res)=>{
+    await authorize(req);
+    const runs=await pool.query("SELECT * FROM market_saba_catalog_runs ORDER BY created_at DESC LIMIT 5");
+    res.json({runs:runs.rows});
+  }));
+
   router.post("/medicine-market/staging/import",handler(async(req,res)=>{
     const user=await authorize(req),input=parse(stagingImportSchema,req.body);
     const db=await pool.connect();let handed=false,locked=false;
