@@ -180,14 +180,15 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
           " SELECT i.company_id,i.id,$3,$2,$4 FROM invoices i"+
           " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id"+
           " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true"+
-          " AND d.kind IN ('doctor','nurse')"+
+          " AND d.kind=$6"+
           " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name)=$3"+
           " AND (i.created_at,i.id)<=($5::timestamptz,$2::integer)"+
           " ON CONFLICT(company_id,invoice_id) DO NOTHING"+
           " RETURNING invoice_id AS \"invoiceId\"",
-          [companyId,invoiceId,clicked.mainName,user.id,clicked.createdAt]);
+          [companyId,invoiceId,clicked.mainName,user.id,clicked.createdAt,clicked.kind]);
         await audit(client,user,"doctor.sales.accounted","invoice",invoiceId,null,{
           mainName:clicked.mainName,
+          kind:clicked.kind,
           cutoffInvoiceId:invoiceId,
           cutoffCreatedAt:clicked.createdAt.toISOString(),
           newlyMarked:added.rows.length,
