@@ -289,12 +289,37 @@ function CreateCompanyDialog({
 export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const { company, employee, general, permissions } = context;
+  const directory = usePageDirectory(company.id);
+  // Match each shortcut to the page catalogue, including its enabled state
+  // and its own view/create permission. Never expose unauthorized shortcuts.
+  const commerceShortcuts = ([
+    { key: "company.sale-new", label: "إضافة فاتورة مبيعات", href: `/companies/${company.id}/invoices/new?kind=sale`, action: "create" },
+    { key: "company.sales", label: "فواتير المبيعات", href: `/companies/${company.id}/sales`, action: "view" },
+    { key: "company.purchase-new", label: "إضافة فاتورة مشتريات", href: `/companies/${company.id}/invoices/new?kind=purchase`, action: "create" },
+    { key: "company.purchases", label: "فواتير المشتريات", href: `/companies/${company.id}/purchases`, action: "view" },
+    { key: "company.item-options-list", label: "قائمة الأصناف", href: `/companies/${company.id}/item-options-list`, action: "view" },
+    { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
+  ] as const).filter(shortcut => {
+    const page = directory.data?.find(entry => entry.key === shortcut.key);
+    return !!page?.enabled && !!page.actionAccess[shortcut.action];
+  });
   return (
     <>
       <PageHeader
         title={company.name}
         description="بيانات الشركة وصلاحيات وصولك الحالية."
       />
+      {commerceShortcuts.length > 0 && (
+        <Card title="المبيعات والمشتريات">
+          <div className="form-actions">
+            {commerceShortcuts.map(shortcut => (
+              <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
+                {shortcut.label}
+              </Link>
+            ))}
+          </div>
+        </Card>
+      )}
       <Card title="الحضور والانصراف">
         <AttendancePunchControls companyId={company.id} compact />
       </Card>
