@@ -27,7 +27,7 @@ export async function postReceiptExtraVoucher(
   user: User,
   settings: {
     sourceId: number;
-    sourceKind: "pouch"|"electronic";
+    sourceKind: "pouch"|"electronic"|"custody";
     actualAmount: bigint;
     cashAccountId: number;
     currencyId: number;
