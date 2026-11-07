@@ -8427,6 +8427,26 @@
     "pathParams": ["sourceId"],
     "queryFields": []
   },
+  "POST /medicine-market/prescriptions": {
+    "source": "routes-medicine-market.ts",
+    "pathParams": [],
+    "queryFields": [],
+    "bodyContract": "prescriptionCreateSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {"type":"string","format":"uuid"},
+        "prescriptionLines": {
+          "type":"array","minItems":1,"maxItems":20,
+          "items":{"anyOf":[{"type":"integer","minimum":1},{"type":"null"}]}
+        },
+        "imageDataUrl": {"type":"string","minLength":50,"maxLength":700000},
+        "privacyConfirmed": {"type":"boolean","const":true}
+      },
+      "required":["idempotencyKey","prescriptionLines","imageDataUrl","privacyConfirmed"],
+      "additionalProperties":false
+    }
+  },
   "POST /medicine-market/saba-2024/import": {
     "source": "routes-market-staging.ts",
     "pathParams": [],
