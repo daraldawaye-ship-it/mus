@@ -779,7 +779,6 @@ export function MedicineMarketPage({
     [newName, setNewName] = useState("");
   const [prescriptionFile,setPrescriptionFile]=useState<File|null>(null);
   const [prescriptionPhotoUrl,setPrescriptionPhotoUrl]=useState<string|null>(null);
-  const [prescriptionPrivacy,setPrescriptionPrivacy]=useState(false);
   const [prescriptionLines,setPrescriptionLines]=useState<Array<number|null>>([null,null,null,null]);
   useEffect(()=>{
     if(!prescriptionFile){setPrescriptionPhotoUrl(null);return;}
@@ -932,7 +931,6 @@ export function MedicineMarketPage({
     if (isMarketAdministrativeKind(newKind)) { setError("الكروت المرجعية ثابتة، ولا تُضاف من واجهة السوق"); return; }
     if(newKind==="prescription"){
       if(!prescriptionFile){setError("اختر صورة الوصفة أولًا");return;}
-      if(!prescriptionPrivacy){setError("أخفِ بيانات المريض وأكد ذلك قبل نشر الصورة");return;}
       const file=prescriptionFile;
       const lines=[...prescriptionLines];
       const signature={kind:newKind,fileName:file.name,fileSize:file.size,lastModified:file.lastModified,lines};
@@ -941,11 +939,11 @@ export function MedicineMarketPage({
         const created=await api<{card:MarketCard}>(`${ROOT}/prescriptions`,{
           method:"POST",
           body:{idempotencyKey:stableKey("create-prescription",signature),
-            imageDataUrl:prepared.dataUrl,prescriptionLines:lines,privacyConfirmed:true},
+            imageDataUrl:prepared.dataUrl,prescriptionLines:lines},
         });
         if(guard.isCurrent())write({card:String(created.card.id),kind:"prescription",page:null});
-      },"تم رفع الوصفة. يمكن للجمهور إكمال الأصناف التي لم تُحدد.",()=>{
-        setCreateOpen(false);setPrescriptionFile(null);setPrescriptionPrivacy(false);
+      },"تم حفظ الوصفة للمراجعة الإدارية، ولا تظهر للجمهور حتى تُراجع الصورة وتعتمدها الإدارة.",()=>{
+        setCreateOpen(false);setPrescriptionFile(null);
         setPrescriptionLines([null,null,null,null]);keys.current.delete("create-prescription");
       });
       return;
@@ -1234,8 +1232,9 @@ export function MedicineMarketPage({
                   </div>
                   {card.status === "pending" && (
                     <Notice>
-                      الكرت قيد المراجعة. تستطيع إضافة الحقول، ويظهر للعامة بعد
-                      اعتماد الاسم.
+                      {card.kind==="prescription"
+                        ?"الوصفة خاصة حاليًا. يمكن رفع صورة بديلة بعد إخفاء بيانات المريض. لا تظهر للعامة حتى تُراجع الإدارة الصورة الحالية وتعتمد النشر."
+                        :"الكرت قيد المراجعة. تستطيع إضافة الحقول، ويظهر للعامة بعد اعتماد الاسم."}
                     </Notice>
                   )}
                   <div className="medicine-market-fields">
@@ -1928,7 +1927,7 @@ export function MedicineMarketPage({
         <form className="stack" onSubmit={(e) => void create(e)}>
           <p className="medicine-market-muted">
             {newKind==="prescription"
-              ?"ارفع صورة الوصفة بعد إزالة البيانات الشخصية وحدد عدد أسطر الأدوية. الأصناف غير المعروفة تُترك فارغة."
+              ?"ارفع صورة الوصفة وحدد عدد الأسطر. ستبقى الصورة خاصة بالإدارة ورافعها حتى تُعدّل وتُراجع وتعتمد للنشر."
               :"ابدأ بالاسم فقط، ثم أضف الحقول المتوفرة من داخل الكرت."}
           </p>
           <Select
@@ -1952,11 +1951,10 @@ export function MedicineMarketPage({
               </label>
               {prescriptionPhotoUrl&&<img src={prescriptionPhotoUrl} alt="معاينة الوصفة قبل رفعها"
                 style={{maxWidth:"100%",maxHeight:350,objectFit:"contain"}}/>}
-              <label className="medicine-market-check">
-                <input type="checkbox" checked={prescriptionPrivacy} disabled={busy}
-                  onChange={e=>setPrescriptionPrivacy(e.target.checked)}/>
-                أخفيت اسم المريض ورقم هاتفه وعنوانه وكل بياناته الشخصية من الصورة
-              </label>
+              <p className="medicine-market-muted">
+                بعد حفظ الوصفة يمكنك تنزيل صورتها، وإخفاء البيانات الشخصية، ثم رفع النسخة المعدّلة.
+                لن يراها الجمهور حتى تُراجعها الإدارة وتعتمدها.
+              </p>
               <PrescriptionLinesEditor value={prescriptionLines}
                 onChange={setPrescriptionLines} disabled={busy}/>
               <p className="medicine-market-muted">
@@ -1997,8 +1995,8 @@ export function MedicineMarketPage({
           {error && <Notice tone="error">{error}</Notice>}
           <div className="page-actions">
             <Button type="submit" disabled={busy || (newKind==="prescription"
-              ?!prescriptionFile||!prescriptionPrivacy:!newName.trim())}>
-              {busy ? "جارٍ التسجيل…" : newKind==="prescription"?"نشر الوصفة":"إنشاء الكرت"}
+              ?!prescriptionFile:!newName.trim())}>
+              {busy ? "جارٍ التسجيل…" : newKind==="prescription"?"حفظ الوصفة للمراجعة":"إنشاء الكرت"}
             </Button>
             <Button
               variant="secondary"
