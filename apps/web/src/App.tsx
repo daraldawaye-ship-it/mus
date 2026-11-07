@@ -553,9 +553,14 @@ function Navigation({
       )}
       {context && (
         <>
-          <div className="nav-label nav-heading company-nav-label" title={context.company.name}>
+          <NavLink
+            to={`/companies/${context.company.id}`}
+            onClick={close}
+            className="nav-label nav-heading company-nav-label company-nav-link"
+            title="فتح صفحة الشركة"
+          >
             {context.company.name}
-          </div>
+          </NavLink>
           {links("company")}
           {user?.owner && <NavLink to={`/companies/${context.company.id}/legacy-sales-import`} onClick={close} className="nav-link"><FileText size={17}/><span className="nav-text">ترحيل مبيعات النظام السابق</span></NavLink>}
         </>
@@ -1131,16 +1136,28 @@ function Workspace() {
               >
                 <Menu size={20} />
               </Button>
-              <div className="scope-title">
-                <span className="scope-mark">
-                  <Building2 size={16} />
-                </span>
-                <div>
-                  <strong>
-                    {company.data?.company.name ?? "الموقع العام"}
-                  </strong>
+              {inCompany && company.data && !company.isError ? (
+                <Link
+                  className="scope-title scope-title-link"
+                  to={`/companies/${companyId}`}
+                  aria-label={`فتح صفحة ${company.data.company.name}`}
+                  title="فتح صفحة الشركة"
+                >
+                  <span className="scope-mark">
+                    <Building2 size={16} />
+                  </span>
+                  <div>
+                    <strong>{company.data.company.name}</strong>
+                  </div>
+                </Link>
+              ) : (
+                <div className="scope-title">
+                  <span className="scope-mark">
+                    <Building2 size={16} />
+                  </span>
+                  <div><strong>الموقع العام</strong></div>
                 </div>
-              </div>
+              )}
             </div>
             <div className="topbar-actions">
               {user && <ConnectionModeControl />}
