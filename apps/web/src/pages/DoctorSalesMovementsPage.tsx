@@ -254,11 +254,11 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
                         </Link></td>
-                        <td>
+                        <td className="doctor-movements-accounting-column">
                           {row.accounted ? (
                             <strong className="doctor-movements-accounted">محاسب</strong>
                           ) : (
-                            <>
+                            <div className="doctor-movements-accounting-cell">
                               <span className="muted">غير محاسب</span>
                               {canMarkAccounted && (
                                 <Button variant="secondary" size="compact"
@@ -268,7 +268,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                                     setAccountingSuccess("");
                                   }}>محاسب حتى هنا</Button>
                               )}
-                            </>
+                            </div>
                           )}
                         </td>
                         <td>{row.accountName || "—"}</td>
