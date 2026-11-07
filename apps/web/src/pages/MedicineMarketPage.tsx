@@ -137,13 +137,14 @@ function RelationName({
  * no stale suggestions, and paging. The query remains in the isolated market.
  */
 function RelationPicker({
-  kind,value,onChange,label,disabled=false,
+  kind,value,onChange,label,disabled=false,minChars=3,
 }:{
   kind:Kind;
   value:number|null;
   onChange:(v:number|null)=>void;
   label:string;
   disabled?:boolean;
+  minChars?:number;
 }){
   const {user}=useSession();
   const inputId=useId();
@@ -155,7 +156,7 @@ function RelationPicker({
   const [active,setActive]=useState(0);
   const [open,setOpen]=useState(false);
   const [placement,setPlacement]=useState({left:8,top:8,width:520,maxHeight:320});
-  const enough=query.trim().length>=3;
+  const enough=query.trim().length>=minChars;
   const expanded=open && !disabled && enough;
   const current=search===query.trim();
   useEffect(()=>{
@@ -164,7 +165,7 @@ function RelationPicker({
       setSearch(query.trim());setPage(1);setActive(0);
     },60);
     return ()=>window.clearTimeout(timer);
-  },[query,open,enough]);
+  },[query,open,enough,minChars]);
   useEffect(()=>setActive(0),[page,search,kind]);
   useEffect(()=>{
     const dismiss=(event:PointerEvent)=>{
@@ -208,7 +209,7 @@ function RelationPicker({
         kind,q:search,page:String(page),pageSize:"20",
       })}`,{signal},
     ),
-    enabled:expanded&&current&&search.length>=3,
+    enabled:expanded&&current&&search.length>=minChars,
     staleTime:30000,
   });
   const matches=current&&data.isSuccess?(data.data?.items??[]):[];
@@ -224,7 +225,9 @@ function RelationPicker({
         aria-expanded={expanded}
         aria-controls={expanded?inputId+"-results":undefined}
         aria-activedescendant={expanded&&matches[active]?inputId+"-"+matches[active].id:undefined}
-        placeholder={"اكتب ثلاثة أحرف أو أكثر للبحث عن "+label}
+        placeholder={minChars===1
+          ?"اكتب اسم الصنف لتظهر النتائج مباشرة"
+          :"اكتب ثلاثة أحرف أو أكثر للبحث عن "+label}
         value={query} disabled={disabled}
         onFocus={()=>setOpen(true)}
         onChange={event=>{
@@ -320,7 +323,7 @@ function PrescriptionLinesEditor({
     {rows.map((id,index)=><div key={index} className="medicine-market-prescription-row">
       <strong>الدواء {index+1}</strong>
       <RelationPicker kind="medicine" label={"صنف السطر "+(index+1)}
-        value={id} disabled={disabled}
+        minChars={1} value={id} disabled={disabled}
         onChange={selected=>onChange(rows.map((v,i)=>i===index?selected:v))}/>
     </div>)}
   </div>;
