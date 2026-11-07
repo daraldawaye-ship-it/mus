@@ -10,7 +10,7 @@ import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
 type Status="pending"|"received"|"all";
 type Movement={
-  id:number;kind:"pouch"|"close"|"electronic";employeeName:string;amount:string;
+  id:number;sourceKind?:"employee"|"custody";kind:"pouch"|"close"|"electronic"|"custody";employeeName:string;amount:string;
   notes:string;createdAt:string;sourceDocumentId:number;pouchName?:string;walletName?:string;
   receiptId:number|null;receiptMode:"exact"|"difference"|null;
   receivedAmount:string|null;differenceAmount:string|null;
@@ -53,7 +53,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const heading=electronic?"استلام المحفظة الإلكترونية":"استلام الترحيلات";
   // Explain the difference without relying solely on the table's type column.
   const movementLabel=(kind:Movement["kind"])=>kind==="close"
-    ?"إغلاق صندوق":kind==="pouch"?"ترحيل عادي":"ترحيل إلكتروني";
+    ?"إغلاق صندوق":kind==="custody"?"ترحيل العهدة"
+    :kind==="pouch"?"ترحيل عادي":"ترحيل إلكتروني";
 
   const {user}=useSession();
   const client=useQueryClient();
@@ -66,10 +67,11 @@ export function PouchReceiptsPage({context,source="pouch"}:{
   const [error,setError]=useState("");
   const [notice,setNotice]=useState<{documentId:number;voucherDocumentId:number|null;difference:string}|null>(null);
   const [uncertain,setUncertain]=useState(false);
-  const [exactKeys,setExactKeys]=useState<Record<number,string>>({});
+  const [exactKeys,setExactKeys]=useState<Record<string,string>>({});
   const canPost=context.general||context.permissions.includes("finance.post");
   const canViewMyCashbox=context.general||context.permissions.includes("finance.own-cashbox.view");
   const queryKey=[endpoint,user?.id,companyId,status,page] as const;
+  const movementKey=(item:Movement)=>`${item.sourceKind??"employee"}:${item.id}`;
   const counterpart=useQuery<{items:Counterparty[]}>({
     queryKey:["receipt-counterpart-accounts",user?.id,companyId,voucherDraft?.search??""],
     queryFn:({signal})=>api<{items:Counterparty[]}>(
@@ -92,9 +94,10 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     if(pending || !canPost)return;
     setError("");setNotice(null);setPending(true);
     try {
+      const sourceTag=item.sourceKind==="custody"?{sourceKind:"custody" as const}:{};
       const body=mode==="exact"
-        ? {sourceOperationId:item.id,mode,notes,idempotencyKey:key,...(voucher?{voucher}:{})}
-        : {sourceOperationId:item.id,mode,receivedAmount:normalizeDigits(amount).replace(/,/g,""),
+        ? {sourceOperationId:item.id,...sourceTag,mode,notes,idempotencyKey:key,...(voucher?{voucher}:{})}
+        : {sourceOperationId:item.id,...sourceTag,mode,receivedAmount:normalizeDigits(amount).replace(/,/g,""),
            notes,idempotencyKey:key};
       const result=await api<{
         receipt:{id:number;documentId:number;voucherDocumentId:number|null;expected:string;
@@ -106,7 +109,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         voucherDocumentId:result.receipt.voucherDocumentId,
         difference:result.receipt.difference});
       setDraft(null);setVoucherDraft(null);setUncertain(false);
-      setExactKeys(prev=>{const next={...prev};delete next[item.id];return next;});
+      setExactKeys(prev=>{const next={...prev};delete next[movementKey(item)];return next;});
       await client.invalidateQueries({predicate:query=>
         query.queryKey.includes(companyId) &&
         (query.queryKey[0]==="pouch-receipts" ||
@@ -132,8 +135,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         receiptNumber:"",accountId:"",search:"",attempt:null});
       return;
     }
-    const key=exactKeys[item.id]??crypto.randomUUID();
-    setExactKeys(prev=>({...prev,[item.id]:key}));
+    const key=exactKeys[movementKey(item)]??crypto.randomUUID();
+    setExactKeys(prev=>({...prev,[movementKey(item)]:key}));
     void postReceipt(item,"exact","", "",key);
   }
   function confirmTransfer(withVoucher:boolean) {
@@ -203,6 +206,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
         <strong>إغلاق صندوق:</strong> جرد النقد الفعلي عند إغلاق الوردية وترحيله للحافظة مع تسجيل أي فرق.
         {" — "}
         <strong>ترحيل عادي:</strong> تحويل مبلغ من صندوق الموظف إلى الحافظة دون إغلاق الصندوق.
+        {" — "}
+        <strong>ترحيل العهدة:</strong> تحويل من العهدة الإدارية إلى حافظتها المستقلة، ويظهر هنا للاستلام في صندوق المستلم.
       </p>}
       {notice&&<Notice tone="success">
         تم الاستلام وتسجيل قيد التحويل #{notice.documentId}.
@@ -231,7 +236,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
           <div className="pouch-receipts-mobile-list" role="list"
             aria-label={`حركات ${sourceName} للهاتف`}>
             {list.data.items.map(item=>(
-              <article key={item.id} className="receipt-mobile-entry" role="listitem">
+              <article key={movementKey(item)} className="receipt-mobile-entry" role="listitem">
                 <div className="receipt-mobile-primary">
                   <strong className="receipt-mobile-employee" title={item.employeeName+
                     " — "+(electronic?item.walletName??"":item.pouchName??"")}>
@@ -301,7 +306,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                   : `تم الاستلام بواسطة ${item.receiverName??"—"}؛ فعلي: ${formatWholeMoney(item.receivedAmount)}؛ الفرق: ${formatWholeMoney(item.differenceAmount)}`;
                 const movementKind=movementLabel(item.kind);
                 return (
-                  <tr key={item.id}>
+                  <tr key={movementKey(item)}>
                     <td title={item.employeeName}>
                       <span className="receipt-cell-ellipsis">{item.employeeName}</span>
                     </td>
@@ -349,6 +354,7 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                     </td>
                     <td title={item.kind==="close"
                       ? "إغلاق الوردية وجرد النقد الفعلي وترحيله للحافظة"
+                      : item.kind==="custody"?"ترحيل من العهدة الإدارية إلى حافظتها"
                       : "ترحيل عادي من صندوق الموظف إلى الحافظة"}>
                       <span className={`receipt-kind-marker ${item.kind==="close"
                         ?"receipt-kind-close":"receipt-kind-transfer"}`}>
@@ -390,7 +396,9 @@ export function PouchReceiptsPage({context,source="pouch"}:{
                 ?" — جرد وإغلاق الصندوق وترحيل النقد إلى الحافظة."
                 : inspected.kind==="pouch"
                   ?" — ترحيل مبلغ عادي من الصندوق دون إغلاقه."
-                  :" — ترحيل إلى المحفظة الإلكترونية."}
+                  : inspected.kind==="custody"
+                    ?" — ترحيل من العهدة الإدارية إلى حافظة العهدة."
+                    :" — ترحيل إلى المحفظة الإلكترونية."}
             </p>
             <p><strong>ملاحظات الحركة:</strong> {inspected.notes||"—"}</p>
             <p><strong>الحالة:</strong> {inspected.receiptId===null?"بانتظار الاستلام":"تم الاستلام"}</p>
