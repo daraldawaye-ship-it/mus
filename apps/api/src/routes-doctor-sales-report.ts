@@ -146,5 +146,60 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
     });
     res.json(response);
   }));
+
+  // Explicit operator confirmation. Mark the clicked sale and all earlier
+  // already-posted sales of the same current primary name, across child cards
+  // and all dates (the 10-day limit applies only to the viewing report).
+  router.post("/companies/:companyId/doctor-sales-movements/:invoiceId/accounted",
+    handler(async (req,res) => {
+      const companyId=id(req.params.companyId), invoiceId=id(req.params.invoiceId);
+      const result=await transaction(pool,async client=>{
+        const user=await currentActor(client,actor(req),false);
+        await companyAccess(client,user,companyId,"commerce.manage");
+        const page=(await directoryEntries(client,user,companyId))
+          .find(entry=>entry.key==="company.doctor-sales-movements");
+        if(!page?.enabled||!page.actionAccess.edit)
+          throw new HttpError(403,"forbidden","لا تملك صلاحية تأشير الفواتير كمحاسبة");
+        const target=await client.query<{
+          mainName:string; createdAt:Date; kind:string;
+        }>(
+          "SELECT COALESCE(NULLIF(btrim(d.shared_name),''),d.name) AS \"mainName\","+
+          " i.created_at AS \"createdAt\",d.kind"+
+          " FROM invoices i JOIN doctors d"+
+          " ON d.company_id=i.company_id AND d.id=i.doctor_id"+
+          " WHERE i.company_id=$1 AND i.id=$2"+
+          " AND i.kind='sale' AND i.posted=true"+
+          " AND d.kind IN ('doctor','nurse') FOR SHARE OF i,d",
+          [companyId,invoiceId]);
+        const clicked=target.rows[0];
+        if(!clicked)
+          throw new HttpError(404,"not_found","لم تُعثر على فاتورة طبيب أو ممرض مؤهلة");
+        const added=await client.query<{invoiceId:number}>(
+          "INSERT INTO doctor_sales_accounted_invoices"+
+          " (company_id,invoice_id,main_name,cutoff_invoice_id,marked_by)"+
+          " SELECT i.company_id,i.id,$3,$2,$4 FROM invoices i"+
+          " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id"+
+          " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true"+
+          " AND d.kind IN ('doctor','nurse')"+
+          " AND COALESCE(NULLIF(btrim(d.shared_name),''),d.name)=$3"+
+          " AND (i.created_at,i.id)<=($5::timestamptz,$2::integer)"+
+          " ON CONFLICT(company_id,invoice_id) DO NOTHING"+
+          " RETURNING invoice_id AS \"invoiceId\"",
+          [companyId,invoiceId,clicked.mainName,user.id,clicked.createdAt]);
+        await audit(client,user,"doctor.sales.accounted","invoice",invoiceId,null,{
+          mainName:clicked.mainName,
+          cutoffInvoiceId:invoiceId,
+          cutoffCreatedAt:clicked.createdAt.toISOString(),
+          newlyMarked:added.rows.length,
+          effect:"classification_only_no_journal_or_stock_change",
+        },companyId);
+        return {
+          mainName:clicked.mainName,
+          newlyMarked:added.rows.length,
+          cutoffInvoiceId:invoiceId,
+        };
+      });
+      res.json({result});
+    }));
   return router;
 }
