@@ -6,18 +6,19 @@ import { useEffect, useState, type CSSProperties } from "react";
  * and uploaded picture intact. New uploads keep their true aspect ratio.
  */
 export function MarketProductImage({
-  src,alt,className,style,
+  src,alt,className,style,trimLegacyPadding=true,
 }:{
   src:string;
   alt:string;
   className?:string;
   style?:CSSProperties;
+  trimLegacyPadding?:boolean;
 }){
   const [display,setDisplay]=useState(src);
   useEffect(()=>{
     let active=true;
     setDisplay(src);
-    if(!/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(src))return;
+    if(!trimLegacyPadding || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(src))return;
     const photo=new Image();
     photo.onload=()=>{
       if(!active||photo.naturalWidth!==512||photo.naturalHeight!==512)return;
@@ -56,7 +57,7 @@ export function MarketProductImage({
     };
     photo.src=src;
     return()=>{active=false;photo.onload=null;};
-  },[src]);
+  },[src,trimLegacyPadding]);
   return <img src={display} alt={alt} className={className}
     style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
     loading="lazy" decoding="async"/>;
