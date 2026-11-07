@@ -124,12 +124,12 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       const totals=await client.query(
         "SELECT i.currency_code AS \"currencyCode\", count(*)::integer AS count,"+
         " SUM(COALESCE(fix.corrected_total::numeric,i.total))::text AS total,"+
-        " COUNT(*) FILTER (WHERE mark.invoice_id IS NOT NULL)::integer AS \\"accountedCount\\","+
-        " COUNT(*) FILTER (WHERE mark.invoice_id IS NULL)::integer AS \\"unaccountedCount\\","+
+        " COUNT(*) FILTER (WHERE mark.invoice_id IS NOT NULL)::integer AS \"accountedCount\","+
+        " COUNT(*) FILTER (WHERE mark.invoice_id IS NULL)::integer AS \"unaccountedCount\","+
         " COALESCE(SUM(COALESCE(fix.corrected_total::numeric,i.total))"+
-        " FILTER (WHERE mark.invoice_id IS NOT NULL),0)::text AS \\"accountedTotal\\","+
+        " FILTER (WHERE mark.invoice_id IS NOT NULL),0)::text AS \"accountedTotal\","+
         " COALESCE(SUM(COALESCE(fix.corrected_total::numeric,i.total))"+
-        " FILTER (WHERE mark.invoice_id IS NULL),0)::text AS \\"unaccountedTotal\\"" +
+        " FILTER (WHERE mark.invoice_id IS NULL),0)::text AS \"unaccountedTotal\"" +
         where+" GROUP BY i.currency_code ORDER BY i.currency_code",params);
       const rows=await client.query(
         "SELECT i.id,i.number,i.document_date::text AS \"documentDate\","+
