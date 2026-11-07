@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -141,60 +141,84 @@ function RelationPicker({
   disabled?: boolean;
 }) {
   const { user } = useSession();
-  const [q, setQ] = useState("");
+  const fieldId = useId();
+  const container = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(query.trim()), 180);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+  useEffect(() => setActive(0), [search,kind]);
+  useEffect(() => {
+    const close = (event:PointerEvent) => {
+      if (container.current && !container.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown",close);
+    return () => document.removeEventListener("pointerdown",close);
+  }, []);
+  const isSearching = open && search.length >= 2;
   const data = useQuery({
-    queryKey: ["medicine-market", user?.id, "lookup", kind, q],
+    queryKey: ["medicine-market", user?.id, "lookup", kind, search],
     queryFn: ({ signal }) =>
       api<Page<MarketCard>>(
-        `${ROOT}/cards?kind=${kind}&pageSize=30&q=${encodeURIComponent(q)}`,
+        `${ROOT}/cards?kind=${kind}&pageSize=40&q=${encodeURIComponent(search)}`,
         { signal },
       ),
+    enabled: isSearching && !disabled,
     staleTime: 10000,
   });
-  return (
-    <div className="medicine-market-lookup">
-      <Field
-        label={`بحث ${label}`}
-        type="search"
-        value={q}
-        disabled={disabled}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="اكتب الاسم للبحث"
-      />
-      <Select
-        label={label}
-        value={value ?? ""}
-        disabled={disabled}
-        onChange={(e) =>
-          onChange(e.target.value ? Number(e.target.value) : null)
-        }
-      >
-        <option value="">اختر كرتًا</option>
-        {value && !data.data?.items.some((x) => x.id === value) && (
-          <option value={value}>الكرت المختار #{value}</option>
-        )}
-        {data.data?.items.map((x) => (
-          <option key={x.id} value={x.id}>
-            {x.name} — #{x.id}
-          </option>
-        ))}
-      </Select>
-      {!!value && (
-        <small>
-          المحدد: <RelationName id={value} />
-        </small>
-      )}
-      {data.error && (
-        <small className="text-error">{errorMessage(data.error)}</small>
-      )}
-      {data.data?.total === 0 && (
-        <small>لا توجد نتائج. يمكن إنشاء كرت لهذا النوع أولًا.</small>
-      )}
-      {!!data.data && data.data.total > 30 && (
-        <small>تظهر أول 30 نتيجة؛ اكتب اسمًا أدق للوصول إلى الكرت.</small>
-      )}
+  const matches = data.data?.items ?? [];
+  const choose = (card: MarketCard) => {
+    onChange(card.id);
+    setQuery("");
+    setSearch("");
+    setOpen(false);
+    setActive(0);
+  };
+  return <div ref={container} className="medicine-market-lookup">
+    <div className="field">
+      <label htmlFor={fieldId}>بحث {label}</label>
+      <input id={fieldId} type="search" autoComplete="off"
+        role="combobox" aria-autocomplete="list"
+        aria-controls={fieldId+"-results"} aria-expanded={isSearching}
+        placeholder={"اكتب حرفين أو أكثر للبحث عن "+label}
+        value={query} disabled={disabled}
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {setQuery(event.target.value);setOpen(true);}}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {setOpen(false);return;}
+          if (!isSearching || matches.length===0)return;
+          if (event.key==="ArrowDown"){event.preventDefault();setActive(i=>Math.min(matches.length-1,i+1));}
+          if (event.key==="ArrowUp"){event.preventDefault();setActive(i=>Math.max(0,i-1));}
+          if (event.key==="Enter"){event.preventDefault();choose(matches[Math.min(active,matches.length-1)]);}
+        }}/>
     </div>
-  );
+    {isSearching && <div id={fieldId+"-results"} role="listbox"
+      className="medicine-market-lookup-results" aria-label={"نتائج "+label}>
+      {data.isFetching && <span className="medicine-market-lookup-status">جارٍ البحث…</span>}
+      {!data.isFetching && matches.length===0 && !data.error &&
+        <span className="medicine-market-lookup-status">لا توجد نتائج مطابقة</span>}
+      {data.error && <span className="medicine-market-lookup-status text-error">{errorMessage(data.error)}</span>}
+      {matches.map((card,index) => <button key={card.id} type="button"
+        className={index===active ? "medicine-market-lookup-result is-active" : "medicine-market-lookup-result"}
+        role="option" aria-selected={index===active}
+        onMouseDown={e=>e.preventDefault()}
+        onClick={()=>choose(card)}>
+        <span>{card.name}</span><small>#{card.id}</small>
+      </button>)}
+      {!!data.data && data.data.total>40 && <small className="medicine-market-lookup-status">
+        تظهر أول 40 نتيجة؛ اكتب اسمًا أدق لتقليلها.
+      </small>}
+    </div>}
+    {value && <div className="medicine-market-lookup-chosen">
+      <span>المحدد: <RelationName id={value}/></span>
+      <button type="button" disabled={disabled}
+        onClick={() => {onChange(null);setQuery("");setOpen(false);}}>إلغاء الاختيار</button>
+    </div>}
+  </div>;
 }
 function ReferencePicker({
   field, value, references, cardData, onChange, disabled,
