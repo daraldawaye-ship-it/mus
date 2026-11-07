@@ -4,17 +4,25 @@ import { documentDateSchema } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { HttpError } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
-import { companyAccess, currentActor, ownerOnly } from "./policies/access.ts";
+import { companyAccess, currentActor } from "./policies/access.ts";
+import { directoryEntries } from "./services/pages.ts";
 import { moneyString, moneyUnits } from "./services/finance.ts";
 
-// Reports are owner-only at the API boundary, independent of page grants.
+// Read permission comes from the company central page policies. There is no
+// hard-coded owner-only exception; an empty central view list is owner-only.
 async function ownerReport<T>(pool: Pool, req: Request, work: (client: PoolClient, companyId: number) => Promise<T>): Promise<T> {
   const companyId = id(req.params.companyId);
   return transaction(pool, async (client) => {
     await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const user = await currentActor(client, actor(req), false);
-    ownerOnly(user);
-    await companyAccess(client, user, companyId, "finance.view");
+    await companyAccess(client, user, companyId);
+    const pageKey = req.path.endsWith("/trial-balance")
+      ? "company.trial-balance" : "company.cash-flows";
+    const page = (await directoryEntries(client, user, companyId))
+      .find(entry => entry.key === pageKey);
+    if (!page?.actionAccess.view)
+      throw new HttpError(403, "page_forbidden",
+        "هذه الصفحة المالية متاحة فقط للصفات المحددة في مركز الصلاحيات.");
     return work(client, companyId);
   });
 }
