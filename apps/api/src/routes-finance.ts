@@ -1,5 +1,6 @@
 import { rewardVoucherPrintRequest } from "./services/wallet-print.ts";
 import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import {
   documentDateSchema,
@@ -379,6 +380,14 @@ export async function readAccountLedger(
     },
   };
 }
+
+// Audits are deliberately written only for successful, authorized user actions.
+// The server, not the browser, supplies the actor and resolves account details.
+const ledgerActivityInput = z.object({
+  event: z.enum(["view", "search", "select"]),
+  accountId: z.number().int().positive().nullable().optional(),
+  query: z.string().trim().max(120).optional(),
+}).strict();
 
 export function financeRoutes(pool: Pool): Router {
   const router = Router(),
@@ -940,6 +949,46 @@ export function financeRoutes(pool: Pool): Router {
         return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
       });
       res.json(result);
+    }),
+  );
+  // Explicit UI activity, separate from routine data reads, React Query
+  // refetches, and background account suggestions. Never store full URLs.
+  router.post(
+    `${base}/account-ledger/activity`,
+    handler(async (req, res) => {
+      const input = parse(ledgerActivityInput, req.body);
+      const queryText = input.query?.trim() ?? "";
+      if (input.event === "search" && queryText.length < 3)
+        throw new HttpError(400, "invalid_query", "أدخل ثلاثة أحرف للبحث");
+      if (input.event === "select" && !input.accountId)
+        throw new HttpError(400, "invalid_account", "حدد الحساب المختار");
+      const companyId = id(req.params.companyId);
+      await transaction(pool, async (client) => {
+        const user = await currentActor(client, actor(req), false);
+        await companyAccess(client, user, companyId, "finance.view");
+        let account: { id: number; name: string; code: string } | null = null;
+        if (input.accountId) {
+          const found = await client.query<{ id: number; name: string; code: string }>(
+            "SELECT id,name,code FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting'",
+            [companyId, input.accountId],
+          );
+          if (!found.rows[0]) missing("الحساب غير موجود في الشركة");
+          account = found.rows[0];
+        }
+        await audit(
+          client, user,
+          input.event === "view" ? "accountLedger.view"
+            : input.event === "search" ? "accountLedger.search" : "accountLedger.select",
+          "account-ledger",
+          account?.id ?? null,
+          null,
+          { pageKey: "company.account-ledger", query: queryText || null,
+            accountId: account?.id ?? null, accountCode: account?.code ?? null,
+            accountName: account?.name ?? null },
+          companyId,
+        );
+      });
+      res.json({ recorded: true });
     }),
   );
   router.get(
