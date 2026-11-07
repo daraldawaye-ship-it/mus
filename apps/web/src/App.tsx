@@ -1037,6 +1037,21 @@ function Workspace() {
   // last company the user actually opened.
   const activationQueue = useRef<Promise<void>>(Promise.resolve());
   const priorPath = useRef(location.pathname);
+  const publicPageVisit = useRef<string | null>(null);
+  useEffect(() => {
+    // Company routes and other public pages are tracked by PageRouteGuard.
+    // These few public routes are rendered without that guard.
+    if (!user || inCompany || !["/", "/companies", "/profile", "/pages"].includes(location.pathname))
+      return;
+    const pageKey = pageKeyForLocation(location.pathname, location.search);
+    if (!pageKey?.startsWith("public.")) return;
+    const visit = `${user.id}:${pageKey}:${location.pathname}`;
+    if (publicPageVisit.current === visit) return;
+    publicPageVisit.current = visit;
+    void api("/page-catalog/visit", {
+      method: "POST", body: { pageKey },
+    }).catch(() => {});
+  }, [user?.id, inCompany, location.pathname, location.search]);
   const company = useQuery({
     queryKey: ["company", user?.id, companyId],
     queryFn: ({ signal }) =>
