@@ -56,7 +56,9 @@ export function controlRoutes(pool: Pool): Router {
         client.query("SELECT control_key,employee_id FROM company_control_editor_grants WHERE company_id=$1", [companyId]),
         user.owner ? client.query("SELECT id,name,role FROM employees WHERE company_id=$1 AND active ORDER BY name,id", [companyId]) : Promise.resolve({rows: []}),
       ]);
-      const options = controlCatalog.map(option => {
+      const options = controlCatalog
+        .filter(option => user.owner || option.scope === "employee")
+        .map(option => {
         const subject = option.scope === "employee" ? employeeId : null;
         const entry = stored.rows.find(row =>
           row.control_key === option.key && row.employee_id === subject);
@@ -70,7 +72,10 @@ export function controlRoutes(pool: Pool): Router {
           ...option,
           value: entry?.value ?? option.defaultValue,
           revision: entry?.revision ?? null,
-          canEdit: user.owner || (allowed && (option.scope === "company" || subject === context.employee?.id)),
+          canEdit: user.owner ||
+            (option.scope === "employee" && !!context.employee &&
+              subject === context.employee.id) ||
+            (allowed && (option.scope === "company" || subject === context.employee?.id)),
           policy: user.owner ? {
             accountantAllowed,
             employeeIds: editorIds,
@@ -118,10 +123,13 @@ export function controlRoutes(pool: Pool): Router {
           [companyId, key, context.employee.id],
         )
         : {rowCount: 0};
-      const canEdit = user.owner || (!!context.employee &&
-        (context.employee.role === "accountant" &&
-          (policy.rows[0]?.accountant_allowed ?? !!option!.accountantDefault) || !!grant.rowCount) &&
-        (option!.scope === "company" || input.employeeId === context.employee.id));
+      const canEdit = user.owner ||
+        (option!.scope === "employee" && !!context.employee &&
+          input.employeeId === context.employee.id) ||
+        (!!context.employee &&
+          (context.employee.role === "accountant" &&
+            (policy.rows[0]?.accountant_allowed ?? !!option!.accountantDefault) || !!grant.rowCount) &&
+          (option!.scope === "company" || input.employeeId === context.employee.id));
       if (!canEdit) fail(403, "forbidden", "لم يمنحك المالك صلاحية تعديل هذا الخيار.");
       const current = await client.query(
         "SELECT * FROM company_control_values WHERE company_id=$1 AND control_key=$2 AND employee_id IS NOT DISTINCT FROM $3::integer FOR UPDATE",
