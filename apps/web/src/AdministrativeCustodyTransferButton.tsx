@@ -46,8 +46,8 @@ export function AdministrativeCustodyTransferButton({
       return;
     }
     if (!window.confirm(amount.startsWith("-")
-      ? "هل تريد إعادة المبلغ من المحفظة الإلكترونية إلى العهدة الإدارية؟"
-      : "هل تريد ترحيل المبلغ من العهدة الإدارية إلى المحفظة الإلكترونية؟")) return;
+      ? "هل تريد إعادة المبلغ من حافظة العهدة الإدارية إلى حساب العهدة؟"
+      : "هل تريد ترحيل المبلغ من العهدة الإدارية إلى حافظتها؟")) return;
 
     setBusy(true);
     setError("");
@@ -88,7 +88,7 @@ export function AdministrativeCustodyTransferButton({
         onClose={() => { if (!busy && !unknown) setDraft(null); }}>
         {draft && (
           <form className="form-stack" onSubmit={event => void submit(event)}>
-            <p>الترحيل بين حساب العهدة الإدارية ومحفظة الشركة الإلكترونية، دون المساس بصندوق الموظف.</p>
+            <p>الترحيل بين حساب العهدة الإدارية وحافظتها المستقلة، دون المساس بصندوق الموظف أو حوافظه أو المحفظة الإلكترونية.</p>
             <Field label="المبلغ" money inputMode="decimal" autoFocus required
               value={draft.amount} disabled={busy || unknown}
               onChange={event => setDraft(previous => previous
@@ -98,7 +98,7 @@ export function AdministrativeCustodyTransferButton({
               onChange={event => setDraft(previous => previous
                 ? { ...previous, notes: event.target.value } : previous)} />
             <small className="muted">
-              الموجب: من العهدة إلى المحفظة. السالب: من المحفظة إلى العهدة.
+              الموجب: من العهدة إلى حافظتها. السالب: من حافظة العهدة إليها.
               يسمح برصيد موجب أو سالب في الحسابين، ولا يُشترط توفر رصيد.
             </small>
             {error && <Notice tone="error">{error}</Notice>}
