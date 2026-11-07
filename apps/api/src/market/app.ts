@@ -26,7 +26,11 @@ export function createMarketApp(pool: Pool, secret: string) {
     const release = () => { if (!released) { released = true; active--; } };
     res.once("finish", release); res.once("close", release); next();
   });
-  app.use("/api", express.text({ type: "application/json", limit: "64kb" }));
+  const smallMarketBody=express.text({type:"application/json",limit:"64kb"});
+  const imageMarketBody=express.text({type:"application/json",limit:"160kb"});
+  app.use("/api",(req,res,next)=>
+    (req.method==="POST" && /^\/medicine-market\/cards\/[1-9]\d*\/images$/.test(req.path)
+      ?imageMarketBody:smallMarketBody)(req,res,next));
   app.use("/api", (req, _res, next) => {
     try {
       const raw = typeof req.body === "string" ? req.body : "";
