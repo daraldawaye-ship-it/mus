@@ -35,32 +35,54 @@ export async function listPouchReceipts(
   client: PoolClient, companyId: number, status:"all"|"pending"|"received",
   limit: number, offset: number,
 ) {
-  const filter = status==="pending"?" AND r.id IS NULL":
-    status==="received"?" AND r.id IS NOT NULL":"";
-  const base = `FROM employee_cashbox_operations o
-      JOIN employees e ON e.company_id=o.company_id AND e.id=o.employee_id
-      JOIN accounts a ON a.company_id=o.company_id AND a.id=o.destination_account_id
-      LEFT JOIN employee_pouch_receipts r ON r.company_id=o.company_id
-        AND r.source_operation_id=o.id
-    WHERE o.company_id=$1 AND
-      (o.kind='pouch' OR (o.kind='close' AND o.amount<>0))
-      ${filter}`;
+  // Separate source identifiers: employee operation #N and custody transfer #N
+  // may legitimately exist simultaneously. Never collapse them by ID.
+  const filter = status==="pending" ? ' WHERE "receiptId" IS NULL' :
+    status==="received" ? ' WHERE "receiptId" IS NOT NULL' : "";
+  const base = `FROM (
+    SELECT 'employee'::text AS "sourceKind",o.id,o.kind,
+      o.employee_name AS "employeeName",o.amount::text AS amount,
+      o.notes,o.created_at AS "createdAt",
+      o.financial_document_id AS "sourceDocumentId",
+      a.name AS "pouchName",
+      r.id AS "receiptId",r.mode AS "receiptMode",
+      r.voucher_document_id AS "voucherDocumentId",
+      r.received_amount::text AS "receivedAmount",
+      r.difference_amount::text AS "differenceAmount",
+      r.receiver_employee_name AS "receiverName",
+      r.financial_document_id AS "receiptDocumentId",
+      r.notes AS "receiptNotes",r.created_at AS "receivedAt"
+    FROM employee_cashbox_operations o
+    JOIN employees e ON e.company_id=o.company_id AND e.id=o.employee_id
+    JOIN accounts a ON a.company_id=o.company_id AND a.id=o.destination_account_id
+    LEFT JOIN employee_pouch_receipts r ON r.company_id=o.company_id
+      AND r.source_operation_id=o.id
+    WHERE o.company_id=$1
+      AND (o.kind='pouch' OR (o.kind='close' AND o.amount<>0))
+    UNION ALL
+    SELECT 'custody'::text AS "sourceKind",t.id,'custody'::text AS kind,
+      'العهدة الإدارية'::text AS "employeeName",t.amount::text AS amount,
+      t.notes,t.created_at AS "createdAt",
+      t.financial_document_id AS "sourceDocumentId",
+      a.name AS "pouchName",
+      r.id AS "receiptId",r.mode AS "receiptMode",
+      r.voucher_document_id AS "voucherDocumentId",
+      r.received_amount::text AS "receivedAmount",
+      r.difference_amount::text AS "differenceAmount",
+      r.receiver_employee_name AS "receiverName",
+      r.financial_document_id AS "receiptDocumentId",
+      r.notes AS "receiptNotes",r.created_at AS "receivedAt"
+    FROM administrative_custody_transfers t
+    JOIN accounts a ON a.company_id=t.company_id AND a.id=t.pouch_account_id
+    LEFT JOIN administrative_custody_receipts r ON r.company_id=t.company_id
+      AND r.source_transfer_id=t.id
+    WHERE t.company_id=$1
+  ) movements${filter}`;
   const count = await client.query(`SELECT count(*)::int AS total ${base}`,
     [companyId]);
   const rows=await client.query(
-    `SELECT o.id, o.kind,o.employee_name AS "employeeName",
-       o.amount::text AS amount,o.notes,o.created_at AS "createdAt",
-       o.financial_document_id AS "sourceDocumentId",
-       a.name AS "pouchName",
-       r.id AS "receiptId",r.mode AS "receiptMode",
-       r.voucher_document_id AS "voucherDocumentId",
-       r.received_amount::text AS "receivedAmount",
-       r.difference_amount::text AS "differenceAmount",
-       r.receiver_employee_name AS "receiverName",
-       r.financial_document_id AS "receiptDocumentId",
-       r.notes AS "receiptNotes",r.created_at AS "receivedAt"
-     ${base}
-     ORDER BY o.created_at DESC,o.id DESC LIMIT $2 OFFSET $3`,
+    `SELECT * ${base}
+      ORDER BY "createdAt" DESC,"sourceKind","id" DESC LIMIT $2 OFFSET $3`,
     [companyId,limit,offset],
   );
   return {items:rows.rows,total:count.rows[0].total as number,
