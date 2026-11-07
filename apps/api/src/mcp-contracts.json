@@ -8427,6 +8427,30 @@
     "pathParams": ["sourceId"],
     "queryFields": []
   },
+  "GET /medicine-market/staging/:sourceId/arabize-preview": {
+    "source": "routes-market-staging.ts",
+    "pathParams": ["sourceId"],
+    "queryFields": []
+  },
+  "POST /medicine-market/staging/:sourceId/arabize": {
+    "source": "routes-market-staging.ts",
+    "pathParams": ["sourceId"],
+    "queryFields": [],
+    "bodyContract": "bulkMedicinePromotionSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {"type":"string","format":"uuid"}
+      },
+      "required": ["idempotencyKey"],
+      "additionalProperties": false
+    }
+  },
+  "GET /medicine-market/staging/:sourceId/arabize-status": {
+    "source": "routes-market-staging.ts",
+    "pathParams": ["sourceId"],
+    "queryFields": []
+  },
   "POST /medicine-market/staging/:sourceId/title-case": {
     "source": "routes-market-staging.ts",
     "pathParams": ["sourceId"],
