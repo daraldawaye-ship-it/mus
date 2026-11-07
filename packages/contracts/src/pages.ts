@@ -585,6 +585,16 @@ page(
     keywords: ["مبيعات اليوم", "ساعات", "أوقات", "تقرير يومي", "نقد", "آجل", "مرتجعات"] },
 );
 page(
+  "company.doctor-sales-movements",
+  "حركة مبيعات الأطباء والممرضين",
+  "المبيعات",
+  "/companies/:companyId/doctor-sales-movements",
+  { view: permission("commerce.view") },
+  "حركة فواتير مبيعات الطبيب أو الممرض حسب التاريخ مع الوقت والحساب والصافي والملاحظات، والبحث بالاسم الرئيسي للكروت الفرعية.",
+  { type: "report", parentKey: "company.sales",
+    keywords: ["حركة", "فواتير", "مبيعات", "أطباء", "ممرضين", "اسم مشترك", "رئيسي", "جهة"] },
+);
+page(
   "company.doctor-sales-report",
   "مبيعات الأطباء والجهات",
   "التقارير",
