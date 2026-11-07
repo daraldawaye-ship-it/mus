@@ -28,6 +28,7 @@ export type PageRule = {
     | "public-audit"
     | "company-member"
     | "company-general"
+    | "company-custody-operator"
     | "permissions";
   permissions: Permission[];
   label: string;
@@ -65,6 +66,13 @@ const signed = rule("signed-in", "حساب مسجل فعال"),
   general = rule("company-general", "المالك أو المدير العام"),
   admin = rule("public-admin", "المالك أو الإدارة العامة"),
   auditor = rule("public-audit", "المالك أو الإدارة العامة أو مراقب عام");
+export const administrativeCustodyPositions = ["sales", "purchase-entry", "cashier"] as const;
+export function canOperateAdministrativeCustody(context: CompanyContext | null | undefined): boolean {
+  return !!context && (context.general ||
+    administrativeCustodyPositions.some(position => context.employee?.positions.includes(position)));
+}
+const custodyOperator = rule("company-custody-operator",
+  "المالك أو المدير العام أو مبيعات أو إدخال المشتريات أو أمين صندوق");
 const manage = (module: "accounts" | "currencies" | "locations" | "items") => ({
   view: permission(`${module}.view`),
   create: permission(`${module}.manage`),
@@ -913,8 +921,8 @@ page(
   "العهدة الإدارية",
   "التقارير",
   "/companies/:companyId/administrative-custody",
-  { view: permission("finance.manage") },
-  "كشف العهدة الإدارية وحركتها ورصيدها الموجب أو السالب، مستقل عن صناديق الموظفين.",
+  { view: custodyOperator, post: custodyOperator },
+  "كشف العهدة الإدارية وحركتها ورصيدها الموجب أو السالب، مستقل عن صناديق الموظفين؛ يسمح لمبيعات وإدخال المشتريات وأمين صندوق.",
   { type: "report", keywords: ["العهدة", "الإدارية", "حافظة العهدة"] },
 );
 page(
@@ -996,6 +1004,8 @@ export function pageRuleAllows(
       return !!context;
     case "company-general":
       return !!context?.general;
+    case "company-custody-operator":
+      return canOperateAdministrativeCustody(context);
     case "permissions":
       return (
         !!context &&
