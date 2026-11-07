@@ -120,7 +120,6 @@ const prescriptionCreateSchema = z.object({
   idempotencyKey:z.string().uuid(),
   prescriptionLines:prescriptionLinesSchema,
   imageDataUrl:z.string().min(50).max(700000),
-  privacyConfirmed:z.literal(true),
 }).strict();
 const ingredient = z
   .object({
@@ -494,6 +493,7 @@ const reviewContributionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),
     reason: z.string().trim().max(1000).default(""),
+    prescriptionImageReviewed: z.boolean().optional(),
   })
   .strict();
 
@@ -623,7 +623,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       const row=(await db.query(
         "INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key)"+
         " VALUES('prescription',$1,$2,$3,$4,$5) RETURNING id",
-        [placeholder,norm(placeholder),trusted(u)?"published":"pending",u.id,input.idempotencyKey],
+        [placeholder,norm(placeholder),"pending",u.id,input.idempotencyKey],
       )).rows[0];
       const name="وصفة طبية #"+row.id;
       const imageUrl=marketImagePath(imageId);
@@ -639,11 +639,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       await db.query(
         "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published)"+
         " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5)",
-        [card.id,json(name),u.id,input.idempotencyKey,trusted(u)],
+        [card.id,json(name),u.id,input.idempotencyKey,false],
       );
       await auditMarket(db,u,'prescription_create',card.id,null,
         {rows:input.prescriptionLines.length,identified:input.prescriptionLines.filter(Boolean).length,
-         imageBytes:photo.bytes.length,privacyConfirmed:true});
+         imageBytes:photo.bytes.length,moderationRequired:true});
       return {card:cardOutput(await getCard(db,card.id,u),p)};
     });
     res.status(201).json(result);
@@ -938,8 +938,12 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         )
           throw new HttpError(400, "unchanged", "التعديل شكلي ولا يغيّر الاسم");
         await validateReferences(db, field, value);
-        const published =
-          trusted(u) && !field.price && card.status === "published";
+        const pendingPrescriptionDraft =
+          card.kind === "prescription" && card.status === "pending" &&
+          (field.key === "image" || field.key === "prescriptionLines") &&
+          (card.created_by === u.id || p.canModerate);
+        const published = pendingPrescriptionDraft ||
+          (trusted(u) && !field.price && card.status === "published");
         const contribution = (
           await db.query(
             "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
@@ -1062,6 +1066,21 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
               card: cardOutput(card, p),
             };
           throw conflict("انتهت مراجعة هذه المساهمة");
+        }
+        if (card.kind === "prescription" && c.field_key === "name" &&
+            card.status === "pending" && input.decision === "approve") {
+          // A pending prescription may contain patient identifiers. Only the
+          // moderator confirms the CURRENT image was inspected before public release.
+          if(input.prescriptionImageReviewed !== true)
+            throw new HttpError(400,"prescription_image_not_reviewed","يجب على الإدارة مراجعة صورة الوصفة قبل نشرها");
+          const photo=(card.data as Record<string,unknown>)?.image;
+          if(typeof photo!=="string" || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(photo))
+            throw new HttpError(400,"prescription_image_missing","صورة الوصفة غير محفوظة");
+          const stored=await db.query(
+            "SELECT 1 FROM market_image_uploads WHERE id=$1 AND card_id=$2",
+            [photo.split("/").at(-1),card.id],
+          );
+          if(!stored.rowCount)throw new HttpError(400,"prescription_image_missing","صورة الوصفة غير موجودة");
         }
         let status = input.decision === "approve" ? "approved" : "rejected",
           awarded = 0;
