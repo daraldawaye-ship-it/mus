@@ -112,6 +112,16 @@ const url = z
       return false;
     }
   }, "استخدم رابط HTTPS صالحًا");
+/** Each line may remain unidentified for the community to complete later. */
+const prescriptionLinesSchema = z.array(
+  z.number().int().positive().max(2147483647).nullable(),
+).min(1).max(20);
+const prescriptionCreateSchema = z.object({
+  idempotencyKey:z.string().uuid(),
+  prescriptionLines:prescriptionLinesSchema,
+  imageDataUrl:z.string().min(50).max(700000),
+  privacyConfirmed:z.literal(true),
+}).strict();
 const ingredient = z
   .object({
     scientificId: z.number().int().positive(),
@@ -202,6 +212,8 @@ function normalizeValue(field: MarketField, value: unknown): unknown {
       return parse(z.array(contact).max(30), value);
     case "ingredients":
       return parse(z.array(ingredient).min(1).max(20), value);
+    case "prescription-lines":
+      return parse(prescriptionLinesSchema, value);
     case "accounting":
       return parse(
         z
@@ -224,6 +236,17 @@ async function validateReferences(
   value: unknown,
 ) {
   if (value === null) return;
+  if (field.type === "prescription-lines") {
+    const ids = [...new Set((value as Array<number|null>).filter((x):x is number=>typeof x==="number"))];
+    if(ids.length){
+      const linked=await db.query(
+        "SELECT id FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived AND id=ANY($1::integer[])",
+        [ids],
+      );
+      if(linked.rowCount!==ids.length) throw new HttpError(400,"invalid_prescription_medicine","أحد أصناف الوصفة غير موجود أو غير منشور");
+    }
+    return;
+  }
   if (field.type === "reference") {
     const referenceKind =
       field.key === "countryCode" ? "country" :
@@ -512,6 +535,7 @@ const reactionMarketSchema = z
 
 export const mcpBodySchemas = {
   createCardSchema,
+  prescriptionCreateSchema,
   contributionSchema,
   reviewContributionSchema,
   pointPolicySchema,
@@ -532,11 +556,11 @@ const marketImageUploadSchema=z.object({
 }).strict();
 const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
 /** Validate compressed WebP dimensions without trusting browser metadata. */
-function validateMarketImage(dataUrl:string):{bytes:Buffer;width:number;height:number} {
+function validateMarketImage(dataUrl:string, profile:'medicine'|'prescription'='medicine'):{bytes:Buffer;width:number;height:number} {
   const match=/^data:image\/webp;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
   if(!match)throw new HttpError(400,"image_format","يجب أن تكون الصورة بصيغة WebP");
   const bytes=Buffer.from(match[1],"base64");
-  if(bytes.length<30 || bytes.length>102400 ||
+  if(bytes.length<30 || bytes.length>(profile==='prescription'?512000:102400) ||
      bytes.subarray(0,4).toString("ascii")!=="RIFF" ||
      bytes.subarray(8,12).toString("ascii")!=="WEBP" ||
      bytes.readUInt32LE(4)+8!==bytes.length)
@@ -556,8 +580,10 @@ function validateMarketImage(dataUrl:string):{bytes:Buffer;width:number;height:n
     width=1+(bits&0x3fff);
     height=1+((bits>>>14)&0x3fff);
   }
-  if(width<1||height<1||width>512||height>512||Math.max(width,height)!==512)
-    throw new HttpError(400,"image_dimensions","يجب ألا يزيد الضلع الأكبر عن 512 بكسل، دون تغيير نسبة الأبعاد");
+  if(profile==='medicine' && (width<1||height<1||width>512||height>512||Math.max(width,height)!==512))
+    throw new HttpError(400,"image_dimensions","صورة الصنف يجب أن يكون ضلعها الأكبر 512 بكسل");
+  if(profile==='prescription' && (width<1||height<1||width>1600||height>1600))
+    throw new HttpError(400,"image_dimensions","صورة الوصفة لا يجوز أن تتجاوز 1600 بكسل في أي ضلع");
   return {bytes,width,height};
 }
 
@@ -567,6 +593,62 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
 
+  // Atomic public prescription creation: the image and 1-20 editable medicine
+  // slots are saved with the card, never a half-created public placeholder.
+  router.post(root+"/prescriptions",handler(async(req,res)=>{
+    const input=parse(prescriptionCreateSchema,req.body);
+    const photo=validateMarketImage(input.imageDataUrl,'prescription');
+    const result=await transaction(pool,async db=>{
+      const u=(await viewer(db,req,true))!,p=perms(u);
+      if(!p.canContribute)deny();
+      await enabled(db,req,"medicine-market",true);
+      const existing=(await db.query(
+        "SELECT id FROM medicine_market_cards WHERE kind='prescription' AND created_by=$1 AND idempotency_key=$2",
+        [u.id,input.idempotencyKey],
+      )).rows[0];
+      if(existing){
+        return {card:cardOutput(await getCard(db,existing.id,u),p)};
+      }
+      if(!u.owner){
+        const count=await db.query(
+          "SELECT count(*)::integer AS total FROM market_image_uploads WHERE uploaded_by=$1 AND created_at>now()-interval '24 hours'",
+          [u.id],
+        );
+        if(Number(count.rows[0]?.total??0)>=100)
+          throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
+      }
+      await validateReferences(db,findField('prescription','prescriptionLines'),input.prescriptionLines);
+      const imageId=randomUUID();
+      const placeholder="وصفة طبية "+input.idempotencyKey;
+      const row=(await db.query(
+        "INSERT INTO medicine_market_cards(kind,name,normalized_name,status,created_by,idempotency_key)"+
+        " VALUES('prescription',$1,$2,$3,$4,$5) RETURNING id",
+        [placeholder,norm(placeholder),trusted(u)?"published":"pending",u.id,input.idempotencyKey],
+      )).rows[0];
+      const name="وصفة طبية #"+row.id;
+      const imageUrl=marketImagePath(imageId);
+      const card=(await db.query(
+        "UPDATE medicine_market_cards SET name=$2,normalized_name=$3,data=$4::jsonb,updated_at=now() WHERE id=$1 RETURNING *",
+        [row.id,name,norm(name),json({image:imageUrl,prescriptionLines:input.prescriptionLines})],
+      )).rows[0];
+      await db.query(
+        "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes,width,height)"+
+        " VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [imageId,card.id,u.id,photo.bytes.length,photo.bytes,photo.width,photo.height],
+      );
+      await db.query(
+        "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published)"+
+        " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5)",
+        [card.id,json(name),u.id,input.idempotencyKey,trusted(u)],
+      );
+      await auditMarket(db,u,'prescription_create',card.id,null,
+        {rows:input.prescriptionLines.length,identified:input.prescriptionLines.filter(Boolean).length,
+         imageBytes:photo.bytes.length,privacyConfirmed:true});
+      return {card:cardOutput(await getCard(db,card.id,u),p)};
+    });
+    res.status(201).json(result);
+  }));
+
   // Market uploads are isolated from all pharmacy/company images and ledgers.
   router.post(root+"/cards/:cardId/images",handler(async(req,res)=>{
     const user=(await viewer(pool,req,true))!;
@@ -574,7 +656,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     await enabled(pool,req);
     const cardId=id(req.params.cardId);
     const input=parse(marketImageUploadSchema,req.body);
-    const image=validateMarketImage(input.dataUrl);
+    const cardPreview=await getCard(pool,cardId,user);
+    const image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');
     const assetId=randomUUID();
     await transaction(pool,async db=>{
       const card=await getCard(db,cardId,user);
@@ -601,14 +684,21 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   router.get(root+"/images/:imageId",handler(async(req,res)=>{
     await enabled(pool,req);
     const imageId=parse(z.string().uuid(),req.params.imageId);
+    const u=await viewer(pool,req);
     const result=await pool.query(
-      "SELECT image_bytes FROM market_image_uploads WHERE id=$1",
+      "SELECT i.image_bytes,i.uploaded_by,c.created_by,c.status,c.archived,"+
+      "c.data->>'image' AS published_image FROM market_image_uploads i"+
+      " JOIN medicine_market_cards c ON c.id=i.card_id WHERE i.id=$1",
       [imageId],
     );
     if(!result.rowCount)missing();
+    const item=result.rows[0];
+    const publicImage=item.status==='published'&&!item.archived &&
+      item.published_image===marketImagePath(imageId);
+    if(!publicImage && !(u && (u.id===item.uploaded_by || u.id===item.created_by || perms(u).canModerate)))missing();
     res.set("Cache-Control","private, max-age=86400");
     res.set("Content-Security-Policy","default-src 'none'; sandbox");
-    res.type("image/webp").send(result.rows[0].image_bytes);
+    res.type("image/webp").send(item.image_bytes);
   }));
   // Market audit stays with market data after isolation; never joins a company ledger.
   router.get(root + "/audit", handler(async (req, res) => {
