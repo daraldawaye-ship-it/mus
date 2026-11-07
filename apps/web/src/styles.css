@@ -4522,7 +4522,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .company-print-letterhead { display: none; }
 .company-report-printable { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
-.company-report-print-toolbar { display: flex; justify-content: flex-end; }
+.company-report-print-toolbar { display: flex; justify-content: flex-end; gap: 8px; }
 @media print {
   .company-print-letterhead {
     display: block !important;
