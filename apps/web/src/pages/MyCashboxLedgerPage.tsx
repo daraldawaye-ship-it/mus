@@ -36,18 +36,22 @@ const balanceText = (amount: string) =>
     : amount === "0" ? <bdi>0</bdi>
       : <><bdi>{formatMoney(amount)}</bdi>{" "}مدين</>;
 
-export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
+export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
+  context: CompanyContext; mode?: "cashbox" | "administrativeCustody";
+}) {
   const { user } = useSession();
   const client = useQueryClient();
   const companyId = context.company.id;
+  const isCustody = mode === "administrativeCustody";
+  const pageTitle = isCustody ? "العهدة الإدارية" : "كشف حساب صندوقي";
   const isCashier = context.general || !!context.employee?.positions.includes("cashier");
-  const allowed =
-    context.general ||
-    context.permissions.includes("finance.own-cashbox.view");
+  const allowed = context.general || (isCustody
+    ? context.permissions.includes("finance.manage")
+    : context.permissions.includes("finance.own-cashbox.view"));
   // Creating a voucher is an independent financial write privilege. A
   // cashier can view only their assigned box without gaining all finance.
   const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
-    isCashier;
+    (isCustody || isCashier);
   const canViewReceipts = context.general || context.permissions.includes("finance.view");
   const canAddAccount = (context.general ||
     (context.permissions.includes("commerce.manage") && context.permissions.includes("finance.post")))
@@ -71,10 +75,10 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
   query.set("pageSize", String(pageSize));
 
   const result = useQuery({
-    queryKey: ["finance", user?.id, companyId, "my-cashbox-ledger", query.toString()],
+    queryKey: ["finance", user?.id, companyId, isCustody ? "administrative-custody-ledger" : "my-cashbox-ledger", query.toString()],
     queryFn: ({ signal }) =>
       api<MyCashboxLedger>(
-        `/companies/${companyId}/my-cashbox-ledger?${query}`,
+        `/companies/${companyId}/${isCustody ? "administrative-custody-ledger" : "my-cashbox-ledger"}?${query}`,
         { signal },
       ),
     enabled: Boolean(user && allowed),
@@ -118,12 +122,12 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
     });
 
   if (!allowed)
-    return <Notice tone="warning">لا تملك صلاحية عرض كشف حساب صندوقي.</Notice>;
+    return <Notice tone="warning">لا تملك صلاحية عرض {pageTitle}.</Notice>;
   return (
     <>
       <div className="my-cashbox-page-heading">
         <PageHeader
-          title="كشف حساب صندوقي"
+          title={pageTitle}
           actions={<PageActionsDropdown actions={[
             {
               label: "إضافة حساب",
@@ -144,7 +148,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               label: "طباعة التقرير",
               onClick: () => window.print(),
             },
-            {
+            ...(!isCustody ? [{
               label: "فتح استلام الترحيلات",
               to: `/companies/${companyId}/pouch-receipts`,
               disabled: !canViewReceipts,
@@ -153,13 +157,13 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               label: "فتح استلام المحفظة الإلكترونية",
               to: `/companies/${companyId}/electronic-receipts`,
               disabled: !canViewReceipts,
-            },
+            }] : []),
           ]} label="إجراءات" />}
         />
       </div>
       {accountNotice && <Notice tone="success">{accountNotice}</Notice>}
       <Card className="my-cashbox-ledger-card">
-        <div className="my-cashbox-date-range" role="group" aria-label="فترة كشف حساب صندوقي">
+        <div className="my-cashbox-date-range" role="group" aria-label={`فترة ${pageTitle}`}>
           <label className="my-cashbox-date-field">
             <span>من</span>
             <input type="date" dir="ltr" aria-label="من تاريخ"
@@ -176,18 +180,18 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
         {result.isLoading && <Notice>جارٍ تحميل الكشف…</Notice>}
         {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
         {result.data && !result.data.account && (
-          <Notice>لا يوجد صندوق مبيعات فعال مربوط بحسابك في هذه الشركة.</Notice>
+          <Notice>{isCustody ? "لم يتم ربط حساب العهدة الإدارية في الحسابات النظامية." : "لا يوجد صندوق مبيعات فعال مربوط بحسابك في هذه الشركة."}</Notice>
         )}
         {result.data?.account && (
           <>
             <div className="financial-totals">
               <strong>
-                الصندوق: {result.data.account.code} — {result.data.account.name}
+                {isCustody ? "العهدة" : "الصندوق"}: {result.data.account.code} — {result.data.account.name}
               </strong>
               <span>الافتتاحي: {formatMoney(result.data.totals!.openingBalance)}</span>
               <span>مدين الفترة: {formatMoney(result.data.totals!.debit)}</span>
               <span>دائن الفترة: {formatMoney(result.data.totals!.credit)}</span>
-              <div className="my-cashbox-closing" aria-label="الرصيد الختامي للصندوق">
+              <div className="my-cashbox-closing" aria-label={`الرصيد الختامي ${isCustody ? "للعهدة" : "للصندوق"}`}>
                 <span className="my-cashbox-closing-label">الرصيد الختامي</span>
                 <strong className="my-cashbox-closing-value" dir="rtl">
                   {balanceText(result.data.totals!.closingBalance)}
@@ -198,7 +202,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
             {/* Phone layout: exactly two horizontal lines per movement.
                 Document number and currency do not appear in this view. */}
             <div className="my-cashbox-mobile-list" role="list"
-              aria-label="حركات كشف حساب صندوقي">
+              aria-label={`حركات ${pageTitle}`}>
               {result.data.items.length===0&&
                 <p className="my-cashbox-mobile-empty">لا توجد حركات في الفترة المحددة.</p>}
               {result.data.items.map(line=><article key={line.id}
@@ -251,7 +255,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
               sorting={[]}
               onSortingChange={() => {}}
               loading={result.isFetching}
-              ariaLabel="كشف حساب صندوقي"
+              ariaLabel={pageTitle}
               />
             </div>
           </>
@@ -276,7 +280,7 @@ export function MyCashboxLedgerPage({ context }: { context: CompanyContext }) {
         />
       )}
       <Dialog open={selectedMovement!==null}
-        onClose={()=>setSelectedMovement(null)} title="تفاصيل حركة الصندوق">
+        onClose={()=>setSelectedMovement(null)} title={`تفاصيل حركة ${isCustody ? "العهدة" : "الصندوق"}`}>
         {selectedMovement&&<div className="my-cashbox-mobile-details">
           <p><strong>التاريخ:</strong> {selectedMovement.documentDate}</p>
           <p><strong>النوع:</strong> {selectedMovement.reversesDocumentId
