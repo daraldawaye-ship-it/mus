@@ -120,6 +120,8 @@ export async function assertAccountBalanceAccess(
     user,
     companyId,
   );
+  const central = await centralPagePolicies(db, companyId);
+  const positions = baseContext?.employee?.positions ?? [];
   const required: Array<[string, PageAction]> = [
     ["company.accounts", "view"],
     ["company.account-ledger", "view"],
@@ -134,13 +136,11 @@ export async function assertAccountBalanceAccess(
     const definition = pageByKey(key);
     if (
       !definition ||
-      !directoryActionAllowed(
-        definition,
-        requiredAction,
-        user,
-        baseContext,
-        effects,
-      )
+      !(requiredAction === "view"
+        ? centralPageAllows(central, key, "view", user.owner, positions)
+        : directoryActionAllowed(
+            definition, requiredAction, user, baseContext, effects,
+          ))
     )
       throw new HttpError(
         403,
