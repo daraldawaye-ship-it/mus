@@ -238,11 +238,11 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                     <tr>
                       <th>فتح</th>
                       <th>الصافي</th>
-                      <th>الحساب</th>
                       <th>التاريخ والوقت</th>
                       <th>الطبيب أو الجهة (الرئيسي)</th>
-                      <th>الملاحظات</th>
                       <th>الحالة والتأشير</th>
+                      <th>الحساب</th>
+                      <th>الملاحظات</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -250,12 +250,10 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                       <tr key={row.id}>
                         <td><Link to={`/companies/${companyId}/invoices/${row.id}`}>فتح</Link></td>
                         <td><bdi className="financial-number">{formatWholeMoney(row.total)}</bdi></td>
-                        <td>{row.accountName || "—"}</td>
                         <td><span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span></td>
                         <td><Link to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
                           {row.doctorName}
                         </Link></td>
-                        <td>{row.notes || "—"}</td>
                         <td>
                           {row.accounted ? (
                             <strong className="doctor-movements-accounted">محاسب</strong>
@@ -273,6 +271,8 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                             </>
                           )}
                         </td>
+                        <td>{row.accountName || "—"}</td>
+                        <td>{row.notes || "—"}</td>
                       </tr>
                     ))}
                     {!records.items.length && <tr><td colSpan={7}>لا توجد فواتير مطابقة للفترة والبحث.</td></tr>}
