@@ -28,6 +28,7 @@ import { mutateMaster } from "./services/masters.ts";
 import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
+import { administrativeCustodyTransferSchema, postAdministrativeCustodyTransfer } from "./services/administrative-custody.ts";
 import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
@@ -728,6 +729,21 @@ export function commerceRoutes(pool: Pool): Router {
         async (client,user,companyId)=>{
           await companyAccess(client,user,companyId,"finance.post",true);
           return postEmployeeCashboxOperation(client,companyId,user,input);
+        });
+      res.status(201).json(result);
+    }),
+  );
+  // Administrative custody transfers never debit an employee's till.
+  // The two company system links are resolved and validated on the server.
+  router.post(
+    `${base}/sales/administrative-custody-transfers`,
+    handler(async (req, res) => {
+      const input = parse(administrativeCustodyTransferSchema, req.body);
+      const result = await mutateMaster(pool, req, "finance.manage",
+        async (client, user, companyId) => {
+          await companyAccess(client, user, companyId, "finance.post", true);
+          await companyAccess(client, user, companyId, "commerce.manage", true);
+          return postAdministrativeCustodyTransfer(client, companyId, user, input);
         });
       res.status(201).json(result);
     }),
