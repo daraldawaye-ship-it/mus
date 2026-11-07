@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, useScopeGuard, useSession } from "../api";
 import { MarketImageUpload } from "../MarketImageUpload";
+import { MarketProductImage } from "../MarketProductImage";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
@@ -582,9 +583,8 @@ function FieldValue({
     );
   if (field.key === "image" && typeof value === "string" &&
       (/^https:\/\//i.test(value) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value)))
-    return <img src={value} alt="صورة الصنف"
-      style={{width:160,height:160,objectFit:"contain",background:"#fff",borderRadius:8}}
-      loading="lazy" />;
+    return <MarketProductImage src={value} alt="صورة الصنف"
+      style={{maxWidth:260,maxHeight:340,width:"auto",height:"auto",objectFit:"contain",borderRadius:8}} />;
   if (
     field.type === "url" &&
     typeof value === "string" &&
@@ -1417,13 +1417,11 @@ export function MedicineMarketPage({
                       </button>
                       {typeof image === "string" &&
                         (/^https:\/\//i.test(image) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(image)) && (
-                          <img
+                          <MarketProductImage
                             className="medicine-market-card-image"
-                            style={{objectFit:"contain",background:"#fff",aspectRatio:"1/1"}}
+                            style={{display:"block",maxWidth:"100%",maxHeight:230,width:"auto",height:"auto",aspectRatio:"auto",objectFit:"contain",background:"transparent",marginInline:"auto"}}
                             src={image}
                             alt={item.name}
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
                           />
                         )}
                       <dl>
