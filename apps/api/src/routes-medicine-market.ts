@@ -63,7 +63,7 @@ const canField = (field: MarketField, p: MarketPermissions) =>
   (field.visibility === "ministry" && p.canSeeMinistry) ||
   (field.visibility === "accounting" && p.canSeeAccounting);
 /** Hide obsolete catalog fields without deleting historical source data. */
-const medicineHiddenKeys = ["governorateCode","cityCode","currency","barcode"] as const;
+const medicineHiddenKeys = ["countryCode","governorateCode","cityCode","currency","barcode"] as const;
 const placeKinds = ["pharmacy","wholesaler","agent","doctor","hospital","clinic","college"] as const;
 const placeHiddenKeys = ["countryCode","governorateCode"] as const;
 const isShownOnMarketCard = (kind:string, field:MarketField, p:MarketPermissions) =>
