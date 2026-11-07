@@ -98,7 +98,7 @@ const buttons:readonly [string,string,string][]=[
 export const centralResources:readonly CentralResource[]=[
   ...pageDefinitions.filter(p=>p.scope==="company").map(p=>({
     key:`page:${p.key}`,name:p.name,section:p.section,kind:"page" as const,
-    description:p.description,integrated:false,
+    description:p.description,integrated:true,
   })),
   ...permissionKeys.map(key=>({
     key:`permission:${key}`,name:permissionLabels[key],
