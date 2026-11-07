@@ -23,6 +23,19 @@ const previewGate = process.env.NODE_ENV === "production" &&
   : undefined;
 
 const application = await createApp();
+// Owner-approved baseline for every existing company employee (active or inactive).
+// Idempotent, company-agnostic, and does not change any other positions,
+// permission grants, employee account links, or financial information.
+try {
+  const tagged = await application.pool.query(
+    "UPDATE employees SET position_keys=array_append(COALESCE(position_keys,ARRAY[]::text[]),'employee') " +
+    "WHERE NOT ('employee'=ANY(COALESCE(position_keys,ARRAY[]::text[])))",
+  );
+  console.info("EMPLOYEE_BASE_POSITION_BACKFILLED", tagged.rowCount);
+} catch (error) {
+  console.error("EMPLOYEE_BASE_POSITION_BACKFILL_FAILED",
+    error instanceof Error ? error.message : String(error));
+}
 // One-time reconciliation ALSO covers the twelve existing invoice-authorized
 // employees of Dar Aldawa, not just staff created after this deployment.
 // Page grants are evaluated individually: no new permissions are assigned.
