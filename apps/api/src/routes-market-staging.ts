@@ -151,6 +151,48 @@ async function promoteStagedMedicines(pool: Pool, sourceId: number, runId: strin
   } finally { db.release(); }
 }
 
+
+/** One database-side update formats all imported medicine names without per-card requests. */
+async function titleCaseImportedMarketNames(pool: Pool, sourceId: number, runId: string, actorId: number, actorName: string) {
+  const db = await pool.connect();
+  let inTransaction = false;
+  try {
+    await db.query("BEGIN"); inTransaction = true;
+    await db.query("SET LOCAL statement_timeout='120s'");
+    await db.query("SELECT pg_advisory_xact_lock(714390219)");
+    const totalResult = await db.query<{total: number}>(
+      "SELECT count(*)::integer AS total FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived AND data->>'importSourceId'=$1",
+      [String(sourceId)],
+    );
+    const total = totalResult.rows[0]?.total ?? 0;
+    const changed = await db.query(
+      "WITH renamed AS (" +
+      " SELECT id,initcap(lower(name)) AS titled_name," +
+      " initcap(lower(COALESCE(data->>'englishName',name))) AS titled_english" +
+      " FROM medicine_market_cards WHERE kind='medicine' AND status='published' AND NOT archived AND data->>'importSourceId'=$1" +
+      ") UPDATE medicine_market_cards c SET name=r.titled_name," +
+      " data=jsonb_set(c.data,'{englishName}',to_jsonb(r.titled_english),true)," +
+      " revision=c.revision+1,updated_at=now() FROM renamed r WHERE c.id=r.id" +
+      " AND (c.name IS DISTINCT FROM r.titled_name OR c.data->>'englishName' IS DISTINCT FROM r.titled_english)",
+      [String(sourceId)],
+    );
+    await db.query(
+      "UPDATE market_card_name_format_runs SET status='complete',total=$2,changed=$3,error_code=NULL,updated_at=now() WHERE id=$1",
+      [runId,total,changed.rowCount ?? 0],
+    );
+    await db.query(
+      "INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value)" +
+      " VALUES($1,$2,'public',NULL,'medicine-market.bulk_title_case','medicine-market',NULL,NULL,$3::jsonb)",
+      [actorId,actorName,JSON.stringify({runId,sourceId,total,changed:changed.rowCount ?? 0})],
+    );
+    await db.query("COMMIT"); inTransaction = false;
+  } catch(error) {
+    if(inTransaction) { try { await db.query("ROLLBACK"); } catch { /* disconnected */ } }
+    try { await pool.query("UPDATE market_card_name_format_runs SET status='failed',error_code='format_failed',updated_at=now() WHERE id=$1 AND status='running'",[runId]); } catch { /* check server logs */ }
+    console.error("MARKET_BULK_TITLE_CASE_FAILED",error && typeof error==="object" && "code" in error ? String(error.code) : "internal");
+  } finally { db.release(); }
+}
+
 export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boolean) {
   const router=Router();
   const authorize=async(req:Parameters<MarketAccess["viewer"]>[1])=>{
@@ -206,6 +248,40 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     await authorize(req);
     const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
     const run=await pool.query("SELECT * FROM market_card_import_runs WHERE source_id=$1",[sourceId]);
+    if(!run.rowCount)missing();
+    res.json(run.rows[0]);
+  }));
+
+  router.post("/medicine-market/staging/:sourceId/title-case",handler(async(req,res)=>{
+    const u=await access.viewer(pool,req,true);
+    if(!u?.owner || u.suspended || u.archived)deny();
+    await access.enabled(pool,req);
+    if(!isolated)throw new HttpError(503,"market_isolation_required","التعديل الجماعي متاح في قاعدة السوق المنفصلة فقط");
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const input=parse(bulkMedicinePromotionSchema,req.body);
+    const source=await pool.query(
+      "SELECT s.filename,j.status FROM market_import_sources s JOIN market_import_jobs j ON j.id=s.job_id WHERE s.id=$1",
+      [sourceId],
+    );
+    if(!source.rowCount || source.rows[0].status!=="complete" || !String(source.rows[0].filename).includes("ابن حيان"))
+      throw new HttpError(400,"invalid_source","المصدر يجب أن يكون جدول ابن حيان المكتمل");
+    const result=await pool.query(
+      "INSERT INTO market_card_name_format_runs(id,source_id,operation,actor_id,status)" +
+      " VALUES($1,$2,'title_case',$3,'running') ON CONFLICT(source_id,operation) DO NOTHING RETURNING id",
+      [input.idempotencyKey,sourceId,u.id],
+    );
+    if(result.rowCount) {
+      void titleCaseImportedMarketNames(pool,sourceId,input.idempotencyKey,u.id,u.displayName);
+      res.status(202).json({id:input.idempotencyKey,sourceId,status:"running"});
+    } else {
+      const prior=await pool.query("SELECT * FROM market_card_name_format_runs WHERE source_id=$1 AND operation='title_case'",[sourceId]);
+      res.status(prior.rows[0]?.status==="running"?202:200).json(prior.rows[0]);
+    }
+  }));
+  router.get("/medicine-market/staging/:sourceId/title-case-status",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const run=await pool.query("SELECT * FROM market_card_name_format_runs WHERE source_id=$1 AND operation='title_case'",[sourceId]);
     if(!run.rowCount)missing();
     res.json(run.rows[0]);
   }));
