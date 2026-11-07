@@ -348,6 +348,7 @@ export function walletRoutes(pool: Pool) {
           user,
           input.pageKey,
           input.idempotencyKey,
+          input.recordId ?? null,
         );
       });
       res.json(result);
