@@ -141,12 +141,8 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   }
   return (
     <>
-      <PageHeader title="حركة مبيعات الأطباء والممرضين"
-        description="فواتير البيع المرتبطة بطبيب أو ممرض فقط. الاسم المعروض والبحث بحسب الاسم الرئيسي، ويشمل الكروت الفرعية."
-        actions={<Button variant="secondary" disabled={!canView || results.isFetching}
-          onClick={() => void results.refetch()}>تحديث</Button>}
-      />
-      <Card title="البحث والفترة">
+      <PageHeader title="حركة مبيعات الأطباء والممرضين" />
+      <Card>
         <div className="form-grid">
           <Field label="من تاريخ" type="date" value={from} min={minDate} max={today}
             onChange={event => change("dateFrom", event.target.value)} />
@@ -194,28 +190,6 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
             <option value="100">100</option>
           </Select>
         </div>
-        <div className="form-actions">
-          <Button size="compact" variant="secondary"
-            onClick={() => {
-              setParams(previous => {
-                const next = new URLSearchParams(previous);
-                next.set("dateFrom", minDate);
-                next.set("dateTo", today);
-                next.delete("page");
-                return next;
-              });
-            }}>آخر 10 أيام</Button>
-          <Button size="compact" variant="secondary"
-            onClick={() => {
-              setParams(previous => {
-                const next = new URLSearchParams(previous);
-                next.set("dateFrom", today);
-                next.set("dateTo", today);
-                next.delete("page");
-                return next;
-              });
-            }}>فواتير اليوم</Button>
-        </div>
         {invalid && <Notice tone="warning">يمكن اختيار التواريخ من {minDate} إلى {today} فقط، ويجب ألا يتجاوز تاريخ البداية تاريخ النهاية.</Notice>}
       </Card>
       {directory.isPending && <Notice>جارٍ التحقق من الصلاحيات…</Notice>}
@@ -224,7 +198,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       {results.error && <Notice tone="error">{errorMessage(results.error)}</Notice>}
       {accountingSuccess && <Notice tone="success">{accountingSuccess}</Notice>}
       {canView && !invalid && (
-        <Card title={`الفواتير المطابقة: ${records?.total ?? "…"}`}>
+        <Card>
           {results.isPending && <Notice>جارٍ تحميل الفواتير…</Notice>}
           {records && (
             <>
