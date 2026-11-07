@@ -102,14 +102,14 @@ export const marketTypes: MarketType[] = [
       }),
       f("barcode", "الباركود"),
       keywords,
-      f("ministryPrice", "سعر البيع من وزارة الصحة", "decimal", {
+      f("ministryPrice", "سعر البيع في الصيدليات", "decimal", {
         visibility: "ministry",
         price: true,
       }),
-      f("ministryNotes", "ملاحظات وزارة الصحة", "textarea", {
+      f("ministryNotes", "ملاحظة رسمية", "textarea", {
         visibility: "ministry",
       }),
-      f("ministryNoticeUntil", "تاريخ توقف ملاحظة الوزارة", "date", {
+      f("ministryNoticeUntil", "تاريخ انتهاء الملاحظة الرسمية", "date", {
         visibility: "ministry",
       }),
       f(
