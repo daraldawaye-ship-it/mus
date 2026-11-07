@@ -944,7 +944,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           (field.key === "image" || field.key === "prescriptionLines") &&
           (card.created_by === u.id || p.canModerate);
         const published = pendingPrescriptionDraft ||
-          (trusted(u) && !field.price && card.status === "published");
+          (trusted(u) && !field.price && card.status === "published" &&
+           !(card.kind==="prescription" && field.key==="image"));
         const contribution = (
           await db.query(
             "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
@@ -1080,17 +1081,18 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
             };
           throw conflict("انتهت مراجعة هذه المساهمة");
         }
-        if (card.kind === "prescription" && c.field_key === "name" &&
-            card.status === "pending" && input.decision === "approve") {
-          // A pending prescription may contain patient identifiers. Only the
-          // moderator confirms the CURRENT image was inspected before public release.
-          if(input.prescriptionImageReviewed !== true)
-            throw new HttpError(400,"prescription_image_not_reviewed","يجب على الإدارة مراجعة صورة الوصفة قبل نشرها");
-          const photo=(card.data as Record<string,unknown>)?.image;
+        if (card.kind==="prescription" && input.decision==="approve" &&
+           (c.field_key==="image" || (c.field_key==="name" && card.status==="pending"))) {
+          // Review the exact current/proposed photo before publishing the
+          // prescription or any replacement image, even from a trusted editor.
+          if(input.prescriptionImageReviewed!==true)
+            throw new HttpError(400,"prescription_image_not_reviewed","تحتاج صورة الوصفة إلى مراجعة الإدارة قبل نشرها");
+          const photo=c.field_key==="image" && !c.published
+            ?c.proposed_value:(card.data as Record<string,unknown>)?.image;
           if(typeof photo!=="string" || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(photo))
             throw new HttpError(400,"prescription_image_missing","صورة الوصفة غير محفوظة");
           if(input.reviewedImageUrl!==photo)
-            throw new HttpError(409,"prescription_image_changed","تغيرت الصورة منذ مراجعتها؛ افتح الصورة الحالية وراجعها مجددًا");
+            throw new HttpError(409,"prescription_image_changed","تغيرت صورة الوصفة منذ مراجعتها؛ افتح الصورة الحالية وراجعها مجددًا");
           const stored=await db.query(
             "SELECT 1 FROM market_image_uploads WHERE id=$1 AND card_id=$2",
             [photo.split("/").at(-1),card.id],
