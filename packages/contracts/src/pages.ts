@@ -909,6 +909,15 @@ page(
   { type: "report", keywords: ["تقارير", "حركة الحساب"] },
 );
 page(
+  "company.administrative-custody",
+  "العهدة الإدارية",
+  "التقارير",
+  "/companies/:companyId/administrative-custody",
+  { view: permission("finance.manage") },
+  "كشف العهدة الإدارية وحركتها ورصيدها الموجب أو السالب، مستقل عن صناديق الموظفين.",
+  { type: "report", keywords: ["العهدة", "الإدارية", "حافظة العهدة"] },
+);
+page(
   "company.my-cashbox-ledger",
   "كشف حساب صندوقي",
   "التقارير",
