@@ -67,17 +67,26 @@ export function PageRouteGuard({
     if (allowed) setAdmitted(true);
   }, [allowed]);
   useEffect(() => {
-    if (!user || !companyId || !pageKey || !admitted || !allowed) return;
-    const visit = `${user.id}:${companyId}:${pageKey}:${route.pathname}`;
+    if (!user || !pageKey || !admitted || !allowed) return;
+    const visit = `${user.id}:${companyId ?? "public"}:${pageKey}:${route.pathname}`;
     if (visitedRoute.current === visit) return;
     visitedRoute.current = visit;
+    const recordId = entry?.record
+      ? Number(route.pathname.match(/\\/([1-9]\\d*)\\/?$/)?.[1]) || null
+      : null;
+    if (!companyId) {
+      void api("/page-catalog/visit", {
+        method: "POST", body: { pageKey, recordId },
+      }).catch(() => {});
+      return;
+    }
     // Only actual admitted route transitions register visits. Refetching page
     // data and background API polling never execute this effect.
     void api<{ rewarded: boolean }>(
       `/companies/${companyId}/reward-events/page-visit`,
       {
         method: "POST",
-        body: { pageKey, idempotencyKey: crypto.randomUUID() },
+        body: { pageKey, recordId, idempotencyKey: crypto.randomUUID() },
       },
     )
       .then((result) => {
@@ -96,6 +105,7 @@ export function PageRouteGuard({
     companyId,
     pageKey,
     route.pathname,
+    entry?.record,
     admitted,
     allowed,
     queryClient,
