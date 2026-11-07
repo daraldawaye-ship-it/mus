@@ -25,6 +25,7 @@ import {
 } from "./permission-rules.ts";
 
 import { memoFollowerSql } from "./memo-followers.ts";
+import { centralPagePolicies, centralPageAllows } from "./central-access-authorization.ts";
 
 async function directoryPermissionState(
   db: Database,
@@ -206,6 +207,9 @@ export async function directoryEntries(
     [companyId],
   );
   const userPositions = new Set(baseContext?.employee?.positions ?? []);
+  const centralPolicies = companyId
+    ? await centralPagePolicies(db, companyId)
+    : new Map();
   const resolveGrant = (key: string, action: PageAction): "allow" | "deny" | null => {
     const matches = grantsResult.rows.filter((g) =>
       g.page_key === key && g.action === action &&
@@ -256,13 +260,18 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
-            (!["company.trial-balance", "company.cash-flows"].includes(definition.key) || user.owner) &&
-            (user.owner || resolveGrant(definition.key, action) !== "deny") &&
+            (definition.scope !== "company" ||
+              centralPageAllows(centralPolicies, definition.key, action,
+                user.owner, [...userPositions])) &&
+            (user.owner || definition.scope === "company" ||
+              resolveGrant(definition.key, action) !== "deny") &&
             (definition.key !== "public.legal-cases" || legalVisible) &&
             (definition.key !== "public.general-table" || generalTableVisible) &&
             (definition.key !== "public.explanations-reader" || explanationRead) &&
             (definition.key !== "public.explanations-editor" || explanationEdit) &&
             (user.owner ||
+              (definition.scope === "company" &&
+                (action === "view" || action === "print")) ||
               resolveGrant(definition.key, action) === "allow" ||
               directoryActionAllowed(
                 definition, action, user, baseContext, effects,
