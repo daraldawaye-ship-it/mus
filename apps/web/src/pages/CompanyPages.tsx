@@ -339,12 +339,9 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
   });
   return (
     <>
-      <PageHeader
-        title={company.name}
-        description="بيانات الشركة وصلاحيات وصولك الحالية."
-      />
+      <PageHeader title={company.name} />
       {commerceShortcuts.length > 0 && (
-        <Card title="المبيعات والمشتريات">
+        <Card>
           <div className="form-actions">
             {commerceShortcuts.map(shortcut => (
               <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
@@ -365,7 +362,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
           </div>
         </Card>
       )}
-      <Card title="الحضور والانصراف">
+      <Card>
         <AttendancePunchControls companyId={company.id} compact />
       </Card>
       <Card title="إدارة الشركة">
