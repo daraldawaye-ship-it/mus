@@ -756,6 +756,59 @@ function FieldValue({
   );
 }
 
+/** Approval-only photo verification; pending prescriptions are not public. */
+function PrescriptionReviewPhoto({
+  cardId,busy,onApprove,onReject,
+}:{
+  cardId:number;
+  busy:boolean;
+  onApprove:(inspectedImageUrl:string)=>void;
+  onReject:()=>void;
+}){
+  const {user}=useSession();
+  const [checked,setChecked]=useState(false);
+  const result=useQuery({
+    queryKey:["medicine-market",user?.id,"card",cardId],
+    queryFn:({signal})=>api<Detail>(`${ROOT}/cards/${cardId}`,{signal}),
+    staleTime:0,
+  });
+  const image=typeof result.data?.card.data.image==="string"
+    ?result.data.card.data.image:null;
+  useEffect(()=>setChecked(false),[image]);
+  return <div className="medicine-market-prescription-review">
+    <strong>مراجعة صورة الوصفة قبل النشر</strong>
+    {result.isFetching&&<small className="muted">جارٍ تحميل الصورة الحالية…</small>}
+    {result.error&&<Notice tone="error">{errorMessage(result.error)}</Notice>}
+    {image&&<div className="medicine-market-prescription-review-image">
+      <MarketProductImage src={image} trimLegacyPadding={false}
+        alt="صورة الوصفة غير المنشورة، خاصة بالإدارة"
+        style={{maxHeight:520,maxWidth:"100%",height:"auto",width:"auto"}}/>
+      <div className="page-actions">
+        <a href={image} target="_blank" rel="noopener noreferrer">فتح الصورة كاملة</a>
+        <a href={image} download={"prescription-"+cardId+".webp"}>تحميل الصورة للتعديل</a>
+        <Link to={`${ROOT}?kind=prescription&card=${cardId}`} target="_blank">
+          فتح الكرت ورفع صورة بديلة
+        </Link>
+      </div>
+    </div>}
+    <small className="muted">يمكن تنزيل الصورة، وإخفاء بيانات المريض، ثم رفع نسخة بديلة إلى الكرت قبل اعتمادها.</small>
+    <label className="medicine-market-check">
+      <input type="checkbox" checked={checked}
+        disabled={busy||!image||result.isFetching}
+        onChange={e=>setChecked(e.target.checked)}/>
+      راجعت الصورة الحالية وتأكدت أنها لا تُظهر اسم المريض أو بياناته الشخصية
+    </label>
+    <div className="page-actions">
+      <Button size="compact" disabled={busy||!image||!checked||result.isFetching}
+        onClick={()=>{if(image&&checked)onApprove(image);}}>
+        <Check size={14}/> اعتماد الوصفة ونشرها
+      </Button>
+      <Button variant="danger" size="compact" disabled={busy}
+        onClick={onReject}><X size={14}/> رفض</Button>
+    </div>
+  </div>;
+}
+
 export function MedicineMarketPage({
   tab = "catalog",
 }: {
@@ -1003,12 +1056,14 @@ export function MedicineMarketPage({
   function reviewContribution(
     row: Contribution,
     decision: "approve" | "reject",
+    reviewedImageUrl?:string,
   ) {
     void mutate(
       () =>
         api(`${ROOT}/contributions/${row.id}/review`, {
           method: "POST",
-          body: { decision, reason: reviewReason.trim() || undefined },
+          body: { decision, reason: reviewReason.trim() || undefined,
+            ...(reviewedImageUrl ? {prescriptionImageReviewed:true,reviewedImageUrl} : {}) },
         }),
       decision === "approve"
         ? "تم اعتماد المساهمة وفق سياسة النقاط."
@@ -1760,25 +1815,21 @@ export function MedicineMarketPage({
                           ? " · منشور؛ النقاط بانتظار المصادقة"
                           : ""}
                       </span>
-                      {tab === "review" && row.status === "pending" && (
-                        <div>
-                          <Button
-                            size="compact"
-                            disabled={busy}
-                            onClick={() => reviewContribution(row, "approve")}
-                          >
-                            <Check size={14} /> اعتماد
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="compact"
-                            disabled={busy}
-                            onClick={() => reviewContribution(row, "reject")}
-                          >
-                            <X size={14} /> رفض
-                          </Button>
-                        </div>
-                      )}
+                      {tab === "review" && row.status === "pending" &&
+                        (row.kind==="prescription" && row.fieldKey==="name"
+                          ?<PrescriptionReviewPhoto cardId={row.cardId} busy={busy}
+                              onApprove={image=>reviewContribution(row,"approve",image)}
+                              onReject={()=>reviewContribution(row,"reject")}/>
+                          :<div>
+                            <Button size="compact" disabled={busy}
+                              onClick={()=>reviewContribution(row,"approve")}>
+                              <Check size={14}/> اعتماد
+                            </Button>
+                            <Button variant="danger" size="compact" disabled={busy}
+                              onClick={()=>reviewContribution(row,"reject")}>
+                              <X size={14}/> رفض
+                            </Button>
+                          </div>)}
                     </div>
                   </Card>
                 ))}
