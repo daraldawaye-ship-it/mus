@@ -52,17 +52,17 @@ export async function postAdministrativeCustodyTransfer(
   // Resolve both accounts server-side and only from the company's system links.
   // Never accept arbitrary account IDs from the invoice browser.
   const linked = await client.query(
-    "SELECT l.purpose,a.id,a.name,a.active,a.kind,a.category FROM account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.purpose IN ('administrativeCustody','electronicWallet')",
+    "SELECT l.purpose,a.id,a.name,a.active,a.kind,a.category FROM account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.purpose IN ('administrativeCustody','administrativeCustodyPouch')",
     [companyId],
   );
   const custody = linked.rows.find((row) => row.purpose === "administrativeCustody");
-  const wallet = linked.rows.find((row) => row.purpose === "electronicWallet");
+  const pouch = linked.rows.find((row) => row.purpose === "administrativeCustodyPouch");
   if (!custody || !custody.active || custody.kind !== "posting" || custody.category !== "asset")
     conflict("custody_not_configured", "اربط حساب العهدة الإدارية الحركي من ربط الحسابات النظامية أولًا");
-  if (!wallet || !wallet.active || wallet.kind !== "posting" || wallet.category !== "asset")
-    conflict("custody_wallet_not_configured", "اربط حساب المحفظة الإلكترونية الحركي من ربط الحسابات النظامية أولًا");
-  if (custody.id === wallet.id)
-    conflict("custody_same_account", "يجب أن يختلف حساب العهدة عن المحفظة الإلكترونية");
+  if (!pouch || !pouch.active || pouch.kind !== "posting" || pouch.category !== "asset")
+    conflict("custody_wallet_not_configured", "اربط حساب حافظة العهدة الإدارية الحركي من ربط الحسابات النظامية أولًا");
+  if (custody.id === pouch.id)
+    conflict("custody_same_account", "يجب أن يختلف حساب العهدة عن حافظتها");
 
   const base = await client.query(
     "SELECT c.id,c.code,c.active FROM finance_settings f JOIN company_currencies c ON c.company_id=f.company_id AND c.id=f.base_currency_id WHERE f.company_id=$1",
@@ -74,17 +74,17 @@ export async function postAdministrativeCustodyTransfer(
 
   const transfer = amount > 0n ? amount : -amount;
   const direction = amount > 0n
-    ? "ترحيل من العهدة الإدارية إلى المحفظة الإلكترونية"
-    : "إرجاع من المحفظة الإلكترونية إلى العهدة الإدارية";
+    ? "ترحيل من العهدة الإدارية إلى حافظتها"
+    : "استلام من حافظة العهدة الإدارية إلى العهدة";
   const memo = (direction + (input.notes ? " — " + input.notes : "")).slice(0, 1000);
   const lines = amount > 0n
     ? [
         { accountId: custody.id as number, debit: "0", credit: moneyString(transfer), description: memo },
-        { accountId: wallet.id as number, debit: moneyString(transfer), credit: "0", description: memo },
+        { accountId: pouch.id as number, debit: moneyString(transfer), credit: "0", description: memo },
       ]
     : [
         { accountId: custody.id as number, debit: moneyString(transfer), credit: "0", description: memo },
-        { accountId: wallet.id as number, debit: "0", credit: moneyString(transfer), description: memo },
+        { accountId: pouch.id as number, debit: "0", credit: moneyString(transfer), description: memo },
       ];
 
   // Deliberately no balance/availability rejection. Signed ledger balances
@@ -101,13 +101,13 @@ export async function postAdministrativeCustodyTransfer(
     lines,
   });
   const inserted = await client.query(
-    "INSERT INTO administrative_custody_transfers(company_id,custody_account_id,wallet_account_id,amount,notes,financial_document_id,idempotency_key,request_payload,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
-    [companyId, custody.id, wallet.id, moneyString(amount), input.notes, documentId,
+    "INSERT INTO administrative_custody_transfers(company_id,custody_account_id,pouch_account_id,amount,notes,financial_document_id,idempotency_key,request_payload,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+    [companyId, custody.id, pouch.id, moneyString(amount), input.notes, documentId,
       input.idempotencyKey, JSON.stringify(input), user.id],
   );
   const operationId = inserted.rows[0].id as number;
   await audit(client, user, "administrativeCustody.transfer", "administrative-custody-transfer",
     operationId, null, { amount: moneyString(amount), custodyAccountId: custody.id,
-      walletAccountId: wallet.id, documentId, notes: input.notes }, companyId);
+      pouchAccountId: pouch.id, documentId, notes: input.notes }, companyId);
   return { operationId, documentId };
 }
