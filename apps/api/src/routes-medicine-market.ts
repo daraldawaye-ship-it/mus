@@ -552,7 +552,7 @@ export interface MarketAccess {
 
 
 const marketImageUploadSchema=z.object({
-  dataUrl:z.string().min(50).max(140000),
+  dataUrl:z.string().min(50).max(700000),
 }).strict();
 const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
 /** Validate compressed WebP dimensions without trusting browser metadata. */
@@ -661,7 +661,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const assetId=randomUUID();
     await transaction(pool,async db=>{
       const card=await getCard(db,cardId,user);
-      if(card.archived||card.status!=="published")missing();
+      if(card.archived||card.status==="rejected"||
+         (card.status!=="published" && card.created_by!==user.id && !perms(user).canModerate))missing();
       if(!findType(card.kind).fields.some(f=>f.key==="image"))
         throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
       // Limit stored unreviewed uploads by one participant without burdening sales.
@@ -809,6 +810,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     root + "/cards",
     handler(async (req, res) => {
       const input = parse(createCardSchema, req.body);
+      if(input.kind==="prescription")
+        throw new HttpError(400,"use_prescription_upload","الوصفة الطبية تُنشأ من نموذج رفع الصورة وتحديد الأسطر");
       const result = await transaction(pool, async (db) => {
         const u = (await viewer(db, req, true))!,
           p = perms(u);
