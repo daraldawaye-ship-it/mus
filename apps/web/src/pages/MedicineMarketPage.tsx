@@ -299,19 +299,42 @@ function RelationPicker({
     </div>}
   </div>;
 }
+type PrescriptionLine = {kind:"medicine"|"composition";id:number|null};
+function normalizePrescriptionLine(value:unknown):PrescriptionLine {
+  if(value && typeof value==="object" && !Array.isArray(value)){
+    const entry=value as Record<string,unknown>;
+    return {
+      kind:entry.kind==="composition"?"composition":"medicine",
+      id:typeof entry.id==="number" && Number.isInteger(entry.id) && entry.id>0
+        ?entry.id:null,
+    };
+  }
+  return {kind:"medicine",id:typeof value==="number" &&
+    Number.isInteger(value) && value>0?value:null};
+}
+const emptyPrescriptionLine=():PrescriptionLine=>({kind:"medicine",id:null});
+const initialPrescriptionLines=():PrescriptionLine[]=>
+  Array.from({length:4},emptyPrescriptionLine);
+
 function PrescriptionLinesEditor({
   value,onChange,disabled,
 }:{
   value:unknown;
-  onChange:(value:Array<number|null>)=>void;
+  onChange:(value:PrescriptionLine[])=>void;
   disabled:boolean;
 }){
-  const rows:Array<number|null>=Array.isArray(value)
-    ?value.map(v=>typeof v==="number"&&Number.isInteger(v)&&v>0?v:null)
-    :Array(4).fill(null);
+  const rows:PrescriptionLine[]=Array.isArray(value)
+    ?value.map(normalizePrescriptionLine)
+    :initialPrescriptionLines();
   const resize=(next:number)=>{
     const count=Math.max(1,Math.min(20,next));
-    onChange([...rows.slice(0,count),...Array(Math.max(0,count-rows.length)).fill(null)]);
+    onChange([...rows.slice(0,count),
+      ...Array.from({length:Math.max(0,count-rows.length)},emptyPrescriptionLine)]);
+  };
+  const changeMode=(index:number,kind:PrescriptionLine["kind"])=>{
+    // IDs cannot be reused across types; changing the search resets only
+    // this one line, leaving all other prescription rows untouched.
+    onChange(rows.map((row,i)=>i===index?{kind,id:null}:row));
   };
   return <div className="medicine-market-prescription-editor">
     <div className="medicine-market-prescription-count">
@@ -323,12 +346,27 @@ function PrescriptionLinesEditor({
           disabled={disabled||rows.length>=20} onClick={()=>resize(rows.length+1)}>+ إضافة سطر</Button>
       </div>
     </div>
-    <p className="medicine-market-muted">اختيار الأصناف اختياري. الأسطر غير المعروفة تبقى ظاهرة للجمهور لإكمالها أو تصحيحها لاحقًا.</p>
-    {rows.map((id,index)=><div key={index} className="medicine-market-prescription-row">
-      <strong>الدواء {index+1}</strong>
-      <RelationPicker kind="medicine" label={"صنف السطر "+(index+1)}
-        minChars={1} value={id} disabled={disabled}
-        onChange={selected=>onChange(rows.map((v,i)=>i===index?selected:v))}/>
+    <p className="medicine-market-muted">كل سطر مستقل: اختر البحث باسم الصنف التجاري أو التركيب الذي كتبه الطبيب. يمكن ترك أي سطر دون تحديد ليكمله الجمهور لاحقًا.</p>
+    {rows.map((row,index)=><div key={index} className="medicine-market-prescription-row">
+      <div className="medicine-market-prescription-row-heading">
+        <strong>الدواء {index+1}</strong>
+        <div className="medicine-market-prescription-kind-switch"
+          role="group" aria-label={"نوع البحث للسطر "+(index+1)}>
+          <button type="button" disabled={disabled}
+            aria-pressed={row.kind==="medicine"}
+            className={row.kind==="medicine"?"is-active":""}
+            onClick={()=>changeMode(index,"medicine")}>الصنف</button>
+          <button type="button" disabled={disabled}
+            aria-pressed={row.kind==="composition"}
+            className={row.kind==="composition"?"is-active":""}
+            onClick={()=>changeMode(index,"composition")}>التركيب</button>
+        </div>
+      </div>
+      <RelationPicker key={row.kind}
+        kind={row.kind}
+        label={(row.kind==="composition"?"تركيب":"صنف")+" السطر "+(index+1)}
+        minChars={1} value={row.id} disabled={disabled}
+        onChange={id=>onChange(rows.map((v,i)=>i===index?{...v,id}:v))}/>
     </div>)}
   </div>;
 }
@@ -689,12 +727,20 @@ function FieldValue({
     return <span className="medicine-market-unset">أكمل هذه المعلومة</span>;
   if(field.type==="prescription-lines" && Array.isArray(value))
     return <ol className="medicine-market-prescription-list">
-      {(value as Array<number|null>).map((v,i)=>
-        <li key={i}><strong>السطر {i+1}</strong> {" "}
-        {typeof v==="number"
-          ?<RelationName id={v} onOpen={onOpen}/>
-          :<span className="medicine-market-unset">صنف غير معروف — متاح لإكماله من الجمهور</span>}
-        </li>)}
+      {(value as unknown[]).map((original,i)=>{
+        const row=normalizePrescriptionLine(original);
+        return <li key={i}>
+          <strong>السطر {i+1}</strong>{" "}
+          <span className="medicine-market-prescription-line-kind">
+            ({row.kind==="composition"?"التركيب":"الصنف"})
+          </span>{" "}
+          {row.id!==null
+            ?<RelationName id={row.id} onOpen={onOpen}/>
+            :<span className="medicine-market-unset">
+                {row.kind==="composition"?"تركيب غير معروف":"صنف غير معروف"} — متاح لإكماله من الجمهور
+              </span>}
+        </li>;
+      })}
     </ol>;
   if (field.type === "reference" && typeof value === "string") {
     const reference = references.find(entry=>entry.code===value);
@@ -840,7 +886,7 @@ export function MedicineMarketPage({
     [newName, setNewName] = useState("");
   const [prescriptionFile,setPrescriptionFile]=useState<File|null>(null);
   const [prescriptionPhotoUrl,setPrescriptionPhotoUrl]=useState<string|null>(null);
-  const [prescriptionLines,setPrescriptionLines]=useState<Array<number|null>>([null,null,null,null]);
+  const [prescriptionLines,setPrescriptionLines]=useState<PrescriptionLine[]>(initialPrescriptionLines);
   useEffect(()=>{
     if(!prescriptionFile){setPrescriptionPhotoUrl(null);return;}
     const preview=URL.createObjectURL(prescriptionFile);
@@ -1005,7 +1051,7 @@ export function MedicineMarketPage({
         if(guard.isCurrent())write({card:String(created.card.id),kind:"prescription",page:null});
       },"تم حفظ الوصفة للمراجعة الإدارية، ولا تظهر للجمهور حتى تُراجع الصورة وتعتمدها الإدارة.",()=>{
         setCreateOpen(false);setPrescriptionFile(null);
-        setPrescriptionLines([null,null,null,null]);keys.current.delete("create-prescription");
+        setPrescriptionLines(initialPrescriptionLines());keys.current.delete("create-prescription");
       });
       return;
     }
@@ -1675,7 +1721,7 @@ export function MedicineMarketPage({
                       {item.kind==="prescription" && Array.isArray(item.data.prescriptionLines) &&
                         <p className="medicine-market-muted">
                           {item.data.prescriptionLines.length} أسطر ·
-                          {" "}{item.data.prescriptionLines.filter(x=>typeof x==="number").length} أصناف محددة
+                          {" "}{item.data.prescriptionLines.filter(x=>normalizePrescriptionLine(x).id!==null).length} أدوية/تراكيب محددة
                         </p>}
                       <dl>
                         {previewFields.map((f) => (
