@@ -9,6 +9,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
 import { searchPattern } from "./services/lists.ts";
 import { doctorSalesReportSql } from "./services/doctor-sales-report.ts";
+import { audit } from "./services/audit.ts";
 
 const filters = z.object({
   dateFrom: documentDateSchema,
@@ -111,6 +112,7 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
       const where=[
         " FROM invoices i",
         " JOIN doctors d ON d.company_id=i.company_id AND d.id=i.doctor_id",
+        " LEFT JOIN doctor_sales_accounted_invoices mark ON mark.company_id=i.company_id AND mark.invoice_id=i.id",
         " LEFT JOIN legacy_sales_sign_repairs fix ON fix.company_id=i.company_id AND fix.invoice_id=i.id",
         " WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true",
         " AND d.kind IN ('doctor','nurse')",
@@ -128,7 +130,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         " i.created_at AS \"createdAt\", i.counterparty_account_name AS \"accountName\","+
         " i.description AS notes,i.doctor_id AS \"doctorId\","+
         " COALESCE(NULLIF(btrim(d.shared_name),''),d.name) AS \"doctorName\","+
-        " d.kind AS \"doctorKind\",i.currency_code AS \"currencyCode\","+
+        " d.kind AS \"doctorKind\",i.currency_code AS \"currencyCode\",
+        " (mark.invoice_id IS NOT NULL) AS accounted,","+
         " COALESCE(fix.corrected_total::numeric,i.total)::text AS total"+
         where+" ORDER BY i.created_at DESC,i.id DESC LIMIT $6 OFFSET $7",
         [...params,input.pageSize,(input.page-1)*input.pageSize]);
