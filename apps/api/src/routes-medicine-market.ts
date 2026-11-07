@@ -522,8 +522,8 @@ const marketImageUploadSchema=z.object({
   dataUrl:z.string().min(50).max(140000),
 }).strict();
 const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
-/** Check WebP's encoded square dimensions without trusting client metadata. */
-function validateMarketImage(dataUrl:string):Buffer {
+/** Validate compressed WebP dimensions without trusting browser metadata. */
+function validateMarketImage(dataUrl:string):{bytes:Buffer;width:number;height:number} {
   const match=/^data:image\/webp;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
   if(!match)throw new HttpError(400,"image_format","يجب أن تكون الصورة بصيغة WebP");
   const bytes=Buffer.from(match[1],"base64");
@@ -547,9 +547,9 @@ function validateMarketImage(dataUrl:string):Buffer {
     width=1+(bits&0x3fff);
     height=1+((bits>>>14)&0x3fff);
   }
-  if(width!==512||height!==512)
-    throw new HttpError(400,"image_dimensions","يجب أن تكون الصورة مربعة بقياس 512 × 512");
-  return bytes;
+  if(width<1||height<1||width>512||height>512||Math.max(width,height)!==512)
+    throw new HttpError(400,"image_dimensions","يجب ألا يزيد الضلع الأكبر عن 512 بكسل، دون تغيير نسبة الأبعاد");
+  return {bytes,width,height};
 }
 
 export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingIsolated = false): Router {
@@ -582,12 +582,12 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
       }
       await db.query(
-        "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes) VALUES($1,$2,$3,$4,$5)",
-        [assetId,cardId,user.id,image.length,image],
+        "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [assetId,cardId,user.id,image.bytes.length,image.bytes,image.width,image.height],
       );
-      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.length,format:"webp",side:512});
+      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height});
     });
-    res.status(201).json({url:marketImagePath(assetId),bytes:image.length,width:512,height:512});
+    res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height});
   }));
   router.get(root+"/images/:imageId",handler(async(req,res)=>{
     await enabled(pool,req);
