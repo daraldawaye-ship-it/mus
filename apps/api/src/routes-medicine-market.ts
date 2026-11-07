@@ -1,5 +1,6 @@
 import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { Router, type Request } from "express";
+import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { z } from "zod";
 import {
@@ -157,6 +158,11 @@ function normalizeValue(field: MarketField, value: unknown): unknown {
         value,
       );
     case "url":
+      // Uploaded market photos use a same-origin image path. Existing HTTPS
+      // images remain readable/editable until contributors replace them.
+      if(field.key==="image" && typeof value==="string" &&
+         /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value))
+        return value;
       return parse(url, value);
     case "date":
       return parse(
@@ -511,11 +517,90 @@ export interface MarketAccess {
   enabled: typeof defaultEnabled;
 }
 
+
+const marketImageUploadSchema=z.object({
+  dataUrl:z.string().min(50).max(140000),
+}).strict();
+const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
+/** Check WebP's encoded square dimensions without trusting client metadata. */
+function validateMarketImage(dataUrl:string):Buffer {
+  const match=/^data:image\/webp;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if(!match)throw new HttpError(400,"image_format","يجب أن تكون الصورة بصيغة WebP");
+  const bytes=Buffer.from(match[1],"base64");
+  if(bytes.length<30 || bytes.length>102400 ||
+     bytes.subarray(0,4).toString("ascii")!=="RIFF" ||
+     bytes.subarray(8,12).toString("ascii")!=="WEBP" ||
+     bytes.readUInt32LE(4)+8!==bytes.length)
+    throw new HttpError(400,"image_size","الصورة غير صالحة أو تتجاوز 100 كيلوبايت");
+  const codec=bytes.subarray(12,16).toString("ascii");
+  let width=0,height=0;
+  if(codec==="VP8 " && bytes.length>=30){
+    if(bytes[23]!==0x9d || bytes[24]!==0x01 || bytes[25]!==0x2a)
+      throw new HttpError(400,"image_format","بيانات WebP غير صالحة");
+    width=bytes.readUInt16LE(26)&0x3fff;
+    height=bytes.readUInt16LE(28)&0x3fff;
+  }else if(codec==="VP8X" && bytes.length>=30){
+    width=1+bytes[24]+bytes[25]*256+bytes[26]*65536;
+    height=1+bytes[27]+bytes[28]*256+bytes[29]*65536;
+  }else if(codec==="VP8L" && bytes.length>=25 && bytes[20]===0x2f){
+    const bits=bytes.readUInt32LE(21);
+    width=1+(bits&0x3fff);
+    height=1+((bits>>>14)&0x3fff);
+  }
+  if(width!==512||height!==512)
+    throw new HttpError(400,"image_dimensions","يجب أن تكون الصورة مربعة بقياس 512 × 512");
+  return bytes;
+}
+
 export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingIsolated = false): Router {
   const viewer = access?.viewer ?? defaultViewer;
   const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
+
+  // Market uploads are isolated from all pharmacy/company images and ledgers.
+  router.post(root+"/cards/:cardId/images",handler(async(req,res)=>{
+    const user=(await viewer(pool,req,true))!;
+    if(!perms(user).canContribute)deny();
+    await enabled(pool,req);
+    const cardId=id(req.params.cardId);
+    const input=parse(marketImageUploadSchema,req.body);
+    const image=validateMarketImage(input.dataUrl);
+    const assetId=randomUUID();
+    await transaction(pool,async db=>{
+      const card=await getCard(db,cardId,user);
+      if(card.archived||card.status!=="published")missing();
+      if(!findType(card.kind).fields.some(f=>f.key==="image"))
+        throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
+      // Limit stored unreviewed uploads by one participant without burdening sales.
+      if(!user.owner){
+        const count=await db.query(
+          "SELECT count(*)::integer AS total FROM market_image_uploads WHERE uploaded_by=$1 AND created_at>now()-interval '24 hours'",
+          [user.id],
+        );
+        if(Number(count.rows[0]?.total??0)>=100)
+          throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
+      }
+      await db.query(
+        "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes) VALUES($1,$2,$3,$4,$5)",
+        [assetId,cardId,user.id,image.length,image],
+      );
+      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.length,format:"webp",side:512});
+    });
+    res.status(201).json({url:marketImagePath(assetId),bytes:image.length,width:512,height:512});
+  }));
+  router.get(root+"/images/:imageId",handler(async(req,res)=>{
+    await enabled(pool,req);
+    const imageId=parse(z.string().uuid(),req.params.imageId);
+    const result=await pool.query(
+      "SELECT image_bytes FROM market_image_uploads WHERE id=$1",
+      [imageId],
+    );
+    if(!result.rowCount)missing();
+    res.set("Cache-Control","private, max-age=86400");
+    res.set("Content-Security-Policy","default-src 'none'; sandbox");
+    res.type("image/webp").send(result.rows[0].image_bytes);
+  }));
   // Market audit stays with market data after isolation; never joins a company ledger.
   router.get(root + "/audit", handler(async (req, res) => {
     const u = (await viewer(pool, req)) ?? actor(req);
