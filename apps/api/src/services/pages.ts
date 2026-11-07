@@ -260,6 +260,7 @@ export async function directoryEntries(
         pageActions.map((action) => [
           action,
           isEnabled &&
+            !!definition.actions[action] &&
             (definition.scope !== "company" ||
               centralPageAllows(centralPolicies, definition.key, action,
                 user.owner, [...userPositions])) &&
