@@ -11,6 +11,7 @@ const cardTargets = new Set([
   "account", "doctor", "saleCustomer", "employee", "user",
   "itemComposition", "itemAgent", "itemShelf", "branch", "location",
   "currency", "exchangeRate", "company", "company_device", "accountLink",
+  "generalTable", "archive",
 ]);
 const ignoredAuditFields = /(?:password|token|secret|credential|csrf|hash|session|api[_-]?key|private[_-]?key|otp|\bpin\b|refresh[_-]?key)/i;
 const auditMetadataFields = new Set([
