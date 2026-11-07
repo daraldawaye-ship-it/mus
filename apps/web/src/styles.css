@@ -6585,6 +6585,19 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-map-row { display:flex; gap:8px; align-items:center; }
 .medicine-market-map-row > .field { min-width:0; flex:1; }
 .medicine-market-lookup { display:grid; gap:10px; }
+
+.medicine-market-prescription-editor { display:grid;gap:12px;min-width:0; }
+.medicine-market-prescription-count { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px; }
+.medicine-market-prescription-count > div { display:flex;align-items:center;flex-wrap:wrap;gap:8px; }
+.medicine-market-prescription-row { padding:10px 12px;border:1px solid var(--border);border-radius:9px;min-width:0; }
+.medicine-market-prescription-row > strong { display:block;margin-bottom:8px; }
+.medicine-market-prescription-list { padding-inline-start:26px;display:grid;gap:8px;list-style:decimal; }
+.medicine-market-prescription-list li { border-bottom:1px solid var(--border);padding:7px 3px; }
+.medicine-market-prescription-list li strong { margin-inline-end:8px; }
+.medicine-market-prescription-image { display:grid;justify-items:start;gap:7px;min-width:0; }
+.medicine-market-prescription-image > img { max-width:100%; }
+.medicine-market-prescription-image > a { font-size:13px;text-decoration:underline; }
+
 .medicine-market-lookup .field input { width:100%; }
 .medicine-market-lookup-results {
   display:grid; max-height:260px; overflow:auto;
