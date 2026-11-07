@@ -21,7 +21,8 @@ export const stagingImportSchema = z.object({
   idempotencyKey: z.string().uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
-export const mcpBodySchemas = { stagingImportSchema };
+const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
+export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema };
 const sourceSchema = z.object({type:z.literal("source"),key:z.string().min(1).max(150),filename:z.string().max(500),driveId:z.string().min(1).max(200),modifiedAt:z.string().max(100),sha256:z.string().regex(/^[a-f0-9]{64}$/),byteSize:z.number().int().min(0).max(100000000),rowCount:z.number().int().min(0).max(500000),metadata:z.record(z.string(),z.unknown())}).strict();
 const rowSchema = z.object({type:z.literal("row"),section:z.string().max(500),position:z.number().int().positive(),payload:z.string().max(4000000)}).strict();
 const chunkSchema = z.object({type:z.literal("chunk"),index:z.number().int().min(0),data:z.string().max(400000).regex(/^[A-Za-z0-9+/]*={0,2}$/)}).strict();
@@ -86,6 +87,70 @@ async function receiveBundle(db:PoolClient, input:z.infer<typeof stagingImportSc
   } finally { await rm(dir,{recursive:true,force:true}); }
 }
 
+
+const stagedMedicineName = (name: string) => name.normalize("NFKC").replace(/\s+/g, " ").trim();
+const stagedMedicineKey = (name: string) => name.normalize("NFKC")
+  .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+  .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي")
+  .replace(/\s+/g, " ").trim().toLowerCase();
+
+/** The whole promotion commits once; failures roll back all cards and the archival. */
+async function promoteStagedMedicines(pool: Pool, sourceId: number, runId: string, actorId: number, actorName: string) {
+  const db = await pool.connect();
+  let inTransaction = false;
+  try {
+    await db.query("BEGIN"); inTransaction = true;
+    await db.query("SET LOCAL statement_timeout='180s'");
+    await db.query("SELECT pg_advisory_xact_lock(714390218)");
+    const result = await db.query<{position: number; name: string | null}>(
+      "SELECT position,(SELECT c->>'value' FROM jsonb_array_elements(payload->'cells') AS c WHERE c->>'column'='1' LIMIT 1) AS name FROM market_import_rows WHERE source_id=$1 AND section='ورقة1' ORDER BY position",
+      [sourceId],
+    );
+    const unique = new Map<string, {name:string; normalized:string; position:number; idempotency_key:string}>();
+    let skipped = 0, repeatedSource = 0, arabicNames = 0;
+    for (const row of result.rows) {
+      const name = typeof row.name === "string" ? stagedMedicineName(row.name) : "";
+      const normalized = stagedMedicineKey(name);
+      if (row.position === 1 || !name || name.length > 300 || name.includes("\u0000") || !normalized || normalized.length > 300) { skipped++; continue; }
+      if (unique.has(normalized)) { repeatedSource++; continue; }
+      if (/[\u0600-\u06FF]/.test(name)) arabicNames++;
+      unique.set(normalized, {name, normalized, position:row.position, idempotency_key:randomUUID()});
+    }
+    let inserted = 0;
+    const prepared = [...unique.values()];
+    for (let start = 0; start < prepared.length; start += 2500) {
+      const chunk = prepared.slice(start, start + 2500);
+      const added = await db.query(
+        "INSERT INTO medicine_market_cards(kind,name,normalized_name,data,status,created_by,idempotency_key) " +
+        "SELECT 'medicine',x.name,x.normalized,jsonb_build_object('englishName',x.name,'importSourceId',$3::bigint,'importSourcePosition',x.position)," +
+        "'published',$2::integer,x.idempotency_key::uuid " +
+        "FROM jsonb_to_recordset($1::jsonb) AS x(name text,normalized text,position integer,idempotency_key text) " +
+        "ON CONFLICT DO NOTHING RETURNING id",
+        [JSON.stringify(chunk),actorId,sourceId],
+      );
+      inserted += added.rowCount ?? 0;
+    }
+    const archived = await db.query(
+      "UPDATE medicine_market_cards SET archived=true,revision=revision+1,updated_at=now() WHERE id=815 AND kind='medicine' AND NOT archived RETURNING id",
+    );
+    const duplicates = repeatedSource + prepared.length - inserted;
+    await db.query(
+      "UPDATE market_card_import_runs SET status='complete',source_rows=$2,inserted=$3,duplicates=$4,skipped=$5,arabic_names=$6,archived_existing=$7,error_code=NULL,updated_at=now() WHERE id=$1",
+      [runId,result.rows.length,inserted,duplicates,skipped,arabicNames,archived.rowCount ?? 0],
+    );
+    await db.query(
+      "INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value) " +
+      "VALUES($1,$2,'public',NULL,'medicine-market.bulk_import_ibn_hayyan','medicine-market',NULL,NULL,$3::jsonb)",
+      [actorId,actorName,JSON.stringify({sourceId,runId,sourceRows:result.rows.length,inserted,duplicates,skipped,arabicNames,archivedExisting:archived.rowCount ?? 0})],
+    );
+    await db.query("COMMIT"); inTransaction = false;
+  } catch (error) {
+    if (inTransaction) { try { await db.query("ROLLBACK"); } catch { /* connection may be gone */ } }
+    try { await pool.query("UPDATE market_card_import_runs SET status='failed',error_code='promotion_failed',updated_at=now() WHERE id=$1 AND status='running'",[runId]); } catch { /* logged below */ }
+    console.error("MARKET_STAGING_PROMOTION_FAILED", error && typeof error === "object" && "code" in error ? String(error.code) : "internal");
+  } finally { db.release(); }
+}
+
 export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boolean) {
   const router=Router();
   const authorize=async(req:Parameters<MarketAccess["viewer"]>[1])=>{
@@ -114,6 +179,35 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const jobs=await pool.query("SELECT id,bundle_sha256,status,error_code,created_at,updated_at FROM market_import_jobs ORDER BY created_at DESC LIMIT 100");
     const sources=await pool.query("SELECT s.*, (SELECT count(*)::int FROM market_import_rows r WHERE r.source_id=s.id) AS actual_rows,(SELECT coalesce(sum(octet_length(c.data)),0)::text FROM market_import_chunks c WHERE c.source_id=s.id) AS actual_bytes FROM market_import_sources s ORDER BY id LIMIT 1000");
     res.json({jobs:jobs.rows,sources:sources.rows});
+  }));
+  router.post("/medicine-market/staging/:sourceId/promote-medicines",handler(async(req,res)=>{
+    const u=await access.viewer(pool,req,true);
+    if(!u?.owner || u.suspended || u.archived)deny();
+    await access.enabled(pool,req);
+    if(!isolated)throw new HttpError(503,"market_isolation_required","الترحيل متاح في قاعدة السوق المنفصلة فقط");
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const input=parse(bulkMedicinePromotionSchema,req.body);
+    const source=await pool.query(
+      "SELECT s.id,s.filename,s.row_count,j.status FROM market_import_sources s JOIN market_import_jobs j ON j.id=s.job_id WHERE s.id=$1",
+      [sourceId],
+    );
+    if(!source.rowCount || source.rows[0].status!=="complete" || !String(source.rows[0].filename).includes("ابن حيان"))
+      throw new HttpError(400,"invalid_source","يجب اختيار مصدر ابن حيان المكتمل في جدول السوق المؤقت");
+    const prior=await pool.query("SELECT * FROM market_card_import_runs WHERE source_id=$1",[sourceId]);
+    if(prior.rowCount){res.status(prior.rows[0].status==="running"?202:200).json(prior.rows[0]);return;}
+    await pool.query(
+      "INSERT INTO market_card_import_runs(id,source_id,actor_id,status) VALUES($1,$2,$3,'running')",
+      [input.idempotencyKey,sourceId,u.id],
+    );
+    void promoteStagedMedicines(pool,sourceId,input.idempotencyKey,u.id,u.displayName);
+    res.status(202).json({id:input.idempotencyKey,sourceId,status:"running"});
+  }));
+  router.get("/medicine-market/staging/:sourceId/promote-status",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const run=await pool.query("SELECT * FROM market_card_import_runs WHERE source_id=$1",[sourceId]);
+    if(!run.rowCount)missing();
+    res.json(run.rows[0]);
   }));
   router.get("/medicine-market/staging/:sourceId/rows",handler(async(req,res)=>{
     await authorize(req);
