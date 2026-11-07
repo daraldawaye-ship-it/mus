@@ -62,7 +62,8 @@ export async function listPouchReceipts(
       AND (o.kind='pouch' OR (o.kind='close' AND o.amount<>0))
     UNION ALL
     SELECT 'custody'::text AS "sourceKind",t.id,'custody'::text AS kind,
-      'العهدة الإدارية'::text AS "employeeName",t.amount::text AS amount,
+      COALESCE(NULLIF(sender.name,''),NULLIF(sender_user.display_name,''),'مستخدم النظام')::text
+        AS "employeeName",t.amount::text AS amount,
       t.notes,t.created_at AS "createdAt",
       t.financial_document_id AS "sourceDocumentId",
       a.name AS "pouchName",
@@ -75,6 +76,12 @@ export async function listPouchReceipts(
       r.notes AS "receiptNotes",r.created_at AS "receivedAt"
     FROM administrative_custody_transfers t
     JOIN accounts a ON a.company_id=t.company_id AND a.id=t.pouch_account_id
+    JOIN users sender_user ON sender_user.id=t.created_by
+    LEFT JOIN LATERAL (
+      SELECT e.name FROM employees e
+      WHERE e.company_id=t.company_id AND e.user_id=t.created_by
+      ORDER BY e.active DESC,e.id DESC LIMIT 1
+    ) sender ON TRUE
     LEFT JOIN administrative_custody_receipts r ON r.company_id=t.company_id
       AND r.source_transfer_id=t.id
     WHERE t.company_id=$1
