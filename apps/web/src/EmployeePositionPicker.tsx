@@ -6,11 +6,11 @@ import { Field } from "./ui";
 
 /** Adds positions by selection; no rows of independent yes/no toggles. */
 export function EmployeePositionPicker({
- value,onChange,disabled=false,label="صفات الموظف",
+ value,onChange,disabled=false,label="صفات الموظف",allowBaseRemoval=false,
 }:{
  value:EmployeePosition[];
  onChange:(value:EmployeePosition[])=>void;
- disabled?:boolean;label?:string;
+ disabled?:boolean;label?:string;allowBaseRemoval?:boolean;
 }) {
  const [query,setQuery]=useState("");
  const choices=employeePositions.filter(p=>
@@ -18,9 +18,9 @@ export function EmployeePositionPicker({
  return <div className="employee-position-picker">
    <strong>{label}</strong>
    <div className="employee-position-chips">
-     {value.map(role=><button type="button" key={role} disabled={disabled || role==="employee"}
+     {value.map(role=><button type="button" key={role} disabled={disabled || (role==="employee" && !allowBaseRemoval)}
        className="button button-secondary button-compact"
-       title={role==="employee" ? "الصفة الأساسية لجميع الموظفين" : `إزالة صفة ${employeePositionLabels[role]}`}
+       title={role==="employee" && !allowBaseRemoval ? "الصفة الأساسية لجميع الموظفين" : `إزالة صفة ${employeePositionLabels[role]}`}
        onClick={()=>onChange(value.filter(x=>x!==role))}>
        {employeePositionLabels[role]} ×
      </button>)}
