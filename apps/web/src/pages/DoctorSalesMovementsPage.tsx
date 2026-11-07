@@ -5,7 +5,7 @@ import type { CompanyContext } from "../../../../packages/contracts/src/index.ts
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { errorMessage } from "../phase2";
-import { formatMoney } from "../format-money";
+import { formatWholeMoney } from "../format-money";
 import { adenInvoiceToday } from "../invoice-save-date";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -25,8 +25,13 @@ interface MedicalSale {
 interface Result {
   items: MedicalSale[];
   total: number;
+  totals: Array<{ currencyCode: string; total: string; count: number }>;
   page: number;
   pageSize: number;
+}
+interface MainName {
+  name: string;
+  kinds: Array<"doctor" | "nurse">;
 }
 
 const adenTime = new Intl.DateTimeFormat("en-GB", {
@@ -45,18 +50,30 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   const canView = !!access?.enabled && !!access.actionAccess.view;
   const [params, setParams] = useSearchParams();
   const today = adenInvoiceToday();
-  const from = params.get("dateFrom") ?? today;
+  const minDate = adenInvoiceToday(new Date(Date.now() - 10 * 86_400_000));
+  const from = params.get("dateFrom") ?? minDate;
   const to = params.get("dateTo") ?? today;
   const q = params.get("q") ?? "";
-  const [search, setSearch] = useState(q);
+  const mainName = params.get("mainName") ?? "";
+  const [search, setSearch] = useState(mainName || q);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const rawPage = Number(params.get("page") ?? "1");
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const rawSize = Number(params.get("pageSize") ?? "50");
   const pageSize = [20, 50, 100].includes(rawSize) ? rawSize : 50;
-  const invalid = !from || !to || from > to;
+  const invalid = !from || !to || from > to || from < minDate ||
+    to < minDate || from > today || to > today;
   const filters = new URLSearchParams({
-    dateFrom: from, dateTo: to, q,
+    dateFrom: from, dateTo: to, q, mainName,
     page: String(page), pageSize: String(pageSize),
+  });
+  const choices = useQuery({
+    queryKey: ["doctor-main-names", user?.id, companyId, search.trim()],
+    queryFn: ({ signal }) => api<{ items: MainName[] }>(
+      `/companies/${companyId}/doctor-sales-movements/main-names?q=${encodeURIComponent(search.trim())}`,
+      { signal }),
+    enabled: !!user && canView && suggestionsOpen,
+    staleTime: 30_000,
   });
   const results = useQuery({
     queryKey: ["doctor-sales-movements", user?.id, companyId, filters.toString()],
@@ -76,7 +93,25 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
   }
   function searchMainName(event: FormEvent) {
     event.preventDefault();
-    change("q", search.trim());
+    setSuggestionsOpen(false);
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.delete("mainName");
+      if (search.trim()) next.set("q", search.trim()); else next.delete("q");
+      next.delete("page");
+      return next;
+    });
+  }
+  function selectMainName(name: string) {
+    setSearch(name);
+    setSuggestionsOpen(false);
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set("mainName", name);
+      next.delete("q");
+      next.delete("page");
+      return next;
+    });
   }
   return (
     <>
@@ -87,14 +122,43 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
       />
       <Card title="البحث والفترة">
         <div className="form-grid">
-          <Field label="من تاريخ" type="date" value={from}
+          <Field label="من تاريخ" type="date" value={from} min={minDate} max={today}
             onChange={event => change("dateFrom", event.target.value)} />
-          <Field label="إلى تاريخ" type="date" value={to}
+          <Field label="إلى تاريخ" type="date" value={to} min={minDate} max={today}
             onChange={event => change("dateTo", event.target.value)} />
-          <form className="form-actions" onSubmit={searchMainName}>
-            <Field label="البحث باسم الطبيب أو الجهة الرئيسي" type="search"
-              value={search} onChange={event => setSearch(event.target.value)}
-              placeholder="يشمل جميع الكروت الفرعية" />
+          <form className="form-actions" onSubmit={searchMainName}
+            onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget))
+                setSuggestionsOpen(false);
+            }}>
+            <div className="doctor-movements-suggest">
+              <Field label="بحث باسم الطبيب أو الجهة الرئيسي" type="search"
+                value={search} autoComplete="off"
+                onFocus={() => setSuggestionsOpen(true)}
+                onChange={event => {
+                  setSearch(event.target.value);
+                  setSuggestionsOpen(true);
+                }}
+                placeholder="اختر الاسم الرئيسي من النتائج"
+                aria-expanded={suggestionsOpen} aria-controls="doctor-main-name-choices"
+              />
+              {suggestionsOpen && (
+                <div className="invoice-doctor-options" id="doctor-main-name-choices" role="listbox">
+                  {choices.isFetching && <small>جارٍ البحث عن الأسماء الرئيسية…</small>}
+                  {choices.isError && <small>تعذر تحميل الأسماء؛ يمكنك البحث بالنص.</small>}
+                  {choices.data?.items.map(choice => (
+                    <button type="button" key={choice.name}
+                      role="option" aria-selected={mainName === choice.name}
+                      onClick={() => selectMainName(choice.name)}>
+                      <span>{choice.name}</span>
+                      <small>{choice.kinds.includes("doctor") && choice.kinds.includes("nurse")
+                        ? "طبيب / ممرض" : choice.kinds.includes("doctor") ? "طبيب" : "ممرض"}</small>
+                    </button>
+                  ))}
+                  {choices.data?.items.length === 0 && <small>لا توجد أسماء رئيسية مطابقة.</small>}
+                </div>
+              )}
+            </div>
             <Button type="submit">بحث</Button>
           </form>
           <Select label="عدد السجلات في الصفحة" value={String(pageSize)}
@@ -109,6 +173,16 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
             onClick={() => {
               setParams(previous => {
                 const next = new URLSearchParams(previous);
+                next.set("dateFrom", minDate);
+                next.set("dateTo", today);
+                next.delete("page");
+                return next;
+              });
+            }}>آخر 10 أيام</Button>
+          <Button size="compact" variant="secondary"
+            onClick={() => {
+              setParams(previous => {
+                const next = new URLSearchParams(previous);
                 next.set("dateFrom", today);
                 next.set("dateTo", today);
                 next.delete("page");
@@ -116,7 +190,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
               });
             }}>فواتير اليوم</Button>
         </div>
-        {invalid && <Notice tone="warning">تاريخ البداية يجب ألا يتجاوز تاريخ النهاية.</Notice>}
+        {invalid && <Notice tone="warning">يمكن اختيار التواريخ من {minDate} إلى {today} فقط، ويجب ألا يتجاوز تاريخ البداية تاريخ النهاية.</Notice>}
       </Card>
       {directory.isPending && <Notice>جارٍ التحقق من الصلاحيات…</Notice>}
       {!directory.isPending && !canView &&
@@ -127,6 +201,18 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
           {results.isPending && <Notice>جارٍ تحميل الفواتير…</Notice>}
           {records && (
             <>
+              {(mainName || q) && (
+                <div className="doctor-movements-summary" role="status">
+                  <strong>{mainName || q} — إجمالي صافي الفواتير المطابقة:</strong>
+                  {records.totals.length ? records.totals.map(total => (
+                    <span key={total.currencyCode}>
+                      <bdi className="financial-number">{formatWholeMoney(total.total)}</bdi>
+                      {records.totals.length > 1 ? ` (${total.currencyCode})` : ""}
+                    </span>
+                  )) : <span>0</span>}
+                  <span>عدد الفواتير: {records.total}</span>
+                </div>
+              )}
               <div className="table-scroll">
                 <table>
                   <thead>
@@ -143,7 +229,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                     {records.items.map(row => (
                       <tr key={row.id}>
                         <td><Link to={`/companies/${companyId}/invoices/${row.id}`}>فتح</Link></td>
-                        <td><bdi className="financial-number">{formatMoney(row.total)}</bdi></td>
+                        <td><bdi className="financial-number">{formatWholeMoney(row.total)}</bdi></td>
                         <td>{row.accountName || "—"}</td>
                         <td>
                           <span dir="ltr">{row.documentDate} {invoiceTime(row.createdAt)}</span>
