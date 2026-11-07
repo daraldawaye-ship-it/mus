@@ -6591,6 +6591,19 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-prescription-count > div { display:flex;align-items:center;flex-wrap:wrap;gap:8px; }
 .medicine-market-prescription-row { padding:10px 12px;border:1px solid var(--border);border-radius:9px;min-width:0; }
 .medicine-market-prescription-row > strong { display:block;margin-bottom:8px; }
+
+.medicine-market-prescription-row-heading {display:flex;align-items:center;justify-content:space-between;
+  gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.medicine-market-prescription-kind-switch {display:inline-flex;direction:rtl;border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;max-width:100%;}
+.medicine-market-prescription-kind-switch button {font:inherit;font-size:13px;cursor:pointer;
+  background:transparent;color:var(--text);border:0;min-width:77px;padding:6px 11px;}
+.medicine-market-prescription-kind-switch button + button {border-inline-start:1px solid var(--border);}
+.medicine-market-prescription-kind-switch button.is-active {background:var(--soft);font-weight:700;
+  box-shadow:inset 0 0 0 1px var(--border);}
+.medicine-market-prescription-kind-switch button:disabled {opacity:.55;cursor:not-allowed;}
+.medicine-market-prescription-line-kind {color:var(--muted);font-size:12px;}
+
 .medicine-market-prescription-list { padding-inline-start:26px;display:grid;gap:8px;list-style:decimal; }
 .medicine-market-prescription-list li { border-bottom:1px solid var(--border);padding:7px 3px; }
 .medicine-market-prescription-list li strong { margin-inline-end:8px; }
