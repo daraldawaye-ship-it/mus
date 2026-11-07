@@ -13,6 +13,7 @@ const signedAmount = z.string().trim()
     "أدخل المبلغ الفعلي بالريال اليمني حتى منزلتين عشريتين");
 const common = {
   sourceOperationId: z.number().int().positive(),
+  sourceKind: z.enum(["employee", "custody"]).optional(),
   notes: z.string().trim().max(1000),
   idempotencyKey: z.string().uuid(),
 };
@@ -95,12 +96,15 @@ export async function receivePouchMovement(
   // Company-level FOR UPDATE lock from mutateMaster serializes submission.
   // Repeated requests with the identical UUID return the same posted record.
   const payload=JSON.stringify(input);
+  const custodySource = input.sourceKind === "custody";
+  const receiptTable = custodySource ? "administrative_custody_receipts" : "employee_pouch_receipts";
+  const sourceColumn = custodySource ? "source_transfer_id" : "source_operation_id";
   const retry=await client.query(
-    `SELECT id,source_operation_id AS "sourceId",financial_document_id AS "documentId",
+    `SELECT id,${sourceColumn} AS "sourceId",financial_document_id AS "documentId",
         voucher_document_id AS "voucherDocumentId",
         expected_amount::text AS expected,received_amount::text AS received,
         difference_amount::text AS difference,request_payload=$3::jsonb AS same
-      FROM employee_pouch_receipts
+      FROM ${receiptTable}
       WHERE company_id=$1 AND idempotency_key=$2`,
     [companyId,input.idempotencyKey,payload],
   );
@@ -115,21 +119,27 @@ export async function receivePouchMovement(
       difference:moneyString(moneyUnits(row.difference))};
   }
   const origin=(await client.query(
-    `SELECT o.id,o.kind,o.employee_id,o.amount::text AS amount,
-       o.destination_account_id AS pouch_id,o.financial_document_id
-     FROM employee_cashbox_operations o
-     WHERE o.company_id=$1 AND o.id=$2 FOR UPDATE`,
+    custodySource
+      ? `SELECT t.id,'custody'::text AS kind,NULL::integer AS employee_id,
+           t.amount::text AS amount,t.pouch_account_id AS pouch_id,
+           t.financial_document_id
+         FROM administrative_custody_transfers t
+         WHERE t.company_id=$1 AND t.id=$2 FOR UPDATE`
+      : `SELECT o.id,o.kind,o.employee_id,o.amount::text AS amount,
+           o.destination_account_id AS pouch_id,o.financial_document_id
+         FROM employee_cashbox_operations o
+         WHERE o.company_id=$1 AND o.id=$2 FOR UPDATE`,
     [companyId,input.sourceOperationId],
   )).rows[0];
-  if (!origin || !["pouch","close"].includes(origin.kind) ||
+  if (!origin || !["pouch","close","custody"].includes(origin.kind) ||
     origin.amount==="0.000000" || origin.amount==="0")
     conflict("pouch_movement_missing","حركة الحافظة غير موجودة أو لا تحتوي على مبلغ قابل للاستلام");
   if(input.mode==="exact" && input.voucher && origin.kind==="close")
     throw new HttpError(400,"close_voucher_not_allowed",
       "إغلاق الصندوق يُستلم كما هو دون سند مرافق");
   const already=await client.query(
-    `SELECT id FROM employee_pouch_receipts
-       WHERE company_id=$1 AND source_operation_id=$2`,
+    `SELECT id FROM ${receiptTable}
+       WHERE company_id=$1 AND ${sourceColumn}=$2`,
     [companyId,input.sourceOperationId],
   );
   if (already.rowCount) conflict("pouch_already_received",
@@ -192,7 +202,7 @@ export async function receivePouchMovement(
   )).rows[0];
   if(!currency?.active || currency.code!=="YER")
     conflict("receipt_currency","استلام الحوافظ متاح للشركات ذات العملة الأساسية ريال يمني فقط");
-  const memo=`استلام حركة الحافظة #${origin.id} — ${receiver.name} — ${input.mode==="exact"?"مطابق":"غير مطابق"}${input.notes?" — "+input.notes:""}`;
+  const memo=`استلام ${custodySource?"ترحيل العهدة":"حركة الحافظة"} #${origin.id} — ${receiver.name} — ${input.mode==="exact"?"مطابق":"غير مطابق"}${input.notes?" — "+input.notes:""}`;
   // Debit receiver cash at actual amount; credit source pouch at expected
   // movement amount; debit variance for the expected-minus-actual difference.
   // This holds even when source movement is negative or actual count is zero.
@@ -209,13 +219,28 @@ export async function receivePouchMovement(
   });
   const voucherDocumentId=input.mode==="exact" && input.voucher
     ? await postReceiptExtraVoucher(client,companyId,user,{
-        sourceId:origin.id,sourceKind:"pouch",actualAmount:actual,
+        sourceId:origin.id,sourceKind:custodySource?"custody":"pouch",actualAmount:actual,
         cashAccountId:receiver.cash_id,currencyId:currency.id,documentDate:date,
         voucher:input.voucher,
       })
     : null;
-  const saved=await client.query(
-    `INSERT INTO employee_pouch_receipts(
+  const saved = custodySource
+    ? await client.query(
+        `INSERT INTO administrative_custody_receipts(
+           company_id,source_transfer_id,receiver_employee_id,receiver_employee_name,
+           mode,expected_amount,received_amount,difference_amount,
+           cash_account_id,pouch_account_id,variance_account_id,
+           financial_document_id,voucher_document_id,notes,idempotency_key,
+           request_payload,created_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         RETURNING id`,
+        [companyId,origin.id,receiver.id,receiver.name,input.mode,
+          moneyString(original),moneyString(actual),moneyString(difference),
+          receiver.cash_id,pouch.id,varianceAccount,documentId,voucherDocumentId,input.notes,
+          input.idempotencyKey,payload,user.id],
+      )
+    : await client.query(
+      `INSERT INTO employee_pouch_receipts(
        company_id,source_operation_id,source_employee_id,
        receiver_employee_id,receiver_employee_name,mode,
        expected_amount,received_amount,difference_amount,
@@ -223,14 +248,14 @@ export async function receivePouchMovement(
        financial_document_id,voucher_document_id,notes,idempotency_key,request_payload,created_by)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING id`,
-    [companyId,origin.id,origin.employee_id,receiver.id,receiver.name,input.mode,
-      moneyString(original),moneyString(actual),moneyString(difference),
-      receiver.cash_id,pouch.id,varianceAccount,documentId,voucherDocumentId,input.notes,
-      input.idempotencyKey,payload,user.id],
-  );
+      [companyId,origin.id,origin.employee_id,receiver.id,receiver.name,input.mode,
+        moneyString(original),moneyString(actual),moneyString(difference),
+        receiver.cash_id,pouch.id,varianceAccount,documentId,voucherDocumentId,input.notes,
+        input.idempotencyKey,payload,user.id],
+    );
   const receiptId=saved.rows[0].id as number;
-  await audit(client,user,"pouch.received","pouch-receipt",receiptId,null,
-    {sourceOperationId:origin.id,sourceDocumentId:origin.financial_document_id,
+  await audit(client,user,"pouch.received",custodySource?"administrative-custody-receipt":"pouch-receipt",receiptId,null,
+    {sourceKind:custodySource?"custody":"employee",sourceOperationId:origin.id,sourceDocumentId:origin.financial_document_id,
       employeeId:receiver.id,mode:input.mode,
       expected:moneyString(original),received:moneyString(actual),
       difference:moneyString(difference),
