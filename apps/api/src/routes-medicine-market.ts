@@ -494,6 +494,7 @@ const reviewContributionSchema = z
     decision: z.enum(["approve", "reject"]),
     reason: z.string().trim().max(1000).default(""),
     prescriptionImageReviewed: z.boolean().optional(),
+    reviewedImageUrl: z.string().max(120).optional(),
   })
   .strict();
 
@@ -959,7 +960,19 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
             ],
           )
         ).rows[0];
-        if (published) await applyField(db, card, field, value);
+        if(published) {
+          await applyField(db,card,field,value);
+          if(pendingPrescriptionDraft && field.key==="image" &&
+             typeof previous==="string" && previous.startsWith("/api/medicine-market/images/")){
+            // Once a pending prescription is corrected, remove the replaced
+            // original image bytes so unredacted copies are not retained.
+            const oldId=previous.split("/").at(-1);
+            await db.query(
+              "DELETE FROM market_image_uploads WHERE id=$1 AND card_id=$2",
+              [oldId,card.id],
+            );
+          }
+        }
         const protectedValue = field.visibility !== "public";
         await auditMarket(
           db,
@@ -1076,6 +1089,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           const photo=(card.data as Record<string,unknown>)?.image;
           if(typeof photo!=="string" || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(photo))
             throw new HttpError(400,"prescription_image_missing","صورة الوصفة غير محفوظة");
+          if(input.reviewedImageUrl!==photo)
+            throw new HttpError(409,"prescription_image_changed","تغيرت الصورة منذ مراجعتها؛ افتح الصورة الحالية وراجعها مجددًا");
           const stored=await db.query(
             "SELECT 1 FROM market_image_uploads WHERE id=$1 AND card_id=$2",
             [photo.split("/").at(-1),card.id],
