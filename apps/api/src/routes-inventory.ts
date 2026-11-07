@@ -103,6 +103,18 @@ const movementColumns = {
 export function inventoryRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  // The stock-operation form only needs to know whether settings exist.
+  // Keep the full inventory-settings document restricted to its own page.
+  router.get(
+    `${base}/stock-operations/readiness`,
+    handler(async (req, res) => {
+      res.json(
+        await readInventory(pool, req, async (client, companyId) => ({
+          configured: Boolean(await getInventorySettings(client, companyId)),
+        })),
+      );
+    }),
+  );
   router.get(
     `${base}/stock-operations/:id`,
     handler(async (req, res) => {
