@@ -1,3 +1,12 @@
+/* Keep the invoice-open column compact on the desktop table. */
+.doctor-movements-desktop-table table > :is(thead, tbody) > tr > :first-child {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+
 /* Medical sales: on phones each invoice occupies two readable detail bands,
    without the wide desktop table or horizontal scrolling. */
 .doctor-movements-mobile-list { display: none; }
