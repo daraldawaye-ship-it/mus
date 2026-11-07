@@ -796,10 +796,10 @@ function SettingsLoader({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [message, setMessage] = useState("");
   const query = useQuery({
-    queryKey: ["inventory", user?.id, companyId, "stock-operation-readiness"],
+    queryKey: ["inventory", user?.id, companyId, "settings"],
     queryFn: ({ signal }) =>
-      api<{ configured: boolean }>(
-        `/companies/${companyId}/stock-operations/readiness`,
+      api<{ settings: InventorySettings | null }>(
+        `/companies/${companyId}/inventory-settings`,
         { signal },
       ),
   });
@@ -900,8 +900,8 @@ function SettingsEditor({
     setSaving(true);
     setError("");
     try {
-      const result = await api<{ configured: boolean }>(
-        `/companies/${companyId}/stock-operations/readiness`,
+      const result = await api<{ settings: InventorySettings | null }>(
+        `/companies/${companyId}/inventory-settings`,
         { signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
