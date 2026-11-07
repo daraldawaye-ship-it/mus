@@ -368,6 +368,48 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       <Card title="الحضور والانصراف">
         <AttendancePunchControls companyId={company.id} compact />
       </Card>
+      <Card title="إدارة الشركة">
+        <div className="form-actions">
+          {directory.data?.some(entry =>
+            entry.key === "company.central-access" &&
+            entry.visible && entry.enabled && entry.actionAccess.view
+          ) && (
+            <Link className="button button-secondary"
+              to={`/companies/${company.id}/central-access`}>
+              مركز الصلاحيات وخيارات النظام
+            </Link>
+          )}
+          <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
+          {moduleAccess(context, "locations") && <>
+            <Link className="button button-secondary" to={`/companies/${company.id}/branches`}>الفروع</Link>
+            <Link className="button button-secondary" to={`/companies/${company.id}/locations`}>المعارض والمخازن</Link>
+          </>}
+          {(general || permissions.includes("employees.view")) && (
+            <Link
+              className="button secondary"
+              to={`/companies/${company.id}/employees`}
+            >
+              الموظفون
+            </Link>
+          )}
+          {(general || permissions.includes("company.edit")) && (
+            <Link
+              className="button secondary"
+              to={`/companies/${company.id}/settings`}
+            >
+              بيانات الشركة
+            </Link>
+          )}
+          {(general || permissions.includes("audit.view")) && (
+            <Link
+              className="button secondary"
+              to={`/companies/${company.id}/audit`}
+            >
+              سجل الشركة
+            </Link>
+          )}
+        </div>
+      </Card>
       <div className="card-grid">
         <Card title="بيانات الشركة">
           <dl className="details-list">
@@ -415,39 +457,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
           )}
         </Card>
       </div>
-      <Card title="إدارة الشركة">
-        <div className="form-actions">
-          <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
-          {moduleAccess(context, "locations") && <>
-            <Link className="button button-secondary" to={`/companies/${company.id}/branches`}>الفروع</Link>
-            <Link className="button button-secondary" to={`/companies/${company.id}/locations`}>المعارض والمخازن</Link>
-          </>}
-          {(general || permissions.includes("employees.view")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/employees`}
-            >
-              الموظفون
-            </Link>
-          )}
-          {(general || permissions.includes("company.edit")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/settings`}
-            >
-              بيانات الشركة
-            </Link>
-          )}
-          {(general || permissions.includes("audit.view")) && (
-            <Link
-              className="button secondary"
-              to={`/companies/${company.id}/audit`}
-            >
-              سجل الشركة
-            </Link>
-          )}
-        </div>
-      </Card>
+
     </>
   );
 }
