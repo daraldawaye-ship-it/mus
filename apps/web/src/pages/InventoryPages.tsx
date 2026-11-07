@@ -796,10 +796,10 @@ function SettingsLoader({ context }: { context: CompanyContext }) {
   } | null>(null);
   const [message, setMessage] = useState("");
   const query = useQuery({
-    queryKey: ["inventory", user?.id, companyId, "settings"],
+    queryKey: ["inventory", user?.id, companyId, "stock-operation-readiness"],
     queryFn: ({ signal }) =>
-      api<{ settings: InventorySettings | null }>(
-        `/companies/${companyId}/inventory-settings`,
+      api<{ configured: boolean }>(
+        `/companies/${companyId}/stock-operations/readiness`,
         { signal },
       ),
   });
@@ -900,8 +900,8 @@ function SettingsEditor({
     setSaving(true);
     setError("");
     try {
-      const result = await api<{ settings: InventorySettings | null }>(
-        `/companies/${companyId}/inventory-settings`,
+      const result = await api<{ configured: boolean }>(
+        `/companies/${companyId}/stock-operations/readiness`,
         { signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
@@ -1283,10 +1283,10 @@ function OperationEditor({
   const disabled = saving || unknown || !!result || !allowed;
   const navigation = useInventoryNavigation(dirty, saving, unknown);
   const settings = useQuery({
-    queryKey: ["inventory", user?.id, companyId, "settings"],
+    queryKey: ["inventory", user?.id, companyId, "stock-operation-readiness"],
     queryFn: ({ signal }) =>
-      api<{ settings: InventorySettings | null }>(
-        `/companies/${companyId}/inventory-settings`,
+      api<{ configured: boolean }>(
+        `/companies/${companyId}/stock-operations/readiness`,
         { signal },
       ),
   });
@@ -1582,7 +1582,7 @@ function OperationEditor({
           </Button>
         </Notice>
       )}
-      {settings.data && !settings.data.settings && (
+      {settings.data && !settings.data.configured && (
         <Notice tone="warning">
           أكمل{" "}
           <Link to={`/companies/${companyId}/inventory-settings`}>
@@ -1894,7 +1894,7 @@ function OperationEditor({
                   saving ||
                   !allowed ||
                   (!unknown &&
-                    (!settings.data?.settings ||
+                    (!settings.data?.configured ||
                       (mode === "adjustment" &&
                         (!targetReady ||
                           batch.isFetching ||
@@ -1912,7 +1912,7 @@ function OperationEditor({
               </Button>
               {mode === "adjustment" && (
                 <Button type="button" variant="secondary"
-                  disabled={saving || unknown || !allowed || !settings.data?.settings ||
+                  disabled={saving || unknown || !allowed || !settings.data?.configured ||
                     !targetReady || batch.isFetching || !!batch.error || batchQuantity === null}
                   onClick={() => {
                     if (!item || !fromLocation) return;
