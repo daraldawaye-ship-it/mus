@@ -18,6 +18,7 @@ import {
   requestPermissionTargets,
   requirementForAction,
 } from "../services/permission-rules.ts";
+import { centralPagePolicies, centralPageAllows } from "../services/central-access-authorization.ts";
 
 export function ownerOnly(actor: User): void {
   if (!actor.owner) deny("هذا الإجراء لمالك المنصة فقط");
@@ -116,6 +117,27 @@ export async function companyAccess(
         companyId,
         permission,
       );
+  // Page visibility is centrally assigned by employee positions, not by
+  // legacy permission arrays. Reject direct GET API calls too, including a
+  // manually pasted URL, while preserving invoice POST/post/voucher actions.
+  const request = permissionRequest.getStore();
+  if (!actor.owner && request && (request.method === "GET" || request.method === "HEAD")
+      && targets.length) {
+    const pageTargets = [...new Set(targets.flat()
+      .filter(key => key.startsWith("company.") && key.endsWith(":view"))
+      .map(key => key.slice(0, -":view".length)))];
+    if (pageTargets.length) {
+      const policies = await centralPagePolicies(db, companyId,
+        pageTargets.map(key => "page:"+key));
+      const positions: string[] = row?.position_keys ?? [];
+      if (!targets.every(group => group.some(key => {
+        if (!key.endsWith(":view") || !key.startsWith("company.")) return false;
+        return centralPageAllows(policies,
+          key.slice(0, -":view".length), "view", actor.owner, positions);
+      })))
+        deny("هذه الصفحة أو بياناتها غير متاحة لصفات الموظف الحالية.");
+    }
+  }
   if (targets.flat().some((key) => effects.get(key) === "deny"))
     deny("هذا الإجراء ممنوع صراحةً ضمن صلاحيات الشركة.");
   const explicitGrant =
