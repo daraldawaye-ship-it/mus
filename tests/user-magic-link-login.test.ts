@@ -54,6 +54,12 @@ test("quick-login fragment is removed before same-origin JSON redemption", () =>
   assert.match(page,/window\.history\.replaceState\(window\.history\.state, "", "\/quick-login"\)/);
   assert.match(page,/api<SessionResponse>\("\/auth\/login-link\/redeem"/);
   assert.match(page,/acceptRegistration\(session\)/);
+  assert.match(page,/useLocation\(\)/,
+    "The page must handle a new fragment when another link opens on the same route");
+  assert.match(page,/function importPastedLink\(\)/,
+    "A copied complete link must be usable if a messenger drops its fragment");
+  assert.match(page,/parsed\.origin !== window\.location\.origin/,
+    "The pasted link must belong to this site");
   assert.match(page,/const tokenRef = useRef<string \| null>\(null\)/,
     "Bearer token is memory-only after removing the fragment");
   assert.match(page,/async function redeemLink\(\)/,
