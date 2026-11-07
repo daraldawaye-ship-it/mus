@@ -4641,6 +4641,11 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .commerce-print-document .invoice-print-matrix th:first-child {
     text-align: right;
   }
+  /* Sales item names print left-aligned and left-to-right; purchase names stay RTL. */
+  .commerce-print-document .invoice-print-sheet--sale .invoice-print-matrix .invoice-print-item {
+    direction: ltr;
+    text-align: left;
+  }
   .invoice-print-matrix .invoice-print-number,
   .invoice-print-matrix .invoice-print-expiry {
     font-variant-numeric: tabular-nums;
