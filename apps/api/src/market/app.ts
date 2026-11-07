@@ -27,9 +27,9 @@ export function createMarketApp(pool: Pool, secret: string) {
     res.once("finish", release); res.once("close", release); next();
   });
   const smallMarketBody=express.text({type:"application/json",limit:"64kb"});
-  const imageMarketBody=express.text({type:"application/json",limit:"160kb"});
+  const imageMarketBody=express.text({type:"application/json",limit:"768kb"});
   app.use("/api",(req,res,next)=>
-    (req.method==="POST" && /^\/medicine-market\/cards\/[1-9]\d*\/images$/.test(req.path)
+    (req.method==="POST" && (/^\/medicine-market\/cards\/[1-9]\d*\/images$/.test(req.path) || req.path==="/medicine-market/prescriptions")
       ?imageMarketBody:smallMarketBody)(req,res,next));
   app.use("/api", (req, _res, next) => {
     try {
