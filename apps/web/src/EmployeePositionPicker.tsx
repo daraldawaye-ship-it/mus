@@ -4,7 +4,7 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 import { Field } from "./ui";
 
-/** Adds positions by selection; never shows 22 independent yes/no toggles. */
+/** Adds positions by selection; no rows of independent yes/no toggles. */
 export function EmployeePositionPicker({
  value,onChange,disabled=false,label="صفات الموظف",
 }:{
@@ -18,9 +18,9 @@ export function EmployeePositionPicker({
  return <div className="employee-position-picker">
    <strong>{label}</strong>
    <div className="employee-position-chips">
-     {value.map(role=><button type="button" key={role} disabled={disabled}
+     {value.map(role=><button type="button" key={role} disabled={disabled || role==="employee"}
        className="button button-secondary button-compact"
-       title={`إزالة صفة ${employeePositionLabels[role]}`}
+       title={role==="employee" ? "الصفة الأساسية لجميع الموظفين" : `إزالة صفة ${employeePositionLabels[role]}`}
        onClick={()=>onChange(value.filter(x=>x!==role))}>
        {employeePositionLabels[role]} ×
      </button>)}
