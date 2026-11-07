@@ -661,7 +661,8 @@ function FieldValue({
   if (field.key === "image" && typeof value === "string" &&
       (/^https:\/\//i.test(value) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(value)))
     return <div className="medicine-market-prescription-image">
-      <MarketProductImage src={value} alt={cardKind==="prescription"?"صورة الوصفة الطبية":"صورة الصنف"}
+      <MarketProductImage src={value} trimLegacyPadding={cardKind!=="prescription"}
+        alt={cardKind==="prescription"?"صورة الوصفة الطبية":"صورة الصنف"}
         style={{maxWidth:cardKind==="prescription"?"100%":260,maxHeight:cardKind==="prescription"?950:340,
           width:"auto",height:"auto",objectFit:"contain",borderRadius:8}}/>
       {cardKind==="prescription"&&<a href={value} target="_blank" rel="noopener noreferrer">
@@ -1534,6 +1535,7 @@ export function MedicineMarketPage({
                         (/^https:\/\//i.test(image) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(image)) && (
                           <MarketProductImage
                             className="medicine-market-card-image"
+                            trimLegacyPadding={item.kind!=="prescription"}
                             style={{display:"block",maxWidth:"100%",maxHeight:230,width:"auto",height:"auto",aspectRatio:"auto",objectFit:"contain",background:"transparent",marginInline:"auto"}}
                             src={image}
                             alt={item.name}
