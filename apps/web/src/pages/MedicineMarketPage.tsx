@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -130,96 +131,164 @@ function RelationName({
     <span>{label}</span>
   );
 }
+/**
+ * Same typeahead conventions as invoice sales item search:
+ * 3+ characters, short debounce, viewport-safe results, keyboard selection,
+ * no stale suggestions, and paging. The query remains in the isolated market.
+ */
 function RelationPicker({
-  kind,
-  value,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  kind: Kind;
-  value: number | null;
-  onChange: (v: number | null) => void;
-  label: string;
-  disabled?: boolean;
-}) {
-  const { user } = useSession();
-  const fieldId = useId();
-  const container = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState("");
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(query.trim()), 180);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-  useEffect(() => setActive(0), [search,kind]);
-  useEffect(() => {
-    const close = (event:PointerEvent) => {
-      if (container.current && !container.current.contains(event.target as Node)) setOpen(false);
+  kind,value,onChange,label,disabled=false,
+}:{
+  kind:Kind;
+  value:number|null;
+  onChange:(v:number|null)=>void;
+  label:string;
+  disabled?:boolean;
+}){
+  const {user}=useSession();
+  const inputId=useId();
+  const anchor=useRef<HTMLDivElement>(null);
+  const popup=useRef<HTMLDivElement>(null);
+  const [query,setQuery]=useState("");
+  const [search,setSearch]=useState("");
+  const [page,setPage]=useState(1);
+  const [active,setActive]=useState(0);
+  const [open,setOpen]=useState(false);
+  const [placement,setPlacement]=useState({left:8,top:8,width:520,maxHeight:320});
+  const enough=query.trim().length>=3;
+  const expanded=open && !disabled && enough;
+  const current=search===query.trim();
+  useEffect(()=>{
+    if(!open||!enough){setSearch("");return;}
+    const timer=window.setTimeout(()=>{
+      setSearch(query.trim());setPage(1);setActive(0);
+    },60);
+    return ()=>window.clearTimeout(timer);
+  },[query,open,enough]);
+  useEffect(()=>setActive(0),[page,search,kind]);
+  useEffect(()=>{
+    const dismiss=(event:PointerEvent)=>{
+      if(anchor.current?.contains(event.target as Node) ||
+        popup.current?.contains(event.target as Node))return;
+      setOpen(false);
     };
-    document.addEventListener("pointerdown",close);
-    return () => document.removeEventListener("pointerdown",close);
-  }, []);
-  const isSearching = open && search.length >= 2;
-  const data = useQuery({
-    queryKey: ["medicine-market", user?.id, "lookup", kind, search],
-    queryFn: ({ signal }) =>
-      api<Page<MarketCard>>(
-        `${ROOT}/cards?kind=${kind}&pageSize=40&q=${encodeURIComponent(search)}`,
-        { signal },
-      ),
-    enabled: isSearching && !disabled,
-    staleTime: 10000,
+    document.addEventListener("pointerdown",dismiss);
+    return ()=>document.removeEventListener("pointerdown",dismiss);
+  },[]);
+  useLayoutEffect(()=>{
+    if(!expanded)return;
+    const position=()=>{
+      const box=anchor.current?.getBoundingClientRect();
+      if(!box)return;
+      const viewportWidth=Math.max(320,window.innerWidth-16);
+      const width=Math.min(Math.max(box.width,520),viewportWidth);
+      const below=window.innerHeight-box.bottom-8;
+      const above=box.top-8;
+      const down=below>=Math.min(220,above);
+      const maxHeight=Math.max(100,Math.min(320,down?below:above));
+      const height=Math.min(popup.current?.scrollHeight??260,maxHeight);
+      setPlacement({
+        left:Math.max(8,Math.min(box.right-width,window.innerWidth-width-8)),
+        top:down?box.bottom:Math.max(8,box.top-height),
+        width,maxHeight,
+      });
+    };
+    position();
+    window.addEventListener("resize",position);
+    window.addEventListener("scroll",position,true);
+    return ()=>{
+      window.removeEventListener("resize",position);
+      window.removeEventListener("scroll",position,true);
+    };
+  },[expanded,search,page]);
+  const data=useQuery({
+    queryKey:["medicine-market",user?.id,"lookup",kind,search,page],
+    queryFn:({signal})=>api<Page<MarketCard>>(
+      `${ROOT}/cards?${new URLSearchParams({
+        kind,q:search,page:String(page),pageSize:"20",
+      })}`,{signal},
+    ),
+    enabled:expanded&&current&&search.length>=3,
+    staleTime:30000,
   });
-  const matches = data.data?.items ?? [];
-  const choose = (card: MarketCard) => {
-    onChange(card.id);
-    setQuery("");
-    setSearch("");
-    setOpen(false);
-    setActive(0);
+  const matches=current&&data.isSuccess?(data.data?.items??[]):[];
+  const choose=(card:MarketCard)=>{
+    onChange(card.id);setQuery("");setSearch("");setOpen(false);
+    setPage(1);setActive(0);
   };
-  return <div ref={container} className="medicine-market-lookup">
+  return <div className="medicine-market-lookup" ref={anchor}>
     <div className="field">
-      <label htmlFor={fieldId}>بحث {label}</label>
-      <input id={fieldId} type="search" autoComplete="off"
+      <label htmlFor={inputId}>بحث {label}</label>
+      <input id={inputId} type="search" autoComplete="off"
         role="combobox" aria-autocomplete="list"
-        aria-controls={fieldId+"-results"} aria-expanded={isSearching}
-        placeholder={"اكتب حرفين أو أكثر للبحث عن "+label}
+        aria-expanded={expanded}
+        aria-controls={expanded?inputId+"-results":undefined}
+        aria-activedescendant={expanded&&matches[active]?inputId+"-"+matches[active].id:undefined}
+        placeholder={"اكتب ثلاثة أحرف أو أكثر للبحث عن "+label}
         value={query} disabled={disabled}
-        onFocus={() => setOpen(true)}
-        onChange={(event) => {setQuery(event.target.value);setOpen(true);}}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {setOpen(false);return;}
-          if (!isSearching || matches.length===0)return;
-          if (event.key==="ArrowDown"){event.preventDefault();setActive(i=>Math.min(matches.length-1,i+1));}
-          if (event.key==="ArrowUp"){event.preventDefault();setActive(i=>Math.max(0,i-1));}
-          if (event.key==="Enter"){event.preventDefault();choose(matches[Math.min(active,matches.length-1)]);}
-        }}/>
+        onFocus={()=>setOpen(true)}
+        onChange={event=>{
+          setQuery(event.target.value);setOpen(true);setActive(0);
+        }}
+        onKeyDown={event=>{
+          if(event.key==="Escape"){setOpen(false);return;}
+          if(event.key==="ArrowDown"&&expanded){
+            event.preventDefault();event.stopPropagation();
+            setActive(i=>Math.min(matches.length-1,Math.max(i+1,0)));return;
+          }
+          if(event.key==="ArrowUp"&&expanded){
+            event.preventDefault();event.stopPropagation();
+            setActive(i=>Math.max(0,i-1));return;
+          }
+          if(event.key==="Enter"){
+            event.preventDefault();event.stopPropagation();
+            if(expanded&&current&&!data.isFetching&&matches[active])choose(matches[active]);
+          }
+        }}
+      />
     </div>
-    {isSearching && <div id={fieldId+"-results"} role="listbox"
-      className="medicine-market-lookup-results" aria-label={"نتائج "+label}>
-      {data.isFetching && <span className="medicine-market-lookup-status">جارٍ البحث…</span>}
-      {!data.isFetching && matches.length===0 && !data.error &&
-        <span className="medicine-market-lookup-status">لا توجد نتائج مطابقة</span>}
-      {data.error && <span className="medicine-market-lookup-status text-error">{errorMessage(data.error)}</span>}
-      {matches.map((card,index) => <button key={card.id} type="button"
-        className={index===active ? "medicine-market-lookup-result is-active" : "medicine-market-lookup-result"}
-        role="option" aria-selected={index===active}
-        onMouseDown={e=>e.preventDefault()}
-        onClick={()=>choose(card)}>
-        <span>{card.name}</span><small>#{card.id}</small>
-      </button>)}
-      {!!data.data && data.data.total>40 && <small className="medicine-market-lookup-status">
-        تظهر أول 40 نتيجة؛ اكتب اسمًا أدق لتقليلها.
-      </small>}
-    </div>}
-    {value && <div className="medicine-market-lookup-chosen">
+    {expanded&&createPortal(
+      <div className="medicine-market-lookup-results medicine-market-lookup-floating"
+        ref={popup} style={{left:placement.left,top:placement.top,
+          width:placement.width,maxHeight:placement.maxHeight}}
+        role="region" aria-label={"نتائج بحث "+label}>
+        <div id={inputId+"-results"} role="listbox">
+          {matches.map((card,index)=><button type="button" key={card.id}
+            id={inputId+"-"+card.id}
+            className={index===active?"medicine-market-lookup-result is-active":"medicine-market-lookup-result"}
+            role="option" aria-selected={index===active}
+            disabled={disabled||!current}
+            onMouseDown={event=>event.preventDefault()}
+            onClick={()=>choose(card)}>
+            <span className="medicine-market-lookup-result-names">
+              <strong>{card.name}</strong>
+              {typeof card.data.englishName==="string" &&
+                card.data.englishName.trim()!==card.name.trim() &&
+                <small dir="ltr">{card.data.englishName}</small>}
+            </span>
+            <small>#{card.id}</small>
+          </button>)}
+          {(!current||data.isFetching||data.isPending)&&
+            <span className="medicine-market-lookup-status">جارٍ البحث…</span>}
+          {current&&!data.isFetching&&!data.isError&&matches.length===0 &&
+            <span className="medicine-market-lookup-status">لا توجد أصناف مطابقة</span>}
+          {current&&data.error&&
+            <span className="medicine-market-lookup-status text-error">{errorMessage(data.error)}</span>}
+        </div>
+        {current&&data.data&&<div className="medicine-market-lookup-pages">
+          <button type="button" disabled={page<=1||data.isFetching}
+            onMouseDown={event=>event.preventDefault()}
+            onClick={()=>{setPage(p=>p-1);setActive(0);}}>السابق</button>
+          <span>صفحة {page} من {Math.max(1,Math.ceil(data.data.total/20))}</span>
+          <button type="button" disabled={page*20>=data.data.total||data.isFetching}
+            onMouseDown={event=>event.preventDefault()}
+            onClick={()=>{setPage(p=>p+1);setActive(0);}}>التالي</button>
+        </div>}
+      </div>,document.body)}
+    {value!==null&&<div className="medicine-market-lookup-chosen">
       <span>المحدد: <RelationName id={value}/></span>
       <button type="button" disabled={disabled}
-        onClick={() => {onChange(null);setQuery("");setOpen(false);}}>إلغاء الاختيار</button>
+        onClick={()=>{onChange(null);setQuery("");setSearch("");setOpen(false);}}>إلغاء الاختيار</button>
     </div>}
   </div>;
 }
