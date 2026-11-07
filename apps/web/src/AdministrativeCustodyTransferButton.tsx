@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { normalizeDigits } from "../../../packages/contracts/src/index";
 import { api, ApiFailure, sessionRequiresLogin } from "./api";
@@ -34,6 +35,8 @@ export function AdministrativeCustodyTransferButton({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Prevent the invoice editor's parent form from submitting as well.
+    event.stopPropagation();
     if (!draft || busy || (disabled && !unknown)) return;
     if (isOfflineNow() || sessionRequiresLogin()) {
       setError("ترحيل العهدة يتطلب اتصالًا مباشرًا بالنظام؛ لا يُحفظ محليًا.");
@@ -84,7 +87,7 @@ export function AdministrativeCustodyTransferButton({
         العهدة
       </Button>
       {notice && <small role="status" className="muted">{notice}</small>}
-      <Dialog open={draft !== null} title="ترحيل العهدة الإدارية"
+      {draft && createPortal(<Dialog open={true} title="ترحيل العهدة الإدارية"
         onClose={() => { if (!busy && !unknown) setDraft(null); }}>
         {draft && (
           <form className="form-stack" onSubmit={event => void submit(event)}>
@@ -111,7 +114,7 @@ export function AdministrativeCustodyTransferButton({
             </div>
           </form>
         )}
-      </Dialog>
+      </Dialog>, document.body)}
     </>
   );
 }
