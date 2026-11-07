@@ -8037,7 +8037,8 @@
           "type": "string",
           "maxLength": 1000
         },
-        "prescriptionImageReviewed": {"type":"boolean"}
+        "prescriptionImageReviewed": {"type":"boolean"},
+        "reviewedImageUrl": {"type":"string","maxLength":120}
       },
       "required": [
         "decision"
