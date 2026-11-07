@@ -730,6 +730,12 @@ export function financeRoutes(pool: Pool): Router {
             [companyId,documentId],
           );
           if(linkedCashbox.rowCount) conflict("القيد مرتبط بترحيل أو إغلاق صندوق الموظف؛ لا يمكن عكسه منفصلًا عن سجل الصندوق");
+          const linkedCustody = await client.query(
+            "SELECT 1 FROM administrative_custody_transfers WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId, documentId],
+          );
+          if (linkedCustody.rowCount)
+            conflict("القيد مرتبط بحركة العهدة الإدارية؛ لا يمكن عكسه خارج سجل العهدة");
           const linkedPouchReceipt=await client.query(
             "SELECT 1 FROM employee_pouch_receipts WHERE company_id=$1 AND financial_document_id=$2",
             [companyId,documentId],
@@ -945,6 +951,30 @@ export function financeRoutes(pool: Pool): Router {
             pageSize: paging.pageSize,
             totals: null,
           };
+        }
+        return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
+      });
+      res.json(result);
+    }),
+  );
+  // Dedicated statement for the configured company custody asset. Permission
+  // is finance.manage; cashiers' own-cashbox permission is not sufficient.
+  router.get(
+    `${base}/administrative-custody-ledger`,
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (client) => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const companyId = id(req.params.companyId);
+        const user = await currentActor(client, actor(req), false);
+        await companyAccess(client, user, companyId, "finance.manage");
+        const linked = await client.query(
+          "SELECT a.id FROM account_links l JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE l.company_id=$1 AND l.purpose='administrativeCustody' AND a.active AND a.kind='posting' AND a.category='asset' LIMIT 1",
+          [companyId],
+        );
+        if (!linked.rows[0]) {
+          const paging = listQuery({ ...req.query, pageSize: req.query.pageSize ?? "50" }, { id: "id" });
+          return { account: null, items: [], total: 0,
+            page: paging.page, pageSize: paging.pageSize, totals: null };
         }
         return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
       });
