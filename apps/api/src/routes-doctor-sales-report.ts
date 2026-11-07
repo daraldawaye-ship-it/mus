@@ -130,8 +130,8 @@ export function doctorSalesReportRoutes(pool: Pool): Router {
         " i.created_at AS \"createdAt\", i.counterparty_account_name AS \"accountName\","+
         " i.description AS notes,i.doctor_id AS \"doctorId\","+
         " COALESCE(NULLIF(btrim(d.shared_name),''),d.name) AS \"doctorName\","+
-        " d.kind AS \"doctorKind\",i.currency_code AS \"currencyCode\",
-        " (mark.invoice_id IS NOT NULL) AS accounted,","+
+        " d.kind AS \"doctorKind\",i.currency_code AS \"currencyCode\","+
+        " (mark.invoice_id IS NOT NULL) AS accounted,"+
         " COALESCE(fix.corrected_total::numeric,i.total)::text AS total"+
         where+" ORDER BY i.created_at DESC,i.id DESC LIMIT $6 OFFSET $7",
         [...params,input.pageSize,(input.page-1)*input.pageSize]);
