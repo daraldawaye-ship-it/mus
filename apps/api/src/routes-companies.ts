@@ -489,7 +489,7 @@ export function companyRoutes(pool: Pool): Router {
             input.role,
             input.active,
             input.permissions,
-            input.positions ?? [],
+            [...new Set(["employee", ...(input.positions ?? [])])],
             user.id,
           ],
         );
@@ -580,6 +580,9 @@ export function companyRoutes(pool: Pool): Router {
         if (input.active === true && target.rows[0].archived)
           deny("لا يمكن تفعيل موظف مرتبط بحساب مؤرشف");
         const after = { ...before, ...input };
+        // Every company employee retains the base "موظف" position. The
+        // request may update their other positions but never drops this one.
+        after.positions = [...new Set(["employee" as const, ...(after.positions ?? [])])];
         await client.query(
           "UPDATE employees SET name=$1,phone=$2,role=$3,active=$4,permissions=$5,position_keys=$6 WHERE company_id=$7 AND id=$8",
           [
