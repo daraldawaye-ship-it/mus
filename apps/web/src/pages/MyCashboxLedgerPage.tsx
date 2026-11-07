@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   documentKindLabels,
+  canOperateAdministrativeCustody,
   type AccountLedgerLine,
   type AccountLedgerTotals,
   type CompanyContext,
@@ -45,9 +46,9 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const isCustody = mode === "administrativeCustody";
   const pageTitle = isCustody ? "العهدة الإدارية" : "كشف حساب صندوقي";
   const isCashier = context.general || !!context.employee?.positions.includes("cashier");
-  const allowed = context.general || (isCustody
-    ? context.permissions.includes("finance.manage")
-    : context.permissions.includes("finance.own-cashbox.view"));
+  const allowed = isCustody
+    ? canOperateAdministrativeCustody(context)
+    : (context.general || context.permissions.includes("finance.own-cashbox.view"));
   // Creating a voucher is an independent financial write privilege. A
   // cashier can view only their assigned box without gaining all finance.
   const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
