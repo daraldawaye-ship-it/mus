@@ -1,6 +1,6 @@
 import { useMemo,useState } from "react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
-import type { CompanyContext,EmployeePosition } from "../../../../packages/contracts/src/index.ts";
+import { employeePositions,employeePositionLabels,type CompanyContext,type EmployeePosition } from "../../../../packages/contracts/src/index.ts";
 import { api,useSession } from "../api";
 import { Button,Card,Field,Notice,PageHeader,Select } from "../ui";
 import { EmployeePositionPicker } from "../EmployeePositionPicker";
@@ -17,6 +17,54 @@ const kindLabels:Record<ResourceKind,string>={
  page:"صفحة",field:"حقل",button:"زر / عملية",permission:"صلاحية",
  control:"خيار الكنترول",
 };
+
+function CentralPositionField({resource,companyId,dimension,onSaved}:{
+ resource:Resource;companyId:number;dimension:"view"|"edit";onSaved:()=>void;
+}) {
+ const [open,setOpen]=useState(false);
+ const [busy,setBusy]=useState(false);
+ const [error,setError]=useState("");
+ const positions=dimension==="view"
+   ? resource.policy?.viewPositions??[]:resource.policy?.editPositions??[];
+ const selected=positions.length
+   ? positions.map(p=>employeePositionLabels[p]).join("، "):"المالك فقط";
+ async function toggle(position:EmployeePosition) {
+   if(busy)return;
+   const next=positions.includes(position)
+     ? positions.filter(p=>p!==position):[...positions,position];
+   const viewPositions=dimension==="view"
+     ? next:[...new Set([...(resource.policy?.viewPositions??[]),...next])];
+   const editPositions=dimension==="edit"
+     ? next:(resource.policy?.editPositions??[]).filter(p=>viewPositions.includes(p));
+   setBusy(true);setError("");
+   try {
+     await api("/companies/"+companyId+"/central-access/"+encodeURIComponent(resource.key),{
+       method:"PUT",body:{viewPositions,editPositions,revision:resource.policy?.revision??null},
+     });
+     onSaved();
+   } catch(reason) {setError(errorMessage(reason));}
+   finally {setBusy(false);}
+ }
+ return <div className="central-inline-field">
+   <button type="button" className="central-inline-trigger" disabled={busy}
+     title={dimension==="view"?"صفات عرض العنصر":"صفات تعديل العنصر"}
+     aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
+     <small>{dimension==="view"?"العرض":"التعديل"}</small>
+     <span>{busy?"جارٍ الحفظ…":selected}</span>
+   </button>
+   {open&&<div className="central-inline-positions">
+     <p>اختر صفات {dimension==="view"?"العرض":"التعديل"} (الفراغ للمالك فقط)</p>
+     {employeePositions.map(position=><label key={position.key} className="central-inline-choice">
+       <input type="checkbox" disabled={busy} checked={positions.includes(position.key)}
+         onChange={()=>void toggle(position.key)}/>
+       {position.label}
+     </label>)}
+     {error&&<Notice tone="error">{error}</Notice>}
+     <button type="button" className="button button-secondary button-compact"
+       onClick={()=>setOpen(false)}>إغلاق</button>
+   </div>}
+ </div>;
+}
 
 function CentralResourceEditor({
  resource,companyId,onSaved,
@@ -40,16 +88,6 @@ function CentralResourceEditor({
    }catch(reason){setError(errorMessage(reason))}
    finally{setBusy(false)}
  }
- async function reset() {
-   if(!resource.policy||busy)return;
-   setBusy(true);setError("");setSuccess("");
-   try{
-     await api(base,{method:"DELETE",body:{revision:resource.policy.revision}});
-     setView([]);setEdit([]);onSaved();
-     setSuccess("أُعيد العنصر إلى صلاحيات النظام القائمة.");
-   }catch(reason){setError(errorMessage(reason))}
-   finally{setBusy(false)}
- }
  return <Card title={resource.name}>
    <div className="central-access-summary">
      <span>{kindLabels[resource.kind]} / {resource.section}</span>
@@ -62,13 +100,13 @@ function CentralResourceEditor({
          setView(next);
          setEdit(current=>current.filter(p=>next.includes(p)));
          setSuccess("");
-       }} disabled={busy}/>
+       }} disabled={busy} allowBaseRemoval/>
      <EmployeePositionPicker label="من يمكنه التعديل" value={edit}
        onChange={next=>{
          setEdit(next);
          setView(current=>[...new Set([...current,...next])]);
          setSuccess("");
-       }} disabled={busy}/>
+       }} disabled={busy} allowBaseRemoval/>
    </div>
    {error&&<Notice tone="error">{error}</Notice>}
    {success&&<Notice tone="success">{success}</Notice>}
@@ -77,13 +115,12 @@ function CentralResourceEditor({
        {busy?"جارٍ الحفظ…":"حفظ صلاحيات العنصر"}
      </Button>
      <Button variant="secondary" disabled={busy} onClick={clean}>إلغاء التعديلات</Button>
-     {resource.policy&&<Button variant="secondary" disabled={busy}
-       onClick={()=>void reset()}>إعادة إلى الإعداد الافتراضي</Button>}
+
    </div>
    <p className="muted">
-     {resource.policy
-       ?"حُفظ اختيار الصفات لهذا العنصر. الصلاحيات القديمة تظل سارية حتى ربط الحقل أو العملية بالتفويض المركزي واختبارها."
-       :"لم يُخصص هذا العنصر بعد؛ الصلاحيات القديمة ما زالت سارية دون تغيير."}
+     {resource.kind==="page"
+       ?"فتح صفحات الشركة يخضع الآن للصفات المحددة، مع بقاء شروط إجراءات الحفظ والترحيل الأصلية."
+       :"تُحفظ اختيارات هذا العنصر؛ الحقول والأزرار التي لم تُربط بالخادم لا تغيّر صلاحيات التشغيل بعد."}
    </p>
  </Card>;
 }
