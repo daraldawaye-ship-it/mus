@@ -18,6 +18,7 @@ import { readApiJson, UnexpectedApiResponse } from "./api-response";
 import { offlineUser } from "./offline-storage";
 import { allowPasswordAutofillOnDevice } from "./device-login-policy";
 import { currentDeviceKind } from "./device-kind";
+import {readEmployeePreview,isAllowedPreviewRead,useEmployeePreview} from "./employee-preview-mode";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import type {
   Page,
@@ -43,10 +44,18 @@ export async function api<T>(
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const mutation = method !== "GET" && method !== "HEAD";
+  const preview=readEmployeePreview();
+  // Client and server both enforce read-only preview. It never reuses any
+  // offline owner cache or saves fetched employee data for offline use.
+  if(preview && mutation)
+    throw new ApiFailure("معاينة صلاحيات الموظف للقراءة فقط؛ عد لصلاحيات المالك للتعديل",403,"preview_read_only");
+  const previewRequest=!!preview && path!=="/auth/session";
+  if(previewRequest && !isAllowedPreviewRead(path,preview!.companyId))
+    throw new ApiFailure("هذه المعاينة مقتصرة على صفحات الشركة المختارة",403,"preview_scope");
   // A manual offline switch uses the same user-authorized read cache as
   // a physical outage. Never send new financial mutations while offline.
   async function fallbackRead(): Promise<T | undefined> {
-    if (method !== "GET" || options.signal?.aborted) return undefined;
+    if (preview || method !== "GET" || options.signal?.aborted) return undefined;
     const offline = await savedRead<T>(path).catch(() => undefined);
     if (offline !== undefined) return offline;
     const reusable = await reuseAuthorizedRead<T>(path).catch(() => undefined);
@@ -79,6 +88,9 @@ export async function api<T>(
       headers: {
         "Accept": "application/json",
         "X-Alraesy-Device": currentDeviceKind(),
+        ...(previewRequest ? {
+          "X-Alraesy-Employee-Preview":preview!.companyId+":"+preview!.employeeId,
+        } : {}),
         ...(mutation ? { "Content-Type": "application/json" } : {}),
         ...(mutation && csrf ? { "X-CSRF-Token": csrf } : {}),
       },
@@ -119,7 +131,7 @@ export async function api<T>(
       error?.code ?? "unknown",
     );
   }
-  if (method === "GET") {
+  if (method === "GET" && !preview) {
     void rememberRead(path, data).catch(() => {});
     void shareAuthorizedRead(path, data).catch(() => {});
   }
@@ -413,7 +425,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error("SessionProvider missing");
-  return value;
+  const preview=useEmployeePreview();
+  if(preview && value.user?.owner)
+    return {...value,user:preview.user,realUser:value.user,employeePreview:preview};
+  return {...value,realUser:value.user,employeePreview:null};
 }
 export function useScopeGuard(scope: string) {
   const { user } = useSession();
