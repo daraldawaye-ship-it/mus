@@ -8,6 +8,7 @@ import { errorMessage } from "../phase2";
 import { formatWholeMoney } from "../format-money";
 import { adenInvoiceToday } from "../invoice-save-date";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
+import "./DoctorSalesMovementsPage.css";
 
 interface MedicalSale {
   id: number;
@@ -231,7 +232,7 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                 )) : <span>المحاسب: 0 — غير المحاسب: 0</span>}
                 <span>إجمالي الفواتير: {records.total}</span>
               </div>
-              <div className="table-scroll">
+              <div className="table-scroll doctor-movements-desktop-table">
                 <table>
                   <thead>
                     <tr>
@@ -277,6 +278,44 @@ export function DoctorSalesMovementsPage({ context }: { context: CompanyContext 
                     {!records.items.length && <tr><td colSpan={7}>لا توجد فواتير مطابقة للفترة والبحث.</td></tr>}
                   </tbody>
                 </table>
+              </div>
+              <div className="doctor-movements-mobile-list" role="list" aria-label="فواتير حركة الأطباء والممرضين">
+                {records.items.map(row => (
+                  <div className="doctor-movements-mobile-entry" role="listitem" key={row.id}>
+                    <div className="doctor-movements-mobile-line doctor-movements-mobile-main">
+                      <Link className="doctor-movements-mobile-name"
+                        to={`/companies/${companyId}/doctors?focus=${row.doctorId}`}>
+                        {row.doctorName}
+                      </Link>
+                      <bdi className="financial-number doctor-movements-mobile-total">
+                        {formatWholeMoney(row.total)}
+                      </bdi>
+                      {row.accounted ? (
+                        <strong className="doctor-movements-mobile-status">محاسب</strong>
+                      ) : canMarkAccounted ? (
+                        <button type="button" className="doctor-movements-mobile-mark"
+                          aria-label={`غير محاسب؛ تأشير الفاتورة ${row.number} وجميع الأقدم منها`}
+                          onClick={() => {
+                            setPendingAccounted(row);
+                            setAccountingError("");
+                            setAccountingSuccess("");
+                          }}>محاسب حتى هنا</button>
+                      ) : <span className="doctor-movements-mobile-status">غير محاسب</span>}
+                      <Link className="doctor-movements-mobile-open"
+                        to={`/companies/${companyId}/invoices/${row.id}`}>فتح</Link>
+                    </div>
+                    <div className="doctor-movements-mobile-line doctor-movements-mobile-details">
+                      <span className="doctor-movements-mobile-date" dir="ltr">
+                        {row.documentDate} {invoiceTime(row.createdAt)}
+                      </span>
+                      <span className="doctor-movements-mobile-account">حساب: {row.accountName || "—"}</span>
+                      <span className="doctor-movements-mobile-notes">ملاحظات: {row.notes || "—"}</span>
+                    </div>
+                  </div>
+                ))}
+                {!records.items.length && <p className="doctor-movements-mobile-empty">
+                  لا توجد فواتير مطابقة للفترة والبحث.
+                </p>}
               </div>
               <div className="form-actions">
                 <Button variant="secondary" size="compact"
