@@ -4022,6 +4022,34 @@ a.notification-quick-title:hover { text-decoration: underline; }
   font-size: 11px;
 }
 
+/* Main doctor/nurse suggestions stay attached to the search field. */
+.doctor-movements-suggest {
+  position: relative;
+  flex: 1 1 270px;
+  min-width: min(270px, 100%);
+}
+.doctor-movements-suggest > .invoice-doctor-options {
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  z-index: 30;
+  background: var(--surface);
+  box-shadow: 0 8px 20px #0002;
+  max-height: 260px;
+}
+.doctor-movements-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 8px 10px;
+  margin-block-end: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.doctor-movements-summary .financial-number {
+  font-weight: 700;
+}
+
 
 /* General table: two editable DECIMAL cells, compact and right-aligned.
    Server sorting handles the entire table, not just the visible page. */
