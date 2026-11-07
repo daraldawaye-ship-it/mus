@@ -732,6 +732,12 @@ export function financeRoutes(pool: Pool): Router {
             [companyId,documentId],
           );
           if(linkedCashbox.rowCount) conflict("القيد مرتبط بترحيل أو إغلاق صندوق الموظف؛ لا يمكن عكسه منفصلًا عن سجل الصندوق");
+          const linkedCustodyFunding = await client.query(
+            "SELECT 1 FROM administrative_custody_fundings WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId, documentId],
+          );
+          if (linkedCustodyFunding.rowCount)
+            conflict("القيد مرتبط بتغذية العهدة من صندوق موظف؛ لا يمكن عكسه منفصلًا عن سجل التغذية");
           const linkedCustody = await client.query(
             "SELECT 1 FROM administrative_custody_transfers WHERE company_id=$1 AND financial_document_id=$2",
             [companyId, documentId],

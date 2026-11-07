@@ -73,6 +73,7 @@ import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { SalesHeaderActionsDropdown, PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { AdministrativeCustodyTransferButton } from "../AdministrativeCustodyTransferButton";
+import { AdministrativeCustodyFundingDialog } from "../AdministrativeCustodyFundingDialog";
 import { PledgeDialogs } from "../PledgeDialogs";
 import { InvoiceQuickAccountDialog } from "../InvoiceQuickAccountDialog";
 import { invoiceSearchStock, saleStockQuantity } from "../sale-stock-quantity";
@@ -1784,6 +1785,13 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const [params] = useSearchParams();
   const kind: InvoiceKind =
     params.get("kind") === "purchase" ? "purchase" : "sale";
+  const custodyFundingAccess = useQuery({
+    queryKey: ["sales-custody-funding-access", user?.id, companyId],
+    queryFn: ({ signal }) => api<{ allowed: boolean }>(
+      `/companies/${companyId}/sales/administrative-custody-funding-access`, { signal }),
+    enabled: !!user && kind === "sale", staleTime: 30000,
+  });
+  const [custodyFundingOpen, setCustodyFundingOpen] = useState(false);
   const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
   const showCurrency = controls.value("show_currency") !== false;
   const receiptRequiredChoices = controls.value("purchase_receipt_required_choices");
@@ -3286,6 +3294,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     canOpenPurchase={commerceAccess(context)}
                     canCreateAccount={!locked && canPost(context) && !isOfflineNow()}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
+                    showFundCustody={custodyFundingAccess.data?.allowed === true}
+                    canFundCustody={!locked && !!defaultCashbox && !cashboxBusy &&
+                      !isOfflineNow() && !sessionRequiresLogin()}
                     canManagePledges={!locked && commerceAccess(context, true)}
                     canOperatePledges={!locked && !!defaultCashbox && canPost(context) &&
                       (context.general || context.permissions.includes("finance.manage") ||
@@ -3295,6 +3306,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     onAction={action => {
                       if(action === "pouch" || action === "electronic" || action === "close")
                         openCashboxAction(action);
+                      else if(action === "fundCustody") setCustodyFundingOpen(true);
                       else if(action === "addAccount") setQuickAccountOpen(true);
                       else if(action === "addPledge") setPledgeMode("add");
                       else if(action === "listPledges") setPledgeMode("list");
@@ -4155,6 +4167,15 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           />
         </div>
       )}
+      {custodyFundingOpen && <AdministrativeCustodyFundingDialog
+        companyId={companyId}
+        onClose={() => setCustodyFundingOpen(false)}
+        onSaved={documentId => {
+          setCustodyFundingOpen(false);
+          setCashboxNotice(`تمت تغذية العهدة الإدارية من صندوقك. رقم القيد #${documentId}`);
+          void invalidate();
+          void client.invalidateQueries({queryKey:["invoice-side-cashbox",user?.id,companyId]});
+        }} />}
       {cashboxNotice && <Notice tone="success">{cashboxNotice}</Notice>}
       <Dialog open={cashboxDraft!==null}
         title={cashboxDraft?.kind==="pouch"?"ترحيل إلى الحافظة":cashboxDraft?.kind==="electronic"?

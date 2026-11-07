@@ -3,16 +3,18 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ChevronDown, ListFilter } from "lucide-react";
 
-type Action = "addAccount" | "pouch" | "electronic" | "close" | "addPledge" | "listPledges" | "payPledge" | "receivePledge" | "original";
+type Action = "addAccount" | "pouch" | "electronic" | "close" | "fundCustody" | "addPledge" | "listPledges" | "payPledge" | "receivePledge" | "original";
 
 export function SalesHeaderActionsDropdown({
-  listUrl, purchaseUrl, canOpenPurchase, canCreateAccount, canTransfer, canManagePledges, canOperatePledges, canEdit, originalVisible, onAction,
+  listUrl, purchaseUrl, canOpenPurchase, canCreateAccount, canTransfer, showFundCustody, canFundCustody, canManagePledges, canOperatePledges, canEdit, originalVisible, onAction,
 }: {
   listUrl: string;
   purchaseUrl: string;
   canOpenPurchase: boolean;
   canCreateAccount: boolean;
   canTransfer: boolean;
+  showFundCustody: boolean;
+  canFundCustody: boolean;
   canManagePledges: boolean;
   canOperatePledges: boolean;
   canEdit: boolean;
@@ -60,6 +62,7 @@ export function SalesHeaderActionsDropdown({
     {action:"pouch",label:"ترحيل إلى الحافظة",disabled:!canTransfer},
     {action:"electronic",label:"ترحيل إلى المحفظة الإلكترونية",disabled:!canTransfer},
     {action:"close",label:"إغلاق الصندوق",disabled:!canTransfer},
+    ...(showFundCustody ? [{action:"fundCustody" as const,label:"تغذية العهدة",disabled:!canFundCustody}] : []),
     {action:"addPledge",label:"إضافة رهن",disabled:!canManagePledges},
     {action:"listPledges",label:"عرض الرهونات",disabled:!canManagePledges},
     {action:"payPledge",label:"صرف مبلغ لرهن",disabled:!canOperatePledges},

@@ -31,6 +31,8 @@ import {matchingMemoFeatureRules} from "./services/memo-feature-rules.ts";
 import {audit} from "./services/audit.ts";
 import { cashboxOperationSchema, postEmployeeCashboxOperation } from "./services/cashbox-operations.ts";
 import { administrativeCustodyTransferSchema, postAdministrativeCustodyTransfer } from "./services/administrative-custody.ts";
+import { administrativeCustodyFundingSchema, postAdministrativeCustodyFunding } from "./services/administrative-custody-funding.ts";
+import { centralResourcePolicies, centralResourceAllows } from "./services/central-access-authorization.ts";
 import { listMyCashboxTransfers } from "./services/my-cashbox-transfers.ts";
 import { pouchReceiptSchema, receivePouchMovement, listPouchReceipts } from "./services/pouch-receipts.ts";
 import { electronicReceiptSchema, receiveElectronicMovement, listElectronicReceipts } from "./services/electronic-receipts.ts";
@@ -732,6 +734,45 @@ export function commerceRoutes(pool: Pool): Router {
           await companyAccess(client,user,companyId,"finance.post",true);
           return postEmployeeCashboxOperation(client,companyId,user,input);
         });
+      res.status(201).json(result);
+    }),
+  );
+  // Separate from custody-to-pouch transfers. Server checks the CURRENT button grant.
+  router.get(`${base}/sales/administrative-custody-funding-access`,
+    handler(async (req, res) => {
+      const allowed = await transaction(pool, async client => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user = await currentActor(client, actor(req), false);
+        const companyId = id(req.params.companyId);
+        const context = await companyAccess(client, user, companyId);
+        const policies = await centralResourcePolicies(client, companyId, ["button:sales.custody-funding"]);
+        const sales = (await directoryEntries(client, user, companyId))
+          .find(entry => entry.key === "company.sales");
+        return !!sales?.enabled && !!sales.actionAccess.view &&
+          centralResourceAllows(policies, "button:sales.custody-funding",
+            "edit", user.owner, context.employee?.positions ?? []);
+      });
+      res.json({ allowed });
+    }),
+  );
+  router.post(`${base}/sales/administrative-custody-funding`,
+    handler(async (req, res) => {
+      const input = parse(administrativeCustodyFundingSchema, req.body);
+      const result = await transaction(pool, async client => {
+        const user = await currentActor(client, actor(req));
+        const companyId = id(req.params.companyId);
+        const context = await companyAccess(client, user, companyId, undefined, true);
+        const policies = await centralResourcePolicies(client, companyId, ["button:sales.custody-funding"]);
+        if (!centralResourceAllows(policies, "button:sales.custody-funding",
+              "edit", user.owner, context.employee?.positions ?? []))
+          throw new HttpError(403, "custody_funding_denied", "تغذية العهدة غير مسموحة لصفتك الوظيفية.");
+        await assertRequestPagesEnabled(client, req, true);
+        const sales = (await directoryEntries(client, user, companyId))
+          .find(entry => entry.key === "company.sales");
+        if (!sales) throw new HttpError(403, "sales_page_missing", "صفحة المبيعات غير متاحة");
+        assertDirectoryAccess(sales, "view");
+        return postAdministrativeCustodyFunding(client, companyId, user, input);
+      });
       res.status(201).json(result);
     }),
   );

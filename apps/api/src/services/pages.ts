@@ -538,6 +538,9 @@ export async function requestPageKeys(
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
   if (rest === "sales/administrative-custody-transfers")
     keys.push("company.administrative-custody");
+  if (rest === "sales/administrative-custody-funding" ||
+      rest === "sales/administrative-custody-funding-access")
+    keys.push("company.sales");
   if (resource === "account-statistics-report")
     keys.push("company.accounts", "company.account-ledger");
   if (
