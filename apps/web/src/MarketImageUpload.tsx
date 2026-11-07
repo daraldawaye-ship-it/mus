@@ -98,6 +98,7 @@ export function MarketImageUpload({
     </label>}
     <div className="image-upload-controls">
       {preview&&<MarketProductImage className="image-upload-preview" src={preview}
+        trimLegacyPadding={!prescription}
         style={{maxWidth:260,maxHeight:380,width:"auto",height:"auto",objectFit:"contain"}}
         alt={prescription?"معاينة الوصفة":"معاينة صورة الصنف"}/>}
       <input type="file" accept="image/*"
