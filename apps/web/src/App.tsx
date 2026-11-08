@@ -117,6 +117,7 @@ const ExplanationsAccessPage = lazy(() => import("./pages/ExplanationsAccessPage
 const ExplanationsTopicIndex = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicIndex})));
 const ExplanationsContinuousReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsContinuousReader})));
 const ExplanationsTopicReader = lazy(() => import("./pages/ExplanationsReader").then(module=>({default:module.ExplanationsTopicReader})));
+const InquiriesPage = lazy(() => import("./pages/InquiriesPage").then(m=>({default:m.InquiriesPage})));
 const GeneralTablePage = lazy(() =>
   import("./pages/GeneralTablePage").then((module) => ({
     default: module.GeneralTablePage,
@@ -340,6 +341,7 @@ const companySections = [
   "notifications",
   "notification-templates",
   "memos",
+  "inquiries",
   "questions",
   "answers",
   "tasks",
@@ -446,6 +448,8 @@ function Navigation({
     "company.archive": <FileText size={17} />,
     "public.audit": <FileClock size={17} />,
     "public.notifications": <Bell size={17} />,
+    "public.inquiries": <ListChecks size={17} />,
+    "company.inquiries": <ListChecks size={17} />,
     "public.tasks": <FileClock size={17} />,
     "company.tasks": <FileClock size={17} />,
     "public.chat": <MessageSquare size={17} />,
@@ -649,6 +653,10 @@ function CompanyContent({
 }) {
   const { user } = useSession();
   switch (section) {
+    case "inquiries":
+      return <Suspense fallback={<Notice>جارٍ تحميل الاستفسارات…</Notice>}>
+        <InquiriesPage key={context.company.id} companyId={context.company.id} manager={context.general} />
+      </Suspense>;
     case "questions":
     case "answers":
       return <Suspense fallback={<Notice>جارٍ تحميل الأسئلة…</Notice>}>
@@ -1364,6 +1372,7 @@ function Workspace() {
                   </Protected>
                 }
               />
+              <Route path="/inquiries" element={<Protected><PageRouteGuard pageKey="public.inquiries"><Suspense fallback={<Notice>جارٍ تحميل الاستفسارات…</Notice>}><InquiriesPage manager={!!user?.owner} /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/questions" element={<Protected><PageRouteGuard pageKey="public.questions"><Suspense fallback={<Notice>جارٍ تحميل الأسئلة…</Notice>}><QuestionsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/answers" element={<Protected><PageRouteGuard pageKey="public.answers"><Suspense fallback={<Notice>جارٍ تحميل الإجابات…</Notice>}><QuestionsPage tab="answers" /></Suspense></PageRouteGuard></Protected>} />
               <Route
