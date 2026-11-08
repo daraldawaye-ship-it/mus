@@ -43,7 +43,7 @@ async function scope(db:Pool|PoolClient,req:Request,write=false) {
   const page=(await directoryEntries(db,user,companyId)).find(entry=>entry.key===key);
   if(!page)missing("صفحة الاستفسارات غير مسجلة");
   assertDirectoryAccess(page,"view");
-  return {user,companyId,manager:user.owner || !!context?.general,page};
+  return {user,companyId,manager:user.owner || !!context?.general,canSeeAll:user.owner,page};
 }
 function managerOnly(manager:boolean) {
   if(!manager)throw new HttpError(403,"forbidden","إنشاء الطلبات ومتابعتها لمالك المنصة أو إدارة الشركة");
@@ -60,24 +60,25 @@ function formatRow(r:QueryResultRow) {
     createdAt:r.created_at,updatedAt:r.updated_at,answeredAt:r.answered_at
   };
 }
-async function hydrate(db:Pool|PoolClient,rows:QueryResultRow[],viewer:number,manager:boolean) {
+async function hydrate(db:Pool|PoolClient,rows:QueryResultRow[],viewer:number,canSeeAll:boolean) {
   if(!rows.length)return [];
   const ids=rows.map(r=>Number(r.id));
   const targets=await db.query(
     "SELECT t.inquiry_id,t.user_id,t.status,t.answered_at,u.name FROM inquiry_targets t JOIN users u ON u.id=t.user_id WHERE t.inquiry_id=ANY($1::int[]) ORDER BY t.id",
     [ids]);
   const replies=await db.query(
-    "SELECT a.id,a.inquiry_id,a.user_id,a.answer_value,a.option_number,a.explanation,a.answered_at,u.name FROM inquiry_answers a JOIN users u ON u.id=a.user_id WHERE a.inquiry_id=ANY($1::int[]) AND ($2::boolean OR a.user_id=$3) ORDER BY a.id",
-    [ids,manager,viewer]);
+    "SELECT a.id,a.inquiry_id,a.user_id,a.answer_value,a.option_number,a.explanation,a.answered_at,u.name FROM inquiry_answers a JOIN users u ON u.id=a.user_id WHERE a.inquiry_id=ANY($1::int[]) AND ($2::boolean OR a.user_id=$3 OR EXISTS (SELECT 1 FROM inquiry_requests q WHERE q.id=a.inquiry_id AND q.created_by=$3)) ORDER BY a.id",
+    [ids,canSeeAll,viewer]);
   return rows.map(row=>{
     const all=targets.rows.filter(t=>t.inquiry_id===row.id);
     const my=all.find(t=>t.user_id===viewer);
     const answerRows=replies.rows.filter(a=>a.inquiry_id===row.id);
     return {...formatRow(row),
+      recipientSelection:canSeeAll || Number(row.created_by)===viewer ? row.recipient_selection : {userIds:[viewer],positionKeys:[]},
       assignedCount:all.length,
       answeredCount:all.filter(t=>t.status==="answered").length,
       myStatus:my?.status??null,
-      targets:manager?all.map(t=>({userId:t.user_id,name:t.name,status:t.status,answeredAt:t.answered_at})):[],
+      targets:canSeeAll || Number(row.created_by)===viewer ? all.map(t=>({userId:t.user_id,name:t.name,status:t.status,answeredAt:t.answered_at})) : [],
       answers:answerRows.map(a=>({id:Number(a.id),userId:a.user_id,userName:a.name,
         answerValue:a.answer_value,optionNumber:a.option_number,
         explanation:a.explanation,answeredAt:a.answered_at}))
@@ -113,7 +114,7 @@ export function inquiryRoutes(pool:Pool):Router {
     res.json({items:r.rows});
   }));
   router.get(roots,handler(async(req,res)=>{
-    const {user,companyId,manager}=await scope(pool,req);
+    const {user,companyId,canSeeAll}=await scope(pool,req);
     const q=typeof req.query.q==="string"?req.query.q.trim().slice(0,100):"";
     const filter=typeof req.query.status==="string"?req.query.status:"";
     if(filter && !["open","answered","in_progress","done","closed","mine"].includes(filter))
@@ -127,13 +128,13 @@ export function inquiryRoutes(pool:Pool):Router {
       "AND ($4='' OR q.request_text ILIKE '%'||$4||'%' OR q.linked_table ILIKE '%'||$4||'%') "+
       "AND ($5='' OR ($5='mine' AND EXISTS(SELECT 1 FROM inquiry_targets t WHERE t.inquiry_id=q.id AND t.user_id=$3 AND t.status='pending')) OR q.status=$5) "+
       "ORDER BY q.id DESC LIMIT 60 OFFSET $6",
-      [companyId,manager,user.id,q,filter,(page-1)*60]);
-    res.json({items:await hydrate(pool,rows.rows,user.id,manager),page,pageSize:60});
+      [companyId,canSeeAll,user.id,q,filter,(page-1)*60]);
+    res.json({items:await hydrate(pool,rows.rows,user.id,canSeeAll),page,pageSize:60});
   }));
   router.get(roots.map(root=>root+"/:inquiryId"),handler(async(req,res)=>{
-    const {user,companyId,manager}=await scope(pool,req);
-    const row=await visibleRow(pool,id(req.params.inquiryId),companyId,user.id,manager);
-    res.json({item:(await hydrate(pool,[row],user.id,manager))[0]});
+    const {user,companyId,canSeeAll}=await scope(pool,req);
+    const row=await visibleRow(pool,id(req.params.inquiryId),companyId,user.id,canSeeAll);
+    res.json({item:(await hydrate(pool,[row],user.id,canSeeAll))[0]});
   }));
   router.post(roots,handler(async(req,res)=>{
     const input=parse(requestSchema,req.body);
@@ -204,8 +205,8 @@ export function inquiryRoutes(pool:Pool):Router {
     const input=parse(answerSchema,req.body);
     const requestId=id(req.params.inquiryId);
     const result=await transaction(pool,async db=>{
-      const {user,companyId,manager}=await scope(db,req,true);
-      const request=await visibleRow(db,requestId,companyId,user.id,manager,true);
+      const {user,companyId,canSeeAll}=await scope(db,req,true);
+      const request=await visibleRow(db,requestId,companyId,user.id,canSeeAll,true);
       const prior=(await db.query(
         "SELECT id FROM inquiry_answers WHERE inquiry_id=$1 AND user_id=$2 AND idempotency_key=$3",
         [requestId,user.id,input.idempotencyKey])).rows[0];
@@ -265,10 +266,12 @@ export function inquiryRoutes(pool:Pool):Router {
     const input=parse(statusSchema,req.body);
     const requestId=id(req.params.inquiryId);
     const result=await transaction(pool,async db=>{
-      const {user,companyId,manager,page}=await scope(db,req,true);
+      const {user,companyId,manager,canSeeAll,page}=await scope(db,req,true);
       managerOnly(manager);
       assertDirectoryAccess(page,"edit");
-      const old=await visibleRow(db,requestId,companyId,user.id,manager,true);
+      const old=await visibleRow(db,requestId,companyId,user.id,canSeeAll,true);
+      if(!user.owner && Number(old.created_by)!==user.id)
+        throw new HttpError(403,"forbidden","لا يمكنك متابعة طلب أنشأه مستخدم آخر");
       if(old.status==="closed"||old.status==="done")
         throw new HttpError(409,"status_final","الطلب مغلق أو منجز بالفعل");
       if(old.status==="open"&&input.status!=="closed")
