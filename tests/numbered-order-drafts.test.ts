@@ -243,7 +243,7 @@ test("named preset groups are server-saved; one successful browser write replace
   assert.match(page,/replaceFromPresetGroup\(stages\.map\(stage=>stage\.items\)\)/);
   assert.match(server,/router\.post\(\`\$\{presetGroupsPath\}\/\:groupId\/prepare\`/);
   assert.match(server,/const excludedIds=new Set<number>\(\)/);
-  assert.match(server,/for\(const item of match\.items\) excludedIds\.add\(item\.id\)/);
+  assert.match(server,/for\(const item of items\) excludedIds\.add\(item\.id\)/);
   assert.match(server,/includeSharedSelectionsForDraft \? ""/);
   assert.match(migration,/preset_ids BIGINT\[\] NOT NULL/);
   assert.match(local,/const built=buildReplacementOrderDrafts\(stages\)/);
