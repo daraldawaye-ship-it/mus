@@ -508,3 +508,28 @@ test("purchase factor means multiples of FIRST units in both SQL calculations", 
   assert.match(coverage,
     /i\.purchase_factor \* greatest\(i\.factor2::numeric \* i\.factor3::numeric,1\)/);
 });
+
+test("monthly sales and proposed order use first units; list reads are never cached", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  assert.match(api, /round\(\(COALESCE\(sale_rank\.net_sale_quantity,0\)/);
+  assert.match(api, /\/ greatest\(i\.factor2::numeric\*i\.factor3::numeric,1\),4\) AS sale_quantity_month/);
+  assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)/);
+  assert.match(api, /requiredPurchaseQuantity: requiredQuantities\.get\(row\.id\)/);
+  assert.match(coverage, /requested\.quantity_smallest \/ purchase_lot\.first_unit_smallest/);
+  assert.match(api, /requested\.quantity_smallest \/ purchase_lot\.first_unit_smallest AS order_quantity_first_unit/);
+  assert.match(ui, /"الكمية المباعة في شهر \(الوحدة الأولى\)"/);
+  assert.match(ui, /"الكمية المطلوبة \(الوحدة الأولى\)"/);
+  const getSection = api.slice(api.indexOf('router.get("/companies/:companyId/item-options-list/unselected"'));
+  assert.equal((getSection.match(/res\.setHeader\("Cache-Control", "private, no-store"\)/g) ?? []).length, 2);
+  assert.match(api, /greatest\(i\.purchase_factor::bigint,1\)::numeric AS minimum_lot_first_unit/);
+  // Fractions of first-unit sales are valid, but requested first-unit
+  // quantities must be positive whole multiples of purchase factor.
+  const soldFirstUnit = (soldSmallest: number, conversion: number) => soldSmallest / conversion;
+  const requiredFirstUnit = (needSmallest: number, conversion: number, factor: number) =>
+    Math.max(1, Math.ceil(Math.max(0,needSmallest)/(conversion*factor))) * factor;
+  assert.equal(soldFirstUnit(65,10), 6.5);
+  assert.equal(requiredFirstUnit(0,10,10), 10);
+  assert.equal(requiredFirstUnit(101,10,10), 20);
+});
