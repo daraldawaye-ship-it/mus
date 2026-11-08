@@ -29,6 +29,7 @@ import { emitNotification } from "./services/notifications.ts";
 import { currentActor } from "./policies/access.ts";
 import { assertPhoneAvailable } from "./services/phone-identity.ts";
 import { recordDeviceLogin } from "./services/user-device-activity.ts";
+import { visitorAccountStatus } from "./routes-visitor-entry.ts";
 
 export function authRoutes(pool: Pool, secure: boolean): Router {
   const router = Router();
@@ -96,6 +97,17 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           "invalid_login",
           "رقم الهاتف أو البريد أو كلمة المرور غير صحيحة",
         );
+      }
+      // Starter 1234 is disabled as soon as this visitor participates.
+      // An established visitor uses the trusted device or an owner-issued credential.
+      const starter=await pool.query(
+        "SELECT default_password_active FROM visitor_phone_accounts WHERE user_id=$1",
+        [row.id]);
+      if(starter.rows[0]?.default_password_active){
+        const status=await visitorAccountStatus(pool,row);
+        if(status.hardProtected || status.hasActivity)
+          throw new HttpError(401,"visitor_password_unavailable",
+            "هذا الحساب أصبح له نشاط. ادخل من جهازك السابق أو اطلب توثيق الحساب");
       }
       const result = await transaction(pool, async (client) => {
         const locked = await client.query(
@@ -238,6 +250,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
             "conflict",
             "تغيرت كلمة المرور، أعد المحاولة",
           );
+        await client.query("UPDATE visitor_phone_accounts SET default_password_active=false WHERE user_id=$1",[user.id]);
         await client.query("DELETE FROM user_login_links WHERE user_id=$1",[user.id]);
         await client.query(
           "DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2",
