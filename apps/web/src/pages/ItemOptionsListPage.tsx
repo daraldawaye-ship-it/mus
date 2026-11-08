@@ -72,6 +72,30 @@ function readDraft(params: URLSearchParams): Draft {
     excludeOrderDrafts: params.get("excludeOrderDrafts") !== "false",
   };
 }
+/** Convert links created before sufficiency had two independent ranges.
+ * Previously coverageMin/Max filtered the post-reserve value unless the
+ * removed useReserve switch was false. Keep the old link's intended results.
+ */
+function migrateLegacyCoverageParams(params: URLSearchParams): URLSearchParams | null {
+  if (params.get("coverageFilterVersion") === "2" ||
+      params.has("coverageWithReserveMin") || params.has("coverageWithReserveMax") ||
+      !["coverageMin","coverageMax","useReserve"].some(key => params.has(key))) return null;
+  const migrated = new URLSearchParams(params);
+  if (params.get("useReserve") !== "false") {
+    if (params.has("coverageMin"))
+      migrated.set("coverageWithReserveMin", params.get("coverageMin") ?? "");
+    migrated.set("coverageWithReserveMax", params.get("coverageMax") ?? "1");
+    migrated.delete("coverageMin");
+    migrated.delete("coverageMax");
+  } else {
+    // Explicitly disabled reserve in an old link; preserve only its gross
+    // sufficiency filter rather than imposing the new one-day net filter.
+    migrated.set("coverageWithReserveMax", "");
+  }
+  migrated.delete("useReserve");
+  migrated.set("coverageFilterVersion", "2");
+  return migrated;
+}
 /** Preserve explicitly blank ranges, including user-cleared defaults. */
 function appliedFilterParams(previous: URLSearchParams, values: Draft, query: string): URLSearchParams {
   const next = new URLSearchParams(previous);
@@ -219,6 +243,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   };
 
   const paramsKey = params.toString();
+  useEffect(() => {
+    const converted = migrateLegacyCoverageParams(new URLSearchParams(paramsKey));
+    if (converted) setParams(converted, { replace: true });
+  }, [paramsKey, setParams]);
   useEffect(() => {
     setDraft(readDraft(new URLSearchParams(paramsKey)));
     setSearch(new URLSearchParams(paramsKey).get("q") ?? "");
@@ -500,7 +528,21 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     next.set("sortDir",values.sortDir);
     next.set("pageSize",String(pageSize));
     if(values.q) next.set("q",values.q);
-    for(const {key} of ranges) next.set(key,values[key]);
+    // Shared presets from the former single-switch UI must retain their old
+    // range meaning; newly saved presets specify coverageFilterVersion=2.
+    const legacy = values.coverageFilterVersion !== 2;
+    const oldNetFilter = legacy && values.useReserve !== false;
+    for(const {key} of ranges) {
+      let value: string = values[key];
+      if (legacy) {
+        if (oldNetFilter && (key === "coverageMin" || key === "coverageMax")) value = "";
+        if (key === "coverageWithReserveMin")
+          value = oldNetFilter ? values.coverageMin : "";
+        if (key === "coverageWithReserveMax")
+          value = oldNetFilter ? values.coverageMax : "";
+      }
+      next.set(key, value);
+    }
     if(values.excludeZero) next.set("excludeZero","true");
     if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
     if(!values.excludeOrderDrafts) next.set("excludeOrderDrafts","false");
