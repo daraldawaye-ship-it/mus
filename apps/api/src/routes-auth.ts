@@ -65,10 +65,7 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           await client.query("DELETE FROM sessions WHERE token_hash=$1", [
             req.auth.tokenHash,
           ]);
-        const session=await createSession(client,user.id);
-        if(starter.rows[0]?.default_password_active)
-          await client.query("UPDATE sessions SET visitor_only=true WHERE token_hash=$1",[tokenHash(session.token)]);
-        return { user, ...session };
+        return { user, ...(await createSession(client, user.id)) };
       });
       // Observability must never prevent a successful registration.
       await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
@@ -132,7 +129,10 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           await client.query("DELETE FROM sessions WHERE token_hash=$1", [
             req.auth.tokenHash,
           ]);
-        return { user, ...(await createSession(client, user.id)) };
+        const session=await createSession(client,user.id);
+        if(starter.rows[0]?.default_password_active)
+          await client.query("UPDATE sessions SET visitor_only=true WHERE token_hash=$1",[tokenHash(session.token)]);
+        return { user, ...session };
       });
       // The login event is distinct from subsequent presence heartbeats.
       await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
