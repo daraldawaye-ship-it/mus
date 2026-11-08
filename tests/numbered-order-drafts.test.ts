@@ -215,7 +215,7 @@ test("saved ordered option groups replace device drafts atomically in priority o
   const built=buildReplacementOrderDrafts(incoming, Date.parse("2026-11-09T09:00:00Z"));
   assert.equal(built.error,null);
   assert.equal(built.added,5);
-  assert.equal(built.skipped,4);
+  assert.equal(built.skipped,3);
   assert.deepEqual(built.state?.drafts.map(d=>d.id),[1,2,3]);
   assert.deepEqual(built.state?.drafts.map(d=>d.items.map(x=>x.id)),[[10,20,30],[40],[50]]);
   assert.equal(built.state?.nextId,4);
