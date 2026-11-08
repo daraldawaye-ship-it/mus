@@ -11,3 +11,6 @@ CREATE TABLE IF NOT EXISTS visitor_device_tokens (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS visitor_device_tokens_user_idx ON visitor_device_tokens(user_id,expires_at);
+
+-- Guest sessions may edit the public market but never access company/private APIs.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_only boolean NOT NULL DEFAULT false;
