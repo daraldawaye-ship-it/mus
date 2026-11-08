@@ -783,7 +783,8 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           : parse(z.enum(marketKinds), req.query.kind);
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
-      const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
+      const sort = parse(z.enum(["created","updated"]),req.query.sort ?? "created");
+      const query = norm(v.q).replace(/[\\%_]/g, "\\      const query = norm(v.q).replace(/[\\%_]/g, "\\$&");");
       // Fixed dosage forms stay available by explicit lookup for medicine
       // relations, but are never catalog tiles or user-create choices.
       const referenceFilter = kind === null
@@ -793,7 +794,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         "c.status='published' AND c.archived=$2 AND ($3::text IS NULL OR c.kind=$3) AND (c.normalized_name LIKE $4 ESCAPE '\\' OR COALESCE(c.data->>'arabicSearchKey','') LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'englishName','')) LIKE $4 ESCAPE '\\' OR lower(COALESCE(c.data->>'keywords','')) LIKE $4 ESCAPE '\\' OR c.id::text=$5)" + referenceFilter;
       const args = [u?.id ?? null, archived, kind, `%${query}%`, v.q];
       const rows = await pool.query(
-        `${cardSelect} WHERE ${condition} ORDER BY c.updated_at DESC,c.id DESC LIMIT $6 OFFSET $7`,
+        `${cardSelect} WHERE ${condition} ORDER BY c.${sort==="created"?"created_at":"updated_at"} DESC,c.id DESC LIMIT $6 OFFSET $7`,
         [...args, v.pageSize, v.offset],
       );
       const count = await pool.query(
