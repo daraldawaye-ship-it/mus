@@ -16,7 +16,7 @@ import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
-import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOptionsPresetFilters } from "../../../../packages/contracts/src/item-options-presets.ts";
+import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOptionsPresetFilters, type ItemOptionsPresetGroup } from "../../../../packages/contracts/src/item-options-presets.ts";
 
 const ranges = [
   { key: "stockMin", label: "الكمية المتوفرة (بدون مخازن المرتجعات) من" },
@@ -119,6 +119,10 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
   next.delete("page");
   return next;
 }
+type PresetGroupRun = {
+  id:number;name:string;totalUnique:number;
+  stages:Array<{presetId:number;name:string;items:OrderDraftItem[]}>;
+};
 type DraftValue = {
   id: number; itemCount: number; pricedCount: number; missingCount: number;
   totals: Array<{ currencyCode: string; value: string }>;
@@ -218,8 +222,15 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [presetName, setPresetName] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
+  const [groupName,setGroupName] = useState("");
+  const [groupPresetIds,setGroupPresetIds] = useState<number[]>([]);
+  const [groupStepChoice,setGroupStepChoice] = useState("");
+  const [selectedGroupId,setSelectedGroupId] = useState("");
+  const [groupBusy,setGroupBusy] = useState(false);
+  const [groupMessage,setGroupMessage] = useState<{tone:"error"|"success";text:string}|null>(null);
   const [presetMessage, setPresetMessage] = useState<{tone:"error"|"success";text:string}|null>(null);
   const presetBase = `/companies/${companyId}/item-options-list/presets`;
+  const groupBase = `/companies/${companyId}/item-options-list/preset-groups`;
   const presetsQuery = useQuery({
     queryKey: ["company-item-options-presets", companyId, user?.id],
     queryFn: ({signal}) => api<{items:ItemOptionsPreset[]}>(presetBase,{signal}),
@@ -229,6 +240,14 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   });
   const presets = presetsQuery.data?.items ?? [];
   const selectedPreset = presets.find(row => String(row.id) === selectedPresetId);
+  const groupsQuery = useQuery({
+    queryKey:["company-item-options-preset-groups",companyId,user?.id],
+    queryFn:({signal})=>api<{items:ItemOptionsPresetGroup[]}>(groupBase,{signal}),
+    enabled:!!user && canView,
+    staleTime:0,refetchInterval:60_000,
+  });
+  const savedGroups = groupsQuery.data?.items ?? [];
+  const selectedGroup = savedGroups.find(row=>String(row.id)===selectedGroupId);
   const canDeletePresets = Boolean(user?.owner || canEditReserve);
   useEffect(() => {
     const next = readVisibleTableColumns(columnsStorageKey);
@@ -599,6 +618,75 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setParams(next);
     });
   }
+  function moveGroupStep(index:number, direction:-1|1){
+    const dest=index+direction;
+    if(dest<0 || dest>=groupPresetIds.length) return;
+    const next=[...groupPresetIds];
+    [next[index],next[dest]]=[next[dest],next[index]];
+    setGroupPresetIds(next);
+  }
+  async function savePresetGroup(){
+    if(!canView || groupBusy) return;
+    const name=groupName.trim();
+    if(!name || name.length>80 || !groupPresetIds.length){
+      setGroupMessage({tone:"error",text:"اكتب اسمًا للتجميع وأضف خيارًا محفوظًا واحدًا على الأقل."});
+      return;
+    }
+    setGroupBusy(true);setGroupMessage(null);
+    try{
+      const saved=await api<{item:ItemOptionsPresetGroup}>(groupBase,{
+        method:"POST",body:{name,presetIds:groupPresetIds},
+      });
+      setGroupName("");setGroupPresetIds([]);setGroupStepChoice("");
+      setSelectedGroupId(String(saved.item.id));
+      await groupsQuery.refetch();
+      setGroupMessage({tone:"success",text:
+        `حُفظ تجميع «${saved.item.name}» بالترتيب المحدد، وأصبح متاحًا لجميع مستخدمي الشركة. اختره لتشغيله.`});
+    }catch(reason){setGroupMessage({tone:"error",text:errorMessage(reason)});}
+    finally{setGroupBusy(false);}
+  }
+  async function deletePresetGroup(group:ItemOptionsPresetGroup){
+    if(!canDeletePresets || groupBusy) return;
+    if(!window.confirm(`هل تريد حذف تجميع الخيارات «${group.name}» فقط؟ لن تُحذف الخيارات الأصلية ولا المسودات.`))return;
+    setGroupBusy(true);setGroupMessage(null);
+    try{
+      await api(`${groupBase}/${group.id}`,{method:"DELETE",body:{}});
+      setSelectedGroupId("");
+      await groupsQuery.refetch();
+      setGroupMessage({tone:"success",text:`حُذف التجميع «${group.name}» دون حذف الخيارات المكوِّنة له.`});
+    }catch(reason){setGroupMessage({tone:"error",text:errorMessage(reason)});}
+    finally{setGroupBusy(false);}
+  }
+  async function runPresetGroup(group:ItemOptionsPresetGroup){
+    if(!canView || groupBusy || !temporaryOrder.enabled) return;
+    setGroupBusy(true);setGroupMessage(null);setActionMessage("");
+    try{
+      // Fetch ALL ordered groups on the server first. This does not change
+      // the device's previous drafts, nor the company's shared selections.
+      const prepared=await api<{result:PresetGroupRun}>(
+        `${groupBase}/${group.id}/prepare`,{method:"POST",body:{}});
+      const stages=prepared.result.stages;
+      if(!prepared.result.totalUnique){
+        setGroupMessage({tone:"error",text:"لا توجد أصناف مطابقة لأي خيار؛ لم تتغير المسودات السابقة."});
+        return;
+      }
+      // A SINGLE browser storage write replaces every previous draft.
+      // If saving fails, the existing drafts remain available.
+      const written=temporaryOrder.replaceFromPresetGroup(stages.map(stage=>stage.items));
+      if(!written){
+        setGroupMessage({tone:"error",text:
+          "لم تُحفظ مسودات التجميع على الجهاز. لم تُستبدل المسودات السابقة؛ راجع رسالة التخزين ومساحة الجهاز."});
+        return;
+      }
+      setActiveOrderDraftId(null);
+      const stageSummary=stages.map(stage=>`${stage.name}: ${stage.items.length}`).join("، ");
+      setGroupMessage({tone:"success",text:
+        `نُفّذ «${group.name}» بالترتيب، واستُبدلت جميع المسودات السابقة بـ ${written.drafts} مسودات جديدة تضم ${written.added} صنفًا دون تكرار. ${stageSummary}.`});
+    }catch(reason){setGroupMessage({tone:"error",text:
+      `تعذر تشغيل التجميع؛ لم تتغير المسودات السابقة. ${errorMessage(reason)}`});}
+    finally{setGroupBusy(false);}
+  }
+
   async function deletePreset(preset: ItemOptionsPreset) {
     if (!canDeletePresets || presetBusy) return;
     if (!window.confirm(`هل تريد حذف مجموعة الخيارات والأعمدة «${preset.name}» من الشركة للجميع؟`)) return;
@@ -833,6 +921,83 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       </form>
       {presetsQuery.error && <Notice tone="error">{errorMessage(presetsQuery.error)}</Notice>}
       {presetMessage && <Notice tone={presetMessage.tone}>{presetMessage.text}</Notice>}
+    </Card>}
+    {canView && <Card title="تجميع الخيارات المحفوظة بالترتيب" className="item-options-presets-card">
+      <p className="muted">كوّن تسلسلًا من الخيارات المحفوظة أعلاه، ثم احفظه باسم مستقل. عند اختيار تجميع محفوظ يُطبّق الخيار الأول وينشئ مسودته، ثم الثاني والثالث بالترتيب. تُستبدل جميع مسودات هذا الجهاز دفعة واحدة بعد اكتمال الجلب، ويُمنع تكرار أي صنف؛ ولا تُنشأ طلبية رسمية.</p>
+      <div className="form-actions">
+        <label className="item-options-filter-field item-options-preset-field">
+          <span className="item-options-filter-label">تجميع الخيارات المحفوظ</span>
+          <select aria-label="اختيار تجميع خيارات" value={selectedGroupId}
+            disabled={groupBusy || groupsQuery.isFetching}
+            onChange={event=>{
+              const id=event.target.value;
+              setSelectedGroupId(id);
+              const chosen=savedGroups.find(row=>String(row.id)===id);
+              if(chosen) void runPresetGroup(chosen);
+            }}>
+            <option value="">اختر تجميعًا لتشغيله</option>
+            {savedGroups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+        </label>
+        <Button type="button" variant="secondary" disabled={!selectedGroup || groupBusy}
+          onClick={()=>{if(selectedGroup)void runPresetGroup(selectedGroup);}}>
+          {groupBusy?"جارٍ تجهيز جميع المسودات…":"إعادة تشغيل التجميع"}
+        </Button>
+        {canDeletePresets && <Button type="button" variant="danger"
+          disabled={!selectedGroup || groupBusy}
+          onClick={()=>{if(selectedGroup)void deletePresetGroup(selectedGroup);}}>حذف التجميع</Button>}
+        <Button type="button" variant="secondary" disabled={groupsQuery.isFetching || groupBusy}
+          onClick={()=>void groupsQuery.refetch()}>تحديث التجميعات</Button>
+      </div>
+      {selectedGroup && <small className="muted">
+        الترتيب المحفوظ: {selectedGroup.presetIds.map((id,index)=>
+          `${index+1}. ${presets.find(p=>p.id===id)?.name ?? "خيار غير موجود"}`).join(" ← ")}
+      </small>}
+      <div className="form-actions">
+        <label className="item-options-filter-field item-options-preset-field">
+          <span className="item-options-filter-label">اسم التجميع الجديد</span>
+          <input type="text" maxLength={80} value={groupName}
+            placeholder="مثال: طلبيات الأسبوع حسب الأولوية"
+            onChange={event=>setGroupName(event.target.value)} />
+        </label>
+        <label className="item-options-filter-field item-options-preset-field">
+          <span className="item-options-filter-label">أضف خيارًا محفوظًا للتجميع</span>
+          <select aria-label="إضافة خيار إلى التجميع" value={groupStepChoice}
+            onChange={event=>setGroupStepChoice(event.target.value)}>
+            <option value="">اختر الخيار</option>
+            {presets.filter(p=>!groupPresetIds.includes(p.id)).map(p=>
+              <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <Button type="button" variant="secondary"
+          disabled={!groupStepChoice || groupPresetIds.length>=20}
+          onClick={()=>{
+            const id=Number(groupStepChoice);
+            if(!id || groupPresetIds.includes(id))return;
+            setGroupPresetIds(previous=>[...previous,id]);
+            setGroupStepChoice("");
+          }}>إضافة إلى التجميع</Button>
+      </div>
+      {!!groupPresetIds.length && <div className="item-options-order-draft-lines">
+        {groupPresetIds.map((presetId,index)=><div key={presetId} className="form-actions">
+          <strong>{index+1}. {presets.find(p=>p.id===presetId)?.name ?? "خيار غير موجود"}</strong>
+          <Button type="button" size="compact" variant="secondary" disabled={index===0}
+            onClick={()=>moveGroupStep(index,-1)}>↑ لأعلى</Button>
+          <Button type="button" size="compact" variant="secondary"
+            disabled={index===groupPresetIds.length-1}
+            onClick={()=>moveGroupStep(index,1)}>↓ لأسفل</Button>
+          <Button type="button" size="compact" variant="danger"
+            onClick={()=>setGroupPresetIds(previous=>previous.filter(id=>id!==presetId))}>إزالة</Button>
+        </div>)}
+      </div>}
+      <div className="form-actions">
+        <Button type="button" disabled={groupBusy || !groupName.trim() || !groupPresetIds.length}
+          onClick={()=>void savePresetGroup()}>
+          {groupBusy?"جارٍ العمل…":"حفظ تجميع الخيارات بهذا الاسم والترتيب"}
+        </Button>
+      </div>
+      {groupsQuery.error && <Notice tone="error">{errorMessage(groupsQuery.error)}</Notice>}
+      {groupMessage && <Notice tone={groupMessage.tone}>{groupMessage.text}</Notice>}
     </Card>}
     {filterError && <Notice tone="error">{filterError}</Notice>}
     {resultQuery.error && <Notice tone="error">
