@@ -15,6 +15,7 @@ import { arabizeMarketName, normalizedArabicSearch } from "./market-arabic-names
 import { sabaImportSchema, unpackSabaRows, importSabaCatalog } from "./market-saba-catalog.ts";
 import { handler, parse } from "./http.ts";
 import { deny, HttpError, missing } from "./errors.ts";
+import { transaction } from "./db.ts";
 
 export function stagingUrl(value: string): boolean {
   try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password && !u.port && !u.hash && /^sdmntpr[a-z0-9]+\.oaiusercontent\.com$/.test(u.hostname) && /^\/files\/[a-zA-Z0-9-]+\/raw$/.test(u.pathname); } catch { return false; }
@@ -24,7 +25,26 @@ export const stagingImportSchema = z.object({
   url: z.string().max(5000).refine(stagingUrl),
 }).strict();
 const bulkMedicinePromotionSchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
-export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema };
+const followupField = z.string().trim().min(1).max(80);
+const followupCardRef = z.object({
+  kind: z.enum(["medicine","composition","scientific-name","dosage-form","pharmacy","wholesaler","agent","manufacturer","doctor","hospital","clinic","college"]),
+  id: z.number().int().positive(),
+}).strict();
+const followupEntrySchema = z.object({
+  section: z.string().trim().min(1).max(500),
+  position: z.number().int().positive(),
+  status: z.enum(["partial","complete"]),
+  completedFields: z.array(followupField).max(40).default([]),
+  remainingFields: z.array(followupField).max(40).default([]),
+  cardRefs: z.array(followupCardRef).max(40).default([]),
+  notes: z.string().trim().max(2000).default(""),
+  expectedRevision: z.number().int().nonnegative(),
+}).strict().refine(x=>x.status!=="complete" || x.remainingFields.length===0,
+  "لا يمكن إنهاء متابعة سجل مع وجود حقول ما زالت معلقة");
+export const followupBatchSchema = z.object({
+  entries: z.array(followupEntrySchema).min(1).max(50),
+}).strict();
+export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema, followupBatchSchema };
 const sourceSchema = z.object({type:z.literal("source"),key:z.string().min(1).max(150),filename:z.string().max(500),driveId:z.string().min(1).max(200),modifiedAt:z.string().max(100),sha256:z.string().regex(/^[a-f0-9]{64}$/),byteSize:z.number().int().min(0).max(100000000),rowCount:z.number().int().min(0).max(500000),metadata:z.record(z.string(),z.unknown())}).strict();
 const rowSchema = z.object({type:z.literal("row"),section:z.string().max(500),position:z.number().int().positive(),payload:z.string().max(4000000)}).strict();
 const chunkSchema = z.object({type:z.literal("chunk"),index:z.number().int().min(0),data:z.string().max(400000).regex(/^[A-Za-z0-9+/]*={0,2}$/)}).strict();
@@ -421,13 +441,117 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     if(!prior.rowCount)missing();
     res.json(prior.rows[0]);
   }));
+  // Progress metadata is deliberately separate from immutable source rows.
+  // No followup row means "unprocessed"; complete rows can be excluded from future scans.
   router.get("/medicine-market/staging/:sourceId/rows",handler(async(req,res)=>{
     await authorize(req);
     const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
-    const q=parse(z.object({after:z.coerce.number().int().min(0).default(0),section:z.string().max(500),pageSize:z.coerce.number().int().min(1).max(20).default(10)}).strict(),req.query);
+    const q=parse(z.object({
+      after:z.coerce.number().int().min(0).default(0),
+      section:z.string().max(500),
+      pageSize:z.coerce.number().int().min(1).max(20).default(10),
+      workStatus:z.enum(["all","unprocessed","partial","complete"]).default("all"),
+    }).strict(),req.query);
     if(!(await pool.query("SELECT 1 FROM market_import_sources WHERE id=$1",[sourceId])).rowCount)missing();
-    const rows=await pool.query("SELECT section,position,payload_text FROM market_import_rows WHERE source_id=$1 AND section=$2 AND position>$3 ORDER BY position LIMIT $4",[sourceId,q.section,q.after,q.pageSize]);
+    const rows=await pool.query(
+      "SELECT r.section,r.position,r.payload_text," +
+      " COALESCE(f.status,'unprocessed') AS followup_status," +
+      " COALESCE(f.completed_fields,ARRAY[]::text[]) AS completed_fields," +
+      " COALESCE(f.remaining_fields,ARRAY[]::text[]) AS remaining_fields," +
+      " COALESCE(f.card_refs,'[]'::jsonb) AS card_refs," +
+      " COALESCE(f.notes,'') AS followup_notes," +
+      " COALESCE(f.revision,0) AS followup_revision,f.updated_at AS followup_updated_at" +
+      " FROM market_import_rows r LEFT JOIN market_import_row_followups f" +
+      " ON f.source_id=r.source_id AND f.section=r.section AND f.position=r.position" +
+      " WHERE r.source_id=$1 AND r.section=$2 AND r.position>$3" +
+      " AND ($5='all' OR COALESCE(f.status,'unprocessed')=$5)" +
+      " ORDER BY r.position LIMIT $4",
+      [sourceId,q.section,q.after,q.pageSize,q.workStatus],
+    );
     res.json({items:rows.rows});
+  }));
+  router.get("/medicine-market/staging/:sourceId/followup-summary",handler(async(req,res)=>{
+    await authorize(req);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const q=parse(z.object({section:z.string().min(1).max(500)}).strict(),req.query);
+    if(!(await pool.query("SELECT 1 FROM market_import_sources WHERE id=$1",[sourceId])).rowCount)missing();
+    const result=await pool.query(
+      "SELECT count(*)::int AS total," +
+      " count(*) FILTER (WHERE f.status IS NULL)::int AS unprocessed," +
+      " count(*) FILTER (WHERE f.status='partial')::int AS partial," +
+      " count(*) FILTER (WHERE f.status='complete')::int AS complete" +
+      " FROM market_import_rows r LEFT JOIN market_import_row_followups f" +
+      " ON f.source_id=r.source_id AND f.section=r.section AND f.position=r.position" +
+      " WHERE r.source_id=$1 AND r.section=$2",
+      [sourceId,q.section],
+    );
+    res.json({sourceId,section:q.section,...result.rows[0]});
+  }));
+  router.post("/medicine-market/staging/:sourceId/followups",handler(async(req,res)=>{
+    const user=await authorize(req);
+    // Market DB must have the owner snapshot before history rows reference it.
+    await access.viewer(pool,req,true);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const input=parse(followupBatchSchema,req.body);
+    const seen=new Set<string>();
+    for(const e of input.entries){
+      const key=e.section+"\u0000"+e.position;
+      if(seen.has(key))throw new HttpError(400,"duplicate_followup_row","تكرر السجل في نفس الدفعة");
+      seen.add(key);
+    }
+    const items=await transaction(pool,async db=>{
+      const results:{section:string;position:number;status:string;revision:number}[]=[];
+      for(const e of input.entries){
+        const exists=await db.query(
+          "SELECT 1 FROM market_import_rows WHERE source_id=$1 AND section=$2 AND position=$3",
+          [sourceId,e.section,e.position]);
+        if(!exists.rowCount)throw new HttpError(404,"staging_row_not_found",
+          "سجل المصدر المحدد غير موجود");
+        const current=await db.query(
+          "SELECT status,completed_fields,remaining_fields,card_refs,notes,revision" +
+          " FROM market_import_row_followups WHERE source_id=$1 AND section=$2 AND position=$3 FOR UPDATE",
+          [sourceId,e.section,e.position]);
+        const old=current.rows[0]??null;
+        if((old?.revision??0)!==e.expectedRevision)
+          throw new HttpError(409,"followup_revision","تغيرت حالة متابعة السجل؛ أعد القراءة");
+        const refs=new Set(e.cardRefs.map(x=>x.id));
+        if(refs.size!==e.cardRefs.length)
+          throw new HttpError(400,"duplicate_card_ref","كرر مرجع كرت في السجل نفسه");
+        for(const ref of e.cardRefs){
+          const check=await db.query(
+            "SELECT 1 FROM medicine_market_cards WHERE id=$1 AND kind=$2",
+            [ref.id,ref.kind]);
+          if(!check.rowCount)
+            throw new HttpError(400,"missing_card_ref","لا يمكن ربط سجل المصدر بكرت غير موجود");
+        }
+        const revision=e.expectedRevision+1;
+        await db.query(
+          "INSERT INTO market_import_row_followups" +
+          "(source_id,section,position,status,completed_fields,remaining_fields,card_refs,notes,revision,updated_by)" +
+          " VALUES($1,$2,$3,$4,$5::text[],$6::text[],$7::jsonb,$8,$9,$10)" +
+          " ON CONFLICT (source_id,section,position) DO UPDATE SET" +
+          " status=EXCLUDED.status,completed_fields=EXCLUDED.completed_fields," +
+          " remaining_fields=EXCLUDED.remaining_fields,card_refs=EXCLUDED.card_refs," +
+          " notes=EXCLUDED.notes,revision=EXCLUDED.revision," +
+          " updated_by=EXCLUDED.updated_by,updated_at=now()",
+          [sourceId,e.section,e.position,e.status,e.completedFields,e.remainingFields,
+            JSON.stringify(e.cardRefs),e.notes,revision,user.id],
+        );
+        await db.query(
+          "INSERT INTO market_import_row_followup_history" +
+          "(source_id,section,position,revision,old_value,new_value,actor_id)" +
+          " VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)",
+          [sourceId,e.section,e.position,revision,
+            old?JSON.stringify(old):null,
+            JSON.stringify({status:e.status,completedFields:e.completedFields,
+              remainingFields:e.remainingFields,cardRefs:e.cardRefs,notes:e.notes}),
+            user.id],
+        );
+        results.push({section:e.section,position:e.position,status:e.status,revision});
+      }
+      return results;
+    });
+    res.json({sourceId,items});
   }));
   return router;
 }
