@@ -20,21 +20,24 @@ function raster(bitmap:ImageBitmap,maxSide:number,quality:number):string{
   const webp=canvas.toDataURL("image/webp",quality);
   return webp.startsWith("data:image/webp;")?webp:canvas.toDataURL("image/jpeg",quality);
 }
-/** Create a square icon from the upper emblem of an almost-square logo.
- * Wide logos use the central square, while the complete transparent original is saved separately.
+/** Preserve the *entire* logo in a padded square rendition.
+ * Cropping the upper 72% discarded the pharmacy name and part of its curve.
+ * Keep the transparent background and the complete original image intact.
  */
 function logoIcon(bitmap:ImageBitmap):string{
   const canvas=document.createElement("canvas");
   canvas.width=192;canvas.height=192;
   const ctx=canvas.getContext("2d");
   if(!ctx)throw new Error("المتصفح لا يدعم تجهيز الأيقونة");
+  ctx.imageSmoothingEnabled=true;
   ctx.imageSmoothingQuality="high";
-  const isNearSquare=bitmap.height/bitmap.width>0.75 && bitmap.height/bitmap.width<1.5;
-  const part=isNearSquare?Math.min(bitmap.height*0.72,bitmap.width):Math.min(bitmap.width,bitmap.height);
-  const sourceX=Math.max(0,(bitmap.width-part)/2);
-  const sourceY=isNearSquare?0:Math.max(0,(bitmap.height-part)/2);
-  ctx.drawImage(bitmap,sourceX,sourceY,part,part,8,8,176,176);
-  const result=canvas.toDataURL("image/webp",0.78);
+  const padding=8;
+  const available=192-padding*2;
+  const ratio=Math.min(available/bitmap.width,available/bitmap.height);
+  const width=bitmap.width*ratio;
+  const height=bitmap.height*ratio;
+  ctx.drawImage(bitmap,(192-width)/2,(192-height)/2,width,height);
+  const result=canvas.toDataURL("image/webp",0.8);
   return result.startsWith("data:image/webp;")?result:canvas.toDataURL("image/png");
 }
 export function thumbnailUrl(full:string):string{
