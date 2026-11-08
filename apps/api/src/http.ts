@@ -85,6 +85,7 @@ export function mutationSecurity(origin: string): RequestHandler {
     // and verifies the new password; all other mutations retain CSRF.
     if (req.auth && req.path !== "/auth/login" &&
         req.path !== "/auth/login-link/redeem" &&
+        req.path !== "/auth/visitor/enter" &&
         req.headers["x-csrf-token"] !== req.auth.csrf) {
       next(new HttpError(403, "csrf", "رمز حماية الطلب غير صالح"));
       return;
