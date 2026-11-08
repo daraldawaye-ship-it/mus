@@ -161,6 +161,11 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
   const registering = mode === "register";
   const [loginId, setLoginId] = useState(savedLoginIdentifier);
   const [passwordReady, setPasswordReady] = useState(false);
+  const [visitorMode, setVisitorMode] = useState(!requiresOnlineLogin);
+  const [visitorPhone, setVisitorPhone] = useState(() => savedLoginIdentifier().includes("@") ? "" : savedLoginIdentifier());
+  const [visitorName, setVisitorName] = useState("");
+  const [visitorNeedsName, setVisitorNeedsName] = useState(false);
+
   const allowPasswordAutofill = allowPasswordAutofillOnDevice();
   const desktopTextSecret = compactDesktopTextSecret(
     allowPasswordAutofill, registering, browserSupportsTextMask(),
@@ -172,7 +177,11 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setDraft({ name: "", displayName: "", email: "", phone: "", password: "" });
     setLoginId(savedLoginIdentifier());
     setPasswordReady(false);
-  }, [mode]);
+    setVisitorMode(!requiresOnlineLogin);
+    setVisitorNeedsName(false);
+    setVisitorName("");
+    setVisitorPhone(savedLoginIdentifier().includes("@") ? "" : savedLoginIdentifier());
+  }, [mode, requiresOnlineLogin]);
   useEffect(() => {
     // A restored back/forward-cache login form must not expose previously
     // typed credentials to the next employee at a shared computer.
@@ -226,6 +235,87 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setDraft((current) => ({ ...current, [key]: value }));
     setError("");
   }
+
+  async function enterVisitor(event: FormEvent<HTMLFormElement>, name?: string) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api<{
+        status: "name_required" | "password_required" | "authenticated";
+        user?: User;
+        csrf?: string;
+      }>("/auth/visitor/enter", {
+        method: "POST",
+        body: { phone: visitorPhone, ...(name ? { name } : {}) },
+        signal: guard.signal,
+      });
+      if (!guard.isCurrent()) return;
+      if (response.status === "name_required") {
+        setVisitorNeedsName(true);
+      } else if (response.status === "password_required") {
+        setVisitorNeedsName(false);
+        setLoginId(visitorPhone);
+        setVisitorMode(false);
+        setError("هذا الرقم مرتبط بحساب له نشاط أو صلاحيات؛ يرجى الدخول بكلمة المرور.");
+      } else {
+        if (!response.user || !response.csrf)
+          throw new Error("لم تكتمل جلسة الدخول");
+        await acceptRegistration({ user: response.user, csrf: response.csrf });
+        rememberLoginIdentifier(visitorPhone);
+        if (safeReturn) {
+          window.location.assign(safeReturn);
+          return;
+        }
+        navigate("/", { replace: true });
+      }
+    } catch (cause) {
+      if (guard.isCurrent()) setError(messageOf(cause));
+    } finally {
+      if (guard.isCurrent()) setBusy(false);
+    }
+  }
+
+  if (visitorMode) return (
+    <div className="auth-page">
+      <PageHeader title="الدخول إلى السوق الرئيسي"
+        description="أدخل رقم هاتفك للبدء. الحسابات التي لها مشاركات أو ارتباطات سابقة تبقى محمية." />
+      <Card>
+        <form className="form-grid" onSubmit={(event) => void enterVisitor(event)} aria-busy={busy}>
+          <Field label="رقم الهاتف" type="tel" dir="ltr"
+            autoComplete="tel" value={visitorPhone} required maxLength={40} disabled={busy}
+            onChange={(event) => {setVisitorPhone(event.target.value);setError("");}} />
+          {error && <Notice tone="error">{error}</Notice>}
+          <div className="actions form-full">
+            <Button type="submit" disabled={busy}>
+              <LogIn size={16} aria-hidden="true" />
+              {busy ? "جارٍ المتابعة…" : "دخول إلى السوق"}
+            </Button>
+            <Button variant="secondary" type="button" disabled={busy}
+              onClick={() => {setVisitorMode(false);setLoginId(visitorPhone);setError("");}}>
+              الدخول بكلمة المرور
+            </Button>
+          </div>
+        </form>
+      </Card>
+      <Dialog open={visitorNeedsName} title="أهلًا بك في السوق الرئيسي"
+        onClose={() => !busy && setVisitorNeedsName(false)}>
+        <form className="form-grid" onSubmit={(event) => void enterVisitor(event, visitorName)}>
+          <p className="muted">الرقم جديد. أدخل اسمك فقط لإنشاء حسابك والبدء بالمشاركة.</p>
+          <Field label="الاسم" name="visitor-name" autoComplete="name"
+            value={visitorName} required maxLength={120} disabled={busy}
+            onChange={(event) => setVisitorName(event.target.value)} />
+          {error && <Notice tone="error">{error}</Notice>}
+          <div className="actions form-full">
+            <Button type="submit" disabled={busy || !visitorName.trim()}>
+              {busy ? "جارٍ إنشاء الحساب…" : "إنشاء الحساب والدخول"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    </div>
+  );
 
   return (
     <div className="auth-page">
