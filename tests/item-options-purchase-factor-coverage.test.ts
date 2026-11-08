@@ -72,7 +72,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   const coverage = read("apps/api/src/services/item-coverage.ts");
   const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
   assert.match(api, /requiredPurchaseQuantitiesToPage\(/);
-  assert.match(api, /options\.coverageWithReserveMax \?\? "30"/);
+  assert.match(api, /options\.orderTargetDays/);
   assert.match(api, /requiredPurchaseQuantity: requiredQuantities\.get\(row\.id\)/);
   assert.match(coverage, /coverage_rate\.sales \* greatest\(\$3::numeric,0\) \/ coverage_rate\.days/);
   assert.match(coverage, /CASE WHEN \$4::boolean THEN i\.reserve_quantity/);
@@ -188,8 +188,8 @@ test("item-options totals aggregate all filtered items by currency; derived sort
   assert.match(api, /jsonb_agg\(jsonb_build_object\(/);
   assert.match(api, /requiredPurchaseValueTotals:/);
   assert.match(api, /SELECT \* FROM replenishment f ORDER BY \$\{order\} LIMIT \$\{limit\} OFFSET \$\{offset\}/);
-  assert.match(api, /options\.coverageWithReserveMax \?\? "30"/);
-  assert.match(api, /values\.push\(options\.coverageWithReserveMax \?\? "30", "true"\)/);
+  assert.match(api, /options\.orderTargetDays/);
+  assert.match(api, /values\.push\(options\.orderTargetDays, "true"\)/);
   assert.match(api, /purchasePrice: "f\.purchase_price"/);
   assert.match(api, /saleQuantityMonth: "f\.sale_quantity_month"/);
   assert.match(api, /requiredPurchaseQuantity: "f\.order_quantity_first_unit"/);
@@ -386,7 +386,7 @@ test("bulk order draft saves exactly the first-unit required column, and prints 
   const css = read("apps/web/src/styles.css");
   assert.match(api,/if \(unselectedForDraft\) \{/);
   assert.match(api,/const requested = await requiredPurchaseQuantitiesToPage\(/);
-  assert.match(api,/client, companyId, ids, options\.coverageWithReserveMax \?\? "30", true/);
+  assert.match(api,/client, companyId, ids, options\.orderTargetDays, true/);
   assert.match(api,/requiredQuantity: requested\.get\(Number\(row\.id\)\)!\.requiredPurchaseQuantity/);
   assert.match(api,/order_draft_quantity_unavailable/);
   assert.match(page,/items: OrderDraftItem\[\]; total: number/);
@@ -470,7 +470,7 @@ test("coverage columns display gross and net-of-reserve sufficiency independentl
   assert.match(api, /range\(options\.coverageMax, "m\.coverage_before", "<="\)/);
   assert.match(api, /range\(options\.coverageWithReserveMin, "m\.coverage_after_reserve", ">="\)/);
   assert.match(api, /range\(options\.coverageWithReserveMax, "m\.coverage_after_reserve", "<="\)/);
-  assert.match(api, /options\.coverageWithReserveMax \?\? "30", true/);
+  assert.match(api, /options\.orderTargetDays, true/);
   assert.doesNotMatch(ui, /checked=\{draft\.useReserve\}/);
   assert.match(ui, /coverageWithReserveMax: params\.get\("coverageWithReserveMax"\) \?\? "1"/);
   assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? ""/);
@@ -532,4 +532,37 @@ test("monthly sales and proposed order use first units; list reads are never cac
   assert.equal(soldFirstUnit(65,10), 6.5);
   assert.equal(requiredFirstUnit(0,10,10), 10);
   assert.equal(requiredFirstUnit(101,10,10), 20);
+});
+
+test("owner order target 'مطلوب ما يكفينا إلى' defaults to one day independent from filter", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const schema = read("packages/contracts/src/item-options-presets.ts");
+  assert.match(ui, /مطلوب ما يكفينا إلى \(يوم\)/);
+  assert.match(ui, /orderTargetDays: params\.get\("orderTargetDays"\) \?\? "1"/);
+  assert.match(ui, /request\.set\("orderTargetDays"/);
+  assert.match(ui, /next\.set\("orderTargetDays", values\.orderTargetDays\)/);
+  assert.match(ui, /next\.set\("orderTargetDays", values\.orderTargetDays\.trim\(\)\)/);
+  assert.match(ui, /orderTargetDays: "1"/);
+  assert.match(api, /values\.push\(options\.orderTargetDays, "true"\)/);
+  assert.match(api, /client, companyId, ids, options\.orderTargetDays, true/);
+  assert.match(api, /options\.orderTargetDays, true/);
+  assert.match(api, /range\(options\.coverageWithReserveMax, "m\.coverage_after_reserve", "<="\)/);
+  assert.doesNotMatch(api, /options\.coverageWithReserveMax \?\? "30"/);
+  assert.match(schema, /orderTargetDays: z\.string\(\)\.regex/);
+  const older = {
+    q:"", active:"active", stockMin:"", stockMax:"",
+    monthMin:"1", monthMax:"", fourMonthsMin:"", fourMonthsMax:"",
+    allTimeMin:"", allTimeMax:"", coverageMin:"", coverageMax:"",
+    coverageWithReserveMax:"1", excludeZero:false,
+    sortBy:"code", sortDir:"asc",
+  };
+  assert.equal(itemOptionsPresetFiltersSchema.parse(older).orderTargetDays, "1");
+  assert.equal(itemOptionsPresetFiltersSchema.parse({...older,orderTargetDays:"3"}).orderTargetDays,"3");
+  assert.throws(() => itemOptionsPresetFiltersSchema.parse({...older,orderTargetDays:"0"}));
+  assert.throws(() => itemOptionsPresetFiltersSchema.parse({...older,orderTargetDays:""}));
+  // Check placement: the independent target appears immediately before reset.
+  const indexTarget = ui.indexOf('aria-label="مطلوب ما يكفينا إلى"');
+  const indexReset = ui.indexOf("onClick={reset}>إعادة الافتراضيات");
+  assert.ok(indexTarget >= 0 && indexReset > indexTarget && indexReset - indexTarget < 400);
 });
