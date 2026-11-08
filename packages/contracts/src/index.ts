@@ -142,6 +142,7 @@ export const auditActionLabels = {
   "company.create": "إنشاء شركة",
   "company.update": "تعديل بيانات الشركة",
   "company.letterhead.update": "تعديل ترويسة طباعة الشركة",
+  "company.logo.update": "تغيير شعار الشركة وأيقونتها",
   "company.transactions.reset": "حذف الحركة المالية والمخزنية للشركة",
   "company.transactions.import": "ترحيل الحركة من النظام السابق",
   "company.transactions.bulk-start": "بدء الترحيل الجماعي للفواتير",
