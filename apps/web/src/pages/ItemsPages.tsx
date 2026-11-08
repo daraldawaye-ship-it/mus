@@ -1294,6 +1294,9 @@ function ItemEditor({
   const [nearestExpirySaved, setNearestExpirySaved] = useState<string | null | undefined>(undefined);
   const [stocktakeRequiredAt, setStocktakeRequiredAt] = useState<string | null>(item?.stocktakeRequiredAt ?? null);
   const [stocktakeBusy, setStocktakeBusy] = useState(false);
+  const [settlementStampBusy, setSettlementStampBusy] = useState<"display" | "approval" | null>(null);
+  const [settlementDisplayAt, setSettlementDisplayAt] = useState<string | null>(item?.settlementDisplayAt ?? null);
+  const [settlementApprovalAt, setSettlementApprovalAt] = useState<string | null>(item?.settlementApprovalAt ?? null);
   const adjustmentDirectory = usePageDirectory(companyId);
   const adjustmentPage = adjustmentDirectory.data?.find(entry => entry.key === "company.stock-adjustments");
   const canAdjust = !readOnly && !!item && !!adjustmentPage?.enabled &&
@@ -1306,9 +1309,9 @@ function ItemEditor({
   const allowNavigation = useRef(false);
   useEffect(() => {
     // The invoice's bottom sheet must not close while edits are pending.
-    onSavingChange?.(saving || stocktakeBusy || (embedded && (dirty || optionBusy)));
+    onSavingChange?.(saving || stocktakeBusy || !!settlementStampBusy || (embedded && (dirty || optionBusy)));
     return () => onSavingChange?.(false);
-  }, [saving, stocktakeBusy, dirty, optionBusy, embedded, onSavingChange]);
+  }, [saving, stocktakeBusy, settlementStampBusy, dirty, optionBusy, embedded, onSavingChange]);
   function markDirty(field?: EditableItemField) {
     draftVersion.current += 1;
     if (field) {
@@ -1481,6 +1484,8 @@ function ItemEditor({
       if (!guard.isCurrent()) return;
       if (item) {
         lastSavedSnapshot.current = result.item;
+        setSettlementDisplayAt(result.item.settlementDisplayAt);
+        setSettlementApprovalAt(result.item.settlementApprovalAt);
         for (const field of selectedFields) {
           if ((editedFields.current.get(field) ?? Infinity) <= savedVersion) {
             editedFields.current.delete(field);
@@ -1531,7 +1536,7 @@ function ItemEditor({
     }
   }
   async function stampStocktakeRequiredAt() {
-    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || unknownCreation || savingRequest.current) return;
+    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || settlementStampBusy || unknownCreation || savingRequest.current) return;
     setStocktakeBusy(true);
     setError("");
     setSavedMessage("");
@@ -1546,6 +1551,8 @@ function ItemEditor({
       lastSavedSnapshot.current = result.item;
       setVisibleRevision(result.item.revision);
       setStocktakeRequiredAt(result.item.stocktakeRequiredAt);
+      setSettlementDisplayAt(result.item.settlementDisplayAt);
+      setSettlementApprovalAt(result.item.settlementApprovalAt);
       setFields(initialItemFields(result.item));
       setSavedMessage("سُجل التاريخ والوقت الحاليان لطلب الجرد.");
       void changed(true);
@@ -1556,8 +1563,38 @@ function ItemEditor({
       if (guard.isCurrent()) setStocktakeBusy(false);
     }
   }
+  async function stampSettlement(kind: "display" | "approval") {
+    if (!item || readOnly || !manage || dirty || saving || stocktakeBusy || settlementStampBusy ||
+        optionBusy || unknownCreation || savingRequest.current) return;
+    setSettlementStampBusy(kind);
+    setError("");
+    setSavedMessage("");
+    try {
+      const result = await api<{ item: Item }>(
+        `/companies/${companyId}/items/${item.id}/settlement-timestamp`, {
+          method: "PATCH", body: {kind}, signal: guard.signal,
+        });
+      if (!guard.isCurrent()) return;
+      savedRevision.current = result.item.revision;
+      savedItem.current = result.item;
+      lastSavedSnapshot.current = result.item;
+      setVisibleRevision(result.item.revision);
+      setSettlementDisplayAt(result.item.settlementDisplayAt);
+      setSettlementApprovalAt(result.item.settlementApprovalAt);
+      setStocktakeRequiredAt(result.item.stocktakeRequiredAt);
+      setFields(initialItemFields(result.item));
+      setSavedMessage(kind === "display"
+        ? "سُجل تاريخ ووقت عرض التسوية، دون تغيير وقت الاعتماد."
+        : "سُجل تاريخ ووقت اعتماد التسوية، دون تغيير وقت العرض.");
+      void changed(true);
+    } catch (reason) {
+      if (guard.isCurrent()) setError(errorMessage(reason));
+    } finally {
+      if (guard.isCurrent()) setSettlementStampBusy(null);
+    }
+  }
   async function reload() {
-    if (!item || saving || stocktakeBusy) return;
+    if (!item || saving || stocktakeBusy || settlementStampBusy) return;
     setSaving(true);
     setError("");
     try {
@@ -1570,6 +1607,9 @@ function ItemEditor({
       savedRevision.current = result.item.revision;
       savedItem.current = null;
       lastSavedSnapshot.current = result.item;
+      setSettlementDisplayAt(result.item.settlementDisplayAt);
+      setSettlementApprovalAt(result.item.settlementApprovalAt);
+      setStocktakeRequiredAt(result.item.stocktakeRequiredAt);
       editedFields.current.clear();
       pendingExpected.current.clear();
       blockedFields.current.clear();
@@ -2165,7 +2205,7 @@ function ItemEditor({
                     placeholder="لم يُطلب الجرد بعد"
                     aria-label="تاريخ ووقت طلب جرد الصنف" />
                   <Button variant="secondary" size="compact" type="button"
-                    disabled={disabled || dirty || saving || stocktakeBusy || optionBusy}
+                    disabled={disabled || dirty || saving || stocktakeBusy || !!settlementStampBusy || optionBusy}
                     onClick={() => void stampStocktakeRequiredAt()}>
                     {stocktakeBusy ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
                   </Button>
@@ -2176,23 +2216,34 @@ function ItemEditor({
         </Card>
         <Card title="إعدادات إحصائيات التسويات">
           <div className="item-fields-grid">
-            <Field
-              label="تاريخ اعتماد التسويات"
-              type="date"
-              value={fields.settlementApprovalDate}
-              disabled={disabled}
-              onChange={(event) => edit("settlementApprovalDate", event.target.value)}
-            />
-            <Field
-              label="تاريخ عرض التسويات"
-              type="date"
-              value={fields.settlementDisplayDate}
-              disabled={disabled}
-              onChange={(event) => edit("settlementDisplayDate", event.target.value)}
-            />
+            {([
+              {kind:"display" as const, label:"تاريخ ووقت عرض التسوية",
+                stamp:settlementDisplayAt, historicalDate:fields.settlementDisplayDate},
+              {kind:"approval" as const, label:"تاريخ ووقت اعتماد التسوية",
+                stamp:settlementApprovalAt, historicalDate:fields.settlementApprovalDate},
+            ]).map(field => (
+              <div className="field item-stocktake-required" key={field.kind}>
+                <label htmlFor={`settlement-${field.kind}-at`}>{field.label}</label>
+                <div className="item-composition-controls">
+                  <input id={`settlement-${field.kind}-at`} readOnly
+                    value={field.stamp
+                      ? new Date(field.stamp).toLocaleString("ar-YE", {
+                          timeZone:"Asia/Aden", dateStyle:"short", timeStyle:"medium"
+                        })
+                      : field.historicalDate ? field.historicalDate + " (الساعة غير مسجلة)" : ""}
+                    placeholder="لم يُسجل بعد"
+                    aria-label={field.label} />
+                  {item && <Button type="button" variant="secondary" size="compact"
+                    disabled={disabled || dirty || saving || stocktakeBusy || !!settlementStampBusy || optionBusy}
+                    onClick={() => void stampSettlement(field.kind)}>
+                    {settlementStampBusy === field.kind ? "جارٍ التسجيل…" : "تسجيل التاريخ والوقت الحالي"}
+                  </Button>}
+                </div>
+              </div>
+            ))}
           </div>
           <small className="muted">
-            تُحتسب التسويات بحسب تاريخ مستند الجرد، ويشمل العد الجرد المطابق دون فرق. إذا لم يُحدد التاريخ يبقى العداد المرتبط به صفرًا.
+            يُسجّل كل إجراء بوقته الفعلي من الخادم، مستقلًا عن الآخر. تبقى تواريخ التسويات المستخدمة في الإحصاءات محفوظة؛ ولا يُغيّر التسجيل كميات المخزون أو مستندات الجرد السابقة.
           </small>
         </Card>
         <Card title="إعدادات الشراء والطلب">
