@@ -123,20 +123,28 @@ const sortOptions = [
   ["purchasePrice", "سعر الشراء الافتراضي"],
   ["requiredPurchaseValue", "قيمة المطلوب"],
   ["coverageWithRequired", "الكفاية مع المطلوب"],
-  ["coverage", "الكفاية"], ["reserveCoverage", "كفاية الكمية الاحتياط"],
+  ["coverage", "الكفاية بدون الاحتياط"], ["coverageWithReserve", "الكفاية مع الاحتياط"],
+  ["reserveCoverage", "كفاية كمية الاحتياط وحدها"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية الكمية الاحتياط (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
   if (typeof window === "undefined") return allTableColumns;
   try {
-    const raw = window.localStorage.getItem(key);
+    // Existing v1 column selections should show the new companion column.
+    // A v2 selection is explicit and may intentionally hide either column.
+    const current = window.localStorage.getItem(key);
+    const older = current === null
+      ? window.localStorage.getItem(key.replace(":v2:", ":v1:")) : null;
+    const raw = current ?? older;
     if (!raw) return allTableColumns;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return allTableColumns;
-    const valid = allTableColumns.filter(id => parsed.includes(id));
+    const isLegacy = current === null && older !== null;
+    const valid = allTableColumns.filter(id => parsed.includes(id) ||
+      (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")));
     return valid.length ? valid : allTableColumns;
   } catch { return allTableColumns; }
 }
@@ -152,7 +160,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v1:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v2:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -428,6 +436,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       excludeOrderStopped: draft.excludeOrderStopped,
       excludeOrderDrafts: draft.excludeOrderDrafts,
       useReserve: draft.useReserve,
+      coverageColumnsVersion: 2 as const,
       visibleColumns: [...visibleColumns],
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -470,7 +479,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     void runFilterApplication(() => {
     // Older saved presets have no columns: retain the viewer's current selection.
     if (values.visibleColumns?.length) {
-      const restoredColumns = allTableColumns.filter(id => values.visibleColumns?.includes(id));
+      const restoredColumns = allTableColumns.filter(id =>
+        values.visibleColumns?.includes(id) ||
+        (values.coverageColumnsVersion !== 2 && id === "coverageWithReserve" &&
+          values.visibleColumns?.includes("coverage")));
       if (restoredColumns.length) {
         setVisibleColumns(restoredColumns);
         setEditingColumns(restoredColumns);
@@ -526,8 +538,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       setParams(defaults);
     });
   }
-  const coverage = (row: Row) => params.get("useReserve") === "false"
-    ? row.approximateCoverageDays : row.coverageAfterReserveDays;
   type SortColumn = (typeof sortOptions)[number][0];
   const activeSort = sortBy;
   const activeDirection = sortDir;
@@ -676,7 +686,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                  const next = { ...draft, useReserve: event.target.checked };
                  setDraft(next); scheduleAutoFilter(next, search);
                }} />
-            استخدام الكفاية مع الاحتياطي
+            استخدام الكفاية بعد خصم الاحتياط في الفلترة والكمية المطلوبة
           </label>
           <label className="checkbox" title="استبعاد الأصناف الموجودة في أي مسودة طلبية على هذا الجهاز من نتائج القائمة وإجمالي المطلوب والترحيل إلى مسودة جديدة.">
             <input type="checkbox" checked={draft.excludeOrderDrafts}
@@ -939,13 +949,16 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>مرات عام السابق</span><bdi>{row.saleTimesPreviousYear}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverage")} className="item-options-mobile-stat">
-                <span>الكفاية/يوم</span><bdi>{coverage(row) ?? "—"}</bdi>
+                <span>الكفاية بدون الاحتياط/يوم</span><bdi>{row.approximateCoverageDays ?? "—"}</bdi>
+              </div>
+              <div style={hiddenColumnStyle("coverageWithReserve")} className="item-options-mobile-stat">
+                <span>الكفاية مع الاحتياط/يوم</span><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("coverageWithRequired")} className="item-options-mobile-stat">
                 <span>الكفاية مع المطلوب/يوم</span><bdi>{row.coverageWithRequiredDays}</bdi>
               </div>
               <div style={hiddenColumnStyle("reserveCoverage")} className="item-options-mobile-stat">
-                <span>كفاية الاحتياط/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
+                <span>كفاية كمية الاحتياط وحدها/يوم</span><bdi>{row.reserveCoverageDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("purchaseFactorCoverage")} className="item-options-mobile-stat">
                 <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
@@ -973,6 +986,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {visibleColumns.includes("requiredPurchaseValue") && <col className="item-options-required-value-col" />}
             {visibleColumns.includes("purchaseNotes") && <col className="item-options-purchase-notes-col" />}
             {visibleColumns.includes("coverage") && <col className="item-options-coverage-col" />}
+            {visibleColumns.includes("coverageWithReserve") && <col className="item-options-coverage-col" />}
             {visibleColumns.includes("coverageWithRequired") && <col className="item-options-coverage-with-required-col" />}
             {visibleColumns.includes("reserveCoverage") && <col className="item-options-reserve-coverage-col" />}
             {visibleColumns.includes("purchaseFactorCoverage") && <col className="item-options-factor-coverage-col" />}
@@ -992,9 +1006,10 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("purchasePrice", "سعر الشراء الافتراضي (الوحدة الأولى)")}
             {sortHeader("requiredPurchaseValue", "قيمة المطلوب")}
             <th scope="col" style={hiddenColumnStyle("purchaseNotes")}>ملاحظات عند الشراء</th>
-            {sortHeader("coverage", "الكفاية (يوم)")}
+            {sortHeader("coverage", "الكفاية بدون الاحتياط (يوم)")}
+            {sortHeader("coverageWithReserve", "الكفاية مع الاحتياط (يوم)")}
             {sortHeader("coverageWithRequired", "الكفاية مع المطلوب (يوم)")}
-            {sortHeader("reserveCoverage", "كفاية الكمية الاحتياط (يوم)")}
+            {sortHeader("reserveCoverage", "كفاية كمية الاحتياط وحدها (يوم)")}
             {sortHeader("purchaseFactorCoverage", "كفاية عامل وحدة الشراء (يوم)")}
           </tr></thead>
           <tbody>
@@ -1025,7 +1040,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td style={hiddenColumnStyle("purchasePrice")}><bdi>{row.purchasePrice}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
               <td style={hiddenColumnStyle("requiredPurchaseValue")}><bdi>{row.requiredPurchaseValue}</bdi><small className="item-options-currency">{row.purchaseCurrencyCode}</small></td>
               <td style={hiddenColumnStyle("purchaseNotes")} className="item-options-purchase-notes-cell">{renderPurchaseNote(row)}</td>
-              <td style={hiddenColumnStyle("coverage")}><bdi>{coverage(row) ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("coverage")}><bdi>{row.approximateCoverageDays ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("coverageWithReserve")}><bdi>{row.coverageAfterReserveDays ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("coverageWithRequired")}><bdi>{row.coverageWithRequiredDays}</bdi></td>
               <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
