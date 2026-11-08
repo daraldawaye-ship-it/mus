@@ -127,6 +127,7 @@ export const auditActionLabels = {
   "owner.create": "إنشاء مالك المنصة",
   "user.register": "إنشاء حساب عام",
   "auth.login": "تسجيل الدخول",
+  "auth.visitorLogin": "دخول مبسط للزوار",
   "auth.loginLinkIssue": "إنشاء رابط دخول مؤقت لمستخدم",
   "auth.loginLinkRedeem": "الدخول برابط مؤقت",
   "auth.logout": "تسجيل الخروج",
