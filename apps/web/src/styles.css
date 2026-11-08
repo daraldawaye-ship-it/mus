@@ -604,6 +604,70 @@ legend {
   object-fit: contain;
   object-position: center;
 }
+/* Public market header: primary application brand followed by the user's
+   last accessible company, with independent click targets. */
+.public-scope-titles {
+  display: flex;
+  direction: rtl;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.public-scope-titles > .scope-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 3px 5px;
+  border-radius: 8px;
+}
+.public-market-title {
+  flex-shrink: 0 !important;
+}
+.public-company-title {
+  max-width: min(42vw, 350px);
+}
+.public-company-title > div,
+.public-market-title > div {
+  min-width: 0;
+}
+.public-scope-titles .scope-mark {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+.public-scope-titles .scope-mark-logo {
+  background: transparent;
+}
+.public-scope-titles .scope-mark-site {
+  background: transparent;
+}
+.public-site-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.public-scope-titles .scope-title strong {
+  max-width: 100%;
+}
+@media (max-width: 680px) {
+  .public-scope-titles { gap: 3px; overflow: hidden; }
+  .public-scope-titles > .scope-title { gap: 4px; padding-inline: 1px; }
+  .public-market-title { flex: 0 0 auto !important; }
+  .public-company-title { flex: 0 1 48%; max-width: 48%; }
+  .public-scope-titles .scope-mark {
+    display: flex;
+    flex: 0 0 25px;
+    width: 25px;
+    height: 25px;
+    min-width: 25px;
+    min-height: 25px;
+  }
+  .public-scope-titles .scope-title strong { font-size: 11px; }
+}
+
 /* On mobile the standard compact header remains unchanged. */
 @media (max-width: 680px) {
   .topbar-company-logo {
@@ -6521,6 +6585,8 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-brand p { margin:0; color:var(--muted); }
 .medicine-market-eyebrow { color:var(--muted); font-size:11px; margin:0; }
 .medicine-market-brand-icon { display:grid; place-items:center; flex-shrink:0; width:58px; height:58px; background:var(--soft); color:var(--on-soft); border:1px solid var(--border); border-radius:17px; }
+.medicine-market-app-brand-icon { background:transparent; border:0; border-radius:12px; overflow:visible; }
+.medicine-market-app-logo { display:block; width:100%; height:100%; object-fit:contain; }
 .medicine-market-heading-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .medicine-market-points { display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:12px; }
 .medicine-market-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-block-end:18px; overflow:auto; }
