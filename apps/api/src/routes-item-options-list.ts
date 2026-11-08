@@ -381,6 +381,22 @@ async function filteredItems(
   };
 }
 
+/** Evaluate existing device-local draft quantities against today's first-unit
+ * purchase prices. No invoice/order is posted and no client subtotal is trusted.
+ * Missing quantities from legacy drafts remain explicitly unpriced.
+ */
+const draftValueRequestSchema = z.object({
+  drafts: z.array(z.object({
+    id: z.number().int().positive(),
+    items: z.array(z.object({
+      id: z.number().int().positive(),
+      requiredQuantity: z.string().regex(/^[1-9]\d{0,15}$/).nullable(),
+    }).strict()).max(5_000),
+  }).strict()).max(25),
+}).strict().refine(input =>
+  input.drafts.reduce((count, draft) => count + draft.items.length, 0) <= 20_000,
+  "عدد أصناف المسودات أكبر من الحد المسموح");
+
 /** Read-only, company-scoped, server-paginated stock and sales filters. */
 export function itemOptionsListRoutes(pool: Pool): Router {
   const router = Router();
@@ -399,6 +415,73 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     assertDirectoryAccess(listPage, edit && !user.owner ? "edit" : "view");
     return user;
   };
+  router.post("/companies/:companyId/item-options-list/draft-values", handler(async (req, res) => {
+    const input = parse(draftValueRequestSchema, req.body);
+    const result = await readItems(pool, req, async (client, companyId) => {
+      // Match the list's access policy, not merely generic items.view.
+      const user = await currentActor(client, actor(req));
+      const entries = await directoryEntries(client, user, companyId);
+      const visible = (key: string) => {
+        const entry = entries.find(page => page.key === key);
+        return !!entry?.enabled && !!entry.actionAccess.view;
+      };
+      if (!["company.item-options-list", "company.items", "company.sales",
+            "company.purchases", "company.invoice", "company.stock-balances",
+            "company.stock-movements"].every(visible)
+          || !await canReadItemCoverage(client, user, companyId))
+        throw new HttpError(403, "item_filter_denied",
+          "تتطلب قيم المسودات صلاحيات قائمة الأصناف والمبيعات والمشتريات والمخزون");
+
+      const known = input.drafts.map(draft => ({
+        id: draft.id,
+        itemCount: draft.items.length,
+        pricedCount: 0,
+        totals: [] as Array<{ currencyCode: string; value: string }>,
+      }));
+      const byId = new Map(known.map(item => [item.id, item]));
+      const pricedRows = input.drafts.flatMap(draft => draft.items
+        .filter(item => item.requiredQuantity !== null)
+        .map(item => ({
+          draft_id: draft.id, item_id: item.id,
+          required_quantity: item.requiredQuantity,
+        })));
+      if (pricedRows.length) {
+        const rows = await client.query(
+          `WITH requested AS (
+             SELECT DISTINCT ON (draft_id,item_id)
+               draft_id, item_id, required_quantity
+             FROM jsonb_to_recordset($2::jsonb)
+               AS row(draft_id integer,item_id integer,required_quantity numeric)
+             ORDER BY draft_id,item_id
+           )
+           SELECT requested.draft_id, currency.code AS currency_code,
+             SUM(ROUND(i.purchase_price::numeric * requested.required_quantity,4))::text AS value,
+             COUNT(*)::integer AS priced_count
+           FROM requested
+           JOIN items i ON i.company_id=$1 AND i.id=requested.item_id
+             AND i.purchase_price IS NOT NULL
+           JOIN company_currencies currency
+             ON currency.company_id=i.company_id AND currency.id=i.currency_id
+           GROUP BY requested.draft_id,currency.code
+           ORDER BY requested.draft_id,currency.code`,
+          [companyId, JSON.stringify(pricedRows)],
+        );
+        for (const row of rows.rows) {
+          const draft = byId.get(Number(row.draft_id));
+          if (!draft) continue;
+          draft.pricedCount += Number(row.priced_count);
+          draft.totals.push({
+            currencyCode: String(row.currency_code), value: String(row.value),
+          });
+        }
+      }
+      return known.map(draft => ({
+        ...draft, missingCount: draft.itemCount - draft.pricedCount,
+      }));
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ drafts: result });
+  }));
   router.get(presetsPath, handler(async (req, res) => {
     const companyId = id(req.params.companyId);
     const items = await transaction(pool, async client => {
