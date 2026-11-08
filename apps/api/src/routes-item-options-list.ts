@@ -564,12 +564,16 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const options = parse(querySchema, req.query);
     const result = await readItems(pool, req,
       (client, companyId) => filteredItems(client, actor(req), companyId, options, true));
+    // Prevent a stale GET from showing outdated first-unit quantities after
+    // stock/sales/factor changes. POST queries already use this no-store policy.
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ result });
   }));
   router.get("/companies/:companyId/item-options-list", handler(async (req, res) => {
     const options = parse(querySchema, req.query);
     const result = await readItems(pool, req,
       (client, companyId) => filteredItems(client, actor(req), companyId, options));
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ result });
   }));
   return router;
