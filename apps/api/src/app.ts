@@ -10,6 +10,7 @@ import { loadSession, mutationSecurity } from "./http.ts";
 import { ownerReadOnlyPreview } from "./owner-read-only-preview.ts";
 import { trackAuthenticatedPresence } from "./services/user-presence.ts";
 import { authRoutes } from "./routes-auth.ts";
+import { visitorEntryRoutes } from "./routes-visitor-entry.ts";
 import { setupRoutes } from "./routes-setup.ts";
 import { permissionRequest } from "./services/permission-rules.ts";
 import { chatgptOauthRoutes } from "./routes-chatgpt-oauth.ts";
@@ -112,6 +113,7 @@ export async function createApp(options: AppOptions = {}) {
   app.use(
     "/api",
     authRoutes(pool, config.production),
+    visitorEntryRoutes(pool, config.production),
     pushRoutes(pool),
     mediaRoutes(pool),
     chatRoutes(pool),
