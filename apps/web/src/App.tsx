@@ -1030,6 +1030,7 @@ function Workspace() {
     error: sessionError,
     logout,
     pendingLogoutRedirect,
+    visitorOnly,
     acknowledgeLogoutRedirect,
     requiresOnlineLogin,
   } = useSession();
@@ -1106,7 +1107,7 @@ function Workspace() {
         signal,
       });
     },
-    enabled: !!user && !inCompany,
+    enabled: !!user && !inCompany && !visitorOnly,
     staleTime: 0,
     refetchOnWindowFocus: "always",
   });
@@ -1267,7 +1268,7 @@ function Workspace() {
                   context={company.data}
                 />
               )}
-              {user && !employeePreview && (
+              {user && !employeePreview && !visitorOnly && (
                 <NotificationBell
                   key={`${user.id}:${scope}`}
                   companyId={
@@ -1334,7 +1335,9 @@ function Workspace() {
             <Routes>
               <Route path="/" element={
                 user
-                  ? lastCompany.isPending
+                  ? visitorOnly
+                    ? marketLanding
+                    : lastCompany.isPending
                     ? <Notice>جارٍ فتح شركتك…</Notice>
                     : lastCompany.data && !lastCompany.isError
                       ? <Navigate to={`/companies/${lastCompany.data.company.id}`} replace />
@@ -1512,7 +1515,7 @@ function Workspace() {
             <ItemQuickInventorySheetHost context={navigationContext} />
             {/* Device sync runs in the background, and notification setup remains below content.
                 The installation call-to-action is displayed above the page instead. */}
-            <AppSetup key={user?.id ?? "guest"} userId={user?.id}
+            <AppSetup key={user?.id ?? "guest"} userId={visitorOnly ? undefined : user?.id}
               companyId={navigationContext?.company.id} />
           </main>
           <footer className="workspace-footer">
