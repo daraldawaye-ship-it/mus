@@ -45,6 +45,7 @@ import type {
   CompanyPage,
 } from "../../../packages/contracts/src/index";
 import { api, SessionProvider, useSession } from "./api";
+import { useCompanyLogo, useCompanyLogoFavicon } from "./CompanyLogo";
 import {stopEmployeePreview} from "./employee-preview-mode";
 import {
   pageKeyForLocation,
@@ -1037,6 +1038,8 @@ function Workspace() {
   const companyId = Number(match?.params.companyId);
   const inCompany = Number.isSafeInteger(companyId) && companyId > 0;
   const scope = inCompany ? `company:${companyId}` : "public";
+  const companyLogo = useCompanyLogo(inCompany ? companyId : null);
+  useCompanyLogoFavicon(inCompany ? companyLogo.data?.iconUrl : null);
   const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState(false);
   const [endingPreview,setEndingPreview]=useState(false);
@@ -1209,7 +1212,10 @@ function Workspace() {
                   title="فتح صفحة الشركة"
                 >
                   <span className="scope-mark">
-                    <Building2 size={16} />
+                    {companyLogo.data?.iconUrl?
+                      <img src={companyLogo.data.iconUrl} alt="" className="company-scope-logo"
+                        style={{width:30,height:30,objectFit:"contain"}}/>:
+                      <Building2 size={16} />}
                   </span>
                   <div>
                     <strong>{company.data.company.name}</strong>
