@@ -416,6 +416,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     return user;
   };
   router.post("/companies/:companyId/item-options-list/draft-values", handler(async (req, res) => {
+    try {
     const input = parse(draftValueRequestSchema, req.body);
     const result = await readItems(pool, req, async (client, companyId) => {
       // Match the list's access policy, not merely generic items.view.
@@ -489,6 +490,11 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ drafts: result });
+    } catch (reason) {
+      const error = reason as Error & {code?: string};
+      console.error("ORDER_DRAFT_VALUE_FAILURE", error.code ?? "", error.message);
+      throw reason;
+    }
   }));
   router.get(presetsPath, handler(async (req, res) => {
     const companyId = id(req.params.companyId);
