@@ -881,8 +881,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           )
         ).rows[0];
         await db.query(
-          "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published) VALUES($1,'name','null'::jsonb,$2,$3,$4,$5)",
-          [row.id, json(input.name), u.id, input.idempotencyKey, trusted(u)],
+          "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
+          " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5,$6,$7,CASE WHEN $6='approved' THEN now() ELSE NULL END,$8)",
+          [row.id, json(input.name), u.id, input.idempotencyKey, trusted(u),
+           u.owner ? "approved" : "pending",u.owner ? u.id : null,
+           u.owner ? "مساهمة المالك معتمدة تلقائيًا" : ""],
         );
         await auditMarket(db, u, "create", row.id, null, {
           kind: row.kind,
@@ -961,11 +964,16 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           (field.key === "image" || field.key === "prescriptionLines") &&
           (card.created_by === u.id || p.canModerate);
         const published = pendingPrescriptionDraft ||
-          (trusted(u) && !field.price && card.status === "published" &&
+          (trusted(u) && (u.owner || !field.price) && card.status === "published" &&
            !(card.kind==="prescription" && field.key==="image"));
+        // Owner's published contributions are final immediately, not queued for review.
+        // Prescription images and pending prescription publication retain photo checks.
+        const ownerApproved = u.owner && published &&
+          !(card.kind==="prescription" && field.key==="image");
         const contribution = (
           await db.query(
-            "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+            "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,source,author_id,idempotency_key,published,status,reviewer_id,reviewed_at,reason)"+
+            " VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $9='approved' THEN now() ELSE NULL END,$11) RETURNING id",
             [
               card.id,
               field.key,
@@ -975,6 +983,9 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
               u.id,
               input.idempotencyKey,
               published,
+              ownerApproved ? "approved" : "pending",
+              ownerApproved ? u.id : null,
+              ownerApproved ? "مساهمة المالك معتمدة تلقائيًا" : "",
             ],
           )
         ).rows[0];
@@ -1056,6 +1067,40 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         page: v.page,
         pageSize: v.pageSize,
       });
+    }),
+  );
+  // One-time owner-only reconciliation for older contributions already published.
+  // The owner id comes exclusively from the signed current session; no hardcoded user IDs.
+  // Outdated proposals cannot silently overwrite newer data or bypass prescription-image review.
+  router.post(
+    root + "/owner/approve-existing",
+    handler(async (req, res) => {
+      const result = await transaction(pool, async (db) => {
+        const u = (await viewer(db, req, true))!;
+        if (!u.owner) deny("هذه العملية لمالك الموقع فقط");
+        await enabled(db, req, "medicine-market-review", true);
+        const approved = await db.query(
+          `UPDATE medicine_market_contributions p SET
+             status='approved', reviewer_id=$1, reviewed_at=now(),
+             reason='اعتماد تلقائي لمساهمة المالك المنشورة مسبقًا'
+            FROM medicine_market_cards c
+           WHERE p.card_id=c.id AND p.author_id=$1 AND p.status='pending'
+             AND p.published AND c.status='published' AND NOT c.archived
+             AND c.kind<>'prescription'
+             AND (CASE WHEN p.field_key='name' THEN to_jsonb(c.name)
+                   ELSE COALESCE(c.data->p.field_key, 'null'::jsonb) END) = p.proposed_value
+         RETURNING p.id`,
+          [u.id],
+        );
+        const remaining = await db.query(
+          "SELECT c.kind,p.field_key,p.published,count(*)::int AS total FROM medicine_market_contributions p JOIN medicine_market_cards c ON c.id=p.card_id WHERE p.author_id=$1 AND p.status='pending' GROUP BY c.kind,p.field_key,p.published ORDER BY total DESC",
+          [u.id],
+        );
+        await auditMarket(db, u, "owner_auto_approve_existing", null, null,
+          { approved: approved.rowCount ?? 0, remaining: remaining.rows.reduce((sum, r) => sum + Number(r.total), 0) });
+        return {approved: approved.rowCount ?? 0, remaining: remaining.rows};
+      });
+      res.json(result);
     }),
   );
   router.post(
