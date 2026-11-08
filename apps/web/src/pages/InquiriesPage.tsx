@@ -249,7 +249,7 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
     {selected.followUpAction&&<p><strong>المتابعة المطلوبة:</strong> {selected.followUpAction}</p>}
     {selected.actionResult&&<p><strong>نتيجة التنفيذ:</strong> {selected.actionResult}</p>}
-    {manager&&selected.targets.length>0&&<div>
+    {manager&&(user.owner||selected.createdBy===user.id)&&selected.targets.length>0&&<div>
       <strong>المعنيون ({selected.answeredCount} من {selected.assignedCount})</strong>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
         {selected.targets.map(t=><span key={t.userId} className="button button-secondary button-compact">
@@ -268,7 +268,7 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
         </tr>)}</tbody>
       </table></div>}
     {selected.myStatus==="pending"&&<Button onClick={()=>beginReply(selected)}>تسجيل إجابتي</Button>}
-    {manager&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
+    {manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
       <label className="field"><span>نتيجة المتابعة والتنفيذ</span>
         <textarea rows={2} value={actionResult} maxLength={4000}
           onChange={e=>setActionResult(e.target.value)}/>
