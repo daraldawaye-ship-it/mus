@@ -43,7 +43,7 @@ const querySchema = z.object({
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   useReserve: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -115,7 +115,7 @@ async function filteredItems(
     options.reserveCoverageMin, options.reserveCoverageMax,
     options.purchaseFactorCoverageMin, options.purchaseFactorCoverageMax,
   ].some(value => value !== undefined)
-    || ["coverage", "reserveCoverage", "purchaseFactorCoverage"].includes(options.sortBy);
+    || ["coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage"].includes(options.sortBy);
   const coverageColumn = options.useReserve ? "m.coverage_after_reserve" : "m.coverage_before";
   range(options.coverageMin, coverageColumn, ">=");
   range(options.coverageMax, coverageColumn, "<=");
@@ -143,7 +143,8 @@ async function filteredItems(
     coverageWithRequired: "f.projected_coverage_days",
     fourMonths: "f.sale_times_four_months", year: "f.sale_times_year",
     allTime: "f.sale_times_all_time",
-    coverage: options.useReserve ? "f.coverage_after_reserve" : "f.coverage_before",
+    coverage: "f.coverage_before",
+    coverageWithReserve: "f.coverage_after_reserve",
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
   };
   const draftUsesDerivedSort = unselectedForDraft &&
