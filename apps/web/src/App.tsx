@@ -1193,7 +1193,7 @@ function Workspace() {
           </div>
         </aside>
         <div className="workspace-body">
-          <header className="topbar">
+          <header className={inCompany && companyLogo.data?.iconUrl ? "topbar topbar-company-logo" : "topbar"}>
             <div className="topbar-start">
               <Button
                 variant="ghost"
@@ -1211,10 +1211,9 @@ function Workspace() {
                   aria-label={`فتح صفحة ${company.data.company.name}`}
                   title="فتح صفحة الشركة"
                 >
-                  <span className="scope-mark">
+                  <span className={companyLogo.data?.iconUrl ? "scope-mark scope-mark-logo" : "scope-mark"}>
                     {companyLogo.data?.iconUrl?
-                      <img src={companyLogo.data.iconUrl} alt="" className="company-scope-logo"
-                        style={{width:30,height:30,objectFit:"contain"}}/>:
+                      <img src={companyLogo.data.iconUrl} alt="" className="company-scope-logo"/>:
                       <Building2 size={16} />}
                   </span>
                   <div>
