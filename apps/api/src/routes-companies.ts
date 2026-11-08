@@ -337,6 +337,59 @@ export function companyRoutes(pool: Pool): Router {
     res.json(result);
   }));
 
+  // Company logo is independent from the optional wide letterhead.
+  // The thumbnail is the square icon generated from the original artwork.
+  router.get("/companies/:companyId/logo",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const user=await currentActor(pool,actor(req),false);
+    await companyAccess(pool,user,companyId);
+    const logo=(await pool.query(
+      "SELECT media_id,updated_at FROM company_logos WHERE company_id=$1",
+      [companyId],
+    )).rows[0];
+    res.json({
+      mediaId:logo?.media_id??null,
+      imageUrl:logo?.media_id?`/api/media/${logo.media_id}/full`:null,
+      iconUrl:logo?.media_id?`/api/media/${logo.media_id}/thumbnail`:null,
+      updatedAt:logo?.updated_at?.toISOString()??null,
+    });
+  }));
+  router.put("/companies/:companyId/logo",handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const {mediaId}=parse(z.object({mediaId:z.uuid().nullable()}).strict(),req.body);
+    const result=await transaction(pool,async(client)=>{
+      const user=await currentActor(client,actor(req));
+      const access=await companyAccess(client,user,companyId,undefined,true);
+      if(!user.owner && access.company.createdBy!==user.id)
+        throw new HttpError(403,"forbidden","تعديل شعار الشركة متاح لمالكها فقط");
+      const previous=await client.query(
+        "SELECT media_id FROM company_logos WHERE company_id=$1",[companyId],
+      );
+      if(mediaId!==null){
+        const asset=await client.query(
+          "SELECT id FROM media_assets WHERE id=$1 AND company_id=$2 AND purpose='logo'",
+          [mediaId,companyId],
+        );
+        if(!asset.rowCount)
+          throw new HttpError(400,"invalid_image","الشعار غير مخصص لهذه الشركة");
+        await client.query(
+          `INSERT INTO company_logos(company_id,media_id,updated_by)
+           VALUES($1,$2,$3)
+           ON CONFLICT(company_id) DO UPDATE SET
+             media_id=EXCLUDED.media_id,updated_by=EXCLUDED.updated_by,updated_at=now()`,
+          [companyId,mediaId,user.id],
+        );
+      }else{
+        await client.query("DELETE FROM company_logos WHERE company_id=$1",[companyId]);
+      }
+      await audit(client,user,"company.logo.update","company",companyId,
+        {mediaId:previous.rows[0]?.media_id??null},{mediaId},companyId);
+      return {mediaId,imageUrl:mediaId?`/api/media/${mediaId}/full`:null,
+        iconUrl:mediaId?`/api/media/${mediaId}/thumbnail`:null};
+    });
+    res.json(result);
+  }));
+
   router.post(
     "/companies/:companyId/activate",
     handler(async (req, res) => {
