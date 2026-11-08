@@ -784,7 +784,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       const archived = req.query.archived === "true";
       if (archived && !p.canModerate) deny();
       const sort = parse(z.enum(["created","updated"]),req.query.sort ?? "created");
-      const query = norm(v.q).replace(/[\\%_]/g, "\\      const query = norm(v.q).replace(/[\\%_]/g, "\\$&");");
+      const query = norm(v.q).replace(/[\\%_]/g, "\\$&");
       // Fixed dosage forms stay available by explicit lookup for medicine
       // relations, but are never catalog tiles or user-create choices.
       const referenceFilter = kind === null
