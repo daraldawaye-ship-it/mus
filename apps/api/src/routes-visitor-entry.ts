@@ -56,8 +56,8 @@ export async function visitorAccountStatus(db: Database, user:AccountRow):Promis
   );
   const a=check.rows[0];
   return {
-    hardProtected:Boolean(a.employment || a.companies || a.social || a.installed || a.protected_change),
-    hasActivity:Boolean(a.acted || a.contributed),
+    hardProtected:Boolean(a.employment || a.companies || a.social || a.protected_change),
+    hasActivity:Boolean(a.installed || a.acted || a.contributed),
   };
 }
 function readDeviceCookie(req:Request):string|null {
@@ -125,7 +125,7 @@ export function visitorEntryRoutes(pool:Pool,secure:boolean):Router {
     setSessionCookie(res,result.token,secure);
     setDeviceCookie(res,result.deviceToken,secure);
     res.setHeader("Cache-Control","no-store");
-    res.json({status:"authenticated",user:result.user,csrf:result.csrf});
+    res.json({status:"authenticated",user:result.user,csrf:result.csrf,visitorOnly:true});
   }));
   return router;
 }
