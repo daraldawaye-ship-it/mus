@@ -9,6 +9,7 @@ import { notificationRoutes } from "./routes-notifications.ts";
 import { memoFeatureRuleRoutes } from "./memoFeatureRuleRoutes.ts";
 import { memoRoutes } from "./routes-memos.ts";
 import { questionRoutes } from "./routes-questions.ts";
+import { inquiryRoutes } from "./routes-inquiries.ts";
 import { medicineMarketRoutes } from "./routes-medicine-market.ts";
 import { taskRoutes } from "./routes-tasks.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
@@ -76,6 +77,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     notificationRoutes(pool),
     memoRoutes(pool),
     questionRoutes(pool),
+    inquiryRoutes(pool),
     // Keep registered domain routes discoverable by MCP; the gateway handles every market path first.
     medicineMarketRoutes(pool),
     taskRoutes(pool),
