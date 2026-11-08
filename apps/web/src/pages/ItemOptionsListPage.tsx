@@ -143,7 +143,7 @@ function formatAmountGroup(amount: string): string {
 const sortOptions = [
   ["code", "رمز الصنف"], ["name", "اسم الصنف"],
   ["stock", "الكمية المتوفرة"], ["reserve", "الكمية احتياط"],
-  ["purchaseFactor", "عامل وحدة الشراء"],
+  ["purchaseFactor", "عامل وحدة الشراء (الوحدة الأولى)"],
   ["month", "مرات المبيعات في شهر"], ["saleQuantityMonth", "الكمية المباعة في شهر"],
   ["fourMonths", "مرات المبيعات في 4 أشهر"], ["year", "مرات المبيعات في عام"], ["allTime", "مرات المبيعات منذ البداية"],
   ["previousYear", "مرات عام السابق"],
@@ -155,7 +155,7 @@ const sortOptions = [
   ["reserveCoverage", "كفاية كمية الاحتياط وحدها"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
@@ -969,7 +969,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   canEdit={canEditReserve} />
               </div>
               <div style={hiddenColumnStyle("purchaseFactor")} className="item-options-mobile-stat item-options-reserve-stat">
-                <span>عامل وحدة الشراء</span>
+                <span>عامل وحدة الشراء (الوحدة الأولى)</span>
                 <ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId}
                   revision={row.revision} purchaseFactor={row.purchaseFactor}
                   canEdit={canEditReserve} />
@@ -1035,7 +1035,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("saleQuantityMonth", "الكمية المباعة في شهر (الوحدة الأولى)")}
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("reserve", "كمية احتياط")}
-            {sortHeader("purchaseFactor", "عامل وحدة الشراء")}
+            {sortHeader("purchaseFactor", "عامل وحدة الشراء (الوحدة الأولى)")}
             {sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
@@ -1101,7 +1101,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
         «الكفاية بدون الاحتياط» تعتمد على المتوفر دون المرتجعات، و«الكفاية مع الاحتياط» تخصم كمية الاحتياط من هذا المتوفر.
         لكل منهما فلتر مستقل من/إلى. الكمية المطلوبة بالوحدة الأولى محسوبة للوصول إلى «الكفاية مع الاحتياط إلى» (أو 30 يومًا إن تُركت فارغة)،
-         مع حماية الاحتياط دائمًا، وتُقرّب لأقرب كمية كاملة بالوحدة الأولى توافق مضاعفات عامل وحدة الشراء. وأقل كمية مطلوبة هي دفعة شراء واحدة، ولا تظهر صفرًا.
+         مع حماية الاحتياط دائمًا، وتُقرّب لأقرب مضاعف «لعامل وحدة الشراء بالوحدة الأولى». فالعامل 10 يعني 10 أو 20 أو 30 وحدات أولى، وليس 10 حبات داخل وحدة واحدة. وأقل كمية مطلوبة هي عامل وحدة الشراء نفسه، ولا تظهر صفرًا.
          قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
          «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية إلى المخزون.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
