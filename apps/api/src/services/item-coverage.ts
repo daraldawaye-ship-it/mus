@@ -90,7 +90,8 @@ export const itemCoverageJoin = `
      END AS reserve_coverage_days,
      CASE WHEN i.purchase_factor <= 0 THEN 0::numeric
        WHEN coverage_rate.sales <= 0 THEN 9999::numeric
-       ELSE round(i.purchase_factor * coverage_rate.days / coverage_rate.sales,2)
+       ELSE round(i.purchase_factor * greatest(i.factor2::numeric * i.factor3::numeric,1)
+         * coverage_rate.days / coverage_rate.sales,2)
      END AS purchase_factor_coverage_days
  ) coverage`;
 
@@ -176,18 +177,19 @@ export async function requiredPurchaseQuantitiesToPage(
        END::text AS coverage_with_required_days
      FROM items i ${itemCoverageJoin}
      CROSS JOIN LATERAL (
+       -- The purchase factor counts WHOLE FIRST UNITS, not smallest units.
        SELECT greatest((i.factor2::bigint * i.factor3::bigint),1)::numeric
                 AS first_unit_smallest,
-         lcm(greatest(i.purchase_factor::bigint,1),
-           greatest(i.factor2::bigint * i.factor3::bigint,1))::numeric
-                AS minimum_lot_smallest
+         greatest(i.purchase_factor::bigint,1)::numeric
+                AS minimum_lot_first_unit
      ) purchase_lot
      CROSS JOIN LATERAL (
        SELECT greatest(1::numeric, ceil(greatest(0::numeric,
          coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
          + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
          - coverage_rate.quantity
-       ) / purchase_lot.minimum_lot_smallest)) * purchase_lot.minimum_lot_smallest
+       ) / (purchase_lot.minimum_lot_first_unit * purchase_lot.first_unit_smallest)))
+         * purchase_lot.minimum_lot_first_unit * purchase_lot.first_unit_smallest
          AS quantity_smallest
      ) requested
      WHERE i.company_id=$1 AND i.id=ANY($2::integer[])`,
