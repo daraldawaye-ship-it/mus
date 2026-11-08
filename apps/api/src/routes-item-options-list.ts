@@ -446,7 +446,9 @@ export function itemOptionsListRoutes(pool: Pool): Router {
           required_quantity: item.requiredQuantity,
         })));
       if (pricedRows.length) {
-        const rows = await client.query(
+        let rows;
+        try {
+          rows = await client.query(
           `WITH requested AS (
              SELECT DISTINCT ON (draft_id,item_id)
                draft_id, item_id, required_quantity
@@ -465,7 +467,13 @@ export function itemOptionsListRoutes(pool: Pool): Router {
            GROUP BY requested.draft_id,currency.code
            ORDER BY requested.draft_id,currency.code`,
           [companyId, JSON.stringify(pricedRows)],
-        );
+          );
+        } catch (reason) {
+          const pgError = reason as Error & {code?: string};
+          console.error("ORDER_DRAFT_VALUE_QUERY_FAILURE", pgError.code ?? "",
+            pgError.message);
+          throw reason;
+        }
         for (const row of rows.rows) {
           const draft = byId.get(Number(row.draft_id));
           if (!draft) continue;
