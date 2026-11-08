@@ -257,16 +257,17 @@ async function filteredItems(
       JOIN items i ON i.company_id=f.company_id AND i.id=f.id
       ${itemCoverageJoin}
       CROSS JOIN LATERAL (
+        -- Purchase factor is a multiple of FIRST purchase units.
         SELECT greatest(i.factor2::bigint*i.factor3::bigint,1)::numeric AS first_unit_smallest,
-               lcm(greatest(i.purchase_factor::bigint,1),
-                   greatest(i.factor2::bigint*i.factor3::bigint,1))::numeric AS minimum_lot_smallest
+               greatest(i.purchase_factor::bigint,1)::numeric AS minimum_lot_first_unit
       ) purchase_lot
       CROSS JOIN LATERAL (
         SELECT greatest(1::numeric, ceil(greatest(0::numeric,
           coverage_rate.sales * greatest(${targetParam}::numeric,0) / coverage_rate.days
           + CASE WHEN ${reserveParam}::boolean THEN i.reserve_quantity ELSE 0::numeric END
           - coverage_rate.quantity
-        ) / purchase_lot.minimum_lot_smallest)) * purchase_lot.minimum_lot_smallest
+        ) / (purchase_lot.minimum_lot_first_unit * purchase_lot.first_unit_smallest)))
+          * purchase_lot.minimum_lot_first_unit * purchase_lot.first_unit_smallest
           AS quantity_smallest
       ) requested
     ),
