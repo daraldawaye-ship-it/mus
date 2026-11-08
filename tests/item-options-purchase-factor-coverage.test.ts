@@ -47,7 +47,7 @@ test("purchase factor is strictly positive integral, and guarded row updates are
 test("reserve and purchase factor coverage reuse existing sales-rate windows", () => {
   const coverage = read("apps/api/src/services/item-coverage.ts");
   assert.match(coverage, /i\.reserve_quantity \* coverage_rate\.days \/ coverage_rate\.sales/);
-  assert.match(coverage, /i\.purchase_factor \* coverage_rate\.days \/ coverage_rate\.sales/);
+  assert.match(coverage, /i\.purchase_factor \* greatest\(i\.factor2::numeric \* i\.factor3::numeric,1\)/);
   assert.match(coverage, /coverage_stock\.stock_showroom/);
   assert.match(coverage, /coverage_stock\.stock_warehouse/);
   const api = read("apps/api/src/routes-item-options-list.ts");
@@ -78,7 +78,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(coverage, /CASE WHEN \$4::boolean THEN i\.reserve_quantity/);
   assert.match(coverage, /- coverage_rate\.quantity/);
   assert.match(coverage, /ceil\(greatest\(0::numeric/);
-  assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
+  assert.match(coverage, /greatest\(i\.purchase_factor::bigint,1\)::numeric/);
   assert.match(ui, /monthMin: params\.get\("monthMin"\) \?\? "1"/);
   assert.match(ui, /coverageWithReserveMax: params\.get\("coverageWithReserveMax"\) \?\? "1"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
@@ -134,7 +134,7 @@ test("item-options purchase price and projected sufficiency use whole first unit
   assert.match(api, /purchaseCurrencyCode: String\(row\.currency_code\)/);
   assert.match(api, /requiredPurchaseValue: requiredQuantities\.get\(row\.id\)\?\.requiredPurchaseValue/);
   assert.match(api, /coverageWithRequiredDays: requiredQuantities\.get\(row\.id\)\?\.coverageWithRequiredDays/);
-  assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
+  assert.match(coverage, /greatest\(i\.purchase_factor::bigint,1\)::numeric/);
   assert.match(coverage, /i\.factor2::bigint \* i\.factor3::bigint/);
   assert.match(coverage, /requested\.quantity_smallest \/ purchase_lot\.first_unit_smallest/);
   assert.match(coverage, /round\(i\.purchase_price::numeric/);
@@ -285,8 +285,8 @@ test("nonzero minimum order is identical in row proposal and full-filter total",
   const coverage = read("apps/api/src/services/item-coverage.ts");
   for (const sql of [api, coverage]) {
     assert.match(sql, /greatest\(1::numeric, ceil\(greatest\(0::numeric,/);
-    assert.match(sql, /\/ purchase_lot\.minimum_lot_smallest\)\) \* purchase_lot\.minimum_lot_smallest/);
-    assert.match(sql, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
+    assert.match(sql, /\/ \(purchase_lot\.minimum_lot_first_unit \* purchase_lot\.first_unit_smallest\)\)\)/);
+    assert.match(sql, /greatest\(i\.purchase_factor::bigint,1\)::numeric AS minimum_lot_first_unit/);
   }
   assert.match(api, /SUM\(order_value\)::text/);
   assert.match(coverage, /required_purchase_quantity/);
@@ -485,4 +485,26 @@ test("coverage columns display gross and net-of-reserve sufficiency independentl
     sortBy:"coverageWithReserve", sortDir:"asc", coverageColumnsVersion:2,
     visibleColumns:["coverage","coverageWithReserve"],
   }).sortBy, "coverageWithReserve");
+});
+
+test("purchase factor means multiples of FIRST units in both SQL calculations", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  for (const sql of [api, coverage]) {
+    assert.match(sql, /greatest\(i\.purchase_factor::bigint,1\)::numeric\s+AS minimum_lot_first_unit/);
+    assert.match(sql, /\/ \(purchase_lot\.minimum_lot_first_unit \* purchase_lot\.first_unit_smallest\)\)\)/);
+    assert.match(sql, /\* purchase_lot\.minimum_lot_first_unit \* purchase_lot\.first_unit_smallest/);
+    assert.match(sql, /requested\.quantity_smallest \/ purchase_lot\.first_unit_smallest/);
+    assert.doesNotMatch(sql, /minimum_lot_smallest|lcm\(greatest\(i\.purchase_factor/);
+  }
+  // A strip has 10 tablets: factor 10 means 10 strips, not just 10 tablets.
+  const requestedFirst = (neededSmallest: number, firstUnitSize: number, factor: number) =>
+    Math.max(1, Math.ceil(Math.max(0, neededSmallest) / (firstUnitSize * factor))) * factor;
+  for (const [need, unitSize, factor, expected] of [
+    [0, 10, 10, 10], [5, 10, 10, 10], [100, 10, 10, 10],
+    [101, 10, 10, 20], [0, 2, 5, 5], [31, 2, 5, 20],
+    [0, 1, 1, 1], [31, 10, 3, 6],
+  ]) assert.equal(requestedFirst(need, unitSize, factor), expected);
+  assert.match(coverage,
+    /i\.purchase_factor \* greatest\(i\.factor2::numeric \* i\.factor3::numeric,1\)/);
 });
