@@ -139,6 +139,7 @@ export async function api<T>(
 }
 interface SessionValue {
   user: User | null;
+  visitorOnly?: boolean;
   offlineMode: boolean;
   csrf: string | null;
   loading: boolean;
