@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { actor, handler, id, parse } from "./http.ts";
 import { itemFactorSchema, itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
-import { itemOptionsPresetCreateSchema, itemOptionsPresetFiltersSchema } from "../../../packages/contracts/src/item-options-presets.ts";
+import { itemOptionsPresetCreateSchema, itemOptionsPresetFiltersSchema, itemOptionsPresetGroupCreateSchema } from "../../../packages/contracts/src/item-options-presets.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
@@ -60,6 +60,7 @@ const draftExclusionSchema = z.object({
 async function filteredItems(
   client: PoolClient, user: ReturnType<typeof actor>, companyId: number,
   options: Options, unselectedForDraft = false, excludedDraftItemIds: number[] = [],
+  includeSharedSelectionsForDraft = false,
 ) {
   const entries = await directoryEntries(client, user, companyId);
   const visible = (key: string) => {
@@ -281,10 +282,10 @@ async function filteredItems(
     ${unselectedForDraft ? `
     SELECT f.id, f.code, f.name
     FROM eligible f
-    WHERE NOT EXISTS (
+    ${includeSharedSelectionsForDraft ? "" : `WHERE NOT EXISTS (
       SELECT 1 FROM company_item_temporary_selections chosen
       WHERE chosen.company_id=$1 AND chosen.item_id=f.id
-    )
+    )`}
     ORDER BY ${order} LIMIT 2001
     ` : `
     , order_costs_by_currency AS (
@@ -533,6 +534,12 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const presetId = id(req.params.presetId);
     await transaction(pool, async client => {
       const user = await checkPresetsAccess(client, req, companyId, true);
+      const referenced=await client.query(
+        "SELECT 1 FROM company_item_options_preset_groups WHERE company_id=$1 AND $2::bigint=ANY(preset_ids) LIMIT 1",
+        [companyId,presetId]);
+      if(referenced.rowCount)
+        throw new HttpError(409,"preset_used_in_group",
+          "هذا الخيار مستخدم في تجميع محفوظ؛ احذف التجميع أولًا حتى لا يتعطل");
       const deleted = await client.query(
         "DELETE FROM company_item_options_presets WHERE id=$1 AND company_id=$2 RETURNING id,name,filters",
         [presetId,companyId],
@@ -543,6 +550,127 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     });
     res.json({ok:true});
   }));
+
+  // Ordered combinations are shared company records. The run is a read-only
+  // preparation. The browser atomically replaces its device-local drafts only
+  // after every saved filter has been fully fetched successfully.
+  const presetGroupsPath = "/companies/:companyId/item-options-list/preset-groups";
+  router.get(presetGroupsPath, handler(async (req,res) => {
+    const companyId = id(req.params.companyId);
+    const items = await transaction(pool, async client => {
+      await checkPresetsAccess(client,req,companyId);
+      const rows=await client.query(
+        `SELECT groups.id,groups.name,groups.preset_ids,groups.created_by,groups.created_at,
+           COALESCE(NULLIF(u.display_name,''),u.name) AS created_by_name
+           FROM company_item_options_preset_groups groups
+           JOIN users u ON u.id=groups.created_by
+           WHERE groups.company_id=$1 ORDER BY lower(groups.name),groups.id`,[companyId]);
+      return rows.rows.map(row=>({
+        id:Number(row.id),name:String(row.name),
+        presetIds:(row.preset_ids as string[]).map(Number),
+        createdBy:Number(row.created_by),createdByName:String(row.created_by_name),
+        createdAt:(row.created_at as Date).toISOString(),
+      }));
+    });
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({items});
+  }));
+  router.post(presetGroupsPath, handler(async (req,res) => {
+    const companyId=id(req.params.companyId);
+    const input=parse(itemOptionsPresetGroupCreateSchema,req.body);
+    const item=await transaction(pool,async client=>{
+      const user=await checkPresetsAccess(client,req,companyId);
+      const found=await client.query(
+        "SELECT id FROM company_item_options_presets WHERE company_id=$1 AND id=ANY($2::bigint[])",
+        [companyId,input.presetIds]);
+      if(found.rowCount!==input.presetIds.length)
+        throw new HttpError(409,"preset_group_missing_option",
+          "أحد الخيارات المحفوظة غير موجود في الشركة؛ راجع مكونات التجميع");
+      const inserted=await client.query(
+        `INSERT INTO company_item_options_preset_groups(company_id,name,preset_ids,created_by)
+         VALUES($1,$2,$3::bigint[],$4)
+         ON CONFLICT DO NOTHING RETURNING id,name,created_at`,
+        [companyId,input.name,input.presetIds,user.id]);
+      if(!inserted.rowCount)
+        throw new HttpError(409,"preset_group_exists","يوجد تجميع محفوظ بهذا الاسم");
+      const row=inserted.rows[0];
+      await audit(client,user,"item.options-preset-group.create","itemOptionsPresetGroup",
+        Number(row.id),null,{name:input.name,presetIds:input.presetIds},companyId);
+      return {id:Number(row.id),name:String(row.name),presetIds:input.presetIds,
+        createdBy:user.id,createdByName:user.displayName,
+        createdAt:(row.created_at as Date).toISOString()};
+    });
+    res.status(201).json({item});
+  }));
+  router.delete(`${presetGroupsPath}/:groupId`,handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const groupId=id(req.params.groupId);
+    await transaction(pool,async client=>{
+      const user=await checkPresetsAccess(client,req,companyId,true);
+      const deleted=await client.query(
+        "DELETE FROM company_item_options_preset_groups WHERE company_id=$1 AND id=$2 RETURNING name,preset_ids",
+        [companyId,groupId]);
+      if(!deleted.rowCount)
+        throw new HttpError(404,"preset_group_not_found","التجميع غير موجود");
+      await audit(client,user,"item.options-preset-group.delete","itemOptionsPresetGroup",
+        groupId,{name:deleted.rows[0].name,presetIds:deleted.rows[0].preset_ids},null,companyId);
+    });
+    res.json({ok:true});
+  }));
+  router.post(`${presetGroupsPath}/:groupId/prepare`,handler(async(req,res)=>{
+    const companyId=id(req.params.companyId);
+    const groupId=id(req.params.groupId);
+    const result=await readItems(pool,req,async(client,accessCompanyId)=>{
+      if(accessCompanyId!==companyId) throw new HttpError(403,"forbidden","الشركة غير مطابقة");
+      const rows=await client.query(
+        "SELECT id,name,preset_ids FROM company_item_options_preset_groups WHERE company_id=$1 AND id=$2",
+        [companyId,groupId]);
+      if(!rows.rowCount)
+        throw new HttpError(404,"preset_group_not_found","التجميع غير موجود");
+      const group=rows.rows[0];
+      const presetIds=(group.preset_ids as string[]).map(Number);
+      const presetRows=await client.query(
+        "SELECT id,name,filters FROM company_item_options_presets WHERE company_id=$1 AND id=ANY($2::bigint[])",
+        [companyId,presetIds]);
+      const byId=new Map(presetRows.rows.map(row=>[Number(row.id),row]));
+      if(presetIds.some(presetId=>!byId.has(presetId)))
+        throw new HttpError(409,"preset_group_missing_option",
+          "أحد الخيارات المحفوظة في التجميع محذوف؛ لم تُستبدل المسودات");
+      const excludedIds=new Set<number>();
+      const stages: Array<{
+        presetId:number; name:string; items:Array<{id:number;code:string;name:string;requiredQuantity:string}>;
+      }>=[];
+      for(const presetId of presetIds){
+        const preset=byId.get(presetId)!;
+        const filters=itemOptionsPresetFiltersSchema.parse(preset.filters);
+        const legacy=filters.coverageFilterVersion!==2;
+        const oldNet=legacy && filters.useReserve!==false;
+        const opts=querySchema.parse({
+          ...filters,
+          coverageMin:oldNet ? "" : filters.coverageMin,
+          coverageMax:oldNet ? "" : filters.coverageMax,
+          coverageWithReserveMin:legacy ? (oldNet?filters.coverageMin:"") : filters.coverageWithReserveMin,
+          coverageWithReserveMax:legacy ? (oldNet?filters.coverageMax:"") : filters.coverageWithReserveMax,
+          excludeZero:filters.excludeZero?"true":"false",
+          excludeOrderStopped:filters.excludeOrderStopped?"true":"false",
+          // Exclude only items already assigned in PREVIOUS group stages.
+          excludeOrderDrafts:"true",
+          page:1,pageSize:50,
+        });
+        const match=await filteredItems(client,actor(req),companyId,opts,true,
+          [...excludedIds],true);
+        for(const item of match.items) excludedIds.add(item.id);
+        if(excludedIds.size>10_000)
+          throw new HttpError(413,"preset_group_too_large",
+            "تجاوز تجميع الخيارات 10000 صنف؛ ضيّق بعض المجموعات. لم تتغير المسودات");
+        stages.push({presetId,name:String(preset.name),items:match.items});
+      }
+      return {id:groupId,name:String(group.name),stages,totalUnique:excludedIds.size};
+    });
+    res.setHeader("Cache-Control","private, no-store");
+    res.json({result});
+  }));
+
   // Update only reserve quantity; respect card revision and audit every edit.
   // Never send the full card on a row-level edit.
   router.patch("/companies/:companyId/items/:itemId/reserve-quantity", handler(async (req, res) => {
