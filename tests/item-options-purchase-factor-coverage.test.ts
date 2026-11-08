@@ -72,7 +72,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   const coverage = read("apps/api/src/services/item-coverage.ts");
   const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
   assert.match(api, /requiredPurchaseQuantitiesToPage\(/);
-  assert.match(api, /options\.coverageMax \?\? "30"/);
+  assert.match(api, /options\.coverageWithReserveMax \?\? "30"/);
   assert.match(api, /requiredPurchaseQuantity: requiredQuantities\.get\(row\.id\)/);
   assert.match(coverage, /coverage_rate\.sales \* greatest\(\$3::numeric,0\) \/ coverage_rate\.days/);
   assert.match(coverage, /CASE WHEN \$4::boolean THEN i\.reserve_quantity/);
@@ -80,7 +80,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(coverage, /ceil\(greatest\(0::numeric/);
   assert.match(coverage, /lcm\(greatest\(i\.purchase_factor::bigint,1\)/);
   assert.match(ui, /monthMin: params\.get\("monthMin"\) \?\? "1"/);
-  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "1"/);
+  assert.match(ui, /coverageWithReserveMax: params\.get\("coverageWithReserveMax"\) \?\? "1"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
   assert.doesNotMatch(ui, /<input type="number" step="any"/);
   assert.match(ui, /colSpan=\{visibleColumns\.length\}/);
@@ -102,7 +102,7 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.match(api, /saleQuantityMonth: String\(row\.sale_quantity_month\)\.replace\(/);
   assert.match(ui, /row\.saleQuantityMonth/);
   assert.match(ui, /stockMin: params\.get\("stockMin"\) \?\? "", stockMax: params\.get\("stockMax"\) \?\? ""/);
-  assert.match(ui, /monthMin: "1", coverageMax: "1"/);
+  assert.match(ui, /monthMin: "1", yearMin: "2", coverageWithReserveMax: "1"/);
   assert.match(ui, /<th scope="col" className="item-options-choice-cell">اختيار<\/th>/);
   assert.doesNotMatch(ui, /<th scope="col">اختيار مؤقت<\/th>/);
   assert.doesNotMatch(ui, /<span>\{temporarySelection\.pendingIds\.has\(row\.itemId\) \? "حفظ/);
@@ -188,8 +188,8 @@ test("item-options totals aggregate all filtered items by currency; derived sort
   assert.match(api, /jsonb_agg\(jsonb_build_object\(/);
   assert.match(api, /requiredPurchaseValueTotals:/);
   assert.match(api, /SELECT \* FROM replenishment f ORDER BY \$\{order\} LIMIT \$\{limit\} OFFSET \$\{offset\}/);
-  assert.match(api, /options\.coverageMax \?\? "30"/);
-  assert.match(api, /options\.useReserve \? "true" : "false"/);
+  assert.match(api, /options\.coverageWithReserveMax \?\? "30"/);
+  assert.match(api, /values\.push\(options\.coverageWithReserveMax \?\? "30", "true"\)/);
   assert.match(api, /purchasePrice: "f\.purchase_price"/);
   assert.match(api, /saleQuantityMonth: "f\.sale_quantity_month"/);
   assert.match(api, /requiredPurchaseQuantity: "f\.order_quantity_first_unit"/);
@@ -225,8 +225,8 @@ test("item-options stop-order control excludes only future card dates by default
   assert.match(ui, /if\(!values\.excludeOrderStopped\) next\.set\("excludeOrderStopped","false"\)/);
   assert.match(ui, /if \(params\.get\("excludeOrderStopped"\) === "false"\) request\.set\("excludeOrderStopped", "false"\)/);
   assert.match(preset, /excludeOrderStopped: z\.boolean\(\)\.default\(true\)/);
-  assert.match(ui, /monthMin: "1", coverageMax: "1"/);
-  assert.match(ui, /key === "monthMin" \|\| key === "coverageMax" \? "1"/, "coverage defaults must use one day");
+  assert.match(ui, /monthMin: "1", yearMin: "2", coverageWithReserveMax: "1"/);
+  assert.match(ui, /key === "monthMin" \|\| key === "coverageWithReserveMax" \? "1"/, "reserved coverage defaults must use one day");
   // The purchase/value/coverage totals all use filtered, not unfiltered rows.
   assert.match(api, /FROM filtered f/);
 });
@@ -255,7 +255,7 @@ test("monthly sold quantity in item options is FIRST-unit and rolling year count
   assert.match(ui, /yearMin: params\.get\("yearMin"\) \?\? "2"/);
   assert.match(ui, /yearMin: "2", coverageMax: "1"/);
   assert.match(ui, /key === "yearMin" \? "2"/);
-  assert.match(ui, /key === "yearMin" \|\| key === "coverageMax"/);
+  assert.match(ui, /key === "yearMin" \|\| key === "coverageWithReserveMax"/);
   assert.match(schema, /yearMin: numericRange\.default\(""\)/);
   assert.match(schema, /yearMax: numericRange\.default\(""\)/);
   assert.match(coverage, /coverage_rate\.sales/);
@@ -313,11 +313,11 @@ test("any item-options row click updates avatar item-shortcut selection without 
 
 test("one day is the fresh-page and reset default, without overwriting explicit filter values", () => {
   const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
-  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "1"/);
-  assert.match(ui, /key === "monthMin" \|\| key === "coverageMax" \? "1"/);
-  assert.match(ui, /monthMin: "1", yearMin: "2", coverageMax: "1"/);
+  assert.match(ui, /coverageWithReserveMax: params\.get\("coverageWithReserveMax"\) \?\? "1"/);
+  assert.match(ui, /key === "monthMin" \|\| key === "coverageWithReserveMax" \? "1"/);
+  assert.match(ui, /monthMin: "1", yearMin: "2", coverageWithReserveMax: "1"/);
   // Old links or shared presets can intentionally contain 2: they remain explicit choices.
-  assert.match(ui, /next\.set\(key,values\[key\]\)/);
+  assert.match(ui, /next\.set\(key, value\)/);
   assert.match(ui, /if \(value \|\| key === "stockMin"/);
 });
 
@@ -386,7 +386,7 @@ test("bulk order draft saves exactly the first-unit required column, and prints 
   const css = read("apps/web/src/styles.css");
   assert.match(api,/if \(unselectedForDraft\) \{/);
   assert.match(api,/const requested = await requiredPurchaseQuantitiesToPage\(/);
-  assert.match(api,/client, companyId, ids, options\.coverageMax \?\? "30", options\.useReserve/);
+  assert.match(api,/client, companyId, ids, options\.coverageWithReserveMax \?\? "30", true/);
   assert.match(api,/requiredQuantity: requested\.get\(Number\(row\.id\)\)!\.requiredPurchaseQuantity/);
   assert.match(api,/order_draft_quantity_unavailable/);
   assert.match(page,/items: OrderDraftItem\[\]; total: number/);
@@ -465,9 +465,15 @@ test("coverage columns display gross and net-of-reserve sufficiency independentl
   assert.match(ui, /sortHeader\("coverageWithReserve", "الكفاية مع الاحتياط \(يوم\)"\)/);
   assert.match(ui, /row\.approximateCoverageDays \?\? "—"/);
   assert.match(ui, /row\.coverageAfterReserveDays \?\? "—"/);
-  // The reserve checkbox still affects purchase targets and coverage filters.
-  assert.match(api, /const coverageColumn = options\.useReserve \?/);
-  assert.match(api, /options\.coverageMax \?\? "30", options\.useReserve/);
+  // Each range filters its own metric; replenishment always protects reserve stock.
+  assert.match(api, /range\(options\.coverageMin, "m\.coverage_before", ">="\)/);
+  assert.match(api, /range\(options\.coverageMax, "m\.coverage_before", "<="\)/);
+  assert.match(api, /range\(options\.coverageWithReserveMin, "m\.coverage_after_reserve", ">="\)/);
+  assert.match(api, /range\(options\.coverageWithReserveMax, "m\.coverage_after_reserve", "<="\)/);
+  assert.match(api, /options\.coverageWithReserveMax \?\? "30", true/);
+  assert.doesNotMatch(ui, /checked=\{draft\.useReserve\}/);
+  assert.match(ui, /coverageWithReserveMax: params\.get\("coverageWithReserveMax"\) \?\? "1"/);
+  assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? ""/);
   // Explicit modern preset column choices must not be overriden on load.
   assert.match(schema, /coverageColumnsVersion: z\.literal\(2\)\.optional\(\)/);
   assert.match(schema, /"coverage", "coverageWithReserve", "coverageWithRequired"/);
