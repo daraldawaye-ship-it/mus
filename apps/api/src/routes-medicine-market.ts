@@ -1085,10 +1085,30 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
              reason='اعتماد تلقائي لمساهمة المالك المنشورة مسبقًا'
             FROM medicine_market_cards c
            WHERE p.card_id=c.id AND p.author_id=$1 AND p.status='pending'
-             AND p.published AND c.status='published' AND NOT c.archived
-             AND c.kind<>'prescription'
+             AND p.published AND NOT c.archived
+             AND ((c.kind<>'prescription' AND c.status='published')
+               OR (c.kind='prescription' AND p.field_key='prescriptionLines'
+                   AND c.status IN ('pending','published')))
              AND (CASE WHEN p.field_key='name' THEN to_jsonb(c.name)
                    ELSE COALESCE(c.data->p.field_key, 'null'::jsonb) END) = p.proposed_value
+         RETURNING p.id`,
+          [u.id],
+        );
+        // Older published owner proposals superseded by newer values are
+        // no longer a review task. Mark conflict without touching card data.
+        const superseded = await db.query(
+          `UPDATE medicine_market_contributions p SET
+             status='conflict', reviewer_id=$1, reviewed_at=now(),
+             reason='تجاوزت المساهمة تعديلات أحدث؛ لا تحتاج مصادقة'
+            FROM medicine_market_cards c
+           WHERE p.card_id=c.id AND p.author_id=$1 AND p.status='pending'
+             AND p.published
+             AND (c.kind<>'prescription'
+               OR (c.kind='prescription' AND p.field_key='prescriptionLines'))
+             AND (c.archived OR c.status='rejected'
+               OR (CASE WHEN p.field_key='name' THEN to_jsonb(c.name)
+                        ELSE COALESCE(c.data->p.field_key,'null'::jsonb) END)
+                  IS DISTINCT FROM p.proposed_value)
          RETURNING p.id`,
           [u.id],
         );
@@ -1097,8 +1117,10 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           [u.id],
         );
         await auditMarket(db, u, "owner_auto_approve_existing", null, null,
-          { approved: approved.rowCount ?? 0, remaining: remaining.rows.reduce((sum, r) => sum + Number(r.total), 0) });
-        return {approved: approved.rowCount ?? 0, remaining: remaining.rows};
+          { approved: approved.rowCount ?? 0, superseded: superseded.rowCount ?? 0,
+            remaining: remaining.rows.reduce((sum, r) => sum + Number(r.total), 0) });
+        return {approved: approved.rowCount ?? 0,
+          superseded: superseded.rowCount ?? 0, remaining: remaining.rows};
       });
       res.json(result);
     }),
