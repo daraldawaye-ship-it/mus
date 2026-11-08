@@ -49,7 +49,7 @@ const ranges = [
   { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
-type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean };
+type Draft = Record<RangeKey, string> & { orderTargetDays: string; excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
@@ -65,6 +65,7 @@ function readDraft(params: URLSearchParams): Draft {
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
     coverageWithReserveMin: params.get("coverageWithReserveMin") ?? "",
     coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "1",
+    orderTargetDays: params.get("orderTargetDays") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
@@ -106,6 +107,9 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
       next.set(key, value);
     else next.delete(key);
   }
+  // This target changes purchase quantities and their totals, not the
+  // independent post-reserve sufficiency filter range.
+  next.set("orderTargetDays", values.orderTargetDays.trim());
   if (query.trim()) next.set("q", query.trim()); else next.delete("q");
   if (values.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
   if (!values.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
@@ -275,6 +279,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       (key === "monthMin" || key === "coverageWithReserveMax" ? "1" : key === "yearMin" ? "2" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
+  // Always target a positive number of days, defaulting to one. It is not
+  // inferred from coverageWithReserveMax (which is a filter only).
+  const orderTargetDays = (params.get("orderTargetDays") ?? "1").trim();
+  request.set("orderTargetDays",
+    numberPattern.test(orderTargetDays) && Number(orderTargetDays) > 0
+      ? orderTargetDays : "1");
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
   if (params.get("excludeOrderStopped") === "false") request.set("excludeOrderStopped", "false");
   if (params.get("excludeOrderDrafts") === "false") request.set("excludeOrderDrafts", "false");
@@ -417,6 +427,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         if (sequence === autoFilterSequence.current) setAutoFilterPending(false);
         return;
       }
+      if (!numberPattern.test(values.orderTargetDays.trim()) ||
+          Number(values.orderTargetDays.trim()) <= 0) {
+        setFilterError("حقل «مطلوب ما يكفينا إلى» يجب أن يكون أكبر من صفر.");
+        if (sequence === autoFilterSequence.current) setAutoFilterPending(false);
+        return;
+      }
       void runFilterApplication(() => setParams(previous =>
         appliedFilterParams(previous, values, nextSearch))).finally(() => {
         if (sequence === autoFilterSequence.current) setAutoFilterPending(false);
@@ -463,6 +479,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     const candidate = {
       q: search.trim(), active, sortBy, sortDir,
       ...Object.fromEntries(ranges.map(({key}) => [key,draft[key].trim()])),
+      orderTargetDays: draft.orderTargetDays.trim(),
       excludeZero: draft.excludeZero,
       excludeOrderStopped: draft.excludeOrderStopped,
       excludeOrderDrafts: draft.excludeOrderDrafts,
@@ -543,6 +560,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       }
       next.set(key, value);
     }
+    next.set("orderTargetDays", values.orderTargetDays);
     if(values.excludeZero) next.set("excludeZero","true");
     if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
     if(!values.excludeOrderDrafts) next.set("excludeOrderDrafts","false");
@@ -574,6 +592,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     setSelectedPresetId("");
     const defaults = new URLSearchParams({
       monthMin: "1", yearMin: "2", coverageWithReserveMax: "1",
+      orderTargetDays: "1",
       coverageFilterVersion: "2",
       sortBy: "allTime", sortDir: "desc",
     });
@@ -735,6 +754,16 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             استثناء الأصناف المرحّلة إلى مسودات الطلبيات
           </label>
           
+          <label className="item-options-filter-field" style={{minWidth:170, maxWidth:235}}
+            title="المدة التي نريد أن تكفينا الكمية المطلوبة لها، مستقلة عن نطاق فلتر الكفاية مع الاحتياط.">
+            <span className="item-options-filter-label">مطلوب ما يكفينا إلى (يوم)</span>
+            <input type="text" inputMode="decimal" aria-label="مطلوب ما يكفينا إلى"
+              value={draft.orderTargetDays}
+              onChange={event => {
+                const next = {...draft, orderTargetDays:event.target.value};
+                setDraft(next); scheduleAutoFilter(next, search);
+              }} />
+          </label>
           <Button type="button" variant="secondary" onClick={reset}>إعادة الافتراضيات</Button>
         </div>
       </form>
@@ -1100,8 +1129,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         الحقول الفارغة لا تضع أي حد أعلى أو أدنى، وتُحتسب مرات البيع صافي عدد فواتير البيع
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
         «الكفاية بدون الاحتياط» تعتمد على المتوفر دون المرتجعات، و«الكفاية مع الاحتياط» تخصم كمية الاحتياط من هذا المتوفر.
-        لكل منهما فلتر مستقل من/إلى. الكمية المطلوبة بالوحدة الأولى محسوبة للوصول إلى «الكفاية مع الاحتياط إلى» (أو 30 يومًا إن تُركت فارغة)،
-         مع حماية الاحتياط دائمًا، وتُقرّب لأقرب مضاعف «لعامل وحدة الشراء بالوحدة الأولى». فالعامل 10 يعني 10 أو 20 أو 30 وحدات أولى، وليس 10 حبات داخل وحدة واحدة. وأقل كمية مطلوبة هي عامل وحدة الشراء نفسه، ولا تظهر صفرًا.
+        لكل منهما فلتر مستقل من/إلى. أما «مطلوب ما يكفينا إلى» فهو هدف مستقل للكمية المطلوبة،
+         وافتراضيه يوم واحد؛ تغييره لا يغيّر نطاق فلتر الكفاية مع الاحتياط.
+         تُحسب الكمية المطلوبة بالوحدة الأولى لتغطية المدة المحددة مع حماية الاحتياط دائمًا، وتُقرّب لأقرب مضاعف «لعامل وحدة الشراء بالوحدة الأولى». فالعامل 10 يعني 10 أو 20 أو 30 وحدات أولى، وليس 10 حبات داخل وحدة واحدة. وأقل كمية مطلوبة هي عامل وحدة الشراء نفسه، ولا تظهر صفرًا.
          قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
          «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية إلى المخزون.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
