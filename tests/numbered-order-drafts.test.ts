@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
+  buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
   MAX_NEW_ORDER_DRAFT_ITEMS, ORDER_DRAFT_LIFETIME_MS,
 } from "../apps/web/src/numbered-order-drafts-core.ts";
@@ -203,4 +203,50 @@ test("draft header displays exact purchase value after item count, grouped by cu
   // using their saved quantities and CURRENT first-unit purchase prices.
   assert.match(route, /requiredQuantity: z\.string\(\)\.regex\(/);
   assert.match(page, /إجمالي قيمة المطلوب|قيمة المطلوب/);
+});
+
+test("saved ordered option groups replace device drafts atomically in priority order", () => {
+  // Source 1 wins duplicates; later sources keep only previously unseen items.
+  const incoming = [
+    [item(10),item(20),item(30)],
+    [item(20),item(40)],
+    [item(10),item(40),item(50)],
+  ];
+  const built=buildReplacementOrderDrafts(incoming, Date.parse("2026-11-09T09:00:00Z"));
+  assert.equal(built.error,null);
+  assert.equal(built.added,5);
+  assert.equal(built.skipped,4);
+  assert.deepEqual(built.state?.drafts.map(d=>d.id),[1,2,3]);
+  assert.deepEqual(built.state?.drafts.map(d=>d.items.map(x=>x.id)),[[10,20,30],[40],[50]]);
+  assert.equal(built.state?.nextId,4);
+  const allIds=built.state!.drafts.flatMap(d=>d.items.map(x=>x.id));
+  assert.equal(new Set(allIds).size,allIds.length);
+});
+test("group preparation errors or no matching items never replace previous drafts", () => {
+  assert.equal(buildReplacementOrderDrafts([[],[]]).state,null);
+  assert.match(buildReplacementOrderDrafts([[],[]]).error!,/لا توجد أصناف/);
+  assert.equal(buildReplacementOrderDrafts([]).state,null);
+  assert.equal(buildReplacementOrderDrafts(Array.from({length:21},()=>[item(1)])).state,null);
+  const tooMany=buildReplacementOrderDrafts([Array.from({length:2001},(_,i)=>item(i+1))]);
+  assert.equal(tooMany.state,null);
+  assert.match(tooMany.error!,/2000/);
+});
+test("named preset groups are server-saved; one successful browser write replaces drafts", () => {
+  const page=readFileSync("apps/web/src/pages/ItemOptionsListPage.tsx","utf8");
+  const server=readFileSync("apps/api/src/routes-item-options-list.ts","utf8");
+  const local=readFileSync("apps/web/src/numbered-order-drafts.ts","utf8");
+  const migration=readFileSync("apps/api/migrations/20261109_company_item_options_preset_groups.sql","utf8");
+  assert.match(page,/تجميع الخيارات المحفوظة بالترتيب/);
+  assert.match(page,/moveGroupStep\(index,-1\)/);
+  assert.match(page,/moveGroupStep\(index,1\)/);
+  assert.match(page,/void runPresetGroup\(chosen\)/);
+  assert.match(page,/replaceFromPresetGroup\(stages\.map\(stage=>stage\.items\)\)/);
+  assert.match(server,/router\.post\(\`\$\{presetGroupsPath\}\/\:groupId\/prepare\`/);
+  assert.match(server,/const excludedIds=new Set<number>\(\)/);
+  assert.match(server,/for\(const item of match\.items\) excludedIds\.add\(item\.id\)/);
+  assert.match(server,/includeSharedSelectionsForDraft \? ""/);
+  assert.match(migration,/preset_ids BIGINT\[\] NOT NULL/);
+  assert.match(local,/const built=buildReplacementOrderDrafts\(stages\)/);
+  assert.match(local,/if\(!save\(built\.state\)\) return null/);
+  assert.doesNotMatch(page,/temporaryOrder\.drafts\.forEach\(.*deleteDraft/);
 });
