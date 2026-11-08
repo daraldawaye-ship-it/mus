@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { createDatabase } from "./db.ts";
 import { configuration, type AppOptions } from "./config.ts";
 import { HttpError } from "./errors.ts";
-import { loadSession, mutationSecurity } from "./http.ts";
+import { loadSession, mutationSecurity, visitorOnlyGuard } from "./http.ts";
 import { ownerReadOnlyPreview } from "./owner-read-only-preview.ts";
 import { trackAuthenticatedPresence } from "./services/user-presence.ts";
 import { authRoutes } from "./routes-auth.ts";
@@ -104,6 +104,7 @@ export async function createApp(options: AppOptions = {}) {
     "/api",
     express.json({ limit: "5mb" }),
     (req, res, next) => loadSession(marketAuthPool && /^\/medicine-market(?:\/|$)/.test(req.path) ? marketAuthPool : pool)(req, res, next),
+    visitorOnlyGuard,
     mutationSecurity(config.appOrigin),
     trackAuthenticatedPresence(pool),
     ownerReadOnlyPreview(pool),
