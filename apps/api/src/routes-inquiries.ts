@@ -56,7 +56,7 @@ function formatRow(r:QueryResultRow) {
     priority:r.priority,dueAt:r.due_at,linkedTable:r.linked_table,
     linkedRecordId:r.linked_record_id===null?null:Number(r.linked_record_id),
     followUpAction:r.follow_up_action,actionResult:r.action_result,
-    status:r.status,createdBy:r.created_by,creatorName:r.creator_name,
+    status:r.status,createdBy:r.created_by,creatorName:r.creator_name,companyName:r.company_name??null,
     createdAt:r.created_at,updatedAt:r.updated_at,answeredAt:r.answered_at
   };
 }
@@ -86,7 +86,7 @@ async function hydrate(db:Pool|PoolClient,rows:QueryResultRow[],viewer:number,ma
 }
 async function visibleRow(db:Pool|PoolClient,requestId:number,companyId:number|null,userId:number,manager:boolean,lock=false) {
   const row=(await db.query(
-    "SELECT q.*,u.name AS creator_name FROM inquiry_requests q JOIN users u ON u.id=q.created_by "+
+    "SELECT q.*,u.name AS creator_name,c.name AS company_name FROM inquiry_requests q JOIN users u ON u.id=q.created_by LEFT JOIN companies c ON c.id=q.company_id "+
     "WHERE q.id=$1 AND q.company_id IS NOT DISTINCT FROM $2 "+
     "AND ($3::boolean OR q.created_by=$4 OR EXISTS (SELECT 1 FROM inquiry_targets t WHERE t.inquiry_id=q.id AND t.user_id=$4))"+
     (lock?" FOR UPDATE OF q":""),
@@ -121,7 +121,7 @@ export function inquiryRoutes(pool:Pool):Router {
     const page=req.query.page===undefined?1:Number(req.query.page);
     if(!Number.isSafeInteger(page)||page<1||page>100000)throw new HttpError(400,"invalid_page","صفحة غير صالحة");
     const rows=await pool.query(
-      "SELECT q.*,u.name AS creator_name FROM inquiry_requests q JOIN users u ON u.id=q.created_by "+
+      "SELECT q.*,u.name AS creator_name,c.name AS company_name FROM inquiry_requests q JOIN users u ON u.id=q.created_by LEFT JOIN companies c ON c.id=q.company_id "+
       "WHERE q.company_id IS NOT DISTINCT FROM $1 AND "+
       "($2::boolean OR q.created_by=$3 OR EXISTS(SELECT 1 FROM inquiry_targets t WHERE t.inquiry_id=q.id AND t.user_id=$3)) "+
       "AND ($4='' OR q.request_text ILIKE '%'||$4||'%' OR q.linked_table ILIKE '%'||$4||'%') "+
