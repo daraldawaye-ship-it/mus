@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   itemOptionsPresetCreateSchema,
   itemOptionsPresetFiltersSchema,
@@ -81,4 +82,36 @@ test("invalid price or required quantity ranges are not accepted in presets", ()
       name: "اختبار", filters: { ...filters, requiredPurchaseQuantityMax: invalid },
     }).success, false);
   }
+});
+
+test("required value and projected post-reserve coverage ranges persist and filter globally", () => {
+  const keys = [
+    "requiredPurchaseValueMin", "requiredPurchaseValueMax",
+    "coverageWithRequiredMin", "coverageWithRequiredMax",
+  ] as const;
+  const previous = itemOptionsPresetFiltersSchema.parse(filters);
+  for (const key of keys) assert.equal(previous[key], "", key + " is unbounded for old presets");
+  const saved = itemOptionsPresetCreateSchema.parse({
+    name: "سعر طلب وكفاية",
+    filters: { ...filters, requiredPurchaseValueMin: "125.5",
+      requiredPurchaseValueMax: "2500", coverageWithRequiredMin: "2",
+      coverageWithRequiredMax: "15" },
+  });
+  assert.equal(saved.filters.requiredPurchaseValueMin, "125.5");
+  assert.equal(saved.filters.coverageWithRequiredMax, "15");
+  assert.equal(itemOptionsPresetCreateSchema.safeParse({
+    name: "غير صالح", filters: { ...filters, coverageWithRequiredMax: "1.1234567" },
+  }).success, false);
+  const api = readFileSync("apps/api/src/routes-item-options-list.ts", "utf8");
+  const ui = readFileSync("apps/web/src/pages/ItemOptionsListPage.tsx", "utf8");
+  for (const key of keys) {
+    assert.ok(api.includes("options." + key), "server filter " + key);
+    assert.ok(ui.includes('key: "' + key + '"'), "visible filter " + key);
+    assert.ok(ui.includes('params.get("' + key + '")'), "restored URL filter " + key);
+  }
+  assert.match(api, /replenishmentRange\(options\.requiredPurchaseValueMin, "f\.order_value", ">="\)/);
+  assert.match(api, /replenishmentRange\(options\.coverageWithRequiredMax, "f\.projected_coverage_days", "<="\)/);
+  assert.match(api, /WHERE \$\{replenishmentPredicates\.join\(" AND "\)\}/);
+  assert.ok(api.indexOf("eligible AS MATERIALIZED") < api.indexOf("order_costs_by_currency AS"));
+  assert.match(api, /CASE WHEN \$\{reserveParam\}::boolean THEN i\.reserve_quantity ELSE 0::numeric END/);
 });

@@ -29,6 +29,8 @@ const ranges = [
   { key: "purchasePriceMax", label: "سعر الشراء إلى (بعملة الصنف)" },
   { key: "requiredPurchaseQuantityMin", label: "الكمية المطلوبة من (الوحدة الأولى)" },
   { key: "requiredPurchaseQuantityMax", label: "الكمية المطلوبة إلى (الوحدة الأولى)" },
+  { key: "requiredPurchaseValueMin", label: "قيمة المطلوب من (بعملة الصنف)" },
+  { key: "requiredPurchaseValueMax", label: "قيمة المطلوب إلى (بعملة الصنف)" },
   { key: "monthMin", label: "المبيعات مرات في شهر من" },
   { key: "monthMax", label: "المبيعات مرات في شهر إلى" },
   { key: "fourMonthsMin", label: "المبيعات مرات في 4 أشهر من" },
@@ -43,6 +45,8 @@ const ranges = [
   { key: "coverageMax", label: "الكفاية بدون الاحتياط إلى (يوم)" },
   { key: "coverageWithReserveMin", label: "الكفاية مع الاحتياط من (يوم)" },
   { key: "coverageWithReserveMax", label: "الكفاية مع الاحتياط إلى (يوم)" },
+  { key: "coverageWithRequiredMin", label: "الكفاية مع المطلوب من (يوم)" },
+  { key: "coverageWithRequiredMax", label: "الكفاية مع المطلوب إلى (يوم)" },
   { key: "reserveCoverageMin", label: "كفاية الكمية الاحتياط من (يوم)" },
   { key: "reserveCoverageMax", label: "كفاية الكمية الاحتياط إلى (يوم)" },
   { key: "purchaseFactorCoverageMin", label: "كفاية عامل وحدة الشراء من (يوم)" },
@@ -57,6 +61,7 @@ function readDraft(params: URLSearchParams): Draft {
     purchaseFactorMin: params.get("purchaseFactorMin") ?? "", purchaseFactorMax: params.get("purchaseFactorMax") ?? "",
     purchasePriceMin: params.get("purchasePriceMin") ?? "", purchasePriceMax: params.get("purchasePriceMax") ?? "",
     requiredPurchaseQuantityMin: params.get("requiredPurchaseQuantityMin") ?? "", requiredPurchaseQuantityMax: params.get("requiredPurchaseQuantityMax") ?? "",
+    requiredPurchaseValueMin: params.get("requiredPurchaseValueMin") ?? "", requiredPurchaseValueMax: params.get("requiredPurchaseValueMax") ?? "",
     monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
     yearMin: params.get("yearMin") ?? "2", yearMax: params.get("yearMax") ?? "",
@@ -65,6 +70,7 @@ function readDraft(params: URLSearchParams): Draft {
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
     coverageWithReserveMin: params.get("coverageWithReserveMin") ?? "",
     coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "1",
+    coverageWithRequiredMin: params.get("coverageWithRequiredMin") ?? "", coverageWithRequiredMax: params.get("coverageWithRequiredMax") ?? "",
     orderTargetDays: params.get("orderTargetDays") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
@@ -1345,7 +1351,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
          وافتراضيه يوم واحد؛ تغييره لا يغيّر نطاق فلتر الكفاية مع الاحتياط.
          تُحسب الكمية المطلوبة بالوحدة الأولى لتغطية المدة المحددة مع حماية الاحتياط دائمًا، وتُقرّب لأقرب مضاعف «لعامل وحدة الشراء بالوحدة الأولى». فالعامل 10 يعني 10 أو 20 أو 30 وحدات أولى، وليس 10 حبات داخل وحدة واحدة. وأقل كمية مطلوبة هي عامل وحدة الشراء نفسه، ولا تظهر صفرًا.
          قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
-         «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية إلى المخزون.
+         «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية وخصم كمية الاحتياط من المتوفر.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
       </small>
     </Card>

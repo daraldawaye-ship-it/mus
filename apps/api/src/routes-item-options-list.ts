@@ -31,6 +31,7 @@ const querySchema = z.object({
   purchaseFactorMin: optionalNumber, purchaseFactorMax: optionalNumber,
   purchasePriceMin: optionalNumber, purchasePriceMax: optionalNumber,
   requiredPurchaseQuantityMin: optionalNumber, requiredPurchaseQuantityMax: optionalNumber,
+  requiredPurchaseValueMin: optionalNumber, requiredPurchaseValueMax: optionalNumber,
   monthMin: optionalNumber, monthMax: optionalNumber,
   fourMonthsMin: optionalNumber, fourMonthsMax: optionalNumber,
   yearMin: optionalNumber, yearMax: optionalNumber,
@@ -38,6 +39,7 @@ const querySchema = z.object({
   previousYearMin: optionalNumber, previousYearMax: optionalNumber,
   coverageMin: optionalNumber, coverageMax: optionalNumber,
   coverageWithReserveMin: optionalNumber, coverageWithReserveMax: optionalNumber,
+  coverageWithRequiredMin: optionalNumber, coverageWithRequiredMax: optionalNumber,
   // Separate replenishment target; never reuse a sufficiency filter bound.
   orderTargetDays: z.preprocess(value => value === "" ? undefined : value,
     z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/).refine(value => Number(value) > 0).default("1")),
@@ -130,16 +132,20 @@ async function filteredItems(
   range(options.reserveCoverageMax, "m.reserve_coverage_days", "<=");
   range(options.purchaseFactorCoverageMin, "m.purchase_factor_coverage_days", ">=");
   range(options.purchaseFactorCoverageMax, "m.purchase_factor_coverage_days", "<=");
-  // Required quantities are computed later in replenishment, so filtering
-  // must run before global counting, totals, sorting, paging and draft export.
-  const requiredQuantityPredicates: string[] = [];
-  const requiredQuantityRange = (value: string | undefined, op: ">=" | "<=") => {
+  // Replenishment metrics are derived after stock/sales filters. Apply their
+  // ranges globally before counts, totals, sorting, paging and draft export.
+  const replenishmentPredicates: string[] = [];
+  const replenishmentRange = (value: string | undefined, column: string, op: ">=" | "<=") => {
     if (value === undefined) return;
     values.push(value);
-    requiredQuantityPredicates.push(`f.order_quantity_first_unit ${op} ${values.length}::numeric`);
+    replenishmentPredicates.push(`${column} ${op} $${values.length}::numeric`);
   };
-  requiredQuantityRange(options.requiredPurchaseQuantityMin, ">=");
-  requiredQuantityRange(options.requiredPurchaseQuantityMax, "<=");
+  replenishmentRange(options.requiredPurchaseQuantityMin, "f.order_quantity_first_unit", ">=");
+  replenishmentRange(options.requiredPurchaseQuantityMax, "f.order_quantity_first_unit", "<=");
+  replenishmentRange(options.requiredPurchaseValueMin, "f.order_value", ">=");
+  replenishmentRange(options.requiredPurchaseValueMax, "f.order_value", "<=");
+  replenishmentRange(options.coverageWithRequiredMin, "f.projected_coverage_days", ">=");
+  replenishmentRange(options.coverageWithRequiredMax, "f.projected_coverage_days", "<=");
   const orders: Record<Options["sortBy"], string> = {
     code: "f.code", name: "f.name", stock: "f.available_unit1",
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
@@ -165,7 +171,7 @@ async function filteredItems(
   const limit = "$" + (values.length - 1), offset = "$" + values.length;
   // Totals always cover the entire matching filter, never the requested page.
   // Keep the replenishment target and reserve switch identical to the row values.
-  // The owner's independent order target defaults to three days; the
+  // The owner's independent order target defaults to one day; the
   // post-reserve sufficiency range only controls which items are included.
   values.push(options.orderTargetDays, "true");
   const targetParam = "$" + (values.length - 1);
@@ -277,7 +283,7 @@ async function filteredItems(
     ),
     eligible AS MATERIALIZED (
       SELECT f.* FROM replenishment f
-      ${requiredQuantityPredicates.length ? `WHERE ${requiredQuantityPredicates.join(" AND ")}` : ""}
+      ${replenishmentPredicates.length ? `WHERE ${replenishmentPredicates.join(" AND ")}` : ""}
     )
     ${unselectedForDraft ? `
     SELECT f.id, f.code, f.name

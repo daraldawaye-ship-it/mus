@@ -19,6 +19,8 @@ export const itemOptionsPresetFiltersSchema = z.object({
   purchasePriceMax: numericRange.default(""),
   requiredPurchaseQuantityMin: numericRange.default(""),
   requiredPurchaseQuantityMax: numericRange.default(""),
+  requiredPurchaseValueMin: numericRange.default(""),
+  requiredPurchaseValueMax: numericRange.default(""),
   monthMin: numericRange,
   monthMax: numericRange,
   fourMonthsMin: numericRange,
@@ -34,6 +36,8 @@ export const itemOptionsPresetFiltersSchema = z.object({
   coverageMax: numericRange,
   coverageWithReserveMin: numericRange.default(""),
   coverageWithReserveMax: numericRange.default(""),
+  coverageWithRequiredMin: numericRange.default(""),
+  coverageWithRequiredMax: numericRange.default(""),
   // Old shared filters automatically acquire the independent 1-day target.
   orderTargetDays: z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/)
     .refine(value => Number(value) > 0, "حدّد أيامًا أكبر من صفر").default("1"),
