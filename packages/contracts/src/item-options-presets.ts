@@ -34,9 +34,9 @@ export const itemOptionsPresetFiltersSchema = z.object({
   coverageMax: numericRange,
   coverageWithReserveMin: numericRange.default(""),
   coverageWithReserveMax: numericRange.default(""),
-  // Old shared filters automatically acquire the new independent 3-day target.
+  // Old shared filters automatically acquire the independent 1-day target.
   orderTargetDays: z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/)
-    .refine(value => Number(value) > 0, "حدّد أيامًا أكبر من صفر").default("3"),
+    .refine(value => Number(value) > 0, "حدّد أيامًا أكبر من صفر").default("1"),
   reserveCoverageMin: numericRange.default(""),
   reserveCoverageMax: numericRange.default(""),
   purchaseFactorCoverageMin: numericRange.default(""),
