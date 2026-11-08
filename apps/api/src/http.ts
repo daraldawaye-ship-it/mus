@@ -76,15 +76,22 @@ export function loadSession(pool: Pool): RequestHandler {
 /** Phone-first visitors are authenticated only to contribute to the public
  * medicine market, even if their account acquires company permissions later.
  * They must complete an independently authenticated login to leave this scope. */
-export const visitorOnlyGuard: RequestHandler = (req, _res, next) => {
+export const visitorOnlyGuard: RequestHandler = (req, res, next) => {
   if (!req.auth?.visitorOnly) return next();
   const path=req.path;
+  // App-shell company discovery is an optional navigation hint, never a grant.
+  if (req.method === "GET" && path === "/companies") {
+    res.json({ items: [], total: 0, page: 1, pageSize: 1, lastCompanyId: null });
+    return;
+  }
   const authRoutes = new Set([
     "/auth/session", "/auth/logout", "/auth/login",
     "/auth/register", "/auth/login-link/redeem", "/auth/visitor/enter",
   ]);
   if (authRoutes.has(path) || /^\/medicine-market(?:\/|$)/.test(path) ||
       path === "/page-catalog/visit" ||
+      (req.method === "GET" && path === "/page-catalog" && !req.query.companyId) ||
+      (req.method === "POST" && path === "/presence/heartbeat") ||
       (path === "/appearance" &&
         (req.method === "GET" ? (!req.query.scope || req.query.scope==="public")
           : req.body?.scope === "public"))) {
