@@ -545,7 +545,7 @@ function Navigation({
       ));
   return (
     <nav aria-label="التنقل الرئيسي">
-      <div className="nav-label nav-heading">الموقع العام</div>
+      <div className="nav-label nav-heading">السوق الرئيسي</div>
       {links("public")}
       
       {!user && (
@@ -1111,6 +1111,10 @@ function Workspace() {
     staleTime: 0,
     refetchOnWindowFocus: "always",
   });
+  // In the public market, show the currently accessible company next to
+  // the Alraesy application identity without opening the company's workspace.
+  const marketCompanyLogo = useCompanyLogo(!inCompany && lastCompany.data && !lastCompany.isError
+    ? lastCompany.data.company.id : null);
   const navigationContext = inCompany
     ? company.isError
       ? undefined
@@ -1172,8 +1176,8 @@ function Workspace() {
           <NavLink
             to="/"
             className="brand"
-            aria-label="الرئيسي — الموقع العام"
-            title="الرئيسي — الموقع العام"
+            aria-label="الرئيسي — السوق الرئيسي"
+            title="الرئيسي — السوق الرئيسي"
           >
             <img className="brand-symbol" src="/site-icon.png" alt="" />
             <span className="brand-copy">
@@ -1193,7 +1197,7 @@ function Workspace() {
           </div>
         </aside>
         <div className="workspace-body">
-          <header className={inCompany && companyLogo.data?.iconUrl ? "topbar topbar-company-logo" : "topbar"}>
+          <header className={inCompany && companyLogo.data?.iconUrl || !inCompany && !!marketCompanyLogo.data?.iconUrl ? "topbar topbar-company-logo" : "topbar"}>
             <div className="topbar-start">
               <Button
                 variant="ghost"
@@ -1221,11 +1225,29 @@ function Workspace() {
                   </div>
                 </Link>
               ) : (
-                <div className="scope-title">
-                  <span className="scope-mark">
-                    <Building2 size={16} />
-                  </span>
-                  <div><strong>الموقع العام</strong></div>
+                <div className="public-scope-titles">
+                  <Link className="scope-title scope-title-link public-market-title"
+                    to="/medicine-market" title="فتح السوق الرئيسي" aria-label="السوق الرئيسي">
+                    <span className="scope-mark scope-mark-site">
+                      <img src="/site-icon.png" className="public-site-logo" alt="" />
+                    </span>
+                    <div><strong>السوق الرئيسي</strong></div>
+                  </Link>
+                  {navigationContext && !employeePreview && (
+                    <Link className="scope-title scope-title-link public-company-title"
+                      to={`/companies/${navigationContext.company.id}`}
+                      title={`فتح ${navigationContext.company.name}`}
+                      aria-label={`فتح شركة ${navigationContext.company.name}`}>
+                      <span className={marketCompanyLogo.data?.iconUrl
+                        ? "scope-mark scope-mark-logo" : "scope-mark"}>
+                        {marketCompanyLogo.data?.iconUrl ?
+                          <img src={marketCompanyLogo.data.iconUrl}
+                            className="company-scope-logo" alt="" /> :
+                          <Building2 size={16} />}
+                      </span>
+                      <div><strong>{navigationContext.company.name}</strong></div>
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
