@@ -451,7 +451,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
              SELECT DISTINCT ON (draft_id,item_id)
                draft_id, item_id, required_quantity
              FROM jsonb_to_recordset($2::jsonb)
-               AS row(draft_id integer,item_id integer,required_quantity numeric)
+               AS incoming(draft_id integer,item_id integer,required_quantity numeric)
              ORDER BY draft_id,item_id
            )
            SELECT requested.draft_id, currency.code AS currency_code,
