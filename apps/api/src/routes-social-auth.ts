@@ -161,8 +161,8 @@ export function socialAuthRoutes(pool:Pool,origin:string,production:boolean):Rou
     if(!client) throw new HttpError(503,"social_not_configured","لم يُجهَّز الدخول بواسطة هذا المزود بعد");
     limit(`social:start:${req.ip}`,30);
     const intent:Intent=req.query.intent==="link"?"link":"login";
-    if(intent==="link" && !req.auth)
-      throw new HttpError(401,"unauthenticated","سجّل الدخول أولًا لربط حسابك");
+    if(intent==="link" && (!req.auth || req.auth.visitorOnly))
+      throw new HttpError(401,"unauthenticated","اربط الحسابات الخارجية بعد الدخول المحمي وتوثيق هويتك");
     const state=random(),nonce=random(),verifier=provider==="google"?random():null;
     const returnTo=safeReturn(req.query.returnTo);
     await pool.query("DELETE FROM social_auth_attempts WHERE expires_at<now()");
