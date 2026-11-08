@@ -119,6 +119,10 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
   next.delete("page");
   return next;
 }
+type DraftValue = {
+  id: number; itemCount: number; pricedCount: number; missingCount: number;
+  totals: Array<{ currencyCode: string; value: string }>;
+};
 type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
@@ -295,6 +299,28 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     : Array.from(new Set(temporaryOrder.drafts.flatMap(orderDraft =>
       orderDraft.items.map(item => item.id)))).sort((a, b) => a - b);
   const draftExclusionKey = excludedDraftItemIds.join(",");
+  // Draft quantities are fixed first-unit snapshots stored on this device;
+  // calculate each draft's value from today's item purchase prices, including
+  // old drafts which predate storing price or currency information.
+  const draftValueKey = JSON.stringify(temporaryOrder.drafts.map(draft => ({
+    id: draft.id, items: draft.items.map(item =>
+      ({ id: item.id, requiredQuantity: item.requiredQuantity ?? null })),
+  })));
+  const draftValueQuery = useQuery({
+    queryKey: ["item-options-draft-values", user?.id, companyId, draftValueKey],
+    queryFn: ({signal}) => api<{drafts: DraftValue[]}>(
+      `/companies/${companyId}/item-options-list/draft-values`,
+      {method:"POST", body:{drafts:temporaryOrder.drafts.map(draft => ({
+        id:draft.id, items:draft.items.map(item => ({
+          id:item.id, requiredQuantity:item.requiredQuantity ?? null,
+        })),
+      }))}, signal},
+    ),
+    enabled: !!user && canView && temporaryOrder.drafts.length > 0,
+    staleTime: 0,
+  });
+  const draftValueById = new Map(draftValueQuery.data?.drafts.map(draft =>
+    [draft.id, draft] as const) ?? []);
   const resultQuery = useQuery({
     queryKey: ["item-options-list", user?.id, companyId, request.toString(), draftExclusionKey],
     queryFn: ({ signal }) => api<Response>(
@@ -821,7 +847,28 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         {temporaryOrder.drafts.map(orderDraft => <div key={orderDraft.id} className="item-options-order-draft-group">
           <div className="form-actions item-options-order-draft-actions">
             <div className="item-options-order-draft-meta">
-              <strong>مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)</strong>
+              <strong title="قيمة المسودة = الكميات المطلوبة المحفوظة بالوحدة الأولى × أسعار شراء الوحدة الأولى الحالية؛ تُعرض كل عملة على حدة.">
+                مسودة الطلبية {orderDraft.id} ({orderDraft.items.length.toLocaleString("en-US")} صنف)
+                {" — قيمة المطلوب: "}
+                {draftValueQuery.isPending && "جارٍ الحساب…"}
+                {draftValueQuery.isError && "غير متاحة"}
+                {draftValueQuery.data && (() => {
+                  const value = draftValueById.get(orderDraft.id);
+                  if (!value) return "غير متاحة";
+                  if (!value.pricedCount && value.missingCount)
+                    return `غير مكتملة (${value.missingCount} صنف دون كمية أو سعر)`;
+                  return <>
+                    {value.missingCount > 0 && "جزئي: "}
+                    {value.totals.length ? value.totals.map((total, index) =>
+                      <span key={total.currencyCode}>
+                        {index > 0 ? " ؛ " : ""}
+                        <bdi>{formatAmountGroup(total.value)} {total.currencyCode}</bdi>
+                      </span>) : "0"}
+                    {value.missingCount > 0 &&
+                      ` (${value.missingCount} صنف دون كمية أو سعر)`}
+                  </>;
+                })()}
+              </strong>
               <small className="muted" title="تنتهي المسودة بعد 8 ساعات من إنشائها">أُنشئت: {new Date(orderDraft.createdAt).toLocaleString("ar-YE")}</small>
             </div>
             <div className="item-options-order-draft-buttons">
