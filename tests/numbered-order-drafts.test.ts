@@ -172,3 +172,29 @@ test("new order drafts retain the exact required quantity from the item-options 
     "Importing another draft must not change a previously saved planned order");
   assert.equal(withDuplicate.state.drafts[1].items[0].requiredQuantity,"3");
 });
+
+
+test("draft header displays exact purchase value after item count, grouped by currency", () => {
+  const page = readFileSync("apps/web/src/pages/ItemOptionsListPage.tsx", "utf8");
+  const route = readFileSync("apps/api/src/routes-item-options-list.ts", "utf8");
+  assert.match(page, /مسودة الطلبية \$\{orderDraft\.id\} \(\$\{orderDraft\.items\.length\.toLocaleString\("en-US"\)\} صنف\)/);
+  const indexCount = page.indexOf('مسودة الطلبية ${orderDraft.id} (${orderDraft.items.length.toLocaleString("en-US")} صنف)');
+  const indexValue = page.indexOf('{" — قيمة المطلوب: "}');
+  assert.ok(indexCount >= 0 && indexValue > indexCount && indexValue - indexCount < 250);
+  assert.match(page, /draftValueById\.get\(orderDraft\.id\)/);
+  assert.match(page, /formatAmountGroup\(total\.value\)\} \{total\.currencyCode\}/);
+  assert.match(page, /missingCount > 0/);
+  assert.match(page, /requiredQuantity:item\.requiredQuantity \?\? null/);
+  assert.match(page, /item-options-list\/draft-values/);
+  assert.match(route, /router\.post\("\/companies\/:companyId\/item-options-list\/draft-values"/);
+  assert.match(route, /readItems\(pool, req, async \(client, companyId\)/);
+  assert.match(route, /i\.company_id=\$1 AND i\.id=requested\.item_id/);
+  assert.match(route, /SUM\(ROUND\(i\.purchase_price::numeric \* requested\.required_quantity,4\)\)::text/);
+  assert.match(route, /GROUP BY requested\.draft_id,currency\.code/);
+  assert.match(route, /missingCount: draft\.itemCount - draft\.pricedCount/);
+  assert.match(route, /res\.setHeader\("Cache-Control", "private, no-store"\)/);
+  // Existing local drafts, even those created before the feature, are valued
+  // using their saved quantities and CURRENT first-unit purchase prices.
+  assert.match(route, /requiredQuantity: z\.string\(\)\.regex\(/);
+  assert.match(page, /إجمالي قيمة المطلوب|قيمة المطلوب/);
+});
