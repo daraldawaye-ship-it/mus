@@ -111,6 +111,7 @@ export function visitorEntryRoutes(pool:Pool,secure:boolean):Router {
       await db.query("DELETE FROM visitor_device_tokens WHERE user_id=$1 AND expires_at<=now()",[row.id]);
       if(req.auth)await db.query("DELETE FROM sessions WHERE token_hash=$1",[req.auth.tokenHash]);
       const session=await createSession(db,row.id);
+      await db.query("UPDATE sessions SET visitor_only=true WHERE token_hash=$1",[tokenHash(session.token)]);
       await audit(db,user,"auth.visitorLogin","user",row.id,null,null);
       return {status:"authenticated" as const,user,...session,deviceToken};
     });
