@@ -578,6 +578,39 @@ legend {
   background: var(--soft);
   color: var(--on-soft);
 }
+/* A company logo is a complete square asset, not a glyph.
+   Keep its natural aspect ratio and prevent flex layout from squeezing/cropping
+   the icon when the Arabic company name uses the remaining topbar space. */
+.topbar-company-logo {
+  height: 48px;
+  min-height: 48px;
+}
+.scope-mark-logo {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  overflow: visible;
+  background: transparent;
+}
+.scope-mark-logo .company-scope-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+  object-fit: contain;
+  object-position: center;
+}
+/* On mobile the standard compact header remains unchanged. */
+@media (max-width: 680px) {
+  .topbar-company-logo {
+    height: 44px;
+    min-height: 44px;
+  }
+}
 /* Compact avatar menu shared by desktop and mobile. */
 .user-menu {
   position: relative;
