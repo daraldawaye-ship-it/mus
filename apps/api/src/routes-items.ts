@@ -959,6 +959,45 @@ export function itemRoutes(pool: Pool): Router {
       );
     }),
   );
+  // The display and approval moments are separate, server-stamped actions.
+  // Legacy DATE columns remain synchronized for reports; no stock movement occurs.
+  router.patch(
+    `${base}/items/:id/settlement-timestamp`,
+    handler(async (req, res) => {
+      const rowId = id(req.params.id);
+      const input = parse(z.object({ kind: z.enum(["display", "approval"]) }).strict(), req.body);
+      const item = await mutateMaster(pool, req, "items.manage", async (client, user, companyId) => {
+        await client.query(
+          "SELECT id FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+          [companyId, rowId],
+        );
+        const before = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
+        // SQL identifiers are selected only from the known enum, never user input.
+        const timestampColumn = input.kind === "display" ? "settlement_display_at" : "settlement_approval_at";
+        const dateColumn = input.kind === "display" ? "settlement_display_date" : "settlement_approval_date";
+        const updated = await client.query(
+          `WITH instant AS (SELECT clock_timestamp() AS stamped_at)
+           UPDATE items i SET
+             ${timestampColumn}=instant.stamped_at,
+             ${dateColumn}=(instant.stamped_at AT TIME ZONE 'Asia/Aden')::date,
+             revision=i.revision+1,
+             updated_at=instant.stamped_at
+           FROM instant WHERE i.company_id=$1 AND i.id=$2`,
+          [companyId, rowId],
+        );
+        if (!updated.rowCount) missing();
+        const next = itemDTO(await masterRow(client, itemSelect, "i", companyId, rowId));
+        const field = input.kind === "display" ? "settlementDisplayAt" : "settlementApprovalAt";
+        const label = input.kind === "display" ? "تاريخ ووقت عرض التسوية" : "تاريخ ووقت اعتماد التسوية";
+        await audit(client, user, "item.field.update", "item", rowId,
+          { field, label, value: before[field] },
+          { field, label, value: next[field] },
+          companyId);
+        return next;
+      });
+      res.json({ item });
+    }),
+  );
   // A separate, audited action stamps server time. Normal item PATCH never accepts this field.
   router.patch(
     `${base}/items/:id/stocktake-request`,
