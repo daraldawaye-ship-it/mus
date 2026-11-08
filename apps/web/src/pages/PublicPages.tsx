@@ -158,7 +158,8 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     phone: "",
     password: "",
   });
-  const registering = mode === "register";
+  const [protectedAccountLogin, setProtectedAccountLogin] = useState(false);
+  const registering = mode === "register" && !protectedAccountLogin;
   const [loginId, setLoginId] = useState(savedLoginIdentifier);
   const [passwordReady, setPasswordReady] = useState(false);
   const [visitorMode, setVisitorMode] = useState(!requiresOnlineLogin);
@@ -178,6 +179,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
     setLoginId(savedLoginIdentifier());
     setPasswordReady(false);
     setVisitorMode(!requiresOnlineLogin);
+    setProtectedAccountLogin(false);
     setVisitorNeedsName(false);
     setVisitorName("");
     setVisitorPhone(savedLoginIdentifier().includes("@") ? "" : savedLoginIdentifier());
@@ -257,6 +259,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
       } else if (response.status === "password_required") {
         setVisitorNeedsName(false);
         setLoginId(visitorPhone);
+        setProtectedAccountLogin(true);
         setVisitorMode(false);
         setError("هذا الرقم مرتبط بحساب له نشاط أو صلاحيات؛ يرجى الدخول بكلمة المرور.");
       } else {
@@ -293,7 +296,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
               {busy ? "جارٍ المتابعة…" : "دخول إلى السوق"}
             </Button>
             <Button variant="secondary" type="button" disabled={busy}
-              onClick={() => {setVisitorMode(false);setLoginId(visitorPhone);setError("");}}>
+              onClick={() => {setProtectedAccountLogin(true);setVisitorMode(false);setLoginId(visitorPhone);setError("");}}>
               الدخول بكلمة المرور
             </Button>
           </div>
