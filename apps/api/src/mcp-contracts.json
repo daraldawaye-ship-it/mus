@@ -9067,5 +9067,381 @@
       ],
       "additionalProperties": false
     }
+  },
+  "GET /inquiries": {
+    "source": "routes-inquiries.ts",
+    "queryFields": [
+      "q",
+      "status",
+      "page"
+    ]
+  },
+  "GET /inquiries/recipients": {
+    "source": "routes-inquiries.ts",
+    "queryFields": [
+      "q"
+    ]
+  },
+  "GET /inquiries/:inquiryId": {
+    "source": "routes-inquiries.ts",
+    "pathParams": [
+      "inquiryId"
+    ]
+  },
+  "POST /inquiries": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "requestSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "requestType": {
+          "type": "string",
+          "enum": [
+            "question",
+            "clarification",
+            "information",
+            "confirmation",
+            "execution"
+          ]
+        },
+        "requestText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "answerType": {
+          "type": "string",
+          "enum": [
+            "number",
+            "number_note",
+            "date",
+            "yesno",
+            "choice",
+            "text"
+          ]
+        },
+        "answerOptions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "responseMode": {
+          "type": "string",
+          "enum": [
+            "first",
+            "all"
+          ]
+        },
+        "userIds": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "positionKeys": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "important",
+            "urgent"
+          ]
+        },
+        "dueAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "linkedTable": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "linkedRecordId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "followUpAction": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "requestText",
+        "answerType",
+        "responseMode",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "POST /inquiries/:inquiryId/answers": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "answerSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "answerValue": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "optionNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 4
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "PATCH /inquiries/:inquiryId/status": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "statusSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "in_progress",
+            "done",
+            "closed"
+          ]
+        },
+        "actionResult": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "GET /companies/:companyId/inquiries": {
+    "source": "routes-inquiries.ts",
+    "queryFields": [
+      "q",
+      "status",
+      "page"
+    ]
+  },
+  "GET /companies/:companyId/inquiries/recipients": {
+    "source": "routes-inquiries.ts",
+    "queryFields": [
+      "q"
+    ]
+  },
+  "GET /companies/:companyId/inquiries/:inquiryId": {
+    "source": "routes-inquiries.ts",
+    "pathParams": [
+      "inquiryId"
+    ]
+  },
+  "POST /companies/:companyId/inquiries": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "requestSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "requestType": {
+          "type": "string",
+          "enum": [
+            "question",
+            "clarification",
+            "information",
+            "confirmation",
+            "execution"
+          ]
+        },
+        "requestText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "answerType": {
+          "type": "string",
+          "enum": [
+            "number",
+            "number_note",
+            "date",
+            "yesno",
+            "choice",
+            "text"
+          ]
+        },
+        "answerOptions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "responseMode": {
+          "type": "string",
+          "enum": [
+            "first",
+            "all"
+          ]
+        },
+        "userIds": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "positionKeys": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "important",
+            "urgent"
+          ]
+        },
+        "dueAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "linkedTable": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "linkedRecordId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "followUpAction": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "requestText",
+        "answerType",
+        "responseMode",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "POST /companies/:companyId/inquiries/:inquiryId/answers": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "answerSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "answerValue": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "optionNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 4
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "PATCH /companies/:companyId/inquiries/:inquiryId/status": {
+    "source": "routes-inquiries.ts",
+    "bodyContract": "statusSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "in_progress",
+            "done",
+            "closed"
+          ]
+        },
+        "actionResult": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    }
   }
 }
