@@ -83,7 +83,6 @@ import { useCompanyIdleLogout } from "./idle-logout";
 import { Button, Card, Dialog, Notice, PageHeader } from "./ui";
 import {
   AuthPage,
-  HomePage,
   ProfilePage,
   PublicAuditPage,
   UsersPage,
@@ -1330,8 +1329,8 @@ function Workspace() {
                     ? <Notice>جارٍ فتح شركتك…</Notice>
                     : lastCompany.data && !lastCompany.isError
                       ? <Navigate to={`/companies/${lastCompany.data.company.id}`} replace />
-                      : <HomePage />
-                  : <HomePage />
+                      : <Navigate to="/medicine-market" replace />
+                  : <Navigate to="/medicine-market" replace />
               } />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/quick-login" element={<QuickLoginPage />} />
