@@ -76,3 +76,18 @@ export interface ItemOptionsPreset {
   createdByName: string;
   createdAt: string;
 }
+
+/** A reusable ordered sequence of existing named filters, shared by company. */
+export const itemOptionsPresetGroupCreateSchema = z.object({
+  name: z.string().trim().min(1,"اكتب اسمًا لتجميع الخيارات").max(80),
+  presetIds: z.array(z.number().int().positive()).min(1).max(20)
+    .refine(ids => new Set(ids).size===ids.length, "لا تكرر الخيار داخل التجميع"),
+}).strict();
+export interface ItemOptionsPresetGroup {
+  id: number;
+  name: string;
+  presetIds: number[];
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+}
