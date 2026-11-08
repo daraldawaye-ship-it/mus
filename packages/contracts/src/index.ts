@@ -565,6 +565,7 @@ export const DEFAULT_APPEARANCE: Readonly<AppearancePreference> = Object.freeze(
 export interface SessionResponse {
   user: User | null;
   csrf: string | null;
+  visitorOnly?: boolean;
 }
 export interface CompanyContext {
   company: Company;
