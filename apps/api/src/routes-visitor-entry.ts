@@ -43,7 +43,9 @@ export async function visitorAccountStatus(db: Database, user:AccountRow):Promis
     "EXISTS(SELECT 1 FROM social_identities WHERE user_id=$1) AS social," +
     "EXISTS(SELECT 1 FROM user_device_activity WHERE user_id=$1 AND device_kind IN ('android_app','iphone_app')) AS installed," +
     "EXISTS(SELECT 1 FROM audit_events WHERE (actor_id=$1 AND action IN ('auth.password','user.profile')) OR " +
-      "(target_type='user' AND target_id=$1 AND action IN ('auth.password','user.update','auth.loginLinkIssue'))) AS protected_change," +
+      "(target_type='user' AND target_id=$1 AND " +
+      "(action IN ('auth.password','user.update','auth.loginLinkIssue') OR " +
+      "(action='user.register' AND actor_id IS DISTINCT FROM $1)))) AS protected_change," +
     "EXISTS(SELECT 1 FROM audit_events WHERE actor_id=$1 AND action NOT IN " +
       "('user.register','auth.login','auth.logout','auth.visitorLogin','page.open')) AS acted," +
     "EXISTS(SELECT 1 FROM medicine_market_contributions WHERE author_id=$1) OR " +
