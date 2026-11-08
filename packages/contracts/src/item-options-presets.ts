@@ -42,16 +42,17 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // Drafts are stored on the current device; older presets default to excluding them.
   excludeOrderDrafts: z.boolean().default(true),
   useReserve: z.boolean(),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
   // Optional for backwards compatibility with presets saved before column preferences existed.
   // Shared presets preserve exactly which columns the user chose on any device.
+  coverageColumnsVersion: z.literal(2).optional(),
   visibleColumns: z.array(z.enum([
     "choice", "name", "purchaseNotes", "stock", "reserve", "purchaseFactor", "month",
     "saleQuantityMonth", "fourMonths", "allTime", "previousYear",
     "requiredPurchaseQuantity", "purchasePrice", "requiredPurchaseValue",
-    "coverage", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
-    ])).min(1).max(18).refine(columns => new Set(columns).size === columns.length,
+    "coverage", "coverageWithReserve", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
+    ])).min(1).max(19).refine(columns => new Set(columns).size === columns.length,
     "لا يمكن تكرار العمود في مجموعة الحفظ").optional(),
 }).strict();
 export const itemOptionsPresetCreateSchema = z.object({
