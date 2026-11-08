@@ -65,7 +65,10 @@ export function authRoutes(pool: Pool, secure: boolean): Router {
           await client.query("DELETE FROM sessions WHERE token_hash=$1", [
             req.auth.tokenHash,
           ]);
-        return { user, ...(await createSession(client, user.id)) };
+        const session=await createSession(client,user.id);
+        if(starter.rows[0]?.default_password_active)
+          await client.query("UPDATE sessions SET visitor_only=true WHERE token_hash=$1",[tokenHash(session.token)]);
+        return { user, ...session };
       });
       // Observability must never prevent a successful registration.
       await recordDeviceLogin(pool, req, result.user.id).catch(() => {});
