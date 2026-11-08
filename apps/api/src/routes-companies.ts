@@ -350,7 +350,7 @@ export function companyRoutes(pool: Pool): Router {
     res.json({
       mediaId:logo?.media_id??null,
       imageUrl:logo?.media_id?`/api/media/${logo.media_id}/full`:null,
-      iconUrl:logo?.media_id?`/api/media/${logo.media_id}/thumbnail`:null,
+      iconUrl:logo?.media_id?`/api/media/${logo.media_id}/full`:null, // Preserve the complete uploaded logo; older thumbnails were cropped.
       updatedAt:logo?.updated_at?.toISOString()??null,
     });
   }));
@@ -385,7 +385,7 @@ export function companyRoutes(pool: Pool): Router {
       await audit(client,user,"company.logo.update","company",companyId,
         {mediaId:previous.rows[0]?.media_id??null},{mediaId},companyId);
       return {mediaId,imageUrl:mediaId?`/api/media/${mediaId}/full`:null,
-        iconUrl:mediaId?`/api/media/${mediaId}/thumbnail`:null};
+        iconUrl:mediaId?`/api/media/${mediaId}/full`:null};
     });
     res.json(result);
   }));
