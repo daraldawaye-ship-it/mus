@@ -188,6 +188,12 @@ test("draft header displays exact purchase value after item count, grouped by cu
   assert.match(page, /item-options-list\/draft-values/);
   assert.match(route, /router\.post\("\/companies\/:companyId\/item-options-list\/draft-values"/);
   assert.match(route, /readItems\(pool, req, async \(client, companyId\)/);
+  const draftValueRoute = route.slice(route.indexOf(
+    'router.post("/companies/:companyId/item-options-list/draft-values"'),
+    route.indexOf("router.get(presetsPath"));
+  assert.match(draftValueRoute, /currentActor\(client, actor\(req\), false\)/,
+    "must not use SELECT FOR UPDATE in a repeatable-read read-only transaction");
+  assert.doesNotMatch(draftValueRoute, /ORDER_DRAFT_VALUE_FAILURE|ORDER_DRAFT_VALUE_QUERY_FAILURE/);
   assert.match(route, /i\.company_id=\$1 AND i\.id=requested\.item_id/);
   assert.match(route, /SUM\(ROUND\(i\.purchase_price::numeric \* requested\.required_quantity,4\)\)::text/);
   assert.match(route, /GROUP BY requested\.draft_id,currency\.code/);
