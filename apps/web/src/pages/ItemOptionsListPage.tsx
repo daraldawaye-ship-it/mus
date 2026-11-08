@@ -39,15 +39,17 @@ const ranges = [
   { key: "allTimeMax", label: "المبيعات مرات منذ البداية إلى" },
   { key: "previousYearMin", label: "مرات عام السابق من" },
   { key: "previousYearMax", label: "مرات عام السابق إلى" },
-  { key: "coverageMin", label: "الكفاية من (يوم)" },
-  { key: "coverageMax", label: "الكفاية إلى (يوم)" },
+  { key: "coverageMin", label: "الكفاية بدون الاحتياط من (يوم)" },
+  { key: "coverageMax", label: "الكفاية بدون الاحتياط إلى (يوم)" },
+  { key: "coverageWithReserveMin", label: "الكفاية مع الاحتياط من (يوم)" },
+  { key: "coverageWithReserveMax", label: "الكفاية مع الاحتياط إلى (يوم)" },
   { key: "reserveCoverageMin", label: "كفاية الكمية الاحتياط من (يوم)" },
   { key: "reserveCoverageMax", label: "كفاية الكمية الاحتياط إلى (يوم)" },
   { key: "purchaseFactorCoverageMin", label: "كفاية عامل وحدة الشراء من (يوم)" },
   { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
-type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean; useReserve: boolean };
+type Draft = Record<RangeKey, string> & { excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
@@ -60,13 +62,14 @@ function readDraft(params: URLSearchParams): Draft {
     yearMin: params.get("yearMin") ?? "2", yearMax: params.get("yearMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
-    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "1",
+    coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
+    coverageWithReserveMin: params.get("coverageWithReserveMin") ?? "",
+    coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
     excludeZero: params.get("excludeZero") === "true",
     excludeOrderStopped: params.get("excludeOrderStopped") !== "false",
     excludeOrderDrafts: params.get("excludeOrderDrafts") !== "false",
-    useReserve: params.get("useReserve") !== "false",
   };
 }
 /** Preserve explicitly blank ranges, including user-cleared defaults. */
@@ -75,7 +78,7 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
   for (const { key } of ranges) {
     const value = values[key].trim();
     if (value || key === "stockMin" || key === "stockMax" ||
-        key === "monthMin" || key === "yearMin" || key === "coverageMax")
+        key === "monthMin" || key === "yearMin" || key === "coverageWithReserveMax")
       next.set(key, value);
     else next.delete(key);
   }
@@ -83,7 +86,8 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
   if (values.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
   if (!values.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
   if (!values.excludeOrderDrafts) next.set("excludeOrderDrafts", "false"); else next.delete("excludeOrderDrafts");
-  if (!values.useReserve) next.set("useReserve", "false"); else next.delete("useReserve");
+  next.delete("useReserve");
+  next.set("coverageFilterVersion", "2");
   next.delete("page");
   return next;
 }
@@ -240,13 +244,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   for (const { key } of ranges) {
     // Absent parameters get defaults; an explicitly blank value remains unbounded.
     const value = (params.get(key) ??
-      (key === "monthMin" || key === "coverageMax" ? "1" : key === "yearMin" ? "2" : "")).trim();
+      (key === "monthMin" || key === "coverageWithReserveMax" ? "1" : key === "yearMin" ? "2" : "")).trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
   if (params.get("excludeOrderStopped") === "false") request.set("excludeOrderStopped", "false");
   if (params.get("excludeOrderDrafts") === "false") request.set("excludeOrderDrafts", "false");
-  if (params.get("useReserve") === "false") request.set("useReserve", "false");
   // The numbered drafts are intentionally device-local. Pass only their IDs,
   // so PostgreSQL filters ALL matching items before count, value totals, sort
   // and pagination. A POST avoids URL-length limits for larger saved drafts.
@@ -435,7 +438,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       excludeZero: draft.excludeZero,
       excludeOrderStopped: draft.excludeOrderStopped,
       excludeOrderDrafts: draft.excludeOrderDrafts,
-      useReserve: draft.useReserve,
+      coverageFilterVersion: 2 as const,
       coverageColumnsVersion: 2 as const,
       visibleColumns: [...visibleColumns],
     };
@@ -501,7 +504,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     if(values.excludeZero) next.set("excludeZero","true");
     if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
     if(!values.excludeOrderDrafts) next.set("excludeOrderDrafts","false");
-    if(!values.useReserve) next.set("useReserve","false");
+    next.set("coverageFilterVersion","2");
     setDraft(readDraft(next));
     setSearch(values.q);
     setFilterError("");
@@ -528,7 +531,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     cancelAutoFilter();
     setSelectedPresetId("");
     const defaults = new URLSearchParams({
-      monthMin: "1", yearMin: "2", coverageMax: "1",
+      monthMin: "1", yearMin: "2", coverageWithReserveMax: "1",
+      coverageFilterVersion: "2",
       sortBy: "allTime", sortDir: "desc",
     });
     void runFilterApplication(() => {
@@ -679,14 +683,6 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                  setDraft(next); scheduleAutoFilter(next, search);
                }} />
             إيقاف طلب الأصناف الموقوفة حتى تاريخ مستقبلي
-          </label>
-          <label className="checkbox">
-            <input type="checkbox" checked={draft.useReserve}
-              onChange={event => {
-                 const next = { ...draft, useReserve: event.target.checked };
-                 setDraft(next); scheduleAutoFilter(next, search);
-               }} />
-            استخدام الكفاية بعد خصم الاحتياط في الفلترة والكمية المطلوبة
           </label>
           <label className="checkbox" title="استبعاد الأصناف الموجودة في أي مسودة طلبية على هذا الجهاز من نتائج القائمة وإجمالي المطلوب والترحيل إلى مسودة جديدة.">
             <input type="checkbox" checked={draft.excludeOrderDrafts}
@@ -1061,9 +1057,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       <small className="muted">
         الحقول الفارغة لا تضع أي حد أعلى أو أدنى، وتُحتسب مرات البيع صافي عدد فواتير البيع
         بعد طرح مرتجعات المبيعات. المتوفر يستبعد مخازن المرتجعات ويُعرض بالوحدة الأولى.
-        تعتمد الكفاية على حسابات الموقع الحالية مع الاحتياطي أو بدونه حسب اختيارك.
-        الكمية المطلوبة بالوحدة الأولى محسوبة للوصول إلى «الكفاية إلى» (أو 30 يومًا إن تُركت فارغة)،
-         وتشمل الاحتياط عند اختياره، وتُقرّب لأقرب كمية كاملة بالوحدة الأولى توافق مضاعفات عامل وحدة الشراء. وأقل كمية مطلوبة هي دفعة شراء واحدة، ولا تظهر صفرًا.
+        «الكفاية بدون الاحتياط» تعتمد على المتوفر دون المرتجعات، و«الكفاية مع الاحتياط» تخصم كمية الاحتياط من هذا المتوفر.
+        لكل منهما فلتر مستقل من/إلى. الكمية المطلوبة بالوحدة الأولى محسوبة للوصول إلى «الكفاية مع الاحتياط إلى» (أو 30 يومًا إن تُركت فارغة)،
+         مع حماية الاحتياط دائمًا، وتُقرّب لأقرب كمية كاملة بالوحدة الأولى توافق مضاعفات عامل وحدة الشراء. وأقل كمية مطلوبة هي دفعة شراء واحدة، ولا تظهر صفرًا.
          قيمة المطلوب = الكمية المطلوبة بالوحدة الأولى × سعر الشراء الافتراضي للوحدة الأولى، وبعملة الصنف.
          «الكفاية مع المطلوب» هي الكفاية المتوقعة بعد إضافة هذه الكمية إلى المخزون.
          كفاية الاحتياط وعامل الشراء مؤشران للتخطيط فقط؛ لا يضيفان مخزونًا أو يغيران الفواتير.
