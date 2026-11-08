@@ -1515,8 +1515,8 @@ function Workspace() {
             <ItemQuickInventorySheetHost context={navigationContext} />
             {/* Device sync runs in the background, and notification setup remains below content.
                 The installation call-to-action is displayed above the page instead. */}
-            <AppSetup key={user?.id ?? "guest"} userId={visitorOnly ? undefined : user?.id}
-              companyId={navigationContext?.company.id} />
+            {!visitorOnly && <AppSetup key={user?.id ?? "guest"} userId={user?.id}
+              companyId={navigationContext?.company.id} />}
           </main>
           <footer className="workspace-footer">
             <span>الرئيسي</span>
