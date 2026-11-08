@@ -1164,6 +1164,15 @@ function Workspace() {
         <p>جارٍ تحميل الموقع…</p>
       </div>
     );
+  // Render the public medicine market on both / and /medicine-market without
+  // changing the visitor's address. The last accessible company still wins at /.
+  const marketLanding = (
+    <PageRouteGuard pageKey="public.medicine-market">
+      <Suspense fallback={<Notice>جارٍ تحميل السوق الرئيسي…</Notice>}>
+        <MedicineMarketPage key={user?.id ?? "guest"} />
+      </Suspense>
+    </PageRouteGuard>
+  );
   return (
     <AppearanceProvider key={`${user?.id ?? "guest"}:${scope}`} scope={scope}>
       <div className="workspace">
@@ -1329,13 +1338,13 @@ function Workspace() {
                     ? <Notice>جارٍ فتح شركتك…</Notice>
                     : lastCompany.data && !lastCompany.isError
                       ? <Navigate to={`/companies/${lastCompany.data.company.id}`} replace />
-                      : <Navigate to="/medicine-market" replace />
-                  : <Navigate to="/medicine-market" replace />
+                      : marketLanding
+                  : marketLanding
               } />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/quick-login" element={<QuickLoginPage />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
-              <Route path="/medicine-market" element={<PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل سوق الأدوية…</Notice>}><MedicineMarketPage key={user?.id ?? "guest"} /></Suspense></PageRouteGuard>} />
+              <Route path="/medicine-market" element={marketLanding} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/points" element={<Protected><PageRouteGuard pageKey="public.medicine-market-points"><Suspense fallback={<Notice>جارٍ تحميل إعدادات النقاط…</Notice>}><MedicineMarketPage key={`${user?.id}:points`} tab="points" /></Suspense></PageRouteGuard></Protected>} />
