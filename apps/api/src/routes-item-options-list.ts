@@ -40,7 +40,7 @@ const querySchema = z.object({
   coverageWithReserveMin: optionalNumber, coverageWithReserveMax: optionalNumber,
   // Separate replenishment target; never reuse a sufficiency filter bound.
   orderTargetDays: z.preprocess(value => value === "" ? undefined : value,
-    z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/).refine(value => Number(value) > 0).default("3")),
+    z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/).refine(value => Number(value) > 0).default("1")),
   reserveCoverageMin: optionalNumber, reserveCoverageMax: optionalNumber,
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
