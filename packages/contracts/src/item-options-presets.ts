@@ -32,6 +32,8 @@ export const itemOptionsPresetFiltersSchema = z.object({
   previousYearMax: numericRange.default(""),
   coverageMin: numericRange,
   coverageMax: numericRange,
+  coverageWithReserveMin: numericRange.default(""),
+  coverageWithReserveMax: numericRange.default(""),
   reserveCoverageMin: numericRange.default(""),
   reserveCoverageMax: numericRange.default(""),
   purchaseFactorCoverageMin: numericRange.default(""),
@@ -41,7 +43,10 @@ export const itemOptionsPresetFiltersSchema = z.object({
   excludeOrderStopped: z.boolean().default(true),
   // Drafts are stored on the current device; older presets default to excluding them.
   excludeOrderDrafts: z.boolean().default(true),
-  useReserve: z.boolean(),
+  // Older saved filter sets may still carry the removed reserve switch.
+  // It is accepted for decoding only and is ignored in new computations.
+  useReserve: z.boolean().optional(),
+  coverageFilterVersion: z.literal(2).optional(),
   sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
   sortDir: z.enum(["asc", "desc"]),
   // Optional for backwards compatibility with presets saved before column preferences existed.
