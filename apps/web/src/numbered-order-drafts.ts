@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
+  buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
   type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
 } from "./numbered-order-drafts-core";
@@ -126,6 +126,20 @@ export function useNumberedOrderDrafts(
     return { id: created.id, added: created.added, skipped: created.skipped };
   }, [key, oldKey, save]);
 
+  const replaceFromPresetGroup = useCallback((stages: OrderDraftItem[][]) => {
+    if(!key) return null;
+    const built=buildReplacementOrderDrafts(stages);
+    if(built.error || !built.state){
+      setError(built.error ?? "تعذر تجهيز مسودات التجميع");
+      return null;
+    }
+    // A single localStorage write either replaces ALL drafts or none;
+    // storage-quota errors must never lose the previous saved state.
+    if(!save(built.state)) return null;
+    return {added:built.added,skipped:built.skipped,
+      drafts:built.state.drafts.length};
+  },[key,save]);
+
   const deleteDraft = useCallback((draftId: number) => {
     if (!key) return false;
     const before = readOrderDrafts(key, oldKey);
@@ -141,6 +155,6 @@ export function useNumberedOrderDrafts(
     return save(removeNumberedOrderDraftItem(before, draftId, itemId));
   }, [key, oldKey, save]);
 
-  return { drafts: state.drafts, createDraft, deleteDraft, removeItem,
+  return { drafts: state.drafts, createDraft, replaceFromPresetGroup, deleteDraft, removeItem,
     error, enabled: !!key };
 }
