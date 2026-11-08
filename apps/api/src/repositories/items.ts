@@ -96,6 +96,8 @@ export function itemDTO(row: QueryResultRow): Item {
     clearanceTo: row.clearance_to_text ?? null,
     settlementApprovalDate: row.settlement_approval_date_text ?? null,
     settlementDisplayDate: row.settlement_display_date_text ?? null,
+    settlementApprovalAt: row.settlement_approval_at ? new Date(row.settlement_approval_at).toISOString() : null,
+    settlementDisplayAt: row.settlement_display_at ? new Date(row.settlement_display_at).toISOString() : null,
     purchaseFactor: row.purchase_factor,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
