@@ -560,11 +560,11 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     const items = await transaction(pool, async client => {
       await checkPresetsAccess(client,req,companyId);
       const rows=await client.query(
-        `SELECT groups.id,groups.name,groups.preset_ids,groups.created_by,groups.created_at,
+        `SELECT grp.id,grp.name,grp.preset_ids,grp.created_by,grp.created_at,
            COALESCE(NULLIF(u.display_name,''),u.name) AS created_by_name
-           FROM company_item_options_preset_groups groups
-           JOIN users u ON u.id=groups.created_by
-           WHERE groups.company_id=$1 ORDER BY lower(groups.name),groups.id`,[companyId]);
+           FROM company_item_options_preset_groups grp
+           JOIN users u ON u.id=grp.created_by
+           WHERE grp.company_id=$1 ORDER BY lower(grp.name),grp.id`,[companyId]);
       return rows.rows.map(row=>({
         id:Number(row.id),name:String(row.name),
         presetIds:(row.preset_ids as string[]).map(Number),
@@ -659,6 +659,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         });
         const match=await filteredItems(client,actor(req),companyId,opts,true,
           [...excludedIds],true);
+        if(!("items" in match)) throw new HttpError(500,"invalid_preset_group_result","تعذر تحضير أصناف التجميع");
         for(const item of match.items) excludedIds.add(item.id);
         if(excludedIds.size>10_000)
           throw new HttpError(413,"preset_group_too_large",
