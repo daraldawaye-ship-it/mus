@@ -8631,7 +8631,11 @@
     "queryFields": [
       "after",
       "section",
-      "pageSize"
+      "pageSize",
+      "workStatus"
+    ],
+    "pathParams": [
+      "sourceId"
     ]
   },
   "GET /explanations/groups/:groupId/tree": {
@@ -8938,5 +8942,129 @@
       "additionalProperties": false
     },
     "source": "routes-media.ts"
+  },
+  "GET /medicine-market/staging/:sourceId/followup-summary": {
+    "source": "routes-market-staging.ts",
+    "pathParams": [
+      "sourceId"
+    ],
+    "queryFields": [
+      "section"
+    ]
+  },
+  "POST /medicine-market/staging/:sourceId/followups": {
+    "source": "routes-market-staging.ts",
+    "pathParams": [
+      "sourceId"
+    ],
+    "queryFields": [],
+    "bodyContract": "followupBatchSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "properties": {
+              "section": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "partial",
+                  "complete"
+                ]
+              },
+              "completedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "maxItems": 40,
+                "default": []
+              },
+              "remainingFields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "maxItems": 40,
+                "default": []
+              },
+              "cardRefs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "medicine",
+                        "composition",
+                        "scientific-name",
+                        "dosage-form",
+                        "pharmacy",
+                        "wholesaler",
+                        "agent",
+                        "manufacturer",
+                        "doctor",
+                        "hospital",
+                        "clinic",
+                        "college"
+                      ]
+                    },
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 40,
+                "default": []
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 2000,
+                "default": ""
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "section",
+              "position",
+              "status",
+              "expectedRevision"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "additionalProperties": false
+    }
   }
 }
