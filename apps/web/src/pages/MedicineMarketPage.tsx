@@ -14,6 +14,7 @@ import {
   Pencil,
   Pill,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Star,
@@ -875,6 +876,7 @@ export function MedicineMarketPage({
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "",
     kind = params.get("kind") ?? "",
+    sort = params.get("sort") === "updated" ? "updated" : "created",
     page = Math.max(1, Number(params.get("page")) || 1),
     selected = Number(params.get("card")) || null;
   const selectedRef = useRef(selected);
@@ -939,13 +941,15 @@ export function MedicineMarketPage({
       return p;
     });
   const list = useQuery({
-    queryKey: ["medicine-market", user?.id, "cards", kind, q, page, archived],
+    queryKey: ["medicine-market", user?.id, "cards", kind, q, page, archived, sort],
     queryFn: ({ signal }) =>
       api<Page<MarketCard>>(
-        `${ROOT}/cards?${new URLSearchParams({ kind, q, page: String(page), pageSize: "18", archived: String(archived) })}`,
+        `${ROOT}/cards?${new URLSearchParams({ kind, q, page: String(page), pageSize: "18", archived: String(archived), sort })}`,
         { signal },
       ),
     enabled: tab === "catalog",
+    refetchInterval: tab === "catalog" && !selected ? 20_000 : false,
+    refetchIntervalInBackground: false,
   });
   const detail = useQuery({
     queryKey: ["medicine-market", user?.id, "card", selected],
@@ -1174,6 +1178,12 @@ export function MedicineMarketPage({
           </div>
         </div>
         <div className="medicine-market-heading-actions">
+          <Button variant="secondary" onClick={() => {
+            write({ card: null, kind: null, q: null, page: null, archived: null, sort: "created" });
+            void client.invalidateQueries({queryKey:["medicine-market",user?.id,"cards"]});
+          }}>
+            <RefreshCw size={16} /> أحدث الإضافات
+          </Button>
           {user && (
             <span className="medicine-market-points">
               <Star size={16} /> {meta.data?.userPoints ?? "0"} نقطة معتمدة
@@ -1277,6 +1287,11 @@ export function MedicineMarketPage({
                   {t.label}
                 </option>
               ))}
+            </Select>
+            <Select label="ترتيب النتائج" value={sort}
+              onChange={(e) => write({ sort: e.target.value === "updated" ? "updated" : "created", page: null, card: null })}>
+              <option value="created">الأحدث إضافة</option>
+              <option value="updated">الأحدث تحديثًا</option>
             </Select>
             {permissions?.canModerate && (
               <label className="medicine-market-check">
@@ -1648,6 +1663,10 @@ export function MedicineMarketPage({
               <div className="medicine-market-list-heading">
                 <h2>{currentType?.label ?? "كروت الدليل"}</h2>
                 <span>{list.data?.total ?? "—"} كرت</span>
+                <Button variant="secondary" size="compact" disabled={list.isFetching}
+                  onClick={() => void list.refetch()}>
+                  <RefreshCw size={15} /> {list.isFetching ? "يُحدّث…" : "تحديث الآن"}
+                </Button>
               </div>
               {list.isLoading && <Notice>جارٍ تحميل الدليل…</Notice>}
               {list.error && (
