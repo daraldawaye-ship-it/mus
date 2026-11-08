@@ -265,7 +265,7 @@ export function AuthPage({ mode = "login" }: { mode?: "login" | "register" }) {
       } else {
         if (!response.user || !response.csrf)
           throw new Error("لم تكتمل جلسة الدخول");
-        await acceptRegistration({ user: response.user, csrf: response.csrf });
+        await acceptRegistration({ user: response.user, csrf: response.csrf, visitorOnly: true });
         rememberLoginIdentifier(visitorPhone);
         if (safeReturn) {
           window.location.assign(safeReturn);
