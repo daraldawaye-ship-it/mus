@@ -347,6 +347,10 @@ export interface Item extends ItemIdentity {
   clearanceTo: string | null;
   settlementApprovalDate: string | null;
   settlementDisplayDate: string | null;
+  /** Actual approval instant, distinct from legacy date-only value. */
+  settlementApprovalAt: string | null;
+  /** Actual display instant, distinct from legacy date-only value. */
+  settlementDisplayAt: string | null;
   purchaseFactor: number;
   currencyId: number;
   currencyCode: string;
