@@ -253,7 +253,7 @@ test("monthly sold quantity in item options is FIRST-unit and rolling year count
   assert.match(ui, /\{ key: "fourMonthsMax".*\n.*\{ key: "yearMin", label: "المبيعات مرات في عام من" \}/);
   assert.match(ui, /\{ key: "yearMax", label: "المبيعات مرات في عام إلى" \}/);
   assert.match(ui, /yearMin: params\.get\("yearMin"\) \?\? "2"/);
-  assert.match(ui, /yearMin: "2", coverageMax: "1"/);
+  assert.match(ui, /yearMin: "2", coverageWithReserveMax: "1"/);
   assert.match(ui, /key === "yearMin" \? "2"/);
   assert.match(ui, /key === "yearMin" \|\| key === "coverageWithReserveMax"/);
   assert.match(schema, /yearMin: numericRange\.default\(""\)/);
@@ -419,7 +419,7 @@ test("item option filters auto-apply without buttons, including saved preset sel
   assert.match(page, /if \(choice\) \{ cancelAutoFilter\(\); applyPreset\(choice\); \}/);
   assert.doesNotMatch(page, /<Button[^>]*>\s*\{applyingFilter \? "جارٍ تطبيق الخيارات…" : "تطبيق الخيارات"\}/);
   assert.doesNotMatch(page, /onClick=\{\(\)=>\{if\(selectedPreset\) void applyPreset\(selectedPreset\);\}\}/);
-  assert.match(page, /monthMin: "1", yearMin: "2", coverageMax: "1"/);
+  assert.match(page, /monthMin: "1", yearMin: "2", coverageWithReserveMax: "1"/);
   assert.match(css, /\.item-options-presets-card \.item-options-preset-field > input,/);
   assert.match(css, /\.item-options-presets-card \.item-options-preset-field > select \{/);
   assert.match(css, /padding-block: 23px 5px/);
