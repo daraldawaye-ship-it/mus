@@ -899,12 +899,17 @@
     "source": "routes-companies.ts"
   },
   "GET /companies/:companyId/access-preview/targets": {
-    "pathParams": ["companyId"],
+    "pathParams": [
+      "companyId"
+    ],
     "queryFields": [],
     "source": "routes-companies.ts"
   },
   "GET /companies/:companyId/access-preview/:employeeId/pages": {
-    "pathParams": ["companyId","employeeId"],
+    "pathParams": [
+      "companyId",
+      "employeeId"
+    ],
     "queryFields": [],
     "source": "routes-companies.ts"
   },
@@ -8047,8 +8052,13 @@
           "type": "string",
           "maxLength": 1000
         },
-        "prescriptionImageReviewed": {"type":"boolean"},
-        "reviewedImageUrl": {"type":"string","maxLength":120}
+        "prescriptionImageReviewed": {
+          "type": "boolean"
+        },
+        "reviewedImageUrl": {
+          "type": "string",
+          "maxLength": 120
+        }
       },
       "required": [
         "decision"
@@ -8422,21 +8432,30 @@
   },
   "POST /medicine-market/staging/:sourceId/promote-medicines": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": [],
     "bodyContract": "bulkMedicinePromotionSchema",
     "bodySchema": {
       "type": "object",
       "properties": {
-        "idempotencyKey": {"type": "string", "format": "uuid"}
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
-      "required": ["idempotencyKey"],
+      "required": [
+        "idempotencyKey"
+      ],
       "additionalProperties": false
     }
   },
   "GET /medicine-market/staging/:sourceId/promote-status": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": []
   },
   "POST /medicine-market/prescriptions": {
@@ -8447,22 +8466,66 @@
     "bodySchema": {
       "type": "object",
       "properties": {
-        "idempotencyKey": {"type":"string","format":"uuid"},
-        "prescriptionLines": {
-          "type":"array","minItems":1,"maxItems":20,
-          "items":{"anyOf":[
-            {"type":"integer","minimum":1},
-            {"type":"null"},
-            {"type":"object","properties":{
-              "kind":{"type":"string","enum":["medicine","composition"]},
-              "id":{"anyOf":[{"type":"integer","minimum":1},{"type":"null"}]}
-            },"required":["kind","id"],"additionalProperties":false}
-          ]}
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
         },
-        "imageDataUrl": {"type":"string","minLength":50,"maxLength":700000}
+        "prescriptionLines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "medicine",
+                      "composition"
+                    ]
+                  },
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "imageDataUrl": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 700000
+        }
       },
-      "required":["idempotencyKey","prescriptionLines","imageDataUrl"],
-      "additionalProperties":false
+      "required": [
+        "idempotencyKey",
+        "prescriptionLines",
+        "imageDataUrl"
+      ],
+      "additionalProperties": false
     }
   },
   "POST /medicine-market/saba-2024/import": {
@@ -8473,11 +8536,25 @@
     "bodySchema": {
       "type": "object",
       "properties": {
-        "idempotencyKey": {"type":"string","format":"uuid"},
-        "sourceSha256": {"type":"string","const":"211777e825a4e691f65b55a87673033c875c4b574d41257e37ba69a3ce093d99"},
-        "encoded": {"type":"string","minLength":200,"maxLength":14000}
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sourceSha256": {
+          "type": "string",
+          "const": "211777e825a4e691f65b55a87673033c875c4b574d41257e37ba69a3ce093d99"
+        },
+        "encoded": {
+          "type": "string",
+          "minLength": 200,
+          "maxLength": 14000
+        }
       },
-      "required": ["idempotencyKey","sourceSha256","encoded"],
+      "required": [
+        "idempotencyKey",
+        "sourceSha256",
+        "encoded"
+      ],
       "additionalProperties": false
     }
   },
@@ -8488,45 +8565,65 @@
   },
   "GET /medicine-market/staging/:sourceId/arabize-preview": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": []
   },
   "POST /medicine-market/staging/:sourceId/arabize": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": [],
     "bodyContract": "bulkMedicinePromotionSchema",
     "bodySchema": {
       "type": "object",
       "properties": {
-        "idempotencyKey": {"type":"string","format":"uuid"}
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
-      "required": ["idempotencyKey"],
+      "required": [
+        "idempotencyKey"
+      ],
       "additionalProperties": false
     }
   },
   "GET /medicine-market/staging/:sourceId/arabize-status": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": []
   },
   "POST /medicine-market/staging/:sourceId/title-case": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": [],
     "bodyContract": "bulkMedicinePromotionSchema",
     "bodySchema": {
       "type": "object",
       "properties": {
-        "idempotencyKey": {"type": "string", "format": "uuid"}
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
-      "required": ["idempotencyKey"],
+      "required": [
+        "idempotencyKey"
+      ],
       "additionalProperties": false
     }
   },
   "GET /medicine-market/staging/:sourceId/title-case-status": {
     "source": "routes-market-staging.ts",
-    "pathParams": ["sourceId"],
+    "pathParams": [
+      "sourceId"
+    ],
     "queryFields": []
   },
   "GET /medicine-market/staging/:sourceId/rows": {
@@ -8755,6 +8852,15 @@
       "required": [
         "groupId"
       ],
+      "additionalProperties": false
+    }
+  },
+  "POST /medicine-market/owner/approve-existing": {
+    "queryFields": [],
+    "source": "routes-medicine-market.ts",
+    "bodySchema": {
+      "type": "object",
+      "properties": {},
       "additionalProperties": false
     }
   }
