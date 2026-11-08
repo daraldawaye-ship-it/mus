@@ -416,11 +416,11 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     return user;
   };
   router.post("/companies/:companyId/item-options-list/draft-values", handler(async (req, res) => {
-    try {
     const input = parse(draftValueRequestSchema, req.body);
     const result = await readItems(pool, req, async (client, companyId) => {
       // Match the list's access policy, not merely generic items.view.
-      const user = await currentActor(client, actor(req));
+      // Read-only transaction: avoid a SELECT FOR UPDATE on the user row.
+      const user = await currentActor(client, actor(req), false);
       const entries = await directoryEntries(client, user, companyId);
       const visible = (key: string) => {
         const entry = entries.find(page => page.key === key);
@@ -447,9 +447,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
           required_quantity: item.requiredQuantity,
         })));
       if (pricedRows.length) {
-        let rows;
-        try {
-          rows = await client.query(
+        const rows = await client.query(
           `WITH requested AS (
              SELECT DISTINCT ON (draft_id,item_id)
                draft_id, item_id, required_quantity
@@ -468,13 +466,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
            GROUP BY requested.draft_id,currency.code
            ORDER BY requested.draft_id,currency.code`,
           [companyId, JSON.stringify(pricedRows)],
-          );
-        } catch (reason) {
-          const pgError = reason as Error & {code?: string};
-          console.error("ORDER_DRAFT_VALUE_QUERY_FAILURE", pgError.code ?? "",
-            pgError.message);
-          throw reason;
-        }
+        );
         for (const row of rows.rows) {
           const draft = byId.get(Number(row.draft_id));
           if (!draft) continue;
@@ -490,11 +482,6 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ drafts: result });
-    } catch (reason) {
-      const error = reason as Error & {code?: string};
-      console.error("ORDER_DRAFT_VALUE_FAILURE", error.code ?? "", error.message);
-      throw reason;
-    }
   }));
   router.get(presetsPath, handler(async (req, res) => {
     const companyId = id(req.params.companyId);
