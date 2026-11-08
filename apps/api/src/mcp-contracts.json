@@ -7937,7 +7937,8 @@
       "page",
       "pageSize",
       "kind",
-      "archived"
+      "archived",
+      "sort"
     ],
     "source": "routes-medicine-market.ts"
   },
