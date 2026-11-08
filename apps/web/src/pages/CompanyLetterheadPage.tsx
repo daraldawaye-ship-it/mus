@@ -5,6 +5,7 @@ import { api, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { ImageUpload } from "../ImageUpload";
+import { CompanyLogoSettings } from "../CompanyLogoSettings";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
 /**
@@ -55,6 +56,7 @@ export function CompanyLetterheadPage({context}:{context:CompanyContext}) {
     <>
       <PageHeader title="ترويسة الشركة للطباعة"
         description={`الترويسة المعتمدة لمطبوعات ${company.name}، مستقلة عن بقية الشركات.`} />
+      <CompanyLogoSettings context={context} />
       <Card title="صورة الترويسة">
         <p className="muted">
           تُطبع الصورة بعرض الصفحة دون تشويه نسبها، فوق بيانات الفاتورة أو السند أو التقرير.
