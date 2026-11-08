@@ -8863,5 +8863,80 @@
       "properties": {},
       "additionalProperties": false
     }
+  },
+  "GET /companies/:companyId/logo": {
+    "queryFields": [],
+    "source": "routes-companies.ts"
+  },
+  "PUT /companies/:companyId/logo": {
+    "queryFields": [],
+    "bodyContract": "companyLogoSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "mediaId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mediaId"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-companies.ts"
+  },
+  "POST /media": {
+    "queryFields": [],
+    "bodyContract": "mediaUploadSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "avatar",
+            "item",
+            "letterhead",
+            "chat",
+            "logo"
+          ]
+        },
+        "companyId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original": {
+          "type": "string",
+          "maxLength": 3100000
+        },
+        "thumbnail": {
+          "type": "string",
+          "maxLength": 300000
+        }
+      },
+      "required": [
+        "purpose",
+        "companyId",
+        "original",
+        "thumbnail"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-media.ts"
   }
 }
