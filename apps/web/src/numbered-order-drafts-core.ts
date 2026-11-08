@@ -121,3 +121,28 @@ export function removeNumberedOrderDraftItem(
     ? { ...draft, items: draft.items.filter(item => item.id !== itemId) }
     : draft) };
 }
+
+/** A saved ordered filter group replaces ALL device drafts, not appends.
+ * Build every draft in memory, then persist once; if a stage is invalid,
+ * browser storage fails or no stage matches, old drafts remain untouched.
+ */
+export function buildReplacementOrderDrafts(
+  stages: OrderDraftItem[][], now=Date.now(),
+): {state:NumberedOrderDraftState|null; error:string|null; added:number; skipped:number} {
+  if(!stages.length || stages.length>20) return {
+    state:null,error:"حدّد من 1 إلى 20 مجموعة خيارات بترتيبها",added:0,skipped:0,
+  };
+  let state=emptyOrderDraftState(), added=0, skipped=0;
+  for(const items of stages){
+    const stage=createNumberedOrderDraft(state,items,now);
+    if(stage.error) return {state:null,error:stage.error,added:0,skipped:0};
+    state=stage.state;
+    added+=stage.added;
+    skipped+=stage.skipped;
+  }
+  if(!state.drafts.length) return {
+    state:null,error:"لا توجد أصناف مطابقة لأي مجموعة؛ لم تُحذف المسودات الحالية",
+    added:0,skipped,
+  };
+  return {state,error:null,added,skipped};
+}
