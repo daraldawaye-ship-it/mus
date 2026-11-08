@@ -11,6 +11,7 @@ export interface RequestAuth {
   user: User;
   tokenHash: string;
   csrf: string;
+  visitorOnly?: boolean;
 }
 declare global {
   namespace Express {
@@ -55,21 +56,45 @@ export function loadSession(pool: Pool): RequestHandler {
     }
     pool
       .query(
-        "SELECT u.*,s.token_hash,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND NOT u.archived",
+        "SELECT u.*,s.token_hash,s.csrf,s.visitor_only FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND NOT u.archived",
         [tokenHash(token)],
       )
       .then((result) => {
-        if (result.rows[0])
+        if (result.rows[0] && !(result.rows[0].visitor_only &&
+            req.originalUrl.startsWith("/oauth/")))
           req.auth = {
             user: userDTO(result.rows[0]),
             tokenHash: result.rows[0].token_hash,
             csrf: result.rows[0].csrf,
+            visitorOnly: Boolean(result.rows[0].visitor_only),
           };
         next();
       })
       .catch(next);
   };
 }
+/** Phone-first visitors are authenticated only to contribute to the public
+ * medicine market, even if their account acquires company permissions later.
+ * They must complete an independently authenticated login to leave this scope. */
+export const visitorOnlyGuard: RequestHandler = (req, _res, next) => {
+  if (!req.auth?.visitorOnly) return next();
+  const path=req.path;
+  const authRoutes = new Set([
+    "/auth/session", "/auth/logout", "/auth/login",
+    "/auth/register", "/auth/login-link/redeem", "/auth/visitor/enter",
+  ]);
+  if (authRoutes.has(path) || /^\/medicine-market(?:\/|$)/.test(path) ||
+      path === "/page-catalog/visit" ||
+      (path === "/appearance" &&
+        (req.method === "GET" ? (!req.query.scope || req.query.scope==="public")
+          : req.body?.scope === "public"))) {
+    next();
+    return;
+  }
+  next(new HttpError(403,"visitor_market_only",
+    "الدخول المبسط مخصص للسوق الرئيسي فقط. للدخول إلى الشركات استخدم حسابك المحمي"));
+};
+
 export function mutationSecurity(origin: string): RequestHandler {
   return (req, _res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
