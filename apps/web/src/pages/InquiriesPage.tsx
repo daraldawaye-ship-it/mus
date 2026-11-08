@@ -5,7 +5,7 @@ import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
 
 type Inquiry = {
- id:number;companyId:number|null;requestType:string;requestText:string;
+ id:number;companyId:number|null;companyName:string|null;requestType:string;requestText:string;
  answerType:string;answerOptions:string[];responseMode:"first"|"all";
  recipientSelection:{userIds:number[];positionKeys:string[]};
  priority:string;dueAt:string|null;linkedTable:string|null;linkedRecordId:number|null;
@@ -213,16 +213,23 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     {entries.isError&&<Notice tone="error">تعذر قراءة الاستفسارات. {entries.error instanceof Error?entries.error.message:""}</Notice>}
     {!entries.isLoading&&!records.length&&<p className="muted">لا توجد استفسارات مطابقة.</p>}
     <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",minWidth:880}}>
+      <table style={{width:"100%",minWidth:1200}}>
         <thead><tr>
           <th>رقم</th><th>الشركة</th><th>النوع</th><th>الطلب</th><th>المعنيون</th>
-          <th>الردود</th><th>الحالة</th><th>التاريخ والوقت</th><th>الجدول المرتبط</th><th>الإجراء</th>
+          <th>عدد الردود</th><th>آخر رد</th><th>الرد رقم</th><th>الرد تاريخ</th><th>الحالة</th><th>التاريخ والوقت</th><th>الجدول المرتبط</th><th>الإجراء</th>
         </tr></thead>
         <tbody>{records.map(record=><tr key={record.id}>
-          <td>{record.id}</td><td>{record.companyId??"عام"}</td>
+          <td>{record.id}</td><td>{record.companyName??record.companyId??"عام"}</td>
           <td>{labels[record.requestType]??record.requestType}</td>
           <td style={{maxWidth:260,whiteSpace:"normal"}}>{record.requestText}</td>
           <td>{record.assignedCount}</td><td>{record.answeredCount}</td>
+          <td>{record.answers.length?(
+            record.answers[record.answers.length-1]!.answerValue==="yes"?"نعم":
+            record.answers[record.answers.length-1]!.answerValue==="no"?"لا":
+            record.answers[record.answers.length-1]!.answerValue
+          ):"—"}</td>
+          <td>{record.answers.length?record.answers[record.answers.length-1]!.id:"—"}</td>
+          <td>{when(record.answers.length?record.answers[record.answers.length-1]!.answeredAt:null)}</td>
           <td>{labels[record.status]??record.status}</td>
           <td>{when(record.createdAt)}</td>
           <td>{record.linkedTable?record.linkedTable+" #"+(record.linkedRecordId??"—"):"—"}</td>
