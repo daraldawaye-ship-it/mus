@@ -83,7 +83,7 @@ test("item-options replenishment uses the applied coverage target and rounds up 
   assert.match(ui, /coverageMax: params\.get\("coverageMax"\) \?\? "1"/);
   assert.match(ui, /<input type="text" inputMode="decimal"/);
   assert.doesNotMatch(ui, /<input type="number" step="any"/);
-  assert.match(ui, /colSpan=\{17\}/);
+  assert.match(ui, /colSpan=\{visibleColumns\.length\}/);
   assert.match(ui, /row\.requiredPurchaseQuantity/);
 });
 
@@ -110,11 +110,11 @@ test("monthly sold quantities come directly from precomputed ranking tables", ()
   assert.match(css, /item-options-choice-col/);
 });
 
-test("item-options register uses compact widths for all 17 columns", () => {
+test("item-options register retains compact widths for all 19 columns", () => {
   const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
   const css = read("apps/web/src/styles.css");
   const columns = ui.slice(ui.indexOf('<colgroup>'), ui.indexOf('</colgroup>'));
-  assert.equal((columns.match(/<col className=/g) ?? []).length, 17);
+  assert.equal((columns.match(/<col className=/g) ?? []).length, 19);
   assert.doesNotMatch(columns, /span=\{9\}/);
   assert.match(css, /item-options-desktop-table > table \{\s*min-width: 1410px/);
   assert.doesNotMatch(css, /item-options-desktop-table > table \{\s*min-width: 1850px/);
@@ -442,4 +442,41 @@ test("numbered order drafts remain visible; only draft ITEMS can be collapsed", 
   assert.match(css, /\.item-options-order-draft-buttons \{/);
   assert.match(css, /\.item-options-drafts-card \.item-options-order-draft-lines \{/);
   assert.match(css, /max-height: min\(46dvh, 420px\)/);
+});
+
+test("coverage columns display gross and net-of-reserve sufficiency independently", () => {
+  const api = read("apps/api/src/routes-item-options-list.ts");
+  const coverage = read("apps/api/src/services/item-coverage.ts");
+  const ui = read("apps/web/src/pages/ItemOptionsListPage.tsx");
+  const schema = read("packages/contracts/src/item-options-presets.ts");
+  // Physical available inventory is showroom + non-return warehouse only.
+  assert.match(coverage, /coalesce\(coverage_stock\.stock_showroom,0\)\+/);
+  assert.match(coverage, /coalesce\(coverage_stock\.stock_warehouse,0\)/);
+  assert.match(coverage, /coalesce\(coverage_stock\.stock_warehouse,0\)-i\.reserve_quantity,0\)/);
+  assert.match(coverage, /coverage_rate\.quantity \* coverage_rate\.days \/ coverage_rate\.sales/);
+  assert.match(coverage, /coverage_rate\.after_reserve \* coverage_rate\.days \/ coverage_rate\.sales/);
+  // Both values are always returned, independently of the ordering switch.
+  assert.match(api, /coverage: "f\.coverage_before"/);
+  assert.match(api, /coverageWithReserve: "f\.coverage_after_reserve"/);
+  assert.match(api, /coverage: "f\.coverage_before"/);
+  assert.match(api, /approximateCoverageDays: row\.approximateCoverageDays/);
+  assert.match(api, /coverageAfterReserveDays: row\.coverageAfterReserveDays/);
+  assert.match(ui, /sortHeader\("coverage", "الكفاية بدون الاحتياط \(يوم\)"\)/);
+  assert.match(ui, /sortHeader\("coverageWithReserve", "الكفاية مع الاحتياط \(يوم\)"\)/);
+  assert.match(ui, /row\.approximateCoverageDays \?\? "—"/);
+  assert.match(ui, /row\.coverageAfterReserveDays \?\? "—"/);
+  // The reserve checkbox still affects purchase targets and coverage filters.
+  assert.match(api, /const coverageColumn = options\.useReserve \?/);
+  assert.match(api, /options\.coverageMax \?\? "30", options\.useReserve/);
+  // Explicit modern preset column choices must not be overriden on load.
+  assert.match(schema, /coverageColumnsVersion: z\.literal\(2\)\.optional\(\)/);
+  assert.match(schema, /"coverage", "coverageWithReserve", "coverageWithRequired"/);
+  assert.equal(itemOptionsPresetFiltersSchema.parse({
+    q:"", active:"active", stockMin:"", stockMax:"", reserveMin:"", reserveMax:"",
+    monthMin:"", monthMax:"", fourMonthsMin:"", fourMonthsMax:"",
+    allTimeMin:"", allTimeMax:"", previousYearMin:"", previousYearMax:"",
+    coverageMin:"", coverageMax:"", excludeZero:false, useReserve:true,
+    sortBy:"coverageWithReserve", sortDir:"asc", coverageColumnsVersion:2,
+    visibleColumns:["coverage","coverageWithReserve"],
+  }).sortBy, "coverageWithReserve");
 });
