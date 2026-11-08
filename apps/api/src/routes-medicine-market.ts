@@ -606,7 +606,15 @@ function validateMarketImage(dataUrl:string, profile:'medicine'|'prescription'='
 }
 
 export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingIsolated = false): Router {
-  const viewer = access?.viewer ?? defaultViewer;
+  const baseViewer = access?.viewer ?? defaultViewer;
+  // A phone-only visitor session never acquires administrative market rights
+  // just because the account is later promoted or linked to a company.
+  const viewer: typeof defaultViewer = async (db, req, write = false) => {
+    const u = await baseViewer(db, req, write);
+    return u && req.auth?.visitorOnly
+      ? { ...u, owner: false, kind: "member" as const, editor: false, monitor: false }
+      : u;
+  };
   const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
