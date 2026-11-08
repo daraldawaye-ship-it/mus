@@ -1163,12 +1163,12 @@ export function MedicineMarketPage({
     <div className="medicine-market" dir="rtl">
       <header className="medicine-market-heading">
         <div className="medicine-market-brand">
-          <span className="medicine-market-brand-icon">
-            <Pill size={28} />
+          <span className="medicine-market-brand-icon medicine-market-app-brand-icon">
+            <img src="/site-icon.png" className="medicine-market-app-logo" alt="شعار تطبيق الرئيسي" />
           </span>
           <div>
-            <p className="medicine-market-eyebrow">الرئيسي / الموقع العام</p>
-            <h1>سوق الأدوية</h1>
+            <p className="medicine-market-eyebrow">الرئيسي / السوق الرئيسي</p>
+            <h1>السوق الرئيسي</h1>
             <p>دليل نبنيه معًا، معلومةً بعد معلومة.</p>
           </div>
         </div>
