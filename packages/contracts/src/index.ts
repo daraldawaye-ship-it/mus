@@ -217,6 +217,8 @@ export const auditActionLabels = {
   "item.field.update": "تعديل حقل في كرت الصنف",
   "item.options-preset.create": "حفظ فلتر أصناف مشترك",
   "item.options-preset.delete": "حذف فلتر أصناف مشترك",
+  "item.options-preset-group.create": "حفظ تجميع خيارات أصناف مرتب",
+  "item.options-preset-group.delete": "حذف تجميع خيارات أصناف",
   "invoice.post": "حفظ وترحيل فاتورة",
   "memo.feature-rule": "تعديل قاعدة متابعة المذكرات",
   "memo.feature-trigger": "تحقق قاعدة ميزات مرتبطة بالمذكرات",
@@ -339,6 +341,8 @@ export const publicAuditActions: AuditAction[] = [
 export const companyAuditActions: AuditAction[] = [
   "item.options-preset.create",
   "item.options-preset.delete",
+  "item.options-preset-group.create",
+  "item.options-preset-group.delete",
   "question.create",
   "question.update",
   "question.answer",
