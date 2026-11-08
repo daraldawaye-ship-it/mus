@@ -12,7 +12,7 @@ import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
 // JSON image uploads intentionally contain small browser-resized raster files.
 // Keeping originals and thumbnails in PostgreSQL makes them survive Railway redeploys.
 const uploadSchema = z.object({
-  purpose: z.enum(["avatar", "item", "letterhead", "chat"]),
+  purpose: z.enum(["avatar", "item", "letterhead", "chat", "logo"]),
   companyId: z.number().int().positive().nullable(),
   original: z.string().max(3_100_000),
   thumbnail: z.string().max(300_000),
@@ -39,7 +39,7 @@ export function mediaRoutes(pool: Pool): Router {
   router.post("/media",handler(async(req,res) => {
     const input = parse(uploadSchema,req.body);
     if ((input.purpose==="avatar" && input.companyId!==null) ||
-        ((input.purpose==="item" || input.purpose==="letterhead") && input.companyId===null))
+        ((input.purpose==="item" || input.purpose==="letterhead" || input.purpose==="logo") && input.companyId===null))
       throw new HttpError(400,"invalid_scope","تحديد نطاق الصورة غير صالح");
     const original = readRaster(input.original,2_000_000);
     const thumbnail = readRaster(input.thumbnail,150_000);
@@ -48,10 +48,10 @@ export function mediaRoutes(pool: Pool): Router {
       const user=await currentActor(client,actor(req));
       if(input.purpose==="item") await companyAccess(client,user,input.companyId!,"items.manage");
       if(input.purpose==="chat" && input.companyId!==null) await companyAccess(client,user,input.companyId);
-      if(input.purpose==="letterhead") {
+      if(input.purpose==="letterhead" || input.purpose==="logo") {
         const access=await companyAccess(client,user,input.companyId!,undefined,true);
         if(!user.owner && access.company.createdBy!==user.id)
-          throw new HttpError(403,"forbidden","تغيير ترويسة الشركة متاح للمالك فقط");
+          throw new HttpError(403,"forbidden","تغيير ترويسة الشركة أو شعارها متاح للمالك فقط");
       }
       await client.query(
         `INSERT INTO media_assets(id,purpose,company_id,uploaded_by,original_mime,thumbnail_mime,original_bytes,thumbnail_bytes)
