@@ -529,7 +529,7 @@ function Navigation({
       .map((entry) => (
         <NavLink
           key={entry.key}
-          to={entry.href!}
+          to={entry.key === "public.home" ? "/medicine-market" : entry.href!}
           aria-label={entry.name}
           title={entry.name}
           end={["public.home", "public.companies", "company.overview"].includes(
@@ -1174,7 +1174,7 @@ function Workspace() {
           aria-label="قائمة التنقل"
         >
           <NavLink
-            to="/"
+            to="/medicine-market"
             className="brand"
             aria-label="الرئيسي — السوق الرئيسي"
             title="الرئيسي — السوق الرئيسي"
