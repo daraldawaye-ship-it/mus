@@ -23,6 +23,7 @@ import {
 import { api, useScopeGuard, useSession } from "../api";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
+import { MarketStagingProgress } from "./MarketStagingProgress";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
@@ -1245,6 +1246,7 @@ export function MedicineMarketPage({
               <ul>{dosageList.data?.items.map(card=><li key={card.id}>{card.name}</li>)}</ul>
             </details>
           </div>
+          {user?.owner && <MarketStagingProgress />}
         </section>
       )}
       {tab === "catalog" && (
