@@ -255,6 +255,7 @@ export function publicRoutes(pool: Pool): Router {
         if (target.rows[0].owner)
           deny("تغيير كلمة مرور المالك يتطلب كلمة المرور الحالية من ملفه الشخصي");
         await client.query("UPDATE users SET password_hash=$1 WHERE id=$2", [hash, targetId]);
+        await client.query("UPDATE visitor_phone_accounts SET default_password_active=false WHERE user_id=$1", [targetId]);
         await client.query("DELETE FROM user_login_links WHERE user_id=$1", [targetId]);
         await client.query("DELETE FROM sessions WHERE user_id=$1", [targetId]);
         await audit(client, owner, "auth.password", "user", targetId, null, null);
