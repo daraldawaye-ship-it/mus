@@ -659,12 +659,13 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         });
         const match=await filteredItems(client,actor(req),companyId,opts,true,
           [...excludedIds],true);
-        if(!("items" in match)) throw new HttpError(500,"invalid_preset_group_result","تعذر تحضير أصناف التجميع");
-        for(const item of match.items) excludedIds.add(item.id);
+        const items=("items" in match && Array.isArray(match.items)) ? match.items : null;
+        if(!items) throw new HttpError(500,"invalid_preset_group_result","تعذر تحضير أصناف التجميع");
+        for(const item of items) excludedIds.add(item.id);
         if(excludedIds.size>10_000)
           throw new HttpError(413,"preset_group_too_large",
             "تجاوز تجميع الخيارات 10000 صنف؛ ضيّق بعض المجموعات. لم تتغير المسودات");
-        stages.push({presetId,name:String(preset.name),items:match.items});
+        stages.push({presetId,name:String(preset.name),items});
       }
       return {id:groupId,name:String(group.name),stages,totalUnique:excludedIds.size};
     });
