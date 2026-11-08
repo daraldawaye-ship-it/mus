@@ -38,6 +38,9 @@ const querySchema = z.object({
   previousYearMin: optionalNumber, previousYearMax: optionalNumber,
   coverageMin: optionalNumber, coverageMax: optionalNumber,
   coverageWithReserveMin: optionalNumber, coverageWithReserveMax: optionalNumber,
+  // Separate replenishment target; never reuse a sufficiency filter bound.
+  orderTargetDays: z.preprocess(value => value === "" ? undefined : value,
+    z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/).refine(value => Number(value) > 0).default("3")),
   reserveCoverageMin: optionalNumber, reserveCoverageMax: optionalNumber,
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
   excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
@@ -161,9 +164,9 @@ async function filteredItems(
   const limit = "$" + (values.length - 1), offset = "$" + values.length;
   // Totals always cover the entire matching filter, never the requested page.
   // Keep the replenishment target and reserve switch identical to the row values.
-  // The post-reserve maximum is both a filter and the target for replenishment.
-  // Blank means a 30-day target, while all purchase planning protects reserves.
-  values.push(options.coverageWithReserveMax ?? "30", "true");
+  // The owner's independent order target defaults to three days; the
+  // post-reserve sufficiency range only controls which items are included.
+  values.push(options.orderTargetDays, "true");
   const targetParam = "$" + (values.length - 1);
   const reserveParam = "$" + values.length;
   const sql = `
@@ -307,7 +310,7 @@ async function filteredItems(
     // This is a snapshot for the local order draft: never write an invoice.
     const ids = rows.map(row => Number(row.id));
     const requested = await requiredPurchaseQuantitiesToPage(
-      client, companyId, ids, options.coverageWithReserveMax ?? "30", true,
+      client, companyId, ids, options.orderTargetDays, true,
     );
     if (requested.size !== ids.length)
       throw new HttpError(409, "order_draft_quantity_unavailable",
@@ -348,7 +351,7 @@ async function filteredItems(
   // Only the requested page needs replenishment quantities; never alter stock.
   const requiredQuantities = await requiredPurchaseQuantitiesToPage(
     client, companyId, selected.map(row => row.id),
-    options.coverageWithReserveMax ?? "30", true,
+    options.orderTargetDays, true,
   );
   return {
     rows: enriched.map(row => ({
