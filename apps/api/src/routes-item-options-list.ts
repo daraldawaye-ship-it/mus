@@ -430,7 +430,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     items: z.array(z.object({
       id: z.number().int().min(1).max(2147483647),
       requiredQuantity: z.string().regex(/^[1-9]\d{0,15}$/).nullable(),
-    }).strict()).max(100).refine(items =>
+    }).strict()).max(300).refine(items =>
       new Set(items.map(item => item.id)).size === items.length,
       "لا يمكن تكرار الصنف في طلب مؤشرات المسودة"),
   }).strict();
