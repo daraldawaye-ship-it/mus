@@ -87,6 +87,7 @@ export function ItemReserveQuickEdit({
         persistedValue.current = response.result.reserveQuantity;
         setSaved(true);
         void queryClient.invalidateQueries({ queryKey: ["item-options-list"] });
+        void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
         void queryClient.invalidateQueries({ queryKey: ["items"] });
         if (latestValue.current === raw || latestValue.current === next) {
           latestValue.current = response.result.reserveQuantity;
