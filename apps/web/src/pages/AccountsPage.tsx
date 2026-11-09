@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -14,6 +14,8 @@ import {
   accountLinkLabels,
   accountSchema,
   type Account,
+  type AccountLedgerLine,
+  type AccountLedgerTotals,
   type AccountCategory,
   type AccountKind,
   type AccountLink,
@@ -35,6 +37,8 @@ import {
   usePendingAccountStatisticsActions,
 } from "../AccountStatisticsCard";
 import { formatMoney } from "../format-money";
+import { financeAccess } from "./FinancePages";
+import "./AccountsPage.css";
 import { usePageDirectory } from "../page-directory";
 import { rememberRecentEntity } from "../recent-entities";
 import {
@@ -70,6 +74,12 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const canViewStatistics = !!directory.data?.some(
     (page) =>
       page.key === "company.account-statistics" &&
+      page.enabled &&
+      page.actionAccess.view,
+  );
+  const canViewLedger = financeAccess(context) && !!directory.data?.some(
+    (page) =>
+      page.key === "company.account-ledger" &&
       page.enabled &&
       page.actionAccess.view,
   );
@@ -121,9 +131,18 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   const [editor, setEditor] = useState<{ account: Account | null } | null>(
     null,
   );
-  const [statisticsAccount, setStatisticsAccount] = useState<Account | null>(
-    null,
-  );
+  const [sidePanel, setSidePanel] = useState<{
+    account: Account;
+    view: "ledger" | "statistics";
+  } | null>(null);
+  useEffect(() => {
+    if (sidePanel && window.matchMedia("(max-width: 900px)").matches) {
+      document.getElementById("accounts-detail-pane")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [sidePanel]);
   const [linkEditor, setLinkEditor] = useState<{
     link: AccountLink;
     account: Account | null;
@@ -227,7 +246,42 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {
         accessorKey: "name",
         header: "اسم الحساب",
-        cell: ({ row }) => <ValueCell>{row.original.name}</ValueCell>,
+        cell: ({ row }) => (
+          <div className="accounts-name-actions">
+            <ValueCell>{row.original.name}</ValueCell>
+            {(canManage ||
+              (row.original.kind === "posting" &&
+                (canViewLedger ||
+                  canViewStatistics ||
+                  pendingStatisticsAccounts.includes(row.original.id)))) && (
+              <select
+                className="accounts-action-select"
+                aria-label={"إجراءات الحساب " + row.original.name}
+                title="إجراءات الحساب"
+                value=""
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  const action = event.target.value;
+                  if (action === "edit") void edit(row.original);
+                  if (action === "ledger" || action === "statistics") {
+                    setSidePanel({ account: row.original, view: action });
+                  }
+                }}
+              >
+                <option value="" disabled>⋮</option>
+                {canViewLedger && row.original.kind === "posting" && (
+                  <option value="ledger">كشف الحساب</option>
+                )}
+                {(canViewStatistics ||
+                  pendingStatisticsAccounts.includes(row.original.id)) &&
+                  row.original.kind === "posting" && (
+                  <option value="statistics">إحصاءات الحساب</option>
+                )}
+                {canManage && <option value="edit">تعديل الحساب</option>}
+              </select>
+            )}
+          </div>
+        ),
       },
       {
         accessorKey: "accountChoice",
@@ -355,49 +409,12 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         ),
       },
       ...optionListColumns<Account>(list.data?.optionDefinitions ?? []),
-      ...(canManage || canViewStatistics || pendingStatisticsAccounts.length > 0
-        ? [
-            {
-              id: "accountActions",
-              header: "الإجراء",
-              size: canManage && canViewStatistics ? 250 : 170,
-              enableSorting: false,
-              cell: ({ row }: { row: { original: Account } }) => (
-                <div className="row-actions">
-                  {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="compact"
-                      disabled={loadingDetail}
-                      aria-label={`تعديل الحساب ${row.original.code}`}
-                      onClick={() => void edit(row.original)}
-                    >
-                      تعديل
-                    </Button>
-                  )}
-                  {(canViewStatistics ||
-                    pendingStatisticsAccounts.includes(row.original.id)) &&
-                    row.original.kind === "posting" && (
-                      <Button
-                        variant="ghost"
-                        size="compact"
-                        aria-label={`إحصاءات الحساب ${row.original.code}`}
-                        onClick={() => setStatisticsAccount(row.original)}
-                      >
-                        {canViewStatistics
-                          ? "إحصاءات الحساب"
-                          : "متابعة طلب سابق"}
-                      </Button>
-                    )}
-                </div>
-              ),
-            } satisfies ColumnDef<OptionListRecord<Account>, unknown>,
-          ]
-        : []),
+
     ],
     [
       canManage,
       savingInline,
+      canViewLedger,
       canViewStatistics,
       pendingStatisticsAccounts,
       loadingDetail,
@@ -444,7 +461,8 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {presence.error && (
         <Notice tone="error">{errorMessage(presence.error)}</Notice>
       )}
-      <Card title="الحسابات">
+      <div className="accounts-split-layout">
+        <Card title="الحسابات">
         <div className="table-filters">
           <Field
             label="بحث في الحسابات"
@@ -530,7 +548,41 @@ function AccountsManager({ context }: { context: CompanyContext }) {
               {id:account.id,name:account.name});
           }}
         />
-      </Card>
+        </Card>
+        <aside id="accounts-detail-pane" className="accounts-detail-pane" aria-live="polite">
+          {sidePanel && (
+            <>
+              <div className="accounts-pane-heading">
+                <strong>{sidePanel.account.name}</strong>
+                <button
+                  type="button"
+                  className="accounts-pane-close"
+                  aria-label="إغلاق تفاصيل الحساب"
+                  onClick={() => setSidePanel(null)}
+                >
+                  إغلاق ×
+                </button>
+              </div>
+              {sidePanel.view === "ledger" && canViewLedger && (
+                <AccountLedgerPreview
+                  key={sidePanel.account.id}
+                  companyId={companyId}
+                  account={sidePanel.account}
+                />
+              )}
+              {sidePanel.view === "statistics" &&
+                (canViewStatistics ||
+                  pendingStatisticsAccounts.includes(sidePanel.account.id)) && (
+                <AccountStatisticsCard
+                  key={sidePanel.account.id}
+                  companyId={companyId}
+                  account={sidePanel.account}
+                />
+              )}
+            </>
+          )}
+        </aside>
+      </div>
       <Card
         title="ربط الحسابات النظامية"
         description="اختر حسابًا حركيًا فعالًا يناسب وظيفة الربط. يمكن ترك الربط فارغًا الآن."
@@ -577,21 +629,6 @@ function AccountsManager({ context }: { context: CompanyContext }) {
           onSaved={(account) => void saved(account)}
         />
       )}
-      {statisticsAccount && (
-        <Dialog
-          open
-          title={`إحصاءات الحساب — ${statisticsAccount.name}`}
-          onClose={() => setStatisticsAccount(null)}
-        >
-          <p>
-            <bdi>{statisticsAccount.code}</bdi> — {statisticsAccount.name}
-          </p>
-          <AccountStatisticsCard
-            companyId={companyId}
-            account={statisticsAccount}
-          />
-        </Dialog>
-      )}
       {canManage && initializing && (
         <InitializeAccounts
           companyId={companyId}
@@ -626,6 +663,123 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         />
       )}
     </>
+  );
+}
+
+
+function todayInAdenForAccountPreview() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Aden",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (key: string) =>
+    parts.find((part) => part.type === key)?.value ?? "";
+  return value("year") + "-" + value("month") + "-" + value("day");
+}
+
+function AccountLedgerPreview({
+  companyId,
+  account,
+}: {
+  companyId: number;
+  account: Account;
+}) {
+  const { user } = useSession();
+  const [dateFrom, setDateFrom] = useState(todayInAdenForAccountPreview);
+  const [dateTo, setDateTo] = useState(todayInAdenForAccountPreview);
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    // Preserve the same deliberate-view audit event used by the full ledger.
+    void api("/companies/" + companyId + "/account-ledger/activity", {
+      method: "POST",
+      body: { event: "view", accountId: account.id },
+    }).catch(() => {});
+  }, [companyId, account.id]);
+  const query = new URLSearchParams({
+    accountId: String(account.id),
+    dateFrom,
+    dateTo,
+    page: String(page),
+    pageSize: "20",
+    sort: "documentDate:desc,documentId:desc,lineNumber:desc",
+    showCounterpart: "1",
+  });
+  const ledger = useQuery({
+    queryKey: ["account-ledger-preview", user?.id, companyId, account.id, dateFrom, dateTo, page],
+    queryFn: ({ signal }) =>
+      api<
+        Page<AccountLedgerLine> & { totals: AccountLedgerTotals }
+      >("/companies/" + companyId + "/account-ledger?" + query.toString(), { signal }),
+    enabled: !!user,
+  });
+  const totals = ledger.data?.totals;
+  const fullUrl = "/companies/" + companyId + "/account-ledger?accountId=" +
+    account.id + "&dateFrom=" + encodeURIComponent(dateFrom) +
+    "&dateTo=" + encodeURIComponent(dateTo);
+  return (
+    <Card title="كشف الحساب">
+      <div className="accounts-ledger-dates">
+        <Field
+          label="من تاريخ"
+          type="date"
+          value={dateFrom}
+          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+        />
+        <Field
+          label="إلى تاريخ"
+          type="date"
+          value={dateTo}
+          onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
+        />
+      </div>
+      {ledger.error && <Notice tone="error">{errorMessage(ledger.error)}</Notice>}
+      {ledger.isFetching && <Notice>جارٍ تحميل كشف الحساب…</Notice>}
+      {totals && (
+        <div className="accounts-ledger-totals">
+          <span>الافتتاحي: <bdi>{formatMoney(totals.openingBalance)}</bdi></span>
+          <span>مدين الفترة: <bdi>{formatMoney(totals.debit)}</bdi></span>
+          <span>دائن الفترة: <bdi>{formatMoney(totals.credit)}</bdi></span>
+          <strong>الختامي: <bdi>{formatMoney(totals.closingBalance)}</bdi> {totals.baseCurrencyCode}</strong>
+        </div>
+      )}
+      {ledger.data && ledger.data.total === 0 && (
+        <Notice>لا توجد حركات مالية مرحلة خلال الفترة المحددة.</Notice>
+      )}
+      {!!ledger.data?.items.length && (
+        <div className="accounts-ledger-scroll">
+          <table className="accounts-ledger-table" aria-label="حركات الحساب المختار">
+            <thead>
+              <tr><th>التاريخ</th><th>البيان</th><th>مدين</th><th>دائن</th></tr>
+            </thead>
+            <tbody>
+              {ledger.data.items.map((line) => (
+                <tr key={line.id}>
+                  <td><bdi>{line.documentDate}</bdi></td>
+                  <td>{line.description || "—"}</td>
+                  <td><bdi>{formatMoney(line.baseDebit)}</bdi></td>
+                  <td><bdi>{formatMoney(line.baseCredit)}</bdi></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!!ledger.data?.total && (
+        <div className="accounts-ledger-pager">
+          <Button variant="ghost" size="compact" disabled={page <= 1 || ledger.isFetching}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}>السابق</Button>
+          <span>صفحة {page} من {Math.ceil(ledger.data.total / 20)}</span>
+          <Button variant="ghost" size="compact"
+            disabled={page * 20 >= ledger.data.total || ledger.isFetching}
+            onClick={() => setPage((value) => value + 1)}>التالي</Button>
+        </div>
+      )}
+      <Link className="button button-secondary accounts-ledger-full" to={fullUrl}>
+        فتح كشف الحساب الكامل
+      </Link>
+    </Card>
   );
 }
 
