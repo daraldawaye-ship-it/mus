@@ -52,14 +52,14 @@ const columns = {
   // not just the balances attached to the current page after pagination.
   // Sort by the displayed balance magnitude. Debit/credit direction is
   // shown separately, and should not invert the numeric sort order.
-  actualBalance: `ABS(COALESCE((
+  actualBalance: `CASE WHEN a.kind='posting' THEN ABS(COALESCE((
     SELECT SUM(l.base_debit - l.base_credit)
     FROM financial_document_lines l
     JOIN financial_documents d
       ON d.company_id=l.company_id AND d.id=l.document_id
     WHERE l.company_id=a.company_id AND l.account_id=a.id
       AND d.status IN ('posted','reversed')
-  ),0))`,
+  ),0)) ELSE NULL END`,
   privacyLevel: "a.privacy_level",
   accountLimit: "a.account_limit",
   monthlyLimit: "a.monthly_limit",
@@ -440,6 +440,10 @@ export function accountRoutes(pool: Pool): Router {
           },
           "code:asc",
           "account",
+          [],
+          undefined,
+          false,
+          new Set(["actualBalance"]),
         );
         // A balance is an outcome of posted movements, not a permanent flag
         // on the account. Use exact base-currency ledger amounts, including
