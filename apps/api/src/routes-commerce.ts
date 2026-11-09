@@ -175,94 +175,39 @@ export function commerceRoutes(pool: Pool): Router {
         if (!found.rowCount)
           throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
         if (type === "purchase" || type === "sale" || type === "sale-return") {
-          // Each side of the history is independently bounded BEFORE unioning.
-          // Posted dates come from the incrementally maintained daily activity;
-          // staged lines use their own indexed, incrementally maintained source cache.
+          // Only posted invoices belong to this compact history. Never mix in
+          // the unposted source/staging cache. Daily activity limits the dates.
           const result = await client.query(
-            `SELECT "lineId","documentId","documentDate","partyName",
-                 "quantityFirstUnit","unitPriceFirstUnit","currencyCode","isStaged",
-                 "invoiceNet","invoiceDiscount","byName","doctorName","notes"
+            `SELECT il.id::text AS "lineId",i.id::text AS "documentId",
+               i.document_date::text AS "documentDate",
+               CASE WHEN i.kind='purchase'
+                 THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
+                 ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
+               END AS "partyName",
+               round(il.smallest_quantity::numeric /
+                 (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
+               round(il.unit_price::numeric * CASE il.unit
+                 WHEN 1 THEN 1 WHEN 2 THEN il.factor2
+                 ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
+               i.currency_code AS "currencyCode",
+               i.total::text AS "invoiceNet",i.discount::text AS "invoiceDiscount",
+               u.display_name AS "byName",
+               NULLIF(i.doctor_name,'') AS "doctorName",
+               NULLIF(i.description,'') AS "notes"
              FROM (
-               SELECT il.id::text AS "lineId",i.id::text AS "documentId",
-                 i.document_date::text AS "documentDate",
-                 CASE WHEN i.kind='purchase'
-                   THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
-                   ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
-                 END AS "partyName",
-                 round(il.smallest_quantity::numeric /
-                   (il.factor2::numeric * il.factor3::numeric),3)::text AS "quantityFirstUnit",
-                 round(il.unit_price::numeric * CASE il.unit
-                   WHEN 1 THEN 1 WHEN 2 THEN il.factor2
-                   ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
-                 i.currency_code AS "currencyCode",false AS "isStaged",
-                 i.total::text AS "invoiceNet",i.discount::text AS "invoiceDiscount",
-                 u.display_name AS "byName",
-                 NULLIF(i.doctor_name,'') AS "doctorName",
-                 NULLIF(i.description,'') AS "notes",
-                 i.id AS "sortId",NULL::text AS "sourceId",il.line_number AS "sortLine"
-               FROM (
-                 SELECT document_date FROM item_daily_activity
-                 WHERE company_id=$1 AND item_id=$2
-                   AND CASE WHEN $3='sale-return' THEN sale_return_invoices>0
-                     WHEN $3='sale' THEN sale_invoices>0 ELSE purchase_invoices>0 END
-                 ORDER BY document_date DESC LIMIT ($4::bigint+$5::bigint)
-               ) days
-               JOIN invoices i ON i.company_id=$1 AND i.document_date=days.document_date
-                 AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
-               JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
-                 AND il.item_id=$2 AND CASE WHEN $3='sale-return'
-                   THEN il.smallest_quantity<0 ELSE il.smallest_quantity>0 END
-               JOIN users u ON u.id=i.created_by
-               UNION ALL
-               SELECT ('staged:'||l.source_system||':'||l.source_id||':'||
-                   l.line_number::text) AS "lineId",
-                 l.source_id AS "documentId",l.document_date::text AS "documentDate",
-                 COALESCE(NULLIF(CASE WHEN $3='purchase' THEN supplier.name
-                   ELSE payer.name END,''),'غير محدد') AS "partyName",
-                 round(l.quantity * CASE l.unit WHEN 1 THEN 1::numeric
-                   WHEN 2 THEN 1::numeric/item.factor2::numeric
-                   ELSE 1::numeric/(item.factor2::numeric*item.factor3::numeric)
-                 END,6)::text AS "quantityFirstUnit",
-                 round(l.unit_price * CASE l.unit WHEN 1 THEN 1::numeric
-                   WHEN 2 THEN item.factor2::numeric
-                   ELSE item.factor2::numeric*item.factor3::numeric
-                 END,2)::text AS "unitPriceFirstUnit",
-                 cur.code AS "currencyCode",true AS "isStaged",
-                 (SELECT (COALESCE(sum((line.value->>'quantity')::numeric *
-                   (line.value->>'unitPrice')::numeric),0) -
-                   COALESCE(NULLIF(s.source_document->'payload'->>'discount','')::numeric,0))::text
-                   FROM jsonb_array_elements(COALESCE(
-                     s.source_document->'payload'->'lines','[]'::jsonb)) AS line(value)
-                 ) AS "invoiceNet",
-                 COALESCE(NULLIF(s.source_document->'payload'->>'discount',''),'0')
-                   AS "invoiceDiscount",
-                 u.display_name AS "byName",
-                 NULLIF(s.source_document->'payload'->>'doctorName','') AS "doctorName",
-                 NULLIF(s.source_document->'payload'->>'description','') AS "notes",
-                 NULL::integer AS "sortId",l.source_id AS "sourceId",
-                 l.line_number AS "sortLine"
-               FROM (
-                 SELECT * FROM staged_invoice_item_lines_cache
-                 WHERE company_id=$1 AND item_id=$2
-                   AND kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
-                   AND CASE WHEN $3='sale-return' THEN quantity<0 ELSE quantity>0 END
-                 ORDER BY document_date DESC,source_id DESC,line_number DESC
-                 LIMIT ($4::bigint+$5::bigint)
-               ) l
-               JOIN items item ON item.company_id=l.company_id AND item.id=l.item_id
-               JOIN legacy_import_staging s ON s.company_id=l.company_id
-                 AND s.source_system=l.source_system AND s.source_kind=l.source_kind
-                 AND s.source_id=l.source_id
-               JOIN users u ON u.id=s.created_by
-               LEFT JOIN accounts payer ON payer.company_id=l.company_id
-                 AND payer.id=l.counterparty_account_id
-               LEFT JOIN accounts supplier ON supplier.company_id=l.company_id
-                 AND supplier.id=l.supplier_account_id
-               LEFT JOIN company_currencies cur ON cur.company_id=l.company_id
-                 AND cur.id=l.currency_id
-             ) history
-             ORDER BY "documentDate" DESC,"isStaged" ASC,
-               "sortId" DESC NULLS LAST,"sourceId" DESC NULLS LAST,"sortLine" DESC
+               SELECT document_date FROM item_daily_activity
+               WHERE company_id=$1 AND item_id=$2
+                 AND CASE WHEN $3='sale-return' THEN sale_return_invoices>0
+                   WHEN $3='sale' THEN sale_invoices>0 ELSE purchase_invoices>0 END
+               ORDER BY document_date DESC LIMIT ($4::bigint+$5::bigint)
+             ) days
+             JOIN invoices i ON i.company_id=$1 AND i.document_date=days.document_date
+               AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
+             JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
+               AND il.item_id=$2 AND CASE WHEN $3='sale-return'
+                 THEN il.smallest_quantity<0 ELSE il.smallest_quantity>0 END
+             JOIN users u ON u.id=i.created_by
+             ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
              LIMIT $4 OFFSET $5`,
             [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
           );
