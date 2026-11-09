@@ -1093,6 +1093,8 @@ type ItemFields = {
   salePrice3: string;
   defaultSaleUnit: 1 | 2 | 3;
   purchasePrice: string;
+  defaultProfitFactor: string;
+  orderAlertQuantity: string;
   commissionRate: string;
   clearanceFrom: string;
   clearanceTo: string;
@@ -1134,6 +1136,8 @@ function initialItemFields(item: Item | null): ItemFields {
     salePrice3: item?.salePrice3 ?? "0",
     defaultSaleUnit: item?.defaultSaleUnit ?? 1,
     purchasePrice: item?.purchasePrice ?? "0",
+    defaultProfitFactor: item?.defaultProfitFactor ?? "1.2",
+    orderAlertQuantity: item?.orderAlertQuantity ?? "",
     commissionRate: item?.commissionRate ?? "0",
     clearanceFrom: item?.clearanceFrom ?? "",
     clearanceTo: item?.clearanceTo ?? "",
@@ -1424,6 +1428,7 @@ function ItemEditor({
       factor2: fields.factor2,
       factor3: fields.factor3,
       purchaseFactor: fields.purchaseFactor,
+      orderAlertQuantity: fields.orderAlertQuantity.trim() === "" ? null : fields.orderAlertQuantity,
       currencyId: currency?.id ?? 0,
       agentId: agent?.id ?? null,
       ...(item && !supplierManuallyTouched ? {} : { supplierAccountId: supplier?.id ?? null }),
@@ -2258,6 +2263,15 @@ function ItemEditor({
               onChange={(event) => edit("purchasePrice", event.target.value)}
             />
             <Field
+              label="نسبة الربح الافتراضية"
+              inputMode="decimal"
+              dir="ltr"
+              value={fields.defaultProfitFactor}
+              disabled={disabled}
+              onChange={(event) => edit("defaultProfitFactor", event.target.value)}
+              hint="معامل الربح لا يقل عن 1؛ مثال: 1.2 يعادل زيادة 20% على سعر الشراء."
+            />
+            <Field
               label="عامل وحدة الشراء"
               inputMode="numeric"
               dir="ltr"
@@ -2279,10 +2293,10 @@ function ItemEditor({
               label="كمية الطلب"
               inputMode="numeric"
               dir="ltr"
-              value={fields.orderQuantity}
+              value={fields.orderAlertQuantity}
               disabled={disabled}
-              onChange={(event) => edit("orderQuantity", event.target.value)}
-              hint={`بأصغر وحدة مفعّلة: ${smallestUnitName || "غير محددة"}.`}
+              onChange={(event) => edit("orderAlertQuantity", event.target.value)}
+              hint="اتركه فارغًا لتعطيل التذكير؛ الصفر صالح. الحد بالوحدة الأولى، والمتوفر لا يشمل مخازن المرتجعات. تنبيه يومي للمالك والمبيعات عند بلوغه أو النزول عنه."
             />
             <Field
               label="كمية احتياط"
