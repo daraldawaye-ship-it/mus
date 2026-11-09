@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -13,6 +13,7 @@ import {
   accountLinkCategories,
   accountLinkLabels,
   accountSchema,
+  accountPatchSchema,
   type Account,
   type AccountLedgerLine,
   type AccountLedgerTotals,
@@ -57,6 +58,71 @@ import {
   Select,
   ValueCell,
 } from "../ui";
+
+type AccountMoneyField =
+  | "accountLimit"
+  | "monthlyLimit"
+  | "weeklyLimit"
+  | "dailyLimit"
+  | "dailyDefault"
+  | "weeklyDefault"
+  | "monthlyDefault";
+
+const accountMoneyColumns: ReadonlyArray<{ key: AccountMoneyField; label: string }> = [
+  { key: "accountLimit", label: "سقف الحساب" },
+  { key: "monthlyLimit", label: "سقف شهري" },
+  { key: "weeklyLimit", label: "سقف أسبوعي" },
+  { key: "dailyLimit", label: "سقف يومي" },
+  { key: "dailyDefault", label: "افتراضي يومي" },
+  { key: "weeklyDefault", label: "افتراضي أسبوعي" },
+  { key: "monthlyDefault", label: "افتراضي شهري" },
+];
+
+function AccountMoneyCell({
+  account,
+  field,
+  editable,
+  disabled,
+  onSave,
+}: {
+  account: Account;
+  field: AccountMoneyField;
+  editable: boolean;
+  disabled: boolean;
+  onSave: (account: Account, field: AccountMoneyField, value: string | null) => void;
+}) {
+  const original = account[field] ?? "";
+  const [draft, setDraft] = useState(original);
+  const skipBlur = useRef(false);
+  useEffect(() => { setDraft(original); }, [original, account.id, field]);
+  if (!editable) return <bdi>{original ? formatMoney(original) : "—"}</bdi>;
+  return (
+    <input
+      className="accounts-inline-money"
+      type="text"
+      inputMode="decimal"
+      aria-label={accountMoneyColumns.find((column) => column.key === field)?.label + " — " + account.name}
+      title="عدّل المبلغ ثم اضغط Enter أو اخرج من الحقل للحفظ، واتركه فارغًا لإلغاء القيمة"
+      value={draft}
+      disabled={disabled}
+      placeholder="—"
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (skipBlur.current) { skipBlur.current = false; return; }
+        if (draft.trim() !== original) onSave(account, field, draft.trim() || null);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          skipBlur.current = true;
+          setDraft(original);
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
 
 export function AccountsPage({ context }: { context: CompanyContext }) {
   if (!moduleAccess(context, "accounts"))
@@ -214,25 +280,31 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   }
   async function updateInline(
     account: Account,
-    patch: {
-      accountChoice?: AccountChoice | null;
-      active?: boolean;
-    },
+    patch: Partial<Pick<Account,
+      "accountChoice" | "active" | "privacyLevel" |
+      "accountLimit" | "monthlyLimit" | "weeklyLimit" | "dailyLimit" |
+      "dailyDefault" | "weeklyDefault" | "monthlyDefault"
+    >>,
   ) {
     if (!canManage || savingInline !== null) return;
     setError("");
     setNotice("");
+    const validated = accountPatchSchema.safeParse(patch);
+    if (!validated.success) {
+      setError(`تعذر تعديل الحساب ${account.name}: ${validated.error.issues[0]?.message ?? "قيمة غير صالحة"}`);
+      return;
+    }
     setSavingInline(account.id);
     try {
       const result = await api<{ account: Account }>(
         `/companies/${companyId}/accounts/${account.id}`,
-        { method: "PATCH", body: patch, signal: guard.signal },
+        { method: "PATCH", body: validated.data, signal: guard.signal },
       );
       if (!guard.isCurrent()) return;
       await changed();
       if (guard.isCurrent())
         setNotice(
-          `تم تحديث ${Object.hasOwn(patch, "active") ? "حالة" : "خيار"} الحساب ${result.account.name}.`,
+          `تم تحديث بيانات الحساب ${result.account.name} بنجاح.`,
         );
     } catch (reason) {
       if (guard.isCurrent())
@@ -246,13 +318,13 @@ function AccountsManager({ context }: { context: CompanyContext }) {
       {
         accessorKey: "name",
         header: "اسم الحساب",
+        size: 245,
         cell: ({ row }) => (
           <div className="accounts-name-actions">
             <ValueCell>{row.original.name}</ValueCell>
             {(canManage ||
               (row.original.kind === "posting" &&
-                (canViewLedger ||
-                  canViewStatistics ||
+                (canViewLedger || canViewStatistics ||
                   pendingStatisticsAccounts.includes(row.original.id)))) && (
               <select
                 className="accounts-action-select"
@@ -263,20 +335,16 @@ function AccountsManager({ context }: { context: CompanyContext }) {
                 onChange={(event) => {
                   const action = event.target.value;
                   if (action === "edit") void edit(row.original);
-                  if (action === "ledger" || action === "statistics") {
+                  if (action === "ledger" || action === "statistics")
                     setSidePanel({ account: row.original, view: action });
-                  }
                 }}
               >
                 <option value="" disabled>⋮</option>
-                {canViewLedger && row.original.kind === "posting" && (
-                  <option value="ledger">كشف الحساب</option>
-                )}
-                {(canViewStatistics ||
-                  pendingStatisticsAccounts.includes(row.original.id)) &&
-                  row.original.kind === "posting" && (
-                  <option value="statistics">إحصاءات الحساب</option>
-                )}
+                {canViewLedger && row.original.kind === "posting" &&
+                  <option value="ledger">كشف الحساب</option>}
+                {(canViewStatistics || pendingStatisticsAccounts.includes(row.original.id)) &&
+                  row.original.kind === "posting" &&
+                  <option value="statistics">إحصاءات الحساب</option>}
                 {canManage && <option value="edit">تعديل الحساب</option>}
               </select>
             )}
@@ -284,132 +352,116 @@ function AccountsManager({ context }: { context: CompanyContext }) {
         ),
       },
       {
+        id: "actualBalance",
+        header: "الرصيد الفعلي",
+        size: 165,
+        cell: ({ row }) => {
+          const amount = row.original.balanceAmount;
+          const direction = row.original.balanceDirection;
+          if (!amount || !direction) return "—";
+          if (direction === "zero") return "صفر";
+          return (
+            <ValueCell value={formatMoney(amount)}>
+              <bdi>{formatMoney(amount)}</bdi> {direction === "credit" ? "له" : "عليه"}
+              {list.data?.baseCurrencyCode ? ` (${list.data.baseCurrencyCode})` : ""}
+            </ValueCell>
+          );
+        },
+      },
+      {
+        accessorKey: "privacyLevel",
+        header: "خصوصية الحساب",
+        size: 105,
+        cell: ({ row }) => canManage ? (
+          <select
+            className="accounts-inline-privacy"
+            aria-label={`خصوصية الحساب — ${row.original.name}`}
+            value={row.original.privacyLevel ?? 1}
+            disabled={savingInline !== null || loadingDetail}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => void updateInline(row.original, {
+              privacyLevel: Number(event.target.value),
+            })}
+          >
+            {[1, 2, 3, 4, 5].map((level) => (
+              <option value={level} key={level}>{level}</option>
+            ))}
+          </select>
+        ) : (row.original.privacyLevel ?? 1),
+      },
+      ...accountMoneyColumns.map(({ key, label }) => ({
+        accessorKey: key,
+        header: label,
+        size: 120,
+        cell: ({ row }) => (
+          <AccountMoneyCell
+            key={`${row.original.id}:${key}`}
+            account={row.original}
+            field={key}
+            editable={canManage}
+            disabled={savingInline !== null || loadingDetail}
+            onSave={(account, field, value) =>
+              void updateInline(account, { [field]: value })
+            }
+          />
+        ),
+      }) satisfies ColumnDef<OptionListRecord<Account>, unknown>),
+      {
         accessorKey: "accountChoice",
         header: "خيار الحساب",
-        cell: ({ row }) =>
-          canManage ? (
-            <select
-              className="account-inline-select"
-              aria-label={`خيار الحساب — ${row.original.name}`}
-              title={
-                row.original.accountChoice
-                  ? accountChoiceLabels[row.original.accountChoice]
-                  : "دون خيار"
-              }
-              disabled={savingInline !== null || loadingDetail}
-              value={row.original.accountChoice ?? ""}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) =>
-                void updateInline(row.original, {
-                  accountChoice: (event.target.value ||
-                    null) as AccountChoice | null,
-                })
-              }
-            >
-              <option value="">دون خيار</option>
-              {accountChoices.map((choice) => (
-                <option key={choice} value={choice}>
-                  {accountChoiceLabels[choice]}
-                </option>
-              ))}
-            </select>
-          ) : row.original.accountChoice ? (
-            accountChoiceLabels[row.original.accountChoice]
-          ) : (
-            "—"
-          ),
+        size: 110,
+        cell: ({ row }) => canManage ? (
+          <select
+            className="account-inline-select"
+            aria-label={`خيار الحساب — ${row.original.name}`}
+            title={row.original.accountChoice ?
+              accountChoiceLabels[row.original.accountChoice] : "دون خيار"}
+            disabled={savingInline !== null || loadingDetail}
+            value={row.original.accountChoice ?? ""}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => void updateInline(row.original, {
+              accountChoice: (event.target.value || null) as AccountChoice | null,
+            })}
+          >
+            <option value="">دون خيار</option>
+            {accountChoices.map((choice) => (
+              <option key={choice} value={choice}>{accountChoiceLabels[choice]}</option>
+            ))}
+          </select>
+        ) : row.original.accountChoice ?
+          accountChoiceLabels[row.original.accountChoice] : "—",
       },
       {
         accessorKey: "active",
         header: "فعّال",
-        cell: ({ row }) =>
-          canManage ? (
-            <select
-              className="account-inline-select account-inline-active"
-              aria-label={`حالة الحساب — ${row.original.name}`}
-              disabled={savingInline !== null || loadingDetail}
-              value={row.original.active ? "true" : "false"}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) =>
-                void updateInline(row.original, {
-                  active: event.target.value === "true",
-                })
-              }
-            >
-              <option value="true">فعّال</option>
-              <option value="false">غير فعّال</option>
-            </select>
-          ) : row.original.active ? (
-            "فعّال"
-          ) : (
-            "غير فعّال"
-          ),
+        size: 72,
+        cell: ({ row }) => canManage ? (
+          <select
+            className="account-inline-select account-inline-active"
+            aria-label={`حالة الحساب — ${row.original.name}`}
+            disabled={savingInline !== null || loadingDetail}
+            value={row.original.active ? "true" : "false"}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => void updateInline(row.original, {
+              active: event.target.value === "true",
+            })}
+          >
+            <option value="true">فعّال</option>
+            <option value="false">غير فعّال</option>
+          </select>
+        ) : row.original.active ? "فعّال" : "غير فعّال",
       },
       {
         accessorKey: "code",
         header: "الكود",
+        size: 126,
         cell: ({ row }) => (
           <ValueCell value={row.original.code}>
             <bdi>{row.original.code}</bdi>
           </ValueCell>
         ),
       },
-      {
-        accessorKey: "parentName",
-        header: "المجموعة الأم",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <ValueCell>
-            {row.original.parentName
-              ? `${row.original.parentCode} — ${row.original.parentName}`
-              : "حساب رئيسي"}
-          </ValueCell>
-        ),
-      },
-      {
-        accessorKey: "kind",
-        header: "النوع",
-        cell: ({ row }) => accountKindLabels[row.original.kind],
-      },
-      {
-        accessorKey: "category",
-        header: "التصنيف",
-        cell: ({ row }) => accountCategoryLabels[row.original.category],
-      },
-      {
-        id: "actualBalance",
-        header: "الرصيد الفعلي",
-        enableSorting: false,
-        cell: ({ row }) => {
-          const amount = row.original.balanceAmount;
-          const direction = row.original.balanceDirection;
-          if (!amount || !direction) return "—";
-          if (direction === "zero") return "صفر";
-          const grouped = formatMoney(amount);
-          return (
-            <ValueCell value={formatMoney(amount)}>
-              <bdi>{grouped}</bdi> {direction === "credit" ? "له" : "عليه"}
-              {list.data?.baseCurrencyCode
-                ? ` (${list.data.baseCurrencyCode})`
-                : ""}
-            </ValueCell>
-          );
-        },
-      },
-      {
-        id: "range",
-        header: "مجال الترقيم",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <ValueCell>
-            {row.original.rangeStart
-              ? `${row.original.rangeStart} – ${row.original.rangeEnd}`
-              : "—"}
-          </ValueCell>
-        ),
-      },
       ...optionListColumns<Account>(list.data?.optionDefinitions ?? []),
-
     ],
     [
       canManage,
