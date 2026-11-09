@@ -1249,11 +1249,11 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, s
     }
   });
   const menu = useRef<HTMLDetailsElement>(null);
-  // A negative quantity in the active sales row opens the returns history
-  // without rewriting the user's saved manual sidebar preference.
+  // A negative quantity in the active sales row opens ordinary sales history.
+  // Sales returns remain available as an explicit sidebar choice.
   useEffect(() => {
     if (kind === "sale" && selectedItemId && selectedItemIsReturn)
-      setView("sale-return");
+      setView("sale");
   }, [kind, selectedItemId, selectedItemIsReturn]);
   const client = useQueryClient();
   const [alternateItemId, setAlternateItemId] = useState<number | null>(null);
