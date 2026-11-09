@@ -91,6 +91,8 @@ export function itemDTO(row: QueryResultRow): Item {
     salePrice2: normalizeRate(row.sale_price2),
     salePrice3: normalizeRate(row.sale_price3),
     purchasePrice: normalizeRate(row.purchase_price),
+    defaultProfitFactor: normalizeRate(row.default_profit_factor),
+    orderAlertQuantity: row.order_alert_quantity == null ? null : normalizeRate(row.order_alert_quantity),
     commissionRate: normalizeRate(row.commission_rate),
     clearanceFrom: row.clearance_from_text ?? null,
     clearanceTo: row.clearance_to_text ?? null,
