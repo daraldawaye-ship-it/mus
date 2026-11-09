@@ -26,7 +26,9 @@ import {
 
 const records = `SELECT r.*,r.work_date::text AS work_date,r.start_time::text AS start_time,r.end_time::text AS end_time,
  r.hourly_points::text AS hourly_points,r.default_daily_hours::text AS default_daily_hours,r.expected_start_time::text AS expected_start_time,
- COALESCE(points.paid_microseconds,0)::text AS paid_microseconds,COALESCE(points.awarded_points,0)::text AS awarded_points
+ COALESCE(points.paid_microseconds,0)::text AS paid_microseconds,COALESCE(points.awarded_points,0)::text AS awarded_points,
+ checkin_approval.reviewer AS checkin_approval_by,checkout_approval.status AS checkout_approval_status,
+ checkout_approval.reviewer AS checkout_decided_by
  FROM attendance_records r LEFT JOIN LATERAL (
  SELECT sum(eligible_microseconds) FILTER(WHERE kind='worked') AS paid_microseconds,sum(points) AS awarded_points
  FROM attendance_point_entries WHERE company_id=r.company_id AND attendance_record_id=r.id
@@ -73,9 +75,9 @@ const recordDTO = (row: QueryResultRow): AttendanceRecord => ({
   points: String(row.awarded_points ?? "0"),
   closeSource: row.close_source ?? (row.checked_out_at ? "manual" : null),
   needsReview: row.needs_review ?? false,
-  checkInApprovedBy: row.checkin_approval?.status === "approved" ? row.checkin_approval.reviewer : null,
-  checkOutApprovalStatus: row.checkout_approval?.status ?? null,
-  checkOutDecidedBy: row.checkout_approval?.reviewer ?? null,
+  checkInApprovedBy: row.checkin_approval_by ?? null,
+  checkOutApprovalStatus: row.checkout_approval_status ?? null,
+  checkOutDecidedBy: row.checkout_decided_by ?? null,
 });
 const scheduleDTO = (row: QueryResultRow): AttendanceSchedule => ({
   employeeId: row.employee_id,
