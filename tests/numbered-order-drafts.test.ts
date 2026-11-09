@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
+  setOrderDraftItemDeleted, setOrderDraftItemQuantity,
   MAX_NEW_ORDER_DRAFT_ITEMS, ORDER_DRAFT_LIFETIME_MS,
 } from "../apps/web/src/numbered-order-drafts-core.ts";
 
@@ -89,7 +90,7 @@ test("UI shows per-draft print, delete and migration, not a single global draft"
   const page = readFileSync("apps/web/src/pages/ItemOptionsListPage.tsx","utf8");
   const store = readFileSync("apps/web/src/numbered-order-drafts.ts","utf8");
   assert.match(page,/useNumberedOrderDrafts/);
-  assert.match(page,/temporaryOrder\.createDraft\(candidates\)/);
+  assert.match(page,/temporaryOrder\.createDraft\(candidates, optionName\)/);
   assert.match(page,/temporaryOrder\.drafts\.map\(orderDraft/);
   assert.match(page,/temporaryOrder\.deleteDraft\(orderDraft\.id\)/);
   assert.match(page,/temporaryOrder\.removeItem\(orderDraft\.id, item\.id\)/);
@@ -240,13 +241,68 @@ test("named preset groups are server-saved; one successful browser write replace
   assert.match(page,/moveGroupStep\(index,-1\)/);
   assert.match(page,/moveGroupStep\(index,1\)/);
   assert.match(page,/void runPresetGroup\(chosen\)/);
-  assert.match(page,/replaceFromPresetGroup\(stages\.map\(stage=>stage\.items\)\)/);
+  assert.match(page,/replaceFromPresetGroup\(/);
+  assert.match(page,/stages\.map\(stage=>stage\.name\)/);
   assert.match(server,/router\.post\(\`\$\{presetGroupsPath\}\/\:groupId\/prepare\`/);
   assert.match(server,/const excludedIds=new Set<number>\(\)/);
   assert.match(server,/for\(const item of items\) excludedIds\.add\(item\.id\)/);
   assert.match(server,/includeSharedSelectionsForDraft \? ""/);
   assert.match(migration,/preset_ids BIGINT\[\] NOT NULL/);
-  assert.match(local,/const built=buildReplacementOrderDrafts\(stages\)/);
+  assert.match(local,/const built=buildReplacementOrderDrafts\(stages,Date\.now\(\),sourceOptionNames\)/);
   assert.match(local,/if\(!save\(built\.state\)\) return null/);
   assert.doesNotMatch(page,/temporaryOrder\.drafts\.forEach\(.*deleteDraft/);
+});
+
+test("order draft tracks option provenance, quantity edits and reversible deletion", () => {
+  const start=Date.parse("2026-11-09T10:00:00Z");
+  const created=createNumberedOrderDraft(emptyOrderDraftState(),[
+    {...item(20),requiredQuantity:"24"}, {...item(21),requiredQuantity:"7"},
+  ],start,"نواقص سريعة");
+  assert.equal(created.state.drafts[0]?.sourceOptionName,"نواقص سريعة");
+  assert.deepEqual(created.state.drafts[0]?.items.map(i=>i.sourceOptionName),
+    ["نواقص سريعة","نواقص سريعة"]);
+  const adjusted=setOrderDraftItemQuantity(created.state,1,20,"36");
+  assert.equal(adjusted.drafts[0]?.items[0]?.requiredQuantity,"36");
+  const invalid=setOrderDraftItemQuantity(adjusted,1,20,"-2");
+  assert.deepEqual(invalid,adjusted,"nonpositive quantities cannot replace saved values");
+  const deleted=setOrderDraftItemDeleted(adjusted,1,20,true);
+  assert.equal(deleted.drafts[0]?.items[0]?.deleted,true);
+  assert.equal(deleted.drafts[0]?.items.length,2,"soft deletion must retain the record");
+  const reloaded=normalizeOrderDrafts(JSON.parse(JSON.stringify(deleted)),start+1);
+  assert.equal(reloaded.drafts[0]?.items[0]?.deleted,true);
+  assert.equal(reloaded.drafts[0]?.items[0]?.sourceOptionName,"نواقص سريعة");
+  assert.equal(reloaded.drafts[0]?.items[0]?.requiredQuantity,"36");
+  const duplicate=createNumberedOrderDraft(reloaded,[item(20),item(22)],start+1);
+  assert.equal(duplicate.added,1,"deleted rows still reserve their ID for undo");
+  const restored=setOrderDraftItemDeleted(reloaded,1,20,false);
+  assert.equal(restored.drafts[0]?.items[0]?.deleted,undefined);
+  assert.equal(restored.drafts[0]?.items[0]?.requiredQuantity,"36");
+});
+
+test("ordered preset-group stages keep the exact source option name per draft",()=>{
+  const start=Date.parse("2026-11-09T10:00:00Z");
+  const built=buildReplacementOrderDrafts([
+    [{...item(1),requiredQuantity:"2"}],[{...item(2),requiredQuantity:"3"}],
+  ],start,["خيارات أولى","خيارات ثانية"]);
+  assert.equal(built.state?.drafts[0]?.sourceOptionName,"خيارات أولى");
+  assert.equal(built.state?.drafts[1]?.items[0]?.sourceOptionName,"خيارات ثانية");
+  assert.equal(normalizeOrderDrafts(built.state,start+1).drafts[1].items[0].sourceOptionName,
+    "خيارات ثانية");
+});
+
+test("new draft-review route and UI share item-list authorization and preserve deleted rows",()=>{
+  const app=readFileSync("apps/web/src/App.tsx","utf8");
+  const page=readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx","utf8");
+  const source=readFileSync("apps/web/src/pages/ItemOptionsListPage.tsx","utf8");
+  const hook=readFileSync("apps/web/src/numbered-order-drafts.ts","utf8");
+  assert.match(app,/"item-order-drafts"/);
+  assert.match(app,/section === "item-order-drafts" \? "company.item-options-list"/);
+  assert.match(page,/useNumberedOrderDrafts/);
+  assert.match(page,/updateItemQuantity/);
+  assert.match(page,/إرجاع الحذف/);
+  assert.match(page,/اسم الخيارات/);
+  assert.match(source,/item-order-drafts/);
+  assert.match(source,/filter\(item => !item.deleted\)/);
+  assert.match(hook,/setOrderDraftItemDeleted/);
+  assert.match(hook,/setOrderDraftItemQuantity/);
 });
