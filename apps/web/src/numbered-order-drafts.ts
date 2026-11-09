@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, setOrderDraftItemDeleted,
-  setOrderDraftItemQuantity, type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
+  setOrderDraftItemsDeleted, setOrderDraftItemQuantity, type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
 } from "./numbered-order-drafts-core";
 
 const EVENT = "alraesy-numbered-order-drafts-changed";
@@ -156,6 +156,15 @@ export function useNumberedOrderDrafts(
     return save(setOrderDraftItemDeleted(before, draftId, itemId, deleted));
   }, [key, oldKey, save]);
 
+  const setItemsDeleted = useCallback((ids: number[], deleted: boolean) => {
+    if (!key || !ids.length) return false;
+    const before = readOrderDrafts(key, oldKey);
+    const known = new Set(before.drafts.flatMap(draft => draft.items.map(item => item.id)));
+    const valid = [...new Set(ids)].filter(id => known.has(id));
+    if (!valid.length) return false;
+    return save(setOrderDraftItemsDeleted(before, valid, deleted));
+  }, [key, oldKey, save]);
+
   // Legacy button name retained for callers; "remove" now marks instead of erasing.
   const removeItem = useCallback((draftId: number, itemId: number) =>
     setItemDeleted(draftId, itemId, true), [setItemDeleted]);
@@ -173,5 +182,5 @@ export function useNumberedOrderDrafts(
   }, [key, oldKey, save]);
 
   return { drafts: state.drafts, createDraft, replaceFromPresetGroup, deleteDraft,
-    removeItem, setItemDeleted, updateItemQuantity, error, enabled: !!key };
+    removeItem, setItemDeleted, setItemsDeleted, updateItemQuantity, error, enabled: !!key };
 }
