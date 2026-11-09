@@ -180,7 +180,8 @@ export function commerceRoutes(pool: Pool): Router {
           // staged lines use their own indexed, incrementally maintained source cache.
           const result = await client.query(
             `SELECT "lineId","documentId","documentDate","partyName",
-                 "quantityFirstUnit","unitPriceFirstUnit","currencyCode","isStaged"
+                 "quantityFirstUnit","unitPriceFirstUnit","currencyCode","isStaged",
+                 "invoiceNet","invoiceDiscount","byName","doctorName","notes"
              FROM (
                SELECT il.id::text AS "lineId",i.id::text AS "documentId",
                  i.document_date::text AS "documentDate",
@@ -194,6 +195,10 @@ export function commerceRoutes(pool: Pool): Router {
                    WHEN 1 THEN 1 WHEN 2 THEN il.factor2
                    ELSE il.factor2 * il.factor3 END,2)::text AS "unitPriceFirstUnit",
                  i.currency_code AS "currencyCode",false AS "isStaged",
+                 i.total::text AS "invoiceNet",i.discount::text AS "invoiceDiscount",
+                 u.display_name AS "byName",
+                 NULLIF(i.doctor_name,'') AS "doctorName",
+                 NULLIF(i.description,'') AS "notes",
                  i.id AS "sortId",NULL::text AS "sourceId",il.line_number AS "sortLine"
                FROM (
                  SELECT document_date FROM item_daily_activity
@@ -207,6 +212,7 @@ export function commerceRoutes(pool: Pool): Router {
                JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
                  AND il.item_id=$2 AND CASE WHEN $3='sale-return'
                    THEN il.smallest_quantity<0 ELSE il.smallest_quantity>0 END
+               JOIN users u ON u.id=i.created_by
                UNION ALL
                SELECT ('staged:'||l.source_system||':'||l.source_id||':'||
                    l.line_number::text) AS "lineId",
@@ -222,6 +228,17 @@ export function commerceRoutes(pool: Pool): Router {
                    ELSE item.factor2::numeric*item.factor3::numeric
                  END,2)::text AS "unitPriceFirstUnit",
                  cur.code AS "currencyCode",true AS "isStaged",
+                 (SELECT (COALESCE(sum((line.value->>'quantity')::numeric *
+                   (line.value->>'unitPrice')::numeric),0) -
+                   COALESCE(NULLIF(s.source_document->'payload'->>'discount','')::numeric,0))::text
+                   FROM jsonb_array_elements(COALESCE(
+                     s.source_document->'payload'->'lines','[]'::jsonb)) AS line(value)
+                 ) AS "invoiceNet",
+                 COALESCE(NULLIF(s.source_document->'payload'->>'discount',''),'0')
+                   AS "invoiceDiscount",
+                 u.display_name AS "byName",
+                 NULLIF(s.source_document->'payload'->>'doctorName','') AS "doctorName",
+                 NULLIF(s.source_document->'payload'->>'description','') AS "notes",
                  NULL::integer AS "sortId",l.source_id AS "sourceId",
                  l.line_number AS "sortLine"
                FROM (
@@ -233,6 +250,10 @@ export function commerceRoutes(pool: Pool): Router {
                  LIMIT ($4::bigint+$5::bigint)
                ) l
                JOIN items item ON item.company_id=l.company_id AND item.id=l.item_id
+               JOIN legacy_import_staging s ON s.company_id=l.company_id
+                 AND s.source_system=l.source_system AND s.source_kind=l.source_kind
+                 AND s.source_id=l.source_id
+               JOIN users u ON u.id=s.created_by
                LEFT JOIN accounts payer ON payer.company_id=l.company_id
                  AND payer.id=l.counterparty_account_id
                LEFT JOIN accounts supplier ON supplier.company_id=l.company_id
