@@ -417,7 +417,7 @@ test("mobile draft list keeps sticky count and exact total; desktop total preced
   assert.match(page,/className="item-order-drafts-mobile-sticky-summary"/);
   assert.match(page,/الأصناف: <bdi>\{filtered\.length\.toLocaleString/);
   assert.match(page,/إجمالي الطلبيات: <strong>\{grandTotalDisplay\}<\/strong>/);
-  const bulk=page.slice(page.indexOf('className="item-order-drafts-bulk"'),page.indexOf('onClick={() => selectVisible('));
+  const bulk=page.slice(page.indexOf('className="item-order-drafts-bulk"'),page.indexOf('onClick={() => setSelectedIds(new Set())'));
   assert.ok(bulk.indexOf("item-order-drafts-bulk-total") > 0);
   assert.ok(bulk.indexOf("item-order-drafts-bulk-total") < bulk.indexOf("تحديد الظاهر"));
   assert.equal((page.match(/إجمالي جميع المسودات:/g) ?? []).length, 1);
