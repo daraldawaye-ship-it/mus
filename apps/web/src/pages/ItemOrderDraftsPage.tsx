@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import type { ItemOptionsPresetGroup } from "../../../../packages/contracts/src/item-options-presets.ts";
 import { normalizeDigits } from "../../../../packages/contracts/src/masters.ts";
@@ -16,6 +16,12 @@ type DraftMetrics = {
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
 };
+type DraftValue = {
+  id: number; itemCount: number; pricedCount: number; missingCount: number;
+  totals: Array<{ currencyCode: string; value: string }>;
+};
+type DraftSortKey = "quantity" | "name" | "option" | "stock" | "sold" |
+  "month" | "year" | "price" | "value";
 type PresetGroupRun = {
   id: number; name: string; totalUnique: number;
   stages: Array<{ presetId: number; name: string; items: OrderDraftItem[] }>;
@@ -77,7 +83,6 @@ function DraftQuantityInput({ item, factor, onSave }: {
         aria-label={"زيادة كمية " + item.name + " بمقدار عامل وحدة الشراء"}
         disabled={!!item.deleted || !lot} onClick={() => step(1)}>+</button>
     </div>
-    {lot && !item.deleted && <small className="muted">عامل الشراء: {factor}</small>}
     {error && !item.deleted && <small role="alert">{error}</small>}
   </div>;
 }
@@ -90,6 +95,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [draftFilter, setDraftFilter] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<DraftSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [groupBusy, setGroupBusy] = useState(false);
@@ -114,30 +121,106 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       && (!q || [row.item.name, row.item.code, row.item.sourceOptionName ?? row.draftOptionName ?? "",
         String(row.draftId)].some(value => value.toLocaleLowerCase().includes(q))));
   }, [rows, search, draftFilter, status]);
-  const pageSize = 100;
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // Load all draft facts in authorized chunks so sorting works across the
+  // entire locally saved draft list, not merely the current visible page.
+  const metricRequests = rows.map(row => ({
+    id: row.item.id,
+    requiredQuantity: row.item.deleted ? null : row.item.requiredQuantity ?? null,
+  }));
+  const metricBatches = Array.from({ length: Math.ceil(metricRequests.length / 300) },
+    (_, index) => metricRequests.slice(index * 300, (index + 1) * 300));
+  const metricResults = useQueries({
+    queries: metricBatches.map(items => ({
+      queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items)],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api<{ items: DraftMetrics[] }>("/companies/" + companyId + "/item-options-list/draft-review",
+          { method: "POST", body: { items }, signal }),
+      enabled: !!user && items.length > 0,
+      staleTime: 30_000,
+    })),
+  });
+  const metricsById = new Map(metricResults.flatMap(result => result.data?.items ?? [])
+    .map(item => [item.itemId, item]));
+  const metricsLoading = metricResults.some(result => result.isPending || result.isFetching);
+  const metricsError = metricResults.find(result => result.error)?.error;
+  const draftValuesInput = drafts.drafts.map(draft => ({
+    id: draft.id,
+    items: draft.items.filter(item => !item.deleted).map(item => ({
+      id: item.id, requiredQuantity: item.requiredQuantity ?? null,
+    })),
+  }));
+  const draftValuesQuery = useQuery({
+    queryKey: ["item-order-draft-total-values", companyId, user?.id, JSON.stringify(draftValuesInput)],
+    queryFn: ({ signal }) => api<{ drafts: DraftValue[] }>(
+      "/companies/" + companyId + "/item-options-list/draft-values",
+      { method: "POST", body: { drafts: draftValuesInput }, signal }),
+    enabled: !!user && draftValuesInput.length > 0,
+    staleTime: 30_000,
+  });
+  const draftTotalsById = new Map((draftValuesQuery.data?.drafts ?? []).map(row => [row.id, row]));
+  // Server totals are exact four-decimal strings. Never sum currencies using
+  // IEEE floating point or mix different currencies into an ambiguous total.
+  const grandTotals = new Map<string, bigint>();
+  for (const draft of draftValuesQuery.data?.drafts ?? []) {
+    for (const total of draft.totals) {
+      const [integer, decimals = ""] = total.value.split(".");
+      const amount = BigInt(integer) * 10000n +
+        BigInt((decimals + "0000").slice(0, 4)) * (integer.startsWith("-") ? -1n : 1n);
+      grandTotals.set(total.currencyCode, (grandTotals.get(total.currencyCode) ?? 0n) + amount);
+    }
+  }
+  const formatScaledTotal = (amount: bigint) => {
+    const absolute = amount < 0n ? -amount : amount;
+    return formatNumber((amount < 0n ? "-" : "") +
+      (absolute / 10000n).toString() + "." + String(absolute % 10000n).padStart(4, "0"));
+  };
+
+  const compareNumeric = (left: string | null | undefined, right: string | null | undefined) =>
+    Number(left ?? 0) - Number(right ?? 0);
+  const sortValue = (row: DraftRow) => {
+    const info = metricsById.get(row.item.id);
+    switch (sortKey) {
+      case "quantity": return row.item.requiredQuantity ?? "0";
+      case "name": return row.item.name;
+      case "option": return row.item.sourceOptionName ?? row.draftOptionName ?? "";
+      case "stock": return info?.availableUnit1 ?? "0";
+      case "sold": return info?.saleQuantityMonth ?? "0";
+      case "month": return info?.saleTimesMonth ?? "0";
+      case "year": return info?.saleTimesYear ?? "0";
+      case "price": return info?.purchasePrice ?? "0";
+      case "value": return info?.requiredPurchaseValue ?? "0";
+      default: return "";
+    }
+  };
+  const sorted = sortKey ? [...filtered].sort((left, right) => {
+    const a = sortValue(left), b = sortValue(right);
+    const result = sortKey === "name" || sortKey === "option"
+      ? a.localeCompare(b, "ar", { numeric: true }) : compareNumeric(a, b);
+    return (sortDir === "asc" ? 1 : -1) * result || left.item.id - right.item.id;
+  }) : filtered;
+  const pageSize = 300;
+  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, pages);
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visible = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const visibleActiveIds = visible.filter(row => !row.item.deleted).map(row => row.item.id);
   const selectedActiveIds = rows.filter(row => !row.item.deleted && selectedIds.has(row.item.id))
     .map(row => row.item.id);
   const allVisibleSelected = visibleActiveIds.length > 0
     && visibleActiveIds.every(id => selectedIds.has(id));
   const resetPage = () => setPage(1);
+  const sortHeader = (key: DraftSortKey, label: string) =>
+    <th scope="col" aria-sort={sortKey === key ?
+      (sortDir === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" className="item-order-draft-sort" onClick={() => {
+        setSortDir(sortKey === key && sortDir === "asc" ? "desc" : "asc");
+        setSortKey(key);
+        setPage(1);
+      }} title={"ترتيب حسب " + label}>
+        {label}<span aria-hidden="true">{sortKey === key ?
+          (sortDir === "asc" ? " ▲" : " ▼") : " ⇵"}</span>
+      </button>
+    </th>;
 
-  const requests = visible.map(row => ({
-    id: row.item.id, requiredQuantity: row.item.deleted ? null : row.item.requiredQuantity ?? null,
-  }));
-  const requestKey = JSON.stringify(requests);
-  const metricsQuery = useQuery({
-    queryKey: ["item-order-draft-review", companyId, user?.id, requestKey],
-    queryFn: ({ signal }) => api<{ items: DraftMetrics[] }>(
-      "/companies/" + companyId + "/item-options-list/draft-review",
-      { method: "POST", body: { items: requests }, signal },
-    ),
-    enabled: !!user && !!requests.length, staleTime: 30_000,
-  });
-  const metricsById = new Map((metricsQuery.data?.items ?? []).map(item => [item.itemId, item]));
   const optionName = (row: DraftRow) =>
     row.item.sourceOptionName ?? row.draftOptionName ?? "غير مسجل (مسودة سابقة)";
   const selectItem = (id: number, checked: boolean) => setSelectedIds(before => {
