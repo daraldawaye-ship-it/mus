@@ -381,3 +381,17 @@ test("draft follow-up supports 300 rows, sortable column headings, exact per-dra
     route.indexOf('router.post("/companies/:companyId/item-options-list/draft-values"'));
   assert.match(review,/\.max\(300\)/);
 });
+
+
+test("order draft defaults to highest required value, rounds visible stock/sales and keeps options in sight", () => {
+  const page = readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx", "utf8");
+  const css = readFileSync("apps/web/src/styles.css", "utf8");
+  assert.match(page, /useState<DraftSortKey \| null>\("value"\)/);
+  assert.match(page, /useState<"asc" \| "desc">\("desc"\)/);
+  assert.match(page, /const formatStockSaleQuantity/);
+  assert.match(page, /number < 0 \? ">−0.1" : "<0.1"/);
+  assert.equal((page.match(/formatStockSaleQuantity\(info\?\.availableUnit1\)/g) ?? []).length, 2);
+  assert.equal((page.match(/formatStockSaleQuantity\(info\?\.saleQuantityMonth\)/g) ?? []).length, 2);
+  assert.match(css, /Denser order-draft figures on mobile/);
+  assert.match(css, /item-order-drafts-mobile-bottom > span:nth-child\(7\)/);
+});
