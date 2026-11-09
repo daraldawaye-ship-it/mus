@@ -190,6 +190,14 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     return formatNumber((amount < 0n ? "-" : "") +
       (absolute / 10000n).toString() + "." + String(absolute % 10000n).padStart(4, "0"));
   };
+  // Shared across desktop controls and the mobile sticky summary: same exact
+  // server-calculated total, excluding soft-deleted draft items.
+  const grandTotalDisplay = draftValuesQuery.data
+    ? (grandTotals.size > 0 ? [...grandTotals].map(([currency, amount], i) =>
+        <span key={currency}>{i > 0 ? " ؛ " : ""}
+          <bdi>{formatScaledTotal(amount)} {currency}</bdi>
+        </span>) : "0")
+    : "—";
 
   const compareNumeric = (left: string | null | undefined, right: string | null | undefined) =>
     Number(left ?? 0) - Number(right ?? 0);
@@ -328,15 +336,6 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         <small role="status" className="muted">جارٍ حساب قيم المسودات…</small>}
       {draftValuesQuery.isError &&
         <Notice tone="error">تعذر حساب قيم المسودات: {errorMessage(draftValuesQuery.error)}</Notice>}
-      <div className="item-order-drafts-total">
-        <strong>إجمالي جميع المسودات:</strong>
-        <span>{draftValuesQuery.data
-          ? (grandTotals.size > 0 ? [...grandTotals].map(([currency, amount], i) =>
-              <span key={currency}>{i > 0 ? " ؛ " : ""}
-                <bdi>{formatScaledTotal(amount)} {currency}</bdi>
-              </span>) : "0")
-          : "—"}</span>
-      </div>
       <div className="item-order-drafts-total-list">
         {drafts.drafts.map(draft => {
           const value = draftTotalsById.get(draft.id);
@@ -400,8 +399,16 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           {sortDir === "asc" ? "▲ تصاعدي" : "▼ تنازلي"}
         </Button>
       </div>
+      <div className="item-order-drafts-mobile-sticky-summary"
+        role="status" aria-label="ملخص أصناف وقيمة الطلبيات أثناء التصفح">
+        <span>الأصناف: <bdi>{filtered.length.toLocaleString("en-US")}</bdi></span>
+        <span>إجمالي الطلبيات: <strong>{grandTotalDisplay}</strong></span>
+      </div>
       <div className="item-order-drafts-bulk">
         <span>إجمالي الأصناف المطابقة: <bdi>{filtered.length.toLocaleString("en-US")}</bdi></span>
+        <span className="item-order-drafts-bulk-total">
+          <strong>إجمالي جميع المسودات:</strong> {grandTotalDisplay}
+        </span>
         <Button type="button" variant="secondary" disabled={!visibleActiveIds.length}
           onClick={() => selectVisible(!allVisibleSelected)}>
           {allVisibleSelected ? "إلغاء تحديد الظاهر" : "تحديد الظاهر"}
