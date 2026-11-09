@@ -68,6 +68,7 @@ import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
 import { CompanyDeviceDiscovery } from "./company-device-discovery";
+import { AttendanceApprovalBanner } from "./AttendanceApprovalBanner";
 import { QuickLoginPage } from "./QuickLoginPage";
 import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
 import { SystemMonitorPage } from "./pages/SystemMonitorPage";
@@ -1557,6 +1558,8 @@ function Workspace() {
       </div>
       <PresenceHeartbeat userId={user?.id ?? null} />
       <QuickMessageDeliveryStatus userId={user?.id ?? null} />
+      {user && inCompany && company.data && !company.isError && !employeePreview && !visitorOnly &&
+        <AttendanceApprovalBanner key={`${user.id}:${companyId}`} companyId={companyId} />}
       <AppUpdatePrompt />
       <Dialog
         open={drawer}
