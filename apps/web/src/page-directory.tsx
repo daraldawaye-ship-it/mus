@@ -47,10 +47,12 @@ export function usePageDirectory(companyId?: number) {
 export function PageRouteGuard({
   pageKey,
   companyId,
+  allowPledgeLedger = false,
   children,
 }: {
   pageKey?: string;
   companyId?: number;
+  allowPledgeLedger?: boolean;
   children: React.ReactNode;
 }) {
   const { user } = useSession();
@@ -62,7 +64,13 @@ export function PageRouteGuard({
   // its unsaved or uncertain request. Each data/action request remains gated.
   const [admitted, setAdmitted] = useState(false);
   const entry = catalog.data?.find((entry) => entry.key === pageKey);
-  const allowed = !!entry?.actionAccess.view;
+  // The sales role may open ONLY a pledged account's statement through
+  // /pledges/:accountId/ledger. Never grant the general account ledger page.
+  const pledgeLedgerRoute = pageKey === "company.account-ledger" &&
+    !!companyId && allowPledgeLedger && entry?.enabled !== false &&
+    new URLSearchParams(route.search).get("pledge") === "1" &&
+    /^[1-9]\d*$/.test(new URLSearchParams(route.search).get("accountId") ?? "");
+  const allowed = !!entry?.actionAccess.view || pledgeLedgerRoute;
   useEffect(() => {
     if (allowed) setAdmitted(true);
   }, [allowed]);
