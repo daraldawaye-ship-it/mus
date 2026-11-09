@@ -363,6 +363,33 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       setGroupMessage({ error: true, text: "تعذر ترحيل التجميع: " + errorMessage(cause) });
     } finally { setGroupBusy(false); }
   }
+  const planningControls = (row: DraftRow, info: DraftMetrics | undefined) =>
+    <div className="item-order-draft-extra-fields">
+      <div className="item-order-draft-extra-field">
+        <strong>كمية الاحتياط</strong>
+        {info ? <ItemReserveQuickEdit companyId={companyId}
+          itemId={row.item.id} revision={info.revision}
+          reserveQuantity={info.reserveQuantity} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل بيانات الصنف…</small>}
+      </div>
+      <div className="item-order-draft-extra-field">
+        <strong>عامل وحدة الشراء</strong>
+        {info ? <ItemPurchaseFactorQuickEdit companyId={companyId}
+          itemId={row.item.id} revision={info.revision}
+          purchaseFactor={info.purchaseFactor} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل بيانات الصنف…</small>}
+      </div>
+      {!canEditPlanning && <small className="muted">
+        هذه الحقول للعرض فقط حتى تُمنح صلاحية تعديل قائمة الأصناف.
+      </small>}
+    </div>;
+  const togglePlanning = (id: number) => setExpandedItemId(current => current === id ? null : id);
+  const moreButton = (row: DraftRow) =>
+    <button type="button" className="item-order-draft-expand-button"
+      aria-label={"إظهار أو إخفاء كمية الاحتياط وعامل الشراء للصنف " + row.item.name}
+      aria-expanded={expandedItemId === row.item.id}
+      title={expandedItemId === row.item.id ? "إخفاء التفاصيل" : "إظهار المزيد"}
+      onClick={() => togglePlanning(row.item.id)}>⋯</button>;
   const action = (row: DraftRow) => row.item.deleted
     ? <Button size="compact" variant="secondary"
         onClick={() => drafts.setItemDeleted(row.draftId, row.item.id, false)}>إرجاع الحذف</Button>
@@ -421,9 +448,33 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               {value && value.missingCount > 0 &&
                 <small className="muted"> ({value.missingCount} صنف دون سعر أو كمية)</small>}
             </span>
+            <details className="item-order-drafts-card-actions">
+              <summary aria-label={"إجراءات مسودة " + draft.id} title="إجراءات المسودة">⋯</summary>
+              <div className="item-order-drafts-card-menu">
+                <Button size="compact" variant="secondary"
+                  disabled={!draft.items.some(item => !item.deleted)}
+                  onClick={() => printDraft(draft.id)}>طباعة المسودة</Button>
+                <Button size="compact" variant="secondary"
+                  disabled={exportingPdf || !draft.items.some(item => !item.deleted)}
+                  onClick={() => void exportDraftPdf(draft.id)}>
+                  {exportingPdf ? "جارٍ تجهيز PDF…" : "ترحيل إلى PDF"}
+                </Button>
+                <Button size="compact" variant="danger"
+                  onClick={() => deleteWholeDraft(draft.id, draft.items.length)}>حذف المسودة نهائيًا</Button>
+              </div>
+            </details>
           </div>;
         })}
       </div>
+      <div className="item-order-drafts-all-actions">
+        <Button variant="secondary" disabled={!allPrintable.length}
+          onClick={() => printDraft("all")}>طباعة الكل</Button>
+        <Button variant="secondary" disabled={exportingPdf || !allPrintable.length}
+          onClick={() => void exportDraftPdf("all")}>
+          {exportingPdf ? "جارٍ تجهيز PDF…" : "ترحيل الكل PDF"}
+        </Button>
+      </div>
+      {draftActionNotice && <Notice>{draftActionNotice}</Notice>}
     </Card>
     <Card title={"المسودات: " + drafts.drafts.length + " — الأصناف الفعالة: " + activeCount + " — المحذوفة: " + removedCount}>
       <div className="item-order-drafts-filters">
@@ -515,8 +566,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           </tr></thead>
           <tbody>{visible.map(row => {
             const info = metricsById.get(row.item.id);
-            return <tr key={row.draftId + ":" + row.item.id}
-              className={row.item.deleted ? "item-order-draft-deleted" : undefined}>
+            return <Fragment key={row.draftId + ":" + row.item.id}>
+              <tr className={row.item.deleted ? "item-order-draft-deleted" : undefined}>
               <td data-label="اختيار">
                 <input type="checkbox" aria-label={"اختيار " + row.item.name}
                   disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
@@ -540,9 +591,17 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               <td data-label="مرات سنة"><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
               <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
               <td data-label="قيمة المطلوب"><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
-              <td data-label="الإجراء">{action(row)}</td>
+              <td data-label="الإجراء">
+                <div className="item-order-draft-inline-actions">
+                  {moreButton(row)}{action(row)}
+                </div>
+              </td>
               <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
-            </tr>;
+              </tr>
+              {expandedItemId === row.item.id && <tr className="item-order-draft-expanded-row">
+                <td colSpan={11}>{planningControls(row, info)}</td>
+              </tr>}
+            </Fragment>;
           })}
           {!filtered.length && <tr><td colSpan={11}>لا توجد أصناف مطابقة للبحث.</td></tr>}
           </tbody>
@@ -564,6 +623,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </span>
+              {moreButton(row)}
               {action(row)}
             </div>
             <div className="item-order-drafts-mobile-bottom" role="group"
@@ -581,6 +641,10 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 <bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></span>
               <span title={"مسودة " + row.draftId}><small>اسم الخيارات</small>{optionName(row)}</span>
             </div>
+            {expandedItemId === row.item.id &&
+              <div className="item-order-drafts-mobile-third-row">
+                {planningControls(row, info)}
+              </div>}
           </article>;
         })}
         {!filtered.length && <p className="muted">لا توجد أصناف مطابقة للبحث.</p>}
@@ -593,5 +657,16 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           onClick={() => setPage(currentPage + 1)}>التالي</Button>
       </div>}
     </Card>
+    <section className="item-options-print-sheet" dir="rtl"
+      aria-label="طباعة أصناف مسودات الطلبيات مع الكميات المطلوبة">
+      <div className="item-options-print-columns">
+        {printRows.map(item => <div className="item-options-print-row" key={item.id}>
+          {!item.heading && <bdi className="item-options-print-quantity">
+            {item.requiredQuantity ?? "—"}
+          </bdi>}
+          <span className="item-options-print-name">{item.name}</span>
+        </div>)}
+      </div>
+    </section>
   </div>;
 }
