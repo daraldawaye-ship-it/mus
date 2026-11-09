@@ -230,7 +230,7 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     <div className="wallet-page">
       <PageHeader
         title="الحضور والانصراف"
-        description="سجّل الحضور والانصراف في أي وقت، ويمكنك تسجيل أكثر من جلسة في اليوم. التوقيت: عدن."
+        description="الحضور لا يُحتسب حتى مصادقة جهاز صيدلية معتمد؛ الانصراف نافذ فور تسجيله ويُصادق عليه لاحقًا. التوقيت: عدن."
       />
       {notice && <Notice tone="success">{notice}</Notice>}
       {overview.error && (
@@ -663,6 +663,24 @@ function AttendanceSessions({
       header: "نقاط الساعات",
       enableSorting: false,
       cell: ({ row }) => pointsText(row.original.points),
+    },
+    {
+      id: "approval",
+      header: "المصادقة",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span>
+          الحضور: {row.original.checkInApprovedBy
+            ? `مصادق بواسطة ${row.original.checkInApprovedBy}` : "سجل سابق"} ·
+          الانصراف: {row.original.checkOutApprovalStatus === "approved"
+            ? `مصادق بواسطة ${row.original.checkOutDecidedBy ?? "موظف"}`
+            : row.original.checkOutApprovalStatus === "rejected"
+              ? `غير مصادق بواسطة ${row.original.checkOutDecidedBy ?? "موظف"}`
+              : row.original.checkOutApprovalStatus === "pending"
+                ? "بانتظار المصادقة"
+                : "—"}
+        </span>
+      ),
     },
     {
       id: "close",
