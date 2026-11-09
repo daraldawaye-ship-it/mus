@@ -17,6 +17,7 @@ function DraftQuantityInput({ item, onSave }: {
   useEffect(() => { setValue(item.requiredQuantity ?? ""); setError(""); }, [item.id, item.requiredQuantity]);
   const save = () => {
     const trimmed = value.trim();
+    if (!trimmed && !item.requiredQuantity) { setError(""); return; }
     if (!/^[1-9]\d{0,15}$/.test(trimmed)) {
       setError("أدخل كمية صحيحة موجبة بالوحدة الأولى.");
       return;
