@@ -58,7 +58,7 @@ export async function scanDailyItemOrderReminders(
           explicitSubjectOnly: true,
           subjectKey: "item:" + item.id + ":date:" + today,
           eventKey: "item-order-level:" + item.id + ":" + today,
-          title: "كمية الطلب للأصناف الخاصة: " + name,
+          title: "إذا كمية الطلب للأصناف الخاصة: " + name,
           message: "رصيد الصنف «" + name + "» دون مخازن المرتجعات " +
             item.available_unit1 + " بالوحدة الأولى، وكمية الطلب المحددة " +
             item.threshold + ".",
