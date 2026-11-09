@@ -8451,8 +8451,32 @@ a.notification-quick-title:hover { text-decoration: underline; }
     max-width: min(82vw, 230px); min-width: 168px;
   }
   .item-order-drafts-mobile-top {
-    grid-template-columns: 17px minmax(78px,102px) minmax(0,1fr) 27px auto;
+    grid-template-columns: 17px minmax(78px,102px) minmax(0,1fr) auto;
     gap: 3px;
+  }
+  /* The third-row toggle comes first in the statistics strip, immediately
+     before available stock; preserve two compact rows when collapsed. */
+  .item-order-drafts-mobile-bottom > .item-order-draft-expand-button {
+    flex: 0 0 26px;
+    min-width: 26px;
+    width: 26px;
+    height: 30px;
+    align-self: center;
+    margin-inline-end: 1px;
+  }
+  .item-order-drafts-mobile-bottom > span:nth-of-type(1),
+  .item-order-drafts-mobile-bottom > span:nth-of-type(2) { flex: 0 0 41px; }
+  .item-order-drafts-mobile-bottom > span:nth-of-type(3),
+  .item-order-drafts-mobile-bottom > span:nth-of-type(4) { flex: 0 0 36px; }
+  .item-order-drafts-mobile-bottom > span:nth-of-type(5) { flex: 0 0 49px; }
+  .item-order-drafts-mobile-bottom > span:nth-of-type(6) { flex: 0 0 55px; }
+  .item-order-drafts-mobile-bottom > span:nth-of-type(7) {
+    flex: 0 0 86px;
+    min-width: 86px;
+    max-width: 86px;
+    align-items: flex-start;
+    white-space: normal;
+    overflow: hidden;
   }
   .item-order-drafts-mobile-third-row {
     display: block;
@@ -8478,3 +8502,18 @@ a.notification-quick-title:hover { text-decoration: underline; }
   }
   .item-order-drafts-mobile-third-row .item-reserve-saving { display: none; }
 }
+
+/* Desktop toggle is between name and stock without changing the delete column. */
+.item-order-drafts-table th:nth-child(1) { width: 3%; }
+.item-order-drafts-table th:nth-child(2) { width: 14%; }
+.item-order-drafts-table th:nth-child(3) { width: 17%; }
+.item-order-drafts-table th:nth-child(4) { width: 4%; }
+.item-order-drafts-table th:nth-child(5) { width: 8%; }
+.item-order-drafts-table th:nth-child(6) { width: 8%; }
+.item-order-drafts-table th:nth-child(7) { width: 7%; }
+.item-order-drafts-table th:nth-child(8) { width: 7%; }
+.item-order-drafts-table th:nth-child(9) { width: 7%; }
+.item-order-drafts-table th:nth-child(10) { width: 9%; }
+.item-order-drafts-table th:nth-child(11) { width: 8%; }
+.item-order-drafts-table th:nth-child(12) { width: 8%; }
+.item-order-drafts-table td:not(:nth-child(3)):not(:nth-child(12)) { text-align: center; }
