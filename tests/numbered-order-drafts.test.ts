@@ -408,3 +408,19 @@ test("deleted draft item keeps its value for both desktop/mobile sorting while h
   assert.equal((page.match(/formatNumber\(info\?\.requiredPurchaseValue\)/g) ?? []).length, 2);
   assert.doesNotMatch(page, /row\.item\.deleted \? "—" : formatNumber\(info\?\.requiredPurchaseValue\)/);
 });
+
+
+test("mobile draft list keeps sticky count and exact total; desktop total precedes bulk select", () => {
+  const page=readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx","utf8");
+  const css=readFileSync("apps/web/src/styles.css","utf8");
+  assert.match(page,/const grandTotalDisplay = draftValuesQuery\.data/);
+  assert.match(page,/className="item-order-drafts-mobile-sticky-summary"/);
+  assert.match(page,/الأصناف: <bdi>\{filtered\.length\.toLocaleString/);
+  assert.match(page,/إجمالي الطلبيات: <strong>\{grandTotalDisplay\}<\/strong>/);
+  const bulk=page.slice(page.indexOf('className="item-order-drafts-bulk"'),page.indexOf('onClick={() => selectVisible('));
+  assert.ok(bulk.indexOf("item-order-drafts-bulk-total") > 0);
+  assert.ok(bulk.indexOf("item-order-drafts-bulk-total") < bulk.indexOf("تحديد الظاهر"));
+  assert.equal((page.match(/إجمالي جميع المسودات:/g) ?? []).length, 1);
+  assert.match(css,/\.item-order-drafts-mobile-sticky-summary \{\s*position: sticky;\s*top: 44px/);
+  assert.match(css,/\.item-order-drafts-bulk-total \{ display: none; \}/);
+});
