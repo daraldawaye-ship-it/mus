@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type {
   AttendanceDirectory,
@@ -53,10 +54,12 @@ export function AttendancePunchControls({
   companyId,
   directory,
   compact = false,
+  showPageDirectoryLink = false,
 }: {
   companyId: number;
   directory?: AttendanceDirectory;
   compact?: boolean;
+  showPageDirectoryLink?: boolean;
 }) {
   const { user } = useSession();
   const client = useQueryClient();
@@ -191,6 +194,11 @@ export function AttendancePunchControls({
             >
               تسجيل الانصراف
             </Button>
+            {compact && showPageDirectoryLink && (
+              <Link className="button button-secondary" to={`/companies/${companyId}/pages`}>
+                قائمة الصفحات
+              </Link>
+            )}
             {!compact && (
               <Button variant="ghost" disabled={pending}
                 onClick={() => void refreshAttendance(client, user?.id, companyId)}>
