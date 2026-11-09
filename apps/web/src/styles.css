@@ -8563,3 +8563,39 @@ a.notification-quick-title:hover { text-decoration: underline; }
     width: min(100%, 230px);
   }
 }
+
+/* A separate, live pharmacy-device acknowledgment ribbon above the update prompt. */
+.attendance-approval-banner {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
+  inset-inline: 12px;
+  z-index: 71;
+  max-width: 680px;
+  margin-inline: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 5px 28px var(--shadow);
+  border-radius: 12px;
+}
+.attendance-approval-copy { flex: 1 1 170px; display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; }
+.attendance-approval-copy strong { font-size: 13px; }
+.attendance-approval-copy span { color: var(--muted); }
+.attendance-approval-yes,.attendance-approval-no {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 0; border-radius: 7px; min-height: 36px; padding: 5px 10px;
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.attendance-approval-yes { background: #217e51; color: #fff; }
+.attendance-approval-no { background: #af3849; color: #fff; }
+.attendance-approval-banner button:disabled { opacity: .6; cursor: wait; }
+@media (max-width:680px) {
+ .attendance-approval-banner { inset-inline: 6px; bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); padding: 7px; gap: 6px; }
+ .attendance-approval-copy { flex: 1 1 100%; }
+}
+@media print { .attendance-approval-banner { display: none !important; } }
