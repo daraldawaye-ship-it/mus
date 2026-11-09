@@ -88,6 +88,16 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
    AND gm.joined_after_message_id<msg.id
    AND g.company_id IS NOT DISTINCT FROM n.company_id
  ))
+ -- Inventory order-level messages follow the user's CURRENT position,
+ -- even when a recipient was previously allowed to see an older notification.
+ AND (n.code<>'ITEM_ORDER_LEVEL' OR EXISTS(
+   SELECT 1 FROM users permitted
+   LEFT JOIN employees sales_employee
+     ON sales_employee.user_id=permitted.id
+    AND sales_employee.company_id=n.company_id AND sales_employee.active
+   WHERE permitted.id=$1 AND NOT permitted.archived
+    AND (permitted.owner OR 'sales'=ANY(COALESCE(sales_employee.position_keys,'{}'::text[])))
+ ))
  -- A cashier-only notification remains confidential if its recipient later
  -- loses the active "أمين صندوق" position in the employee card.
  AND (n.code NOT IN ('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED')
