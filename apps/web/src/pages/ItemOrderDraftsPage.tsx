@@ -139,7 +139,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   // entire locally saved draft list, not merely the current visible page.
   const metricRequests = rows.map(row => ({
     id: row.item.id,
-    requiredQuantity: row.item.deleted ? null : row.item.requiredQuantity ?? null,
+    // Keep per-item value for display and sorting even after soft deletion.
+    // Only draftValuesInput below excludes deleted items from header totals.
+    requiredQuantity: row.item.requiredQuantity ?? null,
   }));
   const metricBatches = Array.from({ length: Math.ceil(metricRequests.length / 300) },
     (_, index) => metricRequests.slice(index * 300, (index + 1) * 300));
@@ -458,7 +460,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               <td data-label="مرات شهر"><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
               <td data-label="مرات سنة"><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
               <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
-              <td data-label="قيمة المطلوب"><bdi>{row.item.deleted ? "—" : formatNumber(info?.requiredPurchaseValue)}</bdi></td>
+              <td data-label="قيمة المطلوب"><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
               <td data-label="الإجراء">{action(row)}</td>
               <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
             </tr>;
@@ -497,7 +499,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               <span title="المبيعات مرات في سنة"><small>مرات سنة</small><bdi>{formatNumber(info?.saleTimesYear)}</bdi></span>
               <span title="سعر الشراء"><small>سعر الشراء</small><bdi>{formatNumber(info?.purchasePrice)}</bdi></span>
               <span title="قيمة المطلوب"><small>قيمة المطلوب</small>
-                <bdi>{row.item.deleted ? "—" : formatNumber(info?.requiredPurchaseValue)}</bdi></span>
+                <bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></span>
               <span title={"مسودة " + row.draftId}><small>اسم الخيارات</small>{optionName(row)}</span>
             </div>
           </article>;
