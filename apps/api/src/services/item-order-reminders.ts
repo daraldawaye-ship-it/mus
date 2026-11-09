@@ -5,21 +5,17 @@ function safeName(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").trim().slice(0,120);
 }
 
-/** One atomic scan per company/local day. NULL disables reminders, 0 is valid.
- * Uses showroom + non-return warehouses, converted to the first item unit.
- * No invoices, stock movements or stock valuation are changed. */
+/** At most one alert per item and local day. A stock change later in the
+ * day remains eligible, unlike a once-daily company-wide scan.
+ * Uses exact showroom + non-return warehouse quantities in smallest units.
+ * NULL disables reminders; a configured zero is an active threshold.
+ * No invoices, inventory or balances are modified. */
 export async function scanDailyItemOrderReminders(
   client: PoolClient, companyId: number,
 ): Promise<number> {
   const today = (await client.query<{ today: string }>(
     "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today",
   )).rows[0]!.today;
-  const marked = await client.query(
-    "INSERT INTO item_order_reminder_days(company_id,scan_day) " +
-    "VALUES($1,$2::date) ON CONFLICT DO NOTHING RETURNING company_id",
-    [companyId,today],
-  );
-  if (!marked.rowCount) return 0;
   const sql = [
     "SELECT i.id,i.name,",
     " round((COALESCE(s.stock_showroom,0)+COALESCE(s.stock_warehouse,0))::numeric",
@@ -27,13 +23,16 @@ export async function scanDailyItemOrderReminders(
     " i.order_alert_quantity::text AS threshold",
     " FROM items i",
     " LEFT JOIN item_statistics s ON s.company_id=i.company_id AND s.item_id=i.id",
+    " LEFT JOIN item_order_reminder_days sent",
+    " ON sent.company_id=i.company_id AND sent.item_id=i.id AND sent.scan_day=$2::date",
     " WHERE i.company_id=$1 AND i.active AND i.order_alert_quantity IS NOT NULL",
+    " AND sent.item_id IS NULL",
     " AND COALESCE(s.stock_showroom,0)+COALESCE(s.stock_warehouse,0)",
     " <= i.order_alert_quantity*i.factor2::numeric*i.factor3::numeric",
     " ORDER BY i.id",
   ].join(" ");
   const low = await client.query<{ id: number; name: string; available_unit1: string; threshold: string }>(
-    sql,[companyId],
+    sql,[companyId,today],
   );
   if (low.rows.length) {
     const recipients = await client.query<{ id: number; employee_id: number | null }>(
@@ -48,6 +47,13 @@ export async function scanDailyItemOrderReminders(
       ].join(" "),[companyId],
     );
     for (const item of low.rows) {
+      if (!recipients.rows.length) break;
+      const claimed = await client.query(
+        "INSERT INTO item_order_reminder_days(company_id,item_id,scan_day) " +
+        "VALUES($1,$2,$3::date) ON CONFLICT DO NOTHING RETURNING item_id",
+        [companyId,item.id,today],
+      );
+      if (!claimed.rowCount) continue;
       const name = safeName(item.name);
       for (const person of recipients.rows) {
         await emitNotification(client,{
@@ -67,9 +73,5 @@ export async function scanDailyItemOrderReminders(
       }
     }
   }
-  await client.query(
-    "UPDATE item_order_reminder_days SET matches=$3 WHERE company_id=$1 AND scan_day=$2::date",
-    [companyId,today,low.rows.length],
-  );
   return low.rows.length;
 }
