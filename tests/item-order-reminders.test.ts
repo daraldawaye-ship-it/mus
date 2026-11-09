@@ -54,3 +54,24 @@ test("order-level notifications stay owner-or-active-sales only even after role 
   assert.match(sql,/permitted\.owner OR 'sales'=ANY/);
   assert.match(sql,/permitted\.id=\$1/);
 });
+
+
+test("special-item threshold notification ignores stopped order dates; only NULL disables it", () => {
+  const scanner=readFileSync("apps/api/src/services/item-order-reminders.ts","utf8");
+  const routes=readFileSync("apps/api/src/routes-item-options-list.ts","utf8");
+  assert.match(scanner,/i\.order_alert_quantity IS NOT NULL/);
+  assert.doesNotMatch(scanner,/order_stopped_until/);
+  assert.match(routes,/items\/:itemId\/order-alert-quantity/);
+  assert.match(routes,/orderAlertQuantity: itemOrderAlertQuantitySchema/);
+  assert.match(routes,/order_alert_quantity=\$3::numeric/);
+  assert.match(routes,/items\/:itemId\/order-stop-period/);
+  assert.match(routes,/period: z\.enum\(\["ten-years","one-year","four-months"\]\)/);
+  assert.match(routes,/input\.period === "ten-years" \? 120/);
+  assert.match(routes,/input\.period === "one-year" \? 12 : 4/);
+  assert.match(routes,/order_stopped_until=/);
+  assert.match(routes,/AT TIME ZONE 'Asia\/Aden'/);
+  assert.match(routes,/assertDirectoryAccess\(listPage,"edit"\)/);
+  assert.match(routes,/revision=revision\+1/);
+  assert.match(routes,/order_alert_quantity::text AS "orderAlertQuantity"/);
+  assert.match(routes,/order_stopped_until::text AS "orderStoppedUntil"/);
+});
