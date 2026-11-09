@@ -424,3 +424,34 @@ test("mobile draft list keeps sticky count and exact total; desktop total preced
   assert.match(css,/\.item-order-drafts-mobile-sticky-summary \{\s*position: sticky;\s*top: 44px/);
   assert.match(css,/\.item-order-drafts-bulk-total \{ display: none; \}/);
 });
+
+
+test("draft action menus print/export and hard-delete a whole draft; item ellipsis expands planning third row", () => {
+  const page = readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx", "utf8");
+  const css = readFileSync("apps/web/src/styles.css", "utf8");
+  const server = readFileSync("apps/api/src/routes-item-options-list.ts", "utf8");
+  assert.match(page, /createTwoColumnItemNamesPdf/);
+  assert.match(page, /exportPdfToDevice/);
+  assert.match(page, /printableRows = /);
+  assert.match(page, /item\.deleted/);
+  assert.match(page, /printDraft\("all"\)/);
+  assert.match(page, /exportDraftPdf\("all"\)/);
+  assert.match(page, /printDraft\(draft\.id\)/);
+  assert.match(page, /exportDraftPdf\(draft\.id\)/);
+  assert.match(page, /deleteWholeDraft\(draft\.id, draft\.items\.length\)/);
+  assert.match(page, /drafts\.deleteDraft\(id\)/);
+  assert.match(page, /window\.confirm/);
+  assert.match(page, /const planningControls =/);
+  assert.match(page, /ItemReserveQuickEdit/);
+  assert.match(page, /ItemPurchaseFactorQuickEdit/);
+  assert.match(page, /current === id \? null : id/);
+  assert.match(page, /item-order-drafts-mobile-third-row/);
+  const mobile = page.slice(page.indexOf('className="item-order-drafts-mobile-top"'),
+    page.indexOf('className="item-order-drafts-mobile-third-row"'));
+  assert.ok(mobile.indexOf('item-order-drafts-mobile-bottom') < mobile.indexOf('moreButton(row)'));
+  assert.ok(mobile.indexOf('moreButton(row)') < mobile.indexOf('المتوفر دون مخازن المرتجعات'));
+  assert.equal((page.match(/moreButton\(row\)/g) ?? []).length, 2);
+  assert.match(server, /i\.revision AS "revision",i\.reserve_quantity::text AS "reserveQuantity"/);
+  assert.match(css, /span:nth-of-type\(7\)/);
+  assert.match(css, /position: absolute; top: calc\(100% \+ 4px\)/);
+});
