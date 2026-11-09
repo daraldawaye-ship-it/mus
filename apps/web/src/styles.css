@@ -2613,6 +2613,43 @@ ul {
   display: block;
   font-size: 9px;
 }
+/* Each posted sales/return invoice is two rows: amounts, then unlabeled values. */
+.invoice-item-history-sales-table {
+  min-width: 315px;
+  font-size: 10px;
+}
+.invoice-item-history-sales-table th,
+.invoice-item-history-sales-table td {
+  padding-inline: 2px;
+}
+.invoice-item-history-sales-table .invoice-item-history-details-row {
+  height: auto;
+}
+.invoice-item-history-sales-table .invoice-item-history-details-row td {
+  white-space: normal;
+  overflow: visible;
+  padding: 3px 5px 7px;
+  background: var(--surface);
+}
+.invoice-item-history-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  direction: rtl;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.invoice-item-history-details > span,
+.invoice-item-history-details > button {
+  display: inline;
+  width: auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 680px) {
   .invoice-workspace:not(.invoice-workspace-no-options) {
     grid-template-columns: minmax(0, 1fr);
