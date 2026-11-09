@@ -154,6 +154,19 @@ export function setOrderDraftItemDeleted(
     : draft) };
 }
 
+/** One atomic soft-delete/restore for selected rows across all local drafts. */
+export function setOrderDraftItemsDeleted(
+  state: NumberedOrderDraftState, ids: number[], deleted: boolean,
+): NumberedOrderDraftState {
+  const selected = new Set(ids);
+  if (!selected.size) return state;
+  return { ...state, drafts: state.drafts.map(draft => ({
+    ...draft,
+    items: draft.items.map(item => selected.has(item.id)
+      ? { ...item, ...(deleted ? { deleted: true } : { deleted: undefined }) } : item),
+  })) };
+}
+
 /** Edit first-unit quantity without changing other draft records or timestamps. */
 export function setOrderDraftItemQuantity(
   state: NumberedOrderDraftState, draftId: number, itemId: number, quantity: string,
