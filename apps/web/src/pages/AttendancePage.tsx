@@ -496,7 +496,7 @@ function dailyApprovalCell(row: AttendanceReportRow, kind: "check-in" | "check-o
     return "سجل سابق (دون مصادقة)";
   }
   return (
-    <div style={{ display: "grid", gap: 5, minWidth: 175 }}>
+    <div style={{ display: "grid", gap: 5, minWidth: 0, width: "100%", overflowWrap: "anywhere" }}>
       {entries.map((entry) => (
         <div key={entry.id} style={{ display: "grid", gap: 2 }}>
           <span>{entry.status === "approved"
@@ -542,12 +542,18 @@ function AttendanceDailyReport({
     },
     {
       id: "checkInApprovals",
+      size: 255,
+      minSize: 225,
+      maxSize: 320,
       header: "مصادقة الحضور",
       enableSorting: false,
       cell: ({ row }) => dailyApprovalCell(row.original, "check-in"),
     },
     {
       id: "checkOutApprovals",
+      size: 255,
+      minSize: 225,
+      maxSize: 320,
       header: "مصادقة الانصراف",
       enableSorting: false,
       cell: ({ row }) => dailyApprovalCell(row.original, "check-out"),
