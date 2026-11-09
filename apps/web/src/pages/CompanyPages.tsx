@@ -364,10 +364,25 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         </Card>
       )}
       <Card>
-        <AttendancePunchControls companyId={company.id} compact />
+        <AttendancePunchControls
+          companyId={company.id}
+          compact
+          showPageDirectoryLink={!!directory.data?.some(entry =>
+            entry.key === "company.pages" && entry.visible && entry.enabled && entry.actionAccess.view
+          )}
+        />
       </Card>
       <Card title="إدارة الشركة">
         <div className="form-actions">
+          {directory.data?.some(entry =>
+            entry.key === "company.approved-devices" &&
+            entry.visible && entry.enabled && entry.actionAccess.view
+          ) && (
+            <Link className="button button-secondary"
+              to={`/companies/${company.id}/approved-devices`}>
+              الأجهزة
+            </Link>
+          )}
           {directory.data?.some(entry =>
             entry.key === "company.central-access" &&
             entry.visible && entry.enabled && entry.actionAccess.view
