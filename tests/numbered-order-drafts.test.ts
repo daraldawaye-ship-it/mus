@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
   normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
-  setOrderDraftItemDeleted, setOrderDraftItemQuantity,
+  setOrderDraftItemDeleted, setOrderDraftItemQuantity, setOrderDraftItemsDeleted,
   MAX_NEW_ORDER_DRAFT_ITEMS, ORDER_DRAFT_LIFETIME_MS,
 } from "../apps/web/src/numbered-order-drafts-core.ts";
 
@@ -305,4 +305,47 @@ test("new draft-review route and UI share item-list authorization and preserve d
   assert.match(source,/filter\(item => !item.deleted\)/);
   assert.match(hook,/setOrderDraftItemDeleted/);
   assert.match(hook,/setOrderDraftItemQuantity/);
+});
+
+test("selected order draft items are soft deleted together and remain restorable",()=>{
+  const start=Date.parse("2026-11-09T10:00:00Z");
+  const base=createNumberedOrderDraft(emptyOrderDraftState(),[item(5),item(6)],start).state;
+  const more=createNumberedOrderDraft(base,[item(7)],start+1000).state;
+  const removed=setOrderDraftItemsDeleted(more,[5,7],true);
+  assert.deepEqual(removed.drafts.flatMap(d=>d.items.filter(x=>x.deleted).map(x=>x.id)),[5,7]);
+  assert.deepEqual(removed.drafts.flatMap(d=>d.items.map(x=>x.id)),[5,6,7],
+    "deleted items remain in their own drafts");
+  assert.equal(normalizeOrderDrafts(removed,start+2000).drafts[0].items[0].deleted,true);
+  const restored=setOrderDraftItemsDeleted(removed,[5],false);
+  assert.equal(restored.drafts[0].items[0].deleted,undefined);
+  assert.equal(restored.drafts[1].items[0].deleted,true);
+});
+
+test("draft follow-up page includes grouped transfer, monthly/snapshot metrics and quantity factor controls",()=>{
+  const page=readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx","utf8");
+  const route=readFileSync("apps/api/src/routes-item-options-list.ts","utf8");
+  const hook=readFileSync("apps/web/src/numbered-order-drafts.ts","utf8");
+  assert.match(page,/item-options-list\/preset-groups/);
+  assert.match(page,/stages\.map\(stage => stage\.name\)/);
+  assert.match(page,/replaceFromPresetGroup/);
+  assert.match(page,/saleQuantityMonth/);
+  assert.match(page,/saleTimesMonth/);
+  assert.match(page,/saleTimesYear/);
+  assert.match(page,/availableUnit1/);
+  assert.match(page,/requiredPurchaseValue/);
+  assert.match(page,/purchaseFactor/);
+  assert.match(page,/step\(-1\)/);
+  assert.match(page,/step\(1\)/);
+  assert.match(page,/result < lot \? lot : result/);
+  assert.match(page,/حذف المحدد/);
+  assert.match(page,/setItemsDeleted\(selectedActiveIds, true\)/);
+  assert.doesNotMatch(page,/<th>المسودة<\/th>/);
+  assert.doesNotMatch(page,/<th>رمز الصنف<\/th>/);
+  assert.doesNotMatch(page,/<th>الحالة<\/th>/);
+  assert.match(route,/item-options-list\/draft-review/);
+  assert.match(route,/canReadItemCoverage/);
+  assert.match(route,/round\(i\.purchase_price \* r\.required_quantity,4\)/);
+  assert.match(route,/COALESCE\(stock\.stock_showroom,0\)\+COALESCE\(stock\.stock_warehouse,0\)/);
+  assert.match(route,/staged_item_daily_activity_cache/);
+  assert.match(hook,/setOrderDraftItemsDeleted/);
 });
