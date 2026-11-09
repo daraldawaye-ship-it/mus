@@ -100,7 +100,7 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
       // A just-renamed device should show its new name when the avatar is reopened.
       void queryClient.invalidateQueries({ queryKey: ["my-device-identity", user?.id, companyId] });
       setEditingId(null);
-      setNotice("تم حفظ بيانات الجهاز. لم تتغير أي صلاحيات للدخول أو للصفحات.");
+      setNotice("تم حفظ الجهاز. أجهزة الصيدلية المعتمدة يمكنها مصادقة الحضور والانصراف دون تغيير صلاحيات الدخول أو الصفحات.");
     } catch (reason) {
       setError(message(reason));
     } finally {
@@ -123,7 +123,7 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
       />
       <Notice>
         يسجل الموقع المتصفح أو التطبيق تلقائيًا عند الدخول للشركة أثناء الاتصال بالإنترنت.
-        يمكنك تسمية الجهاز وتصنيفه واعتماده للتوثيق فقط؛ لا تُفرض صلاحيات أو قيود دخول على الأجهزة في هذه المرحلة.
+        عندما يصنّف الجهاز «جهاز الصيدلية» ويصبح «معتمدًا»، تظهر عليه طلبات مصادقة حضور وانصراف الموظفين الآخرين. لا تتغير صلاحيات الدخول والصفحات.
       </Notice>
       <Card>
         <form onSubmit={submitSearch} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
@@ -170,7 +170,7 @@ export function CompanyApprovedDevicesPage({ context }: { context: CompanyContex
                 </label>
                 <label className="check-label">
                   <input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} />
-                  جهاز معتمد للتوثيق (لا يؤثر على الصلاحيات)
+                  جهاز معتمد (يتيح مصادقة الحضور والانصراف إذا كان جهاز الصيدلية)
                 </label>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Button disabled={saving} onClick={() => void save()}>{saving ? "جارٍ الحفظ…" : "حفظ"}</Button>
