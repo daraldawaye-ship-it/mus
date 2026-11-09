@@ -18,11 +18,14 @@ VALUES ('ITEM_ORDER_LEVEL','إذا كمية الطلب للأصناف الخاص
   true,false,'medium',false)
 ON CONFLICT (code) DO NOTHING;
 
--- A committed scan and its notifications are one transaction; one per company/day.
+-- Each matching item is reminded at most once per local day.
+-- Unlike a company-wide daily scan marker, this also catches items reaching
+-- their threshold later in the day (after sales or after setting the field).
 CREATE TABLE item_order_reminder_days (
-  company_id integer NOT NULL REFERENCES companies(id),
+  company_id integer NOT NULL,
+  item_id integer NOT NULL,
   scan_day date NOT NULL,
-  scanned_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  matches integer NOT NULL DEFAULT 0 CHECK(matches>=0),
-  PRIMARY KEY (company_id,scan_day)
+  sent_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (company_id,item_id,scan_day),
+  FOREIGN KEY (company_id,item_id) REFERENCES items(company_id,id)
 );
