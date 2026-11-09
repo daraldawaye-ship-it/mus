@@ -8207,6 +8207,12 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-bulk {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 9px;
 }
+.item-order-drafts-bulk-total {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 5px;
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px;
+  font-size: 13px;
+}
+.item-order-drafts-mobile-sticky-summary { display: none; }
 .item-order-drafts-table-scroll { max-width: 100%; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
 .item-order-drafts-table th,
@@ -8270,6 +8276,28 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-pagination { margin-top: 10px; justify-content: center; }
 .item-order-drafts-mobile-list, .item-order-drafts-mobile-sort { display: none; }
 @media (max-width: 680px) {
+  /* Stays immediately below the existing 44px sticky company topbar
+     only while scrolling the draft card, not across other pages. */
+  .item-order-drafts-mobile-sticky-summary {
+    position: sticky;
+    top: 44px;
+    z-index: 14;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px 9px;
+    padding: 8px 9px;
+    margin: 5px 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, .16);
+    font-size: 12px;
+  }
+  .item-order-drafts-mobile-sticky-summary > span { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+  .item-order-drafts-mobile-sticky-summary strong { font-size: 12px; }
+  .item-order-drafts-bulk-total { display: none; }
   .item-order-drafts-filters { grid-template-columns: 1fr; }
   .item-order-drafts-group-actions { align-items: stretch; }
   .item-order-drafts-table-scroll { display: none; }
