@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { actor, handler, id, parse } from "./http.ts";
-import { itemFactorSchema, itemWholeQuantitySchema } from "../../../packages/contracts/src/items.ts";
+import { itemFactorSchema, itemWholeQuantitySchema, itemOrderAlertQuantitySchema } from "../../../packages/contracts/src/items.ts";
 import { itemOptionsPresetCreateSchema, itemOptionsPresetFiltersSchema, itemOptionsPresetGroupCreateSchema } from "../../../packages/contracts/src/item-options-presets.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -476,6 +476,8 @@ export function itemOptionsListRoutes(pool: Pool): Router {
          )
          SELECT i.id AS "itemId",
            i.revision AS "revision",i.reserve_quantity::text AS "reserveQuantity",
+           i.order_alert_quantity::text AS "orderAlertQuantity",
+           i.order_stopped_until::text AS "orderStoppedUntil",
            round((COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0))
              / greatest(i.factor2::numeric*i.factor3::numeric,1),4)::text AS "availableUnit1",
            round((COALESCE(sale_rank.net_sale_quantity,0)
@@ -859,6 +861,91 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     });
     res.json({ result });
   }));
+  // Edits only the explicitly configured threshold for special-item order reminders.
+  // NULL disables the reminder; zero is valid. Order stoppage is independent.
+  router.patch("/companies/:companyId/items/:itemId/order-alert-quantity", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const itemId = id(req.params.itemId);
+    const input = parse(z.object({
+      revision: z.number().int().positive(),
+      orderAlertQuantity: itemOrderAlertQuantitySchema,
+    }).strict(), req.body);
+    const result = await transaction(pool, async client => {
+      const user = await currentActor(client,actor(req));
+      await companyAccess(client,user,companyId,"items.view");
+      const listPage = (await directoryEntries(client,user,companyId))
+        .find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403,"forbidden","قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage,"edit");
+      const row = (await client.query<{revision:number;order_alert_quantity:string|null}>(
+        "SELECT revision,order_alert_quantity::text FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId,itemId],
+      )).rows[0];
+      if (!row) throw new HttpError(404,"item_not_found","الصنف غير موجود");
+      if (Number(row.revision) !== input.revision)
+        throw new HttpError(409,"stale_item","عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
+      if (row.order_alert_quantity === input.orderAlertQuantity)
+        return {itemId,revision:Number(row.revision),orderAlertQuantity:input.orderAlertQuantity};
+      const updated = (await client.query<{revision:number;order_alert_quantity:string|null}>(
+        "UPDATE items SET order_alert_quantity=$3::numeric," +
+          " revision=revision+1, updated_at=clock_timestamp()" +
+          " WHERE company_id=$1 AND id=$2 AND revision=$4" +
+          " RETURNING revision,order_alert_quantity::text",
+        [companyId,itemId,input.orderAlertQuantity,input.revision],
+      )).rows[0];
+      if (!updated) throw new HttpError(409,"stale_item","تغيرت نسخة الصنف؛ حدّث القائمة.");
+      await audit(client,user,"item.field.update","item",itemId,
+        {field:"orderAlertQuantity",value:row.order_alert_quantity},
+        {field:"orderAlertQuantity",value:updated.order_alert_quantity},companyId);
+      return {itemId,revision:Number(updated.revision),orderAlertQuantity:updated.order_alert_quantity};
+    });
+    res.json({result});
+  }));
+
+  // Only the card's stoppage date changes. This does NOT disable the special-item
+  // alert, including its zero threshold. Clearing orderAlertQuantity does.
+  router.patch("/companies/:companyId/items/:itemId/order-stop-period", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const itemId = id(req.params.itemId);
+    const input = parse(z.object({
+      revision: z.number().int().positive(),
+      period: z.enum(["ten-years","one-year","four-months"]),
+    }).strict(), req.body);
+    const months = input.period === "ten-years" ? 120
+      : input.period === "one-year" ? 12 : 4;
+    const result = await transaction(pool, async client => {
+      const user = await currentActor(client,actor(req));
+      await companyAccess(client,user,companyId,"items.view");
+      const listPage = (await directoryEntries(client,user,companyId))
+        .find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403,"forbidden","قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage,"edit");
+      const row = (await client.query<{revision:number;order_stopped_until:string|null}>(
+        "SELECT revision,order_stopped_until::text FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId,itemId],
+      )).rows[0];
+      if (!row) throw new HttpError(404,"item_not_found","الصنف غير موجود");
+      if (Number(row.revision) !== input.revision)
+        throw new HttpError(409,"stale_item","عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
+      const updated = (await client.query<{revision:number;order_stopped_until:string}>(
+        "UPDATE items SET order_stopped_until=" +
+          " ((clock_timestamp() AT TIME ZONE 'Asia/Aden')::date" +
+          " + make_interval(months => $3::integer))::date," +
+          " revision=revision+1, updated_at=clock_timestamp()" +
+          " WHERE company_id=$1 AND id=$2 AND revision=$4" +
+          " RETURNING revision,order_stopped_until::text",
+        [companyId,itemId,months,input.revision],
+      )).rows[0];
+      if (!updated) throw new HttpError(409,"stale_item","تغيرت نسخة الصنف؛ حدّث القائمة.");
+      await audit(client,user,"item.field.update","item",itemId,
+        {field:"orderStoppedUntil",value:row.order_stopped_until},
+        {field:"orderStoppedUntil",value:updated.order_stopped_until},companyId);
+      return {itemId,revision:Number(updated.revision),
+        orderStoppedUntil:updated.order_stopped_until};
+    });
+    res.json({result});
+  }));
+
   // This read-only endpoint uses exactly the same applied filters/sort as the
   // table, but excludes the shared selection at SQL level on EVERY page.
   // It never creates a purchase order or changes shared checkmarks.
