@@ -13,7 +13,7 @@ CREATE INDEX items_order_alert_configured
 
 INSERT INTO notification_templates
 (code,name,category,scope,description,implemented,can_disable,default_importance,default_notify_managers)
-VALUES ('ITEM_ORDER_LEVEL','كمية الطلب للأصناف الخاصة','مخزون','company',
+VALUES ('ITEM_ORDER_LEVEL','إذا كمية الطلب للأصناف الخاصة','مخزون','company',
   'تذكير يومي للمالك والمبيعات عندما يصبح المتوفر في المعرض والمخازن غير المرتجعة بالوحدة الأولى مساوياً لكمية الطلب أو أقل.',
   true,false,'medium',false)
 ON CONFLICT (code) DO NOTHING;
