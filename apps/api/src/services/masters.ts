@@ -70,6 +70,7 @@ export async function masterPage<T>(
   exactMatchColumns: string[] = [],
   searchPlan?: { withSql: string; predicate: string },
   skipCount = false,
+  nullsLastFields: ReadonlySet<string> = new Set(),
 ) {
   const options = optionKind
     ? await optionListPlan(pool, req, companyId, optionKind, alias)
@@ -78,6 +79,7 @@ export async function masterPage<T>(
     req.query,
     { ...columns, ...options?.sortColumns },
     fallback,
+    nullsLastFields,
   );
   const parameters: unknown[] = [companyId, searchPattern(query.q, optionKind === "item" || !!searchPlan)];
   const prefix = query.q && searchPlan ? `${searchPlan.withSql} ` : "";
