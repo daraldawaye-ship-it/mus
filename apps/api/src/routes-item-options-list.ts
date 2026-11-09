@@ -422,6 +422,102 @@ export function itemOptionsListRoutes(pool: Pool): Router {
     assertDirectoryAccess(listPage, edit && !user.owner ? "edit" : "view");
     return user;
   };
+
+  /** Read-only snapshot for rows in device-local drafts. Quantities are provided
+   * by the browser, but names, lot factors, sales and prices come from the
+   * authorized company tables. Does not change drafts, inventory or accounts. */
+  const draftReviewSchema = z.object({
+    items: z.array(z.object({
+      id: z.number().int().min(1).max(2147483647),
+      requiredQuantity: z.string().regex(/^[1-9]\\d{0,15}$/).nullable(),
+    }).strict()).max(100).refine(items =>
+      new Set(items.map(item => item.id)).size === items.length,
+      "لا يمكن تكرار الصنف في طلب مؤشرات المسودة"),
+  }).strict();
+  router.post("/companies/:companyId/item-options-list/draft-review", handler(async (req, res) => {
+    const input = parse(draftReviewSchema, req.body);
+    const rows = await readItems(pool, req, async (client, companyId) => {
+      const user = await currentActor(client, actor(req), false);
+      const entries = await directoryEntries(client, user, companyId);
+      const allowed = (key: string) => {
+        const entry = entries.find(page => page.key === key);
+        return !!entry?.enabled && !!entry.actionAccess.view;
+      };
+      if (!["company.item-options-list", "company.items", "company.sales",
+            "company.purchases", "company.invoice", "company.stock-balances",
+            "company.stock-movements"].every(allowed)
+        || !await canReadItemCoverage(client, user, companyId))
+        throw new HttpError(403, "item_filter_denied",
+          "تتطلب مؤشرات المسودات صلاحيات قائمة الأصناف والمبيعات والمشتريات والمخزون");
+      if (!input.items.length) return [];
+      await assertItemSaleRankingsReady(client);
+      const today = String((await client.query(
+        "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date::text AS today"
+      )).rows[0].today);
+      const response = await client.query(
+        `WITH requested AS (
+           SELECT id,required_quantity FROM jsonb_to_recordset($3::jsonb)
+             AS request(id integer,required_quantity numeric)
+         ), annual_sales AS (
+           SELECT activity.item_id,
+             SUM(activity.sale_invoices-activity.sale_return_invoices) AS sale_times_year
+           FROM (
+             SELECT company_id,item_id,document_date,sale_invoices,sale_return_invoices
+               FROM item_daily_activity
+              WHERE company_id=$1 AND document_date BETWEEN
+                ($2::date-interval '1 year'+interval '1 day')::date AND $2::date
+             UNION ALL
+             SELECT company_id,item_id,document_date,sale_invoices,sale_return_invoices
+               FROM staged_item_daily_activity_cache
+              WHERE company_id=$1 AND document_date BETWEEN
+                ($2::date-interval '1 year'+interval '1 day')::date AND $2::date
+           ) activity JOIN requested r ON r.id=activity.item_id
+           GROUP BY activity.item_id
+         )
+         SELECT i.id AS "itemId",
+           round((COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0))
+             / greatest(i.factor2::numeric*i.factor3::numeric,1),4)::text AS "availableUnit1",
+           round((COALESCE(sale_rank.net_sale_quantity,0)
+             + COALESCE(staged_rank.net_sale_quantity,0)
+             + COALESCE(planning_fix.month_delta,0))
+             / greatest(i.factor2::numeric*i.factor3::numeric,1),4)::text AS "saleQuantityMonth",
+           (COALESCE(sale_rank.net_sale_invoices,0)
+             + COALESCE(staged_rank.net_sale_invoices,0))::text AS "saleTimesMonth",
+           COALESCE(annual_sales.sale_times_year,0)::text AS "saleTimesYear",
+           greatest(i.purchase_factor,1)::integer AS "purchaseFactor",
+           i.purchase_price::text AS "purchasePrice",
+           currency.code AS "purchaseCurrencyCode",
+           CASE WHEN r.required_quantity IS NULL THEN NULL
+             ELSE round(i.purchase_price * r.required_quantity,4)::text
+           END AS "requiredPurchaseValue"
+         FROM requested r
+         JOIN items i ON i.company_id=$1 AND i.id=r.id
+         JOIN company_currencies currency
+           ON currency.company_id=i.company_id AND currency.id=i.currency_id
+         LEFT JOIN item_statistics stock ON stock.company_id=i.company_id AND stock.item_id=i.id
+         LEFT JOIN item_sale_rankings sale_rank ON sale_rank.company_id=i.company_id
+           AND sale_rank.item_id=i.id AND sale_rank.as_of_date=$2::date
+         LEFT JOIN staged_item_sale_rankings staged_rank ON staged_rank.company_id=i.company_id
+           AND staged_rank.item_id=i.id AND staged_rank.as_of_date=$2::date
+         LEFT JOIN LATERAL (
+           SELECT SUM(quantity_delta) AS month_delta
+           FROM legacy_sales_planning_daily_deltas planning
+           WHERE planning.company_id=$1 AND planning.item_id=i.id
+             AND planning.document_date BETWEEN
+               ($2::date-interval '1 month'+interval '1 day')::date AND $2::date
+         ) planning_fix ON TRUE
+         LEFT JOIN annual_sales ON annual_sales.item_id=i.id
+         ORDER BY i.id`,
+        [companyId, today, JSON.stringify(input.items.map(item => ({
+          id:item.id, required_quantity:item.requiredQuantity,
+        })))],
+      );
+      return response.rows;
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({items:rows});
+  }));
+
   router.post("/companies/:companyId/item-options-list/draft-values", handler(async (req, res) => {
     const input = parse(draftValueRequestSchema, req.body);
     const result = await readItems(pool, req, async (client, companyId) => {
