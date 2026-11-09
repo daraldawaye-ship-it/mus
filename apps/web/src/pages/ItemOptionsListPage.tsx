@@ -336,7 +336,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     queryFn: ({signal}) => api<{drafts: DraftValue[]}>(
       `/companies/${companyId}/item-options-list/draft-values`,
       {method:"POST", body:{drafts:temporaryOrder.drafts.map(draft => ({
-        id:draft.id, items:draft.items.map(item => ({
+        id:draft.id, items:draft.items.filter(item => !item.deleted).map(item => ({
           id:item.id, requiredQuantity:item.requiredQuantity ?? null,
         })),
       }))}, signal},
@@ -358,7 +358,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const pages = Math.max(1, Math.ceil((result?.total ?? 0) / pageSize));
   const selectedIds = new Set(temporarySelection.items.map(row => row.id));
   const draftItems = (draftId: number) =>
-    temporaryOrder.drafts.find(draft => draft.id === draftId)?.items ?? [];
+    temporaryOrder.drafts.find(draft => draft.id === draftId)?.items.filter(item => !item.deleted) ?? [];
   const printItems = printMode === "selected" ? temporarySelection.items : draftItems(printMode);
   const savedRequiredQuantity = (item: TemporaryChosenItem | OrderDraftItem): string =>
     "requiredQuantity" in item && typeof item.requiredQuantity === "string"
@@ -427,7 +427,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       // Each transfer creates a new numbered draft only for items not already
       // present in ANY draft. If all incoming items are duplicates, do not
       // make an empty draft or change an existing draft.
-      const created = temporaryOrder.createDraft(candidates);
+      // Carry the selected named options into the draft and every item.
+      const optionName = selectedPreset?.name ?? "الخيارات الحالية";
+      const created = temporaryOrder.createDraft(candidates, optionName);
       if (!created) return;
       if (created.id === null) {
         setActionMessage("جميع الأصناف غير المختارة المطابقة موجودة بالفعل في مسودات أخرى؛ لم تُنشأ مسودة فارغة ولم يُكرر أي صنف.");
@@ -678,7 +680,8 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       }
       // A SINGLE browser storage write replaces every previous draft.
       // If saving fails, the existing drafts remain available.
-      const written=temporaryOrder.replaceFromPresetGroup(stages.map(stage=>stage.items));
+      const written=temporaryOrder.replaceFromPresetGroup(
+        stages.map(stage=>stage.items), stages.map(stage=>stage.name));
       if(!written){
         setGroupMessage({tone:"error",text:
           "لم تُحفظ مسودات التجميع على الجهاز. لم تُستبدل المسودات السابقة؛ راجع رسالة التخزين ومساحة الجهاز."});
@@ -799,6 +802,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         </Button>
         <Button variant="secondary" onClick={resetTemporarySelection}
           disabled={!temporarySelection.items.length || temporarySelection.updating}>تصفير الاختيار المؤقت للكل</Button>
+        <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة مسودات الطلبيات</Link>
         <Link className="button button-secondary" to={`/companies/${companyId}/items`}>كروت الأصناف</Link>
         <Button variant="secondary" onClick={() => void resultQuery.refetch()}
           disabled={!canView || resultQuery.isFetching}>تحديث القائمة</Button>
@@ -1012,6 +1016,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     </Notice>}
     <Card title={`مسودات الطلبيات (${temporaryOrder.drafts.length})`}
       className="item-options-drafts-card">
+      <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>فتح صفحة متابعة المسودات وتعديل الكميات</Link>
       <div className="item-options-order-draft">
         <p className="muted">مسودات الطلبيات محفوظة على هذا الجهاز فقط، وتُحذف كل مسودة تلقائيًا بعد 8 ساعات من إنشائها. كل ترحيل ناجح ينشئ مسودة جديدة، ولا يتكرر الصنف في أي مسودتين.</p>
         {!temporaryOrder.drafts.length && <p>لا توجد مسودات طلبية بعد.</p>}
@@ -1070,10 +1075,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {orderDraft.items.map(item => <div key={item.id} className="item-options-order-row">
               <span className="item-options-order-item">
                 <bdi className="item-options-order-quantity">{item.requiredQuantity ?? "—"}</bdi>
-                <span>{item.name}</span>
+                <span>{item.name}{item.deleted ? " (محذوف)" : ""}</span>
+                <small>{item.sourceOptionName ?? orderDraft.sourceOptionName ?? "خيار غير مسجل"}</small>
               </span>
-              <Button size="compact" variant="ghost"
-                onClick={() => temporaryOrder.removeItem(orderDraft.id, item.id)}>إزالة</Button>
+              {item.deleted ? <Button size="compact" variant="secondary"
+                onClick={() => temporaryOrder.setItemDeleted(orderDraft.id, item.id, false)}>إرجاع الحذف</Button>
+                : <Button size="compact" variant="ghost"
+                onClick={() => temporaryOrder.removeItem(orderDraft.id, item.id)}>حذف</Button>}
             </div>)}
             {!orderDraft.items.length && <p>هذه المسودة فارغة.</p>}
           </div>}
