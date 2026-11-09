@@ -349,3 +349,35 @@ test("draft follow-up page includes grouped transfer, monthly/snapshot metrics a
   assert.match(route,/staged_item_daily_activity_cache/);
   assert.match(hook,/setOrderDraftItemsDeleted/);
 });
+
+
+test("draft follow-up supports 300 rows, sortable column headings, exact per-draft and combined totals",()=>{
+  const page=readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx","utf8");
+  const css=readFileSync("apps/web/src/styles.css","utf8");
+  const home=readFileSync("apps/web/src/pages/CompanyPages.tsx","utf8");
+  const route=readFileSync("apps/api/src/routes-item-options-list.ts","utf8");
+  assert.match(page,/const pageSize = 300/);
+  assert.match(page,/const draftValuesQuery = useQuery/);
+  assert.match(page,/item-options-list\/draft-values/);
+  assert.match(page,/const grandTotals = new Map<string, bigint>/);
+  assert.match(page,/formatScaledTotal\(amount\)/);
+  assert.match(page,/قيمة الطلبيات بعد تعديل الكميات/);
+  assert.match(page,/إجمالي جميع المسودات/);
+  assert.match(page,/sortHeader\("quantity"/);
+  assert.match(page,/sortHeader\("name"/);
+  assert.match(page,/sortHeader\("option"/);
+  assert.match(page,/setSortDir/);
+  assert.match(page,/metricsById/);
+  assert.match(page,/item-order-drafts-mobile-list/);
+  assert.match(page,/item-order-drafts-stock-quantity/);
+  assert.match(page,/item-order-drafts-sold-quantity/);
+  assert.doesNotMatch(page,/عامل الشراء: \{factor\}/);
+  assert.doesNotMatch(page,/item-options-currency/);
+  assert.match(css,/item-order-drafts-mobile-top/);
+  assert.match(css,/item-order-drafts-mobile-bottom/);
+  assert.match(home,/متابعة مسودات الطلبيات/);
+  assert.match(home,/item-order-drafts/);
+  const review=route.slice(route.indexOf("const draftReviewSchema = z.object("),
+    route.indexOf('router.post("/companies/:companyId/item-options-list/draft-values"'));
+  assert.match(review,/\.max\(300\)/);
+});
