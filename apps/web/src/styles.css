@@ -8599,3 +8599,45 @@ a.notification-quick-title:hover { text-decoration: underline; }
  .attendance-approval-copy { flex: 1 1 100%; }
 }
 @media print { .attendance-approval-banner { display: none !important; } }
+
+/* Attendance approvals contain staff names and multiple punches in one day.
+   Make only these columns multiline, keeping the rest of DataTable compact. */
+.table-scroll table[aria-label="الملخص اليومي للحضور"] th[data-column-id="checkInApprovals"],
+.table-scroll table[aria-label="الملخص اليومي للحضور"] th[data-column-id="checkOutApprovals"] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  min-width: 225px;
+  line-height: 1.45;
+  padding-block: 8px;
+}
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkInApprovals"],
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkOutApprovals"] {
+  height: auto;
+  max-height: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: middle;
+  min-width: 225px;
+  padding-block: 7px;
+  line-height: 1.5;
+}
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkInApprovals"] .cell-content,
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkOutApprovals"] .cell-content {
+  height: auto;
+  max-height: none;
+  min-width: 0;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkInApprovals"] .table-value,
+.table-scroll table[aria-label="الملخص اليومي للحضور"] td[data-cell-id="checkOutApprovals"] .table-value {
+  height: auto;
+  min-height: var(--row-height);
+  white-space: normal;
+  line-height: 1.45;
+  overflow: visible;
+  text-overflow: clip;
+}
