@@ -618,7 +618,7 @@ function CompanyView({
   const salesPledgeLedger = section === "account-ledger" &&
     pageKey === "company.account-ledger" &&
     pledgeParams.get("pledge") === "1" &&
-    /^[1-9]\\d*$/.test(pledgeAccountId) &&
+    /^[1-9]\d*$/.test(pledgeAccountId) &&
     !!context.employee?.positions.includes("sales") &&
     context.permissions.includes("commerce.view");
   return (
