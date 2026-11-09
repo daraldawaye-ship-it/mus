@@ -69,3 +69,39 @@
   .accounts-detail-pane { max-height: none; overflow: visible; }
   .accounts-detail-pane:empty { display: none; }
 }
+
+/* Compact editable settings within the two-thirds-wide accounts directory. */
+.accounts-split-layout .table-scroll .account-inline-select {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 1px 2px;
+  font-size: 11px;
+}
+.accounts-split-layout .table-scroll .account-inline-active {
+  min-width: 0;
+  padding-inline: 1px;
+}
+.accounts-inline-privacy,
+.accounts-inline-money {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.accounts-inline-money { direction: ltr; text-align: end; }
+.accounts-inline-money:disabled, .accounts-inline-privacy:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+.accounts-inline-money:focus-visible, .accounts-inline-privacy:focus-visible {
+  outline: 2px solid var(--accent, #7eb9ff);
+  outline-offset: 1px;
+}
