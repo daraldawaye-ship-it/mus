@@ -43,7 +43,9 @@ const formatStockSaleQuantity = (value?: string | null) => {
   if (Number.isInteger(number)) return formatNumber(value);
   const rounded = Math.round((Math.abs(number) + Number.EPSILON) * 10) / 10;
   if (rounded === 0) return number < 0 ? ">−0.1" : "<0.1";
-  return formatNumber((number < 0 ? "-" : "") + rounded.toFixed(1));
+  const fixed = (number < 0 ? -rounded : rounded).toFixed(1);
+  const [whole, digit] = fixed.split(".");
+  return formatNumber(whole) + "." + digit;
 };
 
 function DraftQuantityInput({ item, factor, onSave }: {
