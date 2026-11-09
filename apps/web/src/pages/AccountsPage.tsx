@@ -178,6 +178,7 @@ function AccountsManager({ context }: { context: CompanyContext }) {
   >(
     `/companies/${companyId}/accounts?${filters}`,
     `company:${companyId}:accounts`,
+    "actualBalance:desc",
   );
   const links = useQuery({
     queryKey: ["master", user?.id, companyId, "account-links"],
@@ -567,6 +568,22 @@ function AccountsManager({ context }: { context: CompanyContext }) {
             <option value="true">فعّال</option>
             <option value="false">غير فعّال</option>
             <option value="all">كل الحالات</option>
+          </Select>
+          <Select
+            label="الترتيب حسب الرصيد"
+            value={
+              list.sorting.length === 1 && list.sorting[0]?.id === "actualBalance"
+                ? (list.sorting[0].desc ? "desc" : "asc")
+                : "other"
+            }
+            onChange={(event) => {
+              if (event.target.value !== "other")
+                list.setSorting([{ id: "actualBalance", desc: event.target.value === "desc" }]);
+            }}
+          >
+            <option value="desc">الأعلى أولاً</option>
+            <option value="asc">الأقل أولاً</option>
+            <option value="other" disabled>ترتيب آخر</option>
           </Select>
         </div>
         <OptionListTools
