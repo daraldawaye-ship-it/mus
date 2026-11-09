@@ -6678,6 +6678,16 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-field:nth-child(odd) { border-inline-end:1px solid var(--border); }
 .medicine-market-field > div { min-width:0; display:grid; gap:5px; }
 .medicine-market-field > button { flex-shrink:0; }
+.medicine-market-field-editable { cursor:pointer; }
+.medicine-market-field-editable:focus-visible { outline:2px solid var(--focus); outline-offset:-3px; }
+.medicine-market-field-editable:hover { background:var(--soft); }
+.medicine-market-field > .medicine-market-inline-content { flex:1; min-width:0; }
+.medicine-market-inline-editor { display:grid; gap:10px; min-width:0; }
+.medicine-market-inline-editor .field { min-width:0; }
+.medicine-market-inline-source summary { cursor:pointer; color:var(--muted); font-size:11px; }
+.medicine-market-inline-source[open] .field { margin-block-start:8px; }
+.medicine-market-inline-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.medicine-market-inline-message { color:var(--on-soft); font-size:11px; }
 .medicine-market-field-label { display:flex; align-items:center; gap:5px; color:var(--muted); font-size:11px; }
 .medicine-market-field .medicine-market-value-text { white-space:pre-wrap; overflow-wrap:anywhere; }
 .medicine-market-unset { color:var(--muted); font-size:12px; }

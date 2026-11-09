@@ -811,6 +811,149 @@ function FieldValue({
   );
 }
 
+type MarketFieldDraft = {
+  value: unknown;
+  initialValue: unknown;
+  expectedValue: unknown;
+  cardData: Record<string, unknown>;
+  source: string;
+};
+
+/** Keep each field's draft and original value independent while another saves. */
+function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
+  card:MarketCard;
+  field:FieldDefinition;
+  references:MarketReferenceEntry[];
+  canEdit:boolean;
+  disabled:boolean;
+  onOpen:(id:number)=>void;
+}) {
+  const {user}=useSession(),client=useQueryClient();
+  const guard=useScopeGuard(`public:medicine-market:card:${card.id}:field:${field.key}`);
+  const [draft,setDraft]=useState<MarketFieldDraft|null>(null);
+  const current=useRef<MarketFieldDraft|null>(null);
+  const pending=useRef(false),cancelled=useRef(false),uploading=useRef(false);
+  const retry=useRef<{json:string;key:string}|null>(null);
+  const editor=useRef<HTMLFormElement>(null);
+  const [busy,setBusy]=useState(false),[imageBusy,setImageBusy]=useState(false);
+  const [error,setError]=useState(""),[message,setMessage]=useState("");
+  const value=field.key==="name"?card.name:card.data[field.key];
+  const complex=field.key==="image"||["contacts","ingredients","accounting","prescription-lines"].includes(field.type);
+  const immediate=!complex&&(field.type==="boolean"||field.type==="reference"||field.type==="relation"||!!field.options?.length);
+  const textEditor=!complex&&!immediate;
+  const editing=draft!==null;
+  useLayoutEffect(()=>{
+    if(editing)editor.current?.querySelector<HTMLElement>("input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])")?.focus();
+  },[editing]);
+  function update(next:MarketFieldDraft|null){current.current=next;setDraft(next);}
+  function start(){
+    if(!canEdit||disabled||pending.current)return;
+    cancelled.current=false;setError("");setMessage("");
+    const initialValue=structuredClone(value??(field.type==="boolean"?false:
+      ["contacts","ingredients","accounting","prescription-lines"].includes(field.type)?[]:""));
+    update({value:initialValue,initialValue:structuredClone(initialValue),
+      expectedValue:structuredClone(value??null),cardData:structuredClone(card.data),source:""});
+  }
+  function cancel(){
+    if(pending.current||uploading.current)return;
+    cancelled.current=true;update(null);setError("");
+  }
+  async function save(next=current.current){
+    if(!next||cancelled.current||pending.current||uploading.current||disabled||!canEdit||!guard.isCurrent())return;
+    if(JSON.stringify(next.value)===JSON.stringify(next.initialValue)){update(null);return;}
+    const payload={fieldKey:field.key,value:next.value,expectedValue:next.expectedValue,
+      source:next.source.trim()||undefined};
+    const json=JSON.stringify(payload);
+    const idempotencyKey=retry.current?.json===json?retry.current.key:crypto.randomUUID();
+    retry.current={json,key:idempotencyKey};
+    pending.current=true;setBusy(true);setError("");setMessage("");
+    const requestGuard=guard;
+    try{
+      await api(`${ROOT}/cards/${card.id}/contributions`,{
+        method:"POST",body:{...payload,idempotencyKey},
+      });
+      if(!requestGuard.isCurrent())return;
+      update(null);retry.current=null;setMessage("تم حفظ المساهمة.");
+      await client.invalidateQueries({queryKey:["medicine-market",user?.id]});
+    }catch(cause){
+      if(requestGuard.isCurrent())setError(errorMessage(cause));
+    }finally{
+      pending.current=false;
+      if(requestGuard.isCurrent())setBusy(false);
+    }
+  }
+  function change(value:unknown){
+    if(!current.current||pending.current||cancelled.current||!guard.isCurrent())return;
+    const next={...current.current,value};update(next);
+    if(immediate)void save(next);
+  }
+  return <div
+    className={`medicine-market-field ${field.visibility!=="public"?"medicine-market-protected ":""}${canEdit&&!editing?"medicine-market-field-editable ":""}${editing?"medicine-market-field-editing":""}`}
+    role={canEdit?"group":undefined}
+    aria-label={canEdit?`${field.label} — ${card.name}`:undefined}
+    tabIndex={canEdit&&!editing&&!disabled?0:undefined}
+    onClick={event=>{
+      if(editing||(event.target as Element).closest("a,button,input,select,textarea,summary"))return;
+      start();
+    }}
+    onKeyDown={event=>{
+      if(event.target===event.currentTarget&&(event.key==="Enter"||event.key===" ")){
+        event.preventDefault();start();
+      }
+    }}>
+    <div className="medicine-market-inline-content">
+      {draft?<form ref={editor} className="medicine-market-inline-editor"
+        onSubmit={event=>{event.preventDefault();void save();}}
+        onBlur={event=>{
+          if(!textEditor||event.currentTarget.contains(event.relatedTarget as Node|null))return;
+          const form=event.currentTarget;
+          window.setTimeout(()=>{
+            if(!form.contains(document.activeElement))void save();
+          },0);
+        }}
+        onKeyDown={event=>{
+          if(event.nativeEvent.isComposing)return;
+          if(event.key==="Escape"){
+            event.preventDefault();event.stopPropagation();cancel();
+          }else if(event.key==="Enter"&&(event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)){
+            if(event.target instanceof HTMLTextAreaElement&&event.shiftKey)return;
+            if(event.target instanceof HTMLInputElement&&event.target.type==="file")return;
+            event.preventDefault();
+            if(textEditor)void save();
+          }
+        }}>
+        <FieldEditor field={field} value={draft.value} references={references}
+          cardData={draft.cardData} cardId={card.id} cardKind={card.kind}
+          disabled={!canEdit||disabled||busy||imageBusy} onChange={change}
+          onImageBusyChange={value=>{uploading.current=value;if(guard.isCurrent())setImageBusy(value);}}/>
+        <details className="medicine-market-inline-source">
+          <summary>مصدر المعلومة أو ملاحظتك — اختياري</summary>
+          <Field label="مصدر المعلومة أو ملاحظتك" value={draft.source} maxLength={1000}
+            disabled={!canEdit||disabled||busy||imageBusy}
+            onChange={event=>{if(current.current)update({...current.current,source:event.target.value});}}/>
+        </details>
+        <small className="medicine-market-muted">{field.price
+          ?"يظهر السعر أو البونص الجديد بعد المصادقة عليه."
+          :"تُنشر المساهمة حسب صلاحيات الحساب وبعد المراجعة عند الحاجة."}</small>
+        {error&&<Notice tone="error">{error}</Notice>}
+        <div className="medicine-market-inline-actions">
+          <Button type="submit" size="compact" disabled={!canEdit||disabled||busy||imageBusy}>
+            {busy?"جارٍ الحفظ…":imageBusy?"جارٍ رفع الصورة…":"حفظ المساهمة"}
+          </Button>
+          <Button type="button" variant="ghost" size="compact" disabled={busy||imageBusy} onClick={cancel}>إلغاء</Button>
+        </div>
+      </form>:<>
+        <span className="medicine-market-field-label">{field.label}{field.visibility!=="public"&&<ShieldCheck size={13}/>}</span>
+        <FieldValue field={field} value={value} onOpen={onOpen} references={references} cardKind={card.kind}/>
+        {message&&<small className="medicine-market-inline-message" role="status">{message}</small>}
+      </>}
+    </div>
+    {canEdit&&!editing&&<Button variant="ghost" size="compact" disabled={disabled||busy}
+      aria-label={`${present(value)?"تعديل":"إضافة"} ${field.label}`}
+      title={`تعديل ${field.label} مباشرة`} onClick={start}><Pencil size={15}/></Button>}
+  </div>;
+}
+
 /** Approval-only photo verification; pending prescriptions are not public. */
 function PrescriptionReviewPhoto({
   cardId,busy,onApprove,onReject,proposedImage,
@@ -896,16 +1039,9 @@ export function MedicineMarketPage({
     setPrescriptionPhotoUrl(preview);
     return ()=>URL.revokeObjectURL(preview);
   },[prescriptionFile]);
-  const [edit, setEdit] = useState<{
-    card: MarketCard;
-    field: FieldDefinition;
-    value: unknown;
-    source: string;
-  } | null>(null);
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
   const [comment, setComment] = useState(""),
     [reviewReason, setReviewReason] = useState("");
   const [policy, setPolicy] = useState<{
@@ -992,7 +1128,6 @@ export function MedicineMarketPage({
   const fields = types.find((t) => t.key === card?.kind)?.fields ?? [];
   useEffect(() => {
     setCreateOpen(false);
-    setEdit(null);
     setPolicy(null);
     setComment("");
     setMessage("");
@@ -1084,34 +1219,6 @@ export function MedicineMarketPage({
       },
     );
   }
-  async function saveField(event: FormEvent) {
-    event.preventDefault();
-    if (!edit || imageUploading) return;
-    const payload = {
-      fieldKey: edit.field.key,
-      value: edit.value,
-      expectedValue:
-        edit.field.key === "name"
-          ? edit.card.name
-          : (edit.card.data[edit.field.key] ?? null),
-      source: edit.source.trim() || undefined,
-    };
-    await mutate(
-      () =>
-        api(`${ROOT}/cards/${edit.card.id}/contributions`, {
-          method: "POST",
-          body: {
-            ...payload,
-            idempotencyKey: stableKey(
-              `field:${edit.card.id}:${edit.field.key}`,
-              payload,
-            ),
-          },
-        }),
-      "تم حفظ المساهمة. الأسعار والبونص والنقاط تنتظر المصادقة وفق صلاحياتك.",
-      () => setEdit(null),
-    );
-  }
   function reviewContribution(
     row: Contribution,
     decision: "approve" | "reject",
@@ -1163,7 +1270,10 @@ export function MedicineMarketPage({
     [`${ROOT}/review`, "المصادقة", !!permissions?.canModerate],
     [`${ROOT}/points`, "نقاط الحقول", true],
   ];
-  const hasName = fields.some((f) => f.key === "name");
+  const detailFields:FieldDefinition[]=fields.some(field=>field.key==="name")?fields:[{
+    key:"name",label:"الاسم",type:"text",visibility:"public",
+    points:{add:0,edit:0},policyRevision:0,
+  },...fields];
   return (
     <div className="medicine-market" dir="rtl">
       <header className="medicine-market-heading">
@@ -1364,99 +1474,11 @@ export function MedicineMarketPage({
                     </Notice>
                   )}
                   <div className="medicine-market-fields">
-                    {!hasName && (
-                      <div className="medicine-market-field">
-                        <div>
-                          <span className="medicine-market-field-label">
-                            الاسم
-                          </span>
-                          <strong>{card.name}</strong>
-                        </div>
-                        {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived && (
-                          <Button
-                            variant="ghost"
-                            size="compact"
-                            aria-label="اقتراح تعديل الاسم"
-                            onClick={() =>
-                              setEdit({
-                                card,
-                                field: {
-                                  key: "name",
-                                  label: "الاسم",
-                                  type: "text",
-                                  visibility: "public",
-                                  points: { add: 0, edit: 0 },
-                                  policyRevision: 0,
-                                },
-                                value: card.name,
-                                source: "",
-                              })
-                            }
-                          >
-                            <Pencil size={15} />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                    {fields.map((field) => (
-                      <div
-                        key={field.key}
-                        className={`medicine-market-field ${field.visibility !== "public" ? "medicine-market-protected" : ""}`}
-                      >
-                        <div>
-                          <span className="medicine-market-field-label">
-                            {field.label}
-                            {field.visibility !== "public" && (
-                              <ShieldCheck size={13} />
-                            )}
-                          </span>
-                          <FieldValue
-                            field={field}
-                            value={
-                              field.key === "name"
-                                ? card.name
-                                : card.data[field.key]
-                            }
-                            onOpen={openCard}
-                            references={references}
-                            cardKind={card.kind}
-                          />
-                        </div>
-                        {permissions?.canContribute && !isMarketAdministrativeKind(card.kind) && !card.archived && (
-                          <Button
-                            variant="ghost"
-                            size="compact"
-                            aria-label={`${present(card.data[field.key]) ? "تعديل" : "إضافة"} ${field.label}`}
-                            title={`${present(card.data[field.key]) ? "تعديل" : "إضافة"} ${field.label}`}
-                            onClick={() =>
-                              setEdit({
-                                card,
-                                field,
-                                value:
-                                  field.key === "name"
-                                    ? card.name
-                                    : structuredClone(
-                                        card.data[field.key] ??
-                                          (field.type === "boolean"
-                                            ? false
-                                            : [
-                                                  "contacts",
-                                                  "ingredients",
-                                                  "accounting",
-                                                  "prescription-lines",
-                                                ].includes(field.type)
-                                              ? []
-                                              : ""),
-                                      ),
-                                source: "",
-                              })
-                            }
-                          >
-                            <Pencil size={15} />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                    {detailFields.map(field=><MarketInlineField
+                      key={`${user?.id??"guest"}:${card.id}:${field.key}`}
+                      card={card} field={field} references={references}
+                      canEdit={!!permissions?.canContribute&&!isMarketAdministrativeKind(card.kind)&&!card.archived}
+                      disabled={busy} onOpen={openCard}/>)}
                   </div>
                   <div className="medicine-market-engagement">
                     <Button
@@ -2148,59 +2170,6 @@ export function MedicineMarketPage({
             </Button>
           </div>
         </form>
-      </Dialog>
-      <Dialog
-        open={!!edit}
-        onClose={() => {
-          if (!busy && !imageUploading) setEdit(null);
-        }}
-        title={edit ? `${edit.field.label} — ${edit.card.name}` : "تعديل حقل"}
-        className="medicine-market-dialog"
-      >
-        {edit && (
-          <form className="stack" onSubmit={(e) => void saveField(e)}>
-            <FieldEditor
-              field={edit.field}
-              value={edit.value}
-              references={references}
-              cardData={edit.card.data}
-              cardId={edit.card.id}
-              cardKind={edit.card.kind}
-              onImageBusyChange={setImageUploading}
-              disabled={busy || imageUploading}
-              onChange={(value) => setEdit({ ...edit, value })}
-            />
-            <Field
-              label="مصدر المعلومة أو ملاحظتك — اختياري"
-              value={edit.source}
-              maxLength={1000}
-              disabled={busy}
-              onChange={(e) => setEdit({ ...edit, source: e.target.value })}
-            />
-            <div className="medicine-market-contribution-note">
-              <ShieldCheck size={17} />
-              <span>
-                {edit.field.price
-                  ? "يظهر السعر أو البونص الجديد بعد المصادقة عليه."
-                  : "تُنشر المساهمة حسب صلاحيات الحساب وبعد المراجعة عند الحاجة."}{" "}
-                النقاط تُحتسب بعد الاعتماد.
-              </span>
-            </div>
-            {error && <Notice tone="error">{error}</Notice>}
-            <div className="page-actions">
-              <Button type="submit" disabled={busy || imageUploading}>
-                {busy ? "جارٍ الإرسال…" : imageUploading ? "جارٍ ضغط الصورة ورفعها…" : "حفظ المساهمة"}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={busy || imageUploading}
-                onClick={() => setEdit(null)}
-              >
-                إلغاء
-              </Button>
-            </div>
-          </form>
-        )}
       </Dialog>
       <Dialog
         open={!!policy}
