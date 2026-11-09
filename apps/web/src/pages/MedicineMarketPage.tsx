@@ -134,13 +134,13 @@ function RelationName({
   );
 }
 /**
- * Same typeahead conventions as invoice sales item search:
- * Prescription entry starts with the first character; other relations use three. *
+ * Relations show choices on focus and filter from the first character.
+ * Prescription entry explicitly starts with the first character.
  * Short debounce, viewport-safe results, keyboard selection,
  * no stale suggestions, and paging. The query remains in the isolated market.
  */
 function RelationPicker({
-  kind,value,onChange,label,disabled=false,minChars=3,
+  kind,value,onChange,label,disabled=false,minChars=0,
 }:{
   kind:Kind;
   value:number|null;
@@ -228,7 +228,9 @@ function RelationPicker({
         aria-expanded={expanded}
         aria-controls={expanded?inputId+"-results":undefined}
         aria-activedescendant={expanded&&matches[active]?inputId+"-"+matches[active].id:undefined}
-        placeholder={minChars===1
+        placeholder={minChars===0
+          ?"اختر "+label+" أو اكتب للبحث"
+          :minChars===1
           ?"اكتب اسم الصنف لتظهر النتائج مباشرة"
           :"اكتب ثلاثة أحرف أو أكثر للبحث عن "+label}
         value={query} disabled={disabled}
