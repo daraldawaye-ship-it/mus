@@ -467,7 +467,7 @@ test("item-more third line contains special order threshold and three confirmati
   assert.match(controls,/source === null \? "0" : \(source \+ 1n\)\.toString\(\)/);
   assert.match(controls,/source === 0n \? null : \(source - 1n\)\.toString\(\)/);
   assert.match(controls,/value\.trim\(\) === ""/);
-  assert.match(controls,/title:"فارغ ← صفر ← 1 ← 2"/);
+  assert.match(controls,/title="فارغ ← صفر ← 1 ← 2"/);
   assert.match(controls,/label:"إيقاف", description:"10 سنوات"/);
   assert.match(controls,/label:"إيقاف سنة", description:"سنة"/);
   assert.match(controls,/label:"إيقاف 4 أشهر", description:"4 أشهر"/);
