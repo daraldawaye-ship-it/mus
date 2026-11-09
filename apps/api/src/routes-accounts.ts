@@ -50,14 +50,16 @@ const columns = {
   accountChoice: "a.account_choice",
   // Sort real posted/reversed ledger balances across the entire filtered result,
   // not just the balances attached to the current page after pagination.
-  actualBalance: `COALESCE((
+  // Sort by the displayed balance magnitude. Debit/credit direction is
+  // shown separately, and should not invert the numeric sort order.
+  actualBalance: `ABS(COALESCE((
     SELECT SUM(l.base_debit - l.base_credit)
     FROM financial_document_lines l
     JOIN financial_documents d
       ON d.company_id=l.company_id AND d.id=l.document_id
     WHERE l.company_id=a.company_id AND l.account_id=a.id
       AND d.status IN ('posted','reversed')
-  ),0)`,
+  ),0))`,
   privacyLevel: "a.privacy_level",
   accountLimit: "a.account_limit",
   monthlyLimit: "a.monthly_limit",
