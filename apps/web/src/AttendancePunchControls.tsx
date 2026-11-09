@@ -84,9 +84,9 @@ export function AttendancePunchControls({
           queryKey: ["list", user?.id, `company:${companyId}:attendance`],
         });
       }
-    }, 30000);
+    }, data?.pendingCheckIn ? 5000 : 30000);
     return () => window.clearInterval(timer);
-  }, [client, user?.id, companyId]);
+  }, [client, user?.id, companyId, !!data?.pendingCheckIn]);
 
   useEffect(() => {
     if (!submittedPunch) return;
@@ -118,7 +118,7 @@ export function AttendancePunchControls({
     setError("");
     setNotice("");
     try {
-      const response = await api<{ record: AttendanceRecord }>(
+      const response = await api<{ record: AttendanceRecord | null; approvalStatus?: "pending" | "approved" | "rejected" }>(
         base + (frozen.out ? "/check-out" : "/check-in"),
         {
           method: "POST",
@@ -132,12 +132,15 @@ export function AttendancePunchControls({
       client.removeQueries({ queryKey: punchKey, exact: true });
       setSubmittedPunch(null);
       void refreshAttendance(client, user?.id, companyId);
-      setNotice(
-        response.record.closeSource === "automatic"
-          ? "أُغلقت الجلسة تلقائيًا بعد 16 ساعة وتحتاج مراجعة."
-          : `${frozen.out ? "تم تسجيل الانصراف" : "تم تسجيل الحضور"}: ${localTime(
-              frozen.out ? response.record.checkedOutAt : response.record.checkedInAt,
-            )}`,
+      setNotice(!frozen.out && response.approvalStatus === "pending"
+        ? "تم إرسال طلب الحضور — بانتظار المصادقة من جهاز صيدلية آخر. لا يُحسب حضورًا حتى الاعتماد."
+        : !frozen.out && response.approvalStatus === "rejected"
+          ? "لم تتم المصادقة على طلب الحضور."
+          : response.record?.closeSource === "automatic"
+            ? "أُغلقت الجلسة تلقائيًا وتحتاج مراجعة."
+            : frozen.out
+              ? `تم تسجيل الانصراف: ${localTime(response.record?.checkedOutAt ?? null)} — بانتظار مصادقة الانصراف دون تعطيل الانصراف.`
+              : `تم تسجيل الحضور: ${localTime(response.record?.checkedInAt ?? null)}`,
       );
     } catch (cause) {
       if (!guard.isCurrent()) return;
@@ -179,7 +182,7 @@ export function AttendancePunchControls({
               disabled={pending || !!submittedPunch || !data?.canCheckIn}
               onClick={() => void punch(false)}
             >
-              تسجيل الحضور
+              {data?.pendingCheckIn ? "بانتظار المصادقة" : "تسجيل الحضور"}
             </Button>
             <Button
               variant="secondary"
@@ -203,6 +206,9 @@ export function AttendancePunchControls({
                 التحقق من نتيجة التسجيل
               </Button>
             </Notice>
+          )}
+          {data?.pendingCheckIn && (
+            <Notice>طلب الحضور بانتظار المصادقة، ولن يُحتسب حتى يوافق موظف آخر من جهاز صيدلية معتمد.</Notice>
           )}
           {data?.openRecord && (
             <p className="muted">
