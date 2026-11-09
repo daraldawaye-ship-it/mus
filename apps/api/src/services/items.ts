@@ -83,6 +83,8 @@ export type ItemFields = Pick<
   | "salePrice2"
   | "salePrice3"
   | "purchasePrice"
+  | "defaultProfitFactor"
+  | "orderAlertQuantity"
   | "commissionRate"
   | "clearanceFrom"
   | "clearanceTo"
@@ -222,6 +224,8 @@ export const itemFieldColumns = [
   ["salePrice2", "sale_price2"],
   ["salePrice3", "sale_price3"],
   ["purchasePrice", "purchase_price"],
+  ["defaultProfitFactor", "default_profit_factor"],
+  ["orderAlertQuantity", "order_alert_quantity"],
   ["commissionRate", "commission_rate"],
   ["clearanceFrom", "clearance_from"],
   ["clearanceTo", "clearance_to"],
