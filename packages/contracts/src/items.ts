@@ -27,7 +27,7 @@ export const itemWholeQuantitySchema = z
   .transform((value) => BigInt(value).toString());
 // A multiplier (1.2 = a 20% markup), not a percentage with a 100% base.
 export const itemProfitFactorSchema = z.string().trim().transform(normalizeDigits)
-  .pipe(z.string().regex(/^\\d{1,4}(?:\\.\\d{1,4})?$/, "أدخل نسبة ربح صحيحة بأربع منازل عشرية"))
+  .pipe(z.string().regex(/^\d{1,4}(?:\.\d{1,4})?$/, "أدخل نسبة ربح صحيحة بأربع منازل عشرية"))
   .refine(value => Number(value) >= 1, "نسبة الربح الافتراضية لا تقل عن 1");
 export const itemOrderAlertQuantitySchema = itemWholeQuantitySchema.nullable();
 
