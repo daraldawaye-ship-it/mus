@@ -555,6 +555,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
             </th>
             {sortHeader("quantity", "الكمية المطلوبة (و1)")}
             {sortHeader("name", "اسم الصنف")}
+            <th scope="col" aria-label="إظهار التفاصيل">⋯</th>
             {sortHeader("stock", "المتوفر دون المرتجعات (و1)")}
             {sortHeader("sold", "الكمية المباعة في شهر (و1)")}
             {sortHeader("month", "المبيعات مرات في شهر")}
@@ -581,6 +582,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </td>
+              <td data-label="إظهار التفاصيل">{moreButton(row)}</td>
               <td data-label="المتوفر دون المرتجعات">
                 <span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span>
               </td>
@@ -592,18 +594,16 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
               <td data-label="قيمة المطلوب"><bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></td>
               <td data-label="الإجراء">
-                <div className="item-order-draft-inline-actions">
-                  {moreButton(row)}{action(row)}
-                </div>
+                <div className="item-order-draft-inline-actions">{action(row)}</div>
               </td>
               <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
               </tr>
               {expandedItemId === row.item.id && <tr className="item-order-draft-expanded-row">
-                <td colSpan={11}>{planningControls(row, info)}</td>
+                <td colSpan={12}>{planningControls(row, info)}</td>
               </tr>}
             </Fragment>;
           })}
-          {!filtered.length && <tr><td colSpan={11}>لا توجد أصناف مطابقة للبحث.</td></tr>}
+          {!filtered.length && <tr><td colSpan={12}>لا توجد أصناف مطابقة للبحث.</td></tr>}
           </tbody>
         </table>
       </div>}
@@ -623,11 +623,11 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </span>
-              {moreButton(row)}
               {action(row)}
             </div>
             <div className="item-order-drafts-mobile-bottom" role="group"
               aria-label={"مؤشرات الصنف " + row.item.name}>
+              {moreButton(row)}
               <span title="المتوفر دون مخازن المرتجعات">
                 <small>المتوفر</small><bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(info?.availableUnit1)}</bdi>
               </span>
