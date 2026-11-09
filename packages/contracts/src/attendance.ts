@@ -178,6 +178,15 @@ export type AttendanceStatus =
   | "notRecorded"
   | "rest"
   | "unconfigured";
+export interface AttendanceReportApproval {
+  id: string;
+  kind: "check-in" | "check-out";
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  recordId: number | null;
+}
 export interface AttendanceReportRow {
   id: number;
   employeeId: number;
@@ -197,6 +206,7 @@ export interface AttendanceReportRow {
   points: string;
   sessionCount: number;
   reviewCount: number;
+  approvals: AttendanceReportApproval[];
 }
 export interface AttendanceReport extends Page<AttendanceReportRow> {
   day: string;
