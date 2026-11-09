@@ -1187,7 +1187,12 @@ function OriginalInvoicePicker({
   );
 }
 
-type ItemInfoView = "movement" | "purchase" | "sale" | "adjustment" | "transfer" | "alternatives";
+type InvoiceFocusedItem = Pick<Item, "id" | "name"> & { isSalesReturn?: boolean };
+function isNegativeInvoiceQuantity(quantity: string): boolean {
+  const normalized = normalizeDigits(quantity.trim());
+  return /^-\d+$/.test(normalized) && BigInt(normalized) < 0n;
+}
+type ItemInfoView = "movement" | "purchase" | "sale" | "sale-return" | "adjustment" | "transfer" | "alternatives";
 type ItemInfoHistoryRow = {
   lineId: string | number;
   documentId: string | number;
@@ -1211,6 +1216,7 @@ const itemInfoViews: { value: ItemInfoView; label: string }[] = [
   { value: "movement", label: "حركة الصنف" },
   { value: "purchase", label: "مشتريات الصنف" },
   { value: "sale", label: "مبيعات الصنف" },
+  { value: "sale-return", label: "مرتجعات مبيعات الصنف" },
   { value: "adjustment", label: "تسويات الصنف" },
   { value: "transfer", label: "مناقلات الصنف" },
   { value: "alternatives", label: "بدائل الصنف" },
@@ -1218,11 +1224,12 @@ const itemInfoViews: { value: ItemInfoView; label: string }[] = [
 function isItemInfoView(value: string | null): value is ItemInfoView {
   return itemInfoViews.some(view => view.value === value);
 }
-function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, userId }: {
+function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, selectedItemIsReturn, userId }: {
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
   selectedItemName: string | null;
+  selectedItemIsReturn: boolean;
   userId: number | undefined;
 }) {
   const companyId = context.company.id;
@@ -1236,6 +1243,12 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
     }
   });
   const menu = useRef<HTMLDetailsElement>(null);
+  // A negative quantity in the active sales row opens the returns history
+  // without rewriting the user's saved manual sidebar preference.
+  useEffect(() => {
+    if (kind === "sale" && selectedItemId && selectedItemIsReturn)
+      setView("sale-return");
+  }, [kind, selectedItemId, selectedItemIsReturn]);
   const client = useQueryClient();
   const [alternateItemId, setAlternateItemId] = useState<number | null>(null);
   const [accountFullName, setAccountFullName] = useState<string | null>(null);
@@ -1274,7 +1287,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
     if (menu.current) menu.current.open = false;
     try { window.localStorage.setItem(storageKey, value); } catch { /* Storage may be disabled. */ }
   }
-  const isInvoiceView = view === "purchase" || view === "sale";
+  const isInvoiceView = view === "purchase" || view === "sale" || view === "sale-return";
   const peers = alternatives.data?.peers;
   return (
     <>
@@ -1445,12 +1458,13 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, u
     </>
   );
 }
-function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName }: {
+function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedItemName, selectedItemIsReturn = false }: {
   children: ReactNode;
   context: CompanyContext;
   kind: InvoiceKind;
   selectedItemId: number | null;
   selectedItemName: string | null;
+  selectedItemIsReturn?: boolean;
 }) {
   const companyId = context.company.id;
   const { user } = useSession();
@@ -1464,7 +1478,8 @@ function InvoiceWorkspace({ children, context, kind, selectedItemId, selectedIte
       {showOptions && <aside className="invoice-side-space" aria-label="المساحة الجانبية للفاتورة">
         <InvoiceItemOptions key={`${user?.id ?? 0}:${companyId}:${kind}`}
           context={context} kind={kind} selectedItemId={selectedItemId}
-          selectedItemName={selectedItemName} userId={user?.id} />
+          selectedItemName={selectedItemName} selectedItemIsReturn={selectedItemIsReturn}
+          userId={user?.id} />
         {kind === "sale" ? <InvoiceSideOverview context={context} /> :
           <section className="invoice-empty-panel" aria-label="المساحة الثانية" />}
       </aside>}
@@ -1514,7 +1529,7 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   const [restoredPoints, setRestoredPoints] = useState<Record<string, SalesPointForm>>({});
   const [ready, setReady] = useState(kind !== "sale");
   const [deviceError, setDeviceError] = useState("");
-  const [pointItems, setPointItems] = useState<Record<string, Pick<Item,"id"|"name"> | null>>({});
+  const [pointItems, setPointItems] = useState<Record<string, InvoiceFocusedItem | null>>({});
   // Wait for the correct signed-in employee's local records before mounting editors.
   // Otherwise a blank first render would overwrite the saved invoice.
   useEffect(() => {
@@ -1530,7 +1545,8 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
       setRestoredPoints(Object.fromEntries(valid.map(point => [point.id, point.form])));
       setPointItems(Object.fromEntries(valid.map(point => {
         const line = point.form.lines.find(row => row.itemId > 0);
-        return [point.id, line ? {id: line.itemId, name: line.itemName} : null];
+        return [point.id, line ? {id: line.itemId, name: line.itemName,
+           isSalesReturn: isNegativeInvoiceQuantity(line.quantity)} : null];
       })));
       setReady(true);
     }).catch(error => {
@@ -1670,7 +1686,8 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
   const selected = pointItems[activePoint] ?? null;
   return (
     <InvoiceWorkspace context={context} kind={kind}
-      selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}>
+      selectedItemId={selected?.id ?? null} selectedItemName={selected?.name ?? null}
+      selectedItemIsReturn={kind === "sale" && !!selected?.isSalesReturn}>
       {kind === "sale" && !ready && <Notice>جارٍ استعادة فواتير المبيعات المحفوظة على الجهاز…</Notice>}
       {deviceError && <Notice tone="error">{deviceError}</Notice>}
       {ready && <div className="invoice-point-tabs" role="tablist" aria-label="نقاط الفواتير"
@@ -1733,7 +1750,7 @@ function InvoicePointsWorkspace({ context, kind }: { context: CompanyContext; ki
 
 function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCreatedAt, onStatusChange, onRegisterDraftSaver }: {
   context: CompanyContext;
-  onChooseItem: (item: Pick<Item,"id"|"name"> | null) => void;
+  onChooseItem: (item: InvoiceFocusedItem | null) => void;
   tabId: string;
   active: boolean;
   restored: SalesPointForm | null;
@@ -2514,7 +2531,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     if (user) rememberRecentEntity(user.id, companyId, "item", {id:selected.id,name:selected.name});
     activeLineKey.current=line.key;
     setHeaderItem(selected);
-    onChooseItem({id:selected.id,name:selected.name});
+    onChooseItem({id:selected.id,name:selected.name,
+      isSalesReturn: kind === "sale" && isNegativeInvoiceQuantity(preserveQuantity ? line.quantity : "1")});
     setError("");
     const selectedUnit = kind === "sale" ? (selected.defaultSaleUnit ?? 1) : 1;
     updateLine(line.key, {
@@ -2591,7 +2609,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   function itemSaved(item: Item) {
     if (!guard.isCurrent() || item.companyId !== companyId) return;
     setHeaderItem(item);
-    onChooseItem({id:item.id,name:item.name});
+    const activeItemLine = lines.find(line => line.key === activeLineKey.current);
+    onChooseItem({id:item.id,name:item.name,
+      isSalesReturn: kind === "sale" && !!activeItemLine && isNegativeInvoiceQuantity(activeItemLine.quantity)});
     setLines((current) =>
       current.map((line) => {
         if (line.itemId !== item.id) return line;
@@ -2790,6 +2810,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           quantity: value,
         });
         focus(lineInputId(line, "item-search"));
+        if (kind === "sale" && activeLineKey.current === line.key) onChooseItem(null);
         return;
       }
       updateLine(line.key, {
@@ -2815,6 +2836,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
             : {}),
       });
     }
+    if (kind === "sale" && line.itemId && activeLineKey.current === line.key)
+      onChooseItem({id:line.itemId,name:line.itemName,
+        isSalesReturn:isNegativeInvoiceQuantity(value)});
   }
   function nextLine(line?: DraftLine) {
     if (locked) return;
@@ -3626,7 +3650,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                           activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
-                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name,
+                             isSalesReturn:kind === "sale" && isNegativeInvoiceQuantity(line.quantity)});
                           if (user) rememberRecentEntity(user.id, companyId, "item",
                             {id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
@@ -3641,7 +3666,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                           activeLineKey.current=line.key;
                           if (!line.sourceItem) return;
                           setHeaderItem(line.sourceItem);
-                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name});
+                          onChooseItem({id:line.sourceItem.id,name:line.sourceItem.name,
+                             isSalesReturn:kind === "sale" && isNegativeInvoiceQuantity(line.quantity)});
                           if (user) rememberRecentEntity(user.id, companyId, "item",
                             {id:line.sourceItem.id,name:line.sourceItem.name});
                         }}
