@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { transaction } from "../db.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
+import { scanDailyItemOrderReminders } from "./item-order-reminders.ts";
 import {scanDueMemoSchedules} from "./memo-reminders.ts";
 import {
   emitNotification,
@@ -116,7 +117,10 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
           "SELECT 1 FROM legacy_import_runs WHERE company_id=$1 AND status<>'completed' AND (defer_projections OR status='rebuilding') LIMIT 1",
           [companyId],
         );
-        if(!importing.rowCount)await scanInventoryNotifications(client, companyId);
+        if (!importing.rowCount) {
+          await scanInventoryNotifications(client, companyId);
+          await scanDailyItemOrderReminders(client, companyId);
+        }
       });
     } catch (error) {
       // One broken company must not delay notifications for every other company.
