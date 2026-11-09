@@ -20,7 +20,7 @@ export const emptyOrderDraftState = (): NumberedOrderDraftState =>
 
 function validItem(value: unknown): value is OrderDraftItem {
   if (!value || typeof value !== "object") return false;
-  const row = value as Partial<TemporaryChosenItem>;
+  const row = value as Partial<OrderDraftItem>;
   return Number.isSafeInteger(row.id) && (row.id ?? 0) > 0
     && typeof row.name === "string" && row.name.length <= 500
     && typeof row.code === "string" && row.code.length <= 100;
