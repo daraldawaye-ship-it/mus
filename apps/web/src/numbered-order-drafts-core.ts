@@ -2,8 +2,15 @@ import type { TemporaryChosenItem } from "./temporary-item-list";
 
 // Drafts belong only to this user's browser. Nothing here posts invoices/orders.
 /** A stored quantity is a first-unit planning snapshot from the API. */
-export type OrderDraftItem = TemporaryChosenItem & { requiredQuantity?: string };
-export type NumberedOrderDraft = { id: number; createdAt: string; items: OrderDraftItem[] };
+export type OrderDraftItem = TemporaryChosenItem & {
+  requiredQuantity?: string;
+  sourceOptionName?: string;
+  deleted?: boolean;
+};
+export type NumberedOrderDraft = {
+  id: number; createdAt: string; items: OrderDraftItem[];
+  sourceOptionName?: string;
+};
 export const ORDER_DRAFT_LIFETIME_MS = 8 * 60 * 60 * 1000;
 export type NumberedOrderDraftState = { nextId: number; drafts: NumberedOrderDraft[] };
 export const MAX_NEW_ORDER_DRAFT_ITEMS = 2_000;
@@ -30,8 +37,12 @@ function uniqueItems(source: unknown, global: Set<number>, limit: number): Order
     const requiredQuantity = typeof row.requiredQuantity === "string"
       && /^[1-9]\d{0,15}$/.test(row.requiredQuantity)
       ? row.requiredQuantity : undefined;
+    const sourceOptionName = typeof row.sourceOptionName === "string"
+      ? row.sourceOptionName.trim().slice(0, 80) : "";
     rows.push({ id: row.id, name: row.name, code: row.code,
-      ...(requiredQuantity ? { requiredQuantity } : {}) });
+      ...(requiredQuantity ? { requiredQuantity } : {}),
+      ...(sourceOptionName ? { sourceOptionName } : {}),
+      ...(row.deleted === true ? { deleted: true } : {}) });
     if (rows.length >= limit) break;
   }
   return rows;
@@ -60,7 +71,10 @@ export function normalizeOrderDrafts(value: unknown, now = Date.now()): Numbered
     if (createdMs + ORDER_DRAFT_LIFETIME_MS <= now) continue;
     // Existing v1 draft may contain up to 5000 lines; never discard on upgrade.
     const items = uniqueItems(draft.items, seenItemIds, 5_000);
-    drafts.push({ id: draft.id, createdAt: new Date(createdMs).toISOString(), items });
+    const sourceOptionName = typeof draft.sourceOptionName === "string"
+      ? draft.sourceOptionName.trim().slice(0, 80) : "";
+    drafts.push({ id: draft.id, createdAt: new Date(createdMs).toISOString(), items,
+      ...(sourceOptionName ? { sourceOptionName } : {}) });
   }
   const highest = highestSeenId;
   const storedNext = Number.isSafeInteger(source.nextId) && (source.nextId ?? 0) > 0
@@ -87,10 +101,14 @@ export type CreateOrderDraftResult = {
 /** Never append to an old draft. Create a new numbered draft per successful transfer. */
 export function createNumberedOrderDraft(
   rawState: NumberedOrderDraftState, incoming: OrderDraftItem[], now = Date.now(),
+  sourceOptionName?: string,
 ): CreateOrderDraftResult {
   const state = normalizeOrderDrafts(rawState, now);
   const alreadyInDrafts = new Set(state.drafts.flatMap(draft => draft.items.map(item => item.id)));
-  const items = uniqueItems(incoming, alreadyInDrafts, MAX_NEW_ORDER_DRAFT_ITEMS + 1);
+  const label = sourceOptionName?.trim().slice(0, 80);
+  const items = uniqueItems(incoming.map(item => ({
+    ...item, ...(label ? { sourceOptionName: label } : {}),
+  })), alreadyInDrafts, MAX_NEW_ORDER_DRAFT_ITEMS + 1);
   const skipped = incoming.length - items.length;
   if (items.length > MAX_NEW_ORDER_DRAFT_ITEMS) return {
     state, id: null, added: 0, skipped,
@@ -103,7 +121,10 @@ export function createNumberedOrderDraft(
   };
   const id = state.nextId;
   return {
-    state: { nextId: id + 1, drafts: [...state.drafts, { id, createdAt: new Date(now).toISOString(), items }] },
+    state: { nextId: id + 1, drafts: [...state.drafts, {
+      id, createdAt: new Date(now).toISOString(), items,
+      ...(label ? { sourceOptionName: label } : {}),
+    }] },
     id, added: items.length, skipped, error: null,
   };
 }
@@ -122,19 +143,41 @@ export function removeNumberedOrderDraftItem(
     : draft) };
 }
 
+/** Soft deletion leaves the original item and its provenance available for restoring.
+ * The item continues reserving its ID across drafts to prevent duplicates. */
+export function setOrderDraftItemDeleted(
+  state: NumberedOrderDraftState, draftId: number, itemId: number, deleted: boolean,
+): NumberedOrderDraftState {
+  return { ...state, drafts: state.drafts.map(draft => draft.id === draftId
+    ? { ...draft, items: draft.items.map(item => item.id === itemId
+      ? { ...item, ...(deleted ? { deleted: true } : { deleted: undefined }) } : item) }
+    : draft) };
+}
+
+/** Edit first-unit quantity without changing other draft records or timestamps. */
+export function setOrderDraftItemQuantity(
+  state: NumberedOrderDraftState, draftId: number, itemId: number, quantity: string,
+): NumberedOrderDraftState {
+  if (!/^[1-9]\\d{0,15}$/.test(quantity)) return state;
+  return { ...state, drafts: state.drafts.map(draft => draft.id === draftId
+    ? { ...draft, items: draft.items.map(item => item.id === itemId
+      ? { ...item, requiredQuantity: quantity } : item) }
+    : draft) };
+}
+
 /** A saved ordered filter group replaces ALL device drafts, not appends.
  * Build every draft in memory, then persist once; if a stage is invalid,
  * browser storage fails or no stage matches, old drafts remain untouched.
  */
 export function buildReplacementOrderDrafts(
-  stages: OrderDraftItem[][], now=Date.now(),
+  stages: OrderDraftItem[][], now=Date.now(), sourceOptionNames: string[] = [],
 ): {state:NumberedOrderDraftState|null; error:string|null; added:number; skipped:number} {
   if(!stages.length || stages.length>20) return {
     state:null,error:"حدّد من 1 إلى 20 مجموعة خيارات بترتيبها",added:0,skipped:0,
   };
   let state=emptyOrderDraftState(), added=0, skipped=0;
-  for(const items of stages){
-    const stage=createNumberedOrderDraft(state,items,now);
+  for(const [index, items] of stages.entries()){
+    const stage=createNumberedOrderDraft(state,items,now,sourceOptionNames[index]);
     if(stage.error) return {state:null,error:stage.error,added:0,skipped:0};
     state=stage.state;
     added+=stage.added;
