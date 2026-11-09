@@ -395,3 +395,16 @@ test("order draft defaults to highest required value, rounds visible stock/sales
   assert.match(css, /Denser order-draft figures on mobile/);
   assert.match(css, /item-order-drafts-mobile-bottom > span:nth-child\(7\)/);
 });
+
+
+test("deleted draft item keeps its value for both desktop/mobile sorting while header totals exclude it", () => {
+  const page = readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx", "utf8");
+  const metrics = page.slice(page.indexOf("const metricRequests ="), page.indexOf("const metricBatches ="));
+  const totals = page.slice(page.indexOf("const draftValuesInput ="), page.indexOf("const draftValuesQuery ="));
+  assert.match(metrics, /requiredQuantity: row\.item\.requiredQuantity \?\? null/);
+  assert.doesNotMatch(metrics, /row\.item\.deleted \? null/);
+  assert.match(totals, /filter\(item => !item\.deleted\)/);
+  assert.match(page, /case "value": return info\?\.requiredPurchaseValue \?\? "0"/);
+  assert.equal((page.match(/formatNumber\(info\?\.requiredPurchaseValue\)/g) ?? []).length, 2);
+  assert.doesNotMatch(page, /row\.item\.deleted \? "—" : formatNumber\(info\?\.requiredPurchaseValue\)/);
+});
