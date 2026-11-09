@@ -30,7 +30,19 @@ const records = `SELECT r.*,r.work_date::text AS work_date,r.start_time::text AS
  FROM attendance_records r LEFT JOIN LATERAL (
  SELECT sum(eligible_microseconds) FILTER(WHERE kind='worked') AS paid_microseconds,sum(points) AS awarded_points
  FROM attendance_point_entries WHERE company_id=r.company_id AND attendance_record_id=r.id
- ) points ON true`;
+ ) points ON true
+ LEFT JOIN LATERAL (
+  SELECT p.status,COALESCE(NULLIF(v.display_name,''),v.name) AS reviewer
+  FROM attendance_punch_approvals p LEFT JOIN users v ON v.id=p.decided_by
+  WHERE p.company_id=r.company_id AND p.record_id=r.id AND p.kind='check-in'
+  ORDER BY p.id DESC LIMIT 1
+ ) checkin_approval ON true
+ LEFT JOIN LATERAL (
+  SELECT p.status,COALESCE(NULLIF(v.display_name,''),v.name) AS reviewer
+  FROM attendance_punch_approvals p LEFT JOIN users v ON v.id=p.decided_by
+  WHERE p.company_id=r.company_id AND p.record_id=r.id AND p.kind='check-out'
+  ORDER BY p.id DESC LIMIT 1
+ ) checkout_approval ON true`;
 const schedules = `SELECT s.*,s.start_time::text AS start_time,s.end_time::text AS end_time,b.name AS branch_name FROM employee_schedules s
  JOIN branches b ON b.company_id=s.company_id AND b.id=s.branch_id`;
 const seconds = (microseconds: unknown) =>
@@ -61,6 +73,9 @@ const recordDTO = (row: QueryResultRow): AttendanceRecord => ({
   points: String(row.awarded_points ?? "0"),
   closeSource: row.close_source ?? (row.checked_out_at ? "manual" : null),
   needsReview: row.needs_review ?? false,
+  checkInApprovedBy: row.checkin_approval?.status === "approved" ? row.checkin_approval.reviewer : null,
+  checkOutApprovalStatus: row.checkout_approval?.status ?? null,
+  checkOutDecidedBy: row.checkout_approval?.reviewer ?? null,
 });
 const scheduleDTO = (row: QueryResultRow): AttendanceSchedule => ({
   employeeId: row.employee_id,
@@ -248,6 +263,11 @@ export function attendanceRoutes(pool: Pool) {
             : await permissionRuleEffects(client, companyId, ownId);
         const punch =
           !!ownId && effects.get("company.attendance:create") !== "deny";
+        const pendingCheckIn = ownId ? (await client.query(
+          `SELECT id::text,requested_at AS "requestedAt" FROM attendance_punch_approvals
+           WHERE company_id=$1 AND employee_id=$2 AND kind='check-in' AND status='pending'
+           ORDER BY id DESC LIMIT 1`,[companyId,ownId],
+        )).rows[0] ?? null : null;
         const query = listQuery(
           req.query,
           {
@@ -289,7 +309,8 @@ export function attendanceRoutes(pool: Pool) {
           openRecord: open ? recordDTO(open) : null,
           todayRecord: today ? recordDTO(today) : null,
           selfEmployeeId: ownId,
-          canCheckIn: punch && !open,
+          canCheckIn: punch && !open && !pendingCheckIn,
+          pendingCheckIn,
           canCheckOut: punch && !!open,
           ownSettings: ownId
             ? await getAttendanceSettings(client, companyId, ownId)
@@ -471,100 +492,38 @@ export function attendanceRoutes(pool: Pool) {
     base + "/check-in",
     handler(async (req, res) => {
       const input = parse(attendanceCheckInSchema, req.body);
-      const record = await transaction(pool, async (client) => {
-        const { companyId, user, context } = await access(client, req, true),
-          employee = context.employee;
+      const result = await transaction(pool, async client => {
+        const { companyId, user, context } = await access(client, req, true);
+        const employee = context.employee;
         if (!employee) deny("يلزم ربط حسابك بموظف فعال لتسجيل حضورك");
-        const previous = (
-          await client.query(
-            records +
-              " WHERE r.company_id=$1 AND r.employee_id=$2 AND r.idempotency_key=$3",
-            [companyId, employee.id, input.idempotencyKey],
-          )
-        ).rows[0];
-        if (previous) return recordDTO(previous);
+        const existing = (await client.query(
+          `SELECT id::text,status,record_id FROM attendance_punch_approvals
+           WHERE company_id=$1 AND employee_id=$2 AND kind='check-in' AND idempotency_key=$3`,
+          [companyId,employee.id,input.idempotencyKey],
+        )).rows[0];
+        if (existing) return { record: null, approvalStatus: existing.status };
+        const open = (await client.query(
+          records+" WHERE r.company_id=$1 AND r.employee_id=$2 AND r.checked_out_at IS NULL",
+          [companyId,employee.id],
+        )).rows[0];
+        if (open) return { record: recordDTO(open), approvalStatus: "approved" };
+        const pending = (await client.query(
+          `SELECT id FROM attendance_punch_approvals WHERE company_id=$1 AND employee_id=$2
+           AND kind='check-in' AND status='pending'`,[companyId,employee.id],
+        )).rows[0];
+        if (pending) return { record: null, approvalStatus: "pending" };
         const time = await clock(client);
-        const open = (
-          await client.query(
-            records +
-              " WHERE r.company_id=$1 AND r.employee_id=$2 AND r.checked_out_at IS NULL",
-            [companyId, employee.id],
-          )
-        ).rows[0];
-        if (open) {
-          const expired = (
-            await client.query(
-              "SELECT $1::timestamptz>=checked_in_at+(automatic_checkout_hours * interval '1 hour') AS expired FROM attendance_records WHERE company_id=$2 AND id=$3",
-              [time.instant, companyId, open.id],
-            )
-          ).rows[0]?.expired;
-          if (!expired) return recordDTO(open);
-          await closeAttendanceRecord(client, {
-            companyId,
-            recordId: open.id,
-            actorUser: null,
-            now: time.instant,
-          });
-        }
-        const settings = await getAttendanceSettings(
-          client,
-          companyId,
-          employee.id,
-        );
-        if (settings.defaultDailyHours !== null)
-          await client.query(
-            "INSERT INTO attendance_day_policies(company_id,employee_id,work_date,default_daily_hours,allow_overtime) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-            [
-              companyId,
-              employee.id,
-              time.today,
-              settings.defaultDailyHours,
-              settings.allowOvertime,
-            ],
-          );
-        const inserted = (
-          await client.query(
-            `INSERT INTO attendance_records(company_id,employee_id,employee_name,work_date,checked_in_at,idempotency_key,created_by,updated_by,
-    hourly_points,default_daily_hours,expected_start_time,allow_overtime,settings_revision,automatic_checkout_hours) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-            [
-              companyId,
-              employee.id,
-              employee.name,
-              time.today,
-              time.instant,
-              input.idempotencyKey,
-              user.id,
-              settings.hourlyPoints,
-              settings.defaultDailyHours,
-              settings.expectedStartTime,
-              settings.allowOvertime,
-              settings.revision,
-              await attendanceAutoHours(client, companyId),
-            ],
-          )
-        ).rows[0];
-        await awardAttendanceCheckIn(client, companyId, inserted.id, user);
-        const after = recordDTO(
-          (
-            await client.query(records + " WHERE r.company_id=$1 AND r.id=$2", [
-              companyId,
-              inserted.id,
-            ])
-          ).rows[0],
-        );
-        await audit(
-          client,
-          user,
-          "attendance.checkIn",
-          "attendance",
-          after.id,
-          null,
-          after,
-          companyId,
-        );
-        return after;
+        const inserted = (await client.query(
+          `INSERT INTO attendance_punch_approvals(company_id,employee_id,requester_user_id,kind,
+              idempotency_key,requested_at,work_date)
+           VALUES($1,$2,$3,'check-in',$4,$5,$6) RETURNING id`,
+          [companyId,employee.id,user.id,input.idempotencyKey,time.instant,time.today],
+        )).rows[0];
+        await audit(client,user,"attendance.checkIn.request","attendance-approval",
+          Number(inserted.id),null,{employeeId:employee.id,status:"pending"},companyId);
+        return { record: null, approvalStatus: "pending" };
       });
-      res.json({ record });
+      res.json(result);
     }),
   );
   router.post(
@@ -584,13 +543,21 @@ export function attendanceRoutes(pool: Pool) {
         ).rows[0];
         if (!row) missing();
         if (row.checked_out_at) return recordDTO(row);
-        return recordDTO(
-          await closeAttendanceRecord(client, {
-            companyId,
-            recordId: input.recordId,
-            actorUser: user,
-          }),
-        );
+        // Departure takes effect now even when the supervisor later rejects
+        // its separate acknowledgement.
+        const saved = recordDTO(await closeAttendanceRecord(client, {
+          companyId, recordId: input.recordId, actorUser: user,
+        }));
+        const inserted = (await client.query(
+          `INSERT INTO attendance_punch_approvals(company_id,employee_id,requester_user_id,
+            kind,record_id,requested_at,work_date)
+           VALUES($1,$2,$3,'check-out',$4,$5,$6::date)
+           ON CONFLICT DO NOTHING RETURNING id`,
+          [companyId,employee.id,user.id,input.recordId,saved.checkedOutAt,saved.workDate],
+        )).rows[0];
+        if (inserted) await audit(client,user,"attendance.checkOut.request","attendance-approval",
+          Number(inserted.id),null,{recordId:input.recordId,status:"pending"},companyId);
+        return saved;
       });
       res.json({ record });
     }),
