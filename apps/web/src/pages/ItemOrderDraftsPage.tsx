@@ -307,6 +307,37 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       {groupsQuery.error && <Notice tone="error">{errorMessage(groupsQuery.error)}</Notice>}
       {groupMessage && <Notice tone={groupMessage.error ? "error" : "success"}>{groupMessage.text}</Notice>}
     </Card>
+    <Card title="قيمة الطلبيات بعد تعديل الكميات">
+      {draftValuesQuery.isPending && drafts.drafts.length > 0 &&
+        <small role="status" className="muted">جارٍ حساب قيم المسودات…</small>}
+      {draftValuesQuery.isError &&
+        <Notice tone="error">تعذر حساب قيم المسودات: {errorMessage(draftValuesQuery.error)}</Notice>}
+      <div className="item-order-drafts-total">
+        <strong>إجمالي جميع المسودات:</strong>
+        <span>{draftValuesQuery.data
+          ? (grandTotals.size > 0 ? [...grandTotals].map(([currency, amount], i) =>
+              <span key={currency}>{i > 0 ? " ؛ " : ""}
+                <bdi>{formatScaledTotal(amount)} {currency}</bdi>
+              </span>) : "0")
+          : "—"}</span>
+      </div>
+      <div className="item-order-drafts-total-list">
+        {drafts.drafts.map(draft => {
+          const value = draftTotalsById.get(draft.id);
+          return <div key={draft.id} className="item-order-drafts-total-row">
+            <strong>مسودة {draft.id} — {draft.sourceOptionName ?? "خيارات متعددة"}</strong>
+            <span>{value
+              ? (value.totals.length ? value.totals.map((total, i) =>
+                  <span key={total.currencyCode}>{i > 0 ? " ؛ " : ""}
+                    <bdi>{formatNumber(total.value)} {total.currencyCode}</bdi>
+                  </span>) : "0") : "—"}
+              {value && value.missingCount > 0 &&
+                <small className="muted"> ({value.missingCount} صنف دون سعر أو كمية)</small>}
+            </span>
+          </div>;
+        })}
+      </div>
+    </Card>
     <Card title={"المسودات: " + drafts.drafts.length + " — الأصناف الفعالة: " + activeCount + " — المحذوفة: " + removedCount}>
       <div className="item-order-drafts-filters">
         <label>البحث عن صنف أو اسم خيارات
@@ -329,6 +360,30 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           </select>
         </label>
       </div>
+      <div className="item-order-drafts-mobile-sort">
+        <label>ترتيب حسب العمود
+          <select aria-label="ترتيب مسودات الطلبيات حسب العمود" value={sortKey ?? ""}
+            onChange={event => {
+              setSortKey((event.target.value || null) as DraftSortKey | null);
+              setSortDir("asc"); resetPage();
+            }}>
+            <option value="">ترتيب المسودات الأصلي</option>
+            <option value="quantity">الكمية المطلوبة</option>
+            <option value="name">اسم الصنف</option>
+            <option value="stock">الكمية المتوفرة</option>
+            <option value="sold">الكمية المباعة في شهر</option>
+            <option value="month">مرات المبيعات في شهر</option>
+            <option value="year">مرات المبيعات في سنة</option>
+            <option value="price">سعر الشراء</option>
+            <option value="value">قيمة المطلوب</option>
+            <option value="option">اسم الخيارات</option>
+          </select>
+        </label>
+        <Button variant="secondary" disabled={!sortKey}
+          onClick={() => {setSortDir(value => value === "asc" ? "desc" : "asc"); resetPage();}}>
+          {sortDir === "asc" ? "▲ تصاعدي" : "▼ تنازلي"}
+        </Button>
+      </div>
       <div className="item-order-drafts-bulk">
         <span>إجمالي الأصناف المطابقة: <bdi>{filtered.length.toLocaleString("en-US")}</bdi></span>
         <Button type="button" variant="secondary" disabled={!visibleActiveIds.length}
@@ -340,8 +395,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         <Button type="button" variant="danger" disabled={!selectedActiveIds.length || groupBusy}
           onClick={deleteSelected}>حذف المحدد ({selectedActiveIds.length})</Button>
       </div>
-      {metricsQuery.isFetching && <small className="muted" role="status">جارٍ تحديث مؤشرات المبيعات والسعر والقيمة…</small>}
-      {metricsQuery.error && <Notice tone="error">تعذر تحميل مؤشرات الأصناف: {errorMessage(metricsQuery.error)}</Notice>}
+      {metricsLoading && <small className="muted" role="status">جارٍ تحديث مؤشرات المبيعات والسعر والقيمة…</small>}
+      {metricsError && <Notice tone="error">تعذر تحميل مؤشرات الأصناف: {errorMessage(metricsError)}</Notice>}
       {!drafts.drafts.length && <Notice>لا توجد مسودات محفوظة على هذا الجهاز حاليًا. أنشئ مسودة أو اختر تجميعًا أعلاه.</Notice>}
       {!!drafts.drafts.length && <div className="table-scroll item-order-drafts-table-scroll" role="region"
         aria-label="قائمة أصناف جميع المسودات">
@@ -352,12 +407,16 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 disabled={!visibleActiveIds.length} checked={allVisibleSelected}
                 onChange={event => selectVisible(event.target.checked)} />
             </th>
-            <th>اسم الصنف</th><th>اسم الخيارات</th>
-            <th>المتوفر دون المرتجعات (و1)</th>
-            <th>الكمية المباعة في شهر (و1)</th>
-            <th>المبيعات مرات في شهر</th><th>المبيعات مرات في سنة</th>
-            <th>سعر الشراء</th><th>الكمية المطلوبة (و1)</th>
-            <th>قيمة المطلوب</th><th>الإجراء</th>
+            {sortHeader("quantity", "الكمية المطلوبة (و1)")}
+            {sortHeader("name", "اسم الصنف")}
+            {sortHeader("stock", "المتوفر دون المرتجعات (و1)")}
+            {sortHeader("sold", "الكمية المباعة في شهر (و1)")}
+            {sortHeader("month", "المبيعات مرات في شهر")}
+            {sortHeader("year", "المبيعات مرات في سنة")}
+            {sortHeader("price", "سعر الشراء")}
+            {sortHeader("value", "قيمة المطلوب")}
+            <th>الإجراء</th>
+            {sortHeader("option", "اسم الخيارات")}
           </tr></thead>
           <tbody>{visible.map(row => {
             const info = metricsById.get(row.item.id);
@@ -368,26 +427,68 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                   disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
                   onChange={event => selectItem(row.item.id, event.target.checked)} />
               </td>
-              <td data-label="اسم الصنف"><Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
-                {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}</td>
-              <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
-              <td data-label="المتوفر دون المرتجعات"><bdi>{formatNumber(info?.availableUnit1)}</bdi></td>
-              <td data-label="المباع في شهر"><bdi>{formatNumber(info?.saleQuantityMonth)}</bdi></td>
+              <td data-label="الكمية المطلوبة">
+                <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                  onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
+              </td>
+              <td data-label="اسم الصنف">
+                <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
+                {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
+              </td>
+              <td data-label="المتوفر دون المرتجعات">
+                <span className="item-order-drafts-stock-quantity"><bdi>{formatNumber(info?.availableUnit1)}</bdi></span>
+              </td>
+              <td data-label="المباع في شهر">
+                <span className="item-order-drafts-sold-quantity"><bdi>{formatNumber(info?.saleQuantityMonth)}</bdi></span>
+              </td>
               <td data-label="مرات شهر"><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
               <td data-label="مرات سنة"><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
-              <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi>
-                {info && <small className="item-options-currency">{info.purchaseCurrencyCode}</small>}</td>
-              <td data-label="الكمية المطلوبة"><DraftQuantityInput item={row.item}
-                factor={info?.purchaseFactor}
-                onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} /></td>
-              <td data-label="قيمة المطلوب"><bdi>{row.item.deleted ? "—" : formatNumber(info?.requiredPurchaseValue)}</bdi>
-                {!row.item.deleted && info && <small className="item-options-currency">{info.purchaseCurrencyCode}</small>}</td>
+              <td data-label="سعر الشراء"><bdi>{formatNumber(info?.purchasePrice)}</bdi></td>
+              <td data-label="قيمة المطلوب"><bdi>{row.item.deleted ? "—" : formatNumber(info?.requiredPurchaseValue)}</bdi></td>
               <td data-label="الإجراء">{action(row)}</td>
+              <td data-label="اسم الخيارات" title={"مسودة " + row.draftId}>{optionName(row)}</td>
             </tr>;
           })}
           {!filtered.length && <tr><td colSpan={11}>لا توجد أصناف مطابقة للبحث.</td></tr>}
           </tbody>
         </table>
+      </div>}
+      {!!drafts.drafts.length && <div className="item-order-drafts-mobile-list" aria-label="متابعة الأصناف على الهاتف">
+        {visible.map(row => {
+          const info = metricsById.get(row.item.id);
+          return <article className={"item-order-drafts-mobile-card" +
+            (row.item.deleted ? " item-order-draft-deleted" : "")}
+            key={row.draftId + ":" + row.item.id}>
+            <div className="item-order-drafts-mobile-top">
+              <input type="checkbox" aria-label={"اختيار " + row.item.name}
+                disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
+                onChange={event => selectItem(row.item.id, event.target.checked)} />
+              <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
+              <span className="item-order-drafts-mobile-name">
+                <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
+                {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
+              </span>
+              {action(row)}
+            </div>
+            <div className="item-order-drafts-mobile-bottom" role="group"
+              aria-label={"مؤشرات الصنف " + row.item.name}>
+              <span title="المتوفر دون مخازن المرتجعات">
+                <small>المتوفر</small><bdi className="item-order-drafts-stock-quantity">{formatNumber(info?.availableUnit1)}</bdi>
+              </span>
+              <span title="الكمية المباعة في شهر">
+                <small>المباع</small><bdi className="item-order-drafts-sold-quantity">{formatNumber(info?.saleQuantityMonth)}</bdi>
+              </span>
+              <span title="المبيعات مرات في شهر"><small>مرات شهر</small><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></span>
+              <span title="المبيعات مرات في سنة"><small>مرات سنة</small><bdi>{formatNumber(info?.saleTimesYear)}</bdi></span>
+              <span title="سعر الشراء"><small>سعر الشراء</small><bdi>{formatNumber(info?.purchasePrice)}</bdi></span>
+              <span title="قيمة المطلوب"><small>قيمة المطلوب</small>
+                <bdi>{row.item.deleted ? "—" : formatNumber(info?.requiredPurchaseValue)}</bdi></span>
+              <span title={"مسودة " + row.draftId}><small>اسم الخيارات</small>{optionName(row)}</span>
+            </div>
+          </article>;
+        })}
+        {!filtered.length && <p className="muted">لا توجد أصناف مطابقة للبحث.</p>}
       </div>}
       {pages > 1 && <div className="form-actions item-order-drafts-pagination">
         <Button variant="secondary" disabled={currentPage <= 1}
