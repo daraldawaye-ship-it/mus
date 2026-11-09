@@ -158,7 +158,7 @@ export function setOrderDraftItemDeleted(
 export function setOrderDraftItemQuantity(
   state: NumberedOrderDraftState, draftId: number, itemId: number, quantity: string,
 ): NumberedOrderDraftState {
-  if (!/^[1-9]\\d{0,15}$/.test(quantity)) return state;
+  if (!/^[1-9]\d{0,15}$/.test(quantity)) return state;
   return { ...state, drafts: state.drafts.map(draft => draft.id === draftId
     ? { ...draft, items: draft.items.map(item => item.id === itemId
       ? { ...item, requiredQuantity: quantity } : item) }
