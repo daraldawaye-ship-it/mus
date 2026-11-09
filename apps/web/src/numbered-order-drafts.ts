@@ -161,7 +161,7 @@ export function useNumberedOrderDrafts(
     setItemDeleted(draftId, itemId, true), [setItemDeleted]);
 
   const updateItemQuantity = useCallback((draftId: number, itemId: number, quantity: string) => {
-    if (!key || !/^[1-9]\\d{0,15}$/.test(quantity)) {
+    if (!key || !/^[1-9]\d{0,15}$/.test(quantity)) {
       setError("الكمية المطلوبة يجب أن تكون عددًا صحيحًا موجبًا.");
       return false;
     }
