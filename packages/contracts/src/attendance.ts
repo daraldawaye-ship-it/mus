@@ -141,6 +141,9 @@ export interface AttendanceRecord {
   points: string;
   closeSource: "manual" | "automatic" | null;
   needsReview: boolean;
+  checkInApprovedBy: string | null;
+  checkOutApprovalStatus: "pending" | "approved" | "rejected" | null;
+  checkOutDecidedBy: string | null;
 }
 export interface AttendanceDailySummary {
   closedSeconds: string;
@@ -158,6 +161,7 @@ export interface AttendanceDirectory extends Page<AttendanceRecord> {
   todayRecord: AttendanceRecord | null;
   selfEmployeeId: number | null;
   canCheckIn: boolean;
+  pendingCheckIn: { id: string; requestedAt: string } | null;
   canCheckOut: boolean;
   ownSettings: EmployeeAttendanceSettings | null;
   dailySummary: AttendanceDailySummary;
