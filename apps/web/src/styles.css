@@ -8522,3 +8522,44 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-table th:nth-child(11) { width: 8%; }
 .item-order-drafts-table th:nth-child(12) { width: 8%; }
 .item-order-drafts-table td:not(:nth-child(3)):not(:nth-child(12)) { text-align: center; }
+
+/* Special-item reorder alert and temporary order stops in the expandable
+   third draft line; the alert threshold remains independent of the stop date. */
+.item-order-draft-stop-field { flex: 1 1 270px; }
+.item-order-draft-stop-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+.item-order-draft-stop-buttons {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.item-order-draft-stop-buttons > button {
+  font-size: 11px;
+  min-height: 30px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.item-order-draft-extra-field small { font-size: 10px; line-height: 1.4; }
+@media (max-width: 680px) {
+  .item-order-drafts-mobile-third-row .item-order-draft-stop-field {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .item-order-drafts-mobile-third-row .item-order-draft-extra-field:nth-child(3) {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .item-order-draft-stop-buttons > button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .item-order-drafts-mobile-third-row .item-special-order-quick-edit {
+    width: min(100%, 230px);
+  }
+}
