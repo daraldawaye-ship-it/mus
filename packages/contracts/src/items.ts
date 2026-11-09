@@ -25,6 +25,12 @@ export const itemWholeQuantitySchema = z
     z.string().regex(/^\d{1,22}$/, "الكمية عدد صحيح موجب أو صفر حتى 22 رقمًا"),
   )
   .transform((value) => BigInt(value).toString());
+// A multiplier (1.2 = a 20% markup), not a percentage with a 100% base.
+export const itemProfitFactorSchema = z.string().trim().transform(normalizeDigits)
+  .pipe(z.string().regex(/^\\d{1,4}(?:\\.\\d{1,4})?$/, "أدخل نسبة ربح صحيحة بأربع منازل عشرية"))
+  .refine(value => Number(value) >= 1, "نسبة الربح الافتراضية لا تقل عن 1");
+export const itemOrderAlertQuantitySchema = itemWholeQuantitySchema.nullable();
+
 const phone = z
   .string()
   .trim()
@@ -165,6 +171,8 @@ const itemFields = z
     salePrice2: amountSchema.default("0"),
     salePrice3: amountSchema.default("0"),
     purchasePrice: amountSchema.default("0"),
+    defaultProfitFactor: itemProfitFactorSchema.default("1.2"),
+    orderAlertQuantity: itemOrderAlertQuantitySchema.default(null),
     commissionRate: commissionPercent.default("0"),
     clearanceFrom: documentDateSchema.nullable().default(null),
     clearanceTo: documentDateSchema.nullable().default(null),
@@ -342,6 +350,8 @@ export interface Item extends ItemIdentity {
   salePrice2: string;
   salePrice3: string;
   purchasePrice: string;
+  defaultProfitFactor: string;
+  orderAlertQuantity: string | null;
   commissionRate: string;
   clearanceFrom: string | null;
   clearanceTo: string | null;
@@ -477,6 +487,8 @@ export const itemCatalog = {
     salePrice2: "0",
     salePrice3: "0",
     purchasePrice: "0",
+    defaultProfitFactor: "1.2",
+    orderAlertQuantity: null,
     saleNotes: "",
     productForm: "عام",
     commissionRate: "0",
