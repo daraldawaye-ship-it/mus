@@ -3051,6 +3051,67 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 2147483647
+        },
+        "productForm": {
+          "type": "string",
+          "enum": [
+            "اقراص",
+            "كبسول",
+            "شراب",
+            "امبول",
+            "فيال",
+            "محلول وريدي",
+            "محلول خارجي",
+            "قطر عين/اذن",
+            "مرهم عين",
+            "قطر شرب",
+            "فيال شراب",
+            "تحاميل",
+            "قطعه",
+            "بخاخ",
+            "مرهم",
+            "كريم",
+            "جل",
+            "جل فم",
+            "دش مهبلي",
+            "سائل",
+            "فوار",
+            "مصوص",
+            "مضمضه",
+            "بودر",
+            "شرائح",
+            "صابون",
+            "شامبو",
+            "حليب بودر",
+            "زيت",
+            "تيوب",
+            "غذاء اكفال",
+            "حزام/رباط",
+            "قطعة",
+            "عام"
+          ],
+          "default": "عام"
+        },
+        "saleNotes": {
+          "type": "string",
+          "maxLength": 1000,
+          "default": ""
+        },
+        "priceSplitThreshold": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{1,22}(?:\\.\\d{1,6})?$",
+          "default": null
+        },
+        "originalItemId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": null
         }
       },
       "required": [
@@ -3455,256 +3516,409 @@
     "queryFields": [],
     "bodyContract": "itemPatchSchema",
     "bodySchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 120
-        },
-        "imageId": {
-          "default": null,
-          "anyOf": [
-            {
+      "anyOf": [
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "name": {
               "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "minLength": 1,
+              "maxLength": 120
             },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "englishName": {
-          "default": "",
-          "type": "string",
-          "maxLength": 120
-        },
-        "shelf": {
-          "default": "",
-          "type": "string",
-          "maxLength": 100
-        },
-        "shelfId": {
-          "anyOf": [
-            {
+            "imageId": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "englishName": {
+              "default": "",
+              "type": "string",
+              "maxLength": 120
+            },
+            "shelf": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100
+            },
+            "shelfId": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "barcode": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "legacyId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "agentId": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "compositionId": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "unit1Name": {
+              "default": "باكت",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "unit2Name": {
+              "default": "",
+              "type": "string",
+              "maxLength": 120
+            },
+            "unit3Name": {
+              "default": "",
+              "type": "string",
+              "maxLength": 120
+            },
+            "factor2": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "factor3": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "defaultSaleUnit": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 1
+                },
+                {
+                  "type": "number",
+                  "const": 2
+                },
+                {
+                  "type": "number",
+                  "const": 3
+                }
+              ]
+            },
+            "salePrice1": {
+              "type": "string"
+            },
+            "salePrice2": {
+              "type": "string"
+            },
+            "salePrice3": {
+              "type": "string"
+            },
+            "purchasePrice": {
+              "type": "string"
+            },
+            "commissionRate": {
+              "type": "string"
+            },
+            "clearanceFrom": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "clearanceTo": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settlementApprovalDate": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settlementDisplayDate": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "purchaseFactor": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "currencyId": {
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 2147483647
             },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "barcode": {
-          "type": "string",
-          "maxLength": 80
-        },
-        "legacyId": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "agentId": {
-          "default": null,
-          "anyOf": [
-            {
+            "reorderLimit": {
+              "type": "string"
+            },
+            "orderQuantity": {
+              "type": "string"
+            },
+            "reserveQuantity": {
+              "type": "string"
+            },
+            "searchKeys": {
+              "default": "",
+              "type": "string",
+              "maxLength": 1000
+            },
+            "purchaseNotes": {
+              "default": "",
+              "type": "string",
+              "maxLength": 1000
+            },
+            "orderStoppedUntil": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "hasExpiry": {
+              "default": true,
+              "type": "boolean"
+            },
+            "active": {
+              "default": true,
+              "type": "boolean"
+            },
+            "revision": {
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 2147483647
-            },
-            {
-              "type": "null"
             }
-          ]
+          },
+          "required": [
+            "name",
+            "currencyId",
+            "revision"
+          ],
+          "additionalProperties": false
         },
-        "compositionId": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
+        {
+          "type": "object",
+          "properties": {
+            "changes": {
+              "type": "object",
+              "properties": {
+                "productForm": {
+                  "type": "string",
+                  "enum": [
+                    "اقراص",
+                    "كبسول",
+                    "شراب",
+                    "امبول",
+                    "فيال",
+                    "محلول وريدي",
+                    "محلول خارجي",
+                    "قطر عين/اذن",
+                    "مرهم عين",
+                    "قطر شرب",
+                    "فيال شراب",
+                    "تحاميل",
+                    "قطعه",
+                    "بخاخ",
+                    "مرهم",
+                    "كريم",
+                    "جل",
+                    "جل فم",
+                    "دش مهبلي",
+                    "سائل",
+                    "فوار",
+                    "مصوص",
+                    "مضمضه",
+                    "بودر",
+                    "شرائح",
+                    "صابون",
+                    "شامبو",
+                    "حليب بودر",
+                    "زيت",
+                    "تيوب",
+                    "غذاء اكفال",
+                    "حزام/رباط",
+                    "قطعة",
+                    "عام"
+                  ]
+                },
+                "compositionId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "englishName": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "additionalProperties": false,
+              "minProperties": 1
             },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "unit1Name": {
-          "default": "باكت",
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 120
-        },
-        "unit2Name": {
-          "default": "",
-          "type": "string",
-          "maxLength": 120
-        },
-        "unit3Name": {
-          "default": "",
-          "type": "string",
-          "maxLength": 120
-        },
-        "factor2": {
-          "type": [
-            "number",
-            "string"
-          ]
-        },
-        "factor3": {
-          "type": [
-            "number",
-            "string"
-          ]
-        },
-        "defaultSaleUnit": {
-          "anyOf": [
-            {
-              "type": "number",
-              "const": 1
+            "expected": {
+              "type": "object",
+              "properties": {
+                "productForm": {
+                  "type": "string",
+                  "enum": [
+                    "اقراص",
+                    "كبسول",
+                    "شراب",
+                    "امبول",
+                    "فيال",
+                    "محلول وريدي",
+                    "محلول خارجي",
+                    "قطر عين/اذن",
+                    "مرهم عين",
+                    "قطر شرب",
+                    "فيال شراب",
+                    "تحاميل",
+                    "قطعه",
+                    "بخاخ",
+                    "مرهم",
+                    "كريم",
+                    "جل",
+                    "جل فم",
+                    "دش مهبلي",
+                    "سائل",
+                    "فوار",
+                    "مصوص",
+                    "مضمضه",
+                    "بودر",
+                    "شرائح",
+                    "صابون",
+                    "شامبو",
+                    "حليب بودر",
+                    "زيت",
+                    "تيوب",
+                    "غذاء اكفال",
+                    "حزام/رباط",
+                    "قطعة",
+                    "عام"
+                  ]
+                },
+                "compositionId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "englishName": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "additionalProperties": false
             },
-            {
-              "type": "number",
-              "const": 2
-            },
-            {
-              "type": "number",
-              "const": 3
-            }
-          ]
-        },
-        "salePrice1": {
-          "type": "string"
-        },
-        "salePrice2": {
-          "type": "string"
-        },
-        "salePrice3": {
-          "type": "string"
-        },
-        "purchasePrice": {
-          "type": "string"
-        },
-        "commissionRate": {
-          "type": "string"
-        },
-        "clearanceFrom": {
-          "default": null,
-          "anyOf": [
-            {
+            "mode": {
               "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            },
-            {
-              "type": "null"
+              "enum": [
+                "last-write-wins"
+              ]
             }
-          ]
-        },
-        "clearanceTo": {
-          "default": null,
-          "anyOf": [
-            {
-              "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "settlementApprovalDate": {
-          "default": null,
-          "anyOf": [
-            {
-              "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "settlementDisplayDate": {
-          "default": null,
-          "anyOf": [
-            {
-              "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "purchaseFactor": {
-          "type": [
-            "number",
-            "string"
-          ]
-        },
-        "currencyId": {
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 2147483647
-        },
-        "reorderLimit": {
-          "type": "string"
-        },
-        "orderQuantity": {
-          "type": "string"
-        },
-        "reserveQuantity": {
-          "type": "string"
-        },
-        "searchKeys": {
-          "default": "",
-          "type": "string",
-          "maxLength": 1000
-        },
-        "purchaseNotes": {
-          "default": "",
-          "type": "string",
-          "maxLength": 1000
-        },
-        "orderStoppedUntil": {
-          "default": null,
-          "anyOf": [
-            {
-              "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "hasExpiry": {
-          "default": true,
-          "type": "boolean"
-        },
-        "active": {
-          "default": true,
-          "type": "boolean"
-        },
-        "revision": {
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 2147483647
+          },
+          "required": [
+            "changes",
+            "expected"
+          ],
+          "additionalProperties": false
         }
-      },
-      "required": [
-        "name",
-        "currencyId",
-        "revision"
-      ],
-      "additionalProperties": false
+      ]
     },
     "source": "routes-items.ts"
   },
