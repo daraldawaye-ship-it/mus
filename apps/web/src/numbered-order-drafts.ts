@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   buildReplacementOrderDrafts, createNumberedOrderDraft, emptyOrderDraftState, migrateLegacyOrderDraft,
-  normalizeOrderDrafts, removeNumberedOrderDraft, removeNumberedOrderDraftItem,
-  type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
+  normalizeOrderDrafts, removeNumberedOrderDraft, setOrderDraftItemDeleted,
+  setOrderDraftItemQuantity, type NumberedOrderDraftState, type OrderDraftItem, ORDER_DRAFT_LIFETIME_MS,
 } from "./numbered-order-drafts-core";
 
 const EVENT = "alraesy-numbered-order-drafts-changed";
@@ -110,10 +110,10 @@ export function useNumberedOrderDrafts(
     }
   }, [key]);
 
-  const createDraft = useCallback((incoming: OrderDraftItem[]) => {
+  const createDraft = useCallback((incoming: OrderDraftItem[], sourceOptionName?: string) => {
     if (!key) return null;
     const before = readOrderDrafts(key, oldKey);
-    const created = createNumberedOrderDraft(before, incoming);
+    const created = createNumberedOrderDraft(before, incoming, Date.now(), sourceOptionName);
     if (created.error) {
       setError(created.error);
       return null;
@@ -126,9 +126,9 @@ export function useNumberedOrderDrafts(
     return { id: created.id, added: created.added, skipped: created.skipped };
   }, [key, oldKey, save]);
 
-  const replaceFromPresetGroup = useCallback((stages: OrderDraftItem[][]) => {
+  const replaceFromPresetGroup = useCallback((stages: OrderDraftItem[][], sourceOptionNames: string[] = []) => {
     if(!key) return null;
-    const built=buildReplacementOrderDrafts(stages);
+    const built=buildReplacementOrderDrafts(stages,Date.now(),sourceOptionNames);
     if(built.error || !built.state){
       setError(built.error ?? "تعذر تجهيز مسودات التجميع");
       return null;
@@ -147,14 +147,31 @@ export function useNumberedOrderDrafts(
     return save(removeNumberedOrderDraft(before, draftId));
   }, [key, oldKey, save]);
 
-  const removeItem = useCallback((draftId: number, itemId: number) => {
+  const setItemDeleted = useCallback((draftId: number, itemId: number, deleted: boolean) => {
     if (!key) return false;
     const before = readOrderDrafts(key, oldKey);
-    if (!before.drafts.some(draft => draft.id === draftId &&
-      draft.items.some(item => item.id === itemId))) return false;
-    return save(removeNumberedOrderDraftItem(before, draftId, itemId));
+    const found = before.drafts.some(draft => draft.id === draftId &&
+      draft.items.some(item => item.id === itemId));
+    if (!found) return false;
+    return save(setOrderDraftItemDeleted(before, draftId, itemId, deleted));
   }, [key, oldKey, save]);
 
-  return { drafts: state.drafts, createDraft, replaceFromPresetGroup, deleteDraft, removeItem,
-    error, enabled: !!key };
+  // Legacy button name retained for callers; "remove" now marks instead of erasing.
+  const removeItem = useCallback((draftId: number, itemId: number) =>
+    setItemDeleted(draftId, itemId, true), [setItemDeleted]);
+
+  const updateItemQuantity = useCallback((draftId: number, itemId: number, quantity: string) => {
+    if (!key || !/^[1-9]\\d{0,15}$/.test(quantity)) {
+      setError("الكمية المطلوبة يجب أن تكون عددًا صحيحًا موجبًا.");
+      return false;
+    }
+    const before = readOrderDrafts(key, oldKey);
+    const found = before.drafts.some(draft => draft.id === draftId &&
+      draft.items.some(item => item.id === itemId && !item.deleted));
+    if (!found) return false;
+    return save(setOrderDraftItemQuantity(before, draftId, itemId, quantity));
+  }, [key, oldKey, save]);
+
+  return { drafts: state.drafts, createDraft, replaceFromPresetGroup, deleteDraft,
+    removeItem, setItemDeleted, updateItemQuantity, error, enabled: !!key };
 }
