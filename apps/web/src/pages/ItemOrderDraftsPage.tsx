@@ -34,6 +34,18 @@ const formatNumber = (value?: string | null) => {
   return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (fraction ? "." + fraction : "");
 };
 
+/** One decimal place in the display only, leaving precise item data unchanged.
+ * Preserve the distinction between zero and a tiny nonzero fractional quantity. */
+const formatStockSaleQuantity = (value?: string | null) => {
+  if (value == null || value === "") return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return formatNumber(value);
+  if (Number.isInteger(number)) return formatNumber(value);
+  const rounded = Math.round((Math.abs(number) + Number.EPSILON) * 10) / 10;
+  if (rounded === 0) return number < 0 ? ">−0.1" : "<0.1";
+  return formatNumber((number < 0 ? "-" : "") + rounded.toFixed(1));
+};
+
 function DraftQuantityInput({ item, factor, onSave }: {
   item: OrderDraftItem; factor: number | undefined;
   onSave: (quantity: string) => boolean;
@@ -95,8 +107,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [draftFilter, setDraftFilter] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
-  const [sortKey, setSortKey] = useState<DraftSortKey | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [groupBusy, setGroupBusy] = useState(false);
@@ -436,10 +448,10 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </td>
               <td data-label="المتوفر دون المرتجعات">
-                <span className="item-order-drafts-stock-quantity"><bdi>{formatNumber(info?.availableUnit1)}</bdi></span>
+                <span className="item-order-drafts-stock-quantity"><bdi>{formatStockSaleQuantity(info?.availableUnit1)}</bdi></span>
               </td>
               <td data-label="المباع في شهر">
-                <span className="item-order-drafts-sold-quantity"><bdi>{formatNumber(info?.saleQuantityMonth)}</bdi></span>
+                <span className="item-order-drafts-sold-quantity"><bdi>{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi></span>
               </td>
               <td data-label="مرات شهر"><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></td>
               <td data-label="مرات سنة"><bdi>{formatNumber(info?.saleTimesYear)}</bdi></td>
@@ -474,10 +486,10 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
             <div className="item-order-drafts-mobile-bottom" role="group"
               aria-label={"مؤشرات الصنف " + row.item.name}>
               <span title="المتوفر دون مخازن المرتجعات">
-                <small>المتوفر</small><bdi className="item-order-drafts-stock-quantity">{formatNumber(info?.availableUnit1)}</bdi>
+                <small>المتوفر</small><bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(info?.availableUnit1)}</bdi>
               </span>
               <span title="الكمية المباعة في شهر">
-                <small>المباع</small><bdi className="item-order-drafts-sold-quantity">{formatNumber(info?.saleQuantityMonth)}</bdi>
+                <small>المباع</small><bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi>
               </span>
               <span title="المبيعات مرات في شهر"><small>مرات شهر</small><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></span>
               <span title="المبيعات مرات في سنة"><small>مرات سنة</small><bdi>{formatNumber(info?.saleTimesYear)}</bdi></span>
