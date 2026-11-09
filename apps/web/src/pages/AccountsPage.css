@@ -1,0 +1,71 @@
+/* Accounts list: two thirds for the directory, one third for a selected account. */
+.accounts-split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.accounts-split-layout > * { min-width: 0; }
+.accounts-split-layout > .card { min-width: 0; }
+.accounts-detail-pane {
+  min-width: 0;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.accounts-name-actions {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.accounts-name-actions > .value-cell { min-width: 0; }
+.accounts-action-select {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  text-align: center;
+  text-align-last: center;
+  background: var(--surface, #1a2937);
+  color: inherit;
+  border: 1px solid var(--border, #526477);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+}
+.accounts-action-select:focus-visible { outline: 2px solid var(--accent, #7eb9ff); outline-offset: 1px; }
+.accounts-pane-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.accounts-pane-heading strong { overflow-wrap: anywhere; }
+.accounts-pane-close {
+  border: 1px solid var(--border, #526477);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.accounts-ledger-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.accounts-ledger-totals { display: grid; gap: 5px; margin: 12px 0; font-size: .9em; }
+.accounts-ledger-scroll { max-width: 100%; overflow-x: auto; }
+.accounts-ledger-table { width: 100%; border-collapse: collapse; min-width: 360px; font-size: .86em; }
+.accounts-ledger-table th, .accounts-ledger-table td { padding: 7px 5px; text-align: start; border-bottom: 1px solid var(--border, #526477); vertical-align: top; }
+.accounts-ledger-table th { white-space: nowrap; }
+.accounts-ledger-pager { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 10px; }
+.accounts-ledger-full { display: inline-block; margin-top: 12px; }
+@media (max-width: 900px) {
+  .accounts-split-layout { grid-template-columns: minmax(0, 1fr); }
+  .accounts-detail-pane { max-height: none; overflow: visible; }
+  .accounts-detail-pane:empty { display: none; }
+}
