@@ -6,6 +6,7 @@ import { signedStockMovementQuantity } from "../stock-movement-display";
 import {
   lazy,
   Suspense,
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -1203,6 +1204,11 @@ type ItemInfoHistoryRow = {
   unitPriceFirstUnit?: string;
   currencyCode?: string;
   isStaged?: boolean;
+  invoiceNet?: string | null;
+  invoiceDiscount?: string | null;
+  byName?: string | null;
+  doctorName?: string | null;
+  notes?: string | null;
 };
 /** Format stock to exactly one displayed decimal, without losing conversion precision. */
 function alternativeFirstUnitText(
@@ -1288,6 +1294,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, s
     try { window.localStorage.setItem(storageKey, value); } catch { /* Storage may be disabled. */ }
   }
   const isInvoiceView = view === "purchase" || view === "sale" || view === "sale-return";
+  const isSalesHistoryView = view === "sale" || view === "sale-return";
   const peers = alternatives.data?.peers;
   return (
     <>
@@ -1387,6 +1394,55 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, s
               {history.data?.items.length === 0 && <small>لا توجد حركات سابقة للصنف في هذا القسم.</small>}
               {history.data && history.data.items.length > 0 && (
                 <div className="invoice-item-options-scroll" role="region" tabIndex={0} aria-label={`جدول ${selectedLabel}`}>
+                  {isSalesHistoryView ? (
+                    <table className="invoice-item-options-table invoice-item-history-sales-table">
+                      <colgroup>
+                        <col style={{width:"15%"}}/><col style={{width:"17%"}}/>
+                        <col style={{width:"28%"}}/><col style={{width:"23%"}}/>
+                        <col style={{width:"17%"}}/>
+                      </colgroup>
+                      <thead><tr>
+                        <th className="invoice-item-options-number">الكمية</th>
+                        <th className="invoice-item-options-number">السعر</th>
+                        <th>التاريخ</th>
+                        <th className="invoice-item-options-number" title="صافي الفاتورة">الصافي</th>
+                        <th className="invoice-item-options-number" title="خصم الفاتورة">الخصم</th>
+                      </tr></thead>
+                      <tbody>{history.data.items.map(row => (
+                        <Fragment key={row.lineId}>
+                          <tr>
+                            <td className="invoice-item-options-number" title={row.quantityFirstUnit}>
+                              <bdi>{row.quantityFirstUnit}</bdi>
+                            </td>
+                            <td className="invoice-item-options-number" title={row.unitPriceFirstUnit ?? "—"}>
+                              <bdi>{formatWholeMoney(row.unitPriceFirstUnit)}</bdi>
+                            </td>
+                            <td dir="ltr" title={row.documentDate}>{row.documentDate}</td>
+                            <td className="invoice-item-options-number" title={row.invoiceNet ?? "—"}>
+                              <bdi>{formatWholeMoney(row.invoiceNet)}</bdi>
+                            </td>
+                            <td className="invoice-item-options-number" title={row.invoiceDiscount ?? "—"}>
+                              <bdi>{formatWholeMoney(row.invoiceDiscount)}</bdi>
+                            </td>
+                          </tr>
+                          <tr className="invoice-item-history-details-row">
+                            <td colSpan={5}>
+                              <div className="invoice-item-history-details">
+                                <span dir="auto" title="بواسطة">{`(${row.byName?.trim() || "—"})`}</span>
+                                <button type="button" className="invoice-item-options-link"
+                                  title={`الحساب: ${row.partyName ?? "غير محدد"}`}
+                                  onClick={() => setAccountFullName(row.partyName ?? "غير محدد")}>
+                                  ({row.partyName || "—"})
+                                </button>
+                                <span dir="auto" title="الطبيب">{`(${row.doctorName?.trim() || "—"})`}</span>
+                                <span dir="auto" title="الملاحظات">{`(${row.notes?.trim() || "—"})`}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      ))}</tbody>
+                    </table>
+                  ) : (
                   <table className="invoice-item-options-table">
                     <colgroup>{isInvoiceView ? (
                       <><col style={{width:"25%"}}/><col style={{width:"35%"}}/>
@@ -1421,6 +1477,7 @@ function InvoiceItemOptions({ context, kind, selectedItemId, selectedItemName, s
                       </tr>
                     ))}</tbody>
                   </table>
+                  )}
                 </div>
               )}
             </>
