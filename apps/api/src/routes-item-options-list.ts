@@ -475,6 +475,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
            GROUP BY activity.item_id
          )
          SELECT i.id AS "itemId",
+           i.revision AS "revision",i.reserve_quantity::text AS "reserveQuantity",
            round((COALESCE(stock.stock_showroom,0)+COALESCE(stock.stock_warehouse,0))
              / greatest(i.factor2::numeric*i.factor3::numeric,1),4)::text AS "availableUnit1",
            round((COALESCE(sale_rank.net_sale_quantity,0)
