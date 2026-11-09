@@ -91,6 +91,7 @@ export function ItemPurchaseFactorQuickEdit({
         persisted.current = String(response.result.purchaseFactor);
         setSaved(true);
         void queryClient.invalidateQueries({ queryKey: ["item-options-list"] });
+        void queryClient.invalidateQueries({ queryKey: ["item-order-draft-review"] });
         void queryClient.invalidateQueries({ queryKey: ["items"] });
         if (latest.current === nextRaw || latest.current === next) {
           latest.current = persisted.current;
