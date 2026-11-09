@@ -8471,9 +8471,14 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .item-order-drafts-mobile-bottom > span:nth-of-type(5) { flex: 0 0 49px; }
   .item-order-drafts-mobile-bottom > span:nth-of-type(6) { flex: 0 0 55px; }
   .item-order-drafts-mobile-bottom > span:nth-of-type(7) {
-    flex: 0 0 86px;
-    min-width: 86px;
-    max-width: 86px;
+    /* Don't reserve an empty 86px box when the option name is short.
+       Keep its text anchored to the purchase-value column in RTL. */
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
+    max-width: 108px;
+    direction: rtl;
+    text-align: right;
     align-items: flex-start;
     white-space: normal;
     overflow: hidden;
