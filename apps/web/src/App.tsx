@@ -1558,8 +1558,8 @@ function Workspace() {
       </div>
       <PresenceHeartbeat userId={user?.id ?? null} />
       <QuickMessageDeliveryStatus userId={user?.id ?? null} />
-      {user && inCompany && company.data && !company.isError && !employeePreview && !visitorOnly &&
-        <AttendanceApprovalBanner key={`${user.id}:${companyId}`} companyId={companyId} />}
+      {user && navigationContext && !employeePreview && !visitorOnly &&
+        <AttendanceApprovalBanner key={`${user.id}:${navigationContext.company.id}`} companyId={navigationContext.company.id} />}
       <AppUpdatePrompt />
       <Dialog
         open={drawer}
