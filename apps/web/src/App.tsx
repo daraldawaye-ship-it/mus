@@ -265,6 +265,9 @@ const DoctorSalesMovementsPage = lazy(() =>
 const ItemOptionsListPage = lazy(() =>
   import("./pages/ItemOptionsListPage").then(m=>({default:m.ItemOptionsListPage})),
 );
+const ItemOrderDraftsPage = lazy(() =>
+  import("./pages/ItemOrderDraftsPage").then(m=>({default:m.ItemOrderDraftsPage})),
+);
 const ItemsPage = lazy(() =>
   import("./pages/ItemsPages").then((module) => ({
     default: module.ItemsPage,
@@ -388,6 +391,7 @@ const companySections = [
   "doctor-sales-movements",
   "sales-time-report",
   "item-options-list",
+  "item-order-drafts",
   "central-access",
   "item",
   "item-agents",
@@ -610,7 +614,10 @@ function CompanyView({
       </Card>
     );
   if (!context) return <Notice tone="error">تعذر العثور على الشركة.</Notice>;
-  const pageKey = section === "memo-detail" ? "company.memo-detail" : pageKeyForLocation(location.pathname, location.search);
+  // The device-local draft manager is a separate route that shares the item-options-list permission.
+  const pageKey = section === "memo-detail" ? "company.memo-detail"
+    : section === "item-order-drafts" ? "company.item-options-list"
+    : pageKeyForLocation(location.pathname, location.search);
   // Sales employees can view the account statement of a specific pledge only.
   // The ordinary account ledger remains controlled by its cashier-only policy.
   const pledgeParams = new URLSearchParams(location.search);
@@ -830,6 +837,10 @@ function CompanyContent({
     case "item-options-list":
       return <Suspense fallback={<Notice>جارٍ تحميل قائمة الأصناف…</Notice>}>
         <ItemOptionsListPage key={context.company.id} context={context}/>
+      </Suspense>;
+    case "item-order-drafts":
+      return <Suspense fallback={<Notice>جارٍ تحميل متابعة مسودات الطلبيات…</Notice>}>
+        <ItemOrderDraftsPage key={context.company.id} context={context}/>
       </Suspense>;
     case "central-access":
       return <Suspense fallback={<Notice>جارٍ تحميل مركز الصلاحيات…</Notice>}>
