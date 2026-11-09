@@ -164,7 +164,7 @@ export function commerceRoutes(pool: Pool): Router {
         pageSizeRaw === "10" ? 10 : pageSizeRaw === "5" ? 5 : 0;
       if (page < 1 || pageSize === 0)
         throw new HttpError(400, "invalid_query", "صفحة حركات الصنف غير صالحة.");
-      if (type !== "purchase" && type !== "sale" &&
+      if (type !== "purchase" && type !== "sale" && type !== "sale-return" &&
           type !== "adjustment" && type !== "transfer")
         throw new HttpError(400, "invalid_query", "نوع تاريخ الصنف غير صالح.");
       const items = await readCommerce(pool, req, async (client, companyId) => {
@@ -174,7 +174,7 @@ export function commerceRoutes(pool: Pool): Router {
         );
         if (!found.rowCount)
           throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
-        if (type === "purchase" || type === "sale") {
+        if (type === "purchase" || type === "sale" || type === "sale-return") {
           // Each side of the history is independently bounded BEFORE unioning.
           // Posted dates come from the incrementally maintained daily activity;
           // staged lines use their own indexed, incrementally maintained source cache.
@@ -198,13 +198,15 @@ export function commerceRoutes(pool: Pool): Router {
                FROM (
                  SELECT document_date FROM item_daily_activity
                  WHERE company_id=$1 AND item_id=$2
-                   AND CASE WHEN $3='sale' THEN sale_invoices>0 ELSE purchase_invoices>0 END
+                   AND CASE WHEN $3='sale-return' THEN sale_return_invoices>0
+                     WHEN $3='sale' THEN sale_invoices>0 ELSE purchase_invoices>0 END
                  ORDER BY document_date DESC LIMIT ($4::bigint+$5::bigint)
                ) days
                JOIN invoices i ON i.company_id=$1 AND i.document_date=days.document_date
-                 AND i.kind=$3
+                 AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
                JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
-                 AND il.item_id=$2 AND il.smallest_quantity>0
+                 AND il.item_id=$2 AND CASE WHEN $3='sale-return'
+                   THEN il.smallest_quantity<0 ELSE il.smallest_quantity>0 END
                UNION ALL
                SELECT ('staged:'||l.source_system||':'||l.source_id||':'||
                    l.line_number::text) AS "lineId",
@@ -224,7 +226,9 @@ export function commerceRoutes(pool: Pool): Router {
                  l.line_number AS "sortLine"
                FROM (
                  SELECT * FROM staged_invoice_item_lines_cache
-                 WHERE company_id=$1 AND item_id=$2 AND kind=$3 AND quantity>0
+                 WHERE company_id=$1 AND item_id=$2
+                   AND kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
+                   AND CASE WHEN $3='sale-return' THEN quantity<0 ELSE quantity>0 END
                  ORDER BY document_date DESC,source_id DESC,line_number DESC
                  LIMIT ($4::bigint+$5::bigint)
                ) l
