@@ -11,6 +11,7 @@ import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
+import { ItemSpecialOrderQuantityQuickEdit, ItemOrderStopQuickActions } from "../ItemSpecialOrderQuickActions";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
@@ -20,6 +21,7 @@ type DraftPrintMode = "all" | number;
 type DraftPrintRow = { id: string; name: string; requiredQuantity?: string; heading?: boolean };
 type DraftMetrics = {
   itemId: number; revision: number; reserveQuantity: string;
+  orderAlertQuantity: string | null; orderStoppedUntil: string | null;
   availableUnit1: string; saleQuantityMonth: string;
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
@@ -379,6 +381,21 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           purchaseFactor={info.purchaseFactor} canEdit={canEditPlanning} />
           : <small>جارٍ تحميل بيانات الصنف…</small>}
       </div>
+      <div className="item-order-draft-extra-field">
+        <strong>كمية طلب الأصناف الخاصة</strong>
+        {info ? <ItemSpecialOrderQuantityQuickEdit companyId={companyId}
+          itemId={row.item.id} revision={info.revision}
+          orderAlertQuantity={info.orderAlertQuantity} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل بيانات الصنف…</small>}
+        <small className="muted">التذكير يعمل حتى لو كان الصنف موقوف الطلب؛ إخلاء الحقل فقط يوقف الإشعار.</small>
+      </div>
+      <div className="item-order-draft-extra-field item-order-draft-stop-field">
+        <strong>إيقاف طلب الصنف</strong>
+        {info ? <ItemOrderStopQuickActions companyId={companyId}
+          itemId={row.item.id} itemName={row.item.name} revision={info.revision}
+          orderStoppedUntil={info.orderStoppedUntil} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل بيانات الصنف…</small>}
+      </div>
       {!canEditPlanning && <small className="muted">
         هذه الحقول للعرض فقط حتى تُمنح صلاحية تعديل قائمة الأصناف.
       </small>}
@@ -386,7 +403,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const togglePlanning = (id: number) => setExpandedItemId(current => current === id ? null : id);
   const moreButton = (row: DraftRow) =>
     <button type="button" className="item-order-draft-expand-button"
-      aria-label={"إظهار أو إخفاء كمية الاحتياط وعامل الشراء للصنف " + row.item.name}
+      aria-label={"إظهار أو إخفاء بيانات الطلب والاحتياط والإيقاف للصنف " + row.item.name}
       aria-expanded={expandedItemId === row.item.id}
       title={expandedItemId === row.item.id ? "إخفاء التفاصيل" : "إظهار المزيد"}
       onClick={() => togglePlanning(row.item.id)}>⋯</button>;
