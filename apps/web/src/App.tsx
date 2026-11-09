@@ -611,11 +611,22 @@ function CompanyView({
     );
   if (!context) return <Notice tone="error">تعذر العثور على الشركة.</Notice>;
   const pageKey = section === "memo-detail" ? "company.memo-detail" : pageKeyForLocation(location.pathname, location.search);
+  // Sales employees can view the account statement of a specific pledge only.
+  // The ordinary account ledger remains controlled by its cashier-only policy.
+  const pledgeParams = new URLSearchParams(location.search);
+  const pledgeAccountId = pledgeParams.get("accountId") ?? "";
+  const salesPledgeLedger = section === "account-ledger" &&
+    pageKey === "company.account-ledger" &&
+    pledgeParams.get("pledge") === "1" &&
+    /^[1-9]\\d*$/.test(pledgeAccountId) &&
+    !!context.employee?.positions.includes("sales") &&
+    context.permissions.includes("commerce.view");
   return (
     <PageRouteGuard
-      key={`${user?.id}:${context.company.id}:${pageKey}`}
+      key={`${user?.id}:${context.company.id}:${pageKey}:${salesPledgeLedger ? "pledge" : "standard"}`}
       pageKey={pageKey}
       companyId={context.company.id}
+      allowPledgeLedger={salesPledgeLedger}
     >
       {reportPrintLayout(pageKey) === "generic" ? (
         <div className="company-report-printable">
