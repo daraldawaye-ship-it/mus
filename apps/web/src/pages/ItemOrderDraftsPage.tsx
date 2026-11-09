@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
@@ -7,12 +8,19 @@ import { normalizeDigits } from "../../../../packages/contracts/src/masters.ts";
 import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { useNumberedOrderDrafts } from "../numbered-order-drafts";
+import { usePageDirectory } from "../page-directory";
+import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
+import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
+import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
 
 type DraftRow = { draftId: number; draftOptionName?: string; item: OrderDraftItem };
+type DraftPrintMode = "all" | number;
+type DraftPrintRow = { id: string; name: string; requiredQuantity?: string; heading?: boolean };
 type DraftMetrics = {
-  itemId: number; availableUnit1: string; saleQuantityMonth: string;
+  itemId: number; revision: number; reserveQuantity: string;
+  availableUnit1: string; saleQuantityMonth: string;
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
 };
@@ -105,6 +113,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const drafts = useNumberedOrderDrafts(companyId, user?.id);
+  const directory = usePageDirectory(companyId);
+  const itemListAccess = directory.data?.find(entry => entry.key === "company.item-options-list");
+  const canEditPlanning = !!itemListAccess?.enabled && !!itemListAccess.actionAccess.edit;
   const [search, setSearch] = useState("");
   const [draftFilter, setDraftFilter] = useState("all");
   const [status, setStatus] = useState("all");
@@ -113,6 +124,10 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
+  const [printMode, setPrintMode] = useState<DraftPrintMode>("all");
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [draftActionNotice, setDraftActionNotice] = useState("");
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupMessage, setGroupMessage] = useState<{ error: boolean; text: string } | null>(null);
   const groupBase = "/companies/" + companyId + "/item-options-list/preset-groups";
@@ -123,6 +138,63 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   });
   const groups = groupsQuery.data?.items ?? [];
   const currentGroup = groups.find(group => String(group.id) === selectedGroupId);
+  // Use all active records, not the current search page. A deleted row is
+  // excluded from printing but remains in the editable local draft.
+  const printableRows = (mode: DraftPrintMode): DraftPrintRow[] =>
+    drafts.drafts.filter(draft => mode === "all" || draft.id === mode)
+      .flatMap(draft => {
+        const lines = draft.items.filter(item => !item.deleted);
+        if (!lines.length) return [];
+        const entries: DraftPrintRow[] = lines.map(item => ({
+          id: draft.id + ":" + item.id,
+          name: item.name,
+          requiredQuantity: item.requiredQuantity ?? "—",
+        }));
+        return mode === "all"
+          ? [{ id: "heading:" + draft.id,
+              name: "مسودة " + draft.id + " — " + (draft.sourceOptionName ?? "خيارات متعددة"),
+              heading: true }, ...entries] : entries;
+      });
+  const printRows = printableRows(printMode);
+  const allPrintable = printableRows("all");
+  const printDraft = (mode: DraftPrintMode) => {
+    if (!printableRows(mode).length) return;
+    flushSync(() => setPrintMode(mode));
+    window.print();
+  };
+  const exportDraftPdf = async (mode: DraftPrintMode) => {
+    if (exportingPdf) return;
+    const items = printableRows(mode);
+    if (!items.length) return;
+    setExportingPdf(true);
+    setDraftActionNotice("");
+    try {
+      const pdf = createTwoColumnItemNamesPdf(items.map(item => ({
+        name: item.name,
+        requiredQuantity: item.heading ? undefined : item.requiredQuantity,
+      })));
+      const filename = "item-order-" + (mode === "all" ? "all" : "draft-" + mode) +
+        "-" + new Date().toLocaleDateString("en-CA") + ".pdf";
+      const result = await exportPdfToDevice(pdf, filename);
+      setDraftActionNotice(result === "shared"
+        ? "أُنشئ PDF وأُرسل إلى خيارات المشاركة للحفظ أو الإرسال."
+        : "تم تجهيز ملف PDF وتنزيله عبر المتصفح.");
+    } catch (cause) {
+      setDraftActionNotice("تعذر تصدير PDF: " + errorMessage(cause));
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+  const deleteWholeDraft = (id: number, count: number) => {
+    if (!window.confirm("هل تريد حذف مسودة " + id + " نهائيًا بكل أصنافها (" + count +
+      ") من هذا الجهاز؟ لا يمكن إرجاع المسودة المحذوفة، وستظل المسودات الأخرى كما هي.")) return;
+    if (drafts.deleteDraft(id)) {
+      setSelectedIds(new Set());
+      setExpandedItemId(null);
+      setDraftFilter("all");
+      setDraftActionNotice("تم حذف المسودة " + id + " نهائيًا من الجهاز.");
+    }
+  };
   const rows = useMemo<DraftRow[]>(() => drafts.drafts.flatMap(draft =>
     draft.items.map(item => ({ draftId: draft.id,
       draftOptionName: draft.sourceOptionName, item }))), [drafts.drafts]);
