@@ -407,20 +407,33 @@ export function attendanceRoutes(pool: Pool) {
    ),earnings AS (
     SELECT employee_id,COALESCE(sum(eligible_microseconds) FILTER(WHERE kind='worked'),0) AS paid_microseconds,COALESCE(sum(points),0) AS points
     FROM attendance_point_entries WHERE company_id=$1 AND work_date=$2::date GROUP BY employee_id
+   ),approvals AS (
+    SELECT p.employee_id,jsonb_agg(jsonb_build_object(
+      'id',p.id::text,'kind',p.kind,'status',p.status,
+      'requestedAt',p.requested_at,'decidedAt',p.decided_at,
+      'decidedBy',COALESCE(NULLIF(u.display_name,''),u.name),
+      'recordId',p.record_id
+    ) ORDER BY p.requested_at,p.id) AS punch_approvals
+    FROM attendance_punch_approvals p
+    LEFT JOIN users u ON u.id=p.decided_by
+    WHERE p.company_id=$1 AND p.work_date=$2::date
+    GROUP BY p.employee_id
    ),computed AS (
     SELECT e.id AS employee_id,e.name AS employee_name,$2::date AS work_date,first_record.branch_name,
       sessions.checked_in_at,CASE WHEN sessions.has_open THEN NULL ELSE sessions.checked_out_at END AS checked_out_at,
       COALESCE(first_record.expected_start_time,first_record.start_time) AS start_time,NULL::time AS end_time,
       COALESCE(sessions.session_count,0) AS session_count,COALESCE(sessions.review_count,0) AS review_count,
       COALESCE(sessions.closed_seconds,0) AS closed_seconds,COALESCE(earnings.paid_microseconds,0) AS paid_microseconds,COALESCE(earnings.points,0) AS points,
+      COALESCE(approvals.punch_approvals,'[]'::jsonb) AS punch_approvals,
       CASE WHEN sessions.has_open THEN 'open' WHEN sessions.review_count>0 THEN 'missingCheckout' WHEN sessions.session_count>0 THEN 'present' ELSE 'notRecorded' END AS status,
       COALESCE(sessions.checked_in_at>(($2::date+first_record.expected_start_time) AT TIME ZONE 'Asia/Aden')+interval '10 minutes',false) AS is_late,
       CASE WHEN first_record.expected_start_time IS NULL OR sessions.checked_in_at<=(($2::date+first_record.expected_start_time) AT TIME ZONE 'Asia/Aden')+interval '10 minutes' THEN 0 ELSE GREATEST(0,FLOOR(EXTRACT(EPOCH FROM sessions.checked_in_at-(($2::date+first_record.expected_start_time) AT TIME ZONE 'Asia/Aden'))/60))::integer END AS late_minutes,
       CASE WHEN sessions.session_count IS NULL THEN NULL ELSE FLOOR(sessions.closed_seconds/60)::integer END AS worked_minutes,NULL::integer AS early_leave_minutes
     FROM employees e LEFT JOIN session_totals sessions ON sessions.employee_id=e.id LEFT JOIN earnings ON earnings.employee_id=e.id
+    LEFT JOIN approvals ON approvals.employee_id=e.id
     LEFT JOIN LATERAL(SELECT r.branch_name,r.expected_start_time,r.start_time FROM attendance_records r
      WHERE r.company_id=e.company_id AND r.employee_id=e.id AND r.work_date=$2::date ORDER BY r.checked_in_at,r.id LIMIT 1) first_record ON true
-    WHERE e.company_id=$1 AND ($3::integer IS NULL OR e.id=$3) AND (e.active OR sessions.session_count>0 OR earnings.employee_id IS NOT NULL)
+    WHERE e.company_id=$1 AND ($3::integer IS NULL OR e.id=$3) AND (e.active OR sessions.session_count>0 OR earnings.employee_id IS NOT NULL OR approvals.employee_id IS NOT NULL)
    ),filtered AS(SELECT * FROM computed WHERE employee_name ILIKE $4 AND ($5='' OR status=$5 OR ($5='late' AND is_late))) `;
         const summary = (
           await client.query(
@@ -461,6 +474,7 @@ export function attendanceRoutes(pool: Pool) {
           points: row.points,
           sessionCount: row.session_count,
           reviewCount: row.review_count,
+          approvals: row.punch_approvals ?? [],
         }));
         const { paid_microseconds, ...rest } = summary;
         return {
