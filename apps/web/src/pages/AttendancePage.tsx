@@ -483,6 +483,36 @@ function AttendanceContent({ context }: { context: CompanyContext }) {
     </div>
   );
 }
+const shortApprovalTime = (value: string) =>
+  new Intl.DateTimeFormat("ar-YE", {
+    hour: "numeric", minute: "2-digit", timeZone: "Asia/Aden",
+  }).format(new Date(value));
+
+function dailyApprovalCell(row: AttendanceReportRow, kind: "check-in" | "check-out") {
+  const entries = row.approvals.filter((entry) => entry.kind === kind);
+  if (entries.length === 0) {
+    if (row.sessionCount === 0) return "—";
+    if (kind === "check-out" && !row.checkedOutAt) return "لم يسجل الانصراف";
+    return "سجل سابق (دون مصادقة)";
+  }
+  return (
+    <div style={{ display: "grid", gap: 5, minWidth: 175 }}>
+      {entries.map((entry) => (
+        <div key={entry.id} style={{ display: "grid", gap: 2 }}>
+          <span>{entry.status === "approved"
+            ? `مصادق بواسطة ${entry.decidedBy ?? "موظف"}`
+            : entry.status === "rejected"
+              ? `غير مصادق بواسطة ${entry.decidedBy ?? "موظف"}`
+              : "بانتظار المصادقة"}</span>
+          <small className="muted" title={`وقت تسجيل الطلب: ${time(entry.requestedAt)}`}>
+            التسجيل: {shortApprovalTime(entry.requestedAt)}
+          </small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AttendanceDailyReport({
   context,
   resource,
@@ -509,6 +539,18 @@ function AttendanceDailyReport({
       accessorKey: "checkedOutAt",
       header: "آخر انصراف",
       cell: ({ row }) => time(row.original.checkedOutAt),
+    },
+    {
+      id: "checkInApprovals",
+      header: "مصادقة الحضور",
+      enableSorting: false,
+      cell: ({ row }) => dailyApprovalCell(row.original, "check-in"),
+    },
+    {
+      id: "checkOutApprovals",
+      header: "مصادقة الانصراف",
+      enableSorting: false,
+      cell: ({ row }) => dailyApprovalCell(row.original, "check-out"),
     },
     { accessorKey: "sessionCount", header: "الجلسات", enableSorting: false },
     {
