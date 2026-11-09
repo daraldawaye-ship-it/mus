@@ -455,3 +455,24 @@ test("draft action menus print/export and hard-delete a whole draft; item ellips
   assert.match(css, /span:nth-of-type\(7\)/);
   assert.match(css, /position: absolute; top: calc\(100% \+ 4px\)/);
 });
+
+
+test("item-more third line contains special order threshold and three confirmation stops", () => {
+  const page=readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx","utf8");
+  const controls=readFileSync("apps/web/src/ItemSpecialOrderQuickActions.tsx","utf8");
+  assert.match(page,/كمية طلب الأصناف الخاصة/);
+  assert.match(page,/ItemSpecialOrderQuantityQuickEdit/);
+  assert.match(page,/ItemOrderStopQuickActions/);
+  assert.match(page,/التذكير يعمل حتى لو كان الصنف موقوف الطلب/);
+  assert.match(controls,/source === null \? "0" : \(source \+ 1n\)\.toString\(\)/);
+  assert.match(controls,/source === 0n \? null : \(source - 1n\)\.toString\(\)/);
+  assert.match(controls,/value\.trim\(\) === ""/);
+  assert.match(controls,/title:"فارغ ← صفر ← 1 ← 2"/);
+  assert.match(controls,/label:"إيقاف", description:"10 سنوات"/);
+  assert.match(controls,/label:"إيقاف سنة", description:"سنة"/);
+  assert.match(controls,/label:"إيقاف 4 أشهر", description:"4 أشهر"/);
+  assert.match(controls,/window\.confirm/);
+  assert.match(controls,/سيستمر عند بلوغ الحد/);
+  assert.match(controls,/order-alert-quantity/);
+  assert.match(controls,/order-stop-period/);
+});
