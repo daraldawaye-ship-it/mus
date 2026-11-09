@@ -13,6 +13,7 @@ import { inquiryRoutes } from "./routes-inquiries.ts";
 import { medicineMarketRoutes } from "./routes-medicine-market.ts";
 import { taskRoutes } from "./routes-tasks.ts";
 import { attendanceRoutes } from "./routes-attendance.ts";
+import { attendanceApprovalRoutes } from "./routes-attendance-approvals.ts";
 import { attendanceAdjustmentRoutes } from "./routes-attendance-adjustments.ts";
 import { employeeAttendanceRoutes } from "./routes-employee-attendance.ts";
 import { accountRoutes } from "./routes-accounts.ts";
@@ -72,6 +73,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     companyRoutes(pool),
     companyDeviceRoutes(pool),
     attendanceRoutes(pool),
+    attendanceApprovalRoutes(pool),
     attendanceAdjustmentRoutes(pool),
     employeeAttendanceRoutes(pool),
     notificationRoutes(pool),
