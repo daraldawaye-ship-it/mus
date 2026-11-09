@@ -298,6 +298,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.purchase-new", label: "إضافة فاتورة مشتريات", href: `/companies/${company.id}/invoices/new?kind=purchase`, action: "create" },
     { key: "company.purchases", label: "فواتير المشتريات", href: `/companies/${company.id}/purchases`, action: "view" },
     { key: "company.item-options-list", label: "قائمة الأصناف", href: `/companies/${company.id}/item-options-list`, action: "view" },
+    { key: "company.item-options-list", label: "متابعة مسودات الطلبيات", href: `/companies/${company.id}/item-order-drafts`, action: "view" },
     { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
     { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
     { key: "company.doctor-sales-movements", label: "حركة مبيعات الأطباء والممرضين", href: `/companies/${company.id}/doctor-sales-movements`, action: "view" },
@@ -344,7 +345,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         <Card>
           <div className="form-actions">
             {commerceShortcuts.map(shortcut => (
-              <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
+              <Link key={shortcut.href} className="button button-secondary" to={shortcut.href}>
                 {shortcut.label}
               </Link>
             ))}
