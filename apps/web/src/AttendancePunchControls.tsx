@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type {
@@ -55,11 +55,13 @@ export function AttendancePunchControls({
   directory,
   compact = false,
   showPageDirectoryLink = false,
+  extraActions,
 }: {
   companyId: number;
   directory?: AttendanceDirectory;
   compact?: boolean;
   showPageDirectoryLink?: boolean;
+  extraActions?: ReactNode;
 }) {
   const { user } = useSession();
   const client = useQueryClient();
@@ -199,6 +201,7 @@ export function AttendancePunchControls({
                 قائمة الصفحات
               </Link>
             )}
+            {extraActions}
             {!compact && (
               <Button variant="ghost" disabled={pending}
                 onClick={() => void refreshAttendance(client, user?.id, companyId)}>
