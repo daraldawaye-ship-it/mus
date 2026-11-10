@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { compressArchiveGif } from "./archive-gif.ts";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { transaction } from "./db.ts";
@@ -205,6 +206,7 @@ export function archiveRoutes(pool:Pool):Router {
   }));
   router.post("/archive/files",handler(async(req,res)=>{
     const input=parse(upload,req.body),file=decodeFile(input.dataUrl,input.filename);
+    if(file.mime==="image/gif")file.bytes=await compressArchiveGif(file.bytes);
     const result=await transaction(pool,async(db)=>{
       const user=await currentActor(db,actor(req));
       await ensureAccess(db,user,input.companyId,"create");
