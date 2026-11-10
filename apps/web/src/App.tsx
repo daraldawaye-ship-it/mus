@@ -100,6 +100,7 @@ const CentralAccessPage = lazy(() =>
   import("./pages/CentralAccessPage").then(m=>({default:m.CentralAccessPage})),
 );
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
+const MarketFriendReferralsPage = lazy(() => import("./pages/MarketFriendReferralsPage").then(m=>({default:m.MarketFriendReferralsPage})));
 const PageDirectoryPage = lazy(() =>
   import("./pages/PageDirectoryPage").then((module) => ({
     default: module.PageDirectoryPage,
@@ -1379,6 +1380,7 @@ function Workspace() {
               <Route path="/quick-login" element={<QuickLoginPage />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route path="/medicine-market" element={marketLanding} />
+              <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/points" element={<Protected><PageRouteGuard pageKey="public.medicine-market-points"><Suspense fallback={<Notice>جارٍ تحميل إعدادات النقاط…</Notice>}><MedicineMarketPage key={`${user?.id}:points`} tab="points" /></Suspense></PageRouteGuard></Protected>} />
