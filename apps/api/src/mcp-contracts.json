@@ -9654,5 +9654,158 @@
       ],
       "additionalProperties": false
     }
+  },
+  "POST /companies/:companyId/item-compositions/assign-selected": {
+    "queryFields": [],
+    "pathParams": [
+      "companyId"
+    ],
+    "source": "routes-items.ts",
+    "bodyContract": "compositionAssignmentSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "productForm": {
+          "type": "string",
+          "enum": [
+            "اقراص/كبسول",
+            "مرهم/كريم/جل",
+            "شراب",
+            "امبول",
+            "فيال",
+            "محلول وريدي",
+            "محلول خارجي",
+            "قطر عين/اذن/انف",
+            "مرهم عين",
+            "قطر شرب",
+            "فيال شراب",
+            "تحاميل",
+            "قطعه",
+            "بخاخ",
+            "جل فم",
+            "دش مهبلي",
+            "سائل",
+            "فوار",
+            "مصوص",
+            "مضمضه",
+            "بودر",
+            "شرائح",
+            "صابون",
+            "شامبو",
+            "حليب بودر",
+            "زيت",
+            "تيوب",
+            "غذاء اكفال",
+            "حزام/رباط",
+            "قطعة",
+            "عام"
+          ]
+        },
+        "targetCompositionId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "expectedCompositionId": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "expectedProductForm": {
+                "type": "string",
+                "enum": [
+                  "اقراص",
+                  "كبسول",
+                  "اقراص/كبسول",
+                  "مرهم/كريم/جل",
+                  "شراب",
+                  "امبول",
+                  "فيال",
+                  "محلول وريدي",
+                  "محلول خارجي",
+                  "قطر عين/اذن/انف",
+                  "مرهم عين",
+                  "قطر شرب",
+                  "فيال شراب",
+                  "تحاميل",
+                  "قطعه",
+                  "بخاخ",
+                  "مرهم",
+                  "كريم",
+                  "جل",
+                  "جل فم",
+                  "دش مهبلي",
+                  "سائل",
+                  "فوار",
+                  "مصوص",
+                  "مضمضه",
+                  "بودر",
+                  "شرائح",
+                  "صابون",
+                  "شامبو",
+                  "حليب بودر",
+                  "زيت",
+                  "تيوب",
+                  "غذاء اكفال",
+                  "حزام/رباط",
+                  "قطعة",
+                  "عام"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "expectedCompositionId",
+              "expectedProductForm"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "name",
+        "productForm",
+        "idempotencyKey",
+        "items"
+      ],
+      "additionalProperties": false
+    }
   }
 }

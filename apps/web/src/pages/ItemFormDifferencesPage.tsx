@@ -1,13 +1,14 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   productForms, compositionForms, itemFieldPatchSchema, itemCompositionPatchSchema,
   type CompanyContext, type ProductForm, type ItemComposition,
+  compositionAssignmentSchema, type CompositionAssignmentInput,
 } from "../../../../packages/contracts/src/index.ts";
 import { Pencil } from "lucide-react";
 import "../doctor-inline-cells.css";
-import { api, useScopeGuard, useSession } from "../api";
+import { api, ApiFailure, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 import { rememberRecentEntity } from "../recent-entities";
@@ -158,6 +159,90 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   const [inlineError,setInlineError]=useState("");
   const inlineLocks=useRef(new Set<string>());
   const canEdit=context.general||context.permissions.includes("items.manage");
+  const [selected,setSelected]=useState<Map<number,Difference>>(()=>new Map());
+  const [bulkName,setBulkName]=useState("");
+  const [bulkForm,setBulkForm]=useState<ProductForm|"">("");
+  const [bulkTarget,setBulkTarget]=useState<ItemComposition|null>(null);
+  const [bulkFocused,setBulkFocused]=useState(false);
+  const [bulkBusy,setBulkBusy]=useState(false);
+  const [bulkUnknown,setBulkUnknown]=useState(false);
+  const [bulkMessage,setBulkMessage]=useState("");
+  const bulkPending=useRef(false);
+  const bulkRequest=useRef<CompositionAssignmentInput|null>(null);
+  const bulkGuard=useScopeGuard(`company:${companyId}:composition-assignment`);
+  const suggestions=useQuery({
+    queryKey:["composition-assignment-options",user?.id,companyId,bulkName],
+    queryFn:({signal})=>api<{items:ItemComposition[]}>(
+      `/companies/${companyId}/item-compositions?`+new URLSearchParams({
+        q:bulkName.trim(),active:"true",pageSize:"20",sort:"arabicName:asc",
+      }),{signal}),
+    enabled:!!user&&canEdit&&bulkFocused&&!bulkBusy&&!bulkUnknown,
+    staleTime:15000,
+  });
+  const exactTargets=(suggestions.data?.items??[]).filter(composition=>
+    composition.arabicName.trim().toLowerCase()===bulkName.trim().toLowerCase());
+  const resolvedTarget=bulkTarget??(exactTargets.length===1?exactTargets[0]:null);
+  const chosenForm=resolvedTarget?.productForm??bulkForm;
+  useEffect(()=>{
+    setSelected(new Map());setBulkName("");setBulkForm("");setBulkTarget(null);
+    setBulkFocused(false);setBulkBusy(false);setBulkUnknown(false);setBulkMessage("");
+    bulkRequest.current=null;bulkPending.current=false;
+  },[companyId]);
+  function toggle(row:Difference,checked:boolean){
+    if(bulkBusy||bulkUnknown)return;
+    setSelected(previous=>{
+      const next=new Map(previous);
+      if(checked){
+        if(next.size>=500&&!next.has(row.itemId)){
+          setInlineError("الحد الأقصى 500 صنف في عملية الحفظ الواحدة.");return previous;
+        }
+        next.set(row.itemId,row);
+      }else next.delete(row.itemId);
+      return next;
+    });
+  }
+  async function saveAssignment(event:FormEvent){
+    event.preventDefault();
+    if(!canEdit||bulkPending.current)return;
+    if(!bulkUnknown){
+      const parsed=compositionAssignmentSchema.safeParse({
+        name:bulkName,productForm:chosenForm,targetCompositionId:resolvedTarget?.id??null,
+        items:[...selected.values()].sort((a,b)=>a.itemId-b.itemId).map(row=>({
+          id:row.itemId,expectedCompositionId:row.compositionId,expectedProductForm:row.itemForm,
+        })),idempotencyKey:crypto.randomUUID(),
+      });
+      if(!parsed.success){setInlineError(parsed.error.issues[0]?.message??"اختر الأصناف واسم التركيب وشكله.");return;}
+      bulkRequest.current=parsed.data;
+    }
+    if(!bulkRequest.current)return;
+    bulkPending.current=true;setBulkBusy(true);setInlineError("");setBulkMessage("");
+    try{
+      const response=await api<{composition:ItemComposition;itemIds:number[];updatedCount:number;created:boolean}>(
+        `/companies/${companyId}/item-compositions/assign-selected`,{
+          method:"POST",body:bulkRequest.current,signal:bulkGuard.signal,
+        });
+      if(!bulkGuard.isCurrent())return;
+      setBulkUnknown(false);bulkRequest.current=null;setSelected(new Map());
+      setBulkTarget(response.composition);setBulkName(response.composition.arabicName);
+      setBulkForm(response.composition.productForm);
+      setBulkMessage(`تم ${response.created?"إنشاء":"استخدام"} التركيب «${response.composition.arabicName}»؛ حُفظ ارتباط وشكل ${response.itemIds.length} صنفًا.`);
+      void queryClient.invalidateQueries({predicate:({queryKey:key})=>
+        key[1]===user?.id && (
+          (key[0]==="item-form-differences"&&key[2]===companyId) ||
+          (key[0]==="list"&&String(key[2]).startsWith(`company:${companyId}:`)) ||
+          (["items","commerce","master","composition-sheet","composition-assignment-options","company"].includes(String(key[0]))&&key[2]===companyId)
+        )});
+    }catch(error){
+      if(!bulkGuard.isCurrent())return;
+      const uncertain=!(error instanceof ApiFailure)||error.status>=500;
+      setBulkUnknown(uncertain);
+      if(!uncertain)bulkRequest.current=null;
+      setInlineError(errorMessage(error)+(uncertain?" — أعد تأكيد الطلب نفسه للتحقق من الحفظ دون تكراره.":""));
+    }finally{
+      if(bulkGuard.isCurrent()){bulkPending.current=false;setBulkBusy(false);}
+    }
+  }
+
   const q=params.get("q")??"";
   const [search,setSearch]=useState(q);
   const rawStatus=params.get("status");
@@ -222,7 +307,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   };
   const inline=(row:Difference,field:InlineField)=><DifferenceInlineCell
     key={`${companyId}:${row.itemId}:${field}`} row={row} field={field}
-    companyId={companyId} canEdit={canEdit} locks={inlineLocks.current}
+    companyId={companyId} canEdit={canEdit&&!bulkBusy&&!bulkUnknown} locks={inlineLocks.current}
     onFailure={setInlineError} onSaved={value=>{
       setInlineError("");
       const composition=field==="compositionName"||field==="compositionForm";
@@ -258,15 +343,61 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
           <option value="all">كل الأصناف المرتبطة بتراكيب</option>
         </Select>
       </div>
+
+      {canEdit&&<form className="table-filters" aria-label="تركيب الأصناف المختارة"
+        onSubmit={event=>void saveAssignment(event)}>
+        <div className="field" style={{position:"relative",minWidth:260,flex:"1 1 300px"}}>
+          <label htmlFor="bulk-composition-name">اسم التركيب: ابحث عن موجود أو اكتب جديدًا</label>
+          <input id="bulk-composition-name" role="combobox" aria-autocomplete="list"
+            aria-expanded={bulkFocused} aria-controls={bulkFocused?"bulk-composition-options":undefined}
+            autoComplete="off" value={bulkName} maxLength={240}
+            disabled={bulkBusy||bulkUnknown}
+            onFocus={()=>setBulkFocused(true)} onBlur={()=>setBulkFocused(false)}
+            onChange={event=>{setBulkName(event.target.value);setBulkTarget(null);setBulkFocused(true);}}
+            onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();setBulkFocused(false);}}}/>
+          {bulkFocused&&<div id="bulk-composition-options" role="listbox" aria-label="تراكيب موجودة"
+            style={{position:"absolute",top:"100%",insetInline:0,zIndex:30,maxHeight:280,
+              overflowY:"auto",background:"var(--surface, #1b2937)",border:"1px solid #74a9e3",borderRadius:5}}>
+            {suggestions.isFetching&&<small>جارٍ البحث…</small>}
+            {suggestions.error&&<Notice tone="error">{errorMessage(suggestions.error)}</Notice>}
+            {(suggestions.data?.items??[]).map(composition=>
+              <button type="button" role="option" key={composition.id}
+                className="doctor-inline-trigger" aria-selected={bulkTarget?.id===composition.id}
+                onPointerDown={event=>event.preventDefault()}
+                onClick={()=>{
+                  setBulkTarget(composition);setBulkName(composition.arabicName);
+                  setBulkForm(composition.productForm);setBulkFocused(false);
+                }}>{composition.arabicName} — {composition.productForm}</button>)}
+            {!suggestions.isFetching&&!suggestions.error&&!suggestions.data?.items.length&&
+              <small>لا توجد نتائج؛ يمكنك كتابة اسم جديد واختيار شكله ثم الحفظ.</small>}
+          </div>}
+        </div>
+        <Select label="شكل التركيب" value={chosenForm} required
+          disabled={bulkBusy||bulkUnknown||!!resolvedTarget}
+          onChange={event=>setBulkForm(event.target.value as ProductForm|"")}>
+          <option value="">اختر الشكل الصيدلاني</option>
+          {compositionForms.map(form=><option key={form} value={form}>{form}</option>)}
+        </Select>
+        <Button type="submit" disabled={bulkBusy||(!bulkUnknown&&(!selected.size||!bulkName.trim()||!chosenForm))}>
+          {bulkBusy?"جارٍ الحفظ…":bulkUnknown?"إعادة تأكيد الطلب نفسه":"حفظ"}
+        </Button>
+        <span>المختار: {selected.size}</span>
+        <Button type="button" variant="secondary" disabled={bulkBusy||bulkUnknown||!selected.size}
+          onClick={()=>setSelected(new Map())}>إلغاء الاختيار</Button>
+        <small>{resolvedTarget?"سيُستخدم الكرت الموجود وشكله المحفوظ.":"اختيار نتيجة غير إلزامي؛ الاسم الجديد ينشئ كرتًا."}
+          {" "}يتغير شكل الأصناف إلى شكل التركيب؛ أقراص/كبسول ← أقراص، ومرهم/كريم/جل ← مرهم.</small>
+      </form>}
+      {bulkMessage&&<Notice tone="success">{bulkMessage}</Notice>}
       <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح. الإحصائيات مجموع التركيب بأكمله من الجداول المنفصلة، وتظهر «—» عند عدم توفر صلاحية الاطلاع.</p>
       {inlineError&&<Notice tone="error">{inlineError}</Notice>}
       {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       <div className="table-scroll" role="region" tabIndex={0} aria-label="مراجعة اختلاف الشكل">
         <table className="data-table form-differences-table">
           <colgroup>
-            <col style={{width:"20%"}} />
+            <col style={{width:"4%"}} />
+            <col style={{width:"18%"}} />
             <col style={{width:"10%"}} />
-            <col style={{width:"24%"}} />
+            <col style={{width:"22%"}} />
             <col style={{width:"9%"}} />
             <col style={{width:"7%"}} />
             <col style={{width:"7%"}} />
@@ -275,6 +406,22 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
           </colgroup>
           <thead>
             <tr>
+              <th scope="col">
+                <label>اختيار <input type="checkbox" aria-label="اختيار جميع أصناف الصفحة"
+                  disabled={!canEdit||bulkBusy||bulkUnknown||!rows.length}
+                  checked={!!rows.length&&rows.every(row=>selected.has(row.itemId))}
+                  onChange={event=>{
+                    const checked=event.target.checked;
+                    if(checked&&new Set([...selected.keys(),...rows.map(row=>row.itemId)]).size>500){
+                      setInlineError("الحد الأقصى 500 صنف في عملية الحفظ الواحدة.");return;
+                    }
+                    setSelected(previous=>{
+                      const next=new Map(previous);
+                      for(const row of rows)if(checked)next.set(row.itemId,row);else next.delete(row.itemId);
+                      return next;
+                    });
+                  }}/></label>
+              </th>
               {header("itemName")}{header("itemForm")}
               {header("compositionName")}{header("compositionForm")}
               {header("saleTimesYear")}
@@ -286,6 +433,9 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
           <tbody>
             {rows.map(row=>{
               return <tr key={row.itemId}>
+                <td><input type="checkbox" aria-label={`اختيار ${row.itemName}`}
+                  disabled={!canEdit||bulkBusy||bulkUnknown} checked={selected.has(row.itemId)}
+                  onChange={event=>toggle(row,event.target.checked)}/></td>
                 <td>{inline(row,"itemName")}{!row.itemActive?" (مؤرشف)":""}</td>
                 <td>{inline(row,"itemForm")}</td>
                 <td>{inline(row,"compositionName")}{!row.compositionActive?" (مؤرشف)":""}</td>
@@ -307,7 +457,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
                 </td>
               </tr>;
             })}
-            {!rows.length&&!result.isFetching&&<tr><td colSpan={8}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
+            {!rows.length&&!result.isFetching&&<tr><td colSpan={9}>لا توجد أصناف مطابقة للتصفية المختارة.</td></tr>}
           </tbody>
         </table>
       </div>

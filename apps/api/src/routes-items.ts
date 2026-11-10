@@ -9,6 +9,7 @@ import {
   itemAgentPatchSchema,
   itemCompositionSchema,
   itemCompositionPatchSchema,
+  compositionAssignmentSchema,
   itemSchema,
   itemPatchSchema,
   itemFieldPatchSchema,
@@ -16,6 +17,7 @@ import {
   itemShelfPatchSchema,
   arabicShelfLetters,
 } from "../../../packages/contracts/src/index.ts";
+import { assignComposition } from "./services/composition-assignment.ts";
 import { readItemStatistics } from "./services/item-statistics.ts";
 import { readItemActivity } from "./services/item-activity.ts";
 import { addsOnlyPreviouslyInactiveUnits, editsSecondaryUnitsWithoutRescalingStock } from "./services/item-unit-history.ts";
@@ -391,6 +393,17 @@ export function itemRoutes(pool: Pool): Router {
       ));
     }),
   );
+
+  router.post(
+    `${base}/item-compositions/assign-selected`,
+    handler(async(req,res)=>{
+      const input=parse(compositionAssignmentSchema,req.body);
+      const result=await mutateMaster(pool,req,"items.manage",(client,user,companyId)=>
+        assignComposition(client,user,companyId,input));
+      res.json({...result,composition:itemCompositionDTO(result.composition)});
+    }),
+  );
+
   // Bulk import is additive: no item association is changed, and importing
   // the same file twice skips names already present in this company.
   router.post(

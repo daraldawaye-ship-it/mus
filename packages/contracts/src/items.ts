@@ -94,6 +94,24 @@ const compositionFields = z.object({
 });
 export const itemCompositionSchema = compositionFields.safeExtend({ idempotencyKey: z.uuid() });
 export const itemCompositionPatchSchema = compositionFields.safeExtend({ revision });
+
+/** Atomically choose/create a composition, reassign selected items and match their forms. */
+export const compositionAssignmentSchema = z.object({
+  name: compositionName,
+  productForm: compositionFormSchema,
+  targetCompositionId: id.nullable().default(null),
+  idempotencyKey: z.uuid(),
+  items: z.array(z.object({
+    id,
+    expectedCompositionId: id.nullable(),
+    expectedProductForm: productFormSchema,
+  }).strict()).min(1).max(500),
+}).strict().superRefine((value,ctx)=>{
+  if(new Set(value.items.map(item=>item.id)).size!==value.items.length)
+    ctx.addIssue({code:"custom",path:["items"],message:"لا يمكن اختيار الصنف أكثر من مرة"});
+});
+export type CompositionAssignmentInput = z.output<typeof compositionAssignmentSchema>;
+
 export type ItemCompositionInput = z.input<typeof itemCompositionSchema>;
 export type ItemCompositionPatchInput = z.input<typeof itemCompositionPatchSchema>;
 export interface ItemComposition {
