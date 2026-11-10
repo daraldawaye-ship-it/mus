@@ -102,6 +102,7 @@ export const marketTypes: MarketType[] = [
         relationKind: "composition",
       }),
       f("purchasePrice", "سعر الشراء من الوكيل", "decimal", { price: true }),
+      f("defaultSalePrice", "سعر البيع الافتراضي", "decimal", { price: true }),
       f("currency", "العملة", "text", { price: true }),
       f("agentBonus", "بونص الوكيل %", "percent", { price: true }),
       image,
