@@ -114,6 +114,7 @@ async function findFile(db:Pool|PoolClient,fileId:number,withBytes=false) {
   const result=await db.query(
     `SELECT f.id,f.company_id,f.category_id,f.title,f.original_filename,f.mime_type,
        f.content_text,f.evidence_text,f.created_by,f.revision,f.created_at,f.updated_at,
+       octet_length(f.file_bytes) AS size_bytes,
        ${withBytes?"f.file_bytes":"NULL::bytea AS file_bytes"},
        c.name AS category_name,u.display_name AS creator_name
        FROM archive_files f JOIN archive_categories c ON c.id=f.category_id
@@ -125,7 +126,7 @@ function serialFile(row:Record<string,unknown>,full=false) {
   return {
     id:row.id,companyId:row.company_id,categoryId:row.category_id,
     categoryName:row.category_name,title:row.title,filename:row.original_filename,
-    mimeType:row.mime_type,createdBy:row.created_by,creatorName:row.creator_name,
+    mimeType:row.mime_type,sizeBytes:row.size_bytes,createdBy:row.created_by,creatorName:row.creator_name,
     createdAt:row.created_at,updatedAt:row.updated_at,revision:row.revision,
     fileUrl:`/api/archive/files/${row.id}/content`,
     contentText:full?row.content_text:undefined,
@@ -185,7 +186,7 @@ export function archiveRoutes(pool:Pool):Router {
     const [records,count]=await Promise.all([
       pool.query(`SELECT f.id,f.company_id,f.category_id,c.name AS category_name,
         f.title,f.original_filename,f.mime_type,f.created_by,u.display_name AS creator_name,
-        f.created_at,f.updated_at,f.revision,
+        f.created_at,f.updated_at,f.revision,octet_length(f.file_bytes) AS size_bytes,
         left(f.content_text,220) AS content_preview,left(f.evidence_text,220) AS evidence_preview
         FROM archive_files f JOIN archive_categories c ON c.id=f.category_id
         JOIN users u ON u.id=f.created_by WHERE ${where}
