@@ -57,7 +57,7 @@ export const itemAgentPatchSchema = agentFields.extend({ revision }).strict();
 
 /** Shape/category for both the item and its composition. "عام" means unknown. */
 export const productForms = [
-  "اقراص","كبسول","شراب","امبول","فيال","محلول وريدي","محلول خارجي",
+  "اقراص","كبسول","اقراص/كبسول","مرهم/كريم/جل","شراب","امبول","فيال","محلول وريدي","محلول خارجي",
   "قطر عين/اذن","مرهم عين","قطر شرب","فيال شراب","تحاميل","قطعه","بخاخ",
   "مرهم","كريم","جل","جل فم","دش مهبلي","سائل","فوار","مصوص",
   "مضمضه","بودر","شرائح","صابون","شامبو","حليب بودر","زيت",
@@ -65,6 +65,10 @@ export const productForms = [
 ] as const;
 export type ProductForm = typeof productForms[number];
 export const productFormSchema = z.enum(productForms);
+// Composition forms group interchangeable dosage presentations; item forms stay specific.
+export const compositionForms = productForms.filter(form =>
+  !["اقراص","كبسول","مرهم","كريم","جل"].includes(form));
+export const compositionFormSchema = z.enum(compositionForms as [ProductForm, ...ProductForm[]]);
 
 // Composition is a reusable company-scoped item classification. Its
 // substitution flags are descriptive; they never auto-replace stock lines.
@@ -74,7 +78,7 @@ const compositionFields = z.object({
   englishName: compositionName,
   description: z.string().trim().max(2000).default(""),
   saleNotes: z.string().trim().max(1000).default(""),
-  productForm: productFormSchema.default("عام"),
+  productForm: compositionFormSchema.default("عام"),
   // An unset threshold means a single group of all linked items.
   priceSplitThreshold: z.string().trim()
     .regex(/^\d{1,22}(?:\.\d{1,6})?$/, "أدخل سعرًا موجبًا أو صفرًا حتى 6 منازل عشرية")
