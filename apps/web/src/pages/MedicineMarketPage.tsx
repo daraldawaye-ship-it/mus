@@ -1798,6 +1798,7 @@ export function MedicineMarketPage({
                         (/^https:\/\//i.test(image) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(image)) && (
                           <MarketProductImage
                             className="medicine-market-card-image"
+                            previewOnClick={false}
                             trimLegacyPadding={item.kind!=="prescription"}
                             style={{display:"block",maxWidth:"100%",maxHeight:230,width:"auto",height:"auto",aspectRatio:"auto",objectFit:"contain",background:"transparent",marginInline:"auto"}}
                             src={image}
