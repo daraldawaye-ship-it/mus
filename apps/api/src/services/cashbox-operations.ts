@@ -114,7 +114,7 @@ export async function postEmployeeCashboxOperation(
     : input.kind==="electronic"
       ? "ترحيل مبلغ من صندوق البائع إلى محفظة الشركة الإلكترونية"
       : "إغلاق صندوق المبيعات وجرد النقد الفعلي";
-  const memo=`${description} — ${employee.name}${input.notes?" — "+input.notes:""}`;
+  let memo=`${description} — ${employee.name}${input.notes?" — "+input.notes:""}`;
   const lines: ReturnType<typeof journalLine>[]=[];
   let variance:bigint|null=null;
   let varianceAccountId:number|null=null;
@@ -123,6 +123,8 @@ export async function postEmployeeCashboxOperation(
     // physically counted (nonnegative) cash and post the entire difference to
     // the configured over/short account, regardless of its sign.
     variance=book-amount;
+    const closingResult = variance>0n ? "عجز" : variance<0n ? "زيادة" : "مطابق";
+    memo=`${description} — ${closingResult} — ${employee.name}${input.notes?" — "+input.notes:""}`;
     const found=(await client.query(
       `SELECT a.id,a.active,a.kind,a.category FROM account_links l
        JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id
