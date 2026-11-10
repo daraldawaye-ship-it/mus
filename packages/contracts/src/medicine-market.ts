@@ -106,8 +106,6 @@ export const marketTypes: MarketType[] = [
       f("currency", "العملة", "text", { price: true }),
       f("agentBonus", "بونص الوكيل %", "percent", { price: true }),
       image,
-      f("description", "وصف العبوة", "textarea"),
-      f("hasExpiry", "له تاريخ انتهاء", "boolean"),
       f("agentId", "الوكيل", "relation", { relationKind: "agent" }),
       f("manufacturerId", "الشركة المصنّعة", "relation", {
         relationKind: "manufacturer",
@@ -141,6 +139,7 @@ export const marketTypes: MarketType[] = [
         relationKind: "dosage-form",
       }),
       f("ingredients", "الأسماء العلمية والقوة", "ingredients"),
+      f("hasExpiry", "له تاريخ انتهاء", "boolean"),
       keywords,
     ],
   },
