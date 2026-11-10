@@ -36,7 +36,7 @@ const caseSchema = z.object({
   priority: z.number().int().min(0).max(10).default(0),
   summary: z.string().max(100000).default(""),
 }).strict();
-const kindSchema = z.enum(["fact","document","event","explanation","task","report","hearing"]);
+const kindSchema = z.enum(["fact","document","event","explanation","task","report","hearing","instruction"]);
 const recordSchema = z.object({
   kind: kindSchema,
   title: z.string().trim().min(1).max(300),
@@ -397,9 +397,11 @@ export function legalCaseRoutes(pool:Pool):Router {
     if(unlinked) ownerOnly(user);
     const q=String(req.query.q??"").trim().slice(0,120),limit=unlinked?30:100;
     const where="($1::boolean OR (EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) AND NOT EXISTS(SELECT 1 FROM legal_record_cases other WHERE other.record_id=r.id AND NOT EXISTS(SELECT 1 FROM legal_case_access granted WHERE granted.case_id=other.case_id AND granted.user_id=$2)))) AND ($3::text IS NULL OR r.kind=$3) AND (r.title ILIKE $4 OR r.body ILIKE $4 OR r.content_text ILIKE $4) AND (NOT $5::boolean OR NOT EXISTS(SELECT 1 FROM legal_record_cases rc_unlinked WHERE rc_unlinked.record_id=r.id))";
+    const orderBy = kind === "instruction" ? "r.sort_order, r.id" :
+      kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" : "r.id DESC";
     const args=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
     const [rows,count]=await Promise.all([
-      pool.query("SELECT "+(req.query.compact==="true" && !unlinked && (kind==="fact"||kind==="document")?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls":"r.*")+" FROM legal_records r WHERE "+where+(kind==="event"?" ORDER BY r.record_date DESC NULLS LAST,r.id DESC":" ORDER BY r.id DESC")+" LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT "+(req.query.compact==="true" && !unlinked && (kind==="fact"||kind==="document")?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls":"r.*")+" FROM legal_records r WHERE "+where+" ORDER BY "+orderBy+" LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
       pool.query("SELECT COUNT(*)::int AS total FROM legal_records r WHERE "+where,args),
     ]);
     res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});

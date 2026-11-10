@@ -7650,7 +7650,8 @@
             "explanation",
             "task",
             "report",
-            "hearing"
+            "hearing",
+            "instruction"
           ]
         },
         "title": {
@@ -7816,7 +7817,8 @@
             "explanation",
             "task",
             "report",
-            "hearing"
+            "hearing",
+            "instruction"
           ]
         },
         "title": {

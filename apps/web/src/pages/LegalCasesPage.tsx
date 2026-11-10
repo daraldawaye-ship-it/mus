@@ -7,14 +7,14 @@ import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 import { errorMessage } from "../phase2";
 import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from "./LegalTaskBoard";
 
-type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing";
+type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing"|"instruction";
 type Case = {id:number;title:string;case_number:string;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
 type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
 type RecordForm = {kind:Kind;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
-const kinds:{id:Kind;label:string}[]=[{id:"explanation",label:"الشرح"},{id:"fact",label:"المعطيات"},{id:"event",label:"التسلسل الزمني"},{id:"document",label:"المستندات"},{id:"task",label:"المهام"},{id:"report",label:"تقارير المتابعة"},{id:"hearing",label:"الجلسات"}];
-const globalLists=[{id:"event",label:"التسلسل الزمني"},{id:"fact",label:"المعطيات"},{id:"document",label:"المستندات"}] as const;
+const kinds:{id:Kind;label:string}[]=[{id:"instruction",label:"التعليمات"},{id:"explanation",label:"الشرح"},{id:"fact",label:"المعطيات"},{id:"event",label:"التسلسل الزمني"},{id:"document",label:"المستندات"},{id:"task",label:"المهام"},{id:"report",label:"تقارير المتابعة"},{id:"hearing",label:"الجلسات"}];
+const globalLists=[{id:"instruction",label:"التعليمات"},{id:"event",label:"التسلسل الزمني"},{id:"fact",label:"المعطيات"},{id:"document",label:"المستندات"}] as const;
 const emptyCase:CaseForm={title:"",caseNumber:"",agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
 const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
 const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
@@ -48,7 +48,7 @@ function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordFor
  return <div className="legal-fields">
  <Field label="العنوان" value={value.title} onChange={e=>set("title",e.target.value)}/>
  <Field label={value.kind==="task"?"ترتيب ثانوي عند تساوي الأولوية":"الترتيب"} type="number" min={0} value={value.sortOrder} onChange={e=>set("sortOrder",Number(e.target.value))}/>
- <div className="legal-wide"><TextField label="الشرح التفصيلي" value={value.body} rows={6} onChange={v=>set("body",v)}/></div>
+ <div className="legal-wide"><TextField label={value.kind==="instruction"?"نص التعليمة":"الشرح التفصيلي"} value={value.body} rows={6} onChange={v=>set("body",v)}/></div>
  {(value.kind==="document")&&<>
  <div className="legal-wide"><TextField label="النص الكامل للمستند — مستقل عن الشرح" value={value.contentText} rows={8} onChange={v=>set("contentText",v)}/></div>
  <Field label="رابط PDF في Drive أو الموقع" value={value.pdfUrl} onChange={e=>set("pdfUrl",e.target.value)}/>
@@ -59,7 +59,7 @@ function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordFor
  <Field label="الرقم الرسمي للمستند" value={value.documentNumber} onChange={e=>set("documentNumber",e.target.value)}/>
  <div className="legal-wide"><TextField label="روابط الصور الخارجية (رابط HTTPS في كل سطر)" rows={2} value={value.imageUrls.join("\n")} onChange={v=>set("imageUrls",v.split("\n").map(s=>s.trim()).filter(Boolean))}/></div>
  </>}
- <Field label="تاريخ الواقعة أو المستند" type="date" value={value.recordDate??""} onChange={e=>set("recordDate",e.target.value||null)}/>
+ {value.kind!=="instruction"&&<Field label="تاريخ الواقعة أو المستند" type="date" value={value.recordDate??""} onChange={e=>set("recordDate",e.target.value||null)}/>}
  {(value.kind==="task"||value.kind==="hearing")&&<Field label="موعد المتابعة" type="datetime-local" value={value.dueAt?.slice(0,16)??""} onChange={e=>set("dueAt",e.target.value?new Date(e.target.value).toISOString():null)}/>}
  {value.kind==="task"&&<Select label="المكلف" value={value.assignedTo??""} onChange={e=>set("assignedTo",e.target.value?Number(e.target.value):null)}>
  <option value="">غير محدد</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select>}
@@ -77,6 +77,7 @@ export function LegalCasesPage() {
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
  const [entryEdit,setEntryEdit]=useState<number|"new"|null>(null),[entryDraft,setEntryDraft]=useState<RecordForm>(entryForm("fact",0));
+ const [editingRevision,setEditingRevision]=useState(0);
  const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
  const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
  const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
@@ -101,14 +102,12 @@ export function LegalCasesPage() {
   else if(selected.data)await api("/legal/cases/"+caseId,{method:"PUT",body:{...caseDraft,revision:selected.data.record.revision}});
   setCaseEdit(false);setCaseNew(false);
  });
- const beginEntry=(kind:Kind,e?:Entry,fromReport?:number)=>{setEntryDraft(entryForm(kind,caseId,e));setEntryEdit(e?e.id:"new");setLinkAfterSave(fromReport??null);setError("");};
+ const beginEntry=(kind:Kind,e?:Entry,fromReport?:number)=>{setEntryDraft(entryForm(kind,globalKind ? 0 : caseId,e));setEditingRevision(e?.revision??0);setEntryEdit(e?e.id:"new");setLinkAfterSave(fromReport??null);setError("");};
  const submitEntry=()=>void action(async()=>{
   if(entryEdit==="new"){const result=await api<{record:Entry}>("/legal/records",{method:"POST",body:entryDraft});if(linkAfterSave)await api("/legal/records/"+result.record.id+"/links",{method:"POST",body:{otherId:linkAfterSave,linked:true}});setFocus(result.record.id);}
   else if(typeof entryEdit==="number"){
-   const old=(records.data?.items??[]).concat(all.data?.items??[]).find(x=>x.id===entryEdit);
-   if(!old)throw new Error("تعذر العثور على السجل");
    const {caseIds:_,...payload}=entryDraft;
-   await api("/legal/records/"+entryEdit,{method:"PUT",body:{...payload,revision:old.revision}});
+   await api("/legal/records/"+entryEdit,{method:"PUT",body:{...payload,revision:editingRevision}});
   }
   setEntryEdit(null);setLinkAfterSave(null);
  });
@@ -116,10 +115,12 @@ export function LegalCasesPage() {
   const reader=new FileReader();reader.onload=()=>void action(async()=>{await api("/legal/records/"+entryId+"/images",{method:"POST",body:{filename:file.name,dataUrl:String(reader.result)}});setFocus(entryId);});
   reader.onerror=()=>setError("تعذر قراءة الصورة");reader.readAsDataURL(file);
  };
+ const entryEditor=entryEdit===null ? null : <div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>;
  return <div className="legal-workspace">
  <PageHeader title="إدارة قضايا مصطفى" description="القضايا والشرح والمعطيات والمستندات والتقارير المرتبطة" actions={owner?<Button onClick={()=>{setActivePanel("cases");setCaseNew(true);setCaseEdit(true);setCaseDraft(emptyCase);}}>قضية جديدة</Button>:undefined}/>
  {error&&<Notice tone="error">{error}</Notice>}{notice&&<Notice tone="success">{notice}</Notice>}
  <nav className="legal-main-navigation" aria-label="التنقل في متابعة القضايا">
+  <Button variant={globalKind==="instruction"?"primary":"secondary"} aria-pressed={globalKind==="instruction"} onClick={()=>openGlobal("instruction")}>التعليمات</Button>
   <Button variant={!globalKind&&activePanel==="tasks"?"primary":"secondary"} aria-pressed={!globalKind&&activePanel==="tasks"} onClick={()=>{openGlobal(null);setActivePanel("tasks");}}>الأولويات — المهام</Button>
   <Button variant={!globalKind&&activePanel==="cases"?"primary":"secondary"} aria-pressed={!globalKind&&activePanel==="cases"} onClick={()=>{openGlobal(null);setActivePanel("cases");}}>القضايا</Button>
   <details className="legal-actions-menu">
@@ -127,7 +128,7 @@ export function LegalCasesPage() {
    <div className="legal-actions-menu-items">
     <Link className="button button-secondary" to="/explanations/topics?group=mustafa-cases">شرح قضايا مصطفى</Link>
      {owner&&<Link className="button button-secondary" to="/archive?legal=1">أرشيف مرفقات القضايا</Link>}
-    {globalLists.map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={()=>openGlobal(item.id)}>{item.label}</Button>)}
+    {globalLists.filter(item=>item.id!=="instruction").map(item=><Button key={item.id} variant={globalKind===item.id?"primary":"secondary"} aria-pressed={globalKind===item.id} onClick={()=>openGlobal(item.id)}>{item.label}</Button>)}
    </div>
   </details>
  </nav>
@@ -136,12 +137,17 @@ export function LegalCasesPage() {
  <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="العنوان أو التفاصيل"/>
  {globalRecords.data&&<span>إجمالي السجلات: {globalRecords.data.total}</span>}
  </div>
+ {globalKind==="instruction"&&owner&&<>
+   <Button onClick={()=>beginEntry("instruction")}>إضافة تعليمة</Button>
+   {entryEditor}
+ </>}
  {globalRecords.isPending&&<Notice>جارٍ تحميل القائمة…</Notice>}
  {globalRecords.error&&<Notice tone="error">{errorMessage(globalRecords.error)} <Button variant="secondary" onClick={()=>void globalRecords.refetch()}>إعادة المحاولة</Button></Notice>}
  {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة للبحث.</Notice>}
  {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
- <div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||"تاريخ غير محدد"}</small><h3>{r.title}</h3></div>
+ <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3></div>
  <div className="legal-actions">
+ {r.kind==="instruction"&&owner&&<Button variant="secondary" onClick={()=>beginEntry("instruction",r)}>تعديل</Button>}
  <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button>
  {(r.kind==="fact"||r.kind==="document")&&<Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>}
  </div></div>
@@ -162,7 +168,7 @@ export function LegalCasesPage() {
  {(r.image_urls??[]).map((url,i)=><a href={url} target="_blank" rel="noreferrer" key={url+i}>صورة {i+1}</a>)}
  </div>}
  </>}
- {r.kind==="event"&&r.body&&<p className="legal-directory-body">{r.body}</p>}
+ {(r.kind==="event"||r.kind==="instruction")&&r.body&&<p className="legal-directory-body">{r.body}</p>}
  {focus===r.id&&<div className="legal-linked">
  {links.isPending&&<span>جارٍ تحميل روابط السجل…</span>}
  {links.error&&<Notice tone="error">{errorMessage(links.error)}</Notice>}
@@ -219,7 +225,7 @@ export function LegalCasesPage() {
  <Card title={tab==="unlinked"?"سجلات قديمة لم تربط بالقضايا":kinds.find(k=>k.id===tab)?.label||"السجلات"}>
  <div className="legal-actions">{((editor||(tab==="report"&&reporter))&&tab!=="unlinked")&&<Button onClick={()=>beginEntry(tab as Kind)}>إضافة سجل</Button>}{tab==="report"&&<span>يسمح بعدة تقارير يوميًا، دون محو ما سبق.</span>}</div>
  {tab==="unlinked"&&owner&&<><Field label="بحث في السجلات التي لم ترتبط بأي قضية" value={unlinkedSearch} onChange={e=>{setUnlinkedSearch(e.target.value);setUnlinkedPage(1);}}/>{all.isPending&&<Notice>جارٍ تحميل السجلات…</Notice>}{all.error&&<Notice tone="error">{errorMessage(all.error)}</Notice>}{all.data&&<p>السجلات غير المرتبطة: {all.data.total} — صفحة {unlinkedPage} من {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</p>}</>}
- {entryEdit!==null&&<div className="legal-entry-edit"><h3>{entryEdit==="new"?"إضافة":"تعديل"} {kinds.find(k=>k.id===entryDraft.kind)?.label}</h3><EntryFields value={entryDraft} change={setEntryDraft} people={people.data?.items??[]}/><div className="legal-actions"><Button disabled={busy||!entryDraft.title.trim()} onClick={submitEntry}>حفظ</Button><Button variant="secondary" onClick={()=>setEntryEdit(null)}>إلغاء</Button></div></div>}
+ {entryEditor}
  {(visible.length===0&&!entryEdit&&!all.isPending)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
  {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
