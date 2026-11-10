@@ -1315,6 +1315,7 @@ export function MedicineMarketPage({
             </span>
           )}
           {permissions?.canContribute && <MarketFriendReferral cardId={selected} cardName={card?.name}/>} 
+          {!!user && <Link className="button button-secondary" to="/medicine-market/friend-referrals">متابعة تعريف الأصدقاء</Link>}
           {permissions?.canContribute ? (
             <Button
               onClick={() => {
