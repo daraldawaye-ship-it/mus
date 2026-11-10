@@ -1273,10 +1273,14 @@ export function MedicineMarketPage({
     [`${ROOT}/review`, "المصادقة", !!permissions?.canModerate],
     [`${ROOT}/points`, "نقاط الحقول", true],
   ];
-  const detailFields:FieldDefinition[]=fields.some(field=>field.key==="name")?fields:[{
+  // Do not display legacy medicine-only fields even if metadata was cached before deployment.
+  const activeFields=card?.kind==="medicine"
+    ?fields.filter(field=>field.key!=="description"&&field.key!=="hasExpiry")
+    :fields;
+  const detailFields:FieldDefinition[]=activeFields.some(field=>field.key==="name")?activeFields:[{
     key:"name",label:"الاسم",type:"text",visibility:"public",
     points:{add:0,edit:0},policyRevision:0,
-  },...fields];
+  },...activeFields];
   return (
     <div className="medicine-market" dir="rtl">
       <header className="medicine-market-heading">
