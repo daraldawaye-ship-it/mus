@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { ImagePreviewModal } from "./ImagePreviewModal";
 
 /**
  * Existing market photos were saved as 512x512 with a synthetic white frame.
@@ -58,7 +59,9 @@ export function MarketProductImage({
     photo.src=src;
     return()=>{active=false;photo.onload=null;};
   },[src,trimLegacyPadding]);
-  return <img src={display} alt={alt} className={className}
-    style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
-    loading="lazy" decoding="async"/>;
+  return <ImagePreviewModal src={src} alt={alt}>
+    <img src={display} alt={alt} className={className}
+      style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
+      loading="lazy" decoding="async"/>
+  </ImagePreviewModal>;
 }
