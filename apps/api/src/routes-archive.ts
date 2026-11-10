@@ -15,7 +15,7 @@ const upload=scope.extend({
   category:z.string().trim().min(1).max(200),
   title:z.string().trim().min(1).max(300),
   filename:z.string().trim().max(255),
-  dataUrl:z.string().min(30).max(11_500_000),
+  dataUrl:z.string().min(30).max(36_000_000),
 }).strict();
 const edit=z.object({
   contentText:z.string().max(500_000),
@@ -36,19 +36,65 @@ async function ensureAccess(db:Pool|PoolClient,user:User,companyId:number|null,a
   assertDirectoryAccess(page,action);
 }
 
-function decodeFile(dataUrl:string){
-  const parts=/^data:(image\/(?:jpeg|png|webp|gif)|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
-  if(!parts)throw new HttpError(400,"unsupported_file","الصيغ المتاحة: JPG وPNG وWebP وGIF وPDF");
-  const bytes=Buffer.from(parts[2],"base64"),mime=parts[1];
-  if(!bytes.length||bytes.length>8*1024*1024||bytes.toString("base64")!==parts[2])
-    throw new HttpError(400,"invalid_file","الملف غير صالح أو أكبر من 8 ميجابايت");
-  const valid=
-    (mime==="image/jpeg" && bytes[0]===255 && bytes[1]===216 && bytes[2]===255) ||
-    (mime==="image/png" && bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) ||
-    (mime==="image/webp" && bytes.subarray(0,4).toString()==="RIFF" && bytes.subarray(8,12).toString()==="WEBP") ||
-    (mime==="image/gif" && ["GIF87a","GIF89a"].includes(bytes.subarray(0,6).toString())) ||
-    (mime==="application/pdf" && bytes.subarray(0,5).toString()==="%PDF-");
-  if(!valid)throw new HttpError(400,"invalid_file","امتداد الملف لا يطابق محتواه");
+const supportedExtensions:Record<string,string[]> = {
+  pdf:["application/pdf"],
+  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],gif:["image/gif"],
+  zip:["application/zip","application/x-zip-compressed","application/octet-stream"],
+  rar:["application/vnd.rar","application/x-rar-compressed","application/octet-stream"],
+  "7z":["application/x-7z-compressed","application/octet-stream"],
+  doc:["application/msword","application/octet-stream"],
+  docx:["application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/zip","application/octet-stream"],
+  xls:["application/vnd.ms-excel","application/octet-stream"],
+  xlsx:["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/zip","application/octet-stream"],
+  ppt:["application/vnd.ms-powerpoint","application/octet-stream"],
+  pptx:["application/vnd.openxmlformats-officedocument.presentationml.presentation","application/zip","application/octet-stream"],
+  txt:["text/plain","application/octet-stream"],
+  csv:["text/csv","text/plain","application/vnd.ms-excel","application/octet-stream"],
+  rtf:["application/rtf","text/rtf","application/octet-stream"],
+  mp3:["audio/mpeg","audio/mp3","application/octet-stream"],
+  wav:["audio/wav","audio/x-wav","audio/wave","application/octet-stream"],
+  ogg:["audio/ogg","video/ogg","application/ogg","application/octet-stream"],
+  m4a:["audio/mp4","audio/x-m4a","application/octet-stream"],
+  aac:["audio/aac","application/octet-stream"],
+  flac:["audio/flac","audio/x-flac","application/octet-stream"],
+  mp4:["video/mp4","application/octet-stream"],
+  webm:["video/webm","audio/webm","application/octet-stream"],
+  mov:["video/quicktime","application/octet-stream"],
+};
+function decodeFile(dataUrl:string,filename:string){
+  const extension=filename.split(".").pop()?.toLowerCase()??"";
+  const mimeMatch=/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(dataUrl);
+  if(!mimeMatch||!supportedExtensions[extension]?.includes(mimeMatch[1].toLowerCase()))
+    throw new HttpError(400,"unsupported_file","امتداد الملف أو نوعه غير مدعوم");
+  const bytes=Buffer.from(mimeMatch[2],"base64"),mime=mimeMatch[1].toLowerCase();
+  if(!bytes.length||bytes.length>25*1024*1024||bytes.toString("base64")!==mimeMatch[2])
+    throw new HttpError(400,"invalid_file","الملف غير صالح أو أكبر من 25 ميجابايت");
+  const head=bytes.subarray(0,16);
+  const starts=(signature:number[])=>signature.every((byte,index)=>head[index]===byte);
+  const zip=starts([0x50,0x4b,0x03,0x04])||starts([0x50,0x4b,0x05,0x06])||starts([0x50,0x4b,0x07,0x08]);
+  const ole=starts([0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1]);
+  const signatures:Record<string,boolean>={
+    jpg:starts([255,216,255]),jpeg:starts([255,216,255]),
+    png:starts([137,80,78,71,13,10,26,10]),
+    webp:head.subarray(0,4).toString()==="RIFF"&&head.subarray(8,12).toString()==="WEBP",
+    gif:["GIF87a","GIF89a"].includes(head.subarray(0,6).toString()),
+    pdf:head.subarray(0,5).toString()==="%PDF-",
+    zip,docx:zip,xlsx:zip,pptx:zip,
+    rar:head.subarray(0,6).toString()==="Rar!\\x1a\\x07".replace(/\\x1a/g,"\x1a").replace(/\\x07/g,"\x07"),
+    "7z":starts([0x37,0x7a,0xbc,0xaf,0x27,0x1c]),
+    doc:ole,xls:ole,ppt:ole,
+    wav:head.subarray(0,4).toString()==="RIFF"&&head.subarray(8,12).toString()==="WAVE",
+    ogg:head.subarray(0,4).toString()==="OggS",
+    flac:head.subarray(0,4).toString()==="fLaC",
+    mp3:head.subarray(0,3).toString()==="ID3"||(bytes[0]===255&&(bytes[1]&0xe0)===0xe0),
+    mp4:head.subarray(4,8).toString()==="ftyp",
+    m4a:head.subarray(4,8).toString()==="ftyp",
+    mov:head.subarray(4,8).toString()==="ftyp",
+    webm:starts([0x1a,0x45,0xdf,0xa3]),
+    aac:bytes[0]===255&&(bytes[1]&0xf0)===0xf0,
+  };
+  if(extension in signatures&&!signatures[extension])
+    throw new HttpError(400,"invalid_file","امتداد الملف لا يطابق محتواه");
   return {bytes,mime};
 }
 
@@ -150,7 +196,7 @@ export function archiveRoutes(pool:Pool):Router {
     res.send(record.file_bytes);
   }));
   router.post("/archive/files",handler(async(req,res)=>{
-    const input=parse(upload,req.body),file=decodeFile(input.dataUrl);
+    const input=parse(upload,req.body),file=decodeFile(input.dataUrl,input.filename);
     const result=await transaction(pool,async(db)=>{
       const user=await currentActor(db,actor(req));
       await ensureAccess(db,user,input.companyId,"create");
