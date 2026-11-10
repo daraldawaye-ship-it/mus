@@ -138,7 +138,7 @@ export function QuickArchiveUpload() {
             }))]);
             event.target.value = "";
           }} />
-        <small>اختيار متعدد. الصور الثابتة تتحول إلى WebP بدون قص وبحد أبعاد A4 بدقة 300dpi؛ GIF وPDF والملفات الأخرى دون تغيير. الحد 25 ميجابايت للملف.</small>
+        <small>اختيار متعدد. الصور الثابتة تتحول إلى WebP بدون قص وبحد أبعاد A4 بدقة 300dpi؛ GIF يُضغط تلقائيًا مع الحفاظ على الحركة، وبقية الملفات دون تغيير. الحد 25 ميجابايت للملف.</small>
         {rows.map(row => <div key={row.id} className="card" style={{ padding: 12, display: "grid", gap: 8 }}>
           <strong style={{ overflowWrap: "anywhere" }}>{row.file.name}</strong>
           <label>نوع المرفق
