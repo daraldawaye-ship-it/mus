@@ -841,7 +841,8 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
   const [error,setError]=useState(""),[message,setMessage]=useState("");
   const value=field.key==="name"?card.name:card.data[field.key];
   const complex=field.key==="image"||["contacts","ingredients","accounting","prescription-lines"].includes(field.type);
-  const immediate=!complex&&(field.type==="boolean"||field.type==="reference"||field.type==="relation"||!!field.options?.length);
+  // Relations require explicit confirmation so accidental selections can be cancelled.
+  const immediate=!complex&&(field.type==="boolean"||field.type==="reference"||!!field.options?.length);
   const textEditor=!complex&&!immediate;
   const editing=draft!==null;
   useLayoutEffect(()=>{
