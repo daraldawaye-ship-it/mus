@@ -791,9 +791,7 @@ function FieldValue({
         alt={cardKind==="prescription"?"صورة الوصفة الطبية":"صورة الصنف"}
         style={{maxWidth:cardKind==="prescription"?"100%":260,maxHeight:cardKind==="prescription"?950:340,
           width:"auto",height:"auto",objectFit:"contain",borderRadius:8}}/>
-      {cardKind==="prescription"&&<a href={value} target="_blank" rel="noopener noreferrer">
-        فتح صورة الوصفة بالحجم الكامل
-      </a>}
+      {cardKind==="prescription"&&<small className="medicine-market-muted">اضغط الصورة لمعاينتها بالحجم الكامل داخل التطبيق.</small>}
     </div>;
   if (
     field.type === "url" &&
@@ -986,7 +984,7 @@ function PrescriptionReviewPhoto({
         alt="صورة الوصفة المراد اعتمادها، خاصة بالإدارة"
         style={{maxHeight:520,maxWidth:"100%",height:"auto",width:"auto"}}/>
       <div className="page-actions">
-        <a href={image} target="_blank" rel="noopener noreferrer">فتح الصورة كاملة</a>
+        <span className="medicine-market-muted">اضغط الصورة لمعاينتها كاملة داخل التطبيق</span>
         <a href={image} download={"prescription-"+cardId+".webp"}>تحميل الصورة للتعديل</a>
         <Link to={`${ROOT}?kind=prescription&card=${cardId}`} target="_blank">
           فتح الكرت ورفع صورة بديلة
