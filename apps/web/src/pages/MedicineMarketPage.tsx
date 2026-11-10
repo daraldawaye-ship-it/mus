@@ -1273,10 +1273,19 @@ export function MedicineMarketPage({
     [`${ROOT}/review`, "المصادقة", !!permissions?.canModerate],
     [`${ROOT}/points`, "نقاط الحقول", true],
   ];
-  // Do not display legacy medicine-only fields even if metadata was cached before deployment.
-  const activeFields=card?.kind==="medicine"
-    ?fields.filter(field=>field.key!=="description"&&field.key!=="hasExpiry")
-    :fields;
+  // Keep the medicine layout compatible with cached /meta responses from older builds.
+  // Do not wait for refreshed metadata to show the new public selling-price field.
+  const activeFields:FieldDefinition[]=card?.kind==="medicine" ? (()=>{
+    const visible=fields.filter(field=>field.key!=="description"&&field.key!=="hasExpiry");
+    if(visible.some(field=>field.key==="defaultSalePrice"))return visible;
+    const sellingPrice:FieldDefinition={
+      key:"defaultSalePrice",label:"سعر البيع الافتراضي",type:"decimal",
+      visibility:"public",price:true,points:{add:0,edit:0},policyRevision:0,
+    };
+    const purchaseIndex=visible.findIndex(field=>field.key==="purchasePrice");
+    visible.splice(purchaseIndex<0?visible.length:purchaseIndex+1,0,sellingPrice);
+    return visible;
+  })():fields;
   const detailFields:FieldDefinition[]=activeFields.some(field=>field.key==="name")?activeFields:[{
     key:"name",label:"الاسم",type:"text",visibility:"public",
     points:{add:0,edit:0},policyRevision:0,
