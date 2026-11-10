@@ -57,7 +57,7 @@ export function MarketFriendReferral({cardId,cardName}:{
       request.current=null;
       setPhone("");setNote("");setCategory("مستخدم");setPage(1);
       setSuccess("تم تسجيل بيانات الصديق. لن يُرسل أي رابط أو رسالة تلقائيًا.");
-      await cache.invalidateQueries({queryKey:["medicine-market",user.id,"friend-referrals"]});
+      await cache.invalidateQueries({queryKey:["medicine-market",user?.id,"friend-referrals"]});
     }catch(cause){setError(cause instanceof Error?cause.message:"تعذر حفظ البيانات");}
     finally{setBusy(false);}
   }
