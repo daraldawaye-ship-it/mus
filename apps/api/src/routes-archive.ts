@@ -206,7 +206,7 @@ export function archiveRoutes(pool:Pool):Router {
   }));
   router.post("/archive/files",handler(async(req,res)=>{
     const input=parse(upload,req.body),file=decodeFile(input.dataUrl,input.filename);
-    if(file.mime==="image/gif")file.bytes=await compressArchiveGif(file.bytes);
+    const storedBytes=file.mime==="image/gif"?await compressArchiveGif(file.bytes):file.bytes;
     const result=await transaction(pool,async(db)=>{
       const user=await currentActor(db,actor(req));
       await ensureAccess(db,user,input.companyId,"create");
@@ -231,10 +231,10 @@ export function archiveRoutes(pool:Pool):Router {
       const added=await db.query(
         `INSERT INTO archive_files(company_id,category_id,title,original_filename,mime_type,file_bytes,created_by)
          VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [input.companyId,categoryId,input.title,input.filename,file.mime,file.bytes,user.id]);
+        [input.companyId,categoryId,input.title,input.filename,file.mime,storedBytes,user.id]);
       const fileId=added.rows[0].id;
       await audit(db,user,"archive.create","archiveFile",fileId,null,
-        {id:fileId,categoryId,title:input.title,filename:input.filename,mime:file.mime,size:file.bytes.length},input.companyId);
+        {id:fileId,categoryId,title:input.title,filename:input.filename,mime:file.mime,size:storedBytes.length},input.companyId);
       return {id:fileId,fileUrl:`/api/archive/files/${fileId}/content`};
     });
     res.status(201).json(result);
