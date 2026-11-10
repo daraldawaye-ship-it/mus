@@ -10,7 +10,7 @@ export function ImagePreviewModal({src,alt="صورة",className,children}:{
   return <>
     <button type="button" className="image-preview-trigger"
       aria-label={"معاينة "+alt} title="معاينة الصورة"
-      onClick={()=>setOpen(true)}>
+      onClick={event=>{event.stopPropagation();setOpen(true);}}>
       {children ?? <img src={src} alt={alt} className={className} loading="lazy"/>}
     </button>
     <Dialog open={open} onClose={()=>setOpen(false)} title="معاينة الصورة" className="image-preview-dialog">
