@@ -1503,7 +1503,7 @@ export function MedicineMarketPage({
                         :"الكرت قيد المراجعة. تستطيع إضافة الحقول، ويظهر للعامة بعد اعتماد الاسم."}
                     </Notice>
                   )}
-                  <div className="medicine-market-fields">
+                  <div className={`medicine-market-fields${card.kind==="prescription"?" medicine-market-fields-prescription":""}`}>
                     {detailFields.map(field=><MarketInlineField
                       key={`${user?.id??"guest"}:${card.id}:${field.key}`}
                       card={card} field={field} references={references}
