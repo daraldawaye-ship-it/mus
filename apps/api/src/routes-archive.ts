@@ -24,6 +24,11 @@ const edit=z.object({
   revision:positive,
 }).strict();
 const categoryEdit=z.object({showInLegal:z.boolean()}).strict();
+const quickMetadata=z.object({
+  items:z.array(z.object({id:positive,revision:positive}).strict()).min(1).max(100),
+  category:z.string().trim().min(1).max(200),
+  title:z.string().trim().min(1).max(300),
+}).strict();
 
 function optionalScope(value:unknown):number|null {
   return value===undefined||value===null||value===""?null:id(String(value));
@@ -238,6 +243,50 @@ export function archiveRoutes(pool:Pool):Router {
       return {id:fileId,fileUrl:`/api/archive/files/${fileId}/content`};
     });
     res.status(201).json(result);
+  }));
+  // Same recently uploaded public records may be retitled as one batch without
+  // retransmitting the binary data. Only their original uploader may do this.
+  router.patch("/archive/files/quick-metadata",handler(async(req,res)=>{
+    const input=parse(quickMetadata,req.body);
+    if(new Set(input.items.map(item=>item.id)).size!==input.items.length)
+      throw new HttpError(400,"duplicate_ids","لا تكرر المرفق في طلب التعديل");
+    const result=await transaction(pool,async(db)=>{
+      const user=await currentActor(db,actor(req));
+      await ensureAccess(db,user,null,"create");
+      const ordered=[...input.items].sort((a,b)=>a.id-b.id);
+      const rows=await db.query(
+        "SELECT id,company_id,created_by,revision,title,category_id FROM archive_files WHERE id=ANY($1::integer[]) ORDER BY id FOR UPDATE",
+        [ordered.map(x=>x.id)],
+      );
+      if(rows.rows.length!==ordered.length)missing();
+      for(let i=0;i<ordered.length;i++){
+        const row=rows.rows[i];
+        if(row.id!==ordered[i].id||row.company_id!==null||row.created_by!==user.id)
+          throw new HttpError(403,"forbidden","لا يمكن تعديل مرفقات مستخدم آخر أو مرفقات شركة أخرى");
+        if(row.revision!==ordered[i].revision)
+          throw new HttpError(409,"stale_revision","تغيّرت بيانات المرفق؛ أعد تحميل الصفحة قبل التعديل");
+      }
+      const category=(await db.query(
+        `INSERT INTO archive_categories(company_id,name,created_by)
+           VALUES(NULL,$1,$2)
+           ON CONFLICT(name) WHERE company_id IS NULL
+           DO UPDATE SET name=EXCLUDED.name RETURNING id`,
+        [input.category,user.id],
+      )).rows[0];
+      const updated:{id:number;revision:number}[]=[];
+      for(const row of rows.rows){
+        const saved=(await db.query(
+          "UPDATE archive_files SET category_id=$1,title=$2,revision=revision+1,updated_at=now() WHERE id=$3 RETURNING revision",
+          [category.id,input.title,row.id],
+        )).rows[0];
+        await audit(db,user,"archive.update","archiveFile",row.id,
+          {title:row.title,categoryId:row.category_id,revision:row.revision},
+          {title:input.title,categoryId:category.id,revision:saved.revision},null);
+        updated.push({id:row.id,revision:saved.revision});
+      }
+      return {items:updated};
+    });
+    res.json(result);
   }));
   router.patch("/archive/files/:id",handler(async(req,res)=>{
     const fileId=id(req.params.id),input=parse(edit,req.body);
