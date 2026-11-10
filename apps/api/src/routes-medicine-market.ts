@@ -488,6 +488,19 @@ async function applyField(
       [row.id, field.key, json(value)],
     );
 }
+const friendCategories = [
+  "مستخدم","دكتور جامعه","طبيب","طالب صيدليه","صيدلي",
+  "صيدلي موظف في صيدليه","مالك صيدليه","مندوب شركه","متحصل شركه",
+  "سوبر فايزر شركة","مالك شركة - وكيل","مالك محل جمله",
+  "موظف في محل جمله","موزع ادويه - شخصي","موظف في مستشفى","موظف في عيادة",
+] as const;
+const friendReferralSchema=z.object({
+  phone:z.string().trim().regex(/^\\+?[0-9]{6,20}$/,"أدخل رقم هاتف صالحًا بالأرقام، ويمكن أن يبدأ بعلامة +"),
+  note:z.string().trim().max(1000).default(""),
+  category:z.enum(friendCategories),
+  cardId:z.number().int().positive().nullable(),
+  idempotencyKey:z.string().uuid(),
+}).strict();
 const createCardSchema = z
   .object({
     kind: z.enum(marketKinds),
@@ -726,6 +739,60 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     res.set("Cache-Control","private, max-age=86400");
     res.set("Content-Security-Policy","default-src 'none'; sandbox");
     res.type("image/webp").send(item.image_bytes);
+  }));
+  // User initiated referral log only; sending messages remains external/manual.
+  router.post(root+"/friend-referrals",handler(async(req,res)=>{
+    const input=parse(friendReferralSchema,req.body);
+    const result=await transaction(pool,async db=>{
+      const u=(await viewer(db,req,true))!;
+      await enabled(db,req,"medicine-market",true);
+      const existing=await db.query(
+        "SELECT id FROM market_friend_referrals WHERE referred_by=$1 AND idempotency_key=$2",
+        [u.id,input.idempotencyKey],
+      );
+      if(existing.rows[0])return {id:Number(existing.rows[0].id),duplicate:true};
+      let cardName:string|null=null;
+      if(input.cardId!==null){
+        const card=await db.query(
+          "SELECT name FROM medicine_market_cards WHERE id=$1 AND status='published' AND NOT archived",
+          [input.cardId],
+        );
+        if(!card.rows[0])throw new HttpError(400,"invalid_card","الكرت المفتوح غير متاح");
+        cardName=String(card.rows[0].name);
+      }
+      const saved=await db.query(
+        `INSERT INTO market_friend_referrals
+          (referred_by,target_phone,note,category,card_id,card_name_at_creation,idempotency_key)
+          VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [u.id,input.phone,input.note,input.category,input.cardId,cardName,input.idempotencyKey],
+      );
+      await auditMarket(db,u,"friend-referral",null,null,
+        {referralId:Number(saved.rows[0].id),category:input.category,cardId:input.cardId});
+      return {id:Number(saved.rows[0].id),duplicate:false};
+    });
+    res.status(result.duplicate?200:201).json(result);
+  }));
+  router.get(root+"/friend-referrals",handler(async(req,res)=>{
+    const u=(await viewer(pool,req))??actor(req);
+    await enabled(pool,req);
+    const page=parse(z.coerce.number().int().min(1).max(1000000),req.query.page??1);
+    const all=u.owner && req.query.all==="true";
+    const limit=30,offset=(page-1)*limit;
+    const condition=all?"":"WHERE r.referred_by=$1";
+    const args=all?[]:[u.id];
+    const rows=await pool.query(
+      `SELECT r.id,r.target_phone AS "phone",r.note,r.category,r.card_id AS "cardId",
+        r.card_name_at_creation AS "cardName",r.created_at AS "createdAt",
+        u.display_name AS "referredBy"
+        FROM market_friend_referrals r JOIN users u ON u.id=r.referred_by
+        ${condition} ORDER BY r.created_at DESC,r.id DESC
+        LIMIT ${args.length+1} OFFSET ${args.length+2}`,
+      [...args,limit,offset],
+    );
+    const count=await pool.query(
+      `SELECT count(*)::int AS total FROM market_friend_referrals r ${condition}`,args,
+    );
+    res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
   }));
   // Market audit stays with market data after isolation; never joins a company ledger.
   router.get(root + "/audit", handler(async (req, res) => {
