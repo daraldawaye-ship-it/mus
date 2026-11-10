@@ -28,13 +28,10 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
   const [error,setError]=useState("");
   const [success,setSuccess]=useState("");
   const [selectingContact,setSelectingContact]=useState(false);
-  const [contactPhones,setContactPhones]=useState<string[]>([]);
-  const [contactName,setContactName]=useState("");
   const request=useRef<{json:string;key:string}|null>(null);
   function chooseContactPhone(number:string,name:string){
     setPhone(normalizeContactPhone(number));
     if(name.trim())setNote(name.trim().slice(0,1000));
-    setContactPhones([]);
     setError("");setSuccess("");
   }
   async function selectFromDevice(){
@@ -55,8 +52,7 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
         setError("جهة الاتصال المحددة لا تحتوي رقم هاتف صالحًا.");
         return;
       }
-      if(phones.length===1)chooseContactPhone(phones[0],name);
-      else {setContactName(name);setContactPhones(phones);}
+      chooseContactPhone(phones[0],name);
     }catch(cause){
       if(cause instanceof DOMException && ["AbortError","NotAllowedError"].includes(cause.name))return;
       setError("تعذر اختيار جهة الاتصال. تحقق من دعم المتصفح وإذن جهات الاتصال.");
@@ -98,12 +94,6 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
           onClick={()=>void selectFromDevice()}>
           <ContactRound size={17}/> {selectingContact?"جارٍ اختيار جهة الاتصال…":"اختيار اسم ورقم من جهات الاتصال"}
         </Button>
-        {!!contactPhones.length&&<label className="field">اختر رقم جهة الاتصال
-          <select value="" onChange={e=>{if(e.target.value)chooseContactPhone(e.target.value,contactName);}}>
-            <option value="">حدد رقمًا</option>
-            {contactPhones.map(number=><option key={number} value={number} dir="ltr">{number}</option>)}
-          </select>
-        </label>}
         <label className="field">الفئة
           <select value={category} onChange={e=>setCategory(e.target.value as typeof category)}
             disabled={busy}>{categories.map(value=><option key={value} value={value}>{value}</option>)}</select>
