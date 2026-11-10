@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { ContactRound } from "lucide-react";
 import { api, useSession } from "./api";
 import { Button, Dialog, Notice } from "./ui";
 
@@ -8,6 +9,15 @@ const categories = [
   "سوبر فايزر شركة","مالك شركة - وكيل","مالك محل جمله",
   "موظف في محل جمله","موزع ادويه - شخصي","موظف في مستشفى","موظف في عيادة",
 ] as const;
+type DeviceContact = { name?: string[]; tel?: string[] };
+type ContactsNavigator = Navigator & {
+  contacts?: { select: (properties: Array<"name" | "tel">, options: {multiple:boolean}) => Promise<DeviceContact[]> };
+};
+const normalizeContactPhone=(input:string)=>input
+  .replace(/[٠-٩]/g, digit=>String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+  .replace(/[۰-۹]/g, digit=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+  .replace(/[\u200e\u200f\u202a-\u202e\s()\-]/g,"")
+  .replace(/^00/,"+");
 export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:string|null}){
   const {user}=useSession();
   const [open,setOpen]=useState(false);
@@ -17,7 +27,41 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [success,setSuccess]=useState("");
+  const [selectingContact,setSelectingContact]=useState(false);
+  const [contactPhones,setContactPhones]=useState<string[]>([]);
+  const [contactName,setContactName]=useState("");
   const request=useRef<{json:string;key:string}|null>(null);
+  function chooseContactPhone(number:string,name:string){
+    setPhone(normalizeContactPhone(number));
+    if(name.trim())setNote(name.trim().slice(0,1000));
+    setContactPhones([]);
+    setError("");setSuccess("");
+  }
+  async function selectFromDevice(){
+    const contacts=(navigator as ContactsNavigator).contacts;
+    if(!contacts?.select){
+      setError("اختيار جهات الاتصال غير مدعوم في هذا المتصفح. يمكنك إدخال الاسم والرقم يدويًا.");
+      return;
+    }
+    if(selectingContact||busy)return;
+    setSelectingContact(true);setError("");setSuccess("");
+    try{
+      const selected=await contacts.select(["name","tel"],{multiple:false});
+      const first=selected[0];
+      if(!first)return;
+      const name=first.name?.[0]?.trim()??"";
+      const phones=[...new Set((first.tel??[]).map(normalizeContactPhone).filter(value=>/^\+?[0-9]{6,20}$/.test(value)))];
+      if(!phones.length){
+        setError("جهة الاتصال المحددة لا تحتوي رقم هاتف صالحًا.");
+        return;
+      }
+      if(phones.length===1)chooseContactPhone(phones[0],name);
+      else {setContactName(name);setContactPhones(phones);}
+    }catch(cause){
+      if(cause instanceof DOMException && ["AbortError","NotAllowedError"].includes(cause.name))return;
+      setError("تعذر اختيار جهة الاتصال. تحقق من دعم المتصفح وإذن جهات الاتصال.");
+    }finally{setSelectingContact(false);}
+  }
   if(!user)return null;
   async function submit(event:FormEvent){
     event.preventDefault();
@@ -50,6 +94,16 @@ export function MarketFriendReferral({cardId}:{cardId:number|null;cardName?:stri
             maxLength={24} placeholder="7XXXXXXXX أو +9677XXXXXXXX"
             disabled={busy}/>
         </label>
+        <Button type="button" variant="secondary" disabled={busy||selectingContact}
+          onClick={()=>void selectFromDevice()}>
+          <ContactRound size={17}/> {selectingContact?"جارٍ اختيار جهة الاتصال…":"اختيار اسم ورقم من جهات الاتصال"}
+        </Button>
+        {!!contactPhones.length&&<label className="field">اختر رقم جهة الاتصال
+          <select value="" onChange={e=>{if(e.target.value)chooseContactPhone(e.target.value,contactName);}}>
+            <option value="">حدد رقمًا</option>
+            {contactPhones.map(number=><option key={number} value={number} dir="ltr">{number}</option>)}
+          </select>
+        </label>}
         <label className="field">الفئة
           <select value={category} onChange={e=>setCategory(e.target.value as typeof category)}
             disabled={busy}>{categories.map(value=><option key={value} value={value}>{value}</option>)}</select>
