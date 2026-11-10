@@ -385,6 +385,133 @@ function PrescriptionLinesEditor({
   </div>;
 }
 
+
+/** Edit a single prescription line; add/remove controls stay below the list.
+ * Save submits the full versioned field value so the server can detect conflicts. */
+function PrescriptionLinesInline({card,canEdit,disabled,onOpen}:{
+  card:MarketCard;canEdit:boolean;disabled:boolean;onOpen:(id:number)=>void;
+}){
+  const {user}=useSession(),client=useQueryClient();
+  const guard=useScopeGuard(`public:medicine-market:prescription-lines:${card.id}`);
+  const rows:PrescriptionLine[]=Array.isArray(card.data.prescriptionLines)
+    ?card.data.prescriptionLines.map(normalizePrescriptionLine):[];
+  const [draft,setDraft]=useState<PrescriptionLine[]|null>(null);
+  const [editingIndex,setEditingIndex]=useState<number|null>(null);
+  const [action,setAction]=useState<"edit"|"add"|"remove"|null>(null);
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
+  const retry=useRef<{payload:string;key:string}|null>(null);
+  const isEditing=draft!==null;
+  const available=canEdit&&!disabled&&!busy;
+  const begin=(kind:"edit"|"add"|"remove",index:number|null)=>{
+    if(!available)return;
+    setError("");setSuccess("");setAction(kind);
+    setEditingIndex(index);
+    const copy=rows.map(row=>({...row}));
+    if(kind==="add")copy.push(emptyPrescriptionLine());
+    if(kind==="remove")copy.pop();
+    setDraft(copy);
+  };
+  const cancel=()=>{if(busy)return;setDraft(null);setEditingIndex(null);setAction(null);setError("");};
+  const updateRow=(index:number,row:PrescriptionLine)=>{
+    setDraft(old=>old?.map((entry,i)=>i===index?row:entry)??null);
+  };
+  async function save(event:FormEvent){
+    event.preventDefault();
+    if(!available||!draft||!guard.isCurrent())return;
+    const initial=card.data.prescriptionLines??null;
+    if(JSON.stringify(draft)===JSON.stringify(initial)){cancel();return;}
+    const payload={fieldKey:"prescriptionLines",value:draft,expectedValue:initial};
+    const signature=JSON.stringify(payload);
+    const key=retry.current?.payload===signature?retry.current.key:crypto.randomUUID();
+    retry.current={payload:signature,key};
+    setBusy(true);setError("");setSuccess("");
+    try{
+      await api(`${ROOT}/cards/${card.id}/contributions`,{
+        method:"POST",body:{...payload,idempotencyKey:key},
+      });
+      if(!guard.isCurrent())return;
+      setDraft(null);setEditingIndex(null);setAction(null);retry.current=null;
+      setSuccess("تم حفظ تعديل الأسطر.");
+      await client.invalidateQueries({queryKey:["medicine-market",user?.id]});
+    }catch(cause){if(guard.isCurrent())setError(errorMessage(cause));}
+    finally{if(guard.isCurrent())setBusy(false);}
+  }
+  const displayedRows=action==="add"&&draft?draft:rows;
+  return <div className="medicine-market-field medicine-market-prescription-inline-rows">
+    <div className="medicine-market-inline-content">
+      <span className="medicine-market-field-label">أدوية الوصفة وعدد الأسطر</span>
+      <ol className="medicine-market-prescription-list">
+        {displayedRows.map((row,index)=><li key={index}>
+          <div className="medicine-market-prescription-inline-row">
+            <div className="medicine-market-prescription-inline-description">
+              <strong>السطر {index+1}</strong>{" "}
+              <span className="medicine-market-prescription-line-kind">
+                ({row.kind==="composition"?"التركيب":"الصنف"})
+              </span>{" "}
+              {row.id!==null
+                ?<RelationName id={row.id} onOpen={onOpen} bilingual={row.kind==="medicine"}/>
+                :<span className="medicine-market-unset">صنف أو تركيب غير محدد</span>}
+            </div>
+            {canEdit&&<Button type="button" variant="ghost" size="compact"
+              disabled={!available||isEditing} aria-label={`تعديل السطر ${index+1}`}
+              title={`تعديل السطر ${index+1}`}
+              onClick={()=>begin("edit",index)}><Pencil size={15}/></Button>}
+          </div>
+          {draft&&editingIndex===index&&action!=="remove"&&
+            <form className="medicine-market-prescription-inline-editor"
+              onSubmit={event=>void save(event)}>
+              <div className="medicine-market-prescription-kind-switch" role="group"
+                aria-label={`نوع البحث للسطر ${index+1}`}>
+                <button type="button" className={draft[index].kind==="medicine"?"is-active":""}
+                  aria-pressed={draft[index].kind==="medicine"} disabled={busy}
+                  onClick={()=>updateRow(index,{kind:"medicine",id:null})}>الصنف</button>
+                <button type="button" className={draft[index].kind==="composition"?"is-active":""}
+                  aria-pressed={draft[index].kind==="composition"} disabled={busy}
+                  onClick={()=>updateRow(index,{kind:"composition",id:null})}>التركيب</button>
+              </div>
+              <RelationPicker key={draft[index].kind}
+                kind={draft[index].kind} label={"بحث السطر "+(index+1)}
+                minChars={1} value={draft[index].id} disabled={busy}
+                onChange={id=>updateRow(index,{...draft[index],id})}/>
+              {error&&<Notice tone="error">{error}</Notice>}
+              <div className="medicine-market-inline-actions">
+                <Button type="submit" size="compact" disabled={busy}>
+                  {busy?"جارٍ الحفظ…":"حفظ السطر"}
+                </Button>
+                <Button type="button" size="compact" variant="ghost" disabled={busy}
+                  onClick={cancel}>إلغاء</Button>
+              </div>
+            </form>}
+        </li>)}
+      </ol>
+      {canEdit&&<div className="medicine-market-prescription-lines-toolbar">
+        <span className="medicine-market-muted">عدد الأسطر: {rows.length}</span>
+        <Button type="button" size="compact" variant="secondary"
+          disabled={!available||isEditing||rows.length>=20}
+          onClick={()=>begin("add",rows.length)}>+ إضافة سطر</Button>
+        <Button type="button" size="compact" variant="secondary"
+          disabled={!available||isEditing||rows.length<=1}
+          onClick={()=>begin("remove",null)}>− حذف السطر الأخير</Button>
+      </div>}
+      {draft&&action==="remove"&&
+        <form className="medicine-market-prescription-inline-editor"
+          onSubmit={event=>void save(event)}>
+          <Notice tone="warning">سيُحذف السطر الأخير من الوصفة. راجع ذلك قبل التأكيد.</Notice>
+          {error&&<Notice tone="error">{error}</Notice>}
+          <div className="medicine-market-inline-actions">
+            <Button type="submit" size="compact" disabled={busy}>
+              {busy?"جارٍ الحفظ…":"تأكيد حذف السطر الأخير"}
+            </Button>
+            <Button type="button" size="compact" variant="ghost" disabled={busy}
+              onClick={cancel}>إلغاء</Button>
+          </div>
+        </form>}
+      {!draft&&success&&<small className="medicine-market-inline-message">{success}</small>}
+      {!draft&&error&&<Notice tone="error">{error}</Notice>}
+    </div>
+  </div>;
+}
+
 function ReferencePicker({
   field, value, references, cardData, onChange, disabled,
 }: {
@@ -898,6 +1025,9 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
     const next={...current.current,value};update(next);
     if(immediate)void save(next);
   }
+  if(card.kind==="prescription"&&field.type==="prescription-lines")
+    return <PrescriptionLinesInline card={card} canEdit={canEdit}
+      disabled={disabled} onOpen={onOpen}/>;
   return <div
     className={`medicine-market-field ${field.visibility!=="public"?"medicine-market-protected ":""}${canEdit&&!editing?"medicine-market-field-editable ":""}${editing?"medicine-market-field-editing":""}`}
     role={canEdit?"group":undefined}
