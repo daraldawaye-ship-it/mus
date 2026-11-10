@@ -7,13 +7,14 @@ import { ImagePreviewModal } from "./ImagePreviewModal";
  * and uploaded picture intact. New uploads keep their true aspect ratio.
  */
 export function MarketProductImage({
-  src,alt,className,style,trimLegacyPadding=true,
+  src,alt,className,style,trimLegacyPadding=true,previewOnClick=true,
 }:{
   src:string;
   alt:string;
   className?:string;
   style?:CSSProperties;
   trimLegacyPadding?:boolean;
+  previewOnClick?:boolean;
 }){
   const [display,setDisplay]=useState(src);
   useEffect(()=>{
@@ -59,9 +60,10 @@ export function MarketProductImage({
     photo.src=src;
     return()=>{active=false;photo.onload=null;};
   },[src,trimLegacyPadding]);
-  return <ImagePreviewModal src={src} alt={alt}>
-    <img src={display} alt={alt} className={className}
-      style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
-      loading="lazy" decoding="async"/>
-  </ImagePreviewModal>;
+  const picture=<img src={display} alt={alt} className={className}
+    style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
+    loading="lazy" decoding="async"/>;
+  return previewOnClick
+    ? <ImagePreviewModal src={src} alt={alt}>{picture}</ImagePreviewModal>
+    : picture;
 }
