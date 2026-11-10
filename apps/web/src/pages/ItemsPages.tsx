@@ -1790,7 +1790,11 @@ function ItemEditor({
                         (fields.compositionId===item?.compositionId
                           ? item?.compositionArabicName : "") ?? ""
                       : "")}
-                  onFocus={()=>{setCompositionSearch("");setCompositionFocused(true);}}
+                  onFocus={event=>{
+                    setCompositionSearch(event.currentTarget.value);
+                    setCompositionFocused(true);
+                    event.currentTarget.select();
+                  }}
                   onChange={event=>{setCompositionSearch(event.target.value);setCompositionFocused(true);}}
                   onKeyDown={event=>{if(event.key==="Escape")setCompositionFocused(false);
                     if(event.key==="Enter"&&compositionFocused&&compositionOptions.data?.items.length===1){
