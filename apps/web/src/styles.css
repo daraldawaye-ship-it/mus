@@ -6759,6 +6759,9 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-prescription-list { padding-inline-start:26px;display:grid;gap:8px;list-style:decimal; }
 .medicine-market-prescription-list li { border-bottom:1px solid var(--border);padding:7px 3px; }
 .medicine-market-prescription-list li strong { margin-inline-end:8px; }
+.medicine-market-prescription-item-names { display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;text-align:start; }
+.medicine-market-prescription-item-names small { font-size:12px;line-height:1.45;unicode-bidi:isolate;overflow-wrap:anywhere; }
+
 .medicine-market-prescription-image { display:grid;justify-items:start;gap:7px;min-width:0; }
 .medicine-market-prescription-image > img { max-width:100%; }
 .medicine-market-prescription-image > a { font-size:13px;text-decoration:underline; }
