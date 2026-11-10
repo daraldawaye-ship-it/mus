@@ -140,7 +140,7 @@ export function ArchivePage({companyId}:{companyId?:number}){
   const record=details.data?.record;
   return <div className="archive-workspace">
     <PageHeader title={companyId===undefined?"أرشيف المستندات والمرفقات":"أرشيف مستندات الشركة"}
-      description={companyId===undefined?"الأرشيف العام مستقل عن القضايا؛ يمكن إظهار فئات مختارة في القضايا.":"المستندات المحفوظة تخص هذه الشركة فقط."}
+      description={companyId===undefined?"الأرشيف العام مستقل عن القضايا؛ يمكن إظهار فئات مختارة في القضايا.":"يعرض مرفقات الشركة ومرفقات الأرشيف العام المسموح لك بالاطلاع عليها، دون تكرار الملفات."}
       actions={legalOnly?<Link className="button button-secondary" to="/archive">جميع فئات الأرشيف</Link>:undefined}/>
     {error&&<Notice tone="error">{error}</Notice>}
     {success&&<Notice tone="success">{success}</Notice>}
@@ -189,7 +189,7 @@ export function ArchivePage({companyId}:{companyId?:number}){
         <thead><tr><th>الفئة</th><th>اسم المرفق</th><th>الرابط</th><th>أُنشئ بواسطة</th>
           <th>المحتوى</th><th>وجه الاستدلال</th><th>الإجراءات</th></tr></thead>
         <tbody>{(list.data?.items??[]).map(item=><tr key={item.id}>
-          <td>{item.categoryName}</td><td>{item.title}<small className="archive-filename">{item.filename}</small></td>
+          <td>{item.categoryName}{companyId!==undefined&&item.companyId===null&&<small className="archive-filename">الأرشيف العام</small>}</td><td>{item.title}<small className="archive-filename">{item.filename}</small></td>
           <td><a href={item.fileUrl} target="_blank" rel="noreferrer">فتح #{item.id}</a></td>
           <td>{item.creatorName}</td><td className="archive-preview-cell">{item.contentPreview||"—"}</td>
           <td className="archive-preview-cell">{item.evidencePreview||"—"}</td>
