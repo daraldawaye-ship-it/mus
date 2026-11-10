@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { api, useSession } from "../api";
 import { usePageDirectory } from "../page-directory";
 import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
+import { ImagePreviewModal } from "../ImagePreviewModal";
 import "./ArchivePage.css";
 
 type Category={id:number;name:string;showInLegal:boolean};
@@ -14,6 +15,7 @@ type FileRow={
   contentPreview?:string;evidencePreview?:string;contentText?:string;evidenceText?:string;
 };
 type FilesPage={items:FileRow[];total:number;page:number;pageSize:number};
+const previewableImage=(mime:string)=>["image/jpeg","image/png","image/webp","image/gif"].includes(mime);
 const maxBytes=8*1024*1024;
 const accepted="image/jpeg,image/png,image/webp,image/gif,application/pdf";
 function message(error:unknown){return error instanceof Error?error.message:"تعذر إكمال العملية";}
@@ -204,7 +206,9 @@ export function ArchivePage({companyId}:{companyId?:number}){
           <td>{item.categoryName}{companyId!==undefined&&item.companyId===null&&<small className="archive-filename">الأرشيف العام</small>}</td><td>{item.title}<small className="archive-filename">{item.filename}</small></td>
           <td dir="ltr" style={{whiteSpace:"nowrap",textAlign:"right"}}>{formatSize(item.sizeBytes)}</td>
           <td style={{whiteSpace:"nowrap"}}>{formatUploadedAt(item.createdAt)}</td>
-          <td><a href={item.fileUrl} target="_blank" rel="noreferrer">فتح #{item.id}</a></td>
+          <td>{previewableImage(item.mimeType)
+            ? <ImagePreviewModal src={item.fileUrl} alt={item.title}><span className="button button-secondary">معاينة #{item.id}</span></ImagePreviewModal>
+            : <a href={item.fileUrl} target="_blank" rel="noreferrer">فتح #{item.id}</a>}</td>
           <td>{item.creatorName}</td><td className="archive-preview-cell">{item.contentPreview||"—"}</td>
           <td className="archive-preview-cell">{item.evidencePreview||"—"}</td>
           <td><Button size="compact" variant="secondary" onClick={()=>{setSelectedId(item.id);setEditing(false);}}>
@@ -226,7 +230,9 @@ export function ArchivePage({companyId}:{companyId?:number}){
         <div className="archive-detail-heading">
           <div><strong>{record.title}</strong><small>{record.categoryName} · #{record.id} · رفعه {record.creatorName}</small></div>
           <div className="archive-detail-actions">
-            <a className="button button-secondary" href={record.fileUrl} target="_blank" rel="noreferrer">فتح الملف</a>
+            {previewableImage(record.mimeType)
+              ? <ImagePreviewModal src={record.fileUrl} alt={record.title}><span className="button button-secondary">معاينة الصورة</span></ImagePreviewModal>
+              : <a className="button button-secondary" href={record.fileUrl} target="_blank" rel="noreferrer">فتح الملف</a>}
             <a className="button button-secondary" href={record.fileUrl} download={record.filename||undefined}>تنزيل</a>
             {canEdit&&<Button variant="secondary" onClick={()=>setEditing(value=>!value)}>{editing?"إلغاء التعديل":"تعديل"}</Button>}
             <Button variant="ghost" onClick={()=>setSelectedId(null)}>إغلاق</Button>
@@ -235,7 +241,9 @@ export function ArchivePage({companyId}:{companyId?:number}){
         <div className="archive-file-viewer">
           {record.mimeType==="application/pdf"
             ? <iframe title={record.filename||"ملف PDF"} src={record.fileUrl}/>
-            : <img src={record.fileUrl} alt={record.title}/>}
+            : previewableImage(record.mimeType)
+              ? <ImagePreviewModal src={record.fileUrl} alt={record.title}><img src={record.fileUrl} alt={record.title}/></ImagePreviewModal>
+              : <p className="muted">هذا النوع من الملفات متاح للتنزيل أو الفتح من الرابط أعلاه.</p>}
         </div>
         {editing&&canEdit?<div className="archive-text-fields">
           <label>المحتوى<textarea rows={8} maxLength={500000} value={contentText}
