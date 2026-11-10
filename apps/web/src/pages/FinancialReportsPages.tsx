@@ -111,6 +111,7 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   const [display, setDisplay] = useState("posting");
   const [hideZero, setHideZero] = useState(false);
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ key: keyof Figures | "code" | "name"; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
   const companyId = context.company.id;
   const report = useQuery({
     queryKey: ["owner-trial-balance", user?.id, companyId, query.toString()],
@@ -126,13 +127,26 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
     const needle = search.trim().toLowerCase();
     return !needle || (row.code + " " + row.name).toLowerCase().includes(needle);
   }), [report.data, search, display, hideZero]);
+  const sortedItems = useMemo(() => [...items].sort((a, b) => {
+    const difference = sort.key === "name"
+      ? a.name.localeCompare(b.name, "ar")
+      : sort.key === "code"
+        ? a.code.localeCompare(b.code, undefined, { numeric: true })
+        : Number(a[sort.key]) - Number(b[sort.key]);
+    return (sort.direction === "asc" ? 1 : -1) * (difference || a.code.localeCompare(b.code, undefined, { numeric: true }));
+  }), [items, sort]);
   const pageSize = 100;
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(items.length / pageSize)));
-  const shown = items.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(sortedItems.length / pageSize)));
+  const shown = sortedItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   if (!user?.owner) return <Notice tone="error">ميزان المراجعة متاح لمالك المنصة فقط.</Notice>;
   const headings = ["رقم الحساب", "اسم الحساب", "افتتاحي مدين", "افتتاحي دائن", "حركة مدين", "حركة دائن", "ختامي مدين", "ختامي دائن"];
+  const sortKeys: (keyof Figures | "code" | "name")[] = ["code", "name", "openingDebit", "openingCredit", "debit", "credit", "closingDebit", "closingCredit"];
+  const changeSort = (key: keyof Figures | "code" | "name") => {
+    setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
+    setPage(1);
+  };
   const exportData = () => downloadCsv("ميزان-المراجعة-" + dateFrom + "-" + dateTo, headings,
-    items.map((row) => [row.code, row.name, row.openingDebit, row.openingCredit,
+    sortedItems.map((row) => [row.code, row.name, row.openingDebit, row.openingCredit,
       row.debit, row.credit, row.closingDebit, row.closingCredit]));
   return <div className="ledger-page">
     <div className="ledger-print-heading"><CompanyPrintHeader context={context} />
@@ -163,7 +177,7 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
           <Notice tone="warning">يوجد فرق بين إجماليات القيود أو أرصدة الحسابات؛ يلزم مراجعة الترحيلات قبل الاعتماد.</Notice>}
         <p>الحسابات المطابقة: {items.length} — الصفحة {currentPage} من {Math.max(1, Math.ceil(items.length / pageSize))}</p>
         <div className="table-scroll"><table>
-          <thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
+          <thead><tr>{headings.map((heading, index) => <th key={heading} aria-sort={sort.key === sortKeys[index] ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}><button type="button" onClick={() => changeSort(sortKeys[index])} title={"ترتيب حسب " + heading} style={{ all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, font: "inherit", color: "inherit" }}>{heading} <span aria-hidden="true">{sort.key === sortKeys[index] ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>)}</tr></thead>
           <tbody>
             {shown.map((row) => <tr key={row.id}>
               <td>{row.code}</td>
