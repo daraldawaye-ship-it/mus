@@ -10,6 +10,7 @@ import { ChatGroupDetailsDialog } from "./ChatGroupDialogs";
 import { ChatAvatar } from "./ChatAvatar";
 import { ChatEmojiPicker } from "./ChatEmojiPicker";
 import { ChatImagePicker, type ChatAttachedImage } from "./ChatImagePicker";
+import { ImagePreviewModal } from "../ImagePreviewModal";
 
 interface GroupProps { allowImages: boolean; siteOwnerIds: number[]; user: User; scope: ChatScope; companyId?: number; groupId: number; obscured: boolean; onBack: () => void; }
 interface GroupDetail { group: ChatGroup; members: ChatGroupMember[]; }
@@ -229,7 +230,7 @@ function GroupHistory({ user, scope, companyId, groupId, detail, obscured, onBac
         const own = message.senderId === user.id; const ownReceipt = message.receipts.find(row => row.userId === user.id);
         return <div className="chat-message-group" key={message.id}>{showDay && <div className="chat-day"><span>{day}</span></div>}<article className={`chat-message chat-group-message ${own ? "chat-message-own" : "chat-message-incoming"}`} data-chat-group-message-id={message.id} data-chat-group-unread={ownReceipt && !ownReceipt.readAt ? "true" : undefined} aria-label={`${own ? "أنت" : message.senderName}: ${message.text}`}>
           <div className="chat-group-sender"><ChatAvatar name={message.senderName} avatarUrl={message.senderAvatarUrl} size="tiny" /><strong>{own ? "أنت" : message.senderName}</strong></div>
-          <p dir="auto">{message.text}</p>{message.imageUrl && <a href={message.imageUrl} target="_blank" rel="noopener noreferrer" aria-label="فتح صورة المجموعة"><img className="chat-inline-image" src={message.imageUrl} alt="صورة مرفقة بالمجموعة" loading="lazy"/></a>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <span className="chat-receipt">تم الإرسال</span>}</div>
+          <p dir="auto">{message.text}</p>{message.imageUrl && <ImagePreviewModal src={message.imageUrl} alt="صورة مرفقة بالمجموعة" className="chat-inline-image"/>}<div className="chat-message-meta"><time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>{own && <span className="chat-receipt">تم الإرسال</span>}</div>
           {own && <button className={`chat-group-receipt-button ${message.recipientCount > 0 && message.readCount === message.recipientCount ? "chat-receipt-read" : ""}`} aria-label="تفاصيل استلام الرسالة وعرضها" onClick={() => setReceiptMessageId(message.id)}><CheckCheck size={14} /><span>تم الاستلام {message.deliveredCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span><span>تم العرض {message.readCount.toLocaleString("ar")} من {message.recipientCount.toLocaleString("ar")}</span></button>}
         </article></div>;
       })}
