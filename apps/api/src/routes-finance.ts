@@ -297,9 +297,21 @@ export async function readAccountLedger(
     [companyId, accountId, dates.from, dates.to],
   );
   // Compute cumulative balance before filtering/search/paging, so each row retains its true chronological balance.
-  const cte = `WITH full_ledger AS (SELECT l.*,d.number,${ledgerDate} AS document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY ${ledgerDate},d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${from})`;
+  // Historical cashbox closing entries remain immutable. Derive their shortage/overage
+  // label only for the linked variance-account line in statements.
+  const cashboxLedgerFrom = from.replace(" WHERE l.company_id", ` LEFT JOIN LATERAL (
+    SELECT o.variance_amount FROM employee_cashbox_operations o
+    WHERE o.company_id=l.company_id AND o.financial_document_id=l.document_id
+      AND o.variance_account_id=l.account_id AND o.kind='close'
+    LIMIT 1
+  ) closing ON true WHERE l.company_id`);
+  const labeledDescription = `CASE
+    WHEN closing.variance_amount>0 AND l.description NOT LIKE '%عجز%' THEN 'عجز — ' || l.description
+    WHEN closing.variance_amount<0 AND l.description NOT LIKE '%زيادة%' THEN 'زيادة — ' || l.description
+    ELSE l.description END`;
+  const cte = `WITH full_ledger AS (SELECT l.*, ${labeledDescription} AS labeled_description,d.number,${ledgerDate} AS document_date,d.kind,d.status,d.currency_id,d.currency_code,d.description AS document_description,d.reverses_document_id,sum(l.base_debit-l.base_credit) OVER(ORDER BY ${ledgerDate},d.id,l.line_number ROWS UNBOUNDED PRECEDING) AS running_balance ${cashboxLedgerFrom})`;
   const filter =
-    "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.description ILIKE $5 OR f.document_description ILIKE $5)";
+    "($3::date IS NULL OR f.document_date >= $3::date) AND ($4::date IS NULL OR f.document_date <= $4::date) AND (f.number ILIKE $5 OR f.labeled_description ILIKE $5 OR f.document_description ILIKE $5)";
   const count = await client.query(
     `${cte} SELECT count(*)::integer AS total FROM full_ledger f WHERE ${filter}`,
     params,
@@ -345,7 +357,7 @@ export async function readAccountLedger(
     documentDate: row.date_text,
     kind: row.kind,
     status: row.status,
-    description: row.description || row.document_description,
+    description: row.labeled_description || row.document_description,
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
     debit: normalizeRate(row.debit),
