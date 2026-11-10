@@ -495,7 +495,7 @@ const friendCategories = [
   "موظف في محل جمله","موزع ادويه - شخصي","موظف في مستشفى","موظف في عيادة",
 ] as const;
 const friendReferralSchema=z.object({
-  phone:z.string().trim().regex(/^\\+?[0-9]{6,20}$/,"أدخل رقم هاتف صالحًا بالأرقام، ويمكن أن يبدأ بعلامة +"),
+  phone:z.string().trim().regex(/^\+?[0-9]{6,20}$/,"أدخل رقم هاتف صالحًا بالأرقام، ويمكن أن يبدأ بعلامة +"),
   note:z.string().trim().max(1000).default(""),
   category:z.enum(friendCategories),
   cardId:z.number().int().positive().nullable(),
