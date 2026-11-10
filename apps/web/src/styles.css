@@ -6676,6 +6676,9 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .medicine-market-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .medicine-market-field { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; min-width:0; padding:12px 14px; border-block-end:1px solid var(--border); }
 .medicine-market-field:nth-child(odd) { border-inline-end:1px solid var(--border); }
+/* Prescription photo and medicine rows occupy full-width consecutive sections on desktop too. */
+.medicine-market-fields-prescription { grid-template-columns:minmax(0,1fr); }
+.medicine-market-fields-prescription .medicine-market-field:nth-child(odd) { border-inline-end:0; }
 .medicine-market-field > div { min-width:0; display:grid; gap:5px; }
 .medicine-market-field > button { flex-shrink:0; }
 .medicine-market-field-editable { cursor:pointer; }
