@@ -10,7 +10,7 @@ import {
   type ItemCompositionInput,
   type Item,
   type ProductForm,
-  productForms,
+  compositionForms,
 } from "../../../../packages/contracts/src/index";
 import { api, ApiFailure, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
@@ -448,7 +448,7 @@ function CompositionEditor({
           disabled={disabled} dir="ltr" onChange={e=>set("arabicName",e.target.value)}/>
         <Select label="شكل التركيب" value={form.productForm}
           disabled={disabled} onChange={e=>set("productForm",e.target.value as ProductForm)}>
-          {productForms.map(value=><option key={value} value={value}>{value}</option>)}
+          {compositionForms.map(value=><option key={value} value={value}>{value}</option>)}
         </Select>
         <Field label="الفارق بالسعر — سعر بيع الوحدة الأولى" type="number"
           min="0" step="0.000001" inputMode="decimal"
