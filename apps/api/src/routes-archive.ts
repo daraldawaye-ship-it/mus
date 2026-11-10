@@ -80,7 +80,7 @@ function decodeFile(dataUrl:string,filename:string){
     gif:["GIF87a","GIF89a"].includes(head.subarray(0,6).toString()),
     pdf:head.subarray(0,5).toString()==="%PDF-",
     zip,docx:zip,xlsx:zip,pptx:zip,
-    rar:head.subarray(0,6).toString()==="Rar!\\x1a\\x07".replace(/\\x1a/g,"\x1a").replace(/\\x07/g,"\x07"),
+    rar:starts([0x52,0x61,0x72,0x21,0x1a,0x07]),
     "7z":starts([0x37,0x7a,0xbc,0xaf,0x27,0x1c]),
     doc:ole,xls:ole,ppt:ole,
     wav:head.subarray(0,4).toString()==="RIFF"&&head.subarray(8,12).toString()==="WAVE",
@@ -191,7 +191,7 @@ export function archiveRoutes(pool:Pool):Router {
     await ensureAccess(pool,actor(req),record.company_id,"view");
     res.setHeader("Cache-Control","private, no-store");
     res.setHeader("Content-Security-Policy","sandbox; default-src 'none'");
-    res.setHeader("Content-Disposition","inline");
+    res.setHeader("Content-Disposition",["application/pdf","image/jpeg","image/png","image/webp","image/gif"].includes(record.mime_type)?"inline":"attachment");
     res.type(record.mime_type);
     res.send(record.file_bytes);
   }));
