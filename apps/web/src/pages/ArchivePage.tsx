@@ -10,13 +10,25 @@ type Category={id:number;name:string;showInLegal:boolean};
 type FileRow={
   id:number;companyId:number|null;categoryId:number;categoryName:string;
   title:string;filename:string;mimeType:string;createdBy:number;creatorName:string;
-  createdAt:string;updatedAt:string;revision:number;fileUrl:string;
+  createdAt:string;updatedAt:string;revision:number;fileUrl:string;sizeBytes:number;
   contentPreview?:string;evidencePreview?:string;contentText?:string;evidenceText?:string;
 };
 type FilesPage={items:FileRow[];total:number;page:number;pageSize:number};
 const maxBytes=8*1024*1024;
 const accepted="image/jpeg,image/png,image/webp,image/gif,application/pdf";
 function message(error:unknown){return error instanceof Error?error.message:"تعذر إكمال العملية";}
+const formatSize=(bytes:number|undefined)=>{
+  if(typeof bytes!=="number"||!Number.isFinite(bytes)||bytes<0)return "—";
+  if(bytes<1024)return `${bytes.toLocaleString("ar-YE")} بايت`;
+  const unit=bytes<1024*1024?"ك.ب":bytes<1024*1024*1024?"م.ب":"ج.ب";
+  const factor=unit==="ك.ب"?1024:unit==="م.ب"?1024*1024:1024*1024*1024;
+  return `${(bytes/factor).toLocaleString("ar-YE",{maximumFractionDigits:2})} ${unit}`;
+};
+const formatUploadedAt=(value:string)=>new Intl.DateTimeFormat("ar-YE",{
+  timeZone:"Asia/Aden",year:"numeric",month:"2-digit",day:"2-digit",
+  hour:"2-digit",minute:"2-digit",hour12:true,
+}).format(new Date(value));
+
 function fileDataUrl(file:File):Promise<string>{
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -186,10 +198,12 @@ export function ArchivePage({companyId}:{companyId?:number}){
       {list.isPending&&<Notice>جارٍ تحميل السجلات…</Notice>}
       {list.error&&<Notice tone="error">{message(list.error)}</Notice>}
       <div className="archive-table-scroll"><table className="archive-table">
-        <thead><tr><th>الفئة</th><th>اسم المرفق</th><th>الرابط</th><th>أُنشئ بواسطة</th>
+        <thead><tr><th>الفئة</th><th>اسم المرفق</th><th>الحجم</th><th>تاريخ ووقت التحميل</th><th>الرابط</th><th>أُنشئ بواسطة</th>
           <th>المحتوى</th><th>وجه الاستدلال</th><th>الإجراءات</th></tr></thead>
         <tbody>{(list.data?.items??[]).map(item=><tr key={item.id}>
           <td>{item.categoryName}{companyId!==undefined&&item.companyId===null&&<small className="archive-filename">الأرشيف العام</small>}</td><td>{item.title}<small className="archive-filename">{item.filename}</small></td>
+          <td dir="ltr" style={{whiteSpace:"nowrap",textAlign:"right"}}>{formatSize(item.sizeBytes)}</td>
+          <td style={{whiteSpace:"nowrap"}}>{formatUploadedAt(item.createdAt)}</td>
           <td><a href={item.fileUrl} target="_blank" rel="noreferrer">فتح #{item.id}</a></td>
           <td>{item.creatorName}</td><td className="archive-preview-cell">{item.contentPreview||"—"}</td>
           <td className="archive-preview-cell">{item.evidencePreview||"—"}</td>
