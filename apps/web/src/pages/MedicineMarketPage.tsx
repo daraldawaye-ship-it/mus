@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1018,6 +1018,7 @@ export function MedicineMarketPage({
   const { user } = useSession(),
     client = useQueryClient(),
     guard = useScopeGuard(`public:medicine-market:${tab}`);
+  const navigate=useNavigate();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "",
     kind = params.get("kind") ?? "",
@@ -1238,6 +1239,18 @@ export function MedicineMarketPage({
         : "تم رفض المساهمة.",
     );
   }
+  const reviewField=(row:Contribution):FieldDefinition=>{
+    const known=types.find(type=>type.key===row.kind)?.fields.find(field=>field.key===row.fieldKey);
+    if(known)return known;
+    // Safeguard for metadata cached before newer field definitions arrived.
+    return {key:row.fieldKey,label:row.fieldLabel??row.fieldKey,
+      type:row.fieldKey==="prescriptionLines"?"prescription-lines":
+        row.fieldKey==="compositionId"?"relation":"text",
+      visibility:"public",points:{add:0,edit:0},policyRevision:0};
+  };
+  const reviewValue=(row:Contribution,value:unknown)=><FieldValue
+    field={reviewField(row)} value={value} cardKind={row.kind}
+    references={references} onOpen={id=>navigate(`${ROOT}?card=${id}`)}/>;
   const fieldLabel = (k: Kind, key: string) =>
     types.find((t) => t.key === k)?.fields.find((f) => f.key === key)?.label ??
     (key === "name" ? "الاسم" : key);
@@ -1911,6 +1924,7 @@ export function MedicineMarketPage({
                           {row.cardName ?? `كرت #${row.cardId}`}
                         </Link>
                         <h3>{fieldLabel(row.kind, row.fieldKey)}</h3>
+                        <small className="medicine-market-muted">نوع الكرت: {types.find(type=>type.key===row.kind)?.label??row.kind}</small>
                       </div>
                       <span className="medicine-market-badge">
                         {statusLabels[row.status] ?? row.status}
@@ -1919,11 +1933,11 @@ export function MedicineMarketPage({
                     <div className="medicine-market-diff">
                       <div>
                         <span>القيمة السابقة</span>
-                        <p>{readable(row.previousValue)}</p>
+                        <div className="medicine-market-review-value">{reviewValue(row,row.previousValue)}</div>
                       </div>
                       <div>
                         <span>القيمة المقترحة</span>
-                        <p>{readable(row.value)}</p>
+                        <div className="medicine-market-review-value">{reviewValue(row,row.value)}</div>
                       </div>
                     </div>
                     <p className="medicine-market-muted">
