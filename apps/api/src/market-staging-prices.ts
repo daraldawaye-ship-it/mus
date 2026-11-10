@@ -17,7 +17,7 @@ export const stagingPricesOperation = "POST /medicine-market/staging/:sourceId/a
 
 type Entry = z.infer<typeof priceEntry>;
 type Card = {id:number;name:string;data:Record<string,unknown>};
-const sourceHash = "1a9458b501b5101f0359da0266e0c9900ad2a03d14af218e1f37c70ca436e62d8d5";
+const sourceHash = "1a9458b501b5101f0359da0266e0c9900ad2a03d14af218e1f37c70fdc10f3cd";
 const section = "ورقة1";
 function titleCase(name:string){
   return name.replace(/[A-Za-z]+/g, word => word[0]!.toUpperCase()+word.slice(1).toLowerCase());
