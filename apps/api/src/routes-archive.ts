@@ -186,7 +186,7 @@ export function archiveRoutes(pool:Pool):Router {
         JOIN users u ON u.id=f.created_by WHERE ${where}
         ORDER BY f.id DESC LIMIT $5 OFFSET $6`,params),
       pool.query(`SELECT count(*)::integer AS total FROM archive_files f
-        JOIN archive_categories c ON c.id=f.category_id WHERE ${where}`,params),
+        JOIN archive_categories c ON c.id=f.category_id WHERE ${where.replace("$7::boolean","$5::boolean")}`,[companyId,`%${q}%`,categoryId,legalOnly,includePublic]),
     ]);
     res.json({items:records.rows.map(r=>serialFile(r)),total:count.rows[0].total,page,pageSize});
   }));
