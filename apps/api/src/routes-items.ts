@@ -247,12 +247,19 @@ export function itemRoutes(pool: Pool): Router {
         const pageOrder=basicSort
           ? `${pageSortColumns[basicSort]} ${query.direction.toUpperCase()}, paged."itemId" DESC`
           : 'paged."itemId" DESC';
+        // A composition's grouped form is compatible with each of its
+        // individual item forms. Normalize only for comparison, not storage.
+        const comparableItemForm=`CASE
+          WHEN i.product_form IN ('اقراص','كبسول') THEN 'اقراص/كبسول'
+          WHEN i.product_form IN ('مرهم','كريم','جل') THEN 'مرهم/كريم/جل'
+          ELSE i.product_form END`;
+        const formMismatch=`(${comparableItemForm} <> f.product_form)`;
         const filter=query.status==="different"
-          ? "AND i.product_form<>'عام' AND f.product_form<>'عام' AND i.product_form<>f.product_form"
+          ? `AND i.product_form<>'عام' AND f.product_form<>'عام' AND ${formMismatch}`
           : query.status==="unclassified"
             ? "AND (i.product_form='عام' OR f.product_form='عام')"
             : query.status==="needs-review"
-              ? "AND (i.product_form<>f.product_form OR i.product_form='عام' OR f.product_form='عام')"
+              ? `AND (${formMismatch} OR i.product_form='عام' OR f.product_form='عام')`
               : "";
         const where=`FROM items i
           JOIN item_compositions f ON f.company_id=i.company_id AND f.id=i.composition_id
