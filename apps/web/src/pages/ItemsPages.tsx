@@ -53,6 +53,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
+import { CompositionAlternativeLookup } from "../CompositionAlternativeLookup";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
@@ -1833,6 +1834,13 @@ function ItemEditor({
               {fields.compositionId&&compositionDetail.data?.composition.active===false&&
                 <small className="muted">التركيب مؤرشف؛ يمكنك إبقاؤه أو اختيار تركيب فعال</small>}
             </div>
+            <CompositionAlternativeLookup companyId={companyId}
+              compositionId={fields.compositionId} disabled={disabled}
+              onSelect={composition=>{
+                edit("compositionId",composition.id);
+                setCompositionSearch("");
+                setCompositionFocused(false);
+              }}/>
             <Field
               label="مفاتيح البحث"
               className="item-span-two"

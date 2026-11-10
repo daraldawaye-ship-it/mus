@@ -36,6 +36,7 @@ import {
   useSession,
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
+import { CompositionAlternativeLookup } from "../CompositionAlternativeLookup";
 import { ExpiryMonthField } from "../ExpiryMonthField";
 import { StagedMovementsPanel } from "../StagedInvoiceViews";
 import { formatMoney } from "../format-money";
@@ -1679,6 +1680,12 @@ function OperationEditor({
                 display={option => option.arabicName}
                 emptyLabel="ابحث عن التركيب واختره"
               />
+              <CompositionAlternativeLookup companyId={companyId}
+                compositionId={selectedComposition?.id??null} disabled={disabled}
+                onSelect={composition=>{
+                  setSelectedComposition(composition);
+                  setDirty(true);
+                }}/>
               </div>
             )}
             {mode === "transfer" && item && (
