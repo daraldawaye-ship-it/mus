@@ -26,6 +26,7 @@ import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { moduleAccess } from "../phase2";
 import { ImageUpload } from "../ImageUpload";
 import { AttendancePunchControls } from "../AttendancePunchControls";
+import { QuickArchiveUpload } from "../QuickArchiveUpload";
 import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { useCompanyLetterhead } from "../CompanyPrintHeader";
 import { usePageDirectory } from "../page-directory";
@@ -367,6 +368,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         <AttendancePunchControls
           companyId={company.id}
           compact
+          extraActions={<QuickArchiveUpload />}
           showPageDirectoryLink={!!directory.data?.some(entry =>
             entry.key === "company.pages" && entry.visible && entry.enabled && entry.actionAccess.view
           )}
