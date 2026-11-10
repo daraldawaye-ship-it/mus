@@ -109,9 +109,11 @@ function KindIcon({ kind, size = 22 }: { kind: string; size?: number }) {
 function RelationName({
   id,
   onOpen,
+  bilingual=false,
 }: {
   id: number;
   onOpen?: (id: number) => void;
+  bilingual?: boolean;
 }) {
   const { user } = useSession();
   const result = useQuery({
@@ -121,18 +123,25 @@ function RelationName({
     staleTime: 60000,
   });
   const label = result.data?.card.name ?? `كرت #${id}`;
+  const english = bilingual && result.data?.card.kind==="medicine" &&
+    typeof result.data.card.data.englishName==="string" &&
+    result.data.card.data.englishName.trim() &&
+    result.data.card.data.englishName.trim().toLowerCase()!==label.trim().toLowerCase()
+      ? result.data.card.data.englishName.trim() : null;
+  const names = <span className="medicine-market-prescription-item-names">
+    <span>{label}</span>
+    {english && <small dir="ltr" lang="en">{english}</small>}
+  </span>;
   return onOpen ? (
     <button
       type="button"
       className="medicine-market-link"
       onClick={() => onOpen(id)}
     >
-      {label}
+      {names}
       <ChevronLeft size={13} />
     </button>
-  ) : (
-    <span>{label}</span>
-  );
+  ) : names;
 }
 /**
  * Relations show choices on focus and filter from the first character.
@@ -740,7 +749,7 @@ function FieldValue({
             ({row.kind==="composition"?"التركيب":"الصنف"})
           </span>{" "}
           {row.id!==null
-            ?<RelationName id={row.id} onOpen={onOpen}/>
+            ?<RelationName id={row.id} onOpen={onOpen} bilingual={row.kind==="medicine"}/>
             :<span className="medicine-market-unset">
                 {row.kind==="composition"?"تركيب غير معروف":"صنف غير معروف"} — متاح لإكماله من الجمهور
               </span>}
