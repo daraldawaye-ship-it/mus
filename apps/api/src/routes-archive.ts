@@ -35,6 +35,12 @@ async function ensureAccess(db:Pool|PoolClient,user:User,companyId:number|null,a
   if(!page)missing();
   assertDirectoryAccess(page,action);
 }
+/** Include the shared public archive in company listings only for viewers
+ * who can already open those same public records directly. */
+async function canViewPublicArchive(db:Pool|PoolClient,user:User):Promise<boolean>{
+  const page=(await directoryEntries(db,user,null)).find(p=>p.key==="public.archive");
+  return !!page?.enabled && !!page.actionAccess.view;
+}
 
 const supportedExtensions:Record<string,string[]> = {
   pdf:["application/pdf"],
@@ -129,12 +135,13 @@ export function archiveRoutes(pool:Pool):Router {
     const companyId=optionalScope(req.query.companyId);
     const user=actor(req);
     await ensureAccess(pool,user,companyId,"view");
+    const includePublic=companyId!==null&&await canViewPublicArchive(pool,user);
     const legalOnly=companyId===null&&req.query.legalOnly==="true";
     const result=await pool.query(
       `SELECT id,name,show_in_legal AS "showInLegal" FROM archive_categories
-         WHERE company_id IS NOT DISTINCT FROM $1
+         WHERE (company_id IS NOT DISTINCT FROM $1 OR ($3::boolean AND company_id IS NULL))
            AND ($2::boolean=false OR show_in_legal=true)
-         ORDER BY name,id`,[companyId,legalOnly]);
+         ORDER BY name,id`,[companyId,legalOnly,includePublic]);
     res.json({items:result.rows});
   }));
   router.patch("/archive/categories/:id",handler(async(req,res)=>{
@@ -157,13 +164,14 @@ export function archiveRoutes(pool:Pool):Router {
   router.get("/archive/files",handler(async(req,res)=>{
     const companyId=optionalScope(req.query.companyId),user=actor(req);
     await ensureAccess(pool,user,companyId,"view");
+    const includePublic=companyId!==null&&await canViewPublicArchive(pool,user);
     const page=Math.max(1,Math.min(1_000_000,Number(req.query.page)||1));
     const pageSize=Math.max(1,Math.min(50,Number(req.query.pageSize)||20));
     const q=String(req.query.q??"").trim().slice(0,200);
     const categoryId=req.query.categoryId? id(String(req.query.categoryId)):null;
     const legalOnly=companyId===null&&req.query.legalOnly==="true";
-    const params=[companyId,`%${q}%`,categoryId,legalOnly,pageSize,(page-1)*pageSize];
-    const where=`f.company_id IS NOT DISTINCT FROM $1
+    const params=[companyId,`%${q}%`,categoryId,legalOnly,pageSize,(page-1)*pageSize,includePublic];
+    const where=`(f.company_id IS NOT DISTINCT FROM $1 OR ($7::boolean AND f.company_id IS NULL))
       AND ($3::integer IS NULL OR f.category_id=$3)
       AND ($4::boolean=false OR c.show_in_legal=true)
       AND (f.title ILIKE $2 OR c.name ILIKE $2 OR f.original_filename ILIKE $2
@@ -177,7 +185,7 @@ export function archiveRoutes(pool:Pool):Router {
         JOIN users u ON u.id=f.created_by WHERE ${where}
         ORDER BY f.id DESC LIMIT $5 OFFSET $6`,params),
       pool.query(`SELECT count(*)::integer AS total FROM archive_files f
-        JOIN archive_categories c ON c.id=f.category_id WHERE ${where}`,params.slice(0,4)),
+        JOIN archive_categories c ON c.id=f.category_id WHERE ${where}`,params),
     ]);
     res.json({items:records.rows.map(r=>serialFile(r)),total:count.rows[0].total,page,pageSize});
   }));
