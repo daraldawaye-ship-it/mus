@@ -1,8 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CompanyContext, ProductForm } from "../../../../packages/contracts/src/index.ts";
-import { api, useSession } from "../api";
+import {
+  productForms, compositionForms, itemFieldPatchSchema, itemCompositionPatchSchema,
+  type CompanyContext, type ProductForm, type ItemComposition,
+} from "../../../../packages/contracts/src/index.ts";
+import { Pencil } from "lucide-react";
+import "../doctor-inline-cells.css";
+import { api, useScopeGuard, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 import { rememberRecentEntity } from "../recent-entities";
@@ -33,6 +38,116 @@ interface Results {items:Difference[];total:number;page:number;pageSize:number}
 const statsNumber=(value:string|number|null,digits=0)=>
   value==null?"—":Number(value).toLocaleString("en-US",{maximumFractionDigits:digits});
 
+
+type InlineField="itemName"|"itemForm"|"compositionName"|"compositionForm";
+const itemFormChoices=productForms.filter(form =>
+  form!=="اقراص/كبسول" && form!=="مرهم/كريم/جل");
+
+/** The report edits the master field, using the same click/blur/Enter flow as doctors. */
+function DifferenceInlineCell({row,field,companyId,canEdit,locks,onSaved,onFailure}:{
+  row:Difference;field:InlineField;companyId:number;canEdit:boolean;
+  locks:Set<string>;
+  onSaved:(value:string)=>void;onFailure:(message:string)=>void;
+}){
+  const isComposition=field==="compositionName"||field==="compositionForm";
+  const isForm=field==="itemForm"||field==="compositionForm";
+  const id=isComposition?row.compositionId:row.itemId;
+  const scope=useScopeGuard(`company:${companyId}:form-inline:${id}:${field}`);
+  const original=row[field];
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState(String(original));
+  const [busy,setBusy]=useState(false);
+  const pending=useRef(false);
+  const cancelled=useRef(false);
+  const baseline=useRef(String(original));
+  useEffect(()=>{if(!editing)setDraft(String(original));},[original,editing]);
+  function cancel(){
+    cancelled.current=true;
+    setDraft(String(original));
+    setEditing(false);
+  }
+  async function save(valueText=draft){
+    if(pending.current||cancelled.current)return;
+    const value=valueText.trim();
+    if(value===baseline.current){setEditing(false);return;}
+    if(!value){onFailure(`الحقل «${sortLabels[field]}» مطلوب.`);return;}
+    const lock=`${isComposition?"composition":"item"}:${id}`;
+    if(locks.has(lock)){
+      onFailure("جارٍ حفظ حقل آخر في الكرت نفسه؛ أعد الحفظ بعد اكتماله.");
+      return;
+    }
+    pending.current=true;locks.add(lock);setBusy(true);
+    try{
+      if(isComposition){
+        // Preserve all other composition attributes and detect a stale displayed field.
+        const {composition:c}=await api<{composition:ItemComposition}>(
+          `/companies/${companyId}/item-compositions/${id}`,{signal:scope.signal});
+        const current=field==="compositionName"?c.arabicName:c.productForm;
+        if(current!==baseline.current)
+          throw new Error("تغيرت قيمة الحقل بواسطة تعديل آخر؛ حدّث القائمة ثم أعد المحاولة.");
+        const body=itemCompositionPatchSchema.parse({
+          arabicName:field==="compositionName"?value:c.arabicName,
+          englishName:field==="compositionName"?value:c.englishName,
+          productForm:field==="compositionForm"?value:c.productForm,
+          revision:c.revision,description:c.description,saleNotes:c.saleNotes,
+          priceSplitThreshold:c.priceSplitThreshold,originalItemId:c.originalItemId,
+          active:c.active,identicalAlternative:c.identicalAlternative,
+          nonInterchangeable:c.nonInterchangeable,
+        });
+        await api(`/companies/${companyId}/item-compositions/${id}`,{
+          method:"PATCH",body,signal:scope.signal});
+      }else{
+        const key=field==="itemName"?"name":"productForm";
+        const body=itemFieldPatchSchema.parse({
+          changes:{[key]:value},expected:{[key]:baseline.current},
+        });
+        await api(`/companies/${companyId}/items/${id}`,{
+          method:"PATCH",body,signal:scope.signal});
+      }
+      if(scope.isCurrent()){
+        setEditing(false);
+        onSaved(value);
+      }
+    }catch(error){
+      if(scope.isCurrent())onFailure(`لم يحفظ ${sortLabels[field]}: ${errorMessage(error)}`);
+    }finally{
+      pending.current=false;locks.delete(lock);
+      if(scope.isCurrent())setBusy(false);
+    }
+  }
+  if(!canEdit)return <>{original}</>;
+  if(!editing)return <button type="button" className="doctor-inline-trigger"
+    title={`تعديل ${sortLabels[field]} مباشرة`}
+    aria-label={`تعديل ${sortLabels[field]} — ${isComposition?row.compositionName:row.itemName}`}
+    onClick={()=>{
+      baseline.current=String(original);cancelled.current=false;
+      setDraft(String(original));setEditing(true);
+    }}>
+    <span className="doctor-inline-value">{original}</span>
+    <Pencil size={13} aria-hidden="true" className="doctor-inline-pencil"/>
+  </button>;
+  if(isForm)return <select autoFocus className="doctor-inline-editor"
+    aria-label={sortLabels[field]} value={draft} disabled={busy}
+    onChange={event=>{setDraft(event.target.value);void save(event.target.value);}}
+    onBlur={()=>{void save();}}
+    onKeyDown={event=>{
+      if(event.key==="Escape"){event.preventDefault();cancel();}
+      else if(event.key==="Enter"){event.preventDefault();void save();}
+    }}>
+    {(isComposition?compositionForms:itemFormChoices).map(form=>
+      <option key={form} value={form}>{form}</option>)}
+  </select>;
+  return <input autoFocus className="doctor-inline-editor"
+    aria-label={sortLabels[field]} value={draft} disabled={busy}
+    maxLength={isComposition?240:120} dir={isComposition?"ltr":"rtl"}
+    onChange={event=>setDraft(event.target.value)}
+    onBlur={()=>{void save();}}
+    onKeyDown={event=>{
+      if(event.key==="Escape"){event.preventDefault();cancel();}
+      else if(event.key==="Enter"){event.preventDefault();void save();}
+    }}/>;
+}
+
 export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   const companyId=context.company.id;
   const {user}=useSession();
@@ -40,6 +155,9 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   const [params,setParams]=useSearchParams();
   const [opened,setOpened]=useState<{type:"item"|"composition";id:number}|null>(null);
   const [itemSaving,setItemSaving]=useState(false);
+  const [inlineError,setInlineError]=useState("");
+  const inlineLocks=useRef(new Set<string>());
+  const canEdit=context.general||context.permissions.includes("items.manage");
   const q=params.get("q")??"";
   const [search,setSearch]=useState(q);
   const rawStatus=params.get("status");
@@ -73,7 +191,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
   }
   const [pageSize] = useState(50);
   useEffect(()=>setSearch(q),[q,companyId]);
-  useEffect(()=>{setOpened(null);setItemSaving(false);},[companyId]);
+  useEffect(()=>{setOpened(null);setItemSaving(false);setInlineError("");},[companyId]);
   const update=(key:string,value:string)=>{
     setParams(previous=>{
       const next=new URLSearchParams(previous);
@@ -102,9 +220,28 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
     void queryClient.invalidateQueries({queryKey:["item-form-differences",user?.id,companyId]});
     close();
   };
+  const inline=(row:Difference,field:InlineField)=><DifferenceInlineCell
+    key={`${companyId}:${row.itemId}:${field}`} row={row} field={field}
+    companyId={companyId} canEdit={canEdit} locks={inlineLocks.current}
+    onFailure={setInlineError} onSaved={value=>{
+      setInlineError("");
+      const composition=field==="compositionName"||field==="compositionForm";
+      queryClient.setQueriesData<Results>(
+        {queryKey:["item-form-differences",user?.id,companyId]},
+        previous=>previous?{...previous,items:previous.items.map(item=>
+          (composition?item.compositionId===row.compositionId:item.itemId===row.itemId)
+            ? {...item,[field]:value}:item)}:previous);
+      void queryClient.invalidateQueries({predicate:({queryKey:key})=>
+        key[1]===user?.id && (
+          (key[0]==="item-form-differences" && key[2]===companyId) ||
+          (key[0]==="list" && String(key[2]).startsWith(`company:${companyId}:`)) ||
+          (["items","commerce","master","composition-sheet"].includes(String(key[0])) &&
+            key[2]===companyId)
+        )});
+    }}/>;
   return <>
     <PageHeader title="متابعة اختلاف شكل الصنف والتركيب"
-      description="مراجعة التصنيف المبدئي للأصناف والتراكيب. لا يغيّر التقرير أي تصنيف تلقائيًا؛ راجع الكرتين لتصحيح الاختلاف."/>
+      description="اضغط على اسم الصنف أو التركيب أو الشكل لتعديله مباشرة. تحفظ الأسماء عند الخروج أو Enter، والأشكال عند الاختيار؛ Esc للإلغاء."/>
     <Card title="الفحص والمقارنة">
       <div className="table-filters">
         <form onSubmit={event=>{event.preventDefault();update("q",search.trim());}}>
@@ -122,6 +259,7 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
         </Select>
       </div>
       <p className="muted">عدد النتائج: {result.data?.total??0}. التصنيف الآلي مبدئي؛ قد تختلف أشكال المستحضرات المرتبطة بالتركيب بشكل صحيح. الإحصائيات مجموع التركيب بأكمله من الجداول المنفصلة، وتظهر «—» عند عدم توفر صلاحية الاطلاع.</p>
+      {inlineError&&<Notice tone="error">{inlineError}</Notice>}
       {result.error && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       <div className="table-scroll" role="region" tabIndex={0} aria-label="مراجعة اختلاف الشكل">
         <table className="data-table form-differences-table">
@@ -148,10 +286,10 @@ export function ItemFormDifferencesPage({context}:{context:CompanyContext}) {
           <tbody>
             {rows.map(row=>{
               return <tr key={row.itemId}>
-                <td>{row.itemName}{!row.itemActive?" (مؤرشف)":""}</td>
-                <td>{row.itemForm}</td>
-                <td>{row.compositionName}{!row.compositionActive?" (مؤرشف)":""}</td>
-                <td>{row.compositionForm}</td>
+                <td>{inline(row,"itemName")}{!row.itemActive?" (مؤرشف)":""}</td>
+                <td>{inline(row,"itemForm")}</td>
+                <td>{inline(row,"compositionName")}{!row.compositionActive?" (مؤرشف)":""}</td>
+                <td>{inline(row,"compositionForm")}</td>
                 <td dir="ltr"><bdi>{statsNumber(row.saleTimesYear,0)}</bdi></td>
                 <td dir="ltr"><bdi>{statsNumber(row.availableAlternatives,0)}</bdi></td>
                 <td dir="ltr"><bdi>{statsNumber(row.availableUnit1,3)}</bdi></td>
