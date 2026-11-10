@@ -27,8 +27,9 @@ async function prepareFile(file: File): Promise<{ dataUrl: string; filename: str
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!extensions.split(",").includes(extension)) throw new Error("صيغة الملف غير مدعومة");
   if (!file.size || file.size > maximumBytes) throw new Error("الحجم المسموح حتى 25 ميجابايت لكل ملف");
-  // GIF remains unchanged so animated images retain their original frames.
-  if (!["jpg", "jpeg", "png", "webp"].includes(extension)) {
+  // Treat GIF as a still image: createImageBitmap decodes its first frame,
+  // then canvas exports WebP just like JPG/PNG (animation is discarded).
+  if (!["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
     return { dataUrl: await readAsDataUrl(file), filename: file.name };
   }
   const bitmap = await createImageBitmap(file);
@@ -228,7 +229,7 @@ export function QuickArchiveUpload() {
             addFiles(Array.from(event.target.files??[]));
             event.target.value="";
           }}/>
-        <small>يبدأ الرفع والحفظ بمجرد اختيار الملفات، ويمكن تعديل الاسم والنوع للجميع أثناء الرفع وبعده. الصور الثابتة تتحول إلى WebP دون قص، وGIF يُضغط مع الحفاظ على الحركة. الحد 25 ميجابايت للملف.</small>
+        <small>يبدأ الرفع والحفظ بمجرد اختيار الملفات، ويمكن تعديل الاسم والنوع للجميع أثناء الرفع وبعده. جميع الصور بما فيها GIF تتحول إلى WebP ثابتة ومضغوطة دون قص، ويُستخدم الإطار الأول من GIF. الحد 25 ميجابايت للملف.</small>
         {rows.length>0&&<>
           <div className="archive-upload-fields">
             <label className="field">اسم المرفق للجميع
