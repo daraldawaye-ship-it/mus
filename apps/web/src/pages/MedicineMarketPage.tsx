@@ -24,6 +24,7 @@ import {
 import { api, useScopeGuard, useSession } from "../api";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
+import { MarketFriendReferral } from "../MarketFriendReferral";
 import { MarketStagingProgress } from "./MarketStagingProgress";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
@@ -1313,6 +1314,7 @@ export function MedicineMarketPage({
               <Star size={16} /> {meta.data?.userPoints ?? "0"} نقطة معتمدة
             </span>
           )}
+          {permissions?.canContribute && <MarketFriendReferral cardId={selected} cardName={card?.name}/>} 
           {permissions?.canContribute ? (
             <Button
               onClick={() => {
