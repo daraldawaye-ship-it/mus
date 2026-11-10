@@ -94,6 +94,8 @@ export function QuickArchiveUpload() {
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const allSaved = rows.length > 0 && rows.every(row => row.state === "saved");
+  const hasPending = rows.some(row => row.state !== "saved");
   if (!user || !canCreate) return null;
   function patch(id: number, change: Partial<Row>) {
     setRows(old => old.map(row => row.id === id ? { ...row, ...change } : row));
@@ -156,7 +158,9 @@ export function QuickArchiveUpload() {
         </div>)}
         {feedback && <Notice>{feedback}</Notice>}
         <div className="form-actions">
-          <Button onClick={() => void save()} disabled={busy || !rows.some(row => row.state !== "saved")}>{busy ? "جارٍ الرفع…" : "حفظ المرفقات"}</Button>
+          {allSaved
+            ? <span role="status" aria-live="polite" style={{display:"inline-flex",alignItems:"center",fontWeight:700,padding:"8px 12px"}}>✓ تم الحفظ</span>
+            : <Button onClick={() => void save()} disabled={busy || !hasPending}>{busy ? "جارٍ الرفع…" : "حفظ المرفقات"}</Button>}
           <Button variant="secondary" disabled={busy} onClick={() => { setOpen(false); setRows([]); }}>إغلاق</Button>
         </div>
       </div>
