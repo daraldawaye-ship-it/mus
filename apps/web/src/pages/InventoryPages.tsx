@@ -1658,6 +1658,29 @@ function OperationEditor({
               nullable={false}
               onChange={selectItem}
             />
+            {mode === "adjustment" && item && !item.compositionId && (
+              <div className="form-full">
+              <Notice tone="warning">هذا الصنف بدون تركيب؛ اختر التركيب قبل حفظ التسوية.</Notice>
+              <ServerLookup<ItemComposition>
+                companyId={companyId}
+                resource={`/companies/${companyId}/item-compositions?active=true`}
+                label="تركيب الصنف (إلزامي)"
+                value={selectedComposition}
+                disabled={disabled}
+                required
+                singleInput
+                searchPlaceholder="ابحث عن التركيب واختره"
+                noResultsLabel="لا توجد تراكيب مطابقة."
+                sort="arabicName:asc"
+                onChange={option => {
+                  setSelectedComposition(option);
+                  setDirty(true);
+                }}
+                display={option => option.arabicName}
+                emptyLabel="ابحث عن التركيب واختره"
+              />
+              </div>
+            )}
             {mode === "transfer" && item && (
               <div className="form-full inventory-location-balances">
                 <div className="inventory-location-balances-heading">
@@ -1722,23 +1745,6 @@ function OperationEditor({
                 setDirty(true);
               }}
             />
-            {mode === "adjustment" && item && !item.compositionId && (
-              <ServerLookup<ItemComposition>
-                companyId={companyId}
-                resource={`/companies/${companyId}/item-compositions?active=true`}
-                label="تركيب الصنف (إلزامي)"
-                value={selectedComposition}
-                disabled={disabled}
-                required
-                sort="arabicName:asc"
-                onChange={option => {
-                  setSelectedComposition(option);
-                  setDirty(true);
-                }}
-                display={option => option.arabicName + (option.englishName ? ` — ${option.englishName}` : "")}
-                emptyLabel="ابحث عن التركيب واختره"
-              />
-            )}
             {mode === "transfer" && (
               <ReferenceField<Location>
                 companyId={companyId}
@@ -1897,6 +1903,7 @@ function OperationEditor({
                     (!settings.data?.configured ||
                       (mode === "adjustment" &&
                         (!targetReady ||
+                          (!item?.compositionId && !selectedComposition) ||
                           batch.isFetching ||
                           !!batch.error ||
                           batchQuantity === null))))
