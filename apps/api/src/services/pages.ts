@@ -654,7 +654,7 @@ export async function requestPageKeys(
   if (resource === "items") {
     if (req.method === "POST" && rest === "items")
       keys.push("company.item-new");
-    if (/^items\/\d+/.test(rest)) keys.push("company.item-card");
+    if (/^items\/\d+/.test(rest) || rest === "items/form-corrections/piece") keys.push("company.item-card");
   }
   if (
     resource === "wallet-conversions" &&

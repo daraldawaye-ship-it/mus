@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { registerSupplyPieceForms } from "./supply-piece-forms.ts";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Pool } from "pg";
@@ -136,6 +137,7 @@ const compositionKey = (arabicName: string, englishName: string) =>
 export function itemRoutes(pool: Pool): Router {
   const router = Router(),
     base = "/companies/:companyId";
+  registerSupplyPieceForms(router, pool);
   const shelfColumns = {
     id: "s.id",
     code: "s.name",

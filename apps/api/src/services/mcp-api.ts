@@ -1,8 +1,11 @@
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
+import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
 import { permissionRequest } from "./permission-rules.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
+
+const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts };
 
 export const API_READ_SCOPE = "tijara.read";
 export const API_WRITE_SCOPE = "tijara.write";
@@ -168,7 +171,7 @@ export function apiCatalog(router: Router, input: unknown) {
       operation: op.method + " " + op.path,
       tool: op.method === "GET" ? "tijara_api_read" : "tijara_api_write",
       ...(operation
-        ? ((contracts as Record<string, unknown>)[
+        ? (operationContracts[
             op.method + " " + op.path
           ] as object)
         : {}),

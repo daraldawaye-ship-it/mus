@@ -256,7 +256,7 @@ export async function requestPermissionTargets(
     page =
       action === "create" && !detail
         ? "company.item-new"
-        : detail && /^\d+$/.test(detail)
+        : detail && (/^\d+$/.test(detail) || segments.join("/") === "items/form-corrections/piece")
           ? "company.item-card"
           : "company.items";
   if (resource === "stock-transfers" || resource === "stock-adjustments")
