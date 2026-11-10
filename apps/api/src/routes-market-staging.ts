@@ -1,3 +1,4 @@
+import { applyStagingSalePrices, stagingPricesSchema } from "./market-staging-prices.ts";
 import { Router } from "express";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
@@ -440,6 +441,13 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     const prior=await pool.query("SELECT * FROM market_card_arabization_runs WHERE source_id=$1",[sourceId]);
     if(!prior.rowCount)missing();
     res.json(prior.rows[0]);
+  }));
+  router.post("/medicine-market/staging/:sourceId/apply-sale-prices",handler(async(req,res)=>{
+    const owner=await authorize(req);
+    await access.viewer(pool,req,true);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const input=parse(stagingPricesSchema,req.body);
+    res.json(await transaction(pool,db=>applyStagingSalePrices(db,sourceId,input.entries,owner)));
   }));
   // Progress metadata is deliberately separate from immutable source rows.
   // No followup row means "unprocessed"; complete rows can be excluded from future scans.

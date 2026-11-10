@@ -1,11 +1,15 @@
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
+import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-prices.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
 import { permissionRequest } from "./permission-rules.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 
-const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts };
+const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
+    bodyContract:"stagingPricesSchema",bodySchema:z.toJSONSchema(stagingPricesSchema)},
+};
 
 export const API_READ_SCOPE = "tijara.read";
 export const API_WRITE_SCOPE = "tijara.write";
