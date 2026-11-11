@@ -8670,3 +8670,17 @@ a.notification-quick-title:hover { text-decoration: underline; }
   overflow: visible;
   text-overflow: clip;
 }
+
+
+/* Owner-only real mobile viewport for the entire app. */
+.owner-phone-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; align-items:end; }
+.owner-phone-controls label { display:grid; gap:6px; font-weight:600; font-size:13px; }
+.owner-phone-controls select,.owner-phone-controls input { width:100%; min-width:0; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px; font:inherit; }
+.owner-phone-address { display:flex; align-items:center; gap:6px; }
+.owner-phone-address input { direction:ltr; }
+.owner-phone-stage { display:flex; justify-content:center; overflow-x:auto; padding:24px 12px 40px; }
+.owner-phone-device { box-sizing:content-box; max-width:none; flex:none; padding:8px; background:#101820; border:2px solid #44515c; border-radius:26px; box-shadow:0 12px 35px #0005; }
+.owner-phone-device-top { display:flex; gap:8px; align-items:center; justify-content:center; height:35px; color:#f6f9fb; font-size:12px; }
+.owner-phone-device iframe { display:block; box-sizing:border-box; max-width:none; border:0; background:#fff; border-radius:6px; }
+.owner-phone-device-bottom { height:24px; display:grid; place-items:center; }
+.owner-phone-device-bottom span { width:85px; height:4px; background:#8d9ca8; border-radius:9px; }
