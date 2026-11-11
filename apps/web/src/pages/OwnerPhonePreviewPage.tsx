@@ -24,7 +24,7 @@ function safePath(input: string): string | null {
 export default function OwnerPhonePreviewPage() {
   const { user } = useSession();
   const frame = useRef<HTMLIFrameElement>(null);
-  const [width, setWidth] = useState(390);
+  const [width, setWidth] = useState(430);
   const [height, setHeight] = useState(780);
   const [address, setAddress] = useState("/medicine-market");
   const [current, setCurrent] = useState("/medicine-market");
