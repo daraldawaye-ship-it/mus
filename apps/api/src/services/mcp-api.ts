@@ -5,9 +5,15 @@ import { mcpBodySchemas as legalSchemas } from "../routes-legal-cases.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
 import { permissionRequest } from "./permission-rules.ts";
+import { centralPermissionAssignmentSchema } from "../routes-central-access.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "GET /companies/:companyId/central-access":{source:"routes-central-access.ts",queryFields:[],pathParams:["companyId"]},
+  "PATCH /companies/:companyId/central-access/:key/employees/:employeeId":{
+    source:"routes-central-access.ts",queryFields:[],pathParams:["companyId","key","employeeId"],
+    bodyContract:"centralPermissionAssignmentSchema",bodySchema:z.toJSONSchema(centralPermissionAssignmentSchema),
+  },
   "GET /legal/transcription-summary":{source:"routes-legal-cases.ts",queryFields:[]},
   "POST /legal/transcription-status":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalTranscriptionBatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalTranscriptionBatchSchema)},
   "POST /legal/records":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"recordSchema",bodySchema:z.toJSONSchema(legalSchemas.recordSchema)},

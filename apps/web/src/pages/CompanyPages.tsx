@@ -10,7 +10,6 @@ import {
   auditTargetLabels,
   employeePositions,
   employeePositionLabels,
-  permissionKeys,
   permissionLabels,
   type AuditEvent,
   type Company,
@@ -19,7 +18,6 @@ import {
   type Employee,
   type EmployeePosition,
   type EmployeeAttendanceSettings,
-  type Permission,
   type User,
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
@@ -53,41 +51,6 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "تعذر إكمال الطلب. حاول مجددًا.";
 const actionLabels: Record<string, string> = auditActionLabels;
 const targetLabels = auditTargetLabels;
-
-function PermissionFields({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: Permission[];
-  onChange: (value: Permission[]) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <fieldset disabled={disabled} className="permission-fields">
-      <legend>صلاحيات الموظف</legend>
-      {permissionKeys.map((permission) => (
-        <label key={permission} className="check-label">
-          <input
-            type="checkbox"
-            checked={value.includes(permission)}
-            onChange={(event) =>
-              onChange(
-                event.target.checked
-                  ? [...value, permission]
-                  : value.filter((item) => item !== permission),
-              )
-            }
-          />
-          {permissionLabels[permission]}
-        </label>
-      ))}
-      <p className="muted">
-        صلاحيات النظام السابقة محفوظة حتى اكتمال الربط التدريجي بمركز الصلاحيات.
-      </p>
-    </fieldset>
-  );
-}
 
 export function CompaniesPage() {
   const { user } = useSession();
@@ -970,9 +933,6 @@ function EmployeeEditor({
   const [positions,setPositions]=useState<EmployeePosition[]>(employee?.positions??["employee"]);
   const [active, setActive] = useState(employee?.active ?? true);
   const [createSalesCashbox, setCreateSalesCashbox] = useState(false);
-  const [permissions, setPermissions] = useState<Permission[]>(
-    employee?.permissions ?? [],
-  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const saveLock = useRef(false);
@@ -1091,11 +1051,11 @@ function EmployeeEditor({
           role,
           active,
           positions,
-          permissions,
           ...(employee
             ? {}
             : {
                 createSalesCashbox,
+                permissions: [],
                 ...(createMode === "phone"
                   ? {
                       newUser: {
@@ -1387,18 +1347,15 @@ function EmployeeEditor({
         )}
         <EmployeePositionPicker value={positions} onChange={setPositions}
           disabled={baseLocked}/>
+        {directory.data?.some(entry => entry.key === "company.central-access" &&
+          entry.enabled && entry.actionAccess.view) && <p className="muted">
+          تُدار صلاحيات العمليات من <Link to={`/companies/${companyId}/central-access`}>صفحة الصلاحيات</Link>.
+        </p>}
         {positions.includes("cashier") && <p className="muted">
-          صفة «أمين صندوق» تفتح كشف حساب صندوق الموظف المرتبط فقط.
-          لتفعيل «إضافة سند قبض» و«إضافة سند صرف»، افتح الصلاحيات
-          المباشرة أدناه واختر «إنشاء وتعديل المسودات المالية».
-          ولترحيل السندات اختر أيضًا «ترحيل وعكس القيود والسندات».
+          صفة «أمين صندوق» تمنح صلاحية كشف صندوق الموظف المرتبط.
+          إعدادات إضافة السندات وترحيلها في صفحة الصلاحيات.
           يجب ربط صندوق المبيعات بحساب الموظف من كرت حسابات الموظف.
         </p>}
-        <details className="employee-legacy-permissions">
-          <summary>الصلاحيات المباشرة القديمة (للتوافق مع النظام الحالي)</summary>
-          <PermissionFields value={permissions} onChange={setPermissions}
-            disabled={baseLocked}/>
-        </details>
         <label className="check-label">
           <input
             type="checkbox"

@@ -5456,6 +5456,11 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .central-access-summary {display:flex;flex-wrap:wrap;gap:10px;}
 .central-access-summary p {width:100%;margin:0;}
 .central-access-summary code {font-size:11px;overflow-wrap:anywhere;}
+.central-permission-summary {grid-column:span 2;}
+.central-permission-employees {display:flex;flex-direction:column;gap:7px;margin-top:12px;max-height:60vh;overflow:auto;}
+.central-permission-employee {padding:9px;border:1px solid var(--border);border-radius:6px;}
+.central-permission-employee>.check-label {margin:0 0 4px;}
+.central-permission-employee>.muted {display:block;line-height:1.5;}
 @media(max-width:1050px) {
   .central-access-layout,.central-access-editor {grid-template-columns:1fr;}
   .central-access-list {max-height:40vh;}

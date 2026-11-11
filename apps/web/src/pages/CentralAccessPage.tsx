@@ -1,9 +1,9 @@
-import { useMemo,useState } from "react";
+import { useMemo,useRef,useState } from "react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {useNavigate} from "react-router-dom";
 import {startEmployeePreview} from "../employee-preview-mode";
-import { employeePositions,employeePositionLabels,type CompanyContext,type EmployeePosition } from "../../../../packages/contracts/src/index.ts";
-import { api,useSession } from "../api";
+import { employeePositions,employeePositionLabels,permissionKeys,permissionLabels,type CompanyContext,type EmployeePosition,type Permission } from "../../../../packages/contracts/src/index.ts";
+import { api,useScopeGuard,useSession } from "../api";
 import { Button,Card,Field,Notice,PageHeader,Select } from "../ui";
 import { EmployeePositionPicker } from "../EmployeePositionPicker";
 import { errorMessage } from "../phase2";
@@ -14,11 +14,109 @@ type Policy={key:string;viewPositions:EmployeePosition[];editPositions:EmployeeP
   revision:number;updatedAt:string};
 type Resource={key:string;name:string;section:string;kind:ResourceKind;
   description:string;integrated:boolean;policy:Policy|null};
-type Response={positions:Position[];resources:Resource[]};
+type PermissionEmployee={id:number;name:string;active:boolean;
+ positions:EmployeePosition[];permissions:Permission[];isGeneralManager:boolean;isOwner:boolean};
+type Response={positions:Position[];resources:Resource[];permissionEmployees?:PermissionEmployee[]};
 const kindLabels:Record<ResourceKind,string>={
- page:"صفحة",field:"حقل",button:"زر / عملية",permission:"صلاحية",
+ page:"صفحة",field:"حقل",button:"زر / عملية",permission:"صلاحية تشغيل",
  control:"خيار الكنترول",
 };
+
+const viewSources:Partial<Record<Permission,Permission[]>>={
+ "accounts.view":["accounts.manage"],
+ "currencies.view":["currencies.manage"],
+ "locations.view":["locations.manage"],
+ "items.view":["items.manage"],
+ "commerce.view":["commerce.manage"],
+ "inventory.view":["inventory.manage","inventory.post"],
+ "finance.view":["finance.manage","finance.post"],
+};
+function resourcePermission(resource:Resource):Permission|null {
+ const key=resource.key.slice("permission:".length);
+ return resource.kind==="permission" && permissionKeys.includes(key as Permission)
+   ? key as Permission : null;
+}
+function automaticGrant(employee:PermissionEmployee,permission:Permission):string|null {
+ if(employee.isOwner)return "متاحة للمالك";
+ if(employee.isGeneralManager)return "متاحة للمدير العام";
+ if(permission==="finance.own-cashbox.view" && employee.positions.includes("cashier"))
+   return "متاحة بصفة أمين صندوق";
+ const source=viewSources[permission]?.find(key=>employee.permissions.includes(key));
+ return source?`متاحة أيضًا بصلاحية «${permissionLabels[source]}»`:null;
+}
+
+function CentralEmployeePermissionEditor({resource,companyId,employees,onSaved}:{
+ resource:Resource;companyId:number;employees:PermissionEmployee[]|undefined;
+ onSaved:(employee?:PermissionEmployee)=>Promise<unknown>;
+}) {
+ const permission=resourcePermission(resource);
+ const guard=useScopeGuard(`company:${companyId}:central-permission:${resource.key}`);
+ const [busyId,setBusyId]=useState<number|null>(null);
+ const saveLock=useRef(false);
+ const [error,setError]=useState("");
+ const [success,setSuccess]=useState("");
+ const [search,setSearch]=useState("");
+ const filtered=employees?.filter(employee=>
+   employee.name.toLocaleLowerCase("ar").includes(search.trim().toLocaleLowerCase("ar")))??[];
+ async function toggle(employee:PermissionEmployee,granted:boolean) {
+   if(!permission || saveLock.current || employee.isOwner || employee.isGeneralManager)return;
+   saveLock.current=true;setBusyId(employee.id);setError("");setSuccess("");
+   try {
+     const result=await api<{employee:PermissionEmployee}>(
+       `/companies/${companyId}/central-access/${encodeURIComponent(resource.key)}/employees/${employee.id}`,{
+         method:"PATCH",signal:guard.signal,
+         body:{granted,expectedGranted:employee.permissions.includes(permission)},
+       });
+     if(!guard.isCurrent())return;
+     await onSaved(result.employee);
+     if(guard.isCurrent())setSuccess(`تم حفظ صلاحية ${employee.name}.`);
+   }catch(reason){
+     if(guard.isCurrent()){
+       setError(errorMessage(reason));
+       // Reload after an unknown outcome or a concurrent change before retrying.
+       await onSaved();
+     }
+   }finally{
+     saveLock.current=false;
+     if(guard.isCurrent())setBusyId(null);
+   }
+ }
+ if(!permission)return <Notice tone="error">تعذر تحديد صلاحية التشغيل.</Notice>;
+ return <Card title={resource.name}>
+   <p className="muted">
+     حدد الموظفين الممنوحين هذه الصلاحية مباشرة. تُحفظ كل علامة فورًا،
+     وتظل صلاحيات الصفحات وشروط الإجراءات مطبقة.
+   </p>
+   <Field type="search" label="بحث عن موظف" value={search}
+     onChange={event=>setSearch(event.target.value)} placeholder="اسم الموظف"/>
+   {error&&<Notice tone="error">{error}</Notice>}
+   {success&&<Notice tone="success">{success}</Notice>}
+   {!employees&&<Notice>تعيينات الموظفين غير متاحة الآن. أعد تحميل الصفحة بعد اكتمال التحديث.</Notice>}
+   <div className="central-permission-employees">
+     {filtered.map(employee=>{
+       const automatic=automaticGrant(employee,permission);
+       const protectedGrant=employee.isOwner||employee.isGeneralManager;
+       const direct=employee.permissions.includes(permission);
+       return <div key={employee.id} className="central-permission-employee">
+         <label className="check-label">
+           <input type="checkbox" checked={protectedGrant||direct}
+             disabled={busyId!==null||protectedGrant}
+             onChange={event=>void toggle(employee,event.target.checked)}/>
+           <span>{employee.name}{!employee.active&&" — غير فعال"}</span>
+           {busyId===employee.id&&<small>جارٍ الحفظ…</small>}
+         </label>
+         <small className="muted">
+           {automatic??(direct?"منح مباشر":"بلا منح مباشر")}
+           {automatic&&!protectedGrant&&(direct?" · يوجد منح مباشر أيضًا":" · دون منح مباشر")}
+           {!employee.active&&" · العضوية غير مفعلة"}
+         </small>
+       </div>;
+     })}
+     {employees&&filtered.length===0&&<p className="muted">لا يوجد موظفون مطابقون.</p>}
+   </div>
+   <p className="muted">إزالة المنح المباشر لا تلغي صلاحية متاحة بسبب صفة الموظف أو صلاحية أخرى.</p>
+ </Card>;
+}
 
 function CentralPositionField({resource,companyId,dimension,onSaved}:{
  resource:Resource;companyId:number;dimension:"view"|"edit";onSaved:()=>Promise<unknown>;
@@ -165,6 +263,17 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
    queryFn:({signal})=>api<Response>(`/companies/${companyId}/central-access`,{signal}),
    staleTime:10000,
  });
+ async function permissionSaved(employee?:PermissionEmployee) {
+   if(employee)client.setQueryData<Response>(["central-access",user?.id,companyId],previous=>
+     previous?{...previous,permissionEmployees:previous.permissionEmployees?.map(current=>
+       current.id===employee.id?employee:current)}:previous);
+   await Promise.all([
+     client.invalidateQueries({queryKey:["central-access",user?.id,companyId]}),
+     client.invalidateQueries({queryKey:["company",user?.id,companyId]}),
+     client.invalidateQueries({queryKey:["page-directory",user?.id,companyId]}),
+     client.invalidateQueries({queryKey:["list",user?.id,`company:${companyId}:employees`]}),
+   ]);
+ }
  const [text,setText]=useState("");
  const [section,setSection]=useState("");
  const [kind,setKind]=useState("");
@@ -178,17 +287,16 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
        `${item.name} ${item.key} ${item.section} ${item.description}`.toLocaleLowerCase("ar").includes(needle))
      && (!section||item.section===section)
      && (!kind||item.kind===kind)
-     && (!onlyConfigured||!!item.policy);
+     && (!onlyConfigured||!!item.policy||item.kind==="permission");
  }),[items,text,section,kind,onlyConfigured]);
  const active=items.find(x=>x.key===selected)??null;
  if(!context.general)return <Notice tone="warning">تعديل مركز الصلاحيات للمالك أو المدير العام.</Notice>;
  return <>
    <PageHeader title="مركز الصلاحيات وخيارات النظام"
-     description="حقل للعرض وحقل للتعديل لكل عنصر. الحقل الفارغ للمالك وحده؛ وصفة موظف تسمح لجميع الموظفين."/>
+     description="إدارة صلاحيات الصفحات والعمليات من مكان واحد. صفات الصفحة الفارغة تعني المالك فقط؛ وصفة موظف تسمح لجميع الموظفين."/>
    <Notice>
-     تُطبق صفات عرض صفحات الشركة من هذا المركز في القائمة وفتح الروابط والخادم،
-     ولا تُمنح صلاحيات جديدة لتسجيل المبالغ أو ترحيل الفواتير. ربط الحقول والأزرار الأخرى
-     بالخادم مستقل ولا يتم تجاوز صلاحيات الأعمال القديمة.
+     صلاحيات العمليات مستقلة عن فتح الصفحات. اختر صلاحية تشغيل من القائمة
+     لإدارة منح الموظفين الحالية؛ لا يغيّر فتح هذه الصفحة أي صلاحية.
    </Notice>
    {user?.owner&&<Card title="تصفح بصلاحيات موظف — للمالك فقط">
      <p className="muted">اختبر القوائم والصفحات والبيانات التي يراها الموظف فعلًا. المعاينة مؤقتة للقراءة فقط، ولا تُبدّل حسابك أو كلمة مرور الموظف أو صلاحياته.</p>
@@ -240,21 +348,36 @@ export function CentralAccessPage({context}:{context:CompanyContext}) {
              <strong>{resource.name}</strong>
              <small>{resource.section} — {kindLabels[resource.kind]}</small>
            </button>
-           <CentralPositionField resource={resource} companyId={companyId}
-             dimension="view"
-             onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
-           <CentralPositionField resource={resource} companyId={companyId}
-             dimension="edit"
-             onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+           {resource.kind==="permission"
+             ? <button type="button" className="central-inline-trigger central-permission-summary"
+                 onClick={()=>setSelected(resource.key)}>
+                 <small>منح مباشر</small>
+                 <span>{query.data?.permissionEmployees
+                   ? `${query.data.permissionEmployees.filter(employee=>
+                       employee.permissions.includes(resourcePermission(resource)!)).length} موظف — إدارة الموظفين`
+                   :"عرض تعيينات الموظفين"}</span>
+               </button>
+             : <>
+                 <CentralPositionField resource={resource} companyId={companyId}
+                   dimension="view"
+                   onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+                 <CentralPositionField resource={resource} companyId={companyId}
+                   dimension="edit"
+                   onSaved={()=>client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
+               </>}
          </div>)}
          {filtered.length===0&&!query.isPending&&<p>لا توجد نتائج.</p>}
        </div>
      </Card>
      <div>
-       {active?<CentralResourceEditor key={`${companyId}:${active.key}:${active.policy?.revision??0}`}
-         companyId={companyId} resource={active}
-         onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>
-         :<Card title="اختيار عنصر"><p>اختر أي حقل أو زر أو صفحة من القائمة لعرض صلاحيات الاطلاع والتعديل.</p></Card>}
+       {active?(active.kind==="permission"
+         ? <CentralEmployeePermissionEditor key={`${companyId}:${active.key}`}
+             companyId={companyId} resource={active} employees={query.data?.permissionEmployees}
+             onSaved={permissionSaved}/>
+         : <CentralResourceEditor key={`${companyId}:${active.key}:${active.policy?.revision??0}`}
+             companyId={companyId} resource={active}
+             onSaved={()=>void client.invalidateQueries({queryKey:["central-access",user?.id,companyId]})}/>)
+         :<Card title="اختيار عنصر"><p>اختر صفحة أو صلاحية تشغيل أو حقلًا أو زرًا من القائمة لإدارة صلاحياته.</p></Card>}
      </div>
    </div>
  </>;

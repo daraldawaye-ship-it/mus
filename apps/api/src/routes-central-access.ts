@@ -1,15 +1,39 @@
 import { Router } from "express";
-import type { Pool } from "pg";
+import type { Pool, QueryResultRow } from "pg";
 import { z } from "zod";
 import {
-  employeePositions,employeePositionListSchema,
+  employeePositions,employeePositionListSchema,permissionKeys,
+  type Permission,
 } from "../../../packages/contracts/src/index.ts";
 import { transaction } from "./db.ts";
 import { actor,handler,id,parse } from "./http.ts";
-import { HttpError } from "./errors.ts";
+import { deny, HttpError, missing } from "./errors.ts";
 import { companyAccess,currentActor,manageEmployees } from "./policies/access.ts";
 import { audit } from "./services/audit.ts";
 import { centralResources,centralResource } from "./services/central-access-catalog.ts";
+import { employeeDTO } from "./repositories/models.ts";
+
+export const centralPermissionAssignmentSchema=z.object({
+  granted:z.boolean(),
+  expectedGranted:z.boolean(),
+}).strict();
+
+const permissionEmployeeSelect=`SELECT e.*,u.display_name,u.email,u.owner AS permission_owner
+  FROM employees e JOIN users u ON u.id=e.user_id`;
+const permissionEmployee=(row:QueryResultRow)=>({
+  id:row.id as number,
+  name:row.name as string,
+  active:row.active as boolean,
+  positions:row.position_keys as string[],
+  permissions:row.permissions as Permission[],
+  isGeneralManager:row.is_general_manager as boolean,
+  isOwner:row.permission_owner as boolean,
+});
+const assertPositionPolicy=(key:string)=>{
+  if(centralResource(key)?.kind==="permission")
+    throw new HttpError(409,"permission_assignments_only",
+      "تُدار صلاحيات التشغيل من تعيينات الموظفين داخل مركز الصلاحيات، وليس من حقول الصفات.");
+};
 
 const editSchema=z.object({
   viewPositions:employeePositionListSchema,
@@ -41,15 +65,69 @@ export function centralAccessRoutes(pool:Pool):Router {
            FROM central_access_policies WHERE company_id=$1`,[companyId],
         );
         const overrides=new Map(stored.rows.map(row=>[row.key,row]));
+        const employees=await client.query(
+          `${permissionEmployeeSelect} WHERE e.company_id=$1 ORDER BY e.active DESC,e.name,e.id`,
+          [companyId],
+        );
         return {
           positions:employeePositions,
+          permissionEmployees:employees.rows.map(permissionEmployee),
           resources:centralResources.map(resource=>({
             ...resource,
-            policy:overrides.get(resource.key)??null,
+            // These old position presets were never an authorization source.
+            // Show the actual employee grants without activating any preset.
+            policy:resource.kind==="permission"?null:overrides.get(resource.key)??null,
+            controlMode:resource.kind==="permission"?"employees":"positions",
           })),
         };
       });
       res.json(result);
+    }),
+  );
+  router.patch("/companies/:companyId/central-access/:key/employees/:employeeId",
+    handler(async(req,res)=>{
+      const companyId=id(req.params.companyId),employeeId=id(req.params.employeeId);
+      const key=keyFromParam(req.params.key);
+      const permission=key.slice("permission:".length) as Permission;
+      if(centralResource(key)?.kind!=="permission" || !permissionKeys.includes(permission))
+        throw new HttpError(400,"invalid_permission","اختر صلاحية تشغيل معرّفة");
+      const input=parse(centralPermissionAssignmentSchema,req.body);
+      const employee=await transaction(pool,async client=>{
+        const user=await currentActor(client,actor(req));
+        const context=await companyAccess(client,user,companyId,undefined,true);
+        manageEmployees(user,context);
+        const found=await client.query(
+          `${permissionEmployeeSelect} WHERE e.company_id=$1 AND e.id=$2 FOR UPDATE OF e`,
+          [companyId,employeeId],
+        );
+        const row=found.rows[0];
+        if(!row) missing();
+        if(row.permission_owner)
+          deny("صلاحيات مالك المنصة ثابتة ولا تُعدّل من تعيينات الموظفين");
+        if(row.is_general_manager && !user.owner)
+          deny("تعديل صلاحيات المدير العام للمالك فقط");
+        const before=employeeDTO(row);
+        const granted=before.permissions.includes(permission);
+        if(granted!==input.expectedGranted)
+          throw new HttpError(409,"stale_permission_assignment",
+            "تغيّر تعيين هذه الصلاحية؛ أعد تحميل آخر صلاحيات الموظف");
+        if(granted===input.granted) return permissionEmployee(row);
+        const permissions=input.granted
+          ? [...before.permissions,permission].sort()
+          : before.permissions.filter(value=>value!==permission);
+        await client.query(
+          "UPDATE employees SET permissions=$1 WHERE company_id=$2 AND id=$3",
+          [permissions,companyId,employeeId],
+        );
+        const after=await client.query(
+          `${permissionEmployeeSelect} WHERE e.company_id=$1 AND e.id=$2`,
+          [companyId,employeeId],
+        );
+        await audit(client,user,"employee.update","employee",employeeId,
+          before,employeeDTO(after.rows[0]!),companyId);
+        return permissionEmployee(after.rows[0]!);
+      });
+      res.json({employee});
     }),
   );
   router.put("/companies/:companyId/central-access/:key",
@@ -61,6 +139,7 @@ export function centralAccessRoutes(pool:Pool):Router {
         const user=await currentActor(client,actor(req));
         const context=await companyAccess(client,user,companyId,undefined,true);
         manageEmployees(user,context);
+        assertPositionPolicy(key);
         const existing=await client.query(
           `SELECT view_positions AS "viewPositions",
            edit_positions AS "editPositions",revision FROM central_access_policies
@@ -107,6 +186,7 @@ export function centralAccessRoutes(pool:Pool):Router {
         const user=await currentActor(client,actor(req));
         const context=await companyAccess(client,user,companyId,undefined,true);
         manageEmployees(user,context);
+        assertPositionPolicy(key);
         const before=await client.query(
           `SELECT view_positions AS "viewPositions",edit_positions AS "editPositions",
            revision FROM central_access_policies

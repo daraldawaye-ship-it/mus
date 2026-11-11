@@ -12,7 +12,6 @@ const fields: readonly [string,string,string][] = [
   ["employees.name","الموظفون","اسم الموظف"],
   ["employees.phone","الموظفون","هاتف الموظف"],
   ["employees.positions","الموظفون","صفات الموظف"],
-  ["employees.permissions","الموظفون","منح صلاحيات الموظف"],
   ["employees.password","الموظفون","إعادة تعيين كلمة المرور"],
   ["employees.account-links","الموظفون","الصندوق والحافظة والسلفة المرتبطة"],
   ["employees.attendance","الموظفون","إعدادات حضور الموظف وانصرافه"],
@@ -103,9 +102,9 @@ export const centralResources:readonly CentralResource[]=[
   })),
   ...permissionKeys.map(key=>({
     key:`permission:${key}`,name:permissionLabels[key],
-    section:"صلاحيات الموظفين",kind:"permission" as const,
-    description:"صلاحية النظام القديمة محفوظة أثناء الانتقال إلى الصلاحيات المركزية.",
-    integrated:false,
+    section:"صلاحيات التشغيل",kind:"permission" as const,
+    description:"تُدار تعيينات هذه الصلاحية لكل موظف من مركز الصلاحيات، مع بقاء شروط الصفحة والإجراء والمنح التلقائية.",
+    integrated:true,
   })),
   ...controlCatalog.map(c=>({
     key:`control:${c.key}`,name:c.label,section:`الكنترول / ${c.category}`,
