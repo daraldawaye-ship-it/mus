@@ -43,7 +43,7 @@ export async function createApp(options: AppOptions = {}) {
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "same-origin");
-    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
     next();
   });
   app.use("/api", (_req, res, next) => {

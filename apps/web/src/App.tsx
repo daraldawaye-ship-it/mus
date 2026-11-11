@@ -99,6 +99,7 @@ import {
 const CentralAccessPage = lazy(() =>
   import("./pages/CentralAccessPage").then(m=>({default:m.CentralAccessPage})),
 );
+const OwnerPhonePreviewPage = lazy(() => import("./pages/OwnerPhonePreviewPage"));
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
 const MarketFriendReferralsPage = lazy(() => import("./pages/MarketFriendReferralsPage").then(m=>({default:m.MarketFriendReferralsPage})));
 const PageDirectoryPage = lazy(() =>
@@ -1293,6 +1294,7 @@ function Workspace() {
               )}
             </div>
             <div className="topbar-actions">
+              {user?.owner && !employeePreview && <Link className="button button-secondary desktop-only" to="/owner-phone-preview"><MonitorSmartphone size={16} /> معاينة الهاتف</Link>}
               {user && <ConnectionModeControl />}
               {user && inCompany && company.data && !company.isError && (
                 <WalletIndicator
@@ -1380,6 +1382,7 @@ function Workspace() {
               <Route path="/quick-login" element={<QuickLoginPage />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route path="/medicine-market" element={marketLanding} />
+              <Route path="/owner-phone-preview" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل معاينة الهاتف…</Notice>}><OwnerPhonePreviewPage /></Suspense></Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
