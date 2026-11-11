@@ -1161,7 +1161,7 @@ export function MedicineMarketPage({
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "",
     kind = params.get("kind") ?? "",
-    sort = params.get("sort") === "updated" ? "updated" : "created",
+    sort = params.get("sort") === "created" ? "created" : "updated",
     page = Math.max(1, Number(params.get("page")) || 1),
     selected = Number(params.get("card")) || null;
   const selectedRef = useRef(selected);
@@ -1456,10 +1456,10 @@ export function MedicineMarketPage({
         </div>
         <div className="medicine-market-heading-actions">
           <Button variant="secondary" onClick={() => {
-            write({ card: null, kind: null, q: null, page: null, archived: null, sort: "created" });
+            write({ card: null, kind: null, q: null, page: null, archived: null, sort: "updated" });
             void client.invalidateQueries({queryKey:["medicine-market",user?.id,"cards"]});
           }}>
-            <RefreshCw size={16} /> أحدث الإضافات
+            <RefreshCw size={16} /> الأحدث تحديثًا أو إضافة
           </Button>
           {user && (
             <span className="medicine-market-points">
@@ -1569,8 +1569,8 @@ export function MedicineMarketPage({
             </Select>
             <Select label="ترتيب النتائج" value={sort}
               onChange={(e) => write({ sort: e.target.value === "updated" ? "updated" : "created", page: null, card: null })}>
+              <option value="updated">الأحدث تحديثًا أو إضافة</option>
               <option value="created">الأحدث إضافة</option>
-              <option value="updated">الأحدث تحديثًا</option>
             </Select>
             {permissions?.canModerate && (
               <label className="medicine-market-check">
