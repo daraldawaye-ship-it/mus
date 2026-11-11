@@ -60,11 +60,11 @@ test("create and move together, map grouped tablets, preserve finance/units/stoc
 test("reuse typed exact existing name, map grouped topical forms, retry never reassigns again",async t=>{
  const {db,run,input}=await setup(t);const request=input({name:"existing cream",productForm:"شراب"});
  const result=await run(request);assert.equal(result.created,false);assert.equal(result.composition.id,2);
- assert.equal((await db.query("SELECT count(*)::int AS n FROM item_compositions")).rows[0].n,3);
+ assert.equal((await db.query<{n:number}>("SELECT count(*)::int AS n FROM item_compositions")).rows[0].n,3);
  assert.deepEqual((await db.query("SELECT product_form FROM items WHERE company_id=1 ORDER BY id")).rows,[{product_form:"مرهم"},{product_form:"مرهم"}]);
  await db.exec("UPDATE items SET composition_id=1,product_form='عام' WHERE id=11");
  const repeated=await run(request);assert.equal(repeated.replayed,true);
- assert.equal((await db.query("SELECT composition_id FROM items WHERE id=11")).rows[0].composition_id,1);
+ assert.equal((await db.query<{composition_id:number}>("SELECT composition_id FROM items WHERE id=11")).rows[0].composition_id,1);
  await assert.rejects(run({...request,name:"Different"}),/مفتاح الحفظ/);
 });
 test("stale association or shape, cross-company item and original item abort the entire operation",async t=>{
@@ -92,7 +92,7 @@ test("a late database failure rolls back composition creation, links, forms, aud
  const before=(await db.query("SELECT * FROM items ORDER BY id")).rows;
  await assert.rejects(run(input()));
  assert.deepEqual((await db.query("SELECT * FROM items ORDER BY id")).rows,before);
- assert.equal((await db.query("SELECT count(*)::int AS n FROM item_compositions")).rows[0].n,3);
- assert.equal((await db.query("SELECT count(*)::int AS n FROM audit_events")).rows[0].n,0);
- assert.equal((await db.query("SELECT count(*)::int AS n FROM item_composition_assignments")).rows[0].n,0);
+ assert.equal((await db.query<{n:number}>("SELECT count(*)::int AS n FROM item_compositions")).rows[0].n,3);
+ assert.equal((await db.query<{n:number}>("SELECT count(*)::int AS n FROM audit_events")).rows[0].n,0);
+ assert.equal((await db.query<{n:number}>("SELECT count(*)::int AS n FROM item_composition_assignments")).rows[0].n,0);
 });
