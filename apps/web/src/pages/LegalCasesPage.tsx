@@ -1,3 +1,4 @@
+import { transcriptionStates, transcriptionLabels, type TranscriptionState, type TranscriptionSummary } from "../../../../packages/contracts/src/legal-transcription";
 import { useState } from "react";
 import "./LegalCasesPage.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,15 +10,15 @@ import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing"|"instruction";
 type Case = {id:number;title:string;case_number:string;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
-type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
+type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;transcription_status:TranscriptionState|null;transcription_file:boolean;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
 type CaseForm = {title:string;caseNumber:string;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
-type RecordForm = {kind:Kind;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
+type RecordForm = {kind:Kind;transcriptionStatus?:TranscriptionState;transcriptionFile?:boolean;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
 const kinds:{id:Kind;label:string}[]=[{id:"instruction",label:"التعليمات"},{id:"explanation",label:"الشرح"},{id:"fact",label:"المعطيات"},{id:"event",label:"التسلسل الزمني"},{id:"document",label:"المستندات"},{id:"task",label:"المهام"},{id:"report",label:"تقارير المتابعة"},{id:"hearing",label:"الجلسات"}];
 const globalLists=[{id:"instruction",label:"التعليمات"},{id:"event",label:"التسلسل الزمني"},{id:"fact",label:"المعطيات"},{id:"document",label:"المستندات"}] as const;
 const emptyCase:CaseForm={title:"",caseNumber:"",agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
 const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
-const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
+const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,transcriptionStatus:e?.transcription_status??undefined,transcriptionFile:e?.transcription_file,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
 function evidenceReason(entry:Entry):string {
  const texts=[entry.body,entry.content_text].filter(Boolean);
  for(const value of texts){
@@ -50,6 +51,8 @@ function EntryFields({value,change,people}:{value:RecordForm;change:(v:RecordFor
  <Field label={value.kind==="task"?"ترتيب ثانوي عند تساوي الأولوية":"الترتيب"} type="number" min={0} value={value.sortOrder} onChange={e=>set("sortOrder",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label={value.kind==="instruction"?"نص التعليمة":"الشرح التفصيلي"} value={value.body} rows={6} onChange={v=>set("body",v)}/></div>
  {(value.kind==="document")&&<>
+ <Select label="حالة التفريغ" value={value.transcriptionStatus??"unknown"} onChange={e=>set("transcriptionStatus",e.target.value)}>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>
+ <Select label="يحسب في إجمالي الملفات" value={value.transcriptionFile===undefined?"auto":String(value.transcriptionFile)} onChange={e=>set("transcriptionFile",e.target.value==="auto"?undefined:e.target.value==="true")}><option value="auto">بحسب نوع البطاقة</option><option value="true">بطاقة ملف</option><option value="false">ورقة أو سجل آخر</option></Select>
  <div className="legal-wide"><TextField label="النص الكامل للمستند — مستقل عن الشرح" value={value.contentText} rows={8} onChange={v=>set("contentText",v)}/></div>
  <Field label="رابط PDF في Drive أو الموقع" value={value.pdfUrl} onChange={e=>set("pdfUrl",e.target.value)}/>
  <Field label="معرّف ملف Drive" value={value.driveFileId} onChange={e=>set("driveFileId",e.target.value)}/>
@@ -85,6 +88,7 @@ export function LegalCasesPage() {
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
  const globalRecords=useQuery({queryKey:["legal","global-records",user?.id,globalKind,globalPage,globalSearch],queryFn:({signal})=>api<{items:Entry[];total:number;page:number;pageSize:number}>("/legal/records?"+new URLSearchParams({kind:globalKind!,q:globalSearch,page:String(globalPage),compact:globalKind==="fact"||globalKind==="document"?"true":"false"}),{signal}),enabled:!!user&&!!globalKind});
+ const transcription=useQuery({queryKey:["legal","transcription-summary",user?.id],queryFn:({signal})=>api<TranscriptionSummary>("/legal/transcription-summary",{signal}),enabled:!!user&&globalKind==="document",refetchInterval:60_000});
  const expanded=useQuery({queryKey:["legal","expanded",user?.id,expandedId],queryFn:({signal})=>api<{record:Entry}>("/legal/records/"+expandedId,{signal}),enabled:!!user&&expandedId!==null});
  const people=useQuery({queryKey:["legal","people"],queryFn:()=>api<{items:Person[]}>("/legal/people"),enabled:owner});
  const links=useQuery({queryKey:["legal","linked",focus],queryFn:()=>api<{record:Entry;caseIds:number[];linkedIds:number[];images:{id:number;filename:string}[]}>("/legal/records/"+focus),enabled:!!focus});
@@ -137,6 +141,7 @@ export function LegalCasesPage() {
  <Field label="بحث في القائمة" type="search" value={globalSearch} onChange={e=>{setGlobalSearch(e.target.value);setGlobalPage(1);setExpandedId(null);}} placeholder="العنوان أو التفاصيل"/>
  {globalRecords.data&&<span>إجمالي السجلات: {globalRecords.data.total}</span>}
  </div>
+ {globalKind==="document"&&transcription.data&&<div className="legal-tags"><strong>المتبقي لاستكمال التسجيل {transcription.data.remaining}</strong>{transcriptionStates.map(s=><span key={s}>{transcriptionLabels[s]} {transcription.data!.counts[s]}</span>)}</div>}
  {globalKind==="instruction"&&owner&&<>
    <Button onClick={()=>beginEntry("instruction")}>إضافة تعليمة</Button>
    {entryEditor}
@@ -145,9 +150,10 @@ export function LegalCasesPage() {
  {globalRecords.error&&<Notice tone="error">{errorMessage(globalRecords.error)} <Button variant="secondary" onClick={()=>void globalRecords.refetch()}>إعادة المحاولة</Button></Notice>}
  {!globalRecords.isPending&&globalRecords.data?.items.length===0&&<Notice>لا توجد سجلات مطابقة للبحث.</Notice>}
  {(globalRecords.data?.items??[]).map(r=><article key={r.id} className="legal-entry">
- <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3></div>
+ <div className="legal-entry-title"><div><small>#{r.id}{r.kind!=="instruction"&&" · "+(r.record_date?.slice(0,10)||"تاريخ غير محدد")}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div>
  <div className="legal-actions">
  {r.kind==="instruction"&&owner&&<Button variant="secondary" onClick={()=>beginEntry("instruction",r)}>تعديل</Button>}
+ {r.kind==="document"&&owner&&<Select aria-label={`حالة تفريغ السجل ${r.id}`} value={r.transcription_status??"unknown"} disabled={busy} onChange={e=>{const state=e.target.value;void action(async()=>{await api("/legal/transcription-status",{method:"POST",body:{entries:[{id:r.id,revision:r.revision,state,file:r.transcription_file}]}});});}}>{transcriptionStates.map(s=><option key={s} value={s}>{transcriptionLabels[s]}</option>)}</Select>}
  <Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)} aria-expanded={focus===r.id}>القضايا المرتبطة</Button>
  {(r.kind==="fact"||r.kind==="document")&&<Button variant="secondary" onClick={()=>setExpandedId(expandedId===r.id?null:r.id)} aria-expanded={expandedId===r.id}>{expandedId===r.id?"إخفاء التفاصيل":"إظهار المزيد"}</Button>}
  </div></div>
@@ -227,7 +233,7 @@ export function LegalCasesPage() {
  {tab==="unlinked"&&owner&&<><Field label="بحث في السجلات التي لم ترتبط بأي قضية" value={unlinkedSearch} onChange={e=>{setUnlinkedSearch(e.target.value);setUnlinkedPage(1);}}/>{all.isPending&&<Notice>جارٍ تحميل السجلات…</Notice>}{all.error&&<Notice tone="error">{errorMessage(all.error)}</Notice>}{all.data&&<p>السجلات غير المرتبطة: {all.data.total} — صفحة {unlinkedPage} من {Math.max(1,Math.ceil(all.data.total/all.data.pageSize))}</p>}</>}
  {entryEditor}
  {(visible.length===0&&!entryEdit&&!all.isPending)&&<Notice>لا توجد سجلات هنا حاليًا.</Notice>}
- {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3></div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
+ {visible.map(r=><article key={r.id} className="legal-entry"><div className="legal-entry-title"><div><small>#{r.id} · {r.record_date?.slice(0,10)||""}</small><h3>{r.title}</h3>{r.kind==="document"&&r.transcription_status&&<small>حالة التفريغ · {transcriptionLabels[r.transcription_status]}</small>}</div><div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>beginEntry(r.kind,r)}>تعديل</Button>}<Button variant="secondary" onClick={()=>setFocus(focus===r.id?null:r.id)}>الروابط والمرفقات</Button>{r.kind==="report"&&editor&&<Button variant="secondary" onClick={()=>beginEntry("task",undefined,r.id)}>إضافة مهمة مرتبطة بالتقرير</Button>}</div></div>
  {r.body&&<p className="legal-preserve">{r.body}</p>}
  {Boolean(r.legacy_snapshot)&&<details className="legal-legacy"><summary>جميع حقول السجل الأصلي</summary><pre>{JSON.stringify(r.legacy_snapshot,null,2)}</pre></details>}
  {r.kind==="document"&&<div className="legal-doc">{r.content_text&&<details><summary>النص الكامل للمستند</summary><p className="legal-preserve">{r.content_text}</p></details>}

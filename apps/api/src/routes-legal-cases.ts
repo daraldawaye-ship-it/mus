@@ -13,7 +13,10 @@ type LegalTaskRow = QueryResultRow & TaskPriorityInput & {
   id:number;kind:string;sort_order:number;
 };
 
+import { transcriptionStates, type TranscriptionState } from "../../../packages/contracts/src/legal-transcription.ts";
+
 const positive = z.number().int().positive().max(2147483647);
+const legalTranscriptionBatchSchema=z.object({entries:z.array(z.object({id:positive,revision:positive,state:z.enum(transcriptionStates),file:z.boolean()}).strict()).min(1).max(3000)}).strict();
 const legalTaskCommentSchema=z.object({body:z.string().trim().min(1).max(2000)}).strict();
 const legalTaskPrioritySchema=z.object({
   priority:z.number().int().min(1).max(10).nullable(),
@@ -39,6 +42,8 @@ const caseSchema = z.object({
 const kindSchema = z.enum(["fact","document","event","explanation","task","report","hearing","instruction"]);
 const recordSchema = z.object({
   kind: kindSchema,
+  transcriptionStatus:z.enum(transcriptionStates).optional(),
+  transcriptionFile:z.boolean().optional(),
   title: z.string().trim().min(1).max(300),
   body: z.string().max(250000).default(""),
   contentText: z.string().max(1000000).default(""),
@@ -76,6 +81,7 @@ export const mcpBodySchemas = {
   legalCaseUpdateSchema,
   legalCaseAccessSchema,
   recordSchema,
+  legalTranscriptionBatchSchema,
   legalRecordUpdateSchema,
   legalRecordCaseSchema,
   legalRecordLinkSchema,
@@ -154,6 +160,49 @@ export function legalCaseRoutes(pool:Pool):Router {
       pool.query("SELECT kind,count(*)::int AS total FROM legal_records r WHERE $1 OR EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id) GROUP BY kind",[user.owner,user.id]),
     ]);
     res.json({cases:cases.rows[0],records:records.rows});
+  }));
+  router.get("/legal/transcription-summary",handler(async(req,res)=>{
+    const user=actor(req);
+    const result=await pool.query(`SELECT r.transcription_status AS state,count(*)::int AS amount
+      FROM legal_records r WHERE r.transcription_file AND ($1::boolean OR (
+        EXISTS(SELECT 1 FROM legal_record_cases rc JOIN legal_case_access a ON a.case_id=rc.case_id AND a.user_id=$2 WHERE rc.record_id=r.id)
+        AND NOT EXISTS(SELECT 1 FROM legal_record_cases rc WHERE rc.record_id=r.id AND NOT EXISTS
+          (SELECT 1 FROM legal_case_access a WHERE a.case_id=rc.case_id AND a.user_id=$2))))
+      GROUP BY r.transcription_status`,[user.owner,user.id]);
+    const counts=Object.fromEntries(transcriptionStates.map(state=>[state,0])) as Record<TranscriptionState,number>;
+    for(const row of result.rows) counts[row.state as TranscriptionState]=row.amount;
+    const total=Object.values(counts).reduce((sum,count)=>sum+count,0);
+    res.json({counts,total,active:total-counts.archived,remaining:counts.deferred+counts.partial+counts.unknown});
+  }));
+  router.post("/legal/transcription-status",handler(async(req,res)=>{
+    const {entries}=parse(legalTranscriptionBatchSchema,req.body);
+    const updated=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      ownerOnly(user);
+      await forbidIfDisabled(db);
+      const rows=[...entries].sort((a,b)=>a.id-b.id);
+      if(new Set(rows.map(row=>row.id)).size!==rows.length) throw new HttpError(400,"duplicate","تكرر رقم سجل في الدفعة");
+      const payload=JSON.stringify(rows);
+      const before=await db.query(`SELECT id,kind,drive_file_id,revision,transcription_status,transcription_file FROM legal_records
+        WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE`,[rows.map(row=>row.id)]);
+      if(before.rows.length!==rows.length) missing();
+      for(let i=0;i<rows.length;i++){
+        const old=before.rows[i], entry=rows[i];
+        if(old.kind!=="document" || (entry.file && !old.drive_file_id)) throw new HttpError(400,"invalid_document","يتطلب فهرس الملف معرّف درايف");
+        if(old.revision!==entry.revision && (old.transcription_status!==entry.state || old.transcription_file!==entry.file))
+          throw new HttpError(409,"conflict","تغير سجل المستند "+entry.id);
+      }
+      const changed=await db.query(`UPDATE legal_records r SET transcription_status=v.state,transcription_file=v.file,
+        revision=r.revision+1,updated_at=now(),updated_by=$2
+        FROM jsonb_to_recordset($1::jsonb) v(id integer,state text,file boolean)
+        WHERE r.id=v.id AND (r.transcription_status IS DISTINCT FROM v.state OR r.transcription_file<>v.file)
+        RETURNING r.id`,[payload,user.id]);
+      if(changed.rows.length) await audit(db,user,"legal.update","legalRecord",rows[0].id,
+        before.rows.map(r=>({id:r.id,state:r.transcription_status,file:r.transcription_file})),
+        rows.map(r=>({id:r.id,state:r.state,file:r.file})));
+      return changed.rows.length;
+    });
+    res.json({updated});
   }));
   router.get("/legal/people",handler(async(req,res)=>{
     ownerOnly(actor(req));
@@ -401,7 +450,7 @@ export function legalCaseRoutes(pool:Pool):Router {
       kind === "event" ? "r.record_date DESC NULLS LAST, r.id DESC" : "r.id DESC";
     const args=[user.owner,user.id,kind??null,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",unlinked];
     const [rows,count]=await Promise.all([
-      pool.query("SELECT "+(req.query.compact==="true" && !unlinked && (kind==="fact"||kind==="document")?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls":"r.*")+" FROM legal_records r WHERE "+where+" ORDER BY "+orderBy+" LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT "+(req.query.compact==="true" && !unlinked && (kind==="fact"||kind==="document")?"r.id,r.kind,r.title,r.record_date,r.pdf_url,r.image_urls,r.transcription_status,r.transcription_file,r.revision":"r.*")+" FROM legal_records r WHERE "+where+" ORDER BY "+orderBy+" LIMIT $6 OFFSET $7",[...args,limit,(page-1)*limit]),
       pool.query("SELECT COUNT(*)::int AS total FROM legal_records r WHERE "+where,args),
     ]);
     res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});
@@ -425,8 +474,10 @@ export function legalCaseRoutes(pool:Pool):Router {
       await requireCases(db,user,input.caseIds,role);
       if(user.suspended) throw new HttpError(403,"forbidden","الحساب موقوف");
       await forbidIfDisabled(db);
-      const columns=[...recordColumns,"created_by","updated_by"];
-      const values=[...recordValues(input),user.id,user.id];
+      const file=input.transcriptionFile ?? (input.kind==="document" && !!input.driveFileId && /^ملف درايف\s*[—–-]/.test(input.title));
+      if(file && (input.kind!=="document" || !input.driveFileId)) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
+      const columns=[...recordColumns,"transcription_status","transcription_file","created_by","updated_by"];
+      const values=[...recordValues(input),input.kind==="document"?(input.transcriptionStatus??"unknown"):null,file,user.id,user.id];
       const next=(await db.query("INSERT INTO legal_records("+columns.join(",")+") VALUES("+values.map((_,i)=>"$"+(i+1)).join(",")+") RETURNING *",values)).rows[0];
       for(const caseId of input.caseIds) await db.query("INSERT INTO legal_record_cases(record_id,case_id) VALUES($1,$2)",[next.id,caseId]);
       await audit(db,user,"legal.create","legalRecord",next.id,null,{...next,caseIds:input.caseIds});
@@ -443,7 +494,10 @@ export function legalCaseRoutes(pool:Pool):Router {
       const old=(await db.query("SELECT * FROM legal_records WHERE id=$1 FOR UPDATE",[recordId])).rows[0];
       if(old.revision!==input.revision) throw new HttpError(409,"conflict","تغير السجل؛ أعد تحميله");
       if(old.kind!==input.kind) throw new HttpError(400,"invalid_kind","لا يمكن تغيير نوع السجل");
-      const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",revision=revision+1,updated_by=$17,updated_at=now() WHERE id=$18 RETURNING *",[...recordValues({...input,caseIds:[]}),user.id,recordId])).rows[0];
+      const file=input.transcriptionFile??old.transcription_file;
+      if(file && (!input.driveFileId || input.kind!=="document")) throw new HttpError(400,"invalid_file","أدخل معرف درايف لبطاقة الملف");
+      const state=input.kind==="document"?(input.transcriptionStatus??old.transcription_status??"unknown"):null;
+      const next=(await db.query("UPDATE legal_records SET "+recordColumns.map((c,i)=>c+"=$"+(i+1)).join(",")+",transcription_status=$17,transcription_file=$18,revision=revision+1,updated_by=$19,updated_at=now() WHERE id=$20 RETURNING *",[...recordValues({...input,caseIds:[]}),state,file,user.id,recordId])).rows[0];
       await audit(db,user,"legal.update","legalRecord",recordId,old,next);
       return next;
     });

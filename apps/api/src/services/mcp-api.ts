@@ -1,12 +1,17 @@
 import type { Request, Response, NextFunction, Router } from "express";
 import { z } from "zod";
 import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-prices.ts";
+import { mcpBodySchemas as legalSchemas } from "../routes-legal-cases.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
 import { permissionRequest } from "./permission-rules.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "GET /legal/transcription-summary":{source:"routes-legal-cases.ts",queryFields:[]},
+  "POST /legal/transcription-status":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalTranscriptionBatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalTranscriptionBatchSchema)},
+  "POST /legal/records":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"recordSchema",bodySchema:z.toJSONSchema(legalSchemas.recordSchema)},
+  "PUT /legal/records/:id":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id"],bodyContract:"legalRecordUpdateSchema",bodySchema:z.toJSONSchema(legalSchemas.legalRecordUpdateSchema)},
   [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
     bodyContract:"stagingPricesSchema",bodySchema:z.toJSONSchema(stagingPricesSchema)},
 };
