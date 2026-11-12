@@ -5265,8 +5265,22 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .ledger-page:has(.ledger-print-all) .data-table { display: none !important; }
 }
 .ledger-print-heading, .ledger-print-all { display: none; }
-.pledge-list-table-scroll table { min-width: 750px; }
-.pledge-list-table-scroll td:last-child { text-align: start; overflow: visible; }
+/* Pledge lookup: readable account names, direct print controls and compact grid. */
+@media (min-width: 850px) {
+  .dialog.pledge-list-dialog { width: min(1080px, calc(100vw - 48px)); }
+}
+.pledge-list-table-scroll table { min-width: 830px; }
+.pledge-list-table-scroll th:nth-child(1) { width: 174px; }
+.pledge-list-table-scroll th:nth-child(2) { width: 146px; }
+.pledge-list-table-scroll th:nth-child(3) { width: 185px; }
+.pledge-list-table-scroll th:nth-child(4) { width: auto; }
+.pledge-list-table-scroll th:nth-child(5) { width: 120px; }
+.pledge-list-table-scroll th:nth-child(6) { width: 110px; }
+.pledge-list-table-scroll td.pledge-list-actions { text-align: start; overflow: visible; white-space: nowrap; }
+.pledge-list-actions .button { margin-inline-end: 3px; padding-inline: 7px; }
+.pledge-list-table-scroll td:nth-child(3),
+.pledge-list-table-scroll td:nth-child(4) { overflow: hidden; text-overflow: ellipsis; }
+
 
 
 /* Invoice/voucher/journal accounts: type and select in the same control.
