@@ -115,7 +115,7 @@ async function downloadPublicImage(source: string): Promise<Buffer> {
       throw new Error("image_source");
     const address = addresses[0].address;
     const response = await new Promise<{ bytes?: Buffer; location?: string }>((resolve, reject) => {
-      const req = request(url, { method: "GET", family: 4, autoSelectFamily: false,
+      const req = request(url, { method: "GET", family: 4,
         // Keep the original hostname for TLS/SNI, but connect only to the checked IP.
         lookup: (_hostname, _options, callback) => callback(null, address, 4),
         headers: { Accept: "image/webp,image/png,image/jpeg,image/gif,image/avif", "User-Agent": "Alraesy-Market-Image-Variants/1.0" },
