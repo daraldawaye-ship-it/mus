@@ -656,7 +656,7 @@ export function NotificationTemplatesPage({
           .join(" ")
           .toLocaleLowerCase("ar")
           .includes(search.toLocaleLowerCase("ar"))),
-  ).sort((a, b) => Number(b.implemented) - Number(a.implemented));
+  ).sort((a, b) => (Number(!a.implemented) * 2 + Number(a.reviewed)) - (Number(!b.implemented) * 2 + Number(b.reviewed)));
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending) return;
@@ -666,7 +666,7 @@ export function NotificationTemplatesPage({
       canSnooze,
       allowRepeat,
       repeatInterval,
-      notifyManagers, notifyOwner,
+      notifyManagers, notifyOwner, reviewed,
       notifySubject,
       positionKeys, minIntervalHours, latestOnly,
       employeeIds,
@@ -816,6 +816,7 @@ export function NotificationTemplatesPage({
               </span>
             </div>
             <p className="notification-message">{template.description}</p>
+            <div className="notification-details"><span>{template.reviewed ? "مراجع" : "غير مراجع"}</span></div>
             <div className="notification-details" aria-label="المستلمون المصرح لهم">
               <strong>المستلمون:</strong>
               {[
@@ -888,6 +889,8 @@ export function NotificationTemplatesPage({
               </Notice>
             )}
             <div className="form-grid">
+              <CheckField label="مراجع — راجعت الخيارات والمستلمين والصلاحيات" checked={draft.reviewed}
+                onChange={reviewed => setDraft({...draft, reviewed})} />
               <Select
                 label="الأهمية الافتراضية"
                 value={draft.importance}
