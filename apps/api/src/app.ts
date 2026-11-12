@@ -91,7 +91,7 @@ export async function createApp(options: AppOptions = {}) {
     const smallMarketBody=express.json({limit:"64kb"});
     const imageMarketBody=express.json({limit:"768kb"});
     app.use("/api/medicine-market",market.admission,(req,res,next)=>
-      (req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.path) || req.path==="/prescriptions")
+      (req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.path) || req.path==="/prescriptions" || /^\/staging\/[1-9]\d*\/append$/.test(req.path))
        ?imageMarketBody:smallMarketBody)(req,res,next));
   }
   const business = businessRoutes(pool, market?.router);

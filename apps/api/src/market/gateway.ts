@@ -47,7 +47,7 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
   router.use("/medicine-market", admission);
   router.use("/medicine-market", handler(async (req, res) => {
     const body = ["GET", "HEAD"].includes(req.method) ? "" : JSON.stringify(req.body ?? {});
-    const imageUpload=req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.url) || req.url==="/prescriptions");
+    const imageUpload=req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.url) || req.url==="/prescriptions" || /^\/staging\/[1-9]\d*\/append$/.test(req.url));
     const imageFetch=req.method==="GET" && (/^\/images\/[a-f\d-]{36}(?:\?|$)/.test(req.url) || /^\/cards\/[1-9]\d*\/image-variants\/(?:icon|preview|main)(?:\?|$)/.test(req.url));
     if (Buffer.byteLength(body) > (imageUpload?768*1024:65536))
       throw new HttpError(413, "body_too_large", "حجم الطلب كبير");
