@@ -36,13 +36,55 @@ export async function scanInventoryNotifications(
      ) latest ORDER BY balances.item_id,balances.location_id`,
     [companyId],
   );
+  // Track each passage from a nonnegative balance to a negative one as a distinct incident.
+  // Closing an incident frees the pending notification for the next occurrence,
+  // while historical notification rows remain preserved.
+  await client.query(
+    `UPDATE negative_stock_notification_incidents state
+       SET active=false,updated_at=clock_timestamp()
+       WHERE state.company_id=$1 AND state.active
+         AND NOT EXISTS (
+           SELECT 1 FROM stock_balances balance
+           JOIN items item ON item.company_id=balance.company_id AND item.id=balance.item_id AND item.active
+           JOIN locations location ON location.company_id=balance.company_id AND location.id=balance.location_id AND location.active
+           JOIN branches branch ON branch.company_id=location.company_id AND branch.id=location.branch_id AND branch.active
+           WHERE balance.company_id=state.company_id
+             AND balance.item_id=state.item_id AND balance.location_id=state.location_id
+           GROUP BY balance.item_id,balance.location_id
+           HAVING sum(balance.quantity_smallest)<0
+         )`,
+    [companyId],
+  );
+  // A balance that recovered is no longer an open incident. This is a
+  // system resolution, not a claim that someone reviewed the notification.
+  await client.query(
+    `UPDATE notifications n
+       SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
+           snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
+       FROM negative_stock_notification_incidents state
+       WHERE n.company_id=state.company_id AND n.code='INVENTORY_NEGATIVE'
+         AND n.subject_key='item:'||state.item_id||':location:'||state.location_id
+         AND state.company_id=$1 AND NOT state.active AND n.completed_at IS NULL`,
+    [companyId],
+  );
   for (const row of negative.rows) {
+    const incident = (await client.query(
+      `INSERT INTO negative_stock_notification_incidents(company_id,item_id,location_id,episode,active)
+         VALUES($1,$2,$3,1,true)
+         ON CONFLICT(company_id,item_id,location_id) DO UPDATE
+         SET episode=CASE WHEN negative_stock_notification_incidents.active
+                          THEN negative_stock_notification_incidents.episode
+                          ELSE negative_stock_notification_incidents.episode+1 END,
+             active=true,updated_at=clock_timestamp()
+         RETURNING episode`,
+      [companyId,row.item_id,row.location_id],
+    )).rows[0];
     const subjectKey = `item:${row.item_id}:location:${row.location_id}`;
     await emitNotification(client, {
       code: "INVENTORY_NEGATIVE",
       companyId,
       subjectKey,
-      eventKey: `INVENTORY_NEGATIVE:${subjectKey}:movement:${row.movement_id ?? "none"}`,
+      eventKey: `INVENTORY_NEGATIVE:${subjectKey}:episode:${incident.episode}`,
       message: `رصيد الصنف «${name(row.item_name)}» في «${name(row.location_name)}» أصبح سالبًا: ${row.quantity} ${name(row.unit_name)}.`,
       href: `/companies/${companyId}/stock-balances?itemId=${row.item_id}&locationId=${row.location_id}`,
     });
