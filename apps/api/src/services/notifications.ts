@@ -114,7 +114,7 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
    WHERE permitted.id=$1 AND NOT permitted.archived
     AND (permitted.owner OR 'sales'=ANY(COALESCE(sales_employee.position_keys,'{}'::text[])))
  ))
- AND (n.code NOT IN ${cashboxCodesSql} OR ${selectedEmployee})`;
+ AND (n.code NOT IN ${cashboxCodesSql} OR ${selectedEmployee} OR ($4::boolean AND COALESCE(s.notify_owner,false)))`;
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
