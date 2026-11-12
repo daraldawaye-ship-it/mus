@@ -417,6 +417,44 @@ export function commerceRoutes(pool: Pool): Router {
       );
     }),
   );
+  // Read-only, paginated movement of purchase invoice lines.
+  router.get(base + "/purchases/line-movements", handler(async (req, res) => {
+    const q = req.query.q;
+    const pageText = req.query.page === undefined ? "1" : req.query.page;
+    const from = req.query.dateFrom === undefined || req.query.dateFrom === "" ? null : parse(documentDateSchema, req.query.dateFrom);
+    const to = req.query.dateTo === undefined || req.query.dateTo === "" ? null : parse(documentDateSchema, req.query.dateTo);
+    if ((q !== undefined && (typeof q !== "string" || q.length > 120)) ||
+        typeof pageText !== "string" || !/^[1-9][0-9]{0,5}$/.test(pageText) ||
+        (from && to && from > to))
+      throw new HttpError(400, "invalid_query", "معايير البحث غير صالحة");
+    const page = Number(pageText);
+    const term = typeof q === "string" ? q.trim() : "";
+    res.json(await readCommerce(pool, req, async (client, companyId) => {
+      const conditions = `i.company_id=$1 AND i.kind='purchase'
+        AND ($2::text='' OR l.item_name ILIKE $5 OR l.item_code ILIKE $5 OR
+             i.supplier_account_name ILIKE $5)
+        AND ($3::date IS NULL OR i.document_date >= $3::date)
+        AND ($4::date IS NULL OR i.document_date <= $4::date)`;
+      const params = [companyId, term, from, to, searchPattern(term)];
+      const count = await client.query(
+        `SELECT count(*)::int AS total FROM invoices i JOIN invoice_lines l
+          ON l.company_id=i.company_id AND l.invoice_id=i.id WHERE ${conditions}`, params);
+      const rows = await client.query(
+        `SELECT l.id, i.id AS "invoiceId", i.number AS "invoiceNumber",
+          i.created_at::text AS "createdAt", i.document_date::text AS "documentDate",
+          l.item_name AS "itemName", l.quantity::text AS quantity,
+          l.unit_price::text AS price, l.total::text AS "lineTotal",
+          i.total::text AS "invoiceNet",
+          COALESCE(i.supplier_account_name, '') AS supplier
+        FROM invoices i JOIN invoice_lines l
+          ON l.company_id=i.company_id AND l.invoice_id=i.id
+        WHERE ${conditions}
+        ORDER BY i.created_at DESC, i.id DESC, l.line_number DESC, l.id DESC
+        LIMIT 50 OFFSET $6`, [...params, (page-1)*50]);
+      return { items: rows.rows, total: count.rows[0].total, page, pageSize: 50 };
+    }));
+  }));
+
   // Read-only sales sidebar: newest forty lines, with or without name/amount filters.
   // Keep all filters company-scoped and compare money as PostgreSQL numeric.
   router.get(base + "/sales/line-movements", handler(async (req, res) => {
