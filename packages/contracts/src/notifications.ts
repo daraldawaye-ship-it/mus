@@ -14,6 +14,7 @@ export const notificationSettingsSchema = z
     allowRepeat: z.boolean(),
     repeatInterval: repeatIntervalSchema,
     notifyManagers: z.boolean(),
+    notifyOwner: z.boolean().optional(),
     notifySubject: z.boolean(),
     // Accept an empty legacy selector from older clients during rollout.
     roleIds: z.array(id).max(0).optional(),
@@ -77,6 +78,7 @@ export interface NotificationTemplate {
   allowRepeat: boolean;
   repeatInterval: NotificationRepeat;
   notifyManagers: boolean;
+  notifyOwner: boolean;
   notifySubject: boolean;
   positionKeys: EmployeePosition[];
   minIntervalHours: number | null;
