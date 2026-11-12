@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import type { PageEntry, User } from "../../../packages/contracts/src/index";
 import { api } from "./api";
-import { useControls } from "./control";
 import { usePageDirectory } from "./page-directory";
 import { readMenuNavigation } from "./menu-navigation-cache";
 
@@ -16,7 +15,7 @@ function eligible(entry: PageEntry, companyId: number | null) {
 /** Same permission-checked shortcuts as the old flyout, displayed within the
  * fixed-height navigation tab instead of opening a second floating panel. */
 export function UserShortcutMenuGrid({
-  user, companyId, employeeId, onNavigate, onManage, onQuickAdd,
+  user, companyId, onNavigate, onManage, onQuickAdd,
 }: {
   user: User;
   companyId: number | null;
@@ -26,14 +25,12 @@ export function UserShortcutMenuGrid({
   onQuickAdd: () => void;
 }) {
   const directory = usePageDirectory(companyId ?? undefined);
-  const controls = useControls(companyId ?? 0, employeeId);
   const shortcuts = useQuery({
     queryKey: ["my-shortcuts", user.id, companyId],
     queryFn: ({ signal }) =>
       api<SavedShortcuts>("/my-shortcuts" +
         (companyId ? "?companyId=" + companyId : ""), { signal }),
   });
-  if (controls.value("show_shortcuts_menu") === false) return null;
 
   const cached = readMenuNavigation(user.id, companyId);
   // Do not replace the complete cached menu with a partial loading state.
