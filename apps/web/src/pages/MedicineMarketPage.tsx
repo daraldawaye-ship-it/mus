@@ -1650,7 +1650,7 @@ export function MedicineMarketPage({
                     {detailFields.map(field=><MarketInlineField
                       key={`${user?.id??"guest"}:${card.id}:${field.key}`}
                       card={card} field={field} references={references}
-                      canEdit={!!permissions?.canContribute&&!isMarketAdministrativeKind(card.kind)&&!card.archived}
+                      canEdit={!!permissions?.canContribute&&!card.archived&&(!isMarketAdministrativeKind(card.kind)||(field.key==="image"&&!!permissions?.canConfigure))}
                       disabled={busy} onOpen={openCard}/>)}
                   </div>
                   <div className="medicine-market-engagement">
