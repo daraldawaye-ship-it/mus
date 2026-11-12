@@ -1,0 +1,62 @@
+name: Verify live market image responses
+on:
+  push:
+    branches: [preview/render-2026-10-23]
+    paths: [.github/workflows/verify-market-image-live-once.yml]
+permissions:
+  contents: write
+jobs:
+  public-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: preview/render-2026-10-23
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: npm ci
+      - name: Observe live public responses without credentials or writes
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import sharp from 'sharp';
+          const base='https://alraesy-private-preview.onrender.com';
+          async function get(path){return fetch(base+path,{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(20000)});}
+          const health=await get('/api/health');assert.equal(health.status,200);
+          console.log('HEALTH',await health.text());
+          const response=await get('/api/medicine-market/meta');assert.equal(response.status,200);
+          const meta=await response.json();
+          for(const type of meta.types){
+            const count=type.fields.filter(field=>field.key==='image').length;
+            assert.equal(count,type.key==='composition'?0:1,type.key);
+          }
+          console.log('IMAGE_FIELDS',JSON.stringify(meta.types.map(type=>({kind:type.key,image:type.fields.some(field=>field.key==='image')}))));
+          const cards=await get('/api/medicine-market/cards?kind=prescription&pageSize=1');assert.equal(cards.status,200);
+          const card=(await cards.json()).items[0];assert.ok(card&&card.data.image);
+          for(const variant of ['icon','preview']){
+            const r=await get(`/api/medicine-market/cards/${card.id}/image-variants/${variant}?v=${card.revision}`);
+            console.log('VARIANT_HTTP',variant,r.status,r.headers.get('content-type'));
+            assert.equal(r.status,200);assert.match(r.headers.get('content-type')??'',/^image\/webp/);
+            const bytes=Buffer.from(await r.arrayBuffer());const info=await sharp(bytes).metadata();
+            assert.ok(info.width<=(variant==='icon'?64:240));assert.ok(info.height<=(variant==='icon'?64:240));
+            console.log('VARIANT_SIZE',variant,JSON.stringify({bytes:bytes.length,width:info.width,height:info.height}));
+          }
+          const original=await get(card.data.image);assert.equal(original.status,200);
+          assert.match(original.headers.get('content-type')??'',/^image\/webp/);
+          const originalBytes=Buffer.from(await original.arrayBuffer());const info=await sharp(originalBytes).metadata();
+          console.log('ORIGINAL_SIZE',JSON.stringify({bytes:originalBytes.length,width:info.width,height:info.height}));
+          const denied=await get('/api/medicine-market/image-variants/status');
+          console.log('ANONYMOUS_STATUS',denied.status);assert.equal(denied.status,403);
+          console.log('LIVE_MARKET_IMAGES_OK');
+          JS
+      - name: Remove the one-time verification workflow
+        if: always()
+        run: |
+          git pull --ff-only origin preview/render-2026-10-23
+          git rm -- .github/workflows/verify-market-image-live-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove completed one-time live image verification'
+          git push origin HEAD:preview/render-2026-10-23
