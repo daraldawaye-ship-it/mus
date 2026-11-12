@@ -1,0 +1,27 @@
+.purchase-movement-page .card { min-width:0; padding:12px; }
+.purchase-movement-page .page-heading { margin-bottom:10px; }
+.purchase-movement-filters { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin-bottom:10px; }
+.purchase-movement-filters label { display:grid; gap:3px; min-width:0; font-size:12px; font-weight:600; }
+.purchase-movement-filter-search { flex:2 1 240px; }
+.purchase-movement-filter-date { flex:1 1 145px; }
+.purchase-movement-filters input { width:100%; min-width:0; height:36px; }
+.purchase-movement-table-wrap { overflow:auto; width:100%; max-height:calc(100vh - 290px); min-height:220px; border:1px solid var(--border, #32454d); border-radius:7px; }
+.purchase-movement-table { width:100%; min-width:960px; border-collapse:separate; border-spacing:0; table-layout:fixed; white-space:nowrap; font-size:13px; }
+.purchase-movement-table th,.purchase-movement-table td { padding:0 10px; height:39px; border-bottom:1px solid var(--border, #32454d); overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+.purchase-movement-table thead th { position:sticky; top:0; z-index:2; background:var(--surface-raised, #19383b); font-weight:700; padding:0; }
+.purchase-movement-table tbody tr:hover { background:var(--surface-hover, rgba(98,157,157,.13)); }
+.purchase-movement-table th:first-child { width:27%; }
+.purchase-movement-table th:nth-child(2) { width:9%; }
+.purchase-movement-table th:nth-child(3) { width:10%; }
+.purchase-movement-table th:nth-child(4) { width:12%; }
+.purchase-movement-table th:nth-child(5) { width:12%; }
+.purchase-movement-table th:nth-child(6) { width:16%; }
+.purchase-movement-table th:nth-child(7) { width:14%; }
+.purchase-movement-table td a { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.purchase-movement-table .purchase-movement-number { text-align:end; font-variant-numeric:tabular-nums; }
+.purchase-movement-table .purchase-movement-date { font-variant-numeric:tabular-nums; }
+.purchase-movement-sort { width:100%; height:39px; padding:0 10px; background:transparent; border:0; color:inherit; font:inherit; text-align:inherit; cursor:pointer; white-space:nowrap; }
+.purchase-movement-sort:hover,.purchase-movement-sort:focus-visible { background:rgba(100,160,160,.18); }
+.purchase-movement-pagination { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-top:8px; }
+@media(max-width:600px) { .purchase-movement-page .card { padding:7px; } .purchase-movement-table-wrap { max-height:calc(100vh - 265px); } .purchase-movement-table { font-size:12px; } }
+@media print { .purchase-movement-page .purchase-movement-filters,.purchase-movement-pagination { display:none; } .purchase-movement-table-wrap { overflow:visible; max-height:none; } .purchase-movement-table { min-width:0; font-size:10px; } .purchase-movement-table th { position:static; } }
