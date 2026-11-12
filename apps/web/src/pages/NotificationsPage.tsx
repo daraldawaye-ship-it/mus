@@ -848,6 +848,7 @@ export function NotificationTemplatesPage({
                   ? repeatLabels[template.repeatInterval]
                   : "التكرار غير مسموح"}
               </span>
+              {template.minIntervalHours != null && <span>لا يتكرر نفس النوع خلال {template.minIntervalHours.toLocaleString("ar")} ساعة</span>}
               {!template.canDisable && <span>تنبيه إلزامي</span>}
             </div>
             <Button
