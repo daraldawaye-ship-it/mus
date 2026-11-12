@@ -58,13 +58,18 @@ export async function scanInventoryNotifications(
   // A balance that recovered is no longer an open incident. This is a
   // system resolution, not a claim that someone reviewed the notification.
   await client.query(
-    `UPDATE notifications n
-       SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
-           snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
-       FROM negative_stock_notification_incidents state
-       WHERE n.company_id=state.company_id AND n.code='INVENTORY_NEGATIVE'
-         AND n.subject_key='item:'||state.item_id||':location:'||state.location_id
-         AND state.company_id=$1 AND NOT state.active AND n.completed_at IS NULL`,
+    `WITH closed AS (
+       UPDATE notifications n
+         SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
+             snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
+         FROM negative_stock_notification_incidents state
+         WHERE n.company_id=state.company_id AND n.code='INVENTORY_NEGATIVE'
+           AND n.subject_key='item:'||state.item_id||':location:'||state.location_id
+           AND state.company_id=$1 AND NOT state.active AND n.completed_at IS NULL
+         RETURNING n.id
+       )
+       INSERT INTO notification_auto_resolutions(notification_id,reason)
+       SELECT id,'negative_balance_recovered' FROM closed ON CONFLICT DO NOTHING`,
     [companyId],
   );
   for (const row of negative.rows) {
@@ -94,17 +99,22 @@ export async function scanInventoryNotifications(
   // alert. A subsequent positive receipt can then open a new alert, even
   // when the old one was never manually completed.
   await client.query(
-    `UPDATE notifications n
-       SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
-           snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
-       WHERE n.company_id=$1 AND n.code IN ('ITEM_EXPIRED','ITEM_EXPIRING_30')
-         AND n.completed_at IS NULL AND n.subject_key LIKE 'stock-balance:%'
-         AND NOT EXISTS (
-           SELECT 1 FROM stock_balances balance
-           WHERE balance.company_id=n.company_id
-             AND 'stock-balance:'||balance.id=n.subject_key
-             AND balance.quantity_smallest>0
-         )`,
+    `WITH closed AS (
+       UPDATE notifications n
+         SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
+             snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
+         WHERE n.company_id=$1 AND n.code IN ('ITEM_EXPIRED','ITEM_EXPIRING_30')
+           AND n.completed_at IS NULL AND n.subject_key LIKE 'stock-balance:%'
+           AND NOT EXISTS (
+             SELECT 1 FROM stock_balances balance
+             WHERE balance.company_id=n.company_id
+               AND 'stock-balance:'||balance.id=n.subject_key
+               AND balance.quantity_smallest>0
+           )
+         RETURNING n.id
+       )
+       INSERT INTO notification_auto_resolutions(notification_id,reason)
+       SELECT id,'expired_batch_removed' FROM closed ON CONFLICT DO NOTHING`,
     [companyId],
   );
 
