@@ -5,6 +5,7 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
+import { checkPendingReceipts } from "./cashbox-notifications.ts";
 import { audit } from "./audit.ts";
 
 const signedAmount = z.string().trim()
@@ -204,6 +205,7 @@ export async function receiveElectronicMovement(
       expected:moneyString(original),received:moneyString(actual),
       difference:moneyString(difference),
       receiptDocumentId:documentId,voucherDocumentId,notes:input.notes},companyId);
+  await checkPendingReceipts(client, companyId, "electronic", "receipt:"+receiptId, true);
   return {id:receiptId,sourceId:origin.id,documentId,voucherDocumentId,
     expected:moneyString(original),received:moneyString(actual),
     difference:moneyString(difference)};

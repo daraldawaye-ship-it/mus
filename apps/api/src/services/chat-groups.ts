@@ -295,7 +295,7 @@ export async function sendChatGroupMessage(client: PoolClient, actor: User, grou
   for (const member of recipientMembers) {
     await notifyChatRecipient(client,{
       companyId:current.companyId,recipientId:member.user_id,
-      senderName:current.user.displayName,messageId:created.id,
+      senderId:current.user.id,senderName:current.user.displayName,messageId:created.id,
       groupId,groupName:row.name,
     });
   }

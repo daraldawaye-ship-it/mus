@@ -5027,7 +5027,7 @@
           "type": "boolean"
         },
         "roleIds": {
-          "maxItems": 100,
+          "maxItems": 0,
           "type": "array",
           "items": {
             "type": "integer",
@@ -5035,8 +5035,54 @@
             "maximum": 2147483647
           }
         },
+        "positionKeys": {
+          "maxItems": 23,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "employee",
+              "admin1",
+              "admin2",
+              "sales",
+              "purchase-entry",
+              "accountant",
+              "cashier",
+              "purchase-followup",
+              "external-purchasing",
+              "camera-monitor",
+              "sales-supervisor",
+              "warehouse-manager",
+              "cleaner",
+              "guard",
+              "memo-followup",
+              "chat-supervisor",
+              "attendance-supervisor",
+              "alert-supervisor",
+              "task-supervisor",
+              "accounts-view2",
+              "accounts-view3",
+              "accounts-view4",
+              "inventory-variance-followup"
+            ]
+          }
+        },
+        "minIntervalHours": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latestOnly": {
+          "type": "boolean"
+        },
         "employeeIds": {
-          "maxItems": 100,
           "type": "array",
           "items": {
             "type": "integer",
@@ -5065,7 +5111,6 @@
         "repeatInterval",
         "notifyManagers",
         "notifySubject",
-        "roleIds",
         "employeeIds",
         "revision"
       ],
@@ -5290,7 +5335,7 @@
           "type": "boolean"
         },
         "roleIds": {
-          "maxItems": 100,
+          "maxItems": 0,
           "type": "array",
           "items": {
             "type": "integer",
@@ -5298,8 +5343,54 @@
             "maximum": 2147483647
           }
         },
+        "positionKeys": {
+          "maxItems": 23,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "employee",
+              "admin1",
+              "admin2",
+              "sales",
+              "purchase-entry",
+              "accountant",
+              "cashier",
+              "purchase-followup",
+              "external-purchasing",
+              "camera-monitor",
+              "sales-supervisor",
+              "warehouse-manager",
+              "cleaner",
+              "guard",
+              "memo-followup",
+              "chat-supervisor",
+              "attendance-supervisor",
+              "alert-supervisor",
+              "task-supervisor",
+              "accounts-view2",
+              "accounts-view3",
+              "accounts-view4",
+              "inventory-variance-followup"
+            ]
+          }
+        },
+        "minIntervalHours": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latestOnly": {
+          "type": "boolean"
+        },
         "employeeIds": {
-          "maxItems": 100,
           "type": "array",
           "items": {
             "type": "integer",
@@ -5328,7 +5419,6 @@
         "repeatInterval",
         "notifyManagers",
         "notifySubject",
-        "roleIds",
         "employeeIds",
         "revision"
       ],

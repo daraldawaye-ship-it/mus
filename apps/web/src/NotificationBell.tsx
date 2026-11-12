@@ -97,12 +97,12 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
   useEffect(() => {
     if (!allowed || !query.data) return;
     const fresh = query.data.items.find((item) =>
-      !item.readAt && item.groupUnread > 0 &&
-      Date.parse(item.createdAt) > mountedAt.current &&
-      !seenNotifications.current.has(item.id)
+      item.deliveryId != null && item.deliveryAt && !item.readAt && item.groupUnread > 0 &&
+      Date.parse(item.deliveryAt) > mountedAt.current &&
+      !seenNotifications.current.has(item.deliveryId)
     );
-    if (!fresh) return;
-    seenNotifications.current.add(fresh.id);
+    if (!fresh?.deliveryId) return;
+    seenNotifications.current.add(fresh.deliveryId);
     setHeadsUp({
       id: fresh.id, title: fresh.title, message: fresh.message,
       href: safeNotificationHref(fresh.href, `${base}/notifications`),

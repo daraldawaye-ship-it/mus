@@ -193,6 +193,7 @@ export function quickMessagesRoutes(pool: Pool): Router {
           code:type.code,companyId:companyScoped?input.companyId!:null,
           ...(companyScoped?{subjectEmployeeId:recipient.employeeId}:{subjectUserId:recipient.userId}),
           recipientUserId:recipient.userId,explicitSubjectOnly:true,
+          streamKey:"sender:"+user.id,
           subjectKey:"quick:"+user.id+":"+input.clientRequestId,
           eventKey:"quick:"+user.id+":"+input.clientRequestId,
           title:type.title,

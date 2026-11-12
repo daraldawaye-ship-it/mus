@@ -101,7 +101,7 @@ async function fixture(t: TestContext) {
   });
   await owner.ok("POST", "/auth/login", { email: ownerUser.email, password });
   async function company(name: string) {
-    return (
+    const company = (
       await owner.ok<{ company: Company }>(
         "POST",
         "/companies",
@@ -109,6 +109,10 @@ async function fixture(t: TestContext) {
         201,
       )
     ).company;
+    await runtime.pool.query(`INSERT INTO central_access_policies(company_id,resource_key,view_positions,edit_positions,updated_by)
+      VALUES($1,'page:company.notifications','{employee}','{employee}',$2)
+      ON CONFLICT(company_id,resource_key) DO UPDATE SET view_positions=EXCLUDED.view_positions,edit_positions=EXCLUDED.edit_positions`,[company.id,ownerUser.id]);
+    return company;
   }
   async function staff(companyId: number, name: string) {
     const client = new Client(baseUrl);
@@ -151,7 +155,9 @@ const settings = (template: NotificationTemplate) => ({
   repeatInterval: template.repeatInterval,
   notifyManagers: template.notifyManagers,
   notifySubject: template.notifySubject,
-  roleIds: template.roleIds,
+  positionKeys: template.positionKeys,
+  minIntervalHours: template.minIntervalHours,
+  latestOnly: template.latestOnly,
   employeeIds: template.employeeIds,
   revision: template.revision,
 });
@@ -458,43 +464,13 @@ test("automatic notifications separate reading from completion, validate follow-
     0,
     "Manager-only recipients must lose access immediately after demotion",
   );
-  const { role } = await f.owner.ok<{ role: { id: number } }>(
-    "POST",
-    base + "/configuration/roles",
-    {
-      key: "alert-followers",
-      name: "متابعة التنبيهات",
-      description: "",
-    },
-    201,
-  );
-  const assignmentDraft = {
-    employeeId: manager.employee.id,
-    roleId: role.id,
-    active: true,
-    revision: null,
-  };
-  const { assignment } = await f.owner.ok<{ assignment: { revision: number } }>(
-    "PUT",
-    base + "/configuration/assignments",
-    assignmentDraft,
-  );
-  const roleSettings = await getTemplate();
+  await f.pool.query("UPDATE employees SET position_keys=ARRAY['employee','accountant'] WHERE id=$1",[manager.employee.id]);
   await f.owner.ok("PUT", base + "/notification-templates/ATTENDANCE_LATE", {
-    ...settings(roleSettings),
-    roleIds: [role.id],
+    ...settings(await getTemplate()), positionKeys: ["accountant"],
   });
   assert.equal((await inbox(manager.client)).total, 1);
-  await f.owner.ok("PUT", base + "/configuration/assignments", {
-    ...assignmentDraft,
-    active: false,
-    revision: assignment.revision,
-  });
-  assert.equal(
-    (await inbox(manager.client)).total,
-    0,
-    "Removed roles must not continue to expose old notifications",
-  );
+  await f.pool.query("UPDATE employees SET position_keys=ARRAY['employee'] WHERE id=$1",[manager.employee.id]);
+  assert.equal((await inbox(manager.client)).total, 0, "Removing the position revokes access");
   await act({ action: "complete", revision: reminder.revision });
   const completed = await own(notification.id);
   assert(completed.completedAt);
@@ -537,7 +513,6 @@ test("automatic notifications separate reading from completion, validate follow-
 
 
   await subject.client.ok("POST", "/auth/password", {
-    currentPassword: password,
     newPassword: "notifications-new-test-passphrase",
   });
   const publicInbox = await subject.client.ok<NotificationDirectory>(
@@ -766,4 +741,42 @@ test("attendance generates only implemented, due notifications and rerunning the
     ).rowCount,
     0,
   );
+});
+
+test("delivery windows apply across senders while latest messages stay separate", async t => {
+  const f=await fixture(t), company=await f.company("Delivery windows");
+  const recipient=await f.staff(company.id,"Recipient");
+  const base="/companies/"+company.id, code="QUICK_ALL_EMPLOYEES";
+  const directory=()=>f.owner.ok<NotificationTemplateDirectory>("GET",base+"/notification-templates");
+  const getTemplate=async()=>(await directory()).templates.find(row=>row.code===code)!;
+  const initial=await getTemplate();
+  assert.equal(initial.minIntervalHours,null);
+  assert.equal(initial.latestOnly,true);
+  const configure=async(hours:number|null,latest:boolean)=>{
+    const template=await getTemplate();
+    await f.owner.ok("PUT",base+"/notification-templates/"+code,{
+      ...settings(template),minIntervalHours:hours,latestOnly:latest,
+    });
+  };
+  const emit=async(sender:number,message:string)=>transaction(f.pool,client=>emitNotification(client,{
+    companyId:company.id,code,subjectEmployeeId:recipient.employee.id,recipientUserId:recipient.user.id,
+    explicitSubjectOnly:true,streamKey:"sender:"+sender,subjectKey:message,eventKey:message,message,
+  }));
+  const inbox=()=>recipient.client.ok<NotificationDirectory>("GET",base+"/notifications?grouped=1&state=all&code="+code);
+  await configure(8,true);
+  await Promise.all([emit(1,"first message"),emit(1,"second message")]);
+  const sent=await f.pool.query("SELECT * FROM notifications WHERE code=$1 AND company_id=$2 ORDER BY id",[code,company.id]);
+  assert.equal(sent.rows.length,2);
+  assert.equal(sent.rows.filter(row=>!row.silent_update).length,1);
+  assert.equal((await inbox()).items[0].message,sent.rows[1].message);
+  await emit(2,"another sender");
+  const latest=await inbox();
+  assert.equal(latest.total,2);
+  assert(latest.items.find(row=>row.message==="another sender")?.silentUpdate);
+  await configure(8,false);
+  await emit(3,"suppressed");
+  assert.equal((await f.pool.query("SELECT 1 FROM notifications WHERE event_key='suppressed'")).rowCount,0);
+  await configure(null,false);
+  await emit(3,"open");
+  assert.equal((await f.pool.query("SELECT 1 FROM notifications WHERE event_key='open' AND NOT silent_update")).rowCount,1);
 });

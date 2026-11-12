@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../apps/api/src/app.ts";
 import { DEFAULT_DATABASE_URL } from "../apps/api/src/config.ts";
 import { provisionOwner } from "../apps/api/src/services/auth.ts";
-import { notifyCompanyCashiers } from "../apps/api/src/services/cashbox-notifications.ts";
+import { checkPendingReceipts, scanCashboxReceipts } from "../apps/api/src/services/cashbox-notifications.ts";
 import type {
   Account,
   AccountBalance,
@@ -1869,46 +1869,54 @@ test("supplier receipt reference stays on payment voucher drafts and posted prin
 test("cashbox transfers and closure notify only currently authorized cashier employees",async t=>{
   const f=await fixture(t);
   const company=await f.company("شركة تنبيهات الصندوق");
+  await f.pool.query(`INSERT INTO central_access_policies(company_id,resource_key,view_positions,edit_positions,updated_by)
+    VALUES($1,'page:company.notifications','{employee}','{employee}',$2)
+    ON CONFLICT(company_id,resource_key) DO UPDATE SET view_positions=EXCLUDED.view_positions,edit_positions=EXCLUDED.edit_positions`,[company.id,f.user.id]);
   const cashier=await f.member(company.id,[],81);
   const observer=await f.member(company.id,[],82);
   await f.pool.query(
-    "UPDATE employees SET position_keys=ARRAY['cashier']::text[] WHERE company_id=$1 AND id=$2",
+    "UPDATE employees SET position_keys=ARRAY['employee','cashier']::text[] WHERE company_id=$1 AND id=$2",
     [company.id,cashier.employee.id],
   );
   const conn=await f.pool.connect();
-  try{
+  try {
     await conn.query("BEGIN");
-    for(const [kind,operationId,amount,variance] of [
-      ["electronic",871,"3500",null],
-      ["pouch",872,"2600",null],
-      ["close",873,"2000","-50"],
-    ] as const){
-      await notifyCompanyCashiers(conn,{
-        companyId:company.id,operationId,employeeName:"بائع تجريبي",
-        kind,amount,variance,
-      });
-    }
+    // Isolate the scanner's source movements from real ledger posting.
+    await conn.query("CREATE TEMP TABLE employee_cashbox_operations(id int,company_id int,kind text,amount numeric) ON COMMIT DROP");
+    await conn.query("INSERT INTO employee_cashbox_operations VALUES(871,$1,'electronic',3500),(872,$1,'pouch',2600),(873,$1,'close',2000),(874,$1,'close',0)",[company.id]);
+    await checkPendingReceipts(conn,company.id,"electronic","operation:871");
+    await scanCashboxReceipts(conn,company.id);
+    await scanCashboxReceipts(conn,company.id);
+    const notifications = (await conn.query("SELECT * FROM notifications WHERE company_id=$1 ORDER BY id",[company.id])).rows;
+    assert.equal(notifications.length,4,"One immediate delivery plus one scan per type");
+    assert(notifications.every(row=>row.recipient_user_id===cashier.user.id && row.message.endsWith("1.")));
+    assert(notifications.find(row=>row.code==="CASHBOX_ELECTRONIC_TRANSFER")?.href.endsWith("/electronic-receipts"));
+    await conn.query(`INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,
+      notify_managers,notify_subject,position_keys,min_interval_hours,updated_by)
+      VALUES($1,'CASHBOX_ELECTRONIC_TRANSFER','high',true,true,false,'none',false,false,'{cashier}',8,$2)`,[company.id,f.user.id]);
+    await conn.query("INSERT INTO employee_cashbox_operations VALUES(875,$1,'electronic',100)",[company.id]);
+    await checkPendingReceipts(conn,company.id,"electronic","operation:875");
+    const latest=await conn.query("SELECT * FROM notifications WHERE company_id=$1 AND code='CASHBOX_ELECTRONIC_TRANSFER' AND completed_at IS NULL",[company.id]);
+    assert.equal(latest.rowCount,1);
+    assert(latest.rows[0].silent_update && latest.rows[0].message.endsWith("2.") && latest.rows[0].delivery_id);
+    await conn.query("CREATE TEMP TABLE employee_electronic_receipts(company_id int,source_operation_id int) ON COMMIT DROP");
+    await conn.query("INSERT INTO employee_electronic_receipts VALUES($1,871)",[company.id]);
+    await checkPendingReceipts(conn,company.id,"electronic","receipt:1",true);
+    const partial=await conn.query("SELECT message FROM notifications WHERE company_id=$1 AND code='CASHBOX_ELECTRONIC_TRANSFER' AND completed_at IS NULL",[company.id]);
+    assert(partial.rows[0].message.endsWith("1."));
+    await conn.query("INSERT INTO employee_electronic_receipts VALUES($1,875)",[company.id]);
+    await checkPendingReceipts(conn,company.id,"electronic","receipt:2",true);
+    const open=await conn.query("SELECT 1 FROM notifications WHERE company_id=$1 AND code='CASHBOX_ELECTRONIC_TRANSFER' AND completed_at IS NULL",[company.id]);
+    assert.equal(open.rowCount,0);
     await conn.query("COMMIT");
-  }catch(e){await conn.query("ROLLBACK");throw e;}finally{conn.release();}
-  const all=await f.pool.query(
-    "SELECT code,recipient_user_id,title,message,subject_employee_id FROM notifications WHERE company_id=$1 ORDER BY id",
-    [company.id],
-  );
-  assert.deepEqual(all.rows.map(row=>row.code),[
-    "CASHBOX_ELECTRONIC_TRANSFER","CASHBOX_POUCH_TRANSFER","CASHBOX_CLOSED",
-  ]);
-  assert(all.rows.every(row=>row.recipient_user_id===cashier.user.id));
-  assert(all.rows.every(row=>row.subject_employee_id===cashier.employee.id));
-  assert(all.rows.some(row=>row.message.includes("3500")));
-  assert(all.rows.some(row=>row.message.includes("2600")));
-  assert(all.rows.some(row=>row.message.includes("2000")));
+  } catch(error) { await conn.query("ROLLBACK"); throw error; } finally { conn.release(); }
   const route="/companies/"+company.id+"/notifications";
   const before=await cashier.client.ok<{total:number}>("GET",route);
-  assert.equal(before.total,3);
+  assert.equal(before.total,2);
   const unrelated=await observer.client.ok<{total:number}>("GET",route);
   assert.equal(unrelated.total,0);
   await f.pool.query(
-    "UPDATE employees SET position_keys='{}'::text[] WHERE company_id=$1 AND id=$2",
+    "UPDATE employees SET position_keys='{employee}'::text[] WHERE company_id=$1 AND id=$2",
     [company.id,cashier.employee.id],
   );
   const after=await cashier.client.ok<{total:number}>("GET",route);

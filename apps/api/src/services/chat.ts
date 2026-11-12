@@ -274,7 +274,7 @@ export async function sendChatMessage(
   await client.query("UPDATE chat_conversations SET updated_at=greatest(updated_at,$2) WHERE id=$1", [thread.id, row.created_at]);
   await notifyChatRecipient(client,{
     companyId:current.companyId,recipientId:peerId,
-    senderName:current.user.displayName,messageId:row.id,
+    senderId:current.user.id,senderName:current.user.displayName,messageId:row.id,
   });
   // Audit readers are not chat participants: never copy private content into
   // general/company audit logs, including receipt snapshots.

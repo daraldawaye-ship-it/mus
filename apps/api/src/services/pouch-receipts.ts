@@ -5,6 +5,7 @@ import type { User } from "../../../../packages/contracts/src/index.ts";
 import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
+import { checkPendingReceipts } from "./cashbox-notifications.ts";
 import { audit } from "./audit.ts";
 import { receiptExtraVoucherSchema, postReceiptExtraVoucher } from "./receipt-extra-voucher.ts";
 
@@ -267,6 +268,7 @@ export async function receivePouchMovement(
       expected:moneyString(original),received:moneyString(actual),
       difference:moneyString(difference),
       receiptDocumentId:documentId,voucherDocumentId,notes:input.notes},companyId);
+  await checkPendingReceipts(client, companyId, origin.kind === "close" ? "close" : "pouch", (custodySource ? "custody-receipt:" : "receipt:")+receiptId, true);
   return {id:receiptId,sourceId:origin.id,documentId,voucherDocumentId,
     expected:moneyString(original),received:moneyString(actual),
     difference:moneyString(difference)};

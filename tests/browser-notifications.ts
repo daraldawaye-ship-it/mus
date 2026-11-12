@@ -190,7 +190,7 @@ try {
   assert(saved?.allowRepeat && saved.importance === "high");
   assert.equal(saved.repeatInterval, "none");
   assert(saved.employeeIds.includes(peer.id));
-  assert.equal(saved.roleIds.length, 1);
+  assert.deepEqual(saved.positionKeys, ["accountant"]);
 
   await ownerPage.getByLabel("البحث", { exact: true }).fill("ITEM_STOPPED");
   const plannedTemplate = ownerPage

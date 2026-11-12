@@ -11,6 +11,7 @@ import {
   UserRoundPlus,
 } from "lucide-react";
 import {
+  employeePositions,
   notificationActionSchema,
   notificationSettingsSchema,
   type CompanyContext,
@@ -656,19 +657,6 @@ export function NotificationTemplatesPage({
           .toLocaleLowerCase("ar")
           .includes(search.toLocaleLowerCase("ar"))),
   );
-  function selectId(
-    key: "roleIds" | "employeeIds",
-    id: number,
-    selected: boolean,
-  ) {
-    if (!draft) return;
-    setDraft({
-      ...draft,
-      [key]: selected
-        ? [...draft[key], id]
-        : draft[key].filter((entry) => entry !== id),
-    });
-  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending) return;
@@ -680,7 +668,7 @@ export function NotificationTemplatesPage({
       repeatInterval,
       notifyManagers,
       notifySubject,
-      roleIds,
+      positionKeys, minIntervalHours, latestOnly,
       employeeIds,
       revision,
     } = draft;
@@ -692,7 +680,7 @@ export function NotificationTemplatesPage({
       repeatInterval: allowRepeat ? repeatInterval : "none",
       notifyManagers,
       notifySubject,
-      roleIds,
+      positionKeys, minIntervalHours, latestOnly,
       employeeIds,
       revision,
     });
@@ -845,7 +833,7 @@ export function NotificationTemplatesPage({
                 setError("");
                 setDraft({
                   ...template,
-                  roleIds: [...template.roleIds],
+                  positionKeys: [...template.positionKeys],
                   employeeIds: [...template.employeeIds],
                 });
               }}
@@ -900,6 +888,11 @@ export function NotificationTemplatesPage({
               >
                 <RepeatOptions />
               </Select>
+              <Field label="لا يتكرر نفس نوع التنبيه خلال (ساعات)" type="number" min={1} step={1}
+                placeholder="بدون حد" value={draft.minIntervalHours ?? ""}
+                onChange={event => setDraft({...draft, minIntervalHours: event.target.value === "" ? null : Number(event.target.value)})} />
+              <CheckField label="إظهار آخر تنبيه فقط" checked={draft.latestOnly}
+                onChange={latestOnly => setDraft({...draft, latestOnly})} />
               <CheckField
                 label="تنبيه مفعّل"
                 checked={draft.enabled}
@@ -925,6 +918,7 @@ export function NotificationTemplatesPage({
             </div>
             <fieldset className="notification-recipients">
               <legend>المستلمون وصلاحية المتابعة</legend>
+              {!["CASHBOX_ELECTRONIC_TRANSFER","CASHBOX_POUCH_TRANSFER","CASHBOX_CLOSED"].includes(draft.code) && <>
               <CheckField
                 label={companyId ? "المالك والمديرون العامون" : "مالك المنصة"}
                 checked={draft.notifyManagers}
@@ -944,6 +938,7 @@ export function NotificationTemplatesPage({
                   setDraft({ ...draft, notifySubject })
                 }
               />
+              </>}
               {companyId && (
                 <>
                   <p className="muted">
@@ -953,21 +948,14 @@ export function NotificationTemplatesPage({
                   </p>
                   <div className="notification-recipient-groups">
                     <div>
-                      <h3>الأدوار</h3>
-                      {query.data?.roles.length ? (
-                        query.data.roles.map((role) => (
-                          <CheckField
-                            key={role.id}
-                            label={role.name}
-                            checked={draft.roleIds.includes(role.id)}
-                            onChange={(selected) =>
-                              selectId("roleIds", role.id, selected)
-                            }
-                          />
-                        ))
-                      ) : (
-                        <p className="muted">لا توجد أدوار مفعّلة.</p>
-                      )}
+                      <h3>صفات الموظفين</h3>
+                      {employeePositions.map(position => (
+                        <CheckField key={position.key} label={position.label}
+                          checked={draft.positionKeys.includes(position.key)}
+                          onChange={selected => setDraft({...draft, positionKeys: selected
+                            ? [...draft.positionKeys, position.key]
+                            : draft.positionKeys.filter(key => key !== position.key)})} />
+                      ))}
                     </div>
                     <div>
                       <h3>موظفون محددون</h3>
@@ -978,7 +966,7 @@ export function NotificationTemplatesPage({
                             label={employee.name}
                             checked={draft.employeeIds.includes(employee.id)}
                             onChange={(selected) =>
-                              selectId("employeeIds", employee.id, selected)
+                              setDraft({...draft, employeeIds: selected ? [...draft.employeeIds, employee.id] : draft.employeeIds.filter(id => id !== employee.id)})
                             }
                           />
                         ))

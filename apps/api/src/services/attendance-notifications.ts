@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { transaction } from "../db.ts";
+import { scanCashboxReceipts } from "./cashbox-notifications.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
 import { scanDailyItemOrderReminders } from "./item-order-reminders.ts";
 import {scanDueMemoSchedules} from "./memo-reminders.ts";
@@ -109,6 +110,7 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
           });
         if (!(await pageEnabled(client, companyId, "company.notifications")))
           return;
+        await scanCashboxReceipts(client, companyId);
         await scanDueMemoSchedules(client,companyId);
         await refreshNotificationReminders(client, companyId);
         if (await pageEnabled(client, companyId, "company.attendance"))

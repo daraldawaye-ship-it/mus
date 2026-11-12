@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { employeePositionListSchema, type EmployeePosition } from "./employee-positions.ts";
 import type { Page } from "./index.ts";
 const id = z.number().int().positive().max(2147483647);
 export const importanceSchema = z.enum(["low", "medium", "high", "critical"]);
@@ -14,13 +15,13 @@ export const notificationSettingsSchema = z
     repeatInterval: repeatIntervalSchema,
     notifyManagers: z.boolean(),
     notifySubject: z.boolean(),
-    roleIds: z
-      .array(id)
-      .max(100)
-      .refine((x) => new Set(x).size === x.length),
+    // Accept an empty legacy selector from older clients during rollout.
+    roleIds: z.array(id).max(0).optional(),
+    positionKeys: employeePositionListSchema.optional(),
+    minIntervalHours: id.nullable().optional(),
+    latestOnly: z.boolean().optional(),
     employeeIds: z
       .array(id)
-      .max(100)
       .refine((x) => new Set(x).size === x.length),
     revision: id.nullable(),
   })
@@ -77,14 +78,16 @@ export interface NotificationTemplate {
   repeatInterval: NotificationRepeat;
   notifyManagers: boolean;
   notifySubject: boolean;
-  roleIds: number[];
+  positionKeys: EmployeePosition[];
+  minIntervalHours: number | null;
+  latestOnly: boolean;
   employeeIds: number[];
   revision: number | null;
 }
 export interface NotificationTemplateDirectory {
   templates: NotificationTemplate[];
   employees: { id: number; name: string }[];
-  roles: { id: number; name: string }[];
+
 }
 export interface NotificationRecord {
   id: number;
@@ -99,6 +102,9 @@ export interface NotificationRecord {
   snoozedUntil: string | null;
   repeatInterval: NotificationRepeat;
   reminderCount: number;
+  silentUpdate: boolean;
+  deliveryId: number | null;
+  deliveryAt: string | null;
   revision: number;
   subjectEmployeeId: number | null;
   /** Number of matching notifications in this visible group (never across companies). */

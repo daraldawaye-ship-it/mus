@@ -13,7 +13,7 @@ self.addEventListener("push", event => {
   event.waitUntil(Promise.all([
     self.registration.showNotification(title,{
       body,icon:"/site-icon.png",badge:"/site-icon.png",
-      tag:"alraesy-notification-"+String(id??"new"),data:{url},
+      tag:"alraesy-notification-"+(typeof payload.tag==="string"?payload.tag:String(id??"new")),data:{url},
       dir:"rtl",lang:"ar",silent:false,
       // Android may use vibration for alerting notifications; the OS controls
       // actual sound and heads-up display, and may ignore these preferences.

@@ -65,6 +65,7 @@ export function encryptPayload(p256dh:string,auth:string,payload:object):Buffer{
 interface NotificationMessage{
   endpoint:string;p256dh:string;auth:string;title:string;message:string;
   href:string|null;company_id:number|null;notification_id:number;
+  tag:string|null;
   importance:"low"|"medium"|"high"|"critical";
 }
 async function send(input:NotificationMessage,origin:string):Promise<number>{
@@ -73,7 +74,7 @@ async function send(input:NotificationMessage,origin:string):Promise<number>{
     ?input.href:input.company_id?"/companies/"+input.company_id+"/notifications":"/notifications";
   const body=encryptPayload(input.p256dh,input.auth,{
     title:input.title.slice(0,100),body:input.message.slice(0,180),url,id:input.notification_id,
-    importance:input.importance,
+    importance:input.importance,tag:input.tag,
   });
   const response=await fetch(input.endpoint,{
     method:"POST",
@@ -89,17 +90,21 @@ async function send(input:NotificationMessage,origin:string):Promise<number>{
   return response.status;
 }
 interface Queued extends NotificationMessage{
-  id:string;subscription_id:string;user_id:number;employee_id:number|null;
+  id:string;current_id:number;subscription_id:string;user_id:number;employee_id:number|null;
   general:boolean;attempts:number;
 }
 async function deliver(client:PoolClient,origin:string):Promise<boolean>{
   const pending=await client.query<Queued>(
-    "SELECT d.id,d.subscription_id,d.attempts,d.notification_id,"+
+    "SELECT d.id,d.subscription_id,d.attempts,d.notification_id,n.id AS current_id,"+
     " p.endpoint,p.p256dh,p.auth,p.user_id,n.title,n.message,n.href,n.company_id,n.importance,"+
+    " CASE WHEN COALESCE(s.latest_only,t.default_latest_only) THEN concat_ws(':',p.user_id,COALESCE(n.company_id,0),n.code,n.stream_key) END AS tag,"+
     " e.id AS employee_id,(u.owner OR COALESCE(e.is_general_manager,false)) AS general"+
     " FROM web_push_deliveries d"+
     " JOIN web_push_subscriptions p ON p.id=d.subscription_id"+
-    " JOIN notifications n ON n.id=d.notification_id AND n.recipient_user_id=p.user_id"+
+    " JOIN LATERAL (SELECT notice.* FROM notifications notice WHERE notice.recipient_user_id=p.user_id"+
+    " AND (notice.id=d.notification_id OR notice.delivery_id=d.notification_id) ORDER BY notice.id DESC LIMIT 1) n ON true"+
+    " JOIN notification_templates t ON t.code=n.code"+
+    " LEFT JOIN notification_settings s ON s.company_id IS NOT DISTINCT FROM n.company_id AND s.code=n.code"+
     " JOIN users u ON u.id=p.user_id AND NOT u.archived"+
     " JOIN sessions ss ON ss.token_hash=p.session_hash AND ss.user_id=p.user_id"+
     "  AND ss.expires_at>clock_timestamp()"+
@@ -116,7 +121,7 @@ async function deliver(client:PoolClient,origin:string):Promise<boolean>{
     " AND COALESCE(s.enabled,t.implemented)"+
     " AND (n.company_id IS NULL OR $4::boolean OR $3::integer IS NOT NULL)"+
     " AND "+inboxFilter,
-    [row.user_id,row.company_id,row.employee_id,row.general,row.notification_id]);
+    [row.user_id,row.company_id,row.employee_id,row.general,row.current_id]);
   const setting=await client.query<{disabled:boolean}>(
     "SELECT EXISTS(SELECT 1 FROM page_settings pg WHERE pg.page_key=$1"+
     " AND (pg.company_id IS NULL OR pg.company_id=$2) AND pg.enabled=false) AS disabled",
@@ -158,13 +163,14 @@ async function scan(pool:Pool,origin:string):Promise<void>{
     if(!lock.rows[0]?.ok){await client.query("ROLLBACK");return;}
     await client.query(
       "INSERT INTO web_push_deliveries(notification_id,subscription_id)"+
-      " SELECT n.id,p.id FROM notifications n"+
+      " SELECT origin.id,p.id FROM notifications n"+
+      " JOIN notifications origin ON origin.id=CASE WHEN n.silent_update THEN n.delivery_id ELSE n.id END"+
       " JOIN web_push_subscriptions p ON p.user_id=n.recipient_user_id"+
       " JOIN users u ON u.id=p.user_id AND NOT u.archived"+
       " JOIN sessions ss ON ss.token_hash=p.session_hash AND ss.user_id=p.user_id"+
       " AND ss.expires_at>clock_timestamp()"+
-      " WHERE n.created_at>=p.created_at AND n.read_at IS NULL AND n.completed_at IS NULL"+
-      " AND NOT EXISTS(SELECT 1 FROM web_push_deliveries d WHERE d.notification_id=n.id AND d.subscription_id=p.id)"+
+      " WHERE origin.created_at>=p.created_at AND n.read_at IS NULL AND n.completed_at IS NULL"+
+      " AND NOT EXISTS(SELECT 1 FROM web_push_deliveries d WHERE d.notification_id=origin.id AND d.subscription_id=p.id)"+
       " ORDER BY n.created_at DESC LIMIT 300 ON CONFLICT DO NOTHING");
     for(let i=0;i<8;i++)if(!(await deliver(client,origin)))break;
     await client.query("COMMIT");

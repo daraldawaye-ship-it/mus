@@ -6,7 +6,7 @@ import { HttpError } from "../errors.ts";
 import { moneyString, moneyUnits } from "./finance.ts";
 import { postCommerceJournal } from "./commerce-ledger.ts";
 import { audit } from "./audit.ts";
-import { notifyCompanyCashiers } from "./cashbox-notifications.ts";
+import { checkPendingReceipts } from "./cashbox-notifications.ts";
 
 export const administrativeCustodyTransferSchema = z.object({
   amount: z.string().trim().regex(
@@ -110,11 +110,6 @@ export async function postAdministrativeCustodyTransfer(
   await audit(client, user, "administrativeCustody.transfer", "administrative-custody-transfer",
     operationId, null, { amount: moneyString(amount), custodyAccountId: custody.id,
       pouchAccountId: pouch.id, documentId, notes: input.notes }, companyId);
-  // Same receiver alert workflow as ordinary pouch transfers; never touch
-  // employee cashboxes until a separate receipt is confirmed.
-  await notifyCompanyCashiers(client, {
-    companyId, operationId, employeeName: "العهدة الإدارية",
-    kind: "custody", amount: moneyString(amount), variance: null,
-  });
+  await checkPendingReceipts(client, companyId, "pouch", "custody:" + operationId);
   return { operationId, documentId };
 }

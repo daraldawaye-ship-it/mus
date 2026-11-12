@@ -6,6 +6,7 @@ import { transaction } from "./db.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { currentActor, companyAccess } from "./policies/access.ts";
 import { HttpError, deny, missing } from "./errors.ts";
+import { emitNotification } from "./services/notifications.ts";
 import { audit } from "./services/audit.ts";
 import { getAttendanceSettings } from "./services/attendance-settings.ts";
 import { attendanceAutoHours } from "./services/control-values.ts";
@@ -30,20 +31,14 @@ async function notifyRejected(
   approver: KnownUser,
 ) {
   const action = row.kind === "check-in" ? "الحضور" : "الانصراف";
-  await client.query(
-    `INSERT INTO notifications(company_id,code,recipient_user_id,subject_employee_id,subject_key,event_key,title,message,importance,href,assigned)
-      SELECT $1,'ATTENDANCE_APPROVAL_REJECTED',recipient.id,$2,$3,$4,$5,$6,'high',$7,true
-      FROM users recipient
-      LEFT JOIN employees reviewer ON reviewer.company_id=$1 AND reviewer.user_id=recipient.id AND reviewer.active
-      WHERE NOT recipient.archived AND (recipient.owner OR
-        reviewer.position_keys && ARRAY['sales-supervisor','cashier']::text[])
-      ON CONFLICT DO NOTHING`,
-    [row.company_id, row.employee_id, `attendance-approval:${row.id}`,
-      `attendance-approval:${row.id}:rejected`,
-      `عدم مصادقة ${action} ${row.employee_name}`,
-      `رفض ${approver.displayName} مصادقة ${action} للموظف ${row.employee_name}.`,
-      `/companies/${row.company_id}/attendance?day=${row.work_date}`],
-  );
+  await emitNotification(client, {
+    companyId: row.company_id, code: "ATTENDANCE_APPROVAL_REJECTED",
+    subjectEmployeeId: row.employee_id, subjectKey: `attendance-approval:${row.id}`,
+    eventKey: `attendance-approval:${row.id}:rejected`,
+    title: `عدم مصادقة ${action} ${row.employee_name}`,
+    message: `رفض ${approver.displayName} مصادقة ${action} للموظف ${row.employee_name}.`,
+    href: `/companies/${row.company_id}/attendance?day=${row.work_date}`,
+  });
 }
 
 export function attendanceApprovalRoutes(pool: Pool): Router {

@@ -18,6 +18,7 @@ import { assertRequestPagesEnabled } from "./services/pages.ts";
 import { audit } from "./services/audit.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
 import {
+  latestStream,
   templateQuery,
   templateDTO,
   effectiveTemplate,
@@ -69,15 +70,7 @@ export function notificationRoutes(pool: Pool) {
                 )
               ).rows
             : [];
-          const roles = companyId
-            ? (
-                await client.query(
-                  "SELECT id,name FROM company_roles WHERE company_id=$1 AND active ORDER BY name,id",
-                  [companyId],
-                )
-              ).rows
-            : [];
-          return { templates: found.rows.map(templateDTO), employees, roles };
+          return { templates: found.rows.map(templateDTO), employees };
         });
         res.json(result);
       }),
@@ -122,12 +115,12 @@ export function notificationRoutes(pool: Pool) {
             );
           if (
             companyId === null &&
-            (input.roleIds.length || input.employeeIds.length)
+            (input.positionKeys?.length || input.employeeIds.length)
           )
             throw new HttpError(
               400,
               "invalid_scope",
-              "الأدوار والموظفون يخصون الشركات فقط",
+              "الصفات والموظفون يخصون الشركات فقط",
             );
           if (companyId) {
             const validEmployees = (
@@ -136,26 +129,17 @@ export function notificationRoutes(pool: Pool) {
                 [companyId, input.employeeIds],
               )
             ).rows;
-            const validRoles = (
-              await client.query(
-                "SELECT id FROM company_roles WHERE company_id=$1 AND active AND id=ANY($2::integer[]) FOR SHARE",
-                [companyId, input.roleIds],
-              )
-            ).rows;
-            if (
-              validEmployees.length !== input.employeeIds.length ||
-              validRoles.length !== input.roleIds.length
-            )
+            if (validEmployees.length !== input.employeeIds.length)
               throw new HttpError(
                 400,
                 "invalid_followers",
-                "اختر أدوارًا وموظفين فعالين من الشركة نفسها",
+                "اختر موظفين فعالين من الشركة نفسها",
               );
           }
           await client.query(
-            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,role_ids,employee_ids,updated_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
-    allow_repeat=EXCLUDED.allow_repeat,repeat_interval=EXCLUDED.repeat_interval,notify_managers=EXCLUDED.notify_managers,notify_subject=EXCLUDED.notify_subject,role_ids=EXCLUDED.role_ids,employee_ids=EXCLUDED.employee_ids,
+            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,position_keys,employee_ids,updated_by,min_interval_hours,latest_only)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
+    allow_repeat=EXCLUDED.allow_repeat,repeat_interval=EXCLUDED.repeat_interval,notify_managers=EXCLUDED.notify_managers,notify_subject=EXCLUDED.notify_subject,position_keys=EXCLUDED.position_keys,min_interval_hours=EXCLUDED.min_interval_hours,latest_only=EXCLUDED.latest_only,employee_ids=EXCLUDED.employee_ids,
     revision=notification_settings.revision+1,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp()`,
             [
               companyId,
@@ -167,9 +151,11 @@ export function notificationRoutes(pool: Pool) {
               input.repeatInterval,
               input.notifyManagers,
               input.notifySubject,
-              [...input.roleIds].sort((a, b) => a - b),
+              input.positionKeys ?? before.positionKeys,
               [...input.employeeIds].sort((a, b) => a - b),
               user.id,
+              input.minIntervalHours === undefined ? before.minIntervalHours : input.minIntervalHours,
+              input.latestOnly ?? before.latestOnly,
             ],
           );
           const after = await effectiveTemplate(client, companyId, before.code);
@@ -249,7 +235,7 @@ export function notificationRoutes(pool: Pool) {
           const total = (
             await client.query(
               grouped
-                ? "SELECT count(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code" + from + " WHERE " + filter + ") grouped_count"
+                ? "SELECT count(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code," + latestStream + from + " WHERE " + filter + ") grouped_count"
                 : "SELECT count(*)::integer AS total" + from + " WHERE " + filter,
               args,
             )
@@ -266,7 +252,7 @@ export function notificationRoutes(pool: Pool) {
           ).rows[0].total;
           const unreadGroups = (
             await client.query(
-              "SELECT COUNT(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code" +
+              "SELECT COUNT(*)::integer AS total FROM (SELECT DISTINCT n.company_id,n.code," + latestStream +
                 from + " WHERE " + inboxFilter +
                 " AND n.read_at IS NULL AND n.completed_at IS NULL" +
                 " AND (n.snoozed_until IS NULL OR n.snoozed_until<=clock_timestamp())) unread_groups",
@@ -286,10 +272,10 @@ export function notificationRoutes(pool: Pool) {
               grouped
                 ? `WITH visible_notifications AS (
                     SELECT n.id,
-                      COUNT(*) OVER (PARTITION BY n.company_id,n.code)::integer AS group_count,
+                      COUNT(*) OVER (PARTITION BY n.company_id,n.code,${latestStream})::integer AS group_count,
                       COUNT(*) FILTER (WHERE n.read_at IS NULL)
-                        OVER (PARTITION BY n.company_id,n.code)::integer AS group_unread,
-                      ROW_NUMBER() OVER (PARTITION BY n.company_id,n.code
+                        OVER (PARTITION BY n.company_id,n.code,${latestStream})::integer AS group_unread,
+                      ROW_NUMBER() OVER (PARTITION BY n.company_id,n.code,${latestStream}
                         ORDER BY n.created_at DESC,n.id DESC) AS position
                     ${from} WHERE ${filter}
                   )
