@@ -256,6 +256,7 @@ const ItemFormDifferencesPage = lazy(() =>
 const ItemStatisticsReportPage = lazy(() =>
   import("./pages/ItemStatisticsReportPage").then(m=>({default:m.ItemStatisticsReportPage})),
 );
+const PurchaseLineMovementsPage = lazy(() => import("./pages/PurchaseLineMovementsPage").then(m=>({default:m.PurchaseLineMovementsPage})));
 const SalesTimeReportPage = lazy(() =>
   import("./pages/SalesTimeReportPage").then(m => ({ default: m.SalesTimeReportPage })),
 );
@@ -408,6 +409,7 @@ const companySections = [
   "settlement-follow-up",
   "inventory-settings",
   "purchases",
+  "purchase-line-movements",
   "legacy-sales-import",
   "sales",
   "pouch-receipts",
@@ -506,6 +508,7 @@ function Navigation({
     "company.pouch-receipts": <HandCoins size={17} />,
     "company.electronic-receipts": <Wallet size={17} />,
     "company.purchases": <FileText size={17} />,
+    "company.purchase-line-movements": <TableProperties size={17} />,
     "company.financial-documents": <FileText size={17} />,
     "company.journals": <BookOpen size={17} />,
     "company.receipts": <HandCoins size={17} />,
@@ -919,6 +922,10 @@ function CompanyContent({
           <InventorySettingsPage key={context.company.id} context={context} />
         </Suspense>
       );
+    case "purchase-line-movements":
+      return <Suspense fallback={<Notice>جارٍ تحميل حركة أصناف المشتريات…</Notice>}>
+        <PurchaseLineMovementsPage context={context}/>
+      </Suspense>;
     case "purchases":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل فواتير المشتريات…</Notice>}>
