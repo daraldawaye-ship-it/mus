@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Pencil } from "lucide-react";
 
-export type InvoiceItemAction = "edit" | "adjust" | "transfer" | "report";
+export type InvoiceItemAction = "public-request" | "edit" | "adjust" | "transfer" | "report";
 
 export const invoiceItemActionLabels: Record<InvoiceItemAction, string> = {
+  "public-request": "طلب الجمهور",
   edit: "تعديل كرت الصنف",
   adjust: "تسوية الصنف",
   transfer: "مناقلة صنف",
@@ -13,10 +14,11 @@ export const invoiceItemActionLabels: Record<InvoiceItemAction, string> = {
 
 /** Portal-based dropdown escapes the horizontally scrolling invoice matrix. */
 export function InvoiceItemActionsDropdown({
-  itemName, disabled, canEdit, canAdjust, canTransfer, canReport, onAction,
+  itemName, disabled, canPublicRequest = false, canEdit, canAdjust, canTransfer, canReport, onAction,
 }: {
   itemName: string;
   disabled: boolean;
+  canPublicRequest?: boolean;
   canEdit: boolean;
   canAdjust: boolean;
   canTransfer: boolean;
@@ -69,10 +71,11 @@ export function InvoiceItemActionsDropdown({
     {position && createPortal(
       <div ref={menu} role="menu" aria-label={`خيارات الصنف ${itemName}`}
         className="invoice-item-actions-dropdown" style={{top:position.top,left:position.left}}>
-        {(["edit","adjust","transfer","report"] as const).map(action=>
+        {(["public-request","edit","adjust","transfer","report"] as const).map(action=>
           <button key={action} type="button" role="menuitem"
-            disabled={action==="edit"?!canEdit:action==="adjust"?!canAdjust:action==="transfer"?!canTransfer:!canReport}
-            title={action==="edit"&&!canEdit?"تعديل الأصناف غير مسموح":
+            disabled={action==="public-request"?!canPublicRequest:action==="edit"?!canEdit:action==="adjust"?!canAdjust:action==="transfer"?!canTransfer:!canReport}
+            title={action==="public-request"&&!canPublicRequest?"طلب الجمهور غير متاح لهذا المستخدم":
+              action==="edit"&&!canEdit?"تعديل الأصناف غير مسموح":
               action==="adjust"&&!canAdjust?"تسوية الصنف تحتاج صلاحيات المخزون والمالية":
               action==="transfer"&&!canTransfer?"مناقلة الصنف تحتاج صلاحية ترحيل المخزون":
               action==="report"&&!canReport?"إرسال تقرير يحتاج صلاحية إنشاء المذكرات":undefined}
