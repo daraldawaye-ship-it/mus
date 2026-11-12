@@ -1846,6 +1846,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   }, [user?.id,companyId]);
   const controls = useControls(companyId, context.employee?.id ?? null);
   const directory = usePageDirectory(companyId);
+  const canCreatePublicRequest = !!directory.data?.find(
+    entry => entry.key === "company.public-requests" &&
+      entry.enabled && entry.actionAccess.create);
   const canEditItem =
     (context.general || context.permissions.includes("items.manage")) &&
     ["company.items", "company.item-card"].every((key) => {
@@ -1875,6 +1878,32 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const canReportItem = !!memoPage?.enabled && !!memoPage.actionAccess.view &&
     !!memoPage.actionAccess.create;
   const [itemNotice, setItemNotice] = useState("");
+  const [publicRequestNotice,setPublicRequestNotice] = useState("");
+  const [publicRequestError,setPublicRequestError] = useState("");
+  const [publicRequestBusy,setPublicRequestBusy] = useState(false);
+  async function addPublicRequest(itemId: number, itemName: string) {
+    if (publicRequestBusy || !canCreatePublicRequest) return;
+    setPublicRequestBusy(true);
+    setPublicRequestNotice("");
+    setPublicRequestError("");
+    try {
+      const result = await api<{added:boolean;pointsAwarded:string}>(
+        `/companies/${companyId}/public-requests`,
+        {method:"POST",body:{itemId}});
+      setPublicRequestNotice(result.added
+        ? `تم تسجيل طلب الجمهور: ${itemName}${BigInt(result.pointsAwarded)>0n
+          ? ` (+${result.pointsAwarded} نقطة)` : ""}.`
+        : `طلب الجمهور لهذا الصنف مسجل مسبقًا اليوم بواسطتك؛ لم يُكرر ولم تُحتسب نقاط.`);
+      if(result.added) {
+        void client.invalidateQueries({queryKey:["public-requests",user?.id,companyId]});
+        void client.invalidateQueries({queryKey:["wallet-summary",user?.id,companyId]});
+      }
+    } catch (cause) {
+      setPublicRequestError(errorMessage(cause));
+    } finally {
+      setPublicRequestBusy(false);
+    }
+  }
   const [memoBlocked,setMemoBlocked]=useState(false);
   const [resetConfirmOpen,setResetConfirmOpen]=useState(false);
   const navigate = useNavigate();
@@ -3652,6 +3681,8 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {publicRequestNotice && <Notice tone="success">{publicRequestNotice}</Notice>}
+        {publicRequestError && <Notice tone="error">{publicRequestError}</Notice>}
         {kind === "purchase" && purchaseProfitWarnings.length > 0 && (
           <Notice tone="warning">
             تأكد من سعر البيع - الربح أقل من الافتراضي
@@ -4114,13 +4145,16 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                             <InvoiceItemActionsDropdown
                               itemName={line.itemName || "الصنف"}
                               disabled={!line.itemId || locked}
+                              canPublicRequest={canCreatePublicRequest && !publicRequestBusy}
                               canEdit={canEditItem}
                               canAdjust={canAdjustItem}
                               canTransfer={canTransferItem}
                               canReport={canReportItem}
                               onAction={(action: InvoiceItemAction) => {
                                 if (!line.itemId || locked) return;
-                                if (action === "edit" && canEditItem) {
+                                if (action === "public-request" && canCreatePublicRequest) {
+                                  void addPublicRequest(line.itemId,line.itemName);
+                                } else if (action === "edit" && canEditItem) {
                                   setEditingBusy(false);
                                   setEditingItem({itemId:line.itemId,lineKey:line.key});
                                 } else if(action === "adjust" && canAdjustItem) {
