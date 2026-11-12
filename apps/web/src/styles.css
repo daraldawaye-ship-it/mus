@@ -8705,6 +8705,26 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .owner-phone-device-bottom { height:24px; display:grid; place-items:center; }
 .owner-phone-device-bottom span { width:85px; height:4px; background:#8d9ca8; border-radius:9px; }
 
+.pledge-statement-print-actions {
+  position: fixed;
+  inset: auto 50% 16px auto;
+  transform: translateX(50%);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 25px #0004;
+  font-size: 12px;
+}
+@media print { .pledge-statement-print-actions { display: none !important; } }
+
 /* In-app pledge statement printing: same window/document as sales invoices.
    The portal is a direct body child so no invoice page, dialog or scroll wrapper
    can clip the printed statement. Other print formats are unchanged. */
