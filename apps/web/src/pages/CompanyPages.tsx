@@ -357,6 +357,15 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
               مركز الصلاحيات وخيارات النظام
             </Link>
           )}
+          {directory.data?.some(entry =>
+            entry.key === "company.notification-templates" &&
+            entry.visible && entry.enabled && entry.actionAccess.view
+          ) && (
+            <Link className="button button-secondary"
+              to={`/companies/${company.id}/notification-templates`}>
+              أنواع التنبيهات
+            </Link>
+          )}
           <Link className="button button-secondary" to={`/companies/${company.id}/letterhead`}>ترويسة الشركة للطباعة</Link>
           {moduleAccess(context, "locations") && <>
             <Link className="button button-secondary" to={`/companies/${company.id}/branches`}>الفروع</Link>
