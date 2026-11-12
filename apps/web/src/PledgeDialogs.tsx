@@ -31,6 +31,7 @@ export function PledgeDialogs({
  const [limit,setLimit]=useState("");
  const [q,setQ]=useState("");
  const [showZero,setShowZero]=useState(false);
+ useEffect(()=>{if(mode==="list")setShowZero(false);},[mode]);
  const [printBusy,setPrintBusy]=useState<number|null>(null);
  const [printError,setPrintError]=useState("");
  const [printJob,setPrintJob]=useState<{pledge:Pledge;statement:PledgeStatementData}|null>(null);
