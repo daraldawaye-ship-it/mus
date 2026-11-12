@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { financialDocumentSchema, normalizeDigits, type Account, type FinancialDocument } from "../../../packages/contracts/src/index";
+import { financialDocumentSchema, normalizeDigits, type Account, type CompanyContext, type FinancialDocument } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { errorMessage } from "./phase2";
 import { formatMoney, formatWholeMoney } from "./format-money";
-import { printPledgeStatement } from "./pledge-statement-print";
+import { fetchPledgeStatement, type PledgeStatementData } from "./pledge-statement-print";
+import { PledgeStatementPrint } from "./PledgeStatementPrint";
 import { Button, Dialog, Field, Notice } from "./ui";
 
 type Pledge = {
@@ -13,8 +15,9 @@ type Pledge = {
  phone:string; collateral:string; durationDays:number; receivedBy:string; createdAt:string;
 };
 export function PledgeDialogs({
- companyId,mode,cashbox,yerCurrencyId,onClose,onCreated,onSelect,salesScopedTransfer,
+ context,companyId,mode,cashbox,yerCurrencyId,onClose,onCreated,onSelect,salesScopedTransfer,
 }: {
+ context:CompanyContext;
  companyId:number;mode:"add"|"list"|"pay"|"receive"|null;cashbox:Account|null;yerCurrencyId:number|null;onClose:()=>void;
  salesScopedTransfer:boolean;
  onCreated:(account:Account,points:number)=>void;
@@ -29,6 +32,8 @@ export function PledgeDialogs({
  const [q,setQ]=useState("");
  const [printBusy,setPrintBusy]=useState<number|null>(null);
  const [printError,setPrintError]=useState("");
+ const [printJob,setPrintJob]=useState<{pledge:Pledge;statement:PledgeStatementData}|null>(null);
+ const [printReady,setPrintReady]=useState(false);
  const [selectedPledge,setSelectedPledge]=useState<Pledge|null>(null);
  const [transferAmount,setTransferAmount]=useState("");
  const [transferNotes,setTransferNotes]=useState("");
@@ -50,22 +55,29 @@ export function PledgeDialogs({
   enabled:mode==="list"||mode==="pay"||mode==="receive",
   queryFn:({signal})=>api<{items:Pledge[]}>(`/companies/${companyId}/pledges?q=${encodeURIComponent(q)}`,{signal}),
  });
+ // Like the saved invoice, print the prepared content from this app document.
+ // Wait until the actual letterhead image (or its safe text fallback) is ready.
+ useEffect(()=>{
+  if(!printJob || !printReady || mode!==null)return;
+  const afterPrint=()=>{setPrintJob(null);setPrintReady(false);};
+  window.addEventListener("afterprint",afterPrint);
+  const timer=window.setTimeout(()=>window.print(),80);
+  return ()=>{window.clearTimeout(timer);window.removeEventListener("afterprint",afterPrint);};
+ },[printJob,printReady,mode]);
  async function printStatement(pledge:Pledge) {
-  if(printBusy!==null) return;
+  if(printBusy!==null)return;
   setPrintError("");
-  // Open a blank window on the click, before the authorized statement API call.
-  const win=window.open("about:blank","_blank");
-  if(!win){setPrintError("اسمح بفتح النافذة المنبثقة لطباعة كشف الحساب.");return;}
-  win.document.title="تجهيز كشف الرهن للطباعة";
-  win.document.body.dir="rtl";
-  win.document.body.textContent="جارٍ تجهيز كشف الحساب للطباعة…";
+  setPrintReady(false);
   setPrintBusy(pledge.accountId);
   try {
-   await printPledgeStatement(companyId,pledge,win);
-  }catch(reason) {
-   if(!win.closed)win.close();
+   const statement=await fetchPledgeStatement(companyId,pledge.accountId);
+   setPrintJob({pledge,statement});
+   // Close the sales dialog so the print sheet is never obscured by a modal.
+   // The invoice page stays open, and no new browser tab or page is used.
+   onClose();
+  }catch(reason){
    setPrintError(errorMessage(reason));
-  }finally {
+  }finally{
    setPrintBusy(null);
   }
  }
@@ -172,6 +184,13 @@ export function PledgeDialogs({
  }
 
  return <>
+ {printJob && createPortal(
+  <PledgeStatementPrint context={context}
+   pledge={printJob.pledge}
+   statement={printJob.statement}
+   onLetterheadReady={()=>setPrintReady(true)} />,
+  document.body
+ )}
  <Dialog open={mode==="add"} title="إضافة رهن" onClose={onClose}>
   <form className="form-stack" onSubmit={event=>void create(event)}>
    {error&&<Notice tone="error">{error}</Notice>}
