@@ -491,6 +491,7 @@ export async function requestPageKeys(
     attendance: "attendance",
     wallet: "wallet",
     "reward-tasks": "reward-tasks",
+    "public-requests": "public-requests",
     "wallet-settings": "wallet-settings",
     "wallet-conversions": "wallet-conversions",
     notifications: "notifications",
