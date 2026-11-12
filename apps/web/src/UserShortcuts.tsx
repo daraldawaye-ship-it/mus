@@ -7,7 +7,6 @@ import { generalTableSchema } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { rememberRead } from "./offline-storage";
 import { usePageDirectory } from "./page-directory";
-import { useControls } from "./control";
 import { errorMessage } from "./phase2";
 import { Button, Dialog, Field, Notice } from "./ui";
 import { positionShortcutFlyout, shortcutUsesHover, type ShortcutPlacement } from "./shortcut-position";
@@ -27,7 +26,7 @@ const canShortcut=(entry:PageEntry,companyId:number|null):boolean=>
   !entry.record && (entry.scope==="public" || companyId!==null);
 
 export function UserShortcutFlyout({
-  user,companyId,employeeId,onNavigate,onManage,onQuickAdd,
+  user,companyId,onNavigate,onManage,onQuickAdd,
 }:ShortcutsProps) {
   const [open,setOpen]=useState(false);
   const [placement,setPlacement]=useState<ShortcutPlacement>({mode:"inline"});
@@ -35,7 +34,6 @@ export function UserShortcutFlyout({
   const flyout=useRef<HTMLDivElement>(null);
   const flyoutId=useId();
   const catalog=usePageDirectory(companyId??undefined);
-  const settings=useControls(companyId??0,employeeId);
   const shortcutQuery=useQuery({
     queryKey:["my-shortcuts",user.id,companyId],
     queryFn:({signal})=>api<Shortcuts>(url(companyId),{signal}),
@@ -93,7 +91,6 @@ export function UserShortcutFlyout({
     };
   },[open,shortcuts.length,!!defaultHref,quickAllowed,
      catalog.isLoading,shortcutQuery.isError]);
-  if(settings.value("show_shortcuts_menu")===false)return null;
   return <div className="user-shortcut-root" ref={root}
     // Touch devices synthesize mouseenter before click. The old mouseenter
     // opened the flyout, then the same tap's click toggled it closed.
