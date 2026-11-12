@@ -24,6 +24,7 @@ export const templateQuery = `SELECT t.*,s.id AS setting_id,s.revision,
  COALESCE(s.importance,t.default_importance) AS importance,COALESCE(s.enabled,t.implemented) AS enabled,
  COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
  COALESCE(s.repeat_interval,'none') AS repeat_interval,COALESCE(s.notify_managers,t.default_notify_managers) AS notify_managers,
+ COALESCE(s.notify_owner,false) AS notify_owner,
  COALESCE(s.notify_subject,t.code NOT IN ('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED','ATTENDANCE_APPROVAL_REJECTED')) AS notify_subject,
  COALESCE(s.position_keys,t.default_position_keys) AS position_keys,s.min_interval_hours,COALESCE(s.latest_only,t.default_latest_only) AS latest_only,COALESCE(s.employee_ids,'{}'::integer[]) AS employee_ids
  FROM notification_templates t LEFT JOIN notification_settings s ON s.code=t.code AND s.company_id IS NOT DISTINCT FROM $1::integer`;
@@ -41,6 +42,7 @@ export const templateDTO = (r: QueryResultRow): NotificationTemplate => ({
   allowRepeat: r.allow_repeat,
   repeatInterval: r.repeat_interval,
   notifyManagers: r.notify_managers,
+  notifyOwner: r.notify_owner,
   notifySubject: r.notify_subject,
   positionKeys: r.position_keys,
   minIntervalHours: r.min_interval_hours,
@@ -221,9 +223,9 @@ export async function emitNotification(
       ? (await client.query(
           `SELECT DISTINCT u.id FROM users u
              LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
-             WHERE NOT u.archived AND NOT u.suspended AND (u.owner OR e.position_keys && $2::text[])
+             WHERE NOT u.archived AND NOT u.suspended AND ((u.owner AND $3::boolean) OR e.position_keys && $2::text[])
              ORDER BY u.id`,
-          [input.companyId, template.positionKeys],
+          [input.companyId, template.positionKeys, template.notifyOwner],
         )).rows.map((r) => r.id)
       : input.explicitSubjectOnly
       ? (
@@ -238,8 +240,8 @@ export async function emitNotification(
       : (
       await client.query(
         `SELECT DISTINCT u.id FROM users u LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
-   WHERE NOT u.archived AND NOT u.suspended AND (($2::boolean AND (u.owner OR e.is_general_manager)) OR ($3::boolean AND e.id=$4) OR e.id=ANY($5::integer[])
-   OR e.position_keys && $6::text[]) ORDER BY u.id`,
+   WHERE NOT u.archived AND NOT u.suspended AND ((($2::boolean AND e.is_general_manager) OR ($3::boolean AND e.id=$4) OR e.id=ANY($5::integer[])
+   OR e.position_keys && $6::text[] OR ($7::boolean AND u.owner)) AND (NOT u.owner OR $7::boolean)) ORDER BY u.id`,
         [
           input.companyId,
           template.notifyManagers && !pendingCashboxCodes.includes(input.code),
@@ -247,6 +249,7 @@ export async function emitNotification(
           input.subjectEmployeeId ?? null,
           template.employeeIds,
           template.positionKeys,
+          template.notifyOwner,
         ],
       )
     ).rows.map((r) => r.id);
@@ -255,7 +258,7 @@ export async function emitNotification(
       await client.query(
         "SELECT id FROM users WHERE NOT archived AND (($1::boolean AND owner) OR ($2::boolean AND id=$3)) ORDER BY id",
         [
-          !input.explicitSubjectOnly && template.notifyManagers,
+          !input.explicitSubjectOnly && template.notifyOwner,
           input.explicitSubjectOnly || template.notifySubject,
           input.subjectUserId ?? null,
         ],
