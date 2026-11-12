@@ -159,13 +159,34 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       });
   const printRows = printableRows(printMode);
   const allPrintable = printableRows("all");
-  const printDraft = (mode: DraftPrintMode) => {
-    if (!printableRows(mode).length) return;
-    flushSync(() => setPrintMode(mode));
-    window.print();
+  const [savingExport, setSavingExport] = useState(false);
+  const saveFullDraftExport = async () => {
+    // Record ALL active items from ALL drafts, regardless of the print/PDF subset.
+    // A single request preserves atomicity; database prevents company/item/day duplicates.
+    const uniqueItems = [...new Map(drafts.drafts.flatMap(draft => draft.items)
+      .filter(item => !item.deleted)
+      .map(item => [item.id, { id: item.id, requiredQuantity: item.requiredQuantity ?? null }])).values()];
+    if (!uniqueItems.length) return { added: 0, skipped: 0 };
+    return api<{ added: number; skipped: number }>(
+      "/companies/" + companyId + "/order-draft-exports",
+      { method: "POST", body: { items: uniqueItems } });
+  };
+  const printDraft = async (mode: DraftPrintMode) => {
+    if (savingExport || !printableRows(mode).length) return;
+    setSavingExport(true);
+    setDraftActionNotice("");
+    try {
+      const saved = await saveFullDraftExport();
+      flushSync(() => setPrintMode(mode));
+      window.print();
+      setDraftActionNotice("تم حفظ جميع أصناف المسودة في سجل الشركة: " + saved.added +
+        " جديد، و" + saved.skipped + " سبق ترحيله اليوم.");
+    } catch (cause) {
+      setDraftActionNotice("تعذر حفظ المسودة قبل الطباعة: " + errorMessage(cause));
+    } finally { setSavingExport(false); }
   };
   const exportDraftPdf = async (mode: DraftPrintMode) => {
-    if (exportingPdf) return;
+    if (exportingPdf || savingExport) return;
     const items = printableRows(mode);
     if (!items.length) return;
     setExportingPdf(true);
@@ -177,15 +198,15 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       })));
       const filename = "item-order-" + (mode === "all" ? "all" : "draft-" + mode) +
         "-" + new Date().toLocaleDateString("en-CA") + ".pdf";
+      // Save the central snapshot before creating the exported device file.
+      const saved = await saveFullDraftExport();
       const result = await exportPdfToDevice(pdf, filename);
-      setDraftActionNotice(result === "shared"
-        ? "أُنشئ PDF وأُرسل إلى خيارات المشاركة للحفظ أو الإرسال."
-        : "تم تجهيز ملف PDF وتنزيله عبر المتصفح.");
+      setDraftActionNotice((result === "shared" ? "أُنشئ PDF للمشاركة. " : "تم تنزيل PDF. ") +
+        "سُجلت جميع الأصناف في الشركة: " + saved.added + " جديد، و" +
+        saved.skipped + " سبق ترحيله اليوم.");
     } catch (cause) {
-      setDraftActionNotice("تعذر تصدير PDF: " + errorMessage(cause));
-    } finally {
-      setExportingPdf(false);
-    }
+      setDraftActionNotice("تعذر ترحيل PDF: " + errorMessage(cause));
+    } finally { setExportingPdf(false); }
   };
   const deleteWholeDraft = (id: number, count: number) => {
     if (!window.confirm("هل تريد حذف مسودة " + id + " نهائيًا بكل أصنافها (" + count +
@@ -469,8 +490,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               <summary aria-label={"إجراءات مسودة " + draft.id} title="إجراءات المسودة">⋯</summary>
               <div className="item-order-drafts-card-menu">
                 <Button size="compact" variant="secondary"
-                  disabled={!draft.items.some(item => !item.deleted)}
-                  onClick={() => printDraft(draft.id)}>طباعة المسودة</Button>
+                  disabled={savingExport || !draft.items.some(item => !item.deleted)}
+                  onClick={() => void printDraft(draft.id)}>طباعة المسودة</Button>
                 <Button size="compact" variant="secondary"
                   disabled={exportingPdf || !draft.items.some(item => !item.deleted)}
                   onClick={() => void exportDraftPdf(draft.id)}>
@@ -484,8 +505,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         })}
       </div>
       <div className="item-order-drafts-all-actions">
-        <Button variant="secondary" disabled={!allPrintable.length}
-          onClick={() => printDraft("all")}>طباعة الكل</Button>
+        <Button variant="secondary" disabled={savingExport || !allPrintable.length}
+          onClick={() => void printDraft("all")}>طباعة الكل</Button>
         <Button variant="secondary" disabled={exportingPdf || !allPrintable.length}
           onClick={() => void exportDraftPdf("all")}>
           {exportingPdf ? "جارٍ تجهيز PDF…" : "ترحيل الكل PDF"}
