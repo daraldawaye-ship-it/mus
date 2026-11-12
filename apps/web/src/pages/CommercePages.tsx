@@ -4524,6 +4524,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         }}
       />}
       {kind === "sale" && <PledgeDialogs
+        context={context}
         companyId={companyId}
         mode={pledgeMode}
         cashbox={defaultCashbox}
