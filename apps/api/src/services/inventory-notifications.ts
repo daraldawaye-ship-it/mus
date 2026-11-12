@@ -90,6 +90,24 @@ export async function scanInventoryNotifications(
     });
   }
 
+  // When an expired/expiring batch is completely removed, close its open
+  // alert. A subsequent positive receipt can then open a new alert, even
+  // when the old one was never manually completed.
+  await client.query(
+    `UPDATE notifications n
+       SET completed_at=clock_timestamp(),read_at=COALESCE(n.read_at,clock_timestamp()),
+           snoozed_until=NULL,next_reminder_at=NULL,revision=n.revision+1,updated_at=clock_timestamp()
+       WHERE n.company_id=$1 AND n.code IN ('ITEM_EXPIRED','ITEM_EXPIRING_30')
+         AND n.completed_at IS NULL AND n.subject_key LIKE 'stock-balance:%'
+         AND NOT EXISTS (
+           SELECT 1 FROM stock_balances balance
+           WHERE balance.company_id=n.company_id
+             AND 'stock-balance:'||balance.id=n.subject_key
+             AND balance.quantity_smallest>0
+         )`,
+    [companyId],
+  );
+
   const expiry = await client.query(
     `WITH clock AS MATERIALIZED (
        SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date AS today
