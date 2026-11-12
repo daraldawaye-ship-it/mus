@@ -103,6 +103,7 @@ export interface NotificationRecord {
   createdAt: string;
   readAt: string | null;
   completedAt: string | null;
+  autoResolved: boolean;
   snoozedUntil: string | null;
   repeatInterval: NotificationRepeat;
   reminderCount: number;
