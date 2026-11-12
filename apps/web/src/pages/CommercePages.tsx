@@ -648,7 +648,7 @@ function purchaseProfitBelowDefault(line: DraftLine, invoiceCurrencyId: number |
   const purchase = profitWarningDecimal(line.unitPrice, 6);
   const sale = profitWarningDecimal(
     line.unit === 1 ? item.salePrice1 : line.unit === 2 ? item.salePrice2 : item.salePrice3, 6);
-  const factor = profitWarningDecimal(item.defaultProfitFactor ?? "1.2", 4);
+  const factor = profitWarningDecimal(item.defaultProfitFactor, 4);
   return purchase !== null && purchase > 0n && sale !== null &&
     factor !== null && factor >= 10000n && sale * 10000n < purchase * factor;
 }
