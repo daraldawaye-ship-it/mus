@@ -800,6 +800,15 @@ page(
   {parentKey:"company.sales",keywords:["المحفظة الإلكترونية","استلام","تحويل","الهاتف","صندوق","عجز","زيادة"]},
 );
 page(
+  "company.purchase-line-movements",
+  "متابعة حركة أصناف المشتريات",
+  "الفواتير",
+  "/companies/:companyId/purchase-line-movements",
+  { view: permission("commerce.view"), print: permission("commerce.view") },
+  "متابعة أسطر أصناف فواتير المشتريات مع المورد والسعر والإجمالي وصافي الفاتورة.",
+  { parentKey: "company.purchases", keywords: ["حركة أصناف المشتريات", "متابعة المشتريات", "مورد"] },
+);
+page(
   "company.purchases",
   "فواتير المشتريات",
   "الفواتير",
