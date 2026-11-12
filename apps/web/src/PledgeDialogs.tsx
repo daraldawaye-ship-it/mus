@@ -191,6 +191,13 @@ export function PledgeDialogs({
    onLetterheadReady={()=>setPrintReady(true)} />,
   document.body
  )}
+ {printJob && <div className="pledge-statement-print-actions" role="status">
+  <span>كشف الرهن {printReady?"جاهز للطباعة":"قيد تجهيز الترويسة…"}</span>
+  <Button variant="secondary" size="compact" disabled={!printReady}
+   onClick={()=>window.print()}>طباعة</Button>
+  <Button variant="ghost" size="compact"
+   onClick={()=>{setPrintJob(null);setPrintReady(false);}}>إغلاق</Button>
+ </div>}
  <Dialog open={mode==="add"} title="إضافة رهن" onClose={onClose}>
   <form className="form-stack" onSubmit={event=>void create(event)}>
    {error&&<Notice tone="error">{error}</Notice>}
