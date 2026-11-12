@@ -816,6 +816,28 @@ export function NotificationTemplatesPage({
               </span>
             </div>
             <p className="notification-message">{template.description}</p>
+            <div className="notification-details" aria-label="المستلمون المصرح لهم">
+              <strong>المستلمون:</strong>
+              {[
+                ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifyManagers
+                  ? [companyId ? "المالك والمديرون العامون" : "مالك المنصة"] : []),
+                ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifySubject
+                  ? [companyId ? "الموظف المعني" : "المستخدم المعني"] : []),
+                ...template.positionKeys.map(key => employeePositions.find(position => position.key === key)?.label ?? key),
+                ...(query.data?.employees ?? []).filter(employee => template.employeeIds.includes(employee.id)).map(employee => employee.name),
+              ].length ? (
+                <span>
+                  {[
+                    ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifyManagers
+                      ? [companyId ? "المالك والمديرون العامون" : "مالك المنصة"] : []),
+                    ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifySubject
+                      ? [companyId ? "الموظف المعني" : "المستخدم المعني"] : []),
+                    ...template.positionKeys.map(key => employeePositions.find(position => position.key === key)?.label ?? key),
+                    ...(query.data?.employees ?? []).filter(employee => template.employeeIds.includes(employee.id)).map(employee => employee.name),
+                  ].join(" · ")}
+                </span>
+              ) : <span>لم يُحدد مستلم</span>}
+            </div>
             <bdi className="notification-template-code">{template.code}</bdi>
             <div className="notification-details">
               <span>{template.canSnooze ? "يمكن تأجيله" : "لا يؤجّل"}</span>
