@@ -47,6 +47,6 @@ export async function appendStagingRows(db:PoolClient,sourceId:number,input:z.in
   const receipt={id:input.idempotencyKey,sourceSha256:input.sourceSha256,dataSha256:input.dataSha256,filename:input.filename,sourceLibraryId:input.sourceLibraryId,supplierType:"agent",rows:rows.length,firstPosition:first,lastPosition:first+rows.length-1,actorId:actor.id};
   const metadata={...source.metadata,originalRowsSupplierType:"unknown",appendBatches:[...batches,receipt]};
   await db.query("UPDATE market_import_sources SET row_count=row_count+$2,metadata=$3::jsonb WHERE id=$1",[sourceId,rows.length,JSON.stringify(metadata)]);
-  await db.query("INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value) VALUES($1,$2,'public',NULL,'medicine-market.staging_append','market-import-source',$3,$4::jsonb,$5::jsonb)",[actor.id,actor.displayName,String(sourceId),JSON.stringify({rowCount:source.row_count}),JSON.stringify(receipt)]);
+  await db.query("INSERT INTO audit_events(actor_id,actor_name,scope,company_id,action,target_type,target_id,before_value,after_value) VALUES($1,$2,'public',NULL,'medicine-market.staging_append','medicine-market',$3,$4::jsonb,$5::jsonb)",[actor.id,actor.displayName,String(sourceId),JSON.stringify({rowCount:source.row_count}),JSON.stringify(receipt)]);
   return {...receipt,reused:false};
 }
