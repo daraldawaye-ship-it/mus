@@ -92,18 +92,21 @@ export async function scanDailyItemOrderReminders(
     : null;
 
   for (const item of low.rows) {
-    const incident = (await client.query<{episode:number}>(
+    const incident = (await client.query<{episode:number;legacy_suppressed:boolean}>(
       `INSERT INTO item_order_notification_incidents(company_id,item_id,episode,active)
          VALUES($1,$2,1,true)
          ON CONFLICT(company_id,item_id) DO UPDATE
            SET episode=CASE WHEN item_order_notification_incidents.active
                             THEN item_order_notification_incidents.episode
                             ELSE item_order_notification_incidents.episode+1 END,
+               legacy_suppressed=CASE WHEN item_order_notification_incidents.active
+                                      THEN item_order_notification_incidents.legacy_suppressed
+                                      ELSE false END,
                active=true,updated_at=clock_timestamp()
-         RETURNING episode`,
+         RETURNING episode,legacy_suppressed`,
       [companyId,item.id],
     )).rows[0];
-    if (!recipients?.rows.length) continue;
+    if (incident.legacy_suppressed || !recipients?.rows.length) continue;
     const itemName = safeName(item.name);
     for (const person of recipients.rows) {
       await emitNotification(client,{
