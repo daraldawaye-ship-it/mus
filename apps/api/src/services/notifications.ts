@@ -223,7 +223,7 @@ export async function emitNotification(
       ? (await client.query(
           `SELECT DISTINCT u.id FROM users u
              LEFT JOIN employees e ON e.user_id=u.id AND e.company_id=$1 AND e.active
-             WHERE NOT u.archived AND NOT u.suspended AND ((u.owner AND $3::boolean) OR e.position_keys && $2::text[])
+             WHERE NOT u.archived AND NOT u.suspended AND ((u.owner AND $3::boolean) OR (NOT u.owner AND e.position_keys && $2::text[]))
              ORDER BY u.id`,
           [input.companyId, template.positionKeys, template.notifyOwner],
         )).rows.map((r) => r.id)
@@ -256,11 +256,12 @@ export async function emitNotification(
   } else {
     recipients = (
       await client.query(
-        "SELECT id FROM users WHERE NOT archived AND (($1::boolean AND owner) OR ($2::boolean AND id=$3)) ORDER BY id",
+        "SELECT id FROM users WHERE NOT archived AND (($1::boolean AND owner) OR ($2::boolean AND id=$3 AND (NOT owner OR $1::boolean OR $4::boolean))) ORDER BY id",
         [
           !input.explicitSubjectOnly && template.notifyOwner,
           input.explicitSubjectOnly || template.notifySubject,
           input.subjectUserId ?? null,
+          input.explicitSubjectOnly || input.code === "AUTH_PASSWORD_CHANGED",
         ],
       )
     ).rows.map((r) => r.id);
