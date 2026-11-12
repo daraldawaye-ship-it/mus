@@ -678,7 +678,7 @@ export function NotificationTemplatesPage({
       canSnooze,
       allowRepeat,
       repeatInterval: allowRepeat ? repeatInterval : "none",
-      notifyManagers, notifyOwner,
+      notifyManagers, notifyOwner, reviewed,
       notifySubject,
       positionKeys, minIntervalHours, latestOnly,
       employeeIds,
