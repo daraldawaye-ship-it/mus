@@ -54,6 +54,7 @@ import {
 } from "../api";
 import { errorMessage, ServerLookup } from "../phase2";
 import { CompositionAlternativeLookup } from "../CompositionAlternativeLookup";
+import { MarketMedicineLookup } from "../MarketMedicineLookup";
 import { RecordOptionCard } from "../RecordOptionCard";
 import { ItemImportDialog } from "../ItemImportDialog";
 import { InventoryAdjustmentSheet } from "./InventoryPages";
@@ -2094,19 +2095,11 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("legacyId", event.target.value)}
             />
-            <Field
-              label="ربط الصنف بصنف السوق"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={2147483647}
-              step={1}
-              dir="ltr"
-              placeholder="معرف صنف السوق (اختياري)"
-              hint="معرف مرجعي محفوظ لحين الحاجة فقط؛ لا توجد مزامنة مع سوق الأدوية."
-              value={fields.marketCardId ?? ""}
+            <MarketMedicineLookup
+              value={fields.marketCardId}
+              initialSearch={fields.name}
               disabled={disabled}
-              onChange={(event) => edit("marketCardId", event.target.value === "" ? null : Number(event.target.value))}
+              onChange={(id) => edit("marketCardId", id)}
             />
             <Field
               label="الباركود"
