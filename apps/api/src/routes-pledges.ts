@@ -46,6 +46,10 @@ export function pledgeRoutes(pool: Pool): Router {
       const user = await currentActor(client, actor(req), false);
       await companyAccess(client, user, companyId, "commerce.view");
       const q = searchPattern(typeof req.query.q === "string" ? req.query.q.slice(0,120) : "");
+      // Only the "عرض الرهونات" list opts in; transfer pickers still show zero balances.
+      if (req.query.excludeZero !== undefined && req.query.excludeZero !== "1")
+        throw new HttpError(400, "invalid_query", "خيار إخفاء الرصيد المصفر غير صالح");
+      const excludeZero = req.query.excludeZero === "1";
       const list = await client.query(
         `SELECT p.account_id,a.code,a.name,a.account_limit::text AS account_limit,
          p.customer_name,p.phone,p.collateral,p.duration_days,p.received_by_name,p.created_at,
@@ -60,8 +64,9 @@ export function pledgeRoutes(pool: Pool): Router {
          ) ledger ON true
          WHERE p.company_id=$1 AND
          (p.customer_name ILIKE $2 OR p.phone ILIKE $2 OR p.collateral ILIKE $2 OR a.name ILIKE $2 OR a.code ILIKE $2)
+         AND (NOT $3::boolean OR COALESCE(ledger.balance,0)<>0)
          ORDER BY p.created_at DESC,p.account_id DESC LIMIT 100`,
-        [companyId,q]
+        [companyId,q,excludeZero]
       );
       return list.rows.map(row => ({
         accountId: row.account_id, code: row.code, name: row.name,
