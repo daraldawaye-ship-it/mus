@@ -8,6 +8,7 @@ import { companyAccess, currentActor } from "./policies/access.ts";
 import { HttpError, missing } from "./errors.ts";
 import { audit } from "./services/audit.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
+import { syncUnansweredInquiryNotifications } from "./services/inquiry-notifications.ts";
 
 const requestSchema = z.object({
   requestType:z.enum(["question","clarification","information","confirmation","execution"]).default("question"),
@@ -197,6 +198,7 @@ export function inquiryRoutes(pool:Pool):Router {
         await db.query("INSERT INTO inquiry_targets(inquiry_id,user_id) VALUES($1,$2)",[requestId,target]);
       await audit(db,user,"inquiry.create","inquiry",requestId,null,
         {requestText:input.requestText,responseMode:input.responseMode,recipientCount:assigned.size},companyId);
+      await syncUnansweredInquiryNotifications(db, companyId, [...assigned]);
       return {id:requestId,recipientCount:assigned.size,reused:false};
     });
     res.status(201).json(item);
@@ -258,6 +260,9 @@ export function inquiryRoutes(pool:Pool):Router {
       }
       await audit(db,user,"inquiry.answer","inquiry",requestId,null,
         {answerId:Number(inserted.rows[0].id),replyType:request.answer_type},companyId);
+      const affected = await db.query<{ user_id: number }>(
+        "SELECT user_id FROM inquiry_targets WHERE inquiry_id=$1", [requestId]);
+      await syncUnansweredInquiryNotifications(db, companyId, affected.rows.map(row => row.user_id));
       return {id:Number(inserted.rows[0].id),reused:false};
     });
     res.status(201).json(result);
@@ -283,6 +288,9 @@ export function inquiryRoutes(pool:Pool):Router {
         await db.query("UPDATE inquiry_targets SET status='waived' WHERE inquiry_id=$1 AND status='pending'",[requestId]);
       await audit(db,user,"inquiry.status","inquiry",requestId,{status:old.status,actionResult:old.action_result},
         {status:input.status,actionResult:input.actionResult},companyId);
+      const affected = await db.query<{ user_id: number }>(
+        "SELECT user_id FROM inquiry_targets WHERE inquiry_id=$1", [requestId]);
+      await syncUnansweredInquiryNotifications(db, companyId, affected.rows.map(row => row.user_id));
       return updated.rows[0];
     });
     res.json(result);
