@@ -1,0 +1,67 @@
+.medicine-market .market-catalog-sections { display: grid; gap: 16px; min-width: 0; }
+.medicine-market .market-catalog-section-note { margin: 0; color: var(--muted); font-size: 12px; }
+.medicine-market .market-catalog-section { min-width: 0; scroll-margin-top: 12px; }
+.medicine-market .market-catalog-section-heading {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0;
+  border-bottom: 1px solid var(--border); padding-bottom: 5px;
+}
+.medicine-market .market-catalog-section-heading h2 { margin: 0; font-size: 15px; line-height: 1.5; }
+.medicine-market .market-catalog-section-heading > small { color: var(--muted); font-size: 11px; }
+.medicine-market .market-catalog-section-heading > button { margin-inline-start: auto; flex-shrink: 0; }
+.medicine-market .market-compact-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0;
+}
+.medicine-market button.market-compact-card {
+  appearance: none; display: grid; grid-template-rows: 22px 18px; gap: 3px;
+  width: 100%; min-width: 0; min-height: 59px; margin: 0; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--surface);
+  color: var(--text); font: inherit; text-align: start; cursor: pointer; box-shadow: none;
+  overflow: hidden;
+}
+.medicine-market button.market-compact-card:hover { background: var(--hover); border-color: var(--focus); }
+.medicine-market button.market-compact-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.medicine-market .market-compact-card-main,
+.medicine-market .market-compact-card-secondary { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.medicine-market .market-compact-card-name {
+  display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 13px; line-height: 22px; text-align: start;
+}
+.medicine-market .market-compact-card-price {
+  flex: 0 1 auto; max-width: 38%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--on-soft); font-weight: 700; font-size: 13px;
+}
+.medicine-market .market-compact-card-price > small { font-size: 10px; font-weight: 400; }
+.medicine-market .market-compact-card-id { flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.medicine-market .market-compact-card-status { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+.medicine-market .market-compact-card-secondary { color: var(--muted); font-size: 11px; line-height: 18px; }
+.medicine-market .market-compact-card-secondary > svg { flex-shrink: 0; margin-inline-start: auto; }
+.medicine-market .market-compact-card-summary { display: flex; align-items: center; flex: 1 1 auto; gap: 6px; min-width: 0; overflow: hidden; }
+.medicine-market .market-compact-card-field { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.medicine-market .market-compact-card-field + .market-compact-card-field { border-inline-start: 1px solid var(--border); padding-inline-start: 6px; }
+.medicine-market .market-catalog-section-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.medicine-market .market-catalog-section-footer > small { color: var(--muted); font-size: 11px; }
+.medicine-market .market-section-empty { color: var(--muted); font-size: 12px; margin: 12px 0; }
+.medicine-market .market-section-placeholder { min-height: 125px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; border: 1px dashed var(--border); border-radius: 9px; }
+.medicine-market .market-section-error { display: grid; justify-items: start; gap: 6px; }
+/* Compact the catalog shell only; detail forms and moderation keep their existing layout. */
+.medicine-market.medicine-market-directory .medicine-market-heading { gap: 8px; margin-bottom: 8px; }
+.medicine-market.medicine-market-directory .medicine-market-brand h1 { font-size: 20px; margin: 0; }
+.medicine-market.medicine-market-directory .medicine-market-brand p { margin: 0; font-size: 11px; }
+.medicine-market.medicine-market-directory .medicine-market-heading-actions { gap: 5px; }
+.medicine-market.medicine-market-directory .medicine-market-heading-actions .button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+.medicine-market.medicine-market-directory .medicine-market-tabs { margin-block: 6px; }
+.medicine-market.medicine-market-directory .medicine-market-toolbar { gap: 7px; margin-block: 8px; }
+.medicine-market.medicine-market-directory .medicine-market-category-bar { gap: 5px; margin-block: 8px; }
+.medicine-market.medicine-market-directory .medicine-market-category-bar button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+.medicine-market details.medicine-market-admin-references { margin-block: 8px; padding: 7px 10px; }
+.medicine-market details.medicine-market-admin-references > summary { cursor: pointer; font-size: 12px; font-weight: 700; }
+@media (max-width: 860px) {
+  .medicine-market .market-compact-list { grid-template-columns: minmax(0, 1fr); }
+  .medicine-market .market-catalog-sections { gap: 13px; }
+}
+@media (max-width: 430px) {
+  .medicine-market button.market-compact-card { padding-inline: 8px; }
+  .medicine-market .market-compact-card-main { gap: 5px; }
+  .medicine-market .market-compact-card-name { font-size: 13px; }
+  .medicine-market .market-catalog-section-heading h2 { font-size: 14px; }
+}
