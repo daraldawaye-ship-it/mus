@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { financialDocumentSchema, normalizeDigits, type Account, type FinancialDocument } from "../../../packages/contracts/src/index";
 import { api } from "./api";
 import { errorMessage } from "./phase2";
-import { formatMoney } from "./format-money";
+import { formatMoney, formatWholeMoney } from "./format-money";
+import { printPledgeStatement } from "./pledge-statement-print";
 import { Button, Dialog, Field, Notice } from "./ui";
 
 type Pledge = {
@@ -26,6 +27,8 @@ export function PledgeDialogs({
  const [durationDays,setDurationDays]=useState("2");
  const [limit,setLimit]=useState("");
  const [q,setQ]=useState("");
+ const [printBusy,setPrintBusy]=useState<number|null>(null);
+ const [printError,setPrintError]=useState("");
  const [selectedPledge,setSelectedPledge]=useState<Pledge|null>(null);
  const [transferAmount,setTransferAmount]=useState("");
  const [transferNotes,setTransferNotes]=useState("");
@@ -47,6 +50,25 @@ export function PledgeDialogs({
   enabled:mode==="list"||mode==="pay"||mode==="receive",
   queryFn:({signal})=>api<{items:Pledge[]}>(`/companies/${companyId}/pledges?q=${encodeURIComponent(q)}`,{signal}),
  });
+ async function printStatement(pledge:Pledge) {
+  if(printBusy!==null) return;
+  setPrintError("");
+  // Open a blank window on the click, before the authorized statement API call.
+  const win=window.open("about:blank","_blank");
+  if(!win){setPrintError("اسمح بفتح النافذة المنبثقة لطباعة كشف الحساب.");return;}
+  win.document.title="تجهيز كشف الرهن للطباعة";
+  win.document.body.dir="rtl";
+  win.document.body.textContent="جارٍ تجهيز كشف الحساب للطباعة…";
+  setPrintBusy(pledge.accountId);
+  try {
+   await printPledgeStatement(companyId,pledge,win);
+  }catch(reason) {
+   if(!win.closed)win.close();
+   setPrintError(errorMessage(reason));
+  }finally {
+   setPrintBusy(null);
+  }
+ }
  async function create(event:FormEvent) {
   event.preventDefault();
   if(saving)return;
@@ -167,25 +189,27 @@ export function PledgeDialogs({
    </div>
   </form>
  </Dialog>
- <Dialog open={mode==="list"} title="عرض الرهونات" onClose={onClose}>
+ <Dialog open={mode==="list"} title="عرض الرهونات" className="pledge-list-dialog" onClose={onClose}>
   <div className="form-stack">
    <Field label="البحث بالاسم أو الهاتف أو وصف الرهن أو رقم الحساب" value={q} onChange={e=>setQ(e.target.value)} />
    {pledges.error && <Notice tone="error">{errorMessage(pledges.error)}</Notice>}
+   {printError && <Notice tone="error">{printError}</Notice>}
    {pledges.isFetching && <p>جارٍ تحميل الرهونات…</p>}
    <div className="table-scroll pledge-list-table-scroll">
     <table>
-     <thead><tr><th>الرصيد</th><th>الحساب</th><th>الرهن</th><th>الهاتف</th><th>السقف</th><th>الإجراءات</th></tr></thead>
+     <thead><tr><th>الإجراءات</th><th>الرصيد</th><th>الحساب</th><th>الرهن</th><th>السقف</th><th>الهاتف</th></tr></thead>
      <tbody>
       {(pledges.data?.items??[]).map(item=><tr key={item.accountId}>
-       <td><bdi className={item.balance.startsWith("-") ? "receipt-negative-amount" : undefined}>{formatMoney(item.balance.startsWith("-") ? item.balance.slice(1) : item.balance)}{Number(item.balance) < 0 ? " دائن" : Number(item.balance) > 0 ? " مدين" : ""}</bdi></td>
-       <td><bdi>{item.code}</bdi> — {item.customerName}</td>
-       <td>{item.collateral} ({item.durationDays} يوم)</td>
-       <td><bdi>{item.phone}</bdi></td>
-       <td><bdi>{formatMoney(item.limit)}</bdi></td>
-       <td>
-        <Link className="button button-secondary" to={`/companies/${companyId}/account-ledger?accountId=${item.accountId}&pledge=1`} target="_blank" rel="noopener noreferrer">كشف الحساب / طباعة</Link>{" "}
-        <Button variant="secondary" onClick={()=>{onSelect(item.accountId);onClose();}}>اختيار</Button>
+       <td className="pledge-list-actions">
+        <Button size="compact" variant="secondary" disabled={printBusy!==null}
+         onClick={()=>void printStatement(item)}>{printBusy===item.accountId?"جارٍ الطباعة…":"طباعة كشف"}</Button>
+        <Button size="compact" variant="secondary" onClick={()=>{onSelect(item.accountId);onClose();}}>اختيار</Button>
        </td>
+       <td><bdi className={item.balance.startsWith("-") ? "receipt-negative-amount" : undefined}>{formatWholeMoney(item.balance.startsWith("-") ? item.balance.slice(1) : item.balance)}{Number(item.balance) < 0 ? " دائن" : Number(item.balance) > 0 ? " مدين" : ""}</bdi></td>
+       <td title={item.name}>{item.name}</td>
+       <td title={item.collateral}>{item.collateral} ({item.durationDays} يوم)</td>
+       <td><bdi>{formatWholeMoney(item.limit)}</bdi></td>
+       <td><bdi dir="ltr">{item.phone}</bdi></td>
       </tr>)}
      </tbody>
     </table>
