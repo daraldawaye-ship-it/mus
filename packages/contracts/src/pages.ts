@@ -659,6 +659,15 @@ page(
   { type: "report", keywords: ["قائمة", "الأصناف", "المتوفر", "المبيعات", "المرات", "الكفاية", "الاحتياطي"] },
 );
 page(
+  "company.order-draft-exports",
+  "متابعة الطلبيات المرحلة",
+  "الأصناف والمخزون",
+  "/companies/:companyId/order-draft-exports",
+  { view: permission("items.view") },
+  "سجل مركزي للأصناف المرحّلة عند طباعة مسودة الطلبية أو تصديرها PDF، يحتفظ بآخر 40 يومًا.",
+  { parentKey: "company.item-options-list", type: "report", keywords: ["طلبيات", "مسودات", "ترحيل", "طباعة"] },
+);
+page(
   "company.item-card",
   "كرت الصنف",
   "الأصناف والمخزون",
