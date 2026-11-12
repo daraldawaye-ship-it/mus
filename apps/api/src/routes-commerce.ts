@@ -420,6 +420,17 @@ export function commerceRoutes(pool: Pool): Router {
   // Read-only, paginated movement of purchase invoice lines.
   router.get(base + "/purchases/line-movements", handler(async (req, res) => {
     const q = req.query.q;
+    const sortable = {
+      itemName: "l.item_name", quantity: "l.quantity", price: "l.unit_price",
+      lineTotal: "l.total", invoiceNet: "i.total",
+      supplier: "i.supplier_account_name", createdAt: "i.created_at",
+    } as const;
+    const sortKey = req.query.sortKey === undefined ? "createdAt" : req.query.sortKey;
+    const direction = req.query.sortDirection === "asc" ? "ASC" : "DESC";
+    if (typeof sortKey !== "string" || !(sortKey in sortable) ||
+        (req.query.sortDirection !== undefined && !["asc", "desc"].includes(String(req.query.sortDirection))))
+      throw new HttpError(400, "invalid_query", "ترتيب الأعمدة غير صالح");
+    const orderColumn = sortable[sortKey as keyof typeof sortable];
     const pageText = req.query.page === undefined ? "1" : req.query.page;
     const from = req.query.dateFrom === undefined || req.query.dateFrom === "" ? null : parse(documentDateSchema, req.query.dateFrom);
     const to = req.query.dateTo === undefined || req.query.dateTo === "" ? null : parse(documentDateSchema, req.query.dateTo);
@@ -449,7 +460,7 @@ export function commerceRoutes(pool: Pool): Router {
         FROM invoices i JOIN invoice_lines l
           ON l.company_id=i.company_id AND l.invoice_id=i.id
         WHERE ${conditions}
-        ORDER BY i.created_at DESC, i.id DESC, l.line_number DESC, l.id DESC
+        ORDER BY ${orderColumn} ${direction} NULLS LAST, i.id DESC, l.line_number DESC, l.id DESC
         LIMIT 50 OFFSET $6`, [...params, (page-1)*50]);
       return { items: rows.rows, total: count.rows[0].total, page, pageSize: 50 };
     }));
