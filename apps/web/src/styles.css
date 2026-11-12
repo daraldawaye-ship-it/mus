@@ -8704,3 +8704,88 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .owner-phone-device iframe { display:block; box-sizing:border-box; max-width:none; border:0; background:#fff; border-radius:6px; }
 .owner-phone-device-bottom { height:24px; display:grid; place-items:center; }
 .owner-phone-device-bottom span { width:85px; height:4px; background:#8d9ca8; border-radius:9px; }
+
+/* In-app pledge statement printing: same window/document as sales invoices.
+   The portal is a direct body child so no invoice page, dialog or scroll wrapper
+   can clip the printed statement. Other print formats are unchanged. */
+.pledge-statement-print { display: none !important; }
+@media print {
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+  body:has(> .pledge-statement-print) { background: #fff !important; color: #111 !important; }
+  body:has(> .pledge-statement-print) > :not(.pledge-statement-print) { display: none !important; }
+  body:has(> .pledge-statement-print) > .pledge-statement-print {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    color: #111 !important;
+    background: white !important;
+    direction: rtl !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font: 10pt/1.45 Arial, Tahoma, sans-serif;
+  }
+  .pledge-statement-print .company-print-letterhead {
+    display: block !important;
+    margin-bottom: 3mm;
+  }
+  .pledge-statement-print h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    text-align: center;
+    margin: 3mm 0 4mm;
+    color: #111;
+  }
+  .pledge-statement-print-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2mm 8mm;
+    margin-bottom: 4mm;
+    overflow-wrap: anywhere;
+  }
+  .pledge-statement-print-totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2mm 6mm;
+    padding: 2mm 0;
+    margin-bottom: 4mm;
+    border-block: 1px solid #888;
+    font-size: 9pt;
+  }
+  .pledge-statement-print-totals span { white-space: nowrap; }
+  .pledge-statement-print-table {
+    direction: rtl;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 9pt;
+  }
+  .pledge-statement-print-table th,
+  .pledge-statement-print-table td {
+    border: 1px solid #999;
+    background: #fff !important;
+    color: #111 !important;
+    padding: 1.5mm;
+    height: auto !important;
+    text-align: start;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .pledge-statement-print-table th { font-weight: 700; background: #f2f2f2 !important; }
+  .pledge-statement-print-table th:nth-child(1) { width: 15%; }
+  .pledge-statement-print-table th:nth-child(2) { width: 15%; }
+  .pledge-statement-print-table th:nth-child(3) { width: 31%; }
+  .pledge-statement-print-table th:nth-child(4),
+  .pledge-statement-print-table th:nth-child(5),
+  .pledge-statement-print-table th:nth-child(6) { width: 13%; }
+  .pledge-statement-print-table .pledge-statement-print-number {
+    direction: ltr;
+    text-align: left;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .pledge-statement-print-table thead { display: table-header-group; }
+  .pledge-statement-print-table tr { break-inside: avoid; page-break-inside: avoid; }
+}
