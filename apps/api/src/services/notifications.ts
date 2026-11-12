@@ -68,9 +68,11 @@ export async function effectiveTemplate(
 }
 export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
  COALESCE(s.enabled,t.implemented) AS template_enabled,t.implemented,s.min_interval_hours,
+ (auto_resolution.notification_id IS NOT NULL) AS auto_resolved,
  CASE WHEN NOT n.silent_update THEN n.created_at ELSE (SELECT origin.created_at FROM notifications origin WHERE origin.id=n.delivery_id) END AS delivery_at
  FROM notifications n JOIN notification_templates t ON t.code=n.code
- LEFT JOIN notification_settings s ON s.code=n.code AND s.company_id IS NOT DISTINCT FROM n.company_id`;
+ LEFT JOIN notification_settings s ON s.code=n.code AND s.company_id IS NOT DISTINCT FROM n.company_id
+ LEFT JOIN notification_auto_resolutions auto_resolution ON auto_resolution.notification_id=n.id`;
 // Recipient identity is necessary but not sufficient: membership and current follow grants are checked again.
 export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n.code='INVENTORY_NEGATIVE') AND (
  (n.company_id IS NULL AND COALESCE((SELECT enabled FROM page_settings WHERE company_id IS NULL AND page_key='public.notifications'),true)) OR n.company_id=$2::integer)
@@ -129,6 +131,7 @@ export const notificationDTO = (
   createdAt: r.created_at.toISOString(),
   readAt: r.read_at?.toISOString() ?? null,
   completedAt: r.completed_at?.toISOString() ?? null,
+  autoResolved: !!r.auto_resolved,
   snoozedUntil: r.snoozed_until?.toISOString() ?? null,
   repeatInterval: r.repeat_interval,
   reminderCount: r.reminder_count,
