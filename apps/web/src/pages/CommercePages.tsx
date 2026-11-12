@@ -631,6 +631,28 @@ interface DraftLine {
   sourceItem?: Item;
   selectedByShortcut?: boolean;
 }
+/** Exact decimal comparison for an advisory purchase-price warning (no price changes). */
+function profitWarningDecimal(value: string, scale: number): bigint | null {
+  const normalized = normalizeDigits(value.trim());
+  const match = /^(\d+)(?:\.(\d*))?$/.exec(normalized);
+  if (!match || (match[2]?.length ?? 0) > scale) return null;
+  return BigInt(match[1]) * 10n ** BigInt(scale) +
+    BigInt((match[2] ?? "").padEnd(scale, "0") || "0");
+}
+
+function purchaseProfitBelowDefault(line: DraftLine, invoiceCurrencyId: number | null): boolean {
+  const item = line.sourceItem;
+  if (!item || !line.itemId || line.originalLineId ||
+      invoiceCurrencyId !== item.currencyId ||
+      normalizeDigits(line.quantity.trim()).startsWith("-")) return false;
+  const purchase = profitWarningDecimal(line.unitPrice, 6);
+  const sale = profitWarningDecimal(
+    line.unit === 1 ? item.salePrice1 : line.unit === 2 ? item.salePrice2 : item.salePrice3, 6);
+  const factor = profitWarningDecimal(item.defaultProfitFactor ?? "1.2", 4);
+  return purchase !== null && purchase > 0n && sale !== null &&
+    factor !== null && factor >= 10000n && sale * 10000n < purchase * factor;
+}
+
 interface SalesPointForm {
   documentDate: string;
   account: Account | null;
@@ -2053,6 +2075,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
   const activeLineKey = useRef<string | null>(null);
   const [replacingClearance, setReplacingClearance] = useState(false);
   const selectedLines = lines.filter((line) => line.itemId > 0);
+  const purchaseProfitWarnings = kind === "purchase"
+    ? selectedLines.filter(line => purchaseProfitBelowDefault(line, currency?.id ?? null))
+    : [];
   const selectedHeaderLine = lines.find(line =>
     line.key === activeLineKey.current && line.itemId === headerItem?.id);
   const hasLinkedLines = selectedLines.some(
@@ -3627,6 +3652,13 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
           </Link>}
         </Card>
         {itemNotice && <Notice tone="success">{itemNotice}</Notice>}
+        {kind === "purchase" && purchaseProfitWarnings.length > 0 && (
+          <Notice tone="warning">
+            تأكد من سعر البيع - الربح أقل من الافتراضي
+            {" — "}{purchaseProfitWarnings.slice(0, 3).map(line => line.itemName).join("، ")}
+            {purchaseProfitWarnings.length > 3 ? `، و${purchaseProfitWarnings.length - 3} أصناف أخرى` : ""}
+          </Notice>
+        )}
         {memoImpact.data?.matches.filter(rule=>rule.effect!=="monitor").map(rule=>
           <Notice key={rule.ruleId} tone={rule.effect==="block"?"error":"warning"}>
             {rule.message} ({rule.count} تكليفات).
@@ -3978,7 +4010,9 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                             title={
                               kind === "sale"
                                 ? "سعر ثابت من كرت الصنف للوحدة المختارة"
-                                : line.sourceItem?.purchaseNotes
+                                : purchaseProfitBelowDefault(line, currency?.id ?? null)
+                                  ? "تأكد من سعر البيع - الربح أقل من الافتراضي"
+                                  : line.sourceItem?.purchaseNotes
                             }
                             onChange={(event) =>
                               updateLine(line.key, {
