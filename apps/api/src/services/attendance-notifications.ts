@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { transaction } from "../db.ts";
 import { scanCashboxReceipts } from "./cashbox-notifications.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
+import { scanUnansweredInquiryNotifications } from "./inquiry-notifications.ts";
 import { scanDailyItemOrderReminders } from "./item-order-reminders.ts";
 import {scanDueMemoSchedules} from "./memo-reminders.ts";
 import {
@@ -112,6 +113,8 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
           return;
         await scanCashboxReceipts(client, companyId);
         await scanDueMemoSchedules(client,companyId);
+        if (await pageEnabled(client,companyId,"company.inquiries"))
+          await scanUnansweredInquiryNotifications(client,companyId);
         await refreshNotificationReminders(client, companyId);
         if (await pageEnabled(client, companyId, "company.attendance"))
           await attendanceEvents(client, companyId);
@@ -139,6 +142,8 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
         !(await pageEnabled(client, null, "public.notifications"))
       )
         return;
+      if (await pageEnabled(client,null,"public.inquiries"))
+        await scanUnansweredInquiryNotifications(client,null);
       await refreshNotificationReminders(client, null);
     });
   } catch (error) {
