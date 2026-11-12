@@ -5265,29 +5265,43 @@ a.notification-quick-title:hover { text-decoration: underline; }
   .ledger-page:has(.ledger-print-all) .data-table { display: none !important; }
 }
 .ledger-print-heading, .ledger-print-all { display: none; }
-/* Pledge list only: keep pay/receive dialogs' columns unchanged. */
+/* Pledge list: full-width table, with original pay/receive dialogs untouched. */
 @media (min-width: 850px) {
-  .dialog.pledge-list-dialog { width: min(1120px, calc(100vw - 48px)); }
-  /* The global .form-stack max-width:700px caused the blank half-dialog. */
-  .pledge-list-dialog .form-stack { max-width: none; width: 100%; min-width: 0; }
-  .pledge-list-dialog .pledge-list-table-scroll table { min-width: 0; width: 100%; }
+  .dialog.pledge-list-dialog { width: min(1340px, calc(100vw - 48px)); }
 }
 .pledge-list-dialog .form-stack { max-width: none; width: 100%; min-width: 0; }
 .pledge-list-dialog .pledge-list-table-scroll { width: 100%; max-width: 100%; min-width: 0; }
 .pledge-list-table-scroll table { min-width: 750px; }
-.pledge-list-dialog .pledge-list-table-scroll table { min-width: 830px; }
-.pledge-list-dialog .pledge-list-table-scroll th:nth-child(1) { width: 160px; }
-.pledge-list-dialog .pledge-list-table-scroll th:nth-child(2) { width: 120px; }
+.pledge-list-dialog .pledge-list-table-scroll table { min-width: 1160px; width: 100%; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(1) { width: 156px; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(2) { width: 118px; }
 .pledge-list-dialog .pledge-list-table-scroll th:nth-child(3) { width: 215px; }
 .pledge-list-dialog .pledge-list-table-scroll th:nth-child(4) { width: auto; }
-.pledge-list-dialog .pledge-list-table-scroll th:nth-child(5) { width: 110px; }
-.pledge-list-dialog .pledge-list-table-scroll th:nth-child(6) { width: 110px; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(5) { width: 120px; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(6) { width: 128px; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(7) { width: 100px; }
+.pledge-list-dialog .pledge-list-table-scroll th:nth-child(8) { width: 108px; }
 .pledge-list-dialog .pledge-list-table-scroll td.pledge-list-actions { text-align: start; overflow: visible; white-space: nowrap; }
 .pledge-list-actions .button { margin-inline-end: 2px; padding-inline: 5px; }
 .pledge-list-dialog .pledge-list-table-scroll td:nth-child(3),
-.pledge-list-dialog .pledge-list-table-scroll td:nth-child(4) { overflow: hidden; text-overflow: ellipsis; }
-
-
+.pledge-list-dialog .pledge-list-table-scroll td:nth-child(4),
+.pledge-list-dialog .pledge-list-table-scroll td:nth-child(5) {
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pledge-list-filter-bar {
+  display: flex; align-items: end; gap: 10px; flex-wrap: wrap;
+}
+.pledge-list-filter-bar > .field { flex: 1 1 260px; min-width: 180px; }
+.pledge-show-zero-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap; font-size: 12px; cursor: pointer;
+  min-height: var(--control-height); padding-inline: 5px;
+}
+.pledge-show-zero-toggle input { margin: 0; cursor: pointer; }
+@media (max-width: 680px) {
+  .pledge-list-filter-bar { align-items: center; }
+  .pledge-show-zero-toggle { min-height: 24px; }
+}
 
 /* Invoice/voucher/journal accounts: type and select in the same control.
    Menus render through a portal to escape short and scrollable headers. */
