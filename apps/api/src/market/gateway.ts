@@ -48,7 +48,7 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
   router.use("/medicine-market", handler(async (req, res) => {
     const body = ["GET", "HEAD"].includes(req.method) ? "" : JSON.stringify(req.body ?? {});
     const imageUpload=req.method==="POST" && (/^\/cards\/[1-9]\d*\/images$/.test(req.url) || req.url==="/prescriptions");
-    const imageFetch=req.method==="GET" && /^\/images\/[a-f\d-]{36}$/.test(req.url);
+    const imageFetch=req.method==="GET" && (/^\/images\/[a-f\d-]{36}(?:\?|$)/.test(req.url) || /^\/cards\/[1-9]\d*\/image-variants\/(?:icon|preview)(?:\?|$)/.test(req.url));
     if (Buffer.byteLength(body) > (imageUpload?768*1024:65536))
       throw new HttpError(413, "body_too_large", "حجم الطلب كبير");
     // Read current authority per request; never cache an owner's privileges in a browser token.
@@ -81,7 +81,8 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
       if (req.method === "HEAD") res.status(response.status).end();
       else if(imageFetch && response.ok && response.headers.get("content-type")?.startsWith("image/webp")) {
         if(bytes>512000)throw unavailable();
-        res.status(response.status).set("Cache-Control","private, max-age=86400")
+        res.status(response.status).set("Cache-Control",response.headers.get("cache-control")??"no-store")
+          .set("Content-Security-Policy","default-src 'none'; sandbox")
           .type("image/webp").send(Buffer.concat(chunks));
       } else res.status(response.status).json(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     } catch (error) {

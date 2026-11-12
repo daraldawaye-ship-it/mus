@@ -85,7 +85,7 @@ export function MarketImageUpload({
     }
   }
   return <div className="field image-upload">
-    <label>{prescription?"صورة الوصفة الطبية — قابلة للاستبدال":"صورة الصنف — رفع من الجهاز"}</label>
+    <label>{prescription?"صورة الوصفة الطبية — قابلة للاستبدال":"صورة الكرت — رفع من الجهاز"}</label>
     {prescription&&<small className="muted">
       الصورة المرفوعة تظل خاصة قيد مراجعة الإدارة. يمكنك حفظها وتعديلها ثم رفع صورة بديلة قبل اعتماد النشر.
     </small>}
@@ -93,9 +93,9 @@ export function MarketImageUpload({
       {preview&&<MarketProductImage className="image-upload-preview" src={preview}
         trimLegacyPadding={!prescription}
         style={{maxWidth:260,maxHeight:380,width:"auto",height:"auto",objectFit:"contain"}}
-        alt={prescription?"معاينة الوصفة":"معاينة صورة الصنف"}/>}
+        alt={prescription?"معاينة الوصفة":"معاينة صورة الكرت"}/>}
       <input type="file" accept="image/*"
-        aria-label={prescription?"اختر صورة بديلة للوصفة":"اختر صورة صنف"}
+        aria-label={prescription?"اختر صورة بديلة للوصفة":"اختر صورة للكرت"}
         onChange={(event)=>void upload(event)}
         disabled={disabled||busy}/>
       {preview&&!prescription&&<button type="button" disabled={disabled||busy}
@@ -104,7 +104,7 @@ export function MarketImageUpload({
     <small className="muted">
       {prescription
        ?"يُحفظ كامل نص الوصفة بقدر الإمكان، دون قص، بصيغة WebP؛ حتى 1600 بكسل و500 كيلوبايت."
-       :"الصورة كاملة دون قص، الضلع الأكبر 512 بكسل، بصيغة WebP؛ بحد 100 كيلوبايت."}
+       :"الصورة كاملة ومضغوطة؛ تُجهز تلقائيًا معاينة 240 بكسل وأيقونة 64 بكسل للبحث والقوائم."}
     </small>
     {busy&&<small aria-live="polite">جارٍ تجهيز الصورة ورفعها…</small>}
     {size!==null&&!busy&&<small aria-live="polite">رُفعت الصورة ({Math.round(size/1024)} كيلوبايت). اضغط «حفظ المساهمة» لاعتمادها.</small>}

@@ -9809,5 +9809,45 @@
       ],
       "additionalProperties": false
     }
+  },
+  "GET /medicine-market/image-variants/status": {
+    "queryFields": [],
+    "pathParams": [],
+    "source": "routes-medicine-market.ts"
+  },
+  "POST /medicine-market/image-variants/backfill": {
+    "queryFields": [],
+    "pathParams": [],
+    "source": "routes-medicine-market.ts",
+    "bodyContract": "backfillMarketImagesSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "retryFailed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "GET /medicine-market/cards/:cardId/image-variants/:variant": {
+    "queryFields": [
+      "v"
+    ],
+    "pathParams": [
+      "cardId",
+      "variant"
+    ],
+    "source": "routes-medicine-market.ts"
+  },
+  "GET /medicine-market/images/:imageId": {
+    "queryFields": [
+      "variant"
+    ],
+    "pathParams": [
+      "imageId"
+    ],
+    "source": "routes-medicine-market.ts"
   }
 }

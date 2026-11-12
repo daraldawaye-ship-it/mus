@@ -77,7 +77,7 @@ const locationRelations = [
   f("governorateCode", "المحافظة", "reference"),
   f("cityCode", "المدينة", "reference"),
 ];
-const directory = [name, phone, address, ...locationRelations, contacts, keywords];
+const directory = [name, image, phone, address, ...locationRelations, contacts, keywords];
 export const marketTypes: MarketType[] = [
   {
     key: "prescription",
@@ -159,14 +159,14 @@ export const marketTypes: MarketType[] = [
   {
     key: "dosage-form",
     label: "الأشكال الصيدلانية",
-    fields: [name, f("englishName", "الاسم الإنجليزي"), keywords],
+    fields: [name, image, f("englishName", "الاسم الإنجليزي"), keywords],
   },
   { key: "pharmacy", label: "الصيدليات", fields: [
-    name, mobilePhone, landlinePhone, address, ...locationRelations,
+    name, image, mobilePhone, landlinePhone, address, ...locationRelations,
     keywords, f("sourceNotes", "مصدر البيانات وملاحظات التحقق", "textarea"),
   ] },
   { key: "wholesaler", label: "محلات الجملة", fields: [
-    name, mobilePhone, landlinePhone, address, ...locationRelations, keywords,
+    name, image, mobilePhone, landlinePhone, address, ...locationRelations, keywords,
   ] },
   { key: "agent", label: "الوكلاء", fields: directory },
   {

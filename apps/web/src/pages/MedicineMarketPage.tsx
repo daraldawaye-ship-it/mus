@@ -24,6 +24,7 @@ import {
 import { api, useScopeGuard, useSession } from "../api";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
+import { MarketCardIcon } from "../MarketCardIcon";
 import { MarketFriendReferral } from "../MarketFriendReferral";
 import { MarketStagingProgress } from "./MarketStagingProgress";
 import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
@@ -282,6 +283,7 @@ function RelationPicker({
             disabled={disabled||!current}
             onMouseDown={event=>event.preventDefault()}
             onClick={()=>choose(card)}>
+            <MarketCardIcon card={card} />
             <span className="medicine-market-lookup-result-names">
               <strong>{card.name}</strong>
               {typeof card.data.englishName==="string" &&
@@ -1534,7 +1536,7 @@ export function MedicineMarketPage({
             </details>
             <details>
               <summary>الأشكال الصيدلانية ({dosageList.data?.total ?? 0})</summary>
-              <ul>{dosageList.data?.items.map(card=><li key={card.id}>{card.name}</li>)}</ul>
+              <ul>{dosageList.data?.items.map(card=><li key={card.id}><button type="button" className="medicine-market-link" onClick={()=>openCard(card.id)}>{card.name}</button></li>)}</ul>
             </details>
           </div>
           {user?.owner && <MarketStagingProgress />}

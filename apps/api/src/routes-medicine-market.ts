@@ -1,4 +1,6 @@
 import { marketStagingRoutes } from "./routes-market-staging.ts";
+import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
+  startMarketImageBackfill, marketImageBackfillStatus } from "./market/image-variants.ts";
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -564,7 +566,10 @@ const reactionMarketSchema = z
   .strict()
   .refine((x) => x.liked !== undefined || x.rating !== undefined);
 
+const backfillMarketImagesSchema = z.object({ retryFailed: z.boolean().default(false) }).strict();
+
 export const mcpBodySchemas = {
+  backfillMarketImagesSchema,
   createCardSchema,
   prescriptionCreateSchema,
   contributionSchema,
@@ -632,6 +637,50 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
 
+  // Derivatives share the source card visibility, including private prescriptions.
+  router.get(root + "/cards/:cardId/image-variants/:variant", handler(async (req,res) => {
+    await enabled(pool,req);
+    if(!stagingIsolated)missing();
+    const u=await viewer(pool,req);
+    const card=await getCard(pool,id(req.params.cardId),u);
+    if(card.kind==="composition")missing();
+    const variant=parse(z.enum(["icon","preview"]),req.params.variant);
+    const source=card.data.image??card.data.imageUrl;
+    if(typeof source!=="string"||!source)missing();
+    let bytes=await readMarketImageVariant(pool,source,variant);
+    const local=/^\/api\/medicine-market\/images\/([a-f0-9-]{36})$/.exec(source);
+    if(!bytes&&local){
+      const original=(await pool.query("SELECT image_bytes FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rows[0]?.image_bytes;
+      if(original){
+        const versions=await buildMarketImageVariants(original);
+        await storeMarketImageVariants(pool,source,versions);
+        bytes=versions[variant];
+      }
+    }
+    if(!bytes)missing("الصورة المصغرة غير جاهزة");
+    res.set("Cache-Control",card.status==="published"&&!card.archived?"private, max-age=3600":"no-store");
+    res.set("Content-Security-Policy","default-src 'none'; sandbox");
+    res.type("image/webp").send(bytes);
+  }));
+  router.get(root + "/image-variants/status",handler(async(req,res)=>{
+    const u=await viewer(pool,req);
+    if(!u?.owner)deny("هذه العملية لمالك الموقع فقط");
+    await enabled(pool,req);
+    if(!stagingIsolated)missing();
+    res.json(await marketImageBackfillStatus(pool));
+  }));
+  router.post(root + "/image-variants/backfill",handler(async(req,res)=>{
+    const input=parse(backfillMarketImagesSchema,req.body);
+    const u=(await viewer(pool,req,true))!;
+    if(!u.owner)deny("هذه العملية لمالك الموقع فقط");
+    await enabled(pool,req);
+    if(!stagingIsolated)missing();
+    await auditMarket(pool,u,"image_variants_backfill",null,null,{retryFailed:input.retryFailed});
+    const started=startMarketImageBackfill(pool,input.retryFailed);
+    res.status(202).json({started,...await marketImageBackfillStatus(pool)});
+  }));
+
+
   // Atomic public prescription creation: the image and 1-20 editable medicine
   // slots are saved with the card, never a half-created public placeholder.
   router.post(root+"/prescriptions",handler(async(req,res)=>{
@@ -657,6 +706,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
           throw new HttpError(429,"upload_limit","الحد اليومي لرفع الصور 100 صورة");
       }
       await validateReferences(db,findField('prescription','prescriptionLines'),input.prescriptionLines);
+      const variants=stagingIsolated?await buildMarketImageVariants(photo.bytes):null;
       const imageId=randomUUID();
       const placeholder="وصفة طبية "+input.idempotencyKey;
       const row=(await db.query(
@@ -675,6 +725,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         " VALUES($1,$2,$3,$4,$5,$6,$7)",
         [imageId,card.id,u.id,photo.bytes.length,photo.bytes,photo.width,photo.height],
       );
+      if(variants)await storeMarketImageVariants(db,imageUrl,variants);
       await db.query(
         "INSERT INTO medicine_market_contributions(card_id,field_key,previous_value,proposed_value,author_id,idempotency_key,published)"+
         " VALUES($1,'name','null'::jsonb,$2,$3,$4,$5)",
@@ -696,7 +747,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const cardId=id(req.params.cardId);
     const input=parse(marketImageUploadSchema,req.body);
     const cardPreview=await getCard(pool,cardId,user);
+    if(isMarketAdministrativeKind(cardPreview.kind)&&!perms(user).canConfigure)deny();
+    if(!findType(cardPreview.kind).fields.some(field=>field.key==="image"))
+      throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
     const image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');
+    const variants=stagingIsolated?await buildMarketImageVariants(image.bytes):null;
     const assetId=randomUUID();
     await transaction(pool,async db=>{
       const card=await getCard(db,cardId,user);
@@ -717,13 +772,16 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         "INSERT INTO market_image_uploads(id,card_id,uploaded_by,byte_size,image_bytes,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)",
         [assetId,cardId,user.id,image.bytes.length,image.bytes,image.width,image.height],
       );
+      if(variants)await storeMarketImageVariants(db,marketImagePath(assetId),variants);
       await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height});
     });
-    res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height});
+    res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,
+      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",previewUrl:marketImagePath(assetId)+"?variant=preview",iconBytes:variants.icon.length,previewBytes:variants.preview.length}:{})});
   }));
   router.get(root+"/images/:imageId",handler(async(req,res)=>{
     await enabled(pool,req);
     const imageId=parse(z.string().uuid(),req.params.imageId);
+    const variant=parse(z.enum(["original","icon","preview"]),req.query.variant??"original");
     const u=await viewer(pool,req);
     const result=await pool.query(
       "SELECT i.image_bytes,i.uploaded_by,c.created_by,c.status,c.archived,"+
@@ -736,9 +794,21 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const publicImage=item.status==='published'&&!item.archived &&
       item.published_image===marketImagePath(imageId);
     if(!publicImage && !(u && (u.id===item.uploaded_by || u.id===item.created_by || perms(u).canModerate)))missing();
-    res.set("Cache-Control","private, max-age=86400");
+    res.set("Cache-Control",publicImage?"private, max-age=86400":"no-store");
     res.set("Content-Security-Policy","default-src 'none'; sandbox");
-    res.type("image/webp").send(item.image_bytes);
+    let bytes:Buffer=item.image_bytes;
+    if(variant!=="original"){
+      if(!stagingIsolated)missing();
+      const source=marketImagePath(imageId);
+      const cached=await readMarketImageVariant(pool,source,variant);
+      if(cached)bytes=cached;
+      else {
+        const versions=await buildMarketImageVariants(item.image_bytes);
+        await storeMarketImageVariants(pool,source,versions);
+        bytes=versions[variant];
+      }
+    }
+    res.type("image/webp").send(bytes);
   }));
   // User initiated referral log only; sending messages remains external/manual.
   router.post(root+"/friend-referrals",handler(async(req,res)=>{

@@ -9,6 +9,7 @@ import type {
   MarketCard, MarketDetail, MarketKind, MarketMeta, MarketReferenceEntry,
 } from "../../../../packages/contracts/src/medicine-market";
 import "./MarketCatalogSections.css";
+import { MarketCardIcon, hasMarketCardImage } from "../MarketCardIcon";
 
 type MarketType = MarketMeta["types"][number];
 type CardPage = { items: MarketCard[]; total: number; page: number; pageSize: number };
@@ -56,9 +57,10 @@ export function MarketCompactCard({ item, type, references, onOpen }: {
   const currency = publicFields.some(field => field.key === "currency") &&
     typeof item.data.currency === "string" ? item.data.currency : "";
   const status = item.archived ? "مؤرشف" : item.status === "pending" ? "بانتظار المصادقة" : "";
-  return <button type="button" className="market-compact-card"
+  return <button type="button" className={`market-compact-card${hasMarketCardImage(item)?" market-compact-card-with-photo":""}`}
     aria-label={`فتح الكرت: ${item.name}${status ? ` — ${status}` : ""}`}
     onClick={() => onOpen(item.id)}>
+    <MarketCardIcon card={item} />
     <span className="market-compact-card-main">
       <strong className="market-compact-card-name" dir="auto" title={item.name}>{item.name}</strong>
       {status && <small className="market-compact-card-status">{status}</small>}

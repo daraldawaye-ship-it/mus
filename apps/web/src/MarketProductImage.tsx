@@ -16,11 +16,13 @@ export function MarketProductImage({
   trimLegacyPadding?:boolean;
   previewOnClick?:boolean;
 }){
-  const [display,setDisplay]=useState(src);
+  const preferred=trimLegacyPadding&&/^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(src)
+    ?src+"?variant=preview":src;
+  const [display,setDisplay]=useState(preferred);
   useEffect(()=>{
     let active=true;
-    setDisplay(src);
-    if(!trimLegacyPadding || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(src))return;
+    setDisplay(preferred);
+    if(preferred!==src||!trimLegacyPadding || !/^\/api\/medicine-market\/images\/[a-f\d-]{36}$/.test(src))return;
     const photo=new Image();
     photo.onload=()=>{
       if(!active||photo.naturalWidth!==512||photo.naturalHeight!==512)return;
@@ -59,10 +61,10 @@ export function MarketProductImage({
     };
     photo.src=src;
     return()=>{active=false;photo.onload=null;};
-  },[src,trimLegacyPadding]);
+  },[src,preferred,trimLegacyPadding]);
   const picture=<img src={display} alt={alt} className={className}
     style={{maxWidth:"100%",height:"auto",objectFit:"contain",...style}}
-    loading="lazy" decoding="async"/>;
+    loading="lazy" decoding="async" onError={()=>{if(display!==src)setDisplay(src);}}/>;
   return previewOnClick
     ? <ImagePreviewModal src={src} alt={alt}>{picture}</ImagePreviewModal>
     : picture;
