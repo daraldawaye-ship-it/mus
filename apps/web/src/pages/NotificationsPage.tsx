@@ -379,7 +379,7 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
               {record.completedAt ? (
                 <span className="notification-finished">
                   <CheckCheck size={14} />
-                  منجز: {time(record.completedAt)}
+                  {record.autoResolved ? "انتهت الحالة تلقائيًا: " : "منجز: "}{time(record.completedAt)}
                 </span>
               ) : (
                 <span>
