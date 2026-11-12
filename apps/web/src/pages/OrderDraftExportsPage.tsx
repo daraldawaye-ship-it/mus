@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
@@ -19,6 +19,8 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<"name" | "required" | "available" | "date">("date");
+  const [descending, setDescending] = useState(true);
   const result = useQuery({
     queryKey: ["order-draft-exports", companyId, user?.id, filter, page],
     queryFn: ({ signal }) => api<ExportResult>(
@@ -27,7 +29,31 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     enabled: !!user, staleTime: 10_000,
   });
   const totalPages = Math.max(1, Math.ceil((result.data?.total ?? 0)/100));
-  const dateText = (value: string) => value.slice(0,10);
+  const dateText = (value: string) => value.slice(0, 10);
+  const quantityText = (value: string | null, integer = false) => {
+    if (value == null || value === "") return "—";
+    const number = Number(value);
+    if (!Number.isFinite(number)) return value;
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: integer ? 0 : 4 }).format(number);
+  };
+  const sortedItems = useMemo(() => [...(result.data?.items ?? [])].sort((a, b) => {
+    const compared = sort === "name"
+      ? a.itemName.localeCompare(b.itemName, "ar")
+      : sort === "required" ? Number(a.requiredQuantity ?? 0) - Number(b.requiredQuantity ?? 0)
+      : sort === "available" ? Number(a.availableQuantity) - Number(b.availableQuantity)
+      : a.exportDate.localeCompare(b.exportDate) || a.exportedAt.localeCompare(b.exportedAt);
+    return descending ? -compared : compared;
+  }), [result.data?.items, sort, descending]);
+  const changeSort = (column: typeof sort) => {
+    if (sort === column) setDescending(value => !value);
+    else { setSort(column); setDescending(column === "date"); }
+  };
+  const heading = (column: typeof sort, label: string) =>
+    <button type="button" onClick={() => changeSort(column)}
+      aria-label={`ترتيب حسب ${label}`} aria-sort={sort === column ? (descending ? "descending" : "ascending") : undefined}
+      style={{ border:0, background:"transparent", color:"inherit", font:"inherit", fontWeight:"inherit", cursor:"pointer", padding:0 }}>
+      {label}{sort === column ? (descending ? " ▼" : " ▲") : ""}
+    </button>;
   return <section className="order-export-followup">
     <PageHeader title="متابعة الطلبيات المرحلة"
       description="سجل مشترك لجميع أجهزة الشركة؛ الصنف لا يُسجل أكثر من مرة في اليوم، والسجلات الأقدم من 40 يومًا تُحذف تلقائيًا."
@@ -35,7 +61,7 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     <Card>
       <form onSubmit={event => { event.preventDefault(); setFilter(search.trim()); setPage(1); }}
         style={{ display:"flex", flexWrap:"wrap", alignItems:"end", gap:6, marginBottom:8 }}>
-        <label style={{ flex:"1 1 180px" }}>الصنف أو المعرّف
+        <label style={{ flex:"1 1 180px" }}>بحث عن الصنف
           <input type="search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} />
         </label>
         <Button type="submit" size="compact">بحث</Button>
@@ -47,15 +73,14 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
       {!!result.data && <>
         <div role="region" tabIndex={0} aria-label="سجل الطلبيات المرحلة"
           style={{ maxHeight:"68vh", overflow:"auto", border:"1px solid var(--border, #888)", borderRadius:6 }}>
-          <table className="data-table" dir="rtl" style={{ width:"100%", minWidth:700, borderCollapse:"collapse", fontSize:13 }}>
-            <thead><tr><th>الصنف</th><th>الكمية المطلوبة</th><th>المتوفر حينها دون المرتجعات</th><th>تاريخ الترحيل</th><th>معرف الصنف</th></tr></thead>
+          <table className="data-table" dir="rtl" style={{ width:"100%", minWidth:560, borderCollapse:"collapse", fontSize:13, tableLayout:"auto" }}>
+            <thead><tr><th>{heading("name", "الصنف")}</th><th>{heading("required", "الكمية المطلوبة")}</th><th>{heading("available", "المتوفر وقت الترحيل دون المرتجعات")}</th><th>{heading("date", "تاريخ الترحيل")}</th></tr></thead>
             <tbody>
-              {result.data.items.map(row => <tr key={row.id}>
+              {sortedItems.map(row => <tr key={row.id}>
                 <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
-                <td dir="ltr">{row.requiredQuantity ?? "—"}</td>
-                <td dir="ltr">{row.availableQuantity}</td>
-                <td title={row.exportedAt}>{dateText(row.exportDate)}</td>
-                <td dir="ltr">{row.itemId}</td>
+                <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.requiredQuantity, true)}</td>
+                <td dir="ltr" style={{ textAlign:"center", whiteSpace:"nowrap" }}>{quantityText(row.availableQuantity)}</td>
+                <td dir="ltr" title={row.exportedAt} style={{ textAlign:"center", whiteSpace:"nowrap" }}>{dateText(row.exportDate)}</td>
               </tr>)}
             </tbody>
           </table>
