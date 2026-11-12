@@ -391,7 +391,7 @@ function PrescriptionLinesEditor({
 
 /** Edit a single prescription line; add/remove controls stay below the list.
  * Save submits the full versioned field value so the server can detect conflicts. */
-function PrescriptionLinesInline({card,canEdit,disabled,onOpen}:{
+export function PrescriptionLinesInline({card,canEdit,disabled,onOpen}:{
   card:MarketCard;canEdit:boolean;disabled:boolean;onOpen:(id:number)=>void;
 }){
   const {user}=useSession(),client=useQueryClient();
@@ -403,41 +403,50 @@ function PrescriptionLinesInline({card,canEdit,disabled,onOpen}:{
   const [action,setAction]=useState<"edit"|"add"|"remove"|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
   const retry=useRef<{payload:string;key:string}|null>(null);
+  const currentDraft=useRef<PrescriptionLine[]|null>(null);
+  const expected=useRef<unknown>(null),pending=useRef(false);
   const isEditing=draft!==null;
   const available=canEdit&&!disabled&&!busy;
   const begin=(kind:"edit"|"add"|"remove",index:number|null)=>{
-    if(!available)return;
+    if(!available||pending.current)return;
+    expected.current=structuredClone(card.data.prescriptionLines??null);
     setError("");setSuccess("");setAction(kind);
     setEditingIndex(index);
     const copy=rows.map(row=>({...row}));
     if(kind==="add")copy.push(emptyPrescriptionLine());
     if(kind==="remove")copy.pop();
-    setDraft(copy);
+    currentDraft.current=copy;setDraft(copy);
+    if(kind==="add")void save(undefined,copy);
   };
-  const cancel=()=>{if(busy)return;setDraft(null);setEditingIndex(null);setAction(null);setError("");};
-  const updateRow=(index:number,row:PrescriptionLine)=>{
-    setDraft(old=>old?.map((entry,i)=>i===index?row:entry)??null);
+  const cancel=()=>{if(pending.current)return;currentDraft.current=null;setDraft(null);setEditingIndex(null);setAction(null);setError("");};
+  const updateRow=(index:number,row:PrescriptionLine,keepEditing=true)=>{
+    if(pending.current||!currentDraft.current)return;
+    const next=currentDraft.current.map((entry,i)=>i===index?row:entry);
+    currentDraft.current=next;setDraft(next);
+    void save(undefined,next,keepEditing);
   };
-  async function save(event:FormEvent){
-    event.preventDefault();
-    if(!available||!draft||!guard.isCurrent())return;
-    const initial=card.data.prescriptionLines??null;
-    if(JSON.stringify(draft)===JSON.stringify(initial)){cancel();return;}
-    const payload={fieldKey:"prescriptionLines",value:draft,expectedValue:initial};
+  async function save(event?:FormEvent,next=currentDraft.current,keepEditing=false){
+    event?.preventDefault();
+    if(!available||pending.current||!next||!guard.isCurrent())return;
+    const initial=expected.current;
+    if(JSON.stringify(next)===JSON.stringify(initial)){if(!keepEditing)cancel();return;}
+    const payload={fieldKey:"prescriptionLines",value:next,expectedValue:initial};
     const signature=JSON.stringify(payload);
     const key=retry.current?.payload===signature?retry.current.key:crypto.randomUUID();
     retry.current={payload:signature,key};
-    setBusy(true);setError("");setSuccess("");
+    pending.current=true;setBusy(true);setError("");setSuccess("");
     try{
-      await api(`${ROOT}/cards/${card.id}/contributions`,{
+      const result=await api<{card:MarketCard;contribution?:{published:boolean}}>(`${ROOT}/cards/${card.id}/contributions`,{
         method:"POST",body:{...payload,idempotencyKey:key},
       });
       if(!guard.isCurrent())return;
-      setDraft(null);setEditingIndex(null);setAction(null);retry.current=null;
-      setSuccess("تم حفظ تعديل الأسطر.");
+      expected.current=structuredClone(result.card.data.prescriptionLines??null);
+      if(!keepEditing){currentDraft.current=null;setDraft(null);setEditingIndex(null);setAction(null);}
+      retry.current=null;
+      setSuccess(result.contribution?.published===false?"تم إرسال تعديل الأسطر للمصادقة.":"تم حفظ تعديل الأسطر تلقائيًا.");
       await client.invalidateQueries({queryKey:["medicine-market",user?.id]});
-    }catch(cause){if(guard.isCurrent())setError(errorMessage(cause));}
-    finally{if(guard.isCurrent())setBusy(false);}
+    }catch(cause){if(guard.isCurrent())setError("لم يُحفظ التعديل. "+errorMessage(cause));}
+    finally{pending.current=false;if(guard.isCurrent())setBusy(false);}
   }
   const displayedRows=action==="add"&&draft?draft:rows;
   return <div className="medicine-market-field medicine-market-prescription-inline-rows">
@@ -475,12 +484,12 @@ function PrescriptionLinesInline({card,canEdit,disabled,onOpen}:{
               <RelationPicker key={draft[index].kind}
                 kind={draft[index].kind} label={"بحث السطر "+(index+1)}
                 minChars={1} value={draft[index].id} disabled={busy}
-                onChange={id=>updateRow(index,{...draft[index],id})}/>
+                onChange={id=>updateRow(index,{...draft[index],id},false)}/>
               {error&&<Notice tone="error">{error}</Notice>}
               <div className="medicine-market-inline-actions">
-                <Button type="submit" size="compact" disabled={busy}>
-                  {busy?"جارٍ الحفظ…":"حفظ السطر"}
-                </Button>
+                <small role="status">{busy?"جارٍ الحفظ…":success||"يُحفظ الاختيار تلقائيًا."}</small>
+                {error&&<Button type="button" size="compact" disabled={busy}
+                  onClick={()=>void save()}>إعادة المحاولة</Button>}
                 <Button type="button" size="compact" variant="ghost" disabled={busy}
                   onClick={cancel}>إلغاء</Button>
               </div>
@@ -960,7 +969,7 @@ type MarketFieldDraft = {
 };
 
 /** Keep each field's draft and original value independent while another saves. */
-function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
+export function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
   card:MarketCard;
   field:FieldDefinition;
   references:MarketReferenceEntry[];
@@ -979,9 +988,9 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
   const [error,setError]=useState(""),[message,setMessage]=useState("");
   const value=field.key==="name"?card.name:card.data[field.key];
   const complex=field.key==="image"||["contacts","ingredients","accounting","prescription-lines"].includes(field.type);
-  // Relations require explicit confirmation so accidental selections can be cancelled.
-  const immediate=!complex&&(field.type==="boolean"||field.type==="reference"||!!field.options?.length);
-  const textEditor=!complex&&!immediate;
+  // Discrete choices commit immediately; text/compound values commit on field exit.
+  const immediate=!complex&&(["boolean","reference","relation","date"].includes(field.type)||!!field.options?.length);
+  const saveOnExit=!immediate&&field.key!=="image";
   const editing=draft!==null;
   useLayoutEffect(()=>{
     if(editing)editor.current?.querySelector<HTMLElement>("input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])")?.focus();
@@ -1010,14 +1019,20 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
     pending.current=true;setBusy(true);setError("");setMessage("");
     const requestGuard=guard;
     try{
-      await api(`${ROOT}/cards/${card.id}/contributions`,{
+      const result=await api<{contribution?:{status:string;published:boolean}}>(`${ROOT}/cards/${card.id}/contributions`,{
         method:"POST",body:{...payload,idempotencyKey},
       });
       if(!requestGuard.isCurrent())return;
-      update(null);retry.current=null;setMessage("تم حفظ المساهمة.");
+      update(null);retry.current=null;
+      setMessage(result.contribution?.status==="pending"&&!result.contribution.published
+        ?"تم إرسال المساهمة للمصادقة.":"تم الحفظ تلقائيًا.");
       await client.invalidateQueries({queryKey:["medicine-market",user?.id]});
     }catch(cause){
-      if(requestGuard.isCurrent())setError(errorMessage(cause));
+      if(requestGuard.isCurrent()){
+        setError("لم يُحفظ التعديل. "+errorMessage(cause));
+        if(cause&&typeof cause==="object"&&"status" in cause&&cause.status===409)
+          void client.invalidateQueries({queryKey:["medicine-market",user?.id,"card",card.id]});
+      }
     }finally{
       pending.current=false;
       if(requestGuard.isCurrent())setBusy(false);
@@ -1026,7 +1041,7 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
   function change(value:unknown){
     if(!current.current||pending.current||cancelled.current||!guard.isCurrent())return;
     const next={...current.current,value};update(next);
-    if(immediate)void save(next);
+    if(immediate||(field.key==="image"&&!uploading.current))void save(next);
   }
   if(card.kind==="prescription"&&field.type==="prescription-lines")
     return <PrescriptionLinesInline card={card} canEdit={canEdit}
@@ -1049,7 +1064,7 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
       {draft?<form ref={editor} className="medicine-market-inline-editor"
         onSubmit={event=>{event.preventDefault();void save();}}
         onBlur={event=>{
-          if(!textEditor||event.currentTarget.contains(event.relatedTarget as Node|null))return;
+          if(!saveOnExit||event.currentTarget.contains(event.relatedTarget as Node|null))return;
           const form=event.currentTarget;
           window.setTimeout(()=>{
             if(!form.contains(document.activeElement))void save();
@@ -1063,13 +1078,20 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
             if(event.target instanceof HTMLTextAreaElement&&event.shiftKey)return;
             if(event.target instanceof HTMLInputElement&&event.target.type==="file")return;
             event.preventDefault();
-            if(textEditor)void save();
+            if(field.key!=="image")void save();
           }
         }}>
         <FieldEditor field={field} value={draft.value} references={references}
           cardData={draft.cardData} cardId={card.id} cardKind={card.kind}
           disabled={!canEdit||disabled||busy||imageBusy} onChange={change}
-          onImageBusyChange={value=>{uploading.current=value;if(guard.isCurrent())setImageBusy(value);}}/>
+          onImageBusyChange={value=>{
+            uploading.current=value;
+            if(!guard.isCurrent())return;
+            setImageBusy(value);
+            // The new URL arrives before busy clears. Failed uploads retain their error.
+            const next=current.current;
+            if(!value&&next&&JSON.stringify(next.value)!==JSON.stringify(next.initialValue))void save(next);
+          }}/>
         <details className="medicine-market-inline-source">
           <summary>مصدر المعلومة أو ملاحظتك — اختياري</summary>
           <Field label="مصدر المعلومة أو ملاحظتك" value={draft.source} maxLength={1000}
@@ -1081,9 +1103,13 @@ function MarketInlineField({card,field,references,canEdit,disabled,onOpen}:{
           :"تُنشر المساهمة حسب صلاحيات الحساب وبعد المراجعة عند الحاجة."}</small>
         {error&&<Notice tone="error">{error}</Notice>}
         <div className="medicine-market-inline-actions">
-          <Button type="submit" size="compact" disabled={!canEdit||disabled||busy||imageBusy}>
-            {busy?"جارٍ الحفظ…":imageBusy?"جارٍ رفع الصورة…":"حفظ المساهمة"}
-          </Button>
+          <small className="medicine-market-muted" role="status">
+            {busy?"جارٍ الحفظ…":imageBusy?"جارٍ رفع الصورة…":
+              field.key==="image"?"تُحفظ الصورة تلقائيًا بعد الرفع.":
+              immediate?"يُحفظ الاختيار تلقائيًا.":"يُحفظ التعديل تلقائيًا عند مغادرة الحقل أو الضغط على Enter."}
+          </small>
+          {error&&<Button type="button" size="compact" disabled={!canEdit||disabled||busy||imageBusy}
+            onClick={()=>void save()}>إعادة المحاولة</Button>}
           <Button type="button" variant="ghost" size="compact" disabled={busy||imageBusy} onClick={cancel}>إلغاء</Button>
         </div>
       </form>:<>

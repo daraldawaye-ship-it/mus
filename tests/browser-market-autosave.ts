@@ -34,6 +34,7 @@ const vite=await createServer({configFile:resolve("apps/web/vite.config.ts"),ser
 await vite.listen();
 const address=vite.httpServer!.address();
 assert.ok(address&&typeof address!=="string");
+const testOrigin=`http://127.0.0.1:${address.port}`;
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
 const pause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(check:()=>boolean){for(let i=0;i<250;i++){if(check())return;await pause(20);}assert.ok(check(),"Expected auto-save did not occur");}
@@ -66,7 +67,7 @@ async function setup(field:string,kind:string,data:Record<string,unknown>={},pen
    if(/\/cards\/\d+$/.test(url.pathname))return send({card:{...card,id:202,name:"اختيار الاختبار"}});
    return send({});
  });
- await page.goto(`http://127.0.0.1:${address.port}/autosave-test.html?field=${field}`);
+ await page.goto(`${testOrigin}/autosave-test.html?field=${field}`);
  await page.locator(".medicine-market-field").waitFor();
  const edit=async()=>{
    await page.locator("button[title^='تعديل']").first().click();

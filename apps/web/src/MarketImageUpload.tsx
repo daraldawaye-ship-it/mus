@@ -99,7 +99,7 @@ export function MarketImageUpload({
       GIF مسموحة وتُحفظ صورة ثابتة؛ لا يُحفظ الملف الأصلي أو نسخة معاينة ثالثة.
     </small>
     {busy&&<small aria-live="polite">جارٍ تجهيز الصورة ورفعها…</small>}
-    {size!==null&&!busy&&<small aria-live="polite">رُفعت الصورة ({Math.round(size/1024)} كيلوبايت). اضغط «حفظ المساهمة» لاعتمادها.</small>}
+    {size!==null&&!busy&&<small aria-live="polite">حجم الصورة المرفوعة: {Math.round(size/1024)} كيلوبايت. تُرسل المساهمة تلقائيًا.</small>}
     {error&&<small role="alert" className="image-upload-error">{error}</small>}
   </div>;
 }
