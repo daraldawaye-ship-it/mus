@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import "./PurchaseLineMovementsPage.css";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -38,9 +38,9 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "createdAt", desc: true });
   const [page, setPage] = useState(1);
   const movements = useQuery({
-    queryKey: ["purchase-line-movements", user?.id, companyId, queryText, from, to, page],
+    queryKey: ["purchase-line-movements", user?.id, companyId, queryText, from, to, page, sort],
     queryFn: ({ signal }) => {
-      const p = new URLSearchParams({ page: String(page) });
+      const p = new URLSearchParams({ page: String(page), sortKey: sort.key, sortDirection: sort.desc ? "desc" : "asc" });
       if (queryText) p.set("q", queryText);
       if (from) p.set("dateFrom", from);
       if (to) p.set("dateTo", to);
@@ -58,20 +58,9 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? value : d.toLocaleString("ar-YE", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
-  const sortedRows = useMemo(() => {
-    const rows = [...(movements.data?.items ?? [])];
-    rows.sort((a, b) => {
-      const left = a[sort.key], right = b[sort.key];
-      const result = ["quantity", "price", "lineTotal", "invoiceNet"].includes(sort.key)
-        ? Number(left) - Number(right)
-        : String(left).localeCompare(String(right), "ar", { numeric: true });
-      return sort.desc ? -result : result;
-    });
-    return rows;
-  }, [movements.data, sort]);
   const sortHeader = (label: string, key: SortKey) => (
     <button type="button" className="purchase-movement-sort"
-      onClick={() => setSort(current => ({ key, desc: current.key === key ? !current.desc : key === "createdAt" }))}>
+      onClick={() => { setPage(1); setSort(current => ({ key, desc: current.key === key ? !current.desc : key === "createdAt" })); }}>
       {label}{sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}
     </button>
   );
@@ -106,7 +95,7 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
                 <th>{sortHeader("صافي الفاتورة", "invoiceNet")}</th><th>{sortHeader("المورد", "supplier")}</th><th>{sortHeader("التاريخ والوقت", "createdAt")}</th>
               </tr></thead>
               <tbody>
-                {sortedRows.map(item => <tr key={item.id}>
+                {movements.data.items.map(item => <tr key={item.id}>
                   <td><Link to={`/companies/${companyId}/invoices/${item.invoiceId}`}>{item.itemName}</Link></td>
                   <td className="purchase-movement-number" dir="ltr">{item.quantity}</td>
                   <td className="purchase-movement-number" dir="ltr">{money(item.price)}</td>
