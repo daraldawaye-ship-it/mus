@@ -66,8 +66,8 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
           <label style={{ flex: "1 1 125px" }}>إلى
             <input type="date" value={to} onChange={e => { setPage(1); setTo(e.target.value); }} />
           </label>
-          <Button type="submit" size="sm">بحث</Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => window.print()}>طباعة</Button>
+          <Button type="submit" size="compact">بحث</Button>
+          <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>طباعة</Button>
         </form>
         {from && to && from > to && <Notice tone="warning">تاريخ البداية بعد النهاية.</Notice>}
         {movements.isError && <Notice tone="error">{errorMessage(movements.error)}</Notice>}
@@ -96,9 +96,9 @@ export function PurchaseLineMovementsPage({ context }: { context: CompanyContext
           <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
             <small>عدد السطور: {movements.data.total} — الصفحة {page} من {totalPages}</small>
             <div style={{ display: "flex", gap: 6 }}>
-              <Button type="button" size="sm" variant="secondary" disabled={page <= 1}
+              <Button type="button" size="compact" variant="secondary" disabled={page <= 1}
                 onClick={() => setPage(p => p - 1)}>السابق</Button>
-              <Button type="button" size="sm" variant="secondary" disabled={page >= totalPages}
+              <Button type="button" size="compact" variant="secondary" disabled={page >= totalPages}
                 onClick={() => setPage(p => p + 1)}>التالي</Button>
             </div>
           </div>
