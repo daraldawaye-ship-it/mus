@@ -26,6 +26,7 @@ import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
 import { MarketFriendReferral } from "../MarketFriendReferral";
 import { MarketStagingProgress } from "./MarketStagingProgress";
+import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
 
@@ -1203,6 +1204,7 @@ export function MedicineMarketPage({
   const visibleTypes = types.filter(type=>!isMarketAdministrativeKind(type.key));
   const references = meta.data?.references ?? [];
   const currentType = types.find((t) => t.key === kind);
+  const sectionedCatalog = tab === "catalog" && !selected && !kind && !q;
   const dosageList = useQuery({
     queryKey: ["medicine-market", user?.id, "fixed-dosage-forms"],
     queryFn: ({signal}) => api<Page<MarketCard>>(
@@ -1225,8 +1227,8 @@ export function MedicineMarketPage({
         `${ROOT}/cards?${new URLSearchParams({ kind, q, page: String(page), pageSize: "18", archived: String(archived), sort })}`,
         { signal },
       ),
-    enabled: tab === "catalog",
-    refetchInterval: tab === "catalog" && !selected ? 20_000 : false,
+    enabled: tab === "catalog" && !sectionedCatalog,
+    refetchInterval: tab === "catalog" && !selected && !sectionedCatalog ? 20_000 : false,
     refetchIntervalInBackground: false,
   });
   const detail = useQuery({
@@ -1442,7 +1444,7 @@ export function MedicineMarketPage({
     points:{add:0,edit:0},policyRevision:0,
   },...activeFields];
   return (
-    <div className="medicine-market" dir="rtl">
+    <div className={`medicine-market${tab === "catalog" && !selected ? " medicine-market-directory" : ""}`} dir="rtl">
       <header className="medicine-market-heading">
         <div className="medicine-market-brand">
           <span className="medicine-market-brand-icon medicine-market-app-brand-icon">
@@ -1512,8 +1514,8 @@ export function MedicineMarketPage({
       {error && <Notice tone="error">{error}</Notice>}
       {meta.error && <Notice tone="error">{errorMessage(meta.error)}</Notice>}
       {tab === "catalog" && permissions?.canConfigure && (
-        <section className="medicine-market-admin-references" aria-label="البيانات المرجعية الثابتة">
-          <h2>البيانات المرجعية للإدارة</h2>
+        <details className="medicine-market-admin-references">
+          <summary>إدارة بيانات السوق والبيانات المرجعية</summary>
           <p className="medicine-market-muted">للاطلاع والاختيار فقط. إضافة وتصحيح القوائم تتم إداريًا، وليس من أزرار كروت المستخدمين.</p>
           <div className="medicine-market-reference-cards">
             <details>
@@ -1536,7 +1538,7 @@ export function MedicineMarketPage({
             </details>
           </div>
           {user?.owner && <MarketStagingProgress />}
-        </section>
+        </details>
       )}
       {tab === "catalog" && (
         <>
@@ -1560,7 +1562,7 @@ export function MedicineMarketPage({
                 write({ kind: e.target.value, page: null, card: null })
               }
             >
-              <option value="">جميع الكروت</option>
+              <option value="">أقسام السوق</option>
               {visibleTypes.map((t) => (
                 <option value={t.key} key={t.key}>
                   {t.label}
@@ -1592,7 +1594,7 @@ export function MedicineMarketPage({
             className="medicine-market-category-bar"
             aria-label="تصفية الكروت"
           >
-            {[{ key: "", label: "الكل" }, ...visibleTypes].map((t) => (
+            {[{ key: "", label: "أقسام السوق" }, ...visibleTypes].map((t) => (
               <button
                 key={t.key}
                 type="button"
@@ -1849,9 +1851,13 @@ export function MedicineMarketPage({
                 </>
               )}
             </Card>
-          ) : (
-            <>
-              <div className="medicine-market-list-heading">
+          ) : sectionedCatalog ? (
+  <MarketCatalogSections types={visibleTypes} q={q} sort={sort} archived={archived}
+    references={references} onOpen={openCard}
+    onBrowse={nextKind => write({ kind: nextKind, page: null, card: null })} />
+) : (
+  <>
+    <div className="medicine-market-list-heading">
                 <h2>{currentType?.label ?? "كروت الدليل"}</h2>
                 <span>{list.data?.total ?? "—"} كرت</span>
                 <Button variant="secondary" size="compact" disabled={list.isFetching}
@@ -1887,112 +1893,11 @@ export function MedicineMarketPage({
                   )}
                 </div>
               )}
-              <div className="medicine-market-grid">
-                {list.data?.items.map((item) => {
-                  const type = types.find((t) => t.key === item.kind);
-                  const previewFields =
-                    type?.fields
-                      .filter(
-                        (f) =>
-                          f.visibility === "public" &&
-                          f.key !== "name" &&
-                          present(item.data[f.key]) &&
-                          ["text", "decimal", "percent", "relation"].includes(
-                            f.type,
-                          ),
-                      )
-                      .slice(0, 3) ?? [];
-                  const image = item.data.image ?? item.data.imageUrl;
-                  return (
-                    <article className="medicine-market-card" key={item.id}
-                      role="link" tabIndex={0} aria-label={`فتح الكرت: ${item.name}`}
-                      onClick={(event) => {
-                        // Keep real buttons/links handling their own actions.
-                        if ((event.target as Element).closest("button, a, input, select, textarea, [role='button']")) return;
-                        openCard(item.id);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openCard(item.id);
-                        }
-                      }}>
-                      <div className="medicine-market-card-head">
-                        <span className="medicine-market-card-icon">
-                          <KindIcon kind={item.kind} />
-                        </span>
-                        <span>{type?.label}</span>
-                        <small>#{item.id}</small>
-                      </div>
-                      <button
-                        className="medicine-market-card-title"
-                        type="button"
-                        onClick={() => openCard(item.id)}
-                      >
-                        {item.name}
-                        <ChevronLeft size={17} />
-                      </button>
-                      {typeof image === "string" &&
-                        (/^https:\/\//i.test(image) || /^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(image)) && (
-                          <MarketProductImage
-                            className="medicine-market-card-image"
-                            previewOnClick={false}
-                            trimLegacyPadding={item.kind!=="prescription"}
-                            style={{display:"block",maxWidth:"100%",maxHeight:230,width:"auto",height:"auto",aspectRatio:"auto",objectFit:"contain",background:"transparent",marginInline:"auto"}}
-                            src={image}
-                            alt={item.name}
-                          />
-                        )}
-                      {item.kind==="prescription" && Array.isArray(item.data.prescriptionLines) &&
-                        <p className="medicine-market-muted">
-                          {item.data.prescriptionLines.length} أسطر ·
-                          {" "}{item.data.prescriptionLines.filter(x=>normalizePrescriptionLine(x).id!==null).length} أدوية/تراكيب محددة
-                        </p>}
-                      <dl>
-                        {previewFields.map((f) => (
-                          <div key={f.key}>
-                            <dt>{f.label}</dt>
-                            <dd>
-                              {f.type === "relation" &&
-                              typeof item.data[f.key] === "number" ? (
-                                <RelationName id={item.data[f.key] as number} />
-                              ) : f.type === "reference" &&
-                                  typeof item.data[f.key] === "string" ? (
-                                references.find(v=>v.code===item.data[f.key])?.name ??
-                                readable(item.data[f.key])
-                              ) : (
-                                readable(item.data[f.key])
-                              )}
-                              {f.type === "percent" ? " %" : ""}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                      {previewFields.length === 0 && (
-                        <p className="medicine-market-card-incomplete">
-                          المعلومات قيد الإكمال. ساهم بإضافة حقل.
-                        </p>
-                      )}
-                      <div className="medicine-market-card-bottom">
-                        <span>
-                          <Heart size={13} /> {item.likes}{" "}
-                          <MessageCircle size={13} />{" "}
-                          {statusLabels[item.status] ?? "منشور"}
-                          {item.archived ? " · مؤرشف" : ""}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="compact"
-                          onClick={() => openCard(item.id)}
-                        >
-                          فتح الكرت
-                        </Button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+              <div className="market-compact-list">
+      {list.data?.items.map(item => <MarketCompactCard key={item.id} item={item}
+        type={types.find(type => type.key === item.kind)} references={references}
+        onOpen={openCard} />)}
+    </div>
               {list.data && pagination(list.data.total, 18)}
             </>
           )}
