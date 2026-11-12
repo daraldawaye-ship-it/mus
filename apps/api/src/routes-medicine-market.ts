@@ -592,15 +592,15 @@ const marketImageUploadSchema=z.object({
 }).strict();
 const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
 /** Validate compressed WebP dimensions without trusting browser metadata. */
-function validateMarketImage(dataUrl:string, profile:'medicine'|'prescription'='medicine'):{bytes:Buffer;width:number;height:number} {
+function validateMarketImage(dataUrl:string, _profile:'medicine'|'prescription'='medicine'):{bytes:Buffer;width:number;height:number} {
   const match=/^data:image\/webp;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
   if(!match)throw new HttpError(400,"image_format","يجب أن تكون الصورة بصيغة WebP");
   const bytes=Buffer.from(match[1],"base64");
-  if(bytes.length<30 || bytes.length>(profile==='prescription'?512000:102400) ||
+  if(bytes.length<30 || bytes.length>204800 ||
      bytes.subarray(0,4).toString("ascii")!=="RIFF" ||
      bytes.subarray(8,12).toString("ascii")!=="WEBP" ||
      bytes.readUInt32LE(4)+8!==bytes.length)
-    throw new HttpError(400,"image_size","الصورة غير صالحة أو تتجاوز 100 كيلوبايت");
+    throw new HttpError(400,"image_size","الصورة غير صالحة أو تتجاوز 200 كيلوبايت");
   const codec=bytes.subarray(12,16).toString("ascii");
   let width=0,height=0;
   if(codec==="VP8 " && bytes.length>=30){
@@ -616,10 +616,10 @@ function validateMarketImage(dataUrl:string, profile:'medicine'|'prescription'='
     width=1+(bits&0x3fff);
     height=1+((bits>>>14)&0x3fff);
   }
-  if(profile==='medicine' && (width<1||height<1||width>512||height>512||Math.max(width,height)!==512))
-    throw new HttpError(400,"image_dimensions","صورة الصنف يجب أن يكون ضلعها الأكبر 512 بكسل");
-  if(profile==='prescription' && (width<1||height<1||width>1600||height>1600))
-    throw new HttpError(400,"image_dimensions","صورة الوصفة لا يجوز أن تتجاوز 1600 بكسل في أي ضلع");
+  if(width<1||height<1||width>1200||height>1200)
+    throw new HttpError(400,"image_dimensions","الضلع الأكبر للصورة لا يتجاوز 1200 بكسل");
+  if(codec==="VP8X" && (bytes[20]&2)!==0)
+    throw new HttpError(400,"image_animation","حوّل GIF إلى صورة WebP ثابتة قبل الرفع");
   return {bytes,width,height};
 }
 
@@ -644,7 +644,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const u=await viewer(pool,req);
     const card=await getCard(pool,id(req.params.cardId),u);
     if(card.kind==="composition")missing();
-    const variant=parse(z.enum(["icon","preview"]),req.params.variant);
+    const variant=parse(z.enum(["icon","preview","main"]),req.params.variant);
     const source=card.data.image??card.data.imageUrl;
     if(typeof source!=="string"||!source)missing();
     const local=/^\/api\/medicine-market\/images\/([a-f0-9-]{36})$/.exec(source);
@@ -657,7 +657,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       if(original){
         const versions=await buildMarketImageVariants(original);
         await storeMarketImageVariants(pool,source,versions);
-        bytes=versions[variant];
+        bytes=versions[variant==="icon"?"icon":"preview"];
       }
     }
     if(!bytes)missing("الصورة المصغرة غير جاهزة");
@@ -779,12 +779,12 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height});
     });
     res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,
-      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",previewUrl:marketImagePath(assetId)+"?variant=preview",iconBytes:variants.icon.length,previewBytes:variants.preview.length}:{})});
+      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",mainUrl:marketImagePath(assetId),iconBytes:variants.icon.length,mainBytes:variants.preview.length}:{})});
   }));
   router.get(root+"/images/:imageId",handler(async(req,res)=>{
     await enabled(pool,req);
     const imageId=parse(z.string().uuid(),req.params.imageId);
-    const variant=parse(z.enum(["original","icon","preview"]),req.query.variant??"original");
+    const variant=parse(z.enum(["main","original","icon","preview"]),req.query.variant??"main");
     const u=await viewer(pool,req);
     const result=await pool.query(
       "SELECT i.image_bytes,i.uploaded_by,c.created_by,c.status,c.archived,"+
@@ -800,7 +800,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     res.set("Cache-Control",publicImage?"private, max-age=86400":"no-store");
     res.set("Content-Security-Policy","default-src 'none'; sandbox");
     let bytes:Buffer=item.image_bytes;
-    if(variant!=="original"){
+    if(variant==="icon"){
       if(!stagingIsolated)missing();
       const source=marketImagePath(imageId);
       const cached=await readMarketImageVariant(pool,source,variant);
@@ -808,7 +808,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
       else {
         const versions=await buildMarketImageVariants(item.image_bytes);
         await storeMarketImageVariants(pool,source,versions);
-        bytes=versions[variant];
+        bytes=versions[variant==="icon"?"icon":"preview"];
       }
     }
     res.type("image/webp").send(bytes);

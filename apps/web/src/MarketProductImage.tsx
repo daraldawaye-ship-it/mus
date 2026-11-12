@@ -17,7 +17,7 @@ export function MarketProductImage({
   previewOnClick?:boolean;
 }){
   const preferred=trimLegacyPadding&&/^\/api\/medicine-market\/images\/[a-f0-9-]{36}$/.test(src)
-    ?src+"?variant=preview":src;
+    ?src+"?variant=main":src;
   const [display,setDisplay]=useState(preferred);
   useEffect(()=>{
     let active=true;

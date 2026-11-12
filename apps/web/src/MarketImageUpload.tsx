@@ -7,46 +7,39 @@ const DATA_PREFIX="data:image/webp;base64,";
 type Uploaded={url:string;bytes:number;width:number;height:number};
 type PictureProfile="medicine"|"prescription";
 
-/** Complete image, original aspect ratio, no white padding and no metadata. */
-export async function prepareMarketImage(file:File,profile:PictureProfile="medicine"){
-  if(!file.type.startsWith("image/")||file.size>MAX_INPUT_BYTES)
-    throw Error("اختر صورة لا يزيد حجمها الأصلي عن 12 ميجابايت");
+/** GIF (including .gif files without a MIME label) becomes one still WebP.
+ * createImageBitmap reads the default/first animation frame; canvas strips metadata.
+ * Only the encoded result is uploaded. The source file never enters storage.
+ */
+export async function prepareMarketImage(file:File,_profile:PictureProfile="medicine"){
+  const gif=file.type.toLowerCase()==="image/gif" || /\.gif$/i.test(file.name);
+  if((!file.type.startsWith("image/")&&!gif)||file.size>MAX_INPUT_BYTES||file.size===0)
+    throw Error("اختر صورة أو GIF لا يزيد حجم ملفها قبل الضغط عن 12 ميجابايت");
   const image=await createImageBitmap(file);
   try{
     if(image.width<1||image.height<1||image.width*image.height>30_000_000)
       throw Error("أبعاد الصورة غير مدعومة");
-    const prescription=profile==="prescription";
-    const maxSide=prescription?1600:512;
-    const target=prescription?300*1024:80*1024;
-    const maximum=prescription?500*1024:100*1024;
     const canvas=document.createElement("canvas");
     const ctx=canvas.getContext("2d");
     if(!ctx)throw Error("المتصفح لا يدعم تجهيز الصور");
-    ctx.imageSmoothingEnabled=true;
-    ctx.imageSmoothingQuality="high";
-    const ratios=prescription?[1,0.90,0.8,0.70]:[1];
-    for(const ratio of ratios){
-      const scale=prescription
-        ?Math.min(1,maxSide*ratio/Math.max(image.width,image.height))
-        :maxSide/Math.max(image.width,image.height);
+    for(const ratio of [1,0.85,0.7,0.5]){
+      const scale=Math.min(1,1200*ratio/Math.max(image.width,image.height));
       canvas.width=Math.max(1,Math.round(image.width*scale));
       canvas.height=Math.max(1,Math.round(image.height*scale));
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
       ctx.drawImage(image,0,0,canvas.width,canvas.height);
       let fallback:{dataUrl:string;bytes:number}|null=null;
-      for(const quality of [0.85,0.8,0.74,0.68,0.60,0.53,0.45,0.38,0.30]){
+      for(const quality of [0.85,0.8,0.72,0.62,0.5,0.38,0.28]){
         const dataUrl=canvas.toDataURL("image/webp",quality);
-        if(!dataUrl.startsWith(DATA_PREFIX))
-          throw Error("هذا المتصفح لا يدعم حفظ صور WebP");
-        const bytes=Math.floor((dataUrl.length-DATA_PREFIX.length)*3/4);
-        if(bytes<=target)return {dataUrl,bytes,width:canvas.width,height:canvas.height};
-        fallback={dataUrl,bytes};
+        if(!dataUrl.startsWith(DATA_PREFIX))throw Error("هذا المتصفح لا يدعم حفظ صور WebP");
+        const encoded=dataUrl.slice(DATA_PREFIX.length);
+        const bytes=encoded.length*3/4-(encoded.endsWith("==")?2:encoded.endsWith("=")?1:0);
+        if(bytes<=150*1024)return {dataUrl,bytes,width:canvas.width,height:canvas.height};
+        if(bytes<=200*1024&&!fallback)fallback={dataUrl,bytes};
       }
-      if(fallback && fallback.bytes<=maximum)
-        return {...fallback,width:canvas.width,height:canvas.height};
+      if(fallback)return {...fallback,width:canvas.width,height:canvas.height};
     }
-    throw Error(prescription
-      ?"الصورة كبيرة جدًا بعد الضغط؛ اختر صورة أوضح بخلفية أبسط"
-      :"تعذر ضغط الصورة إلى أقل من 100 كيلوبايت");
+    throw Error("تعذر ضغط الصورة إلى 200 كيلوبايت؛ اختر صورة بخلفية أبسط");
   } finally {image.close();}
 }
 
@@ -94,7 +87,7 @@ export function MarketImageUpload({
         trimLegacyPadding={!prescription}
         style={{maxWidth:260,maxHeight:380,width:"auto",height:"auto",objectFit:"contain"}}
         alt={prescription?"معاينة الوصفة":"معاينة صورة الكرت"}/>}
-      <input type="file" accept="image/*"
+      <input type="file" accept="image/*,.gif"
         aria-label={prescription?"اختر صورة بديلة للوصفة":"اختر صورة للكرت"}
         onChange={(event)=>void upload(event)}
         disabled={disabled||busy}/>
@@ -102,9 +95,8 @@ export function MarketImageUpload({
         onClick={()=>{onChange(null);setSize(null);setError("");}}>إزالة الصورة</button>}
     </div>
     <small className="muted">
-      {prescription
-       ?"يُحفظ كامل نص الوصفة بقدر الإمكان، دون قص، بصيغة WebP؛ حتى 1600 بكسل و500 كيلوبايت."
-       :"الصورة كاملة ومضغوطة؛ تُجهز تلقائيًا معاينة 240 بكسل وأيقونة 64 بكسل للبحث والقوائم."}
+      WebP حتى 200 كيلوبايت و1200 بكسل + أيقونة حتى 16 كيلوبايت و64 بكسل فقط.
+      GIF مسموحة وتُحفظ صورة ثابتة؛ لا يُحفظ الملف الأصلي أو نسخة معاينة ثالثة.
     </small>
     {busy&&<small aria-live="polite">جارٍ تجهيز الصورة ورفعها…</small>}
     {size!==null&&!busy&&<small aria-live="polite">رُفعت الصورة ({Math.round(size/1024)} كيلوبايت). اضغط «حفظ المساهمة» لاعتمادها.</small>}

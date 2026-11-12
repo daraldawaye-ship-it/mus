@@ -19,8 +19,9 @@ test("all market card kinds except compositions expose exactly one image field",
 test("variants preserve aspect ratio and keep icon/preview byte bounds", async () => {
   const original = await photo(); const variants = await buildMarketImageVariants(original);
   assert.equal(variants.iconWidth, 64); assert.equal(variants.iconHeight, 32);
-  assert.equal(variants.previewWidth, 240); assert.equal(variants.previewHeight, 120);
-  assert.ok(variants.icon.length <= 16 * 1024); assert.ok(variants.preview.length <= 64 * 1024);
+  assert.equal(variants.previewWidth, 512); assert.equal(variants.previewHeight, 256);
+  assert.deepEqual(variants.preview, original, "do not recompress a compliant main WebP");
+  assert.ok(variants.icon.length <= 16 * 1024); assert.ok(variants.preview.length <= 200 * 1024);
   assert.equal((await sharp(variants.icon).metadata()).format, "webp");
   assert.equal((await sharp(variants.preview).metadata()).exif, undefined);
   await assert.rejects(buildMarketImageVariants(Buffer.from("not an image")));
@@ -57,6 +58,7 @@ test("isolated image routes enforce visibility, admin rules, byte sizes and casc
         (5,'dosage-form','Test form','published');
     `);
     await pool.query(await readFile(new URL("../apps/api/market-migrations/20261112_market_image_variants.sql", import.meta.url), "utf8"));
+    await pool.query(await readFile(new URL("../apps/api/market-migrations/20261112_market_images_two_copies.sql", import.meta.url), "utf8"));
     const owner = { id: 1, displayName: "Test owner", owner: true, kind: "admin", suspended: false, archived: false } as User;
     const member = { ...owner, id: 2, owner: false, kind: "member" } as User;
     const app = express(); app.use(express.json({ limit: "768kb" }));
@@ -89,7 +91,10 @@ test("isolated image routes enforce visibility, admin rules, byte sizes and casc
     assert.equal((await sharp(Buffer.from(await icon.arrayBuffer())).metadata()).width, 64);
     const preview = await fetch(`http://127.0.0.1:${address.port}${result.url.replace(/^\/api/, "")}?variant=preview`);
     assert.equal(preview.status, 200);
-    assert.equal((await sharp(Buffer.from(await preview.arrayBuffer())).metadata()).width, 240);
+    assert.equal((await sharp(Buffer.from(await preview.arrayBuffer())).metadata()).width, 512);
+    const saved=(await pool.query("SELECT preview_bytes,storage_version FROM market_image_variants WHERE image_id=$1",[result.url.split("/").at(-1)])).rows[0];
+    assert.equal(saved.preview_bytes,null,"no third persisted copy");
+    assert.equal(saved.storage_version,2);
     const privateUpload = await upload(3); assert.equal(privateUpload.status, 201);
     const privateImage = await privateUpload.json() as { url: string };
     await pool.query("UPDATE medicine_market_cards SET data=jsonb_build_object('image',$1::text) WHERE id=3", [privateImage.url]);
@@ -110,4 +115,14 @@ test("isolated image routes enforce visibility, admin rules, byte sizes and casc
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end();
   }
+});
+
+test("static GIF is converted to bounded main WebP and icon without retaining GIF", async () => {
+  const gif=await sharp({create:{width:1600,height:800,channels:3,background:"#409080"}}).gif().toBuffer();
+  const out=await buildMarketImageVariants(gif);
+  const main=await sharp(out.preview).metadata(), icon=await sharp(out.icon).metadata();
+  assert.equal(main.format,"webp");assert.equal(main.pages??1,1);
+  assert.equal(main.width,1200);assert.equal(main.height,600);
+  assert.ok(out.preview.length<=204800);assert.ok(out.icon.length<=16384);
+  assert.equal(icon.width,64);assert.equal(icon.height,32);
 });

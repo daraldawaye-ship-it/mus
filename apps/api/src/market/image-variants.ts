@@ -12,7 +12,9 @@ sharp.concurrency(1);
 sharp.cache({ memory: 16, files: 0, items: 16 });
 const MAX_SOURCE = 12 * 1024 * 1024;
 const LOCAL_IMAGE = /^\/api\/medicine-market\/images\/([a-f0-9-]{36})$/;
-export type ImageVariant = "icon" | "preview";
+// Only two persistent files: bounded main WebP and icon. The preview name
+// remains an HTTP/schema compatibility alias, never a third local file.
+export type ImageVariant = "icon" | "preview" | "main";
 export type ImageVariants = {
   icon: Buffer; preview: Buffer;
   iconWidth: number; iconHeight: number;
@@ -21,7 +23,7 @@ export type ImageVariants = {
 export const imageSourceKey = (source: string) => createHash("sha256").update(source).digest("hex");
 let transformations = 0;
 
-/** Decode once per size, preserve the complete image and strip metadata. */
+/** GIF is decoded as one still frame; metadata and the raw input are not stored. */
 export async function buildMarketImageVariants(bytes: Buffer): Promise<ImageVariants> {
   if (!bytes.length || bytes.length > MAX_SOURCE)
     throw new HttpError(400, "image_size", "حجم الصورة غير مدعوم");
@@ -34,48 +36,67 @@ export async function buildMarketImageVariants(bytes: Buffer): Promise<ImageVari
     if (!["jpeg", "png", "webp", "gif", "avif", "heif"].includes(meta.format ?? ""))
       throw new HttpError(400, "image_format", "صيغة الصورة غير مدعومة");
     const resize = async (size: number, maximum: number) => {
-      for (const quality of [76, 60, 44, 28]) {
-        const output = await sharp(bytes, options).rotate()
-          .resize(size, size, { fit: "inside", withoutEnlargement: true })
-          .webp({ quality, effort: 3 }).timeout({ seconds: 2 })
-          .toBuffer({ resolveWithObject: true });
-        if (output.data.length <= maximum) return output;
+      for (const scale of [1, 0.8, 0.6]) {
+        for (const quality of [82, 70, 56, 42, 28]) {
+          const side = Math.max(1, Math.floor(size * scale));
+          const output = await sharp(bytes, options).rotate()
+            .resize(side, side, { fit: "inside", withoutEnlargement: true })
+            .webp({ quality, effort: 3 }).timeout({ seconds: 2 })
+            .toBuffer({ resolveWithObject: true });
+          if (output.data.length <= maximum) return output;
+        }
       }
       throw new HttpError(400, "image_size", "تعذر تجهيز نسخة خفيفة للصورة");
     };
+    // Do not recompress or enlarge old images that already meet the policy.
+    const reusable = meta.format === "webp" && (meta.pages ?? 1) === 1 &&
+      !!meta.width && !!meta.height && meta.width <= 1200 && meta.height <= 1200 &&
+      bytes.length <= 200 * 1024 && !meta.exif && !meta.xmp && !meta.icc && !meta.orientation;
+    const main = reusable ? { data: bytes, info: { width: meta.width!, height: meta.height! } }
+      : await resize(1200, 200 * 1024);
     const icon = await resize(64, 16 * 1024);
-    const preview = await resize(240, 64 * 1024);
-    return { icon: icon.data, preview: preview.data,
+    return { icon: icon.data, preview: main.data,
       iconWidth: icon.info.width, iconHeight: icon.info.height,
-      previewWidth: preview.info.width, previewHeight: preview.info.height,
-      sourceBytes: bytes.length };
+      previewWidth: main.info.width, previewHeight: main.info.height,
+      sourceBytes: main.data.length };
   } catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(400, "image_decode", "تعذر قراءة الصورة أو أبعادها كبيرة جدًا");
   } finally { transformations--; }
 }
 
-/** Foreign key removes every derivative when a private prescription photo is deleted. */
+/** Local main bytes live once in uploads; external cached main bytes live once here. */
 export async function storeMarketImageVariants(db: Database, source: string, value: ImageVariants) {
   const localId = LOCAL_IMAGE.exec(source)?.[1] ?? null;
+  if (localId) {
+    // Preserve identity, moderation, card revision and ordering. Replace oversized
+    // historical bytes only after a valid, bounded WebP has been generated.
+    await db.query(`UPDATE market_image_uploads SET image_bytes=$2,byte_size=$3,width=$4,height=$5
+      WHERE id=$1 AND (image_bytes IS DISTINCT FROM $2 OR byte_size IS DISTINCT FROM $3
+        OR width IS DISTINCT FROM $4 OR height IS DISTINCT FROM $5)`,
+      [localId,value.preview,value.preview.length,value.previewWidth,value.previewHeight]);
+  }
   await db.query(`INSERT INTO market_image_variants
     (source_key,source_url,image_id,status,icon_bytes,preview_bytes,icon_width,icon_height,
-     preview_width,preview_height,source_bytes,error_code)
-    VALUES($1,$2,$3,'ready',$4,$5,$6,$7,$8,$9,$10,'')
+     preview_width,preview_height,source_bytes,error_code,storage_version)
+    VALUES($1,$2,$3,'ready',$4,$5,$6,$7,$8,$9,$10,'',2)
     ON CONFLICT(source_key) DO UPDATE SET status='ready',image_id=EXCLUDED.image_id,
       icon_bytes=EXCLUDED.icon_bytes,preview_bytes=EXCLUDED.preview_bytes,
       icon_width=EXCLUDED.icon_width,icon_height=EXCLUDED.icon_height,
       preview_width=EXCLUDED.preview_width,preview_height=EXCLUDED.preview_height,
-      source_bytes=EXCLUDED.source_bytes,error_code='',updated_at=now()`,
-    [imageSourceKey(source), source, localId, value.icon, value.preview,
-      value.iconWidth, value.iconHeight, value.previewWidth, value.previewHeight, value.sourceBytes]);
+      source_bytes=EXCLUDED.source_bytes,error_code='',storage_version=2,updated_at=now()`,
+    [imageSourceKey(source), source, localId, value.icon, localId ? null : value.preview,
+      value.iconWidth, value.iconHeight, localId ? null : value.previewWidth,
+      localId ? null : value.previewHeight, value.sourceBytes]);
 }
 
 export async function readMarketImageVariant(db: Database, source: string, variant: ImageVariant): Promise<Buffer | null> {
-  // The caller must check card/image visibility BEFORE reading any derivative.
-  const column = variant === "icon" ? "icon_bytes" : "preview_bytes";
-  const result = await db.query(`SELECT ${column} AS bytes FROM market_image_variants
-    WHERE source_key=$1 AND status='ready'`, [imageSourceKey(source)]);
+  // The caller checks card/image visibility and source-card binding first.
+  const column = variant === "icon" ? "v.icon_bytes"
+    : "CASE WHEN v.image_id IS NOT NULL THEN i.image_bytes ELSE v.preview_bytes END";
+  const result = await db.query(`SELECT ${column} AS bytes FROM market_image_variants v
+    LEFT JOIN market_image_uploads i ON i.id=v.image_id
+    WHERE v.source_key=$1 AND v.status='ready'`, [imageSourceKey(source)]);
   return result.rows[0]?.bytes ?? null;
 }
 
@@ -149,30 +170,38 @@ async function downloadPublicImage(source: string): Promise<Buffer> {
   throw new Error("image_redirects");
 }
 
-const sourcesSql = `SELECT min(c.id)::integer AS card_id,
-  COALESCE(NULLIF(c.data->>'image',''),NULLIF(c.data->>'imageUrl','')) AS source_url
-  FROM medicine_market_cards c WHERE c.kind<>'composition'
-    AND COALESCE(NULLIF(c.data->>'image',''),NULLIF(c.data->>'imageUrl','')) IS NOT NULL
-  GROUP BY COALESCE(NULLIF(c.data->>'image',''),NULLIF(c.data->>'imageUrl',''))`;
+// Include historical and pending local uploads too, not only current card photos.
+const sourcesSql = `SELECT min(card_id)::integer AS card_id,source_url FROM (
+  SELECT c.id AS card_id,
+    COALESCE(NULLIF(c.data->>'image',''),NULLIF(c.data->>'imageUrl','')) AS source_url
+    FROM medicine_market_cards c WHERE c.kind<>'composition'
+  UNION ALL
+  SELECT i.card_id,'/api/medicine-market/images/'||i.id::text
+    FROM market_image_uploads i JOIN medicine_market_cards c ON c.id=i.card_id
+    WHERE c.kind<>'composition'
+) all_sources WHERE source_url IS NOT NULL GROUP BY source_url`;
 type BackfillState = { running: boolean; processed: number; ready: number; failed: number; lastError: string | null };
 const jobs = new WeakMap<Pool, BackfillState>();
 
 export async function marketImageBackfillStatus(pool: Pool) {
   const counts = (await pool.query(`WITH sources AS (${sourcesSql})
     SELECT count(*)::integer AS total,
-      count(*) FILTER(WHERE v.status='ready')::integer AS ready,
+      count(*) FILTER(WHERE v.status='ready' AND v.storage_version=2)::integer AS ready,
       count(*) FILTER(WHERE v.status='error')::integer AS failed,
-      count(*) FILTER(WHERE v.source_key IS NULL)::integer AS pending,
+      count(*) FILTER(WHERE v.source_key IS NULL OR (v.status='ready' AND v.storage_version<2))::integer AS pending,
       COALESCE(sum(octet_length(v.icon_bytes)),0)::text AS "iconBytes",
-      COALESCE(sum(octet_length(v.preview_bytes)),0)::text AS "previewBytes",
+      COALESCE(sum(octet_length(v.preview_bytes)) FILTER(WHERE v.image_id IS NOT NULL),0)::text AS "previewBytes",
+      COALESCE(sum(CASE WHEN v.image_id IS NOT NULL THEN octet_length(i.image_bytes) ELSE octet_length(v.preview_bytes) END),0)::text AS "mainBytes",
       COALESCE(sum(v.source_bytes),0)::text AS "sourceBytes"
-    FROM sources s LEFT JOIN market_image_variants v ON v.source_url=s.source_url`)).rows[0];
+    FROM sources s LEFT JOIN market_image_variants v ON v.source_url=s.source_url
+      LEFT JOIN market_image_uploads i ON i.id=v.image_id`)).rows[0];
   const failures = (await pool.query(`WITH sources AS (${sourcesSql})
     SELECT s.card_id AS "cardId",c.name,v.error_code AS "reason"
     FROM sources s JOIN market_image_variants v ON v.source_url=s.source_url AND v.status='error'
     JOIN medicine_market_cards c ON c.id=s.card_id ORDER BY s.card_id LIMIT 30`)).rows;
   return { ...counts, running: jobs.get(pool)?.running ?? false,
-    run: jobs.get(pool) ?? null, failures, iconMaxSide: 64, previewMaxSide: 240 };
+    run: jobs.get(pool) ?? null, failures, iconMaxSide: 64, iconMaxBytes: 16384,
+    mainMaxSide: 1200, mainMaxBytes: 204800, storedCopies: 2, policyVersion: 2 };
 }
 
 /** One sequential, owner-triggered pass; saved successes survive process restarts. */
@@ -185,15 +214,15 @@ export function startMarketImageBackfill(pool: Pool, retryFailed = false) {
     try {
       locked = Boolean((await db.query("SELECT pg_try_advisory_lock(hashtext('market-image-variants-v1')) AS locked")).rows[0].locked);
       if (!locked) return;
-      let after = 0;
+      let after = "";
       for (;;) {
         const batch = (await db.query(`WITH sources AS (${sourcesSql})
           SELECT s.* FROM sources s LEFT JOIN market_image_variants v ON v.source_url=s.source_url
-          WHERE s.card_id>$1 AND (v.source_key IS NULL OR ($2 AND v.status='error'))
-          ORDER BY s.card_id LIMIT 20`, [after, retryFailed])).rows;
+          WHERE s.source_url>$1 AND (v.source_key IS NULL OR (v.status='ready' AND v.storage_version<2) OR ($2 AND v.status='error'))
+          ORDER BY s.source_url LIMIT 20`, [after, retryFailed])).rows;
         if (!batch.length) break;
         for (const entry of batch) {
-          after = Number(entry.card_id); const source = String(entry.source_url);
+          after = String(entry.source_url); const source = after;
           try {
             const localId = LOCAL_IMAGE.exec(source)?.[1];
             const bytes: Buffer | undefined = localId
