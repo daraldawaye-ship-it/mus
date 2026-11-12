@@ -656,7 +656,7 @@ export function NotificationTemplatesPage({
           .join(" ")
           .toLocaleLowerCase("ar")
           .includes(search.toLocaleLowerCase("ar"))),
-  );
+  ).sort((a, b) => Number(b.implemented) - Number(a.implemented));
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft || pending) return;
