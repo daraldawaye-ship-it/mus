@@ -30,6 +30,7 @@ export function PledgeDialogs({
  const [durationDays,setDurationDays]=useState("2");
  const [limit,setLimit]=useState("");
  const [q,setQ]=useState("");
+ const [showZero,setShowZero]=useState(false);
  const [printBusy,setPrintBusy]=useState<number|null>(null);
  const [printError,setPrintError]=useState("");
  const [printJob,setPrintJob]=useState<{pledge:Pledge;statement:PledgeStatementData}|null>(null);
@@ -50,10 +51,13 @@ export function PledgeDialogs({
  const [saving,setSaving]=useState(false);
  const [error,setError]=useState("");
  const requestKey=useRef(crypto.randomUUID());
+ const excludeZero=mode==="list" && !showZero;
  const pledges=useQuery({
-  queryKey:["pledges",companyId,q],
+  queryKey:["pledges",companyId,q,excludeZero],
   enabled:mode==="list"||mode==="pay"||mode==="receive",
-  queryFn:({signal})=>api<{items:Pledge[]}>(`/companies/${companyId}/pledges?q=${encodeURIComponent(q)}`,{signal}),
+  queryFn:({signal})=>api<{items:Pledge[]}>(
+   `/companies/${companyId}/pledges?`+
+    new URLSearchParams({q,...(excludeZero?{excludeZero:"1"}:{})}),{signal}),
  });
  // Like the saved invoice, print the prepared content from this app document.
  // Wait until the actual letterhead image (or its safe text fallback) is ready.
@@ -217,13 +221,19 @@ export function PledgeDialogs({
  </Dialog>
  <Dialog open={mode==="list"} title="عرض الرهونات" className="pledge-list-dialog" onClose={onClose}>
   <div className="form-stack">
-   <Field label="البحث بالاسم أو الهاتف أو وصف الرهن أو رقم الحساب" value={q} onChange={e=>setQ(e.target.value)} />
+   <div className="pledge-list-filter-bar">
+    <Field label="البحث بالاسم أو الهاتف أو وصف الرهن أو رقم الحساب" value={q} onChange={e=>setQ(e.target.value)} />
+    <label className="pledge-show-zero-toggle">
+     <input type="checkbox" checked={showZero} onChange={e=>setShowZero(e.target.checked)} />
+     إظهار المصفر
+    </label>
+   </div>
    {pledges.error && <Notice tone="error">{errorMessage(pledges.error)}</Notice>}
    {printError && <Notice tone="error">{printError}</Notice>}
    {pledges.isFetching && <p>جارٍ تحميل الرهونات…</p>}
    <div className="table-scroll pledge-list-table-scroll">
     <table>
-     <thead><tr><th>الإجراءات</th><th>الرصيد</th><th>الحساب</th><th>الرهن</th><th>السقف</th><th>الهاتف</th></tr></thead>
+     <thead><tr><th>الإجراءات</th><th>الرصيد</th><th>الحساب</th><th>الرهن</th><th>بواسطة</th><th>تاريخ فتح الحساب</th><th>السقف</th><th>الهاتف</th></tr></thead>
      <tbody>
       {(pledges.data?.items??[]).map(item=><tr key={item.accountId}>
        <td className="pledge-list-actions">
@@ -234,6 +244,10 @@ export function PledgeDialogs({
        <td><bdi className={item.balance.startsWith("-") ? "receipt-negative-amount" : undefined}>{formatWholeMoney(item.balance.startsWith("-") ? item.balance.slice(1) : item.balance)}{Number(item.balance) < 0 ? " دائن" : Number(item.balance) > 0 ? " مدين" : ""}</bdi></td>
        <td title={item.name}>{item.name}</td>
        <td title={item.collateral}>{item.collateral} ({item.durationDays} يوم)</td>
+       <td title={item.receivedBy||""}>{item.receivedBy||"—"}</td>
+       <td><bdi dir="ltr">{item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString("en-GB",{timeZone:"Asia/Aden",day:"2-digit",month:"2-digit",year:"numeric"})
+        : "—"}</bdi></td>
        <td><bdi>{formatWholeMoney(item.limit)}</bdi></td>
        <td><bdi dir="ltr">{item.phone}</bdi></td>
       </tr>)}
