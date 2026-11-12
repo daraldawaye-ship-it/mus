@@ -5268,7 +5268,12 @@ a.notification-quick-title:hover { text-decoration: underline; }
 /* Pledge list only: keep pay/receive dialogs' columns unchanged. */
 @media (min-width: 850px) {
   .dialog.pledge-list-dialog { width: min(1080px, calc(100vw - 48px)); }
+  /* The global .form-stack max-width:700px caused the blank half-dialog. */
+  .pledge-list-dialog .form-stack { max-width: none; width: 100%; min-width: 0; }
+  .pledge-list-dialog .pledge-list-table-scroll table { min-width: 0; width: 100%; }
 }
+.pledge-list-dialog .form-stack { max-width: none; width: 100%; min-width: 0; }
+.pledge-list-dialog .pledge-list-table-scroll { width: 100%; max-width: 100%; min-width: 0; }
 .pledge-list-table-scroll table { min-width: 750px; }
 .pledge-list-dialog .pledge-list-table-scroll table { min-width: 830px; }
 .pledge-list-dialog .pledge-list-table-scroll th:nth-child(1) { width: 174px; }
