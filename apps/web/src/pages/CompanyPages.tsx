@@ -262,6 +262,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.purchase-new", label: "إضافة فاتورة مشتريات", href: `/companies/${company.id}/invoices/new?kind=purchase`, action: "create" },
     { key: "company.purchases", label: "فواتير المشتريات", href: `/companies/${company.id}/purchases`, action: "view" },
     { key: "company.item-options-list", label: "قائمة الأصناف", href: `/companies/${company.id}/item-options-list`, action: "view" },
+    { key: "company.public-requests", label: "طلب الجمهور", href: `/companies/${company.id}/public-requests`, action: "view" },
     { key: "company.item-options-list", label: "متابعة مسودات الطلبيات", href: `/companies/${company.id}/item-order-drafts`, action: "view" },
     { key: "company.stock-movements", label: "حركة الأصناف", href: `/companies/${company.id}/stock-movements`, action: "view" },
     { key: "company.doctors", label: "الأطباء والجهات", href: `/companies/${company.id}/doctors`, action: "view" },
