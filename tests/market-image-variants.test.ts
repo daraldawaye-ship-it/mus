@@ -96,6 +96,10 @@ test("isolated image routes enforce visibility, admin rules, byte sizes and casc
     assert.equal((await fetch(`${root}/cards/3/image-variants/icon`)).status, 404);
     const allowed = await fetch(`${root}/cards/3/image-variants/icon`, { headers: { "x-test-user": "owner" } });
     assert.equal(allowed.status, 200); assert.match(allowed.headers.get("cache-control") ?? "", /no-store/);
+    // Even a cached private image cannot be borrowed by a different public card.
+    await pool.query("UPDATE medicine_market_cards SET data=jsonb_build_object('image',$1::text) WHERE id=1", [privateImage.url]);
+    assert.equal((await fetch(`${root}/cards/1/image-variants/icon`)).status, 404);
+    assert.equal((await fetch(`${root}/cards/1/image-variants/preview`)).status, 404);
     const privateId = privateImage.url.split("/").at(-1);
     await pool.query("DELETE FROM market_image_uploads WHERE id=$1", [privateId]);
     assert.equal(Number((await pool.query("SELECT count(*) FROM market_image_variants WHERE image_id=$1", [privateId])).rows[0].count), 0);

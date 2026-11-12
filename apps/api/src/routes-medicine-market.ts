@@ -647,8 +647,11 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     const variant=parse(z.enum(["icon","preview"]),req.params.variant);
     const source=card.data.image??card.data.imageUrl;
     if(typeof source!=="string"||!source)missing();
-    let bytes=await readMarketImageVariant(pool,source,variant);
     const local=/^\/api\/medicine-market\/images\/([a-f0-9-]{36})$/.exec(source);
+    // Never expose another card's private photo through a cached derivative.
+    if(local && !(await pool.query("SELECT 1 FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rowCount)
+      missing();
+    let bytes=await readMarketImageVariant(pool,source,variant);
     if(!bytes&&local){
       const original=(await pool.query("SELECT image_bytes FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rows[0]?.image_bytes;
       if(original){
