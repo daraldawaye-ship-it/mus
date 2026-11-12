@@ -796,6 +796,7 @@ export function walletRoutes(pool: Pool) {
             "CUSTOMER_EXISTING",
             "DOCTOR_REFERRED",
             "STOCK_COUNT_REQUIRED",
+            "PUBLIC_REQUEST",
           ].includes(code) &&
           input.repeatRule !== "per-document"
         )
