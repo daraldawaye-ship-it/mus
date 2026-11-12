@@ -659,6 +659,15 @@ page(
   { type: "report", keywords: ["قائمة", "الأصناف", "المتوفر", "المبيعات", "المرات", "الكفاية", "الاحتياطي"] },
 );
 page(
+  "company.public-requests",
+  "طلب الجمهور",
+  "المبيعات",
+  "/companies/:companyId/public-requests",
+  { view: member, create: member },
+  "جدول مركزي للمنتجات التي طلبها الجمهور، مرة واحدة للصنف ولكل موظف في اليوم.",
+  { type: "report", parentKey: "company.sales", keywords: ["طلب الجمهور", "طلبات الجمهور", "الزبائن", "الصنف", "مكافآت"] },
+);
+page(
   "company.order-draft-exports",
   "متابعة الطلبيات المرحلة",
   "الأصناف والمخزون",
