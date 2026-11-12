@@ -666,7 +666,7 @@ export function NotificationTemplatesPage({
       canSnooze,
       allowRepeat,
       repeatInterval,
-      notifyManagers,
+      notifyManagers, notifyOwner,
       notifySubject,
       positionKeys, minIntervalHours, latestOnly,
       employeeIds,
@@ -678,7 +678,7 @@ export function NotificationTemplatesPage({
       canSnooze,
       allowRepeat,
       repeatInterval: allowRepeat ? repeatInterval : "none",
-      notifyManagers,
+      notifyManagers, notifyOwner,
       notifySubject,
       positionKeys, minIntervalHours, latestOnly,
       employeeIds,
@@ -820,18 +820,20 @@ export function NotificationTemplatesPage({
               <strong>المستلمون:</strong>
               {[
                 ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifyManagers
-                  ? [companyId ? "المالك والمديرون العامون" : "مالك المنصة"] : []),
+                  ? [companyId ? "المديرون العامون" : "إدارة المنصة"] : []),
                 ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifySubject
                   ? [companyId ? "الموظف المعني" : "المستخدم المعني"] : []),
+                ...(template.notifyOwner ? ["المالك"] : []),
                 ...template.positionKeys.map(key => employeePositions.find(position => position.key === key)?.label ?? key),
                 ...(query.data?.employees ?? []).filter(employee => template.employeeIds.includes(employee.id)).map(employee => employee.name),
               ].length ? (
                 <span>
                   {[
                     ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifyManagers
-                      ? [companyId ? "المالك والمديرون العامون" : "مالك المنصة"] : []),
+                      ? [companyId ? "المديرون العامون" : "إدارة المنصة"] : []),
                     ...(!["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"].includes(template.code) && template.notifySubject
                       ? [companyId ? "الموظف المعني" : "المستخدم المعني"] : []),
+                    ...(template.notifyOwner ? ["المالك"] : []),
                     ...template.positionKeys.map(key => employeePositions.find(position => position.key === key)?.label ?? key),
                     ...(query.data?.employees ?? []).filter(employee => template.employeeIds.includes(employee.id)).map(employee => employee.name),
                   ].join(" · ")}
@@ -942,12 +944,14 @@ export function NotificationTemplatesPage({
               <legend>المستلمون وصلاحية المتابعة</legend>
               {!["CASHBOX_ELECTRONIC_TRANSFER","CASHBOX_POUCH_TRANSFER","CASHBOX_CLOSED"].includes(draft.code) && <>
               <CheckField
-                label={companyId ? "المالك والمديرون العامون" : "مالك المنصة"}
+                label={companyId ? "المديرون العامون" : "إدارة المنصة"}
                 checked={draft.notifyManagers}
                 onChange={(notifyManagers) =>
                   setDraft({ ...draft, notifyManagers })
                 }
               />
+              <CheckField label="إرسال التنبيه للمالك" checked={draft.notifyOwner}
+                onChange={notifyOwner => setDraft({...draft, notifyOwner})} />
               <CheckField
                 label={
                   companyId
