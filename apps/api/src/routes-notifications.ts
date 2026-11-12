@@ -137,9 +137,9 @@ export function notificationRoutes(pool: Pool) {
               );
           }
           await client.query(
-            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,position_keys,employee_ids,updated_by,min_interval_hours,latest_only,notify_owner)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
-    allow_repeat=EXCLUDED.allow_repeat,repeat_interval=EXCLUDED.repeat_interval,notify_managers=EXCLUDED.notify_managers,notify_subject=EXCLUDED.notify_subject,position_keys=EXCLUDED.position_keys,min_interval_hours=EXCLUDED.min_interval_hours,latest_only=EXCLUDED.latest_only,notify_owner=EXCLUDED.notify_owner,employee_ids=EXCLUDED.employee_ids,
+            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,position_keys,employee_ids,updated_by,min_interval_hours,latest_only,notify_owner,reviewed)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
+    allow_repeat=EXCLUDED.allow_repeat,repeat_interval=EXCLUDED.repeat_interval,notify_managers=EXCLUDED.notify_managers,notify_subject=EXCLUDED.notify_subject,position_keys=EXCLUDED.position_keys,min_interval_hours=EXCLUDED.min_interval_hours,latest_only=EXCLUDED.latest_only,notify_owner=EXCLUDED.notify_owner,reviewed=EXCLUDED.reviewed,employee_ids=EXCLUDED.employee_ids,
     revision=notification_settings.revision+1,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp()`,
             [
               companyId,
@@ -157,6 +157,7 @@ export function notificationRoutes(pool: Pool) {
               input.minIntervalHours === undefined ? before.minIntervalHours : input.minIntervalHours,
               input.latestOnly ?? before.latestOnly,
               input.notifyOwner ?? before.notifyOwner,
+              input.reviewed ?? before.reviewed,
             ],
           );
           const after = await effectiveTemplate(client, companyId, before.code);
