@@ -1,3 +1,4 @@
+import { stagingAppendSchema, appendStagingRows } from "./staging-append.ts";
 import { applyStagingSalePrices, stagingPricesSchema } from "./market-staging-prices.ts";
 import { Router } from "express";
 import type { Pool, PoolClient } from "pg";
@@ -45,7 +46,7 @@ const followupEntrySchema = z.object({
 export const followupBatchSchema = z.object({
   entries: z.array(followupEntrySchema).min(1).max(50),
 }).strict();
-export const mcpBodySchemas = { stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema, followupBatchSchema };
+export const mcpBodySchemas = { stagingAppendSchema, stagingImportSchema, bulkMedicinePromotionSchema, sabaImportSchema, followupBatchSchema };
 const sourceSchema = z.object({type:z.literal("source"),key:z.string().min(1).max(150),filename:z.string().max(500),driveId:z.string().min(1).max(200),modifiedAt:z.string().max(100),sha256:z.string().regex(/^[a-f0-9]{64}$/),byteSize:z.number().int().min(0).max(100000000),rowCount:z.number().int().min(0).max(500000),metadata:z.record(z.string(),z.unknown())}).strict();
 const rowSchema = z.object({type:z.literal("row"),section:z.string().max(500),position:z.number().int().positive(),payload:z.string().max(4000000)}).strict();
 const chunkSchema = z.object({type:z.literal("chunk"),index:z.number().int().min(0),data:z.string().max(400000).regex(/^[A-Za-z0-9+/]*={0,2}$/)}).strict();
@@ -313,6 +314,13 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     res.json({runs:runs.rows});
   }));
 
+  router.post("/medicine-market/staging/:sourceId/append",handler(async(req,res)=>{
+    const owner=await authorize(req);
+    await access.viewer(pool,req,true);
+    const sourceId=parse(z.coerce.number().int().positive(),req.params.sourceId);
+    const input=parse(stagingAppendSchema,req.body);
+    res.json(await transaction(pool,db=>appendStagingRows(db,sourceId,input,owner)));
+  }));
   router.post("/medicine-market/staging/import",handler(async(req,res)=>{
     const user=await authorize(req),input=parse(stagingImportSchema,req.body);
     const db=await pool.connect();let handed=false,locked=false;

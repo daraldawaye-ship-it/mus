@@ -9849,5 +9849,64 @@
       "imageId"
     ],
     "source": "routes-medicine-market.ts"
+  },
+  "POST /medicine-market/staging/:sourceId/append": {
+    "queryFields": [],
+    "pathParams": [
+      "sourceId"
+    ],
+    "source": "routes-market-staging.ts",
+    "bodyContract": "stagingAppendSchema",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "expectedRowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "sourceLibraryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dataSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "encoded": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 1000000
+        },
+        "supplierType": {
+          "type": "string",
+          "const": "agent"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "expectedRowCount",
+        "filename",
+        "sourceLibraryId",
+        "sourceSha256",
+        "dataSha256",
+        "encoded",
+        "supplierType"
+      ],
+      "additionalProperties": false
+    }
   }
 }
