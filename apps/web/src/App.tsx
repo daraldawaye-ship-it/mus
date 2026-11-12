@@ -270,6 +270,7 @@ const ItemOptionsListPage = lazy(() =>
   import("./pages/ItemOptionsListPage").then(m=>({default:m.ItemOptionsListPage})),
 );
 const OrderDraftExportsPage = lazy(() => import("./pages/OrderDraftExportsPage").then(m=>({default:m.OrderDraftExportsPage})));
+const PublicRequestsPage = lazy(() => import("./pages/PublicRequestsPage").then(m=>({default:m.PublicRequestsPage})));
 const ItemOrderDraftsPage = lazy(() =>
   import("./pages/ItemOrderDraftsPage").then(m=>({default:m.ItemOrderDraftsPage})),
 );
@@ -398,6 +399,7 @@ const companySections = [
   "item-options-list",
   "item-order-drafts",
   "order-draft-exports",
+  "public-requests",
   "central-access",
   "item",
   "item-agents",
@@ -848,6 +850,8 @@ function CompanyContent({
       </Suspense>;
     case "order-draft-exports":
       return <Suspense fallback={<Notice>جارٍ تحميل سجل الطلبيات…</Notice>}><OrderDraftExportsPage context={context}/></Suspense>;
+    case "public-requests":
+      return <Suspense fallback={<Notice>جارٍ تحميل طلب الجمهور…</Notice>}><PublicRequestsPage context={context}/></Suspense>;
     case "item-order-drafts":
       return <Suspense fallback={<Notice>جارٍ تحميل متابعة مسودات الطلبيات…</Notice>}>
         <ItemOrderDraftsPage key={context.company.id} context={context}/>
