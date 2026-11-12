@@ -1,0 +1,91 @@
+name: Verify market image source binding
+on:
+  push:
+    branches: [preview/render-2026-10-23]
+    paths: [.github/workflows/check-market-image-binding-once.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: isolated_test_only
+          POSTGRES_DB: image_tests
+        ports: ['5432:5432']
+        options: --health-cmd 'pg_isready -U postgres' --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: preview/render-2026-10-23
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Bind cached derivatives to their original card
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p=Path('apps/api/src/routes-medicine-market.ts')
+          if subprocess.check_output(['git','hash-object',str(p)],text=True).strip()!='c931f4e3053ee226eb2272fb6c39cb520497f110':
+            raise SystemExit('Concurrent market route edit; inspect before retry')
+          source=p.read_text()
+          old='''    let bytes=await readMarketImageVariant(pool,source,variant);
+              const local=/^\\/api\\/medicine-market\\/images\\/([a-f0-9-]{36})$/.exec(source);
+              if(!bytes&&local){
+                const original=(await pool.query("SELECT image_bytes FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rows[0]?.image_bytes;
+                if(original){
+                  const versions=await buildMarketImageVariants(original);
+                  await storeMarketImageVariants(pool,source,versions);
+                  bytes=versions[variant];
+                }
+              }'''
+          # Source has four-space route-body indentation, independent of YAML indentation.
+          old='\n'.join(line[10:] if i else line for i,line in enumerate(old.splitlines()))
+          new='''    const local=/^\\/api\\/medicine-market\\/images\\/([a-f0-9-]{36})$/.exec(source);
+              // A public card must not borrow a private image UUID to expose its cached variants.
+              // Check the original association BEFORE reading the derivative, even on a cache hit.
+              if(local && !(await pool.query("SELECT 1 FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rowCount)
+                missing();
+              let bytes=await readMarketImageVariant(pool,source,variant);
+              if(!bytes&&local){
+                const original=(await pool.query("SELECT image_bytes FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rows[0]?.image_bytes;
+                if(original){
+                  const versions=await buildMarketImageVariants(original);
+                  await storeMarketImageVariants(pool,source,versions);
+                  bytes=versions[variant];
+                }
+              }'''
+          new='\n'.join(line[10:] if i else line for i,line in enumerate(new.splitlines()))
+          if source.count(old)!=1: raise SystemExit('Source binding anchor mismatch')
+          p.write_text(source.replace(old,new,1))
+          p=Path('tests/market-image-variants.test.ts'); source=p.read_text()
+          anchor='    const privateId = privateImage.url.split("/").at(-1);'
+          addition='''    // The derivative already exists, but a different public card cannot expose it.
+              await pool.query("UPDATE medicine_market_cards SET data=jsonb_build_object('image',$1::text) WHERE id=1", [privateImage.url]);
+              assert.equal((await fetch(`${root}/cards/1/image-variants/icon`)).status, 404);
+              assert.equal((await fetch(`${root}/cards/1/image-variants/preview`)).status, 404);
+          '''
+          addition='\n'.join(line[10:] if i else line for i,line in enumerate(addition.splitlines()))
+          if source.count(anchor)!=1: raise SystemExit('Test anchor mismatch')
+          p.write_text(source.replace(anchor,addition+'\n'+anchor,1))
+          PY
+      - name: Type check and real PostgreSQL image tests
+        env:
+          TEST_IMAGE_DATABASE_URL: postgres://postgres:isolated_test_only@127.0.0.1:5432/image_tests
+        run: |
+          npm ci
+          npm run check
+          npx tsx --test tests/market-image-variants.test.ts
+          git diff --check
+      - name: Commit verified source binding
+        run: |
+          git rm -- .github/workflows/check-market-image-binding-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- apps/api/src/routes-medicine-market.ts tests/market-image-variants.test.ts
+          git commit -m 'fix(market): check image source ownership before cached thumbnail access'
+          git push origin HEAD:preview/render-2026-10-23
