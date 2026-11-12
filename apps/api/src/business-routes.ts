@@ -31,6 +31,7 @@ import { settlementFollowUpRoutes } from "./routes-settlement-follow-up.ts";
 import { itemActivityReportRoutes } from "./routes-item-activity-report.ts";
 import { itemOptionsListRoutes } from "./routes-item-options-list.ts";
 import { orderDraftExportsRoutes } from "./routes-order-draft-exports.ts";
+import { publicRequestRoutes } from "./routes-public-requests.ts";
 import { itemTemporarySelectionRoutes } from "./routes-item-temporary-selection.ts";
 import { itemImportRoutes } from "./routes-item-import.ts";
 import { inventoryRoutes } from "./routes-inventory.ts";
@@ -105,6 +106,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     itemActivityReportRoutes(pool),
     itemOptionsListRoutes(pool),
     orderDraftExportsRoutes(pool),
+    publicRequestRoutes(pool),
     itemTemporarySelectionRoutes(pool),
     itemImportRoutes(pool),
     inventoryRoutes(pool),
