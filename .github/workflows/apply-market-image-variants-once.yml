@@ -1,0 +1,173 @@
+name: Apply market image variants once
+on:
+  push:
+    branches: [preview/render-2026-10-23]
+    paths: [.github/workflows/apply-market-image-variants-once.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: isolated_test_only
+          POSTGRES_DB: image_tests
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: preview/render-2026-10-23
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Integrate the reviewed changes with source guards
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, subprocess
+          hashes = {
+            'packages/contracts/src/medicine-market.ts':'1f5af5e168994d3a4ae54ca793f1014a58c1ea1d',
+            'apps/api/src/routes-medicine-market.ts':'6beb51364008227966a3461b6f93195d12d277d6',
+            'apps/api/src/market/gateway.ts':'fb33a5983f5ba215d3b55f04b04f076d6749aa3d',
+            'apps/web/src/pages/MedicineMarketPage.tsx':'e830df12658225190abe26324f0f3593a51262f7',
+            'apps/web/src/pages/MarketCatalogSections.tsx':'d1aa96fdee0e767a0f31dcf19464b2a605c5a82d',
+            'apps/web/src/MarketImageUpload.tsx':'c88c8c603c025f3fc595219a3ee0ca61c017245c',
+            'apps/web/src/MarketProductImage.tsx':'a84609ec82c240674b3d86eecacf012f9aa681ae',
+            'apps/api/src/mcp-contracts.json':'56df43bd14177ecb6c24bf6235a761d4ba27ff55',
+          }
+          for name, expected in hashes.items():
+            actual = subprocess.check_output(['git','hash-object',name],text=True).strip()
+            if actual != expected: raise SystemExit('Concurrent edit: '+name)
+          def change(name, old, new, count=1):
+            p=Path(name); source=p.read_text()
+            if source.count(old)!=count: raise SystemExit('Anchor mismatch: '+name+' / '+old[:100])
+            p.write_text(source.replace(old,new))
+          contracts='packages/contracts/src/medicine-market.ts'
+          change(contracts,'const directory = [name, phone, address, ...locationRelations, contacts, keywords];','const directory = [name, image, phone, address, ...locationRelations, contacts, keywords];')
+          change(contracts,'fields: [name, f("englishName", "الاسم الإنجليزي"), keywords]','fields: [name, image, f("englishName", "الاسم الإنجليزي"), keywords]')
+          change(contracts,'name, mobilePhone, landlinePhone, address, ...locationRelations,','name, image, mobilePhone, landlinePhone, address, ...locationRelations,',2)
+          route='apps/api/src/routes-medicine-market.ts'
+          change(route,'import { marketStagingRoutes } from "./routes-market-staging.ts";', '''import { marketStagingRoutes } from "./routes-market-staging.ts";
+          import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
+            startMarketImageBackfill, marketImageBackfillStatus } from "./market/image-variants.ts";''')
+          change(route,'export const mcpBodySchemas = {','const backfillMarketImagesSchema = z.object({ retryFailed: z.boolean().default(false) }).strict();\n\nexport const mcpBodySchemas = {\n  backfillMarketImagesSchema,')
+          anchor='  router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));'
+          change(route,anchor,anchor+'''
+          
+            // Derivatives share the source card visibility, including private prescriptions.
+            router.get(root + "/cards/:cardId/image-variants/:variant", handler(async (req,res) => {
+              await enabled(pool,req);
+              if(!stagingIsolated)missing();
+              const u=await viewer(pool,req);
+              const card=await getCard(pool,id(req.params.cardId),u);
+              if(card.kind==="composition")missing();
+              const variant=parse(z.enum(["icon","preview"]),req.params.variant);
+              const source=card.data.image??card.data.imageUrl;
+              if(typeof source!=="string"||!source)missing();
+              let bytes=await readMarketImageVariant(pool,source,variant);
+              const local=/^\\/api\\/medicine-market\\/images\\/([a-f0-9-]{36})$/.exec(source);
+              if(!bytes&&local){
+                const original=(await pool.query("SELECT image_bytes FROM market_image_uploads WHERE id=$1 AND card_id=$2",[local[1],card.id])).rows[0]?.image_bytes;
+                if(original){
+                  const versions=await buildMarketImageVariants(original);
+                  await storeMarketImageVariants(pool,source,versions);
+                  bytes=versions[variant];
+                }
+              }
+              if(!bytes)missing("الصورة المصغرة غير جاهزة");
+              res.set("Cache-Control",card.status==="published"&&!card.archived?"private, max-age=3600":"no-store");
+              res.set("Content-Security-Policy","default-src 'none'; sandbox");
+              res.type("image/webp").send(bytes);
+            }));
+            router.get(root + "/image-variants/status",handler(async(req,res)=>{
+              const u=await viewer(pool,req);
+              if(!u?.owner)deny("هذه العملية لمالك الموقع فقط");
+              await enabled(pool,req);
+              if(!stagingIsolated)missing();
+              res.json(await marketImageBackfillStatus(pool));
+            }));
+            router.post(root + "/image-variants/backfill",handler(async(req,res)=>{
+              const input=parse(backfillMarketImagesSchema,req.body);
+              const u=(await viewer(pool,req,true))!;
+              if(!u.owner)deny("هذه العملية لمالك الموقع فقط");
+              await enabled(pool,req);
+              if(!stagingIsolated)missing();
+              await auditMarket(pool,u,"image_variants_backfill",null,null,{retryFailed:input.retryFailed});
+              const started=startMarketImageBackfill(pool,input.retryFailed);
+              res.status(202).json({started,...await marketImageBackfillStatus(pool)});
+            }));
+          ''')
+          change(route,"      await validateReferences(db,findField('prescription','prescriptionLines'),input.prescriptionLines);", "      await validateReferences(db,findField('prescription','prescriptionLines'),input.prescriptionLines);\n      const variants=stagingIsolated?await buildMarketImageVariants(photo.bytes):null;")
+          change(route,'        [imageId,card.id,u.id,photo.bytes.length,photo.bytes,photo.width,photo.height],\n      );','        [imageId,card.id,u.id,photo.bytes.length,photo.bytes,photo.width,photo.height],\n      );\n      if(variants)await storeMarketImageVariants(db,imageUrl,variants);')
+          change(route,'    const cardPreview=await getCard(pool,cardId,user);','    const cardPreview=await getCard(pool,cardId,user);\n    if(isMarketAdministrativeKind(cardPreview.kind)&&!perms(user).canConfigure)deny();\n    if(!findType(cardPreview.kind).fields.some(field=>field.key==="image"))\n      throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");')
+          change(route,"    const image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');", "    const image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');\n    const variants=stagingIsolated?await buildMarketImageVariants(image.bytes):null;")
+          change(route,'      await auditMarket(db,user,"image_upload",cardId,null,','      if(variants)await storeMarketImageVariants(db,marketImagePath(assetId),variants);\n      await auditMarket(db,user,"image_upload",cardId,null,')
+          change(route,'res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height});','res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,\n      ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",previewUrl:marketImagePath(assetId)+"?variant=preview",iconBytes:variants.icon.length,previewBytes:variants.preview.length}:{})});')
+          change(route,'    const imageId=parse(z.string().uuid(),req.params.imageId);','    const imageId=parse(z.string().uuid(),req.params.imageId);\n    const variant=parse(z.enum(["original","icon","preview"]),req.query.variant??"original");')
+          change(route,'    res.set("Cache-Control","private, max-age=86400");','    res.set("Cache-Control",publicImage?"private, max-age=86400":"no-store");')
+          change(route,'    res.type("image/webp").send(item.image_bytes);','''    let bytes:Buffer=item.image_bytes;
+              if(variant!=="original"){
+                if(!stagingIsolated)missing();
+                const source=marketImagePath(imageId);
+                const cached=await readMarketImageVariant(pool,source,variant);
+                if(cached)bytes=cached;
+                else {
+                  const versions=await buildMarketImageVariants(item.image_bytes);
+                  await storeMarketImageVariants(pool,source,versions);
+                  bytes=versions[variant];
+                }
+              }
+              res.type("image/webp").send(bytes);''')
+          gateway='apps/api/src/market/gateway.ts'
+          change(gateway,'const imageFetch=req.method==="GET" && /^\\/images\\/[a-f\\d-]{36}$/.test(req.url);','const imageFetch=req.method==="GET" && (/^\\/images\\/[a-f\\d-]{36}(?:\\?|$)/.test(req.url) || /^\\/cards\\/[1-9]\\d*\\/image-variants\\/(?:icon|preview)(?:\\?|$)/.test(req.url));')
+          change(gateway,'res.status(response.status).set("Cache-Control","private, max-age=86400")','res.status(response.status).set("Cache-Control",response.headers.get("cache-control")??"no-store")\n          .set("Content-Security-Policy","default-src \'none\'; sandbox")')
+          compact='apps/web/src/pages/MarketCatalogSections.tsx'
+          change(compact,'import "./MarketCatalogSections.css";','import "./MarketCatalogSections.css";\nimport { MarketCardIcon, hasMarketCardImage } from "../MarketCardIcon";')
+          change(compact,'className="market-compact-card"','className={`market-compact-card${hasMarketCardImage(item)?" market-compact-card-with-photo":""}`}')
+          change(compact,'    onClick={() => onOpen(item.id)}>\n    <span','    onClick={() => onOpen(item.id)}>\n    <MarketCardIcon card={item} />\n    <span')
+          page='apps/web/src/pages/MedicineMarketPage.tsx'
+          change(page,'import { MarketProductImage } from "../MarketProductImage";','import { MarketProductImage } from "../MarketProductImage";\nimport { MarketCardIcon } from "../MarketCardIcon";')
+          change(page,'            onClick={()=>choose(card)}>\n            <span','            onClick={()=>choose(card)}>\n            <MarketCardIcon card={card} />\n            <span')
+          change(page,'<li key={card.id}>{card.name}</li>','<li key={card.id}><button type="button" className="medicine-market-link" onClick={()=>openCard(card.id)}>{card.name}</button></li>')
+          upload='apps/web/src/MarketImageUpload.tsx'
+          p=Path(upload); s=p.read_text().replace('صورة الصنف','صورة الكرت').replace('اختر صورة صنف','اختر صورة للكرت')
+          s=s.replace('الصورة كاملة دون قص، الضلع الأكبر 512 بكسل، بصيغة WebP؛ بحد 100 كيلوبايت.','الصورة كاملة ومضغوطة؛ تُجهز تلقائيًا معاينة 240 بكسل وأيقونة 64 بكسل للبحث والقوائم.')
+          p.write_text(s)
+          product='apps/web/src/MarketProductImage.tsx'
+          change(product,'  const [display,setDisplay]=useState(src);','''  const preferred=trimLegacyPadding&&/^\\/api\\/medicine-market\\/images\\/[a-f0-9-]{36}$/.test(src)
+              ?src+"?variant=preview":src;
+            const [display,setDisplay]=useState(preferred);''')
+          change(product,'    setDisplay(src);\n    if(!trimLegacyPadding','    setDisplay(preferred);\n    if(preferred!==src||!trimLegacyPadding')
+          change(product,'  },[src,trimLegacyPadding]);','  },[src,preferred,trimLegacyPadding]);')
+          change(product,'    loading="lazy" decoding="async"/>;','    loading="lazy" decoding="async" onError={()=>{if(display!==src)setDisplay(src);}}/>;')
+          p=Path('apps/api/src/mcp-contracts.json'); m=json.loads(p.read_text())
+          m['GET /medicine-market/image-variants/status']={'queryFields':[],'pathParams':[],'source':'routes-medicine-market.ts'}
+          m['POST /medicine-market/image-variants/backfill']={'queryFields':[],'pathParams':[],'source':'routes-medicine-market.ts','bodyContract':'backfillMarketImagesSchema','bodySchema':{'type':'object','properties':{'retryFailed':{'type':'boolean','default':False}},'additionalProperties':False}}
+          m['GET /medicine-market/cards/:cardId/image-variants/:variant']={'queryFields':['v'],'pathParams':['cardId','variant'],'source':'routes-medicine-market.ts'}
+          m['GET /medicine-market/images/:imageId']={'queryFields':['variant'],'pathParams':['imageId'],'source':'routes-medicine-market.ts'}
+          p.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n')
+          print('Integrated image fields, safe derivatives, search icons, and owner-only backfill.')
+          PY
+      - name: Lock the image processor dependency
+        run: npm install sharp --save-exact
+      - name: Check types and focused image behavior
+        env:
+          TEST_IMAGE_DATABASE_URL: postgres://postgres:isolated_test_only@127.0.0.1:5432/image_tests
+        run: |
+          npm run check
+          npx tsx --test tests/market-image-variants.test.ts
+          git diff --check
+      - name: Commit only verified changes
+        run: |
+          git rm -- .github/workflows/apply-market-image-variants-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package.json package-lock.json packages/contracts/src/medicine-market.ts apps/api/src/routes-medicine-market.ts apps/api/src/market/gateway.ts apps/api/src/mcp-contracts.json apps/web/src/pages/MedicineMarketPage.tsx apps/web/src/pages/MarketCatalogSections.tsx apps/web/src/MarketImageUpload.tsx apps/web/src/MarketProductImage.tsx
+          git commit -m 'feat(market): image support for all non-composition cards and optimized thumbnails'
+          git push origin HEAD:preview/render-2026-10-23
