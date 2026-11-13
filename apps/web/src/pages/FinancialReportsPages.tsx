@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, FileSpreadsheet } from "lucide-react";
-import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
+import { accountChoices, accountChoiceLabels, type AccountChoice, type CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { CompanyPrintHeader } from "../CompanyPrintHeader";
 import { formatMoney } from "../format-money";
@@ -11,11 +11,11 @@ import { Button, Card, Field, Notice, PageHeader, Select } from "../ui";
 
 type Figures = {
   openingDebit: string; openingCredit: string; debit: string; credit: string;
-  closingDebit: string; closingCredit: string;
+  movementNet: string; closingDebit: string; closingCredit: string;
 };
 type BalanceRow = Figures & {
   id: number; parentId: number | null; code: string; name: string;
-  kind: string; category: string; hasMovement: boolean;
+  kind: string; category: string; accountChoice: AccountChoice | null; hasMovement: boolean;
 };
 type TrialResponse = {
   dateFrom: string | null; dateTo: string | null; currencyCode: string;
@@ -41,6 +41,9 @@ const kindLabels: Record<string, string> = {
   journal: "قيد", receipt: "قبض", payment: "صرف",
 };
 const money = (value: string) => <bdi className="financial-number">{formatMoney(value)}</bdi>;
+const signedMoney = (value: string) => <bdi dir="ltr" className="financial-number">{value !== "0" && !value.startsWith("-") ? "+" : ""}{formatMoney(value)}</bdi>;
+const accountChoiceName = (choice: AccountChoice | null) => choice ? accountChoiceLabels[choice] : "دون خيار";
+const choiceFilterKeys = [...accountChoices, "unassigned"] as const;
 
 function adenToday(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -111,8 +114,10 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   const [display, setDisplay] = useState("posting");
   const [hideZero, setHideZero] = useState(false);
   const [hideWithoutMovement, setHideWithoutMovement] = useState(true);
+  // Empty exclusions = all account choices checked when the report opens.
+  const [excludedAccountChoices, setExcludedAccountChoices] = useState<string[]>([]);
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: keyof Figures | "code" | "name"; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
+  const [sort, setSort] = useState<{ key: keyof Figures | "code" | "name" | "accountChoice"; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
   const companyId = context.company.id;
   const report = useQuery({
     queryKey: ["owner-trial-balance", user?.id, companyId, query.toString()],
@@ -122,15 +127,18 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   });
   const items = useMemo(() => (report.data?.items ?? []).filter((row) => {
     if (display !== "all" && row.kind !== display) return false;
+    if (excludedAccountChoices.includes(row.accountChoice ?? "unassigned")) return false;
     if (hideWithoutMovement && !row.hasMovement) return false;
     if (hideZero && row.openingDebit === "0" && row.openingCredit === "0" &&
       row.debit === "0" && row.credit === "0" &&
       row.closingDebit === "0" && row.closingCredit === "0") return false;
     const needle = search.trim().toLowerCase();
     return !needle || (row.code + " " + row.name).toLowerCase().includes(needle);
-  }), [report.data, search, display, hideZero, hideWithoutMovement]);
+  }), [report.data, search, display, hideZero, hideWithoutMovement, excludedAccountChoices]);
   const sortedItems = useMemo(() => [...items].sort((a, b) => {
-    const difference = sort.key === "name"
+    const difference = sort.key === "accountChoice"
+      ? accountChoiceName(a.accountChoice).localeCompare(accountChoiceName(b.accountChoice), "ar")
+      : sort.key === "name"
       ? a.name.localeCompare(b.name, "ar")
       : sort.key === "code"
         ? a.code.localeCompare(b.code, undefined, { numeric: true })
@@ -141,15 +149,15 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   const currentPage = Math.min(page, Math.max(1, Math.ceil(sortedItems.length / pageSize)));
   const shown = sortedItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   if (!user?.owner) return <Notice tone="error">ميزان المراجعة متاح لمالك المنصة فقط.</Notice>;
-  const headings = ["رقم الحساب", "اسم الحساب", "افتتاحي مدين", "افتتاحي دائن", "حركة مدين", "حركة دائن", "ختامي مدين", "ختامي دائن"];
-  const sortKeys: (keyof Figures | "code" | "name")[] = ["code", "name", "openingDebit", "openingCredit", "debit", "credit", "closingDebit", "closingCredit"];
-  const changeSort = (key: keyof Figures | "code" | "name") => {
+  const headings = ["رقم الحساب", "اسم الحساب", "خيار الحساب", "افتتاحي مدين", "افتتاحي دائن", "حركة مدين", "حركة دائن", "فارق الحركة", "ختامي مدين", "ختامي دائن"];
+  const sortKeys: (keyof Figures | "code" | "name" | "accountChoice")[] = ["code", "name", "accountChoice", "openingDebit", "openingCredit", "debit", "credit", "movementNet", "closingDebit", "closingCredit"];
+  const changeSort = (key: keyof Figures | "code" | "name" | "accountChoice") => {
     setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
     setPage(1);
   };
   const exportData = () => downloadCsv("ميزان-المراجعة-" + dateFrom + "-" + dateTo, headings,
-    sortedItems.map((row) => [row.code, row.name, row.openingDebit, row.openingCredit,
-      row.debit, row.credit, row.closingDebit, row.closingCredit]));
+    sortedItems.map((row) => [row.code, row.name, accountChoiceName(row.accountChoice), row.openingDebit, row.openingCredit,
+      row.debit, row.credit, row.movementNet, row.closingDebit, row.closingCredit]));
   return <div className="ledger-page">
     <div className="ledger-print-heading"><CompanyPrintHeader context={context} />
       <h2>ميزان المراجعة — {dateFrom || "البداية"} إلى {dateTo || "اليوم"}</h2></div>
@@ -166,6 +174,31 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
           <option value="group">الحسابات الرئيسية</option>
           <option value="all">جميع الحسابات</option>
         </Select>
+        <details className="field" style={{ position: "relative", minWidth: 185 }}>
+          <summary className="button button-secondary button-compact" style={{ cursor: "pointer" }}>
+            خيار الحساب ({choiceFilterKeys.length - excludedAccountChoices.length}/{choiceFilterKeys.length})
+          </summary>
+          <div style={{ position: "absolute", zIndex: 40, insetInlineStart: 0, top: "100%",
+            width: 240, maxWidth: "calc(100vw - 40px)", padding: 8,
+            border: "1px solid var(--border)", borderRadius: 8,
+            background: "var(--card, var(--surface, #1c2835))", boxShadow: "0 8px 18px #0004" }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <Button size="compact" variant="secondary" onClick={() => { setExcludedAccountChoices([]); setPage(1); }}>تحديد الكل</Button>
+              <Button size="compact" variant="secondary" onClick={() => { setExcludedAccountChoices([...choiceFilterKeys]); setPage(1); }}>إلغاء الكل</Button>
+            </div>
+            <div style={{ maxHeight: 230, overflowY: "auto" }}>
+              {choiceFilterKeys.map(choice => <label key={choice} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 2px", cursor: "pointer" }}>
+                <input type="checkbox" checked={!excludedAccountChoices.includes(choice)} onChange={event => {
+                  setExcludedAccountChoices(previous => event.target.checked
+                    ? previous.filter(value => value !== choice)
+                    : [...previous, choice]);
+                  setPage(1);
+                }} />
+                <span>{choice === "unassigned" ? "دون خيار" : accountChoiceLabels[choice]}</span>
+              </label>)}
+            </div>
+          </div>
+        </details>
         <label className="field">
           <span>إخفاء الحسابات دون حركة خلال الفترة</span>
           <input type="checkbox" checked={hideWithoutMovement} onChange={(event) => { setHideWithoutMovement(event.target.checked); setPage(1); }} />
@@ -190,15 +223,17 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
               <td>{row.kind === "posting" ?
                 <Link to={"/companies/" + companyId + "/account-ledger?accountId=" + row.id + "&dateFrom=" + dateFrom + "&dateTo=" + dateTo}>{row.name}</Link>
                 : <strong>{row.name}</strong>}</td>
+              <td>{accountChoiceName(row.accountChoice)}</td>
               <td>{money(row.openingDebit)}</td><td>{money(row.openingCredit)}</td>
-              <td>{money(row.debit)}</td><td>{money(row.credit)}</td>
+              <td>{money(row.debit)}</td><td>{money(row.credit)}</td><td>{signedMoney(row.movementNet)}</td>
               <td>{money(row.closingDebit)}</td><td>{money(row.closingCredit)}</td>
             </tr>)}
-            {!shown.length && <tr><td colSpan={8}>لا توجد حسابات مطابقة.</td></tr>}
+            {!shown.length && <tr><td colSpan={10}>لا توجد حسابات مطابقة.</td></tr>}
           </tbody>
-          <tfoot><tr><th colSpan={2}>إجمالي الحسابات الحركية (كل النتائج)</th>
+          <tfoot><tr><th colSpan={3}>إجمالي الحسابات الحركية (جميع الحسابات قبل الفلاتر)</th>
             <th>{money(report.data.totals.openingDebit)}</th><th>{money(report.data.totals.openingCredit)}</th>
             <th>{money(report.data.totals.debit)}</th><th>{money(report.data.totals.credit)}</th>
+            <th>{signedMoney(report.data.totals.movementNet)}</th>
             <th>{money(report.data.totals.closingDebit)}</th><th>{money(report.data.totals.closingCredit)}</th>
           </tr></tfoot>
         </table></div>
