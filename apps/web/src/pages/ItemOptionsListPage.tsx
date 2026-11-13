@@ -821,7 +821,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
           aria-label="مرر لعرض جميع خيارات تصفية الأصناف" tabIndex={0}>
           <div className="item-options-filter-grid">
             <label className="item-options-filter-field">
-              <span className="item-options-filter-label">بحث عن صنف بالاسم أو الرمز أو الباركود</span>
+              <span className="item-options-filter-label" title="يمكن البحث باسم الصنف أو رمزه أو الباركود">بحث عن صنف</span>
               <input type="search" maxLength={120} value={search}
                 placeholder="اكتب الاسم أو الرمز" onChange={event => {
                    setSearch(event.target.value);
@@ -894,7 +894,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     </Card>}
     {canEditReserve && <p className="muted">تُطبّق الخيارات تلقائيًا بعد التعديل، ويُصفَّر الاختيار المؤقت المشترك عند اعتماد الفلتر، دون حذف مسودات الطلبيات.</p>}
     {canView && <Card title="الخيارات والأعمدة المحفوظة للجميع" className="item-options-presets-card">
-      <p className="muted">يمكن حفظ الفلاتر وترتيب النتائج والأعمدة الظاهرة في مجموعة واحدة باسم، واستعادتها من أي جهاز لجميع مستخدمي الشركة. المجموعات القديمة دون إعداد أعمدة تحتفظ بالأعمدة الحالية عند فتحها. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p>
+      <details className="item-options-explanation"><summary>شرح حفظ الخيارات والأعمدة</summary><p>يمكن حفظ الفلاتر وترتيب النتائج والأعمدة الظاهرة في مجموعة واحدة باسم، واستعادتها من أي جهاز لجميع مستخدمي الشركة. المجموعات القديمة دون إعداد أعمدة تحتفظ بالأعمدة الحالية عند فتحها. الحذف متاح لمن لديه صلاحية تعديل الصفحة.</p></details>
       <div className="form-actions">
         <label className="item-options-filter-field item-options-preset-field">
           <span className="item-options-filter-label">الخيارات والأعمدة المحفوظة</span>
@@ -933,7 +933,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       {presetMessage && <Notice tone={presetMessage.tone}>{presetMessage.text}</Notice>}
     </Card>}
     {canView && <Card title="تجميع الخيارات المحفوظة بالترتيب" className="item-options-presets-card">
-      <p className="muted">كوّن تسلسلًا من الخيارات المحفوظة أعلاه، ثم احفظه باسم مستقل. عند اختيار تجميع محفوظ يُطبّق الخيار الأول وينشئ مسودته، ثم الثاني والثالث بالترتيب. تُستبدل جميع مسودات هذا الجهاز دفعة واحدة بعد اكتمال الجلب، ويُمنع تكرار أي صنف؛ ولا تُنشأ طلبية رسمية.</p>
+      <details className="item-options-explanation"><summary>شرح التجميع وطريقة تشغيله</summary><p>كوّن تسلسلًا من الخيارات المحفوظة أعلاه، ثم احفظه باسم مستقل. عند اختيار تجميع محفوظ يُطبّق الخيار الأول وينشئ مسودته، ثم الثاني والثالث بالترتيب. تُستبدل جميع مسودات هذا الجهاز دفعة واحدة بعد اكتمال الجلب، ويُمنع تكرار أي صنف؛ ولا تُنشأ طلبية رسمية.</p></details>
       <div className="form-actions">
         <label className="item-options-filter-field item-options-preset-field">
           <span className="item-options-filter-label">تجميع الخيارات المحفوظ</span>
