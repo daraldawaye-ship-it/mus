@@ -25,22 +25,42 @@ function database(): Promise<IDBDatabase> {
   if (!("indexedDB" in window)) return Promise.reject(new Error("هذا المتصفح لا يدعم التخزين المحلي"));
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open(DB_NAME, 4);
-    open.onupgradeneeded = (event) => {
+    // Version 5 repairs older/incomplete databases without deleting their data.
+    // A browser can retain the version marker even when a previous tab missed
+    // creating one of the stores. Never assume oldVersion implies its presence.
+    const open = indexedDB.open(DB_NAME, 5);
+    open.onupgradeneeded = () => {
       const db = open.result;
-      if (event.oldVersion < 1) {
-        const snapshots = db.createObjectStore("snapshots", { keyPath: "key" });
+      const upgrade = open.transaction!;
+      const snapshots = db.objectStoreNames.contains("snapshots")
+        ? upgrade.objectStore("snapshots")
+        : db.createObjectStore("snapshots", { keyPath: "key" });
+      if (!snapshots.indexNames.contains("user"))
         snapshots.createIndex("user", "userId");
-        const pending = db.createObjectStore("pending", { keyPath: "id" });
+      const pending = db.objectStoreNames.contains("pending")
+        ? upgrade.objectStore("pending")
+        : db.createObjectStore("pending", { keyPath: "id" });
+      if (!pending.indexNames.contains("user"))
         pending.createIndex("user", "userId");
-        const catalog = db.createObjectStore("catalog", { keyPath: "key" });
+      const catalog = db.objectStoreNames.contains("catalog")
+        ? upgrade.objectStore("catalog")
+        : db.createObjectStore("catalog", { keyPath: "key" });
+      if (!catalog.indexNames.contains("scope"))
         catalog.createIndex("scope", ["userId", "companyId", "type"]);
+      for (const store of ["item-sync", "catalog-download", "offline-session"]) {
+        if (!db.objectStoreNames.contains(store))
+          db.createObjectStore(store, { keyPath: "key" });
       }
-      if (event.oldVersion < 2) db.createObjectStore("item-sync", { keyPath: "key" });
-      if (event.oldVersion < 3) db.createObjectStore("catalog-download", { keyPath: "key" });
-      if (event.oldVersion < 4) db.createObjectStore("offline-session", { keyPath: "key" });
     };
-    open.onsuccess = () => resolve(open.result);
+    open.onsuccess = () => {
+      const db = open.result;
+      // An open tab must not prevent another tab from upgrading the schema.
+      db.onversionchange = () => {
+        db.close();
+        connection = null;
+      };
+      resolve(db);
+    };
     open.onerror = () => reject(open.error);
   }).catch(error => { connection = null; throw error; });
   return connection;
