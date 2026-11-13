@@ -6,14 +6,17 @@ import {
   Plus, Search, Settings2, ShieldAlert,
 } from "lucide-react";
 import "./DesignLibraryPage.css";
+import DesignLibraryExtras from "./DesignLibraryExtras";
 
-type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "text";
+type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "navigation" | "feedback" | "text";
 const sections: { key: SectionKey; title: string; detail: string; symbol: string }[] = [
   { key: "fields", title: "الحقول والاختيارات", detail: "الكتابة والبحث والقوائم والتواريخ والاختيارات", symbol: "ح" },
   { key: "buttons", title: "الأزرار والإجراءات", detail: "أنواع الأزرار وحالاتها وأحجامها ومجموعاتها", symbol: "ز" },
   { key: "colors", title: "الألوان والشارات", detail: "ألوان المظهر والحالات والشارات والتمييز", symbol: "ل" },
   { key: "surfaces", title: "البطاقات والأقسام", detail: "البطاقات واللوحات والأحزمة والتبويبات", symbol: "ق" },
   { key: "tables", title: "الجداول والقوائم", detail: "أعمدة وصفوف وجداول وإجراءات مصغّرة", symbol: "ج" },
+  { key: "navigation", title: "التنقل والخطوات", detail: "القوائم والتبويبات والخطوات المتتابعة", symbol: "ت" },
+  { key: "feedback", title: "التحميل والإحصاءات", detail: "الانتظار والبيانات والأحداث ومؤشرات الأداء", symbol: "م" },
   { key: "text", title: "النصوص والتنبيهات", detail: "العناوين والشروح والرسائل ومؤشرات التقدم", symbol: "ن" },
 ];
 
@@ -177,7 +180,8 @@ function DemoText() {
 }
 const contentBySection: Record<SectionKey, () => ReactNode> = {
   fields: DemoFields, buttons: DemoButtons, colors: DemoColors,
-  surfaces: DemoSurfaces, tables: DemoTables, text: DemoText,
+  surfaces: DemoSurfaces, tables: DemoTables, navigation: () => null,
+  feedback: () => null, text: DemoText,
 };
 
 export default function DesignLibraryPage() {
@@ -191,7 +195,7 @@ export default function DesignLibraryPage() {
       <div><h1><Layers size={21}/> مكتبة التصاميم</h1><p>مرجع المالك لأشكال الموقع، بأسماء عربية ثابتة وأمثلة قابلة للتجربة.</p></div>
       <span className="design-library-private"><Check size={14}/> للمالك فقط</span>
     </div>
-    <div className="design-library-tip"><Info size={16}/><span>للطلب لاحقًا قل مثلًا: «أريد زر ز-02 صغير» أو «اجعل الحقل مثل ح-07». كل الرموز ثابتة، والأمثلة هنا للعرض فقط ولا تغيّر بيانات الموقع.</span></div>
+    <div className="design-library-tip"><Info size={16}/><span>اختر أي نموذج واذكر اسمه أو رقمه، مثل «ح-13» أو «ت-05». نماذج إضافية مستوحاة من <a href="https://freefrontend.com/css-code-examples/" target="_blank" rel="noopener noreferrer">FreeFrontend</a>، أعيد تصميمها لتناسب الرئيسي. التجارب لا تحفظ بيانات.</span></div>
     <nav className="design-library-nav" aria-label="أقسام مكتبة التصاميم">
       {sections.map(item=><Link key={item.key} to={"/design-library/"+item.key}
         className={item.key===selected.key?"selected":""}
@@ -201,6 +205,7 @@ export default function DesignLibraryPage() {
       <span>الصفحة {position+1} من {sections.length}</span>
     </div>
     <Content/>
+    <DesignLibraryExtras section={selected.key}/>
     <div className="design-library-bottom"><span>يمكن تغيير لون المظهر والوضع الفاتح أو الداكن من إعدادات المظهر أعلى الموقع.</span><Link className="button button-secondary" to={"/design-library/"+next.key}>التالي: {next.title}</Link></div>
   </div>;
 }
