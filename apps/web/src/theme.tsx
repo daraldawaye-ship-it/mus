@@ -196,7 +196,8 @@ export function AppearanceProvider({
     void (async () => {
       try {
         // Local unsynchronized changes win over an old server preference.
-        const pending=await readAppearanceDraft(currentUser,scope);
+        // A damaged/missing device cache cannot hide the saved server preference.
+        const pending=await readAppearanceDraft(currentUser,scope).catch(() => null);
         if (pending) {
           const migrated=await upgradeLegacyAppearance(currentUser,scope,pending);
           if (guard.isCurrent() && revision.current===captured) {
@@ -272,8 +273,11 @@ export function AppearanceProvider({
         signal: guard.signal,
       });
       if(user?.id) {
-        await rememberRead(`/appearance?scope=${encodeURIComponent(scope)}`,{preference:sent});
-        await clearAppearanceDraft(user.id,scope);
+        // Server PATCH already succeeded. A missing/stale IndexedDB store is
+        // only a cache issue, never a failed preference save.
+        await rememberRead(`/appearance?scope=${encodeURIComponent(scope)}`,{preference:sent})
+          .catch(() => {});
+        await clearAppearanceDraft(user.id,scope).catch(() => {});
       }
       if (!guard.isCurrent()) return;
       setSavedRevision(sentRevision);
