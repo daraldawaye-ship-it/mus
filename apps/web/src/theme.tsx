@@ -87,6 +87,11 @@ export function buildThemeTokens(
     "--field-bg": dark ? "#101820" : "#f5f7f9",
     "--field-border": dark ? "#718090" : "#768492",
     "--field-placeholder": dark ? "#a4b1be" : "#657381",
+    // Button surfaces stay neutral and readable; primary/focus follow the user's accent.
+    "--button-surface": dark ? "#263646" : "#edf2f6",
+    "--button-surface-hover": dark ? "#35495d" : "#dfe8f1",
+    "--button-border": dark ? "#697f93" : "#8999a9",
+    "--button-shadow": dark ? "#00000040" : "#2233441a",
     "--primary": primary,
     "--user-accent-color": color,
     "--on-primary": textOn(primary),
