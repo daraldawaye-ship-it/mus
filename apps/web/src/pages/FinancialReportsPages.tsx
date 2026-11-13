@@ -110,6 +110,7 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   const [search, setSearch] = useState("");
   const [display, setDisplay] = useState("posting");
   const [hideZero, setHideZero] = useState(false);
+  const [hideWithoutMovement, setHideWithoutMovement] = useState(true);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ key: keyof Figures | "code" | "name"; direction: "asc" | "desc" }>({ key: "code", direction: "asc" });
   const companyId = context.company.id;
@@ -121,12 +122,13 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
   });
   const items = useMemo(() => (report.data?.items ?? []).filter((row) => {
     if (display !== "all" && row.kind !== display) return false;
+    if (hideWithoutMovement && !row.hasMovement) return false;
     if (hideZero && row.openingDebit === "0" && row.openingCredit === "0" &&
       row.debit === "0" && row.credit === "0" &&
       row.closingDebit === "0" && row.closingCredit === "0") return false;
     const needle = search.trim().toLowerCase();
     return !needle || (row.code + " " + row.name).toLowerCase().includes(needle);
-  }), [report.data, search, display, hideZero]);
+  }), [report.data, search, display, hideZero, hideWithoutMovement]);
   const sortedItems = useMemo(() => [...items].sort((a, b) => {
     const difference = sort.key === "name"
       ? a.name.localeCompare(b.name, "ar")
@@ -164,6 +166,10 @@ export function TrialBalancePage({ context }: { context: CompanyContext }) {
           <option value="group">الحسابات الرئيسية</option>
           <option value="all">جميع الحسابات</option>
         </Select>
+        <label className="field">
+          <span>إخفاء الحسابات دون حركة خلال الفترة</span>
+          <input type="checkbox" checked={hideWithoutMovement} onChange={(event) => { setHideWithoutMovement(event.target.checked); setPage(1); }} />
+        </label>
         <label className="field">
           <span>إخفاء الحسابات الصفرية</span>
           <input type="checkbox" checked={hideZero} onChange={(event) => { setHideZero(event.target.checked); setPage(1); }} />
