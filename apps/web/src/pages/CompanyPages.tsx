@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -309,9 +310,14 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       <PageHeader title={company.name} />
       {commerceShortcuts.length > 0 && (
         <Card>
-          <div className="form-actions">
+          <div className="form-actions company-overview-shortcuts">
             {commerceShortcuts.map(shortcut => (
-              <Link key={shortcut.href} className="button button-secondary" to={shortcut.href}>
+              <Link key={shortcut.href}
+                className={shortcut.action === "create"
+                  ? "button button-primary company-shortcut company-shortcut-create"
+                  : "button button-secondary company-shortcut"}
+                to={shortcut.href}>
+                {shortcut.action === "create" && <Plus size={14} aria-hidden="true" />}
                 {shortcut.label}
               </Link>
             ))}
@@ -320,9 +326,14 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       )}
       {financialShortcuts.length > 0 && (
         <Card>
-          <div className="form-actions" role="group" aria-label="الاختصارات المالية">
+          <div className="form-actions company-overview-shortcuts" role="group" aria-label="الاختصارات المالية">
             {financialShortcuts.map(shortcut => (
-              <Link key={shortcut.key} className="button button-secondary" to={shortcut.href}>
+              <Link key={shortcut.key}
+                className={shortcut.action === "create"
+                  ? "button button-primary company-shortcut company-shortcut-create"
+                  : "button button-secondary company-shortcut"}
+                to={shortcut.href}>
+                {shortcut.action === "create" && <Plus size={14} aria-hidden="true" />}
                 {shortcut.label}
               </Link>
             ))}
@@ -340,7 +351,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
         />
       </Card>
       <Card title="إدارة الشركة">
-        <div className="form-actions">
+        <div className="form-actions company-overview-shortcuts">
           {directory.data?.some(entry =>
             entry.key === "company.approved-devices" &&
             entry.visible && entry.enabled && entry.actionAccess.view
