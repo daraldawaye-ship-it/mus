@@ -17,6 +17,7 @@ import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { formatMoney } from "../format-money";
 import { CashboxVoucherModal } from "./FinancePages";
+import { DoctorCard } from "./DoctorsPage";
 import { PageActionsDropdown } from "../SalesHeaderActionsDropdown";
 import { InvoiceQuickAccountDialog } from "../InvoiceQuickAccountDialog";
 import { isOfflineNow } from "../connection-mode";
@@ -59,6 +60,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const canViewReceipts = context.general || context.permissions.includes("finance.view");
   const canCreateDirectPayment = !isCustody && isCashier && canCreateVoucher &&
     (context.general || context.permissions.includes("finance.post")) && !isOfflineNow();
+  const canAddDoctor = (context.general || context.permissions.includes("commerce.manage")) && !isOfflineNow();
   const canAddAccount = (context.general ||
     (context.permissions.includes("commerce.manage") && context.permissions.includes("finance.post")))
     && !isOfflineNow();
@@ -69,6 +71,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const [directPaymentOpen, setDirectPaymentOpen] = useState(false);
   const [directDocument, setDirectDocument] = useState<FinancialDocument | null>(null);
   const [quickAccountOpen, setQuickAccountOpen] = useState(false);
+  const [quickDoctorOpen, setQuickDoctorOpen] = useState(false);
   const [accountNotice, setAccountNotice] = useState("");
   const today = todayInAden();
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : today;
@@ -146,6 +149,11 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
               label: "إضافة حساب",
               disabled: !canAddAccount,
               onClick: () => setQuickAccountOpen(true),
+            },
+            {
+              label: "إضافة طبيب أو ممرض",
+              disabled: !canAddDoctor,
+              onClick: () => setQuickDoctorOpen(true),
             },
             {
               label: "إضافة سند صرف",
@@ -296,6 +304,15 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
           </>
         )}
       </Card>
+      {quickDoctorOpen && <DoctorCard
+        context={context} doctor={null} quickCreate
+        onClose={() => setQuickDoctorOpen(false)}
+        onSaved={() => {
+          setQuickDoctorOpen(false);
+          setAccountNotice("تم إضافة كرت الطبيب أو الممرض بنجاح.");
+          void client.invalidateQueries({queryKey:["direct-payment-beneficiaries",user?.id,companyId]});
+        }}
+      />}
       {quickAccountOpen && <InvoiceQuickAccountDialog
         companyId={companyId}
         kind="sale"
