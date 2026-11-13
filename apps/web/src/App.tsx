@@ -35,6 +35,7 @@ import {
   MonitorSmartphone,
   MapPin,
   Package,
+  Palette,
   Settings2,
   ShieldCheck,
   TrendingUp,
@@ -101,6 +102,7 @@ const CentralAccessPage = lazy(() =>
   import("./pages/CentralAccessPage").then(m=>({default:m.CentralAccessPage})),
 );
 const OwnerPhonePreviewPage = lazy(() => import("./pages/OwnerPhonePreviewPage"));
+const DesignLibraryPage = lazy(() => import("./pages/DesignLibraryPage"));
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
 const MarketFriendReferralsPage = lazy(() => import("./pages/MarketFriendReferralsPage").then(m=>({default:m.MarketFriendReferralsPage})));
 const PageDirectoryPage = lazy(() =>
@@ -566,7 +568,14 @@ function Navigation({
     <nav aria-label="التنقل الرئيسي">
       <div className="nav-label nav-heading">السوق الرئيسي</div>
       {links("public")}
-      
+      {user?.owner && !employeePreview && (
+        <NavLink to="/design-library" onClick={close}
+          className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
+          title="مكتبة التصاميم الخاصة بالمالك">
+          <Palette size={17}/><span className="nav-text">مكتبة التصاميم</span>
+          <ChevronLeft size={13} className="nav-chevron"/>
+        </NavLink>
+      )}
       {!user && (
         <NavLink
           to="/login"
@@ -1402,6 +1411,8 @@ function Workspace() {
               <Route path="/register" element={<AuthPage mode="register" />} />
               <Route path="/medicine-market" element={marketLanding} />
               <Route path="/owner-phone-preview" element={<Protected><Suspense fallback={<Notice>جارٍ تحميل معاينة الهاتف…</Notice>}><OwnerPhonePreviewPage /></Suspense></Protected>} />
+              <Route path="/design-library" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
+              <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
