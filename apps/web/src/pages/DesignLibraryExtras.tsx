@@ -47,7 +47,6 @@ export default function DesignLibraryExtras({ section }: { section: string }) {
   const [step, setStep] = useState(1);
   const [toast, setToast] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
-  const [page, setPage] = useState(1);
   if (section === "fields") return <ExtraGrid title="أفكار إضافية للحقول" detail="مستوحاة من حقول الإدخال والتحقق، مع أحجام مناسبة للاستخدام اليومي.">
     <Exhibit code="ح-13" title="حقل بعنوان عائم" note="العنوان يبقى ظاهرًا عندما تكتب.">
       <label className="design-ex-floating"><input type="text" required placeholder=" "/><span>اسم الطبيب أو الممرض</span></label>
