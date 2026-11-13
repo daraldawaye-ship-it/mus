@@ -1,3 +1,4 @@
+import { slipReceiptRoutes } from "./routes-slip-receipts.ts";
 import { marketMaintenance } from "./market/gateway.ts";
 import { Router } from "express";
 import type { Pool } from "pg";
@@ -100,6 +101,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     archiveRoutes(pool),
     explanationRoutes(pool),
     financeRoutes(pool),
+    slipReceiptRoutes(pool),
     financialReportsRoutes(pool),
     itemRoutes(pool),
     settlementFollowUpRoutes(pool),

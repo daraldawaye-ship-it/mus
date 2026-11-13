@@ -1,3 +1,4 @@
+import { SlipReceiptDialog } from "../SlipReceiptDialog";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,6 +61,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const [params, setParams] = useSearchParams();
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const [voucherKind, setVoucherKind] = useState<"receipt" | "payment" | null>(null);
+  const [slipsOpen, setSlipsOpen] = useState(false);
   const [quickAccountOpen, setQuickAccountOpen] = useState(false);
   const [accountNotice, setAccountNotice] = useState("");
   const today = todayInAden();
@@ -150,6 +152,14 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
               onClick: () => window.print(),
             },
             ...(!isCustody ? [{
+              label: "استلام القصاصات",
+              onClick: () => setSlipsOpen(true),
+              disabled: !isCashier || !(context.general || context.permissions.includes("finance.post")) || isOfflineNow(),
+            }, {
+              label: "متابعة حركة القصاصات",
+              to: `/companies/${companyId}/slip-movements`,
+              disabled: !isCashier || !canViewReceipts,
+            }, {
               label: "فتح استلام الترحيلات",
               to: `/companies/${companyId}/pouch-receipts`,
               disabled: !canViewReceipts,
@@ -162,6 +172,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
           ]} label="إجراءات" />}
         />
       </div>
+      {slipsOpen && <SlipReceiptDialog companyId={companyId} onClose={() => setSlipsOpen(false)} />}
       {accountNotice && <Notice tone="success">{accountNotice}</Notice>}
       <Card className="my-cashbox-ledger-card">
         <div className="my-cashbox-date-range" role="group" aria-label={`فترة ${pageTitle}`}>

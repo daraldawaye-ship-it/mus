@@ -285,6 +285,7 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
     { key: "company.accounts", label: "دليل الحسابات", href: `/companies/${company.id}/accounts`, action: "view" },
     { key: "company.account-balances", label: "أرصدة الحسابات", href: `/companies/${company.id}/account-balances`, action: "view" },
     { key: "company.account-ledger", label: "كشف حساب", href: `/companies/${company.id}/account-ledger`, action: "view" },
+    { key: "company.slip-movements", label: "متابعة حركة القصاصات", href: `/companies/${company.id}/slip-movements`, action: "view" },
     { key: "company.my-cashbox-ledger", label: "كشف حساب صندوقي", href: `/companies/${company.id}/my-cashbox-ledger`, action: "view" },
     { key: "company.account-statistics", label: "إحصاءات الحسابات", href: `/companies/${company.id}/account-statistics`, action: "view" },
     { key: "company.sales-time-report", label: "مبيعات الأيام والأوقات", href: `/companies/${company.id}/sales-time-report`, action: "view" },

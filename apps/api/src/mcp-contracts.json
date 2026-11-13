@@ -9998,5 +9998,35 @@
       ],
       "additionalProperties": false
     }
+  },
+  "GET /companies/:companyId/slip-movements": {
+    "queryFields": [
+      "page",
+      "pageSize"
+    ],
+    "source": "routes-slip-receipts.ts"
+  },
+  "POST /companies/:companyId/slip-movements": {
+    "queryFields": [],
+    "source": "routes-slip-receipts.ts",
+    "bodySchema": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "count",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    }
   }
 }

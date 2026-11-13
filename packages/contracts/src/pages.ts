@@ -1023,6 +1023,15 @@ page(
   "محادثات خاصة بين الأعضاء الفعالين في الشركة؛ مستقلة عن دردشة الموقع العام.",
   { order: 275, keywords: ["دردشة", "محادثات", "رسائل", "موظفين"] },
 );
+
+page(
+  "company.slip-movements", "متابعة حركة القصاصات", "الحسابات",
+  "/companies/:companyId/slip-movements",
+  { view: permission("finance.view"), post: permission("finance.post") },
+  "كشف عددي لترحيل واستلام القصاصات والنقص والزيادة بالتاريخ والوقت، للمالك وأمين الصندوق.",
+  { keywords: ["قصاصات", "استلام", "نقص", "زيادة"] },
+);
+
 export const pageDefinitions: readonly PageDefinition[] = entries;
 export const pageByKey = (key: string) =>
   pageDefinitions.find((entry) => entry.key === key);

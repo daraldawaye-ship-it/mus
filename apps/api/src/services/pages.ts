@@ -503,6 +503,7 @@ export async function requestPageKeys(
     accounts: "accounts",
     "account-links": "accounts",
     "pouch-receipts": "pouch-receipts",
+    "slip-movements": "slip-movements",
     "electronic-receipts": "electronic-receipts",
     currencies: "currencies",
     "finance-settings": "currencies",

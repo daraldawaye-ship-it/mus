@@ -1,3 +1,4 @@
+import { SlipMovementsPage } from "./pages/SlipMovementsPage";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   NavLink,
@@ -390,6 +391,7 @@ const companySections = [
   "cash-flows",
   "account-ledger",
   "my-cashbox-ledger",
+  "slip-movements",
   "administrative-custody",
   "items",
   "item-statistics-report",
@@ -1022,6 +1024,8 @@ function CompanyContent({
             mode="administrativeCustody" />
         </Suspense>
       );
+    case "slip-movements":
+      return <SlipMovementsPage key={context.company.id} context={context} />;
     case "my-cashbox-ledger":
       return (
         <Suspense fallback={<Notice>جارٍ تحميل كشف حساب صندوقي…</Notice>}>
