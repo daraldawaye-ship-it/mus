@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertTriangle, Bell, Check, CheckCircle2, ChevronDown,
@@ -6,9 +6,10 @@ import {
   Plus, Search, Settings2, ShieldAlert,
 } from "lucide-react";
 import "./DesignLibraryPage.css";
-import DesignLibraryExtras from "./DesignLibraryExtras";
+const DesignLibraryExtras = lazy(() => import("./DesignLibraryExtras"));
+const DesignLibraryWorkspaces = lazy(() => import("./DesignLibraryWorkspaces"));
 
-type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "navigation" | "feedback" | "text";
+type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "navigation" | "feedback" | "text" | "workspaces";
 const sections: { key: SectionKey; title: string; detail: string; symbol: string }[] = [
   { key: "fields", title: "الحقول والاختيارات", detail: "الكتابة والبحث والقوائم والتواريخ والاختيارات", symbol: "ح" },
   { key: "buttons", title: "الأزرار والإجراءات", detail: "أنواع الأزرار وحالاتها وأحجامها ومجموعاتها", symbol: "ز" },
@@ -18,6 +19,7 @@ const sections: { key: SectionKey; title: string; detail: string; symbol: string
   { key: "navigation", title: "التنقل والخطوات", detail: "القوائم والتبويبات والخطوات المتتابعة", symbol: "ت" },
   { key: "feedback", title: "التحميل والإحصاءات", detail: "الانتظار والبيانات والأحداث ومؤشرات الأداء", symbol: "م" },
   { key: "text", title: "النصوص والتنبيهات", detail: "العناوين والشروح والرسائل ومؤشرات التقدم", symbol: "ن" },
+  { key: "workspaces", title: "لوحات العمل والمتابعة", detail: "ملخصات وفلاتر جانبية ومراحل الطلبات ومعاينة السجلات", symbol: "ع" },
 ];
 
 function Sample({ code, title, note, children }: {
@@ -181,7 +183,7 @@ function DemoText() {
 const contentBySection: Record<SectionKey, () => ReactNode> = {
   fields: DemoFields, buttons: DemoButtons, colors: DemoColors,
   surfaces: DemoSurfaces, tables: DemoTables, navigation: () => null,
-  feedback: () => null, text: DemoText,
+  feedback: () => null, text: DemoText, workspaces: () => null,
 };
 
 export default function DesignLibraryPage() {
@@ -195,7 +197,7 @@ export default function DesignLibraryPage() {
       <div><h1><Layers size={21}/> مكتبة التصاميم</h1><p>مرجع المالك لأشكال الموقع، بأسماء عربية ثابتة وأمثلة قابلة للتجربة.</p></div>
       <span className="design-library-private"><Check size={14}/> للمالك فقط</span>
     </div>
-    <div className="design-library-tip"><Info size={16}/><span>اختر أي نموذج واذكر اسمه أو رقمه، مثل «ح-13» أو «ت-05». نماذج إضافية مستوحاة من <a href="https://freefrontend.com/css-code-examples/" target="_blank" rel="noopener noreferrer">FreeFrontend</a>، أعيد تصميمها لتناسب الرئيسي. التجارب لا تحفظ بيانات.</span></div>
+    <div className="design-library-tip"><Info size={16}/><span>اختر أي نموذج واذكر اسمه أو رمزه، مثل «ح-13» أو «ع-07». الرموز السابقة ثابتة، والتجارب لا تحفظ بيانات أعمال. مصادر الإلهام مذكورة في أقسامها؛ ومنها <a href="https://freefrontend.com/css-code-examples/" target="_blank" rel="noopener noreferrer">FreeFrontend</a> وDreams Core.</span></div>
     <nav className="design-library-nav" aria-label="أقسام مكتبة التصاميم">
       {sections.map(item=><Link key={item.key} to={"/design-library/"+item.key}
         className={item.key===selected.key?"selected":""}
@@ -204,8 +206,12 @@ export default function DesignLibraryPage() {
     <div className="design-library-section-title"><div><h2>{selected.title}</h2><p>{selected.detail}</p></div>
       <span>الصفحة {position+1} من {sections.length}</span>
     </div>
-    <Content/>
-    <DesignLibraryExtras section={selected.key}/>
+    <Suspense fallback={<p className="design-muted" role="status">جارٍ تحميل نماذج القسم…</p>}>
+      {selected.key === "workspaces" ? <DesignLibraryWorkspaces /> : <>
+        <Content/>
+        <DesignLibraryExtras key={selected.key} section={selected.key}/>
+      </>}
+    </Suspense>
     <div className="design-library-bottom"><span>يمكن تغيير لون المظهر والوضع الفاتح أو الداكن من إعدادات المظهر أعلى الموقع.</span><Link className="button button-secondary" to={"/design-library/"+next.key}>التالي: {next.title}</Link></div>
   </div>;
 }
