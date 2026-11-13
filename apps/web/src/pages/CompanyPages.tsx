@@ -352,6 +352,9 @@ export function CompanyOverviewPage({ context }: { context: CompanyContext }) {
       </Card>
       <Card title="إدارة الشركة">
         <div className="form-actions company-overview-shortcuts">
+          {user?.owner && (
+            <Link className="button button-secondary" to="/design-library">مكتبة التصاميم</Link>
+          )}
           {directory.data?.some(entry =>
             entry.key === "company.approved-devices" &&
             entry.visible && entry.enabled && entry.actionAccess.view
