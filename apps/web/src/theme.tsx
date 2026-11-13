@@ -82,6 +82,11 @@ export function buildThemeTokens(
     "--text": text,
     "--muted": accessible(dark ? "#a2b1c0" : "#5f6e79", surface),
     "--border": mix(surface, color, dark ? 0.35 : 0.23),
+    // Inputs are deliberately distinct from card surfaces in BOTH appearance modes.
+    // Neutral idle borders; selected user accent remains the source of the focus color.
+    "--field-bg": dark ? "#101820" : "#f5f7f9",
+    "--field-border": dark ? "#718090" : "#768492",
+    "--field-placeholder": dark ? "#a4b1be" : "#657381",
     "--primary": primary,
     "--user-accent-color": color,
     "--on-primary": textOn(primary),
