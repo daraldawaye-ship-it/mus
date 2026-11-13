@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  AlertTriangle, Bell, CalendarDays, Check, CheckCircle2, ChevronDown,
+  AlertTriangle, Bell, Check, CheckCircle2, ChevronDown,
   CircleHelp, Copy, FileText, Info, Layers, ListFilter, MoreHorizontal,
-  Palette, Plus, Search, Settings2, ShieldAlert, Table2, Trash2, Type,
+  Plus, Search, Settings2, ShieldAlert,
 } from "lucide-react";
 import "./DesignLibraryPage.css";
 
