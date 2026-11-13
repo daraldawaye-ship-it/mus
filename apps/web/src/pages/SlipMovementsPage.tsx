@@ -40,6 +40,6 @@ export function SlipMovementsPage({context}:{context:CompanyContext}) {
     </div></Card>}
     <Card><DataTable columns={columns} data={result.data?.items??[]} total={result.data?.total??0}
       page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={value=>{setPageSize(value);setPage(1);}}
-      selectionMode="none" loading={result.isLoading} ariaLabel="حركة القصاصات"/></Card>
+      sorting={[]} onSortingChange={() => {}} selectionMode="none" loading={result.isLoading} ariaLabel="حركة القصاصات"/></Card>
   </>;
 }
