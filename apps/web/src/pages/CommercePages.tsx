@@ -73,6 +73,7 @@ import { useEmployeeCashbox } from "../employee-cashbox";
 import { rememberRecentEntity } from "../recent-entities";
 import { initialInvoiceAccount } from "../invoice-account-default";
 import { SalesHeaderActionsDropdown, PageActionsDropdown } from "../SalesHeaderActionsDropdown";
+import { DoctorCard } from "./DoctorsPage";
 import { AdministrativeCustodyTransferButton } from "../AdministrativeCustodyTransferButton";
 import { AdministrativeCustodyFundingDialog } from "../AdministrativeCustodyFundingDialog";
 import { PledgeDialogs } from "../PledgeDialogs";
@@ -1996,6 +1997,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
     Array.isArray(receiptRequiredChoices) && receiptRequiredChoices.includes(account.accountChoice);
   const [pledgeMode, setPledgeMode] = useState<"add"|"list"|"pay"|"receive"|null>(null);
   const [quickAccountOpen,setQuickAccountOpen]=useState(false);
+  const [quickDoctorOpen,setQuickDoctorOpen]=useState(false);
   const [supplier, setSupplier] = useState<Account | null>(null);
   const [supplierReceiptNumber, setSupplierReceiptNumber] = useState("");
   const creditPurchase = kind === "purchase" && account?.category === "liability" &&
@@ -3428,6 +3430,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                     purchaseUrl={`${invoicePath(companyId,"new")}?kind=purchase`}
                     canOpenPurchase={commerceAccess(context)}
                     canCreateAccount={!locked && canPost(context) && !isOfflineNow()}
+                    canCreateDoctor={!locked && commerceAccess(context,true) && !isOfflineNow()}
                     canTransfer={!locked && !!defaultCashbox && canPost(context) && !cashboxBusy}
                     showFundCustody={custodyFundingAccess.data?.allowed === true}
                     canFundCustody={!locked && !!defaultCashbox && !cashboxBusy &&
@@ -3443,6 +3446,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                         openCashboxAction(action);
                       else if(action === "fundCustody") setCustodyFundingOpen(true);
                       else if(action === "addAccount") setQuickAccountOpen(true);
+                      else if(action === "addDoctor") setQuickDoctorOpen(true);
                       else if(action === "addPledge") setPledgeMode("add");
                       else if(action === "listPledges") setPledgeMode("list");
                       else if(action === "payPledge") setPledgeMode("pay");
@@ -4581,6 +4585,15 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
         تم إرسال التقرير المرتبط بالصنف.{" "}
         <Link to={`/companies/${companyId}/memos/${reportSentId}`}>فتح التقرير</Link>
       </Notice>}
+      {kind === "sale" && quickDoctorOpen && <DoctorCard
+        context={context} doctor={null} quickCreate
+        onClose={()=>setQuickDoctorOpen(false)}
+        onSaved={()=>{
+          setQuickDoctorOpen(false);
+          setItemNotice("تم إضافة كرت الطبيب أو الممرض بنجاح.");
+          void client.invalidateQueries({queryKey:["invoice-doctors",user?.id,companyId]});
+        }}/>
+      }
       {quickAccountOpen && <InvoiceQuickAccountDialog
         companyId={companyId} kind={kind}
         onClose={()=>setQuickAccountOpen(false)}
