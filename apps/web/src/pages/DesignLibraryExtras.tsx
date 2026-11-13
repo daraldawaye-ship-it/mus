@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle, ArrowLeft, Bell, Check, CheckCircle2, ChevronDown,
   ChevronLeft, Clock3, Copy, Download, FileText, Info, LayoutGrid,
-  ListFilter, LoaderCircle, MoreHorizontal, Plus, Search, Settings2,
+  ListFilter, LoaderCircle, MoreHorizontal, Search,
   SlidersHorizontal, X,
 } from "lucide-react";
 import "./DesignLibraryExtras.css";
