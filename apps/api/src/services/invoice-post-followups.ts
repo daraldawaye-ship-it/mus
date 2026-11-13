@@ -5,6 +5,7 @@ import { awardPostedInvoice } from "./invoice-rewards.ts";
 import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import { emitNotification } from "./notifications.ts";
 import { archivedDoctorSaleNotice } from "./sales-doctor-notification.ts";
+import { notifyReturnWithoutRecentSales } from "./sales-return-recency-notifications.ts";
 
 interface Followup {
   id: string;
@@ -60,8 +61,10 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
       const creatorName = creator.rows[0]?.name || user.displayName || user.name;
       await awardPostedInvoice(client, job.company_id, job.invoice_id, invoice.kind,
         user, invoice.number, job.customer_reward_kind, job.doctor_reward_eligible);
-      if (invoice.kind === "sale")
+      if (invoice.kind === "sale") {
         await accrueInvoiceClearance(client, job.company_id, job.invoice_id, user);
+        await notifyReturnWithoutRecentSales(client, job.company_id, job.invoice_id, invoice.number);
+      }
       if (job.new_doctor_id !== null && job.new_doctor_name) {
         await emitNotification(client, {
           code: "SALES_DOCTOR_REVIEW",
