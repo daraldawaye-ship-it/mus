@@ -72,16 +72,17 @@ export function financialReportsRoutes(pool: Pool): Router {
         "LEFT JOIN purchase_correction_journal_dates pd ON (pd.company_id,pd.document_id)=(d.company_id,d.id)",
         "WHERE l.company_id=$1 AND d.status<>'draft' AND ($3::date IS NULL OR " + effective + " <= $3::date)",
         "GROUP BY l.account_id)",
-        "SELECT a.id,a.parent_id,a.code,a.name,a.kind,a.category,",
+        "SELECT a.id,a.parent_id,a.code,a.name,a.kind,a.category,a.account_choice,",
         "COALESCE(m.opening,0)::text AS opening, COALESCE(m.debit,0)::text AS debit, COALESCE(m.credit,0)::text AS credit",
         "FROM accounts a LEFT JOIN movements m ON m.account_id=a.id",
         "WHERE a.company_id=$1 ORDER BY a.code, a.id",
       ].join(" ");
       const fetched = await client.query(sql, [companyId, from, to]);
-      type Internal = Amounts & { id: number; parentId: number | null; code: string; name: string; kind: string; category: string };
+      type Internal = Amounts & { id: number; parentId: number | null; code: string; name: string; kind: string; category: string; accountChoice: string | null };
       const internal: Internal[] = fetched.rows.map((row) => ({
         id: Number(row.id), parentId: row.parent_id === null ? null : Number(row.parent_id),
         code: String(row.code), name: String(row.name), kind: String(row.kind), category: String(row.category),
+        accountChoice: row.account_choice === null ? null : String(row.account_choice),
         opening: moneyUnits(row.opening), debit: moneyUnits(row.debit), credit: moneyUnits(row.credit),
       }));
       const map = new Map(internal.map((row) => [row.id, row]));
@@ -113,19 +114,20 @@ export function financialReportsRoutes(pool: Pool): Router {
         const openingPair = split(row.opening), closingPair = split(closing);
         return {
           openingDebit: openingPair.debit, openingCredit: openingPair.credit,
-          debit: decimal(row.debit), credit: decimal(row.credit),
+          debit: decimal(row.debit), credit: decimal(row.credit), movementNet: decimal(row.debit - row.credit),
           closingDebit: closingPair.debit, closingCredit: closingPair.credit,
           hasMovement: row.debit !== 0n || row.credit !== 0n,
         };
       };
       const items = internal.map((row) => ({
         id: row.id, parentId: row.parentId, code: row.code, name: row.name,
-        kind: row.kind, category: row.category, ...present(row),
+        kind: row.kind, category: row.category, accountChoice: row.accountChoice, ...present(row),
       }));
       return { dateFrom: from, dateTo: to, currencyCode: currency, items,
         totals: {
           openingDebit: decimal(grand.openingDebit), openingCredit: decimal(grand.openingCredit),
           debit: decimal(grand.debit), credit: decimal(grand.credit),
+          movementNet: decimal(grand.debit - grand.credit),
           closingDebit: decimal(grand.closingDebit), closingCredit: decimal(grand.closingCredit),
         },
         balanced: grand.openingDebit === grand.openingCredit &&
