@@ -137,8 +137,9 @@ function DoctorInlineCell({doctor,field,canEdit,onSaved,onFailure}:{
     : <input {...inputProps} type={field==="phone"?"tel":"text"}/>;
 }
 
-function DoctorCard({context,doctor,onClose,onSaved}: {
+export function DoctorCard({context,doctor,onClose,onSaved,quickCreate=false}: {
   context:CompanyContext;doctor:Doctor|null;onClose:()=>void;onSaved:()=>void;
+  quickCreate?:boolean;
 }) {
   const companyId=context.company.id;
   const guard=useScopeGuard(`company:${companyId}:doctor:${doctor?.id??"new"}`);
@@ -176,7 +177,7 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
     }catch(err){if(guard.isCurrent())setError(errorMessage(err));}
     finally{if(guard.isCurrent())setSaving(false);}
   }
-  return <Dialog open title={doctor?"تعديل كرت الطبيب أو الجهة":"إضافة كرت طبيب أو جهة"} onClose={()=>{
+  return <Dialog open title={doctor?"تعديل كرت الطبيب أو الجهة":quickCreate?"إضافة طبيب أو ممرض":"إضافة كرت طبيب أو جهة"} onClose={()=>{
     if(!saving)onClose();
   }}>
     <form className="form-stack" onSubmit={event=>void save(event)}>
@@ -195,7 +196,7 @@ function DoctorCard({context,doctor,onClose,onSaved}: {
       <Select label="الفئة" value={kind} disabled={saving}
         onChange={event=>setKind(event.target.value as DoctorKind|"")}>
         <option value="" disabled={!doctor}>بدون فئة — يحتاج مراجعة</option>
-        {doctorKinds.map(type=><option key={type} value={type}>{doctorKindLabels[type]}</option>)}
+        {doctorKinds.filter(type=>!quickCreate||type!=="entity").map(type=><option key={type} value={type}>{doctorKindLabels[type]}</option>)}
       </Select>
       <Field label="الجهة / القسم" value={department} list="doctor-department-suggestions"
         maxLength={240} disabled={saving} autoComplete="off"
