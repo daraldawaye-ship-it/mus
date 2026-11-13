@@ -226,5 +226,40 @@ export async function correctPurchase(
     message: `الأصل ${original.number}، التصحيح ${replacement.number}، ${name} (حساب ${user.id})، ${saved.rows[0].local_time}، السبب: ${input.reason}. الصافي ${original.total} ← ${replacement.total} ${original.currencyCode}.`,
     href: `/companies/${companyId}/invoices/${replacement.id}`,
   });
+  // Distinct alert types are tied only to the accepted correction, never the
+  // preview or reversal. Compare exact money units, not rounded UI strings.
+  const subjectKey = "purchase:" + id;
+  const eventKey = "correction:" + replacement.id;
+  const href = `/companies/${companyId}/invoices/${replacement.id}`;
+  if (moneyUnits(original.total) !== moneyUnits(replacement.total)) {
+    await emitNotification(client, {
+      companyId,
+      code: "PURCHASE_TOTAL_CHANGED",
+      subjectKey,
+      eventKey,
+      message: `الأصل ${original.number}، التصحيح ${replacement.number}، ${name} (حساب ${user.id})، ${saved.rows[0].local_time}، السبب: ${input.reason}. الصافي السابق ${original.total}، الصافي الجديد ${replacement.total}، الفارق ${impact.difference} ${original.currencyCode}.`,
+      href,
+    });
+  }
+  // The document date can be edited or inherited from an older invoice;
+  // use the actual invoice creation timestamp, and a strict >72h boundary.
+  const creation = (
+    await client.query(
+      `SELECT created_at < clock_timestamp() - INTERVAL '3 days' AS is_old,
+              to_char(created_at AT TIME ZONE 'Asia/Aden','DD/MM/YYYY HH24:MI:SS') AS created_local
+       FROM invoices WHERE company_id=$1 AND id=$2`,
+      [companyId, id],
+    )
+  ).rows[0];
+  if (creation?.is_old) {
+    await emitNotification(client, {
+      companyId,
+      code: "PURCHASE_OLD_CORRECTED",
+      subjectKey,
+      eventKey,
+      message: `الأصل ${original.number}، التصحيح ${replacement.number}، أُنشئت الفاتورة في ${creation.created_local}، وعدّلها ${name} (حساب ${user.id}) بتاريخ ${saved.rows[0].local_time}، السبب: ${input.reason}.`,
+      href,
+    });
+  }
   return { replacementId: replacement.id };
 }
