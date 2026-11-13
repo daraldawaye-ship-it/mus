@@ -1024,16 +1024,16 @@ select,
 textarea {
   height: var(--control-height);
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border, #718090);
   border-radius: 5px;
   padding: 0 9px;
-  background: var(--surface);
+  background: var(--field-bg, var(--surface));
   color: var(--text);
   width: 100%;
 }
 input::placeholder,
 textarea::placeholder {
-  color: var(--muted);
+  color: var(--field-placeholder, var(--muted));
 }
 input[type="color"] {
   padding: 3px 6px;
@@ -8825,3 +8825,70 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 
 .slip-ledger-totals { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:13px; }
+
+/* Readable editable fields — UI decision 14 Nov 2026.
+   Neutral boundaries in light/dark, and selected accent ONLY for interaction.
+   Keep dense table controls and original filter behavior unchanged. */
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(:disabled):focus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 27%, transparent);
+}
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(:disabled):hover:not(:focus) {
+  border-color: var(--field-border, #718090);
+}
+.item-options-filters-card .item-options-filter-field,
+.item-options-presets-card .item-options-filter-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 3px;
+}
+.item-options-filters-card .item-options-filter-field .item-options-filter-label,
+.item-options-presets-card .item-options-filter-field .item-options-filter-label {
+  position: static;
+  display: block;
+  flex: none;
+  width: 100%;
+  min-height: 15px;
+  padding-inline: 2px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--text);
+  font-weight: 650;
+  pointer-events: auto;
+}
+.item-options-filters-card .item-options-filter-field > input,
+.item-options-filters-card .item-options-filter-field > select,
+.item-options-presets-card .item-options-preset-field > input,
+.item-options-presets-card .item-options-preset-field > select {
+  height: 34px;
+  min-height: 34px;
+  padding-block: 0;
+  padding-inline: 10px;
+  border-color: var(--field-border, #718090);
+  background: var(--field-bg, var(--surface));
+}
+.item-options-filters-card .item-options-filter-field > select,
+.item-options-presets-card .item-options-preset-field > select {
+  padding-inline-end: 26px;
+}
+.item-options-filters-card .item-options-filter-field:focus-within .item-options-filter-label,
+.item-options-presets-card .item-options-filter-field:focus-within .item-options-filter-label {
+  color: var(--focus);
+}
+.item-options-explanation {
+  margin-block: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.item-options-explanation > summary {
+  cursor: pointer;
+  display: list-item;
+  width: fit-content;
+  font-weight: 600;
+  color: var(--text);
+}
+.item-options-explanation > p {
+  margin-top: 5px;
+  line-height: 1.65;
+}
