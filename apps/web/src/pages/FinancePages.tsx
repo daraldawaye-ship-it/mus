@@ -1513,14 +1513,15 @@ function DocumentEditor({
 
 /** Reuses the financial document editor without navigating away from the employee's own ledger. */
 export function CashboxVoucherModal({
-  context, kind, account, onClose,
+  context, kind, account, onClose, initialDocument,
 }: {
   context: CompanyContext;
   kind: "receipt" | "payment";
   account: PickAccount;
   onClose: () => void;
+  initialDocument?: FinancialDocument;
 }) {
-  const [record, setRecord] = useState<FinancialDocument | null>(null);
+  const [record, setRecord] = useState<FinancialDocument | null>(initialDocument ?? null);
   const [notice, setNotice] = useState("");
   const [editorStatus, setEditorStatus] = useState<EditorStatus>({
     dirty: false, saving: false, unknownCreation: false,

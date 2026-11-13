@@ -1,4 +1,5 @@
 import { rewardVoucherPrintRequest } from "./services/wallet-print.ts";
+import { directMedicalPaymentSchema, postDirectMedicalPayment } from "./services/direct-medical-payment.ts";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -756,6 +757,12 @@ export function financeRoutes(pool: Pool): Router {
           );
           if (linkedCustody.rowCount)
             conflict("القيد مرتبط بحركة العهدة الإدارية؛ لا يمكن عكسه خارج سجل العهدة");
+          const linkedDirectPayment = await client.query(
+            "SELECT 1 FROM direct_medical_payments WHERE company_id=$1 AND financial_document_id=$2",
+            [companyId, documentId],
+          );
+          if (linkedDirectPayment.rowCount)
+            conflict("سند الصرف المباشر مرتبط بعمولة أو قصاصات ومطابقتها؛ لا يمكن عكسه مستقلًا عن سجل الصرف");
           const linkedPouchReceipt=await client.query(
             "SELECT 1 FROM employee_pouch_receipts WHERE company_id=$1 AND financial_document_id=$2",
             [companyId,documentId],
@@ -941,6 +948,26 @@ export function financeRoutes(pool: Pool): Router {
           };
         }),
       );
+    }),
+  );
+  // Direct cashier expense: a posted payment voucher, never a custody/pouch transfer.
+  router.post(
+    `${base}/my-cashbox/direct-medical-payment`,
+    handler(async (req, res) => {
+      const input = parse(directMedicalPaymentSchema, req.body);
+      const result = await mutateMaster(pool, req, "finance.manage",
+        async (client, user, companyId) => {
+          const context = await companyAccess(client, user, companyId, "finance.own-cashbox.view");
+          await companyAccess(client, user, companyId, "finance.post");
+          if (!context.general && !context.employee?.positions.includes("cashier"))
+            throw new HttpError(403, "cashier_only",
+              "الصرف المباشر للقصاصات والعمولات متاح للمالك وأمين الصندوق فقط");
+          if (!context.employee?.id)
+            throw new HttpError(409, "cashbox_not_assigned",
+              "اربط المستخدم بصندوق مبيعات فعّال قبل الصرف المباشر");
+          return postDirectMedicalPayment(client, companyId, context.employee.id, user, input);
+        });
+      res.status(201).json(result);
     }),
   );
   router.get(

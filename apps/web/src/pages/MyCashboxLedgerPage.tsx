@@ -1,4 +1,5 @@
 import { SlipReceiptDialog } from "../SlipReceiptDialog";
+import { DirectMedicalPaymentDialog } from "../DirectMedicalPaymentDialog";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +10,7 @@ import {
   type AccountLedgerLine,
   type AccountLedgerTotals,
   type CompanyContext,
+  type FinancialDocument,
   type Page,
 } from "../../../../packages/contracts/src/index";
 import { api, useSession } from "../api";
@@ -55,6 +57,8 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const canCreateVoucher = (context.general || context.permissions.includes("finance.manage")) &&
     (isCustody || isCashier);
   const canViewReceipts = context.general || context.permissions.includes("finance.view");
+  const canCreateDirectPayment = !isCustody && isCashier && canCreateVoucher &&
+    (context.general || context.permissions.includes("finance.post")) && !isOfflineNow();
   const canAddAccount = (context.general ||
     (context.permissions.includes("commerce.manage") && context.permissions.includes("finance.post")))
     && !isOfflineNow();
@@ -62,6 +66,8 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
   const [selectedMovement,setSelectedMovement] = useState<AccountLedgerLine|null>(null);
   const [voucherKind, setVoucherKind] = useState<"receipt" | "payment" | null>(null);
   const [slipsOpen, setSlipsOpen] = useState(false);
+  const [directPaymentOpen, setDirectPaymentOpen] = useState(false);
+  const [directDocument, setDirectDocument] = useState<FinancialDocument | null>(null);
   const [quickAccountOpen, setQuickAccountOpen] = useState(false);
   const [accountNotice, setAccountNotice] = useState("");
   const today = todayInAden();
@@ -131,7 +137,11 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
       <div className="my-cashbox-page-heading">
         <PageHeader
           title={pageTitle}
-          actions={<PageActionsDropdown actions={[
+          actions={<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {!isCustody && <Button variant="secondary" size="compact"
+              disabled={!canCreateDirectPayment || !result.data?.account}
+              onClick={() => setDirectPaymentOpen(true)}>إضافة عمولة</Button>}
+            <PageActionsDropdown actions={[
             {
               label: "إضافة حساب",
               disabled: !canAddAccount,
@@ -169,10 +179,23 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
               to: `/companies/${companyId}/electronic-receipts`,
               disabled: !canViewReceipts,
             }] : []),
-          ]} label="إجراءات" />}
+          ]} label="إجراءات" />
+          </div>}
         />
       </div>
       {slipsOpen && <SlipReceiptDialog companyId={companyId} onClose={() => setSlipsOpen(false)} />}
+      {directPaymentOpen && <DirectMedicalPaymentDialog
+        companyId={companyId}
+        onClose={() => setDirectPaymentOpen(false)}
+        onSaved={document => {
+          setDirectPaymentOpen(false);
+          setDirectDocument(document);
+          void client.invalidateQueries({ predicate: query =>
+            query.queryKey.includes(companyId) &&
+            ["finance", "slip-movements", "doctor-sales-movements"].includes(String(query.queryKey[0])),
+          });
+        }}
+      />}
       {accountNotice && <Notice tone="success">{accountNotice}</Notice>}
       <Card className="my-cashbox-ledger-card">
         <div className="my-cashbox-date-range" role="group" aria-label={`فترة ${pageTitle}`}>
@@ -283,6 +306,11 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
           void client.invalidateQueries({queryKey:["master",user?.id,companyId]});
         }}
       />}
+      {directDocument && result.data?.account && (
+        <CashboxVoucherModal key={`direct-${directDocument.id}`}
+          context={context} kind="payment" account={result.data.account}
+          initialDocument={directDocument} onClose={() => setDirectDocument(null)} />
+      )}
       {voucherKind && result.data?.account && (
         <CashboxVoucherModal key={voucherKind}
           context={context}

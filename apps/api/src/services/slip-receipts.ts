@@ -6,9 +6,15 @@ import { audit } from "./audit.ts";
 
 const pendingWhere = `t.company_id=$1 AND t.expense_kind='slips'
   AND NOT EXISTS(SELECT 1 FROM slip_receipt_sources s WHERE s.company_id=t.company_id AND s.source_id=t.id)`;
+const pendingDirectWhere = `d.company_id=$1 AND d.expense_kind='slips'
+  AND NOT EXISTS(SELECT 1 FROM slip_receipt_direct_sources s WHERE s.company_id=d.company_id AND s.source_id=d.id)`;
 export async function pendingSlips(client: PoolClient, companyId: number) {
-  return (await client.query(`SELECT count(*)::int AS count,COALESCE(sum(t.slip_count),0)::text AS total
-    FROM administrative_custody_transfers t WHERE ${pendingWhere}`, [companyId])).rows[0] as {count:number;total:string};
+  return (await client.query(`SELECT count(*)::int AS count,COALESCE(sum(slip_count),0)::text AS total
+    FROM (
+      SELECT t.slip_count FROM administrative_custody_transfers t WHERE ${pendingWhere}
+      UNION ALL
+      SELECT d.slip_count FROM direct_medical_payments d WHERE ${pendingDirectWhere}
+    ) pending`, [companyId])).rows[0] as {count:number;total:string};
 }
 export async function receiveSlips(client: PoolClient, companyId: number, user: User, input: SlipReceiptInput): Promise<SlipReceiptResult> {
   // Same company lock as custody transfers: no source can appear halfway
@@ -30,6 +36,8 @@ export async function receiveSlips(client: PoolClient, companyId: number, user: 
     [companyId,pending.total,input.count,user.id,user.displayName,input.idempotencyKey,payload])).rows[0] as SlipReceiptResult;
   await client.query(`INSERT INTO slip_receipt_sources(company_id,source_id,receipt_id)
     SELECT t.company_id,t.id,$2 FROM administrative_custody_transfers t WHERE ${pendingWhere}`,[companyId,saved.id]);
+  await client.query(`INSERT INTO slip_receipt_direct_sources(company_id,source_id,receipt_id)
+    SELECT d.company_id,d.id,$2 FROM direct_medical_payments d WHERE ${pendingDirectWhere}`,[companyId,saved.id]);
   await audit(client,user,"slips.receive","slip-receipt",saved.id,null,{...saved,sourceCount:pending.count},companyId);
   return saved;
 }
@@ -43,6 +51,11 @@ export async function listSlipMovements(client: PoolClient, companyId: number, l
       'ترحيل قصاصات — '||t.doctor_name AS description,t.slip_count::bigint AS quantity
     FROM administrative_custody_transfers t LEFT JOIN users u ON u.id=t.created_by
     WHERE t.company_id=$1 AND t.expense_kind='slips'
+    UNION ALL
+    SELECT 'd:'||d.id,d.created_at,0,d.id,'transfer',
+      COALESCE(u.display_name,''),'صرف مباشر قصاصات — '||d.doctor_name,d.slip_count::bigint
+    FROM direct_medical_payments d LEFT JOIN users u ON u.id=d.created_by
+    WHERE d.company_id=$1 AND d.expense_kind='slips'
     UNION ALL
     SELECT 'r:'||r.id,r.created_at,1,r.id,'receipt',r.receiver_name,'استلام القصاصات',-r.received_count
     FROM slip_receipts r WHERE r.company_id=$1
