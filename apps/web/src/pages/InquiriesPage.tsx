@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { employeePositions } from "../../../../packages/contracts/src/employee-positions.ts";
 import { api, useSession } from "../api";
@@ -48,6 +48,10 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
  const [actionResult,setActionResult]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const createKey=useRef(crypto.randomUUID()),replyKey=useRef(crypto.randomUUID());
+ const replyFormRef=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+   if(replyingId!==null)replyFormRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+ },[replyingId]);
  const entries=useQuery({
    queryKey:["inquiries",user?.id,companyId,filter,search],
    queryFn:()=>api<{items:Inquiry[]}>(root+"?status="+encodeURIComponent(filter)+"&q="+encodeURIComponent(search)),
@@ -246,46 +250,10 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
   </Card>
   {selected&&<Card title={"الطلب رقم "+selected.id}>
     <p><strong>{selected.requestText}</strong></p>
-    <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
-    {selected.followUpAction&&<p><strong>المتابعة المطلوبة:</strong> {selected.followUpAction}</p>}
-    {selected.actionResult&&<p><strong>نتيجة التنفيذ:</strong> {selected.actionResult}</p>}
-    {manager&&(user.owner||selected.createdBy===user.id)&&selected.targets.length>0&&<div>
-      <strong>المعنيون ({selected.answeredCount} من {selected.assignedCount})</strong>
-      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
-        {selected.targets.map(t=><span key={t.userId} className="button button-secondary button-compact">
-          {t.name}: {t.status==="answered"?"أجاب":labels[t.status]??t.status}
-        </span>)}
-      </div>
-    </div>}
-    <h3>الردود</h3>
-    {selected.answers.length===0?<p className="muted">لم تُسجل إجابة بعد.</p>:
-      <div style={{overflowX:"auto"}}><table style={{width:"100%"}}>
-        <thead><tr><th>الرد رقم</th><th>المجيب</th><th>الرد</th><th>التوضيح</th><th>تاريخ الرد</th></tr></thead>
-        <tbody>{selected.answers.map(a=><tr key={a.id}>
-          <td>{a.id}</td><td>{a.userName}</td>
-          <td>{a.answerValue==="yes"?"نعم":a.answerValue==="no"?"لا":a.answerValue}</td>
-          <td>{a.explanation||"—"}</td><td>{when(a.answeredAt)}</td>
-        </tr>)}</tbody>
-      </table></div>}
-    {selected.myStatus==="pending"&&<Button onClick={()=>beginReply(selected)}>تسجيل إجابتي</Button>}
-    {manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
-      <label className="field"><span>نتيجة المتابعة والتنفيذ</span>
-        <textarea rows={2} value={actionResult} maxLength={4000}
-          onChange={e=>setActionResult(e.target.value)}/>
-      </label>
-      <div className="actions">
-        {selected.status==="answered"&&<Button disabled={busy}
-          onClick={()=>void changeStatus(selected,"in_progress")}>بدء التنفيذ</Button>}
-        {(selected.status==="answered"||selected.status==="in_progress")&&<Button disabled={busy}
-          onClick={()=>void changeStatus(selected,"done")}>تم التنفيذ</Button>}
-        <Button variant="secondary" disabled={busy}
-          onClick={()=>void changeStatus(selected,"closed")}>إغلاق الطلب</Button>
-      </div>
-    </div>}
-  </Card>}
-  {activeReply&&activeReply.myStatus==="pending"&&<Card title={"إجابة الطلب رقم "+activeReply.id}>
-    <p><strong>{activeReply.requestText}</strong></p>
-    <form onSubmit={reply} style={{display:"grid",gap:12}}>
+    {activeReply?.id===selected.id&&activeReply.myStatus==="pending"&&<div ref={replyFormRef}
+      style={{marginTop:12,marginBottom:14,padding:12,border:"1px solid var(--border-color, #9994)",borderRadius:8,scrollMarginTop:90}}>
+      <strong style={{display:"block",marginBottom:10}}>إجابتك</strong>
+      <form onSubmit={reply} style={{display:"grid",gap:12}}>
       {(activeReply.answerType==="number"||activeReply.answerType==="number_note")&&
         <Field label="الرقم" type="number" step="any" required value={answerValue}
           onChange={e=>setAnswerValue(e.target.value)}/>}
@@ -322,6 +290,44 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
         <Button variant="secondary" onClick={()=>setReplyingId(null)}>إلغاء</Button>
       </div>
     </form>
+    </div>}
+    <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
+    {selected.followUpAction&&<p><strong>المتابعة المطلوبة:</strong> {selected.followUpAction}</p>}
+    {selected.actionResult&&<p><strong>نتيجة التنفيذ:</strong> {selected.actionResult}</p>}
+    {manager&&(user.owner||selected.createdBy===user.id)&&selected.targets.length>0&&<div>
+      <strong>المعنيون ({selected.answeredCount} من {selected.assignedCount})</strong>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
+        {selected.targets.map(t=><span key={t.userId} className="button button-secondary button-compact">
+          {t.name}: {t.status==="answered"?"أجاب":labels[t.status]??t.status}
+        </span>)}
+      </div>
+    </div>}
+    <h3>الردود</h3>
+    {selected.answers.length===0?<p className="muted">لم تُسجل إجابة بعد.</p>:
+      <div style={{overflowX:"auto"}}><table style={{width:"100%"}}>
+        <thead><tr><th>الرد رقم</th><th>المجيب</th><th>الرد</th><th>التوضيح</th><th>تاريخ الرد</th></tr></thead>
+        <tbody>{selected.answers.map(a=><tr key={a.id}>
+          <td>{a.id}</td><td>{a.userName}</td>
+          <td>{a.answerValue==="yes"?"نعم":a.answerValue==="no"?"لا":a.answerValue}</td>
+          <td>{a.explanation||"—"}</td><td>{when(a.answeredAt)}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    {selected.myStatus==="pending"&&replyingId!==selected.id&&<Button onClick={()=>beginReply(selected)}>تسجيل إجابتي</Button>}
+    {manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
+      <label className="field"><span>نتيجة المتابعة والتنفيذ</span>
+        <textarea rows={2} value={actionResult} maxLength={4000}
+          onChange={e=>setActionResult(e.target.value)}/>
+      </label>
+      <div className="actions">
+        {selected.status==="answered"&&<Button disabled={busy}
+          onClick={()=>void changeStatus(selected,"in_progress")}>بدء التنفيذ</Button>}
+        {(selected.status==="answered"||selected.status==="in_progress")&&<Button disabled={busy}
+          onClick={()=>void changeStatus(selected,"done")}>تم التنفيذ</Button>}
+        <Button variant="secondary" disabled={busy}
+          onClick={()=>void changeStatus(selected,"closed")}>إغلاق الطلب</Button>
+      </div>
+    </div>}
   </Card>}
+
  </div>;
 }
