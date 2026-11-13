@@ -6,7 +6,8 @@ type OldCard={value:Record<string,unknown>};
 export async function migrateExistingCatalog(userId:number,companyId:number) {
   if(await readSharedItemProgress(userId,companyId)) return;
   const database=await new Promise<IDBDatabase>((resolve,reject)=>{
-    const req=indexedDB.open("alraesy-device-v1",3);
+    // Read the installed schema version; never request a downgrade to old v3.
+    const req=indexedDB.open("alraesy-device-v1");
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
   });
