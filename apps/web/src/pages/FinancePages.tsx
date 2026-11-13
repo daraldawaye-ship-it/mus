@@ -1045,6 +1045,14 @@ function DocumentEditor({
             )}
           </div>
         )}
+        {document?.custodyExpense?.doctorId && (
+          <div className="financial-document-meta">
+            <span>{document.custodyExpense.kind === "slips" ? "صرف للقصاصة" : "صرف لطبيب أو ممرض"}</span>
+            <span>المستفيد: {document.custodyExpense.doctorName}</span>
+            {document.custodyExpense.slipCount !== null && <span>عدد القصاصات: {document.custodyExpense.slipCount}</span>}
+            {document.custodyExpense.kind === "medical" && <span>الفواتير المؤشرة عند الصرف: {document.custodyExpense.accountedInvoiceCount}</span>}
+          </div>
+        )}
         <form onSubmit={save}>
           {embedded && kind !== "journal" ? (
             <>

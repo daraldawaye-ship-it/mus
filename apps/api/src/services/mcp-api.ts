@@ -4,11 +4,17 @@ import { stagingPricesSchema, stagingPricesOperation } from "../market-staging-p
 import { mcpBodySchemas as legalSchemas } from "../routes-legal-cases.ts";
 import { supplyPieceContracts } from "../supply-piece-forms.ts";
 import contracts from "../mcp-contracts.json" with { type: "json" };
+import { administrativeCustodyTransferSchema } from "../../../../packages/contracts/src/administrative-custody.ts";
 import { permissionRequest } from "./permission-rules.ts";
 import { centralPermissionAssignmentSchema } from "../routes-central-access.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "POST /companies/:companyId/sales/administrative-custody-transfers": {
+    source:"routes-commerce.ts",queryFields:[],pathParams:["companyId"],
+    bodyContract:"administrativeCustodyTransferSchema",bodySchema:z.toJSONSchema(administrativeCustodyTransferSchema),
+  },
+  "GET /companies/:companyId/doctors": {source:"routes-doctors.ts",queryFields:["q","active","medicalKind","page","pageSize","sort"]},
   "GET /companies/:companyId/central-access":{source:"routes-central-access.ts",queryFields:[],pathParams:["companyId"]},
   "PATCH /companies/:companyId/central-access/:key/employees/:employeeId":{
     source:"routes-central-access.ts",queryFields:[],pathParams:["companyId","key","employeeId"],

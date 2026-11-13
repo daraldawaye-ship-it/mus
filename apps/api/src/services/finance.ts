@@ -70,8 +70,13 @@ export function convertedUnits(
 }
 const iso = (value: Date | string): string => new Date(value).toISOString();
 export const financialFrom =
-  "FROM financial_documents d JOIN company_currencies c ON c.company_id=d.company_id AND c.id=d.currency_id JOIN users u ON u.id=d.created_by LEFT JOIN branches b ON b.company_id=d.company_id AND b.id=d.branch_id";
-export const financialSelect = `SELECT d.*,d.document_date::text AS date_text,COALESCE(d.currency_code,c.code) AS actual_currency_code,COALESCE(d.currency_name,c.name) AS actual_currency_name,COALESCE(d.decimal_places,c.decimal_places) AS actual_decimal_places,COALESCE(d.branch_name,b.name) AS actual_branch_name,u.display_name AS created_by_name ${financialFrom}`;
+  "FROM financial_documents d JOIN company_currencies c ON c.company_id=d.company_id AND c.id=d.currency_id JOIN users u ON u.id=d.created_by LEFT JOIN branches b ON b.company_id=d.company_id AND b.id=d.branch_id LEFT JOIN administrative_custody_transfers act ON act.company_id=d.company_id AND act.financial_document_id=d.id LEFT JOIN administrative_custody_receipts acr ON acr.company_id=d.company_id AND acr.voucher_document_id=d.id LEFT JOIN administrative_custody_transfers actv ON actv.company_id=d.company_id AND actv.id=acr.source_transfer_id";
+export const financialSelect = `SELECT d.*,d.document_date::text AS date_text,COALESCE(d.currency_code,c.code) AS actual_currency_code,COALESCE(d.currency_name,c.name) AS actual_currency_name,COALESCE(d.decimal_places,c.decimal_places) AS actual_decimal_places,COALESCE(d.branch_name,b.name) AS actual_branch_name,u.display_name AS created_by_name,
+ COALESCE(act.expense_kind,actv.expense_kind) AS custody_expense_kind, COALESCE(act.doctor_id,actv.doctor_id) AS custody_doctor_id,
+ COALESCE(act.doctor_name,actv.doctor_name) AS custody_doctor_name, COALESCE(act.doctor_main_name,actv.doctor_main_name) AS custody_doctor_main_name,
+ COALESCE(act.doctor_kind,actv.doctor_kind) AS custody_doctor_kind, COALESCE(act.slip_count,actv.slip_count) AS custody_slip_count,
+ COALESCE(act.accounted_cutoff_invoice_id,actv.accounted_cutoff_invoice_id) AS custody_cutoff_invoice_id,
+ COALESCE(act.accounted_invoice_count,actv.accounted_invoice_count) AS custody_accounted_invoice_count ${financialFrom}`;
 export function financialLineDTO(row: QueryResultRow): FinancialLine {
   return {
     id: row.id,
@@ -144,6 +149,13 @@ export async function documentDTOs(
     postedAt: row.posted_at === null ? null : iso(row.posted_at),
     reversalDocumentId: row.reversal_document_id,
     reversesDocumentId: row.reverses_document_id,
+    custodyExpense: row.custody_expense_kind ? {
+      kind: row.custody_expense_kind, doctorId: row.custody_doctor_id,
+      doctorName: row.custody_doctor_name, mainName: row.custody_doctor_main_name,
+      doctorKind: row.custody_doctor_kind, slipCount: row.custody_slip_count,
+      accountedInvoiceCount: row.custody_accounted_invoice_count,
+      cutoffInvoiceId: row.custody_cutoff_invoice_id,
+    } : null,
   }));
 }
 export async function documentRow(

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
+
 import type { PoolClient } from "pg";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import { HttpError } from "../errors.ts";
@@ -8,18 +8,9 @@ import { postCommerceJournal } from "./commerce-ledger.ts";
 import { audit } from "./audit.ts";
 import { checkPendingReceipts } from "./cashbox-notifications.ts";
 
-export const administrativeCustodyTransferSchema = z.object({
-  amount: z.string().trim().regex(
-    /^-?(?:0|[1-9][0-9]{0,19})(?:\.[0-9]{1,2})?$/,
-    "أدخل مبلغًا صالحًا بالريال اليمني حتى منزلتين عشريتين",
-  ),
-  notes: z.string().trim().max(1000),
-  idempotencyKey: z.string().uuid(),
-}).strict();
-
-export type AdministrativeCustodyTransferInput = z.output<
-  typeof administrativeCustodyTransferSchema
->;
+export { administrativeCustodyTransferSchema } from "../../../../packages/contracts/src/administrative-custody.ts";
+import type { AdministrativeCustodyTransferInput } from "../../../../packages/contracts/src/administrative-custody.ts";
+import { custodyMedicalBeneficiary, markCustodyMedicalSales } from "./custody-medical-expense.ts";
 
 function conflict(code: string, message: string): never {
   throw new HttpError(409, code, message);
@@ -31,7 +22,8 @@ export async function postAdministrativeCustodyTransfer(
   user: User,
   input: AdministrativeCustodyTransferInput,
 ) {
-  // Called inside mutateMaster, which serializes the company's posting operations.
+  // Serialize identical requests before checking the immutable operation receipt.
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["custody:" + companyId + ":" + input.idempotencyKey]);
   // Replays return the original journal only for the original user and payload.
   const previous = await client.query(
     "SELECT id,financial_document_id,created_by,request_payload=$3::jsonb AS same_payload FROM administrative_custody_transfers WHERE company_id=$1 AND idempotency_key=$2",
@@ -49,6 +41,9 @@ export async function postAdministrativeCustodyTransfer(
     conflict("custody_amount_zero", "أدخل مبلغًا موجبًا أو سالبًا غير صفري");
   if (amount > 10n ** 28n - 1n || amount < -(10n ** 28n - 1n))
     conflict("custody_amount_excess", "المبلغ يتجاوز الحد المدعوم");
+
+  const expenseKind = input.expenseKind ?? "other";
+  const beneficiary = await custodyMedicalBeneficiary(client, companyId, input);
 
   // Resolve both accounts server-side and only from the company's system links.
   // Never accept arbitrary account IDs from the invoice browser.
@@ -77,7 +72,11 @@ export async function postAdministrativeCustodyTransfer(
   const direction = amount > 0n
     ? "ترحيل من العهدة الإدارية إلى حافظتها"
     : "استلام من حافظة العهدة الإدارية إلى العهدة";
-  const memo = (direction + (input.notes ? " — " + input.notes : "")).slice(0, 1000);
+  const purpose = beneficiary ? (expenseKind === "slips"
+    ? `صرف للقصاصة — الممرض ${beneficiary.name} — عدد القصاصات: ${input.slipCount}`
+    : `صرف لـ${beneficiary.kind === "doctor" ? "الطبيب" : "الممرض"} ${beneficiary.name}`) : direction;
+  const memo = (purpose + (input.notes ? " — " + input.notes : "")).slice(0, 1000);
+  const marking = await markCustodyMedicalSales(client, companyId, user.id, beneficiary, expenseKind);
   const lines = amount > 0n
     ? [
         { accountId: custody.id as number, debit: "0", credit: moneyString(transfer), description: memo },
@@ -102,14 +101,22 @@ export async function postAdministrativeCustodyTransfer(
     lines,
   });
   const inserted = await client.query(
-    "INSERT INTO administrative_custody_transfers(company_id,custody_account_id,pouch_account_id,amount,notes,financial_document_id,idempotency_key,request_payload,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+    "INSERT INTO administrative_custody_transfers(company_id,custody_account_id,pouch_account_id,amount,notes,financial_document_id,idempotency_key,request_payload,created_by,expense_kind,doctor_id,doctor_name,doctor_main_name,doctor_kind,slip_count,accounted_cutoff_invoice_id,accounted_invoice_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id",
     [companyId, custody.id, pouch.id, moneyString(amount), input.notes, documentId,
-      input.idempotencyKey, JSON.stringify(input), user.id],
+      input.idempotencyKey, JSON.stringify(input), user.id, expenseKind, beneficiary?.id ?? null,
+      beneficiary?.name ?? null, beneficiary?.mainName ?? null, beneficiary?.kind ?? null,
+      input.slipCount ?? null, marking.cutoffInvoiceId, marking.newlyMarked],
   );
   const operationId = inserted.rows[0].id as number;
   await audit(client, user, "administrativeCustody.transfer", "administrative-custody-transfer",
     operationId, null, { amount: moneyString(amount), custodyAccountId: custody.id,
-      pouchAccountId: pouch.id, documentId, notes: input.notes }, companyId);
+      pouchAccountId: pouch.id, documentId, notes: input.notes, expenseKind,
+      doctorId: beneficiary?.id ?? null, doctorName: beneficiary?.name ?? null,
+      doctorMainName: beneficiary?.mainName ?? null, doctorKind: beneficiary?.kind ?? null,
+      slipCount: input.slipCount ?? null, ...marking }, companyId);
+  if (marking.cutoffInvoiceId !== null) await audit(client, user, "doctor.sales.accounted", "invoice",
+    marking.cutoffInvoiceId, null, { mainName: beneficiary!.mainName, kind: beneficiary!.kind,
+      ...marking, source: "custody_medical_payment", operationId, documentId }, companyId);
   await checkPendingReceipts(client, companyId, "pouch", "custody:" + operationId);
   return { operationId, documentId };
 }

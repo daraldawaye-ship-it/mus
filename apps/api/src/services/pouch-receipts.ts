@@ -45,6 +45,7 @@ export async function listPouchReceipts(
     SELECT 'employee'::text AS "sourceKind",o.id,o.kind,
       o.employee_name AS "employeeName",o.amount::text AS amount,
       o.notes,o.created_at AS "createdAt",
+      NULL::integer AS "defaultVoucherAccountId",NULL::text AS "defaultVoucherAccountName",NULL::text AS "defaultVoucherAccountCode",
       o.financial_document_id AS "sourceDocumentId",
       a.name AS "pouchName",
       r.id AS "receiptId",r.mode AS "receiptMode",
@@ -65,7 +66,8 @@ export async function listPouchReceipts(
     SELECT 'custody'::text AS "sourceKind",t.id,'custody'::text AS kind,
       COALESCE(NULLIF(sender.name,''),NULLIF(sender_user.display_name,''),'مستخدم النظام')::text
         AS "employeeName",t.amount::text AS amount,
-      t.notes,t.created_at AS "createdAt",
+      CASE WHEN t.expense_kind IN ('medical','slips') THEN source_doc.description ELSE t.notes END AS notes,t.created_at AS "createdAt",
+      expense_account.id AS "defaultVoucherAccountId",expense_account.name::text AS "defaultVoucherAccountName",expense_account.code::text AS "defaultVoucherAccountCode",
       t.financial_document_id AS "sourceDocumentId",
       a.name AS "pouchName",
       r.id AS "receiptId",r.mode AS "receiptMode",
@@ -76,6 +78,11 @@ export async function listPouchReceipts(
       r.financial_document_id AS "receiptDocumentId",
       r.notes AS "receiptNotes",r.created_at AS "receivedAt"
     FROM administrative_custody_transfers t
+    JOIN financial_documents source_doc ON source_doc.company_id=t.company_id AND source_doc.id=t.financial_document_id
+    LEFT JOIN account_links expense_link ON expense_link.company_id=t.company_id AND expense_link.purpose=
+      CASE t.expense_kind WHEN 'medical' THEN 'medicalCommissionExpense' WHEN 'slips' THEN 'medicalSlipsExpense' END
+    LEFT JOIN accounts expense_account ON expense_account.company_id=t.company_id AND expense_account.id=expense_link.account_id
+      AND expense_account.active AND expense_account.kind='posting' AND expense_account.category='expense'
     JOIN accounts a ON a.company_id=t.company_id AND a.id=t.pouch_account_id
     JOIN users sender_user ON sender_user.id=t.created_by
     LEFT JOIN LATERAL (

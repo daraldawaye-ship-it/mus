@@ -128,6 +128,16 @@ export interface FinancialDocument {
   postedAt: string | null;
   reversalDocumentId: number | null;
   reversesDocumentId: number | null;
+  custodyExpense?: {
+    kind: "medical" | "slips" | "other";
+    doctorId: number | null;
+    doctorName: string | null;
+    mainName: string | null;
+    doctorKind: "doctor" | "nurse" | null;
+    slipCount: number | null;
+    accountedInvoiceCount: number;
+    cutoffInvoiceId: number | null;
+  } | null;
 }
 export interface AccountBalance {
   id: number;

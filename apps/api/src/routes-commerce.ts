@@ -813,6 +813,13 @@ export function commerceRoutes(pool: Pool): Router {
           .find(page => page.key === "company.administrative-custody");
         if (!entry) throw new HttpError(403, "custody_page_missing", "صفحة العهدة غير متاحة");
         assertDirectoryAccess(entry, "post");
+        if (input.expenseKind === "medical") {
+          await companyAccess(client, user, companyId, "commerce.manage");
+          const medicalPage = (await directoryEntries(client, user, companyId))
+            .find(page => page.key === "company.doctor-sales-movements");
+          if (!medicalPage?.enabled || !medicalPage.actionAccess.edit)
+            throw new HttpError(403, "forbidden", "لا تملك صلاحية تأشير مبيعات الطبيب أو الممرض كمحاسبة");
+        }
         return postAdministrativeCustodyTransfer(client, companyId, user, input);
       });
       res.status(201).json(result);

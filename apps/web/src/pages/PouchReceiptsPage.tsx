@@ -11,6 +11,7 @@ import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 type Status="pending"|"received"|"all";
 type Movement={
   id:number;sourceKind?:"employee"|"custody";kind:"pouch"|"close"|"electronic"|"custody";employeeName:string;amount:string;
+  defaultVoucherAccountId?:number|null;defaultVoucherAccountName?:string|null;defaultVoucherAccountCode?:string|null;
   notes:string;createdAt:string;sourceDocumentId:number;pouchName?:string;walletName?:string;
   receiptId:number|null;receiptMode:"exact"|"difference"|null;
   receivedAmount:string|null;differenceAmount:string|null;
@@ -132,7 +133,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
     if(!electronic && item.kind!=="close"){
       setUncertain(false);setError("");
       setVoucherDraft({movement:item,key:crypto.randomUUID(),notes:item.notes||"",
-        receiptNumber:"",accountId:"",search:"",attempt:null});
+        receiptNumber:"",accountId:item.defaultVoucherAccountId?String(item.defaultVoucherAccountId):"",
+        search:item.defaultVoucherAccountName??"",attempt:null});
       return;
     }
     const key=exactKeys[movementKey(item)]??crypto.randomUUID();
@@ -450,6 +452,8 @@ export function PouchReceiptsPage({context,source="pouch"}:{
             disabled={pending||uncertain} onChange={e=>setVoucherDraft(prev=>prev?{
               ...prev,accountId:e.target.value}:prev)}>
             <option value="">اختر الحساب</option>
+            {voucherDraft.movement.defaultVoucherAccountId && !counterpart.data?.items.some(account=>account.id===voucherDraft.movement.defaultVoucherAccountId) &&
+              <option value={String(voucherDraft.movement.defaultVoucherAccountId)}>{voucherDraft.movement.defaultVoucherAccountCode} — {voucherDraft.movement.defaultVoucherAccountName}</option>}
             {counterpart.data?.items.map(account=>
               <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
           </Select>
