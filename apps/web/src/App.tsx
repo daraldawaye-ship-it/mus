@@ -437,7 +437,7 @@ function Navigation({
   context?: CompanyContext;
   close?: () => void;
 }) {
-  const { user, employeePreview } = useSession();
+  const { user, employeePreview, visitorOnly } = useSession();
   const directory = usePageDirectory(context?.company.id);
   const entries =
     directory.data ??
