@@ -12,6 +12,8 @@ const executeInput=previewInput.extend({
   previewId:z.string().uuid(),
   confirmation:z.literal("تنفيذ"),
 }).strict();
+export const ownerSqlMcpPreviewSchema=previewInput;
+export const ownerSqlMcpExecuteSchema=executeInput;
 const LIMIT=500,EXPIRES_MS=120000;
 const hash=(sql:string)=>createHash("sha256").update(sql).digest("hex");
 type Pending={
