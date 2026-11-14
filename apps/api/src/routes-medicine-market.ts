@@ -1,3 +1,4 @@
+import { marketCardCoverage } from "./market/card-coverage.ts";
 import { marketStagingRoutes } from "./routes-market-staging.ts";
 import { buildMarketImageVariants, storeMarketImageVariants, readMarketImageVariant,
   startMarketImageBackfill, marketImageBackfillStatus } from "./market/image-variants.ts";
@@ -636,6 +637,14 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
+
+  router.get(root + "/owner/card-coverage", handler(async (req, res) => {
+    const user = await viewer(pool, req);
+    if (!user?.owner || user.suspended || user.archived) deny();
+    await enabled(pool, req);
+    const kind = parse(z.enum(marketKinds), req.query.kind);
+    res.set("Cache-Control", "no-store").json(await marketCardCoverage(pool, kind));
+  }));
 
   // Derivatives share the source card visibility, including private prescriptions.
   router.get(root + "/cards/:cardId/image-variants/:variant", handler(async (req,res) => {

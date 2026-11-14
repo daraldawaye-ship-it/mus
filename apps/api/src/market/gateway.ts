@@ -56,7 +56,9 @@ export function createMarketGateway(pool: Pool, options: MarketGatewayOptions) {
     await assertRequestPagesEnabled(pool, req);
     const settings = await pool.query("SELECT page_key FROM page_settings WHERE company_id IS NULL AND page_key=ANY($1::text[]) AND NOT enabled", [marketPages]);
     const path = "/api/medicine-market" + req.url;
-    const headers = signMarketRequest(options.secret, req.method, path, user, settings.rows.map(r => r.page_key), body);
+    const marketUser = req.auth?.visitorOnly && user
+      ? { ...user, owner: false, kind: "member" as const, editor: false, monitor: false } : user;
+    const headers = signMarketRequest(options.secret, req.method, path, marketUser, settings.rows.map(r => r.page_key), body);
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
     const disconnect = () => { if (!res.writableEnded) abort.abort(); };

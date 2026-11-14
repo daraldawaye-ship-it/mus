@@ -1183,7 +1183,7 @@ export function MedicineMarketPage({
 }: {
   tab?: "catalog" | "review" | "contributions" | "points";
 }) {
-  const { user } = useSession(),
+  const { user, visitorOnly } = useSession(),
     client = useQueryClient(),
     guard = useScopeGuard(`public:medicine-market:${tab}`);
   const navigate=useNavigate();
@@ -1450,6 +1450,7 @@ export function MedicineMarketPage({
   );
   const tabs: [string, string, boolean][] = [
     [ROOT, "الدليل", true],
+    [`${ROOT}/card-coverage`, "اكتمال كروت السوق", !!user?.owner && !visitorOnly],
     [`${ROOT}/contributions`, "مساهماتي", !!user],
     [`${ROOT}/review`, "المصادقة", !!permissions?.canModerate],
     [`${ROOT}/points`, "نقاط الحقول", true],
