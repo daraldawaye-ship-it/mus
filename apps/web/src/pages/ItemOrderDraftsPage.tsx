@@ -19,7 +19,7 @@ import { Button, Card, Notice, PageHeader } from "../ui";
 
 type DraftRow = { draftId: number; draftOptionName?: string; item: OrderDraftItem };
 type DraftPrintMode = "all" | number;
-type DraftPrintRow = { id: string; name: string; requiredQuantity?: string; heading?: boolean };
+type DraftPrintRow = { id: string; name: string; requiredQuantity?: string };
 type DraftMetrics = {
   itemId: number; revision: number; reserveQuantity: string;
   orderAlertQuantity: string | null; orderStoppedUntil: string | null;
@@ -142,23 +142,15 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   });
   const groups = groupsQuery.data?.items ?? [];
   const currentGroup = groups.find(group => String(group.id) === selectedGroupId);
-  // Use all active records, not the current search page. A deleted row is
-  // excluded from printing but remains in the editable local draft.
+  // Export all active items in draft order, without printable draft/section headings.
+  // A deleted item stays in local storage but is omitted from print/PDF output.
   const printableRows = (mode: DraftPrintMode): DraftPrintRow[] =>
     drafts.drafts.filter(draft => mode === "all" || draft.id === mode)
-      .flatMap(draft => {
-        const lines = draft.items.filter(item => !item.deleted);
-        if (!lines.length) return [];
-        const entries: DraftPrintRow[] = lines.map(item => ({
-          id: draft.id + ":" + item.id,
-          name: item.name,
-          requiredQuantity: item.requiredQuantity ?? "—",
-        }));
-        return mode === "all"
-          ? [{ id: "heading:" + draft.id,
-              name: "مسودة " + draft.id + " — " + (draft.sourceOptionName ?? "خيارات متعددة"),
-              heading: true }, ...entries] : entries;
-      });
+      .flatMap(draft => draft.items.filter(item => !item.deleted).map(item => ({
+        id: draft.id + ":" + item.id,
+        name: item.name,
+        requiredQuantity: item.requiredQuantity ?? "—",
+      })));
   const printRows = printableRows(printMode);
   const allPrintable = printableRows("all");
   const [savingExport, setSavingExport] = useState(false);
@@ -196,7 +188,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     try {
       const pdf = createTwoColumnItemNamesPdf(items.map(item => ({
         name: item.name,
-        requiredQuantity: item.heading ? undefined : item.requiredQuantity,
+        requiredQuantity: item.requiredQuantity,
       })));
       const filename = "item-order-" + (mode === "all" ? "all" : "draft-" + mode) +
         "-" + new Date().toLocaleDateString("en-CA") + ".pdf";
@@ -710,9 +702,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       aria-label="طباعة أصناف مسودات الطلبيات مع الكميات المطلوبة">
       <div className="item-options-print-columns">
         {printRows.map(item => <div className="item-options-print-row" key={item.id}>
-          {!item.heading && <bdi className="item-options-print-quantity">
+          <bdi className="item-options-print-quantity">
             {item.requiredQuantity ?? "—"}
-          </bdi>}
+          </bdi>
           <span className="item-options-print-name">{item.name}</span>
         </div>)}
       </div>
