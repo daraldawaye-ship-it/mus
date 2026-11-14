@@ -470,7 +470,7 @@ export function marketStagingRoutes(pool:Pool, access:MarketAccess, isolated:boo
     }).strict(),req.query);
     if(!(await pool.query("SELECT 1 FROM market_import_sources WHERE id=$1",[sourceId])).rowCount)missing();
     const rows=await pool.query(
-      "SELECT r.section,r.position,r.payload_text," +
+      "SELECT r.section,r.position,r.payload_text,r.market_card_id AS \"marketCardId\"," +
       " COALESCE(f.status,'unprocessed') AS followup_status," +
       " COALESCE(f.completed_fields,ARRAY[]::text[]) AS completed_fields," +
       " COALESCE(f.remaining_fields,ARRAY[]::text[]) AS remaining_fields," +
