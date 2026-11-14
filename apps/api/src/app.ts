@@ -106,7 +106,7 @@ export async function createApp(options: AppOptions = {}) {
     mcpBusiness.get(["/medicine-market/admin/monitor", "/medicine-market/admin/monitor/count"], market.router);
   }
   mcpBusiness.use(business);
-  app.use(chatgptMcpRoutes(pool, config.appOrigin, mcpBusiness));
+  app.use(chatgptMcpRoutes(pool, config.appOrigin, mcpBusiness, marketOptions));
   // Only the authenticated explanation attachment upload needs larger JSON bodies.
   app.use("/api/explanations/nodes/:nodeId/assets", express.json({limit:"15mb"}));
   // A single archive file may be 25 MiB (base64 JSON is larger).
