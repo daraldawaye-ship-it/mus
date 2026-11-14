@@ -138,6 +138,7 @@ export const auditActionLabels = {
   "appearance.update": "حفظ المظهر",
   "users.view": "عرض المستخدمين",
   "page.open": "فتح صفحة",
+  "owner.sql.execute": "تنفيذ استعلام PostgreSQL إداري",
   "card.field.update": "تعديل حقل في كرت",
   "audit.view": "عرض سجل التدقيق",
   "company.create": "إنشاء شركة",
