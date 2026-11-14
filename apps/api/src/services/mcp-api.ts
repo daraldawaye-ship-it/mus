@@ -14,6 +14,10 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
     source:"routes-commerce.ts",queryFields:[],pathParams:["companyId"],
     bodyContract:"administrativeCustodyTransferSchema",bodySchema:z.toJSONSchema(administrativeCustodyTransferSchema),
   },
+  "GET /system-monitor/main": { source: "routes-system-monitor.ts", queryFields: [] },
+  "GET /system-monitor/main/count": { source: "routes-system-monitor.ts", queryFields: ["schema", "table"] },
+  "GET /medicine-market/admin/monitor": { source: "market/app.ts", queryFields: [] },
+  "GET /medicine-market/admin/monitor/count": { source: "market/app.ts", queryFields: ["schema", "table"] },
   "GET /companies/:companyId/doctors": {source:"routes-doctors.ts",queryFields:["q","active","medicalKind","page","pageSize","sort"]},
   "GET /companies/:companyId/central-access":{source:"routes-central-access.ts",queryFields:[],pathParams:["companyId"]},
   "PATCH /companies/:companyId/central-access/:key/employees/:employeeId":{

@@ -95,7 +95,17 @@ export async function createApp(options: AppOptions = {}) {
        ?imageMarketBody:smallMarketBody)(req,res,next));
   }
   const business = businessRoutes(pool, market?.router);
-  app.use(chatgptMcpRoutes(pool, config.appOrigin, business));
+  // Publish the existing owner-only database reports through the authenticated MCP router.
+  // Keep runtime and provider diagnostics outside this connector.
+  const monitor = systemMonitorRoutes(pool);
+  const mcpBusiness = express.Router();
+  mcpBusiness.get(["/system-monitor/main", "/system-monitor/main/count"], monitor);
+  if (market) {
+    // The signed gateway forwards these paths to the isolated market database.
+    mcpBusiness.get(["/medicine-market/admin/monitor", "/medicine-market/admin/monitor/count"], market.router);
+  }
+  mcpBusiness.use(business);
+  app.use(chatgptMcpRoutes(pool, config.appOrigin, mcpBusiness));
   // Only the authenticated explanation attachment upload needs larger JSON bodies.
   app.use("/api/explanations/nodes/:nodeId/assets", express.json({limit:"15mb"}));
   // A single archive file may be 25 MiB (base64 JSON is larger).
@@ -120,7 +130,7 @@ export async function createApp(options: AppOptions = {}) {
     chatRoutes(pool),
     chatGroupRoutes(pool),
     quickMessagesRoutes(pool),
-    systemMonitorRoutes(pool),
+    monitor,
     business,
     pledgeRoutes(pool),
   );
