@@ -6,17 +6,21 @@ import { actor, handler, parse } from "./http.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError } from "./errors.ts";
 import { audit } from "./services/audit.ts";
+import { signMarketRequest, type MarketContext } from "./market/transport.ts";
+import type { MarketGatewayOptions } from "./market/gateway.ts";
 
 const unlockSchema=z.object({password:z.string().min(1).max(200)}).strict();
 const querySchema=z.object({
+  database:z.enum(["main","market"]).default("main"),
   token:z.string().uuid(),
   sql:z.string().trim().min(1).max(12000),
 }).strict();
 const executeSchema=querySchema.extend({confirmationId:z.string().uuid()});
 const MAX_ROWS=200, MAX_CHANGED_ROWS=500, UNLOCK_MS=10*60*1000, CONFIRM_MS=2*60*1000;
-type SQLKind="select"|"insert"|"update"|"delete";
+export type SQLKind="select"|"insert"|"update"|"delete";
+export type SqlDatabase="main"|"market";
 type Ticket={ownerId:number;session:string;expiresAt:number};
-type Preview=Ticket & {token:string;hash:string;kind:SQLKind};
+type Preview=Ticket & {token:string;hash:string;kind:SQLKind;database:SqlDatabase};
 const unlocked=new Map<string,Ticket>();
 const pending=new Map<string,Preview>();
 const attempts=new Map<string,{count:number;until:number}>();
@@ -25,7 +29,7 @@ const sha=(value:string)=>createHash("sha256").update(value).digest("hex");
 function sqlError(message:string,code="sql_not_allowed"):never {
   throw new HttpError(400,code,message);
 }
-function inspect(sql:string):{sql:string;kind:SQLKind;table:string|null} {
+export function inspect(sql:string,database:SqlDatabase="main"):{sql:string;kind:SQLKind;table:string|null} {
   let text=sql.trim();
   if(text.endsWith(";"))text=text.slice(0,-1).trim();
   // A single plain statement is deliberate: no commands, comments or stacked SQL.
@@ -43,14 +47,15 @@ function inspect(sql:string):{sql:string;kind:SQLKind;table:string|null} {
   const tableMatch=/^\s*((?:"?[a-z_][a-z0-9_]*"?\.)?"?[a-z_][a-z0-9_]*"?)(?=\s|\()/i.exec(rest);
   if(!tableMatch)sqlError("استخدم اسم جدول مباشرًا في استعلام التعديل");
   const parts=tableMatch[1].replaceAll('"',"").toLowerCase().split(".");
-  if(parts.length>1 && parts[0]!=="public")
-    sqlError("الكتابة المباشرة مسموحة لجداول public فقط");
+  const schema=database==="market"?"market":"public";
+  if(parts.length>1 && parts[0]!==schema)
+    sqlError("لا يمكن تعديل جداول خارج قاعدة البيانات المختارة");
   const table=parts.at(-1)!;
-  if(/^(users|sessions|audit_events|schema_migrations|page_access_grants|oauth_.*|chatgpt_.*|user_oauth_.*)$/.test(table))
+  if(/^(users|sessions|audit_events|schema_migrations|market_schema_migrations|page_access_grants|oauth_.*|chatgpt_.*|user_oauth_.*)$/.test(table))
     sqlError("هذا جدول محمي؛ تعديله يتم من واجهات إدارة النظام المعتمدة");
   return {sql:text,kind,table};
 }
-function visible(value:unknown):string|number|boolean|null {
+export function visible(value:unknown):string|number|boolean|null {
   if(value===undefined||value===null)return null;
   if(typeof value==="string")return value.slice(0,10000);
   if(typeof value==="number"||typeof value==="boolean")return value;
@@ -79,7 +84,7 @@ async function owner(pool:Pool,req:Parameters<typeof actor>[0]) {
   if(user.suspended)throw new HttpError(403,"suspended","الحساب موقوف");
   return user;
 }
-async function limitedTransaction<T>(pool:Pool,readOnly:boolean,task:(client:import("pg").PoolClient)=>Promise<T>):Promise<T> {
+export async function limitedTransaction<T>(pool:Pool,readOnly:boolean,task:(client:import("pg").PoolClient)=>Promise<T>):Promise<T> {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
@@ -94,7 +99,43 @@ async function limitedTransaction<T>(pool:Pool,readOnly:boolean,task:(client:imp
     throw error;
   }finally{client.release();}
 }
-export function ownerSqlConsoleRoutes(pool:Pool):Router {
+async function askMarket(options:MarketGatewayOptions|undefined,operation:"preview"|"execute",user:NonNullable<MarketContext["user"]>,sql:string){
+  if(!options)throw new HttpError(503,"market_unavailable","اتصال قاعدة السوق غير مفعّل");
+  const path="/api/internal/owner-sql-market/"+operation;
+  const body=JSON.stringify({sql});
+  const headers=signMarketRequest(options.secret,"POST",path,user,[],body);
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),7500);
+  try {
+    const response=await fetch(new URL(path,new URL(options.url)),{
+      method:"POST",headers:{"content-type":"application/json",...headers},
+      body,signal:controller.signal,redirect:"error"
+    });
+    const reader=response.body?.getReader();
+    const chunks:Uint8Array[]=[];
+    let bytes=0;
+    if(reader)for(;;){
+      const chunk=await reader.read();
+      if(chunk.done)break;
+      bytes+=chunk.value.byteLength;
+      if(bytes>2*1024*1024){await reader.cancel();throw new HttpError(413,"sql_result_too_large","نتائج السوق كبيرة؛ ضيّق الاستعلام");}
+      chunks.push(chunk.value);
+    }
+    const decoded=JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+      mode?:string;kind?:SQLKind;table?:string|null;estimatedRows?:number|null;
+      columns?:string[];rows?:unknown[][];rowCount?:number;truncated?:boolean;
+      affectedRows?:number;error?:{code?:string;message?:string};
+    };
+    if(!response.ok)throw new HttpError(response.status,decoded.error?.code??"market_sql_error",
+      decoded.error?.message??"تعذّر تنفيذ استعلام السوق");
+    return decoded;
+  }catch(error){
+    if(error instanceof HttpError)throw error;
+    throw new HttpError(503,"market_unavailable","تعذر الوصول إلى خدمة السوق؛ لم تتم إعادة تنفيذ الاستعلام تلقائيًا");
+  }finally{clearTimeout(timeout);}
+}
+
+export function ownerSqlConsoleRoutes(pool:Pool,marketOptions?:MarketGatewayOptions):Router {
   const router=Router();
   router.post("/owner-sql/unlock",handler(async(req,res)=>{
     const user=await owner(pool,req);
@@ -122,7 +163,17 @@ export function ownerSqlConsoleRoutes(pool:Pool):Router {
     const input=parse(querySchema,req.body);
     ticketFor(req,input.token);
     tidy();
-    const statement=inspect(input.sql);
+    const statement=inspect(input.sql,input.database);
+    if(input.database==="market"){
+      const result=await askMarket(marketOptions,"preview",user,statement.sql);
+      if(statement.kind==="select"){res.json(result);return;}
+      const confirmationId=randomUUID();
+      pending.set(confirmationId,{ownerId:user.id,session:req.auth!.tokenHash,
+        expiresAt:Date.now()+CONFIRM_MS,token:input.token,hash:sha(statement.sql),kind:statement.kind,database:input.database});
+      res.json({mode:"write",database:"market",kind:statement.kind,table:statement.table,
+        estimatedRows:result.estimatedRows??null,confirmationId,expiresInSeconds:CONFIRM_MS/1000,maxChangedRows:MAX_CHANGED_ROWS});
+      return;
+    }
     if(statement.kind==="select"){
       const response=await limitedTransaction(pool,true,async client=>{
         // The outer LIMIT bounds data transfer even when the owner omits LIMIT.
@@ -150,7 +201,7 @@ export function ownerSqlConsoleRoutes(pool:Pool):Router {
     });
     const confirmationId=randomUUID();
     pending.set(confirmationId,{ownerId:user.id,session:req.auth!.tokenHash,
-      expiresAt:Date.now()+CONFIRM_MS,token:input.token,hash:sha(statement.sql),kind:statement.kind});
+      expiresAt:Date.now()+CONFIRM_MS,token:input.token,hash:sha(statement.sql),kind:statement.kind,database:input.database});
     res.json({mode:"write",kind:statement.kind,table:statement.table,estimatedRows,
       confirmationId,expiresInSeconds:CONFIRM_MS/1000,maxChangedRows:MAX_CHANGED_ROWS});
   }));
@@ -158,15 +209,20 @@ export function ownerSqlConsoleRoutes(pool:Pool):Router {
     const user=await owner(pool,req);
     const input=parse(executeSchema,req.body);
     ticketFor(req,input.token);
-    const statement=inspect(input.sql);
+    const statement=inspect(input.sql,input.database);
     if(statement.kind==="select")sqlError("استعلام SELECT يُنفذ من زر المعاينة");
     const preview=pending.get(input.confirmationId);
     if(!preview||preview.ownerId!==user.id||preview.session!==req.auth!.tokenHash||
-      preview.token!==input.token||preview.kind!==statement.kind||
+      preview.token!==input.token||preview.kind!==statement.kind||preview.database!==input.database||
       preview.hash!==sha(statement.sql)||preview.expiresAt<Date.now())
       throw new HttpError(409,"sql_preview_expired","انتهت المعاينة أو تغيّر الاستعلام؛ عاينه مجددًا");
     // Consume before executing: a retry cannot accidentally apply a write twice.
     pending.delete(input.confirmationId);
+    if(input.database==="market"){
+      const result=await askMarket(marketOptions,"execute",user,statement.sql);
+      res.json({ok:true,database:"market",kind:statement.kind,table:statement.table,affectedRows:result.affectedRows??0});
+      return;
+    }
     const affectedRows=await limitedTransaction(pool,false,async client=>{
       const result=await client.query({
         name:"owner_sql_write_"+randomUUID().replaceAll("-",""),
