@@ -15,6 +15,7 @@ import type { Database } from "../db.ts";
 import { HttpError, missing } from "../errors.ts";
 import { audit } from "./audit.ts";
 import { conflict } from "./masters.ts";
+import { assertThirdPartyGoodsAccount } from "./third-party-goods.ts";
 import {
   checkQuantum,
   convertedUnits,
@@ -416,6 +417,7 @@ export async function createInvoice(
     )
   )
     conflict("اختر أصنافًا فعالة من الشركة");
+  await assertThirdPartyGoodsAccount(client, companyId, input.counterpartyAccountId, itemIds);
   const originals = new Map<number, QueryResultRow>();
   if (input.lines.some((line) => line.originalLineId !== null)) {
     const ids = input.lines

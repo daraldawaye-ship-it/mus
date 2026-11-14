@@ -47,6 +47,7 @@ const zero = (date: string, currencyCode: string): Row => ({
   invoiceCount: 0, returnInvoiceCount: 0,
   sales: "0", gross: "0", discount: "0", returns: "0", net: "0",
 });
+const weekdays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const payments: Record<Payment, string> = {
   all: "الكل", cash: "النقد", credit: "الآجل",
 };
@@ -120,11 +121,15 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const [params, setParams] = useSearchParams();
   const today = adenInvoiceToday();
-  const dateFrom = params.get("dateFrom") ?? today;
+  const eightDaysAgo = new Date(Date.parse(today + "T00:00:00Z") - 8 * 86400000).toISOString().slice(0, 10);
+  const dateFrom = params.get("dateFrom") ?? eightDaysAgo;
   const dateTo = params.get("dateTo") ?? today;
   const paymentParam = params.get("payment");
-  const payment: Payment = paymentParam === "all" || paymentParam === "credit"
-    ? paymentParam : "cash";
+  const payment: Payment = paymentParam === "cash" || paymentParam === "credit"
+    ? paymentParam : "all";
+  const includeThirdParty = params.get("includeThirdParty") === "true";
+  const weekdayParam = params.get("weekdays") ?? "0,1,2,3,4,5,6";
+  const selectedWeekdays = weekdayParam.split(",").filter(value => /^[0-6]$/.test(value)).map(Number);
   const groupParam = params.get("group");
   const group: GroupHours = groupParam === "6" ? 6 : groupParam === "1" ? 1 : 3;
   const positions = useMemo(() =>
@@ -133,7 +138,8 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
     Date.parse(dateFrom + "T00:00:00Z")) / 86400000;
   const invalid = !dateFrom || !dateTo || dateFrom > dateTo ||
     !Number.isFinite(daysBetween) || daysBetween > 365;
-  const query = new URLSearchParams({ dateFrom, dateTo, payment });
+  const query = new URLSearchParams({ dateFrom, dateTo, payment,
+    includeThirdParty: String(includeThirdParty), weekdays: selectedWeekdays.join(",") });
   const report = useQuery({
     queryKey: ["sales-time-report", user?.id, companyId, query.toString()],
     queryFn: ({ signal }) => api<{ report: Report }>(
@@ -149,6 +155,7 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
     const end = Date.parse(data.dateTo + "T00:00:00Z");
     const start = Date.parse(data.dateFrom + "T00:00:00Z");
     for (let time = end; time >= start; time -= 86400000) {
+      if (!selectedWeekdays.includes(new Date(time).getUTCDay())) continue;
       const date = new Date(time).toISOString().slice(0, 10);
       const found = daily.filter(row => row.date === date);
       const dayTotals = found.length ? found : [zero(date, data.baseCurrencyCode)];
@@ -164,7 +171,7 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
       }
     }
     return result;
-  }, [data]);
+  }, [data, weekdayParam]);
   const totals = useMemo(() => {
     if (!data) return [] as Row[];
     const found = data.rows.filter(row => row.level === 3);
@@ -214,6 +221,22 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
           <option value="3">كل 3 ساعات</option>
           <option value="1">تفصيل كل ساعة</option>
         </Select>
+        <details className="sales-time-weekdays">
+          <summary>أيام الأسبوع ({selectedWeekdays.length}/7)</summary>
+          <div className="sales-time-weekday-menu">
+            <label><input type="checkbox" checked={selectedWeekdays.length === 7}
+              onChange={event => change("weekdays", event.target.checked ? "0,1,2,3,4,5,6" : "")} /> الكل</label>
+            {weekdays.map((day, index) => <label key={day}>
+              <input type="checkbox" checked={selectedWeekdays.includes(index)} onChange={event => {
+                const next = event.target.checked ? [...selectedWeekdays, index]
+                  : selectedWeekdays.filter(value => value !== index);
+                change("weekdays", next.sort().join(","));
+              }} /> {day}
+            </label>)}
+          </div>
+        </details>
+        <label className="sales-time-third-party"><input type="checkbox" checked={includeThirdParty}
+          onChange={event => change("includeThirdParty", String(event.target.checked))} /> إظهار مبيعات أصناف الغير</label>
         <Button variant="secondary" disabled={invalid || report.isFetching}
           onClick={() => void report.refetch()}>تحديث</Button>
       </div>

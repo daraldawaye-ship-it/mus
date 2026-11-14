@@ -84,11 +84,11 @@ test('migration preserves old transfers and independently stores beneficiary, co
     await db.exec(insert);
     await db.exec('CREATE TABLE administrative_custody_receipts(company_id integer,id integer,source_transfer_id integer,mode text,voucher_document_id integer,received_amount numeric,difference_amount numeric,receiver_employee_name text,financial_document_id integer,notes text,created_at timestamptz)');
     await db.exec(await readFile(new URL('../apps/api/migrations/20261113_custody_medical_expenses.sql',import.meta.url),'utf8'));
-    assert.equal((await db.query('SELECT expense_kind FROM administrative_custody_transfers')).rows[0].expense_kind,'other');
+    assert.equal((await db.query<{expense_kind:string}>('SELECT expense_kind FROM administrative_custody_transfers')).rows[0].expense_kind,'other');
     await db.exec("INSERT INTO account_links VALUES(2,'medicalSlipsExpense',1),(2,'medicalCommissionExpense',2)");
     const medicalInsert=`INSERT INTO administrative_custody_transfers(company_id,custody_account_id,pouch_account_id,amount,financial_document_id,idempotency_key,request_payload,created_by,expense_kind,doctor_id,doctor_name,doctor_main_name,doctor_kind,slip_count) VALUES(2,1,2,10,2,'${randomUUID()}','{}',1,'slips',1,'أحمد','أحمد','nurse',3)`;
     await db.exec(medicalInsert);
-    assert.equal((await db.query('SELECT sum(slip_count)::int AS count FROM administrative_custody_transfers WHERE company_id=2 AND doctor_id=1')).rows[0].count,3);
+    assert.equal((await db.query<{count:number}>('SELECT sum(slip_count)::int AS count FROM administrative_custody_transfers WHERE company_id=2 AND doctor_id=1')).rows[0].count,3);
     const invalidInsert=medicalInsert.replace("10,2,", "10,3,").replace(/'[a-f0-9-]{36}'/,`'${randomUUID()}'`).replace("nurse',3)","nurse',NULL)");
     await assert.rejects(()=>db.exec(invalidInsert));
     await assert.rejects(()=>db.exec('UPDATE administrative_custody_transfers SET slip_count=5 WHERE financial_document_id=2'));
