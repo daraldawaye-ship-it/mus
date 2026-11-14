@@ -8,8 +8,17 @@ import { administrativeCustodyTransferSchema } from "../../../../packages/contra
 import { permissionRequest } from "./permission-rules.ts";
 import { centralPermissionAssignmentSchema } from "../routes-central-access.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
+import {ownerSqlMcpPreviewSchema,ownerSqlMcpExecuteSchema} from "./owner-sql-mcp.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
+  "POST /owner-bulk-sql/preview": {
+    source:"app.ts OAuth-dispatched owner SQL",queryFields:[],
+    bodyContract:"ownerSqlMcpPreviewSchema",bodySchema:z.toJSONSchema(ownerSqlMcpPreviewSchema),
+  },
+  "POST /owner-bulk-sql/execute": {
+    source:"app.ts OAuth-dispatched owner SQL",queryFields:[],
+    bodyContract:"ownerSqlMcpExecuteSchema",bodySchema:z.toJSONSchema(ownerSqlMcpExecuteSchema),
+  },
   "POST /companies/:companyId/sales/administrative-custody-transfers": {
     source:"routes-commerce.ts",queryFields:[],pathParams:["companyId"],
     bodyContract:"administrativeCustodyTransferSchema",bodySchema:z.toJSONSchema(administrativeCustodyTransferSchema),
