@@ -74,6 +74,7 @@ import { AttendanceApprovalBanner } from "./AttendanceApprovalBanner";
 import { QuickLoginPage } from "./QuickLoginPage";
 import { LastPresentUsersPage } from "./pages/LastPresentUsersPage";
 import { SystemMonitorPage } from "./pages/SystemMonitorPage";
+const OwnerSqlConsolePage = lazy(() => import("./pages/OwnerSqlConsolePage").then(m=>({default:m.OwnerSqlConsolePage})));
 import { AttendanceCurrentlyPresent } from "./AttendanceCurrentlyPresent";
 import { ConnectionModeControl } from "./ConnectionModeControl";
 import { WalletIndicator } from "./WalletIndicator";
@@ -455,6 +456,7 @@ function Navigation({
     "public.companies": <Building2 size={17} />,
     "public.users": <Users size={17} />,
     "public.system-monitor": <LayoutDashboard size={17} />,
+    "public.owner-sql-console": <TableProperties size={17} />,
     "public.last-present": <FileClock size={17} />,
     "public.general-table": <TableProperties size={17} />,
     "public.explanations-reader": <BookOpen size={17}/>,
@@ -1501,6 +1503,7 @@ function Workspace() {
               />
               <Route path="/users/last-present" element={<Protected><PageRouteGuard pageKey="public.last-present"><LastPresentUsersPage /></PageRouteGuard></Protected>} />
               <Route path="/system-monitor" element={<Protected><PageRouteGuard pageKey="public.system-monitor"><SystemMonitorPage /></PageRouteGuard></Protected>} />
+            <Route path="/owner-sql" element={<Protected><PageRouteGuard pageKey="public.owner-sql-console">{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل استعلامات PostgreSQL…</Notice>}><OwnerSqlConsolePage /></Suspense> : <Notice tone="error">للمالك فقط</Notice>}</PageRouteGuard></Protected>} />
               <Route path="/explanations/topics" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل الشروح…</Notice>}><ExplanationsContinuousReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations/topic/:topicId" element={<Protected><PageRouteGuard pageKey="public.explanations-reader"><Suspense fallback={<Notice>جارٍ تحميل صفحة الشرح…</Notice>}><ExplanationsTopicReader/></Suspense></PageRouteGuard></Protected>} />
               <Route path="/explanations" element={<Protected><PageRouteGuard pageKey="public.explanations-editor"><Suspense fallback={<Notice>جارٍ تحميل إدارة الشروح…</Notice>}><ExplanationsPage/></Suspense></PageRouteGuard></Protected>} />
