@@ -142,7 +142,7 @@ export async function addItemCoverageToPage<T extends { id: number }>(
  * Read-only replenishment estimate for the selected item-options page.
  * Required quantity is DISPLAYED in the first purchase unit as a WHOLE
  * number. The suggested quantity in smallest units is rounded up to the
- * least common multiple of factor2*factor3 and purchaseFactor, preserving
+ * purchaseFactor in whole first units, never below the item's minimum, preserving
  * whole first units and the existing minimum purchase lot simultaneously.
  * Item purchase_price is per first purchase unit, not per smallest unit.
  * No stock or financial postings result from these figures.
@@ -184,7 +184,9 @@ export async function requiredPurchaseQuantitiesToPage(
                 AS minimum_lot_first_unit
      ) purchase_lot
      CROSS JOIN LATERAL (
-       SELECT greatest(1::numeric, ceil(greatest(0::numeric,
+       SELECT greatest(1::numeric,
+         ceil(i.min_order_quantity::numeric / purchase_lot.minimum_lot_first_unit),
+         ceil(greatest(0::numeric,
          coverage_rate.sales * greatest($3::numeric,0) / coverage_rate.days
          + CASE WHEN $4::boolean THEN i.reserve_quantity ELSE 0::numeric END
          - coverage_rate.quantity
