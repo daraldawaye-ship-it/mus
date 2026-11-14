@@ -187,6 +187,15 @@ page(
   { type: "report", keywords: ["PostgreSQL", "Render", "قواعد البيانات", "أحجام", "الجداول", "المساحة", "الذاكرة", "الحجم", "الفوترة"] },
 );
 page(
+  "public.owner-sql-console",
+  "استعلامات PostgreSQL",
+  "إدارة المنصة",
+  "/owner-sql",
+  {view:owner,create:owner,edit:owner},
+  "محرر SQL للمالك فقط بكلمة مرور إضافية، معاينة SELECT وتأكيد مستقل لأوامر INSERT وUPDATE وDELETE.",
+  {type:"form",keywords:["SQL","PostgreSQL","استعلام","قاعدة البيانات","تعديل","حذف","إضافة"]},
+);
+page(
   "public.last-present",
   "آخر المتواجدين",
   "إدارة المنصة",
