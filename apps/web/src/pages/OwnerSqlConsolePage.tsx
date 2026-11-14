@@ -8,12 +8,14 @@ type WritePreview={mode:"write";kind:"insert"|"update"|"delete";table:string;est
 type SQLPreview=ReadResult|WritePreview;
 type Written={ok:true;kind:string;table:string;affectedRows:number};
 const example="SELECT id, code, message, created_at FROM notifications WHERE message LIKE '%@%' ORDER BY created_at DESC;";
+const marketExample="SELECT id, kind, name, status FROM medicine_market_cards ORDER BY id DESC;";
 const format=(v:unknown)=>v===null?"NULL":String(v);
 
 export function OwnerSqlConsolePage(){
   const {user}=useSession();
   const [password,setPassword]=useState("");
   const [token,setToken]=useState<string|null>(null);
+  const [database,setDatabase]=useState<"main"|"market">("main");
   const [sql,setSql]=useState(example);
   const [preview,setPreview]=useState<SQLPreview|null>(null);
   const [confirmation,setConfirmation]=useState("");
@@ -38,7 +40,7 @@ export function OwnerSqlConsolePage(){
     if(!token||!sql.trim())return;
     setRunning(true);setError("");setPreview(null);setConfirmation("");setSaved(null);
     try{
-      const result=await api<SQLPreview>("/owner-sql/preview",{method:"POST",body:{token,sql}});
+      const result=await api<SQLPreview>("/owner-sql/preview",{method:"POST",body:{database,token,sql}});
       setPreview(result);
     }catch(e){issue(e);}finally{setRunning(false);}
   };
@@ -47,7 +49,7 @@ export function OwnerSqlConsolePage(){
     setRunning(true);setError("");
     try{
       const done=await api<Written>("/owner-sql/execute",{method:"POST",body:{
-        token,sql,confirmationId:preview.confirmationId
+        database,token,sql,confirmationId:preview.confirmationId
       }});
       setSaved(done);setPreview(null);setConfirmation("");
     }catch(e){setPreview(null);setConfirmation("");issue(e);}finally{setRunning(false);}
@@ -55,7 +57,7 @@ export function OwnerSqlConsolePage(){
   if(!user?.owner)return <Notice tone="error">صفحة استعلامات PostgreSQL مخصصة لمالك المنصة فقط.</Notice>;
   return <main style={{maxWidth:1200,margin:"0 auto"}}>
     <PageHeader title={!token?"تسجيل الخروج":"استعلامات PostgreSQL"}
-      description={!token?"أدخل كلمة المرور للمتابعة.":"لوحة قاعدة بيانات الرئيسي للمالك فقط. SELECT للقراءة، وINSERT وUPDATE وDELETE بعد المعاينة والتأكيد."}/>
+      description={!token?"أدخل كلمة المرور للمتابعة.":"اختر قاعدة الرئيسي أو السوق، ثم اكتب SELECT أو INSERT أو UPDATE أو DELETE مع المعاينة والتأكيد."}/>
     {!token?<Card title="تسجيل الخروج" description="أدخل كلمة المرور للمتابعة.">
       <form onSubmit={unlock} className="form-stack" style={{maxWidth:370}}>
         <label className="form-field">كلمة المرور
@@ -64,7 +66,17 @@ export function OwnerSqlConsolePage(){
         <div><Button type="submit" disabled={running||!password}>{running?"جارٍ التحقق…":"تأكيد"}</Button></div>
       </form>
     </Card>:<>
-      <Card title="محرر الاستعلام" description="قاعدة الرئيسي فقط، استعلام واحد في كل مرة. التغييرات لا تُحفظ عند المعاينة.">
+      <Card title="محرر الاستعلام" description="استعلام واحد في كل مرة. السوق مستقل تمامًا عن قاعدة الشركة. المعاينة لا تحفظ أي تعديل.">
+        <label className="form-field" style={{maxWidth:420}}>قاعدة البيانات
+          <select value={database} onChange={e=>{
+            const next=e.target.value as "main"|"market";
+            setDatabase(next);setSql(next==="market"?marketExample:example);
+            setPreview(null);setSaved(null);setConfirmation("");setError("");
+          }}>
+            <option value="main">الرئيسي — الشركات والصيدلية</option>
+            <option value="market">السوق الرئيسي — سوق الأدوية المنفصل</option>
+          </select>
+        </label>
         <label className="form-field">SQL
           <textarea dir="ltr" spellCheck={false} rows={9} value={sql}
             style={{width:"100%",fontFamily:"ui-monospace, SFMono-Regular, Consolas, monospace",
@@ -81,7 +93,7 @@ export function OwnerSqlConsolePage(){
         </div>
       </Card>
       <p style={{fontSize:13,opacity:.85,marginBlock:12}}>
-        الحماية: مالك المنصة فقط، كلمة مرور إضافية، مهلة تنفيذ قصيرة، حد 200 صف للعرض و500 صف للتغيير.
+        الحماية: مالك المنصة فقط، كلمة مرور إضافية، مهلة تنفيذ قصيرة، حد 200 صف للعرض و500 صف للتغيير في القاعدة المختارة.
         أوامر تحديث وحذف الصفوف تتطلب WHERE؛ الجداول الأمنية محمية. أي تغيير مباشر يتجاوز إجراءات الحفظ المعتادة
         للموقع وقد يؤثر على الحسابات والمخزون، لذا راجع الاستعلام جيدًا.
       </p>
@@ -95,7 +107,7 @@ export function OwnerSqlConsolePage(){
         </div>}
       </Card>}
       {preview?.mode==="write"&&<Card title="معاينة التغيير — لم تُعدَّل البيانات">
-        <p><strong>نوع العملية:</strong> {preview.kind.toUpperCase()} | <strong>الجدول:</strong> {preview.table}</p>
+        <p><strong>قاعدة البيانات:</strong> {database==="market"?"السوق الرئيسي":"الرئيسي"} | <strong>نوع العملية:</strong> {preview.kind.toUpperCase()} | <strong>الجدول:</strong> {preview.table}</p>
         <p>العدد التقديري من مخطط PostgreSQL: <strong>{preview.estimatedRows??"غير محدد"}</strong>.
           قد يختلف العدد الفعلي، والمعاملة تُلغى إذا تجاوز التغيير 500 صف.</p>
         <Notice>تنبيه: هذه معاينة تخطيطية دون تشغيل عملية التعديل. تأكد من شروط WHERE والقيم قبل التنفيذ. ينتهي التأكيد بعد دقيقتين.</Notice>
@@ -106,7 +118,7 @@ export function OwnerSqlConsolePage(){
           {running?"جارٍ التنفيذ…":"تنفيذ التغيير نهائيًا"}
         </Button>
       </Card>}
-      {saved&&<Notice>تم تنفيذ {saved.kind.toUpperCase()} على جدول {saved.table}. الصفوف المتأثرة: {saved.affectedRows}. سُجلت العملية في التدقيق.</Notice>}
+      {saved&&<Notice>تم تنفيذ {saved.kind.toUpperCase()} في قاعدة {database==="market"?"السوق الرئيسي":"الرئيسي"} على جدول {saved.table}. الصفوف المتأثرة: {saved.affectedRows}. سُجلت العملية في التدقيق.</Notice>}
     </>}
     {error&&<Notice tone="error">{error}</Notice>}
   </main>;
