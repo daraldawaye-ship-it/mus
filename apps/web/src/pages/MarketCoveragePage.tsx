@@ -10,12 +10,28 @@ const format = new Intl.NumberFormat("en-US");
 
 const cellStyle = { border: "1px solid #748394", padding: "3px 8px", textAlign: "center" } as const;
 
+type Column = "label" | "filled" | "empty";
+const headings: [Column, string][] = [["label", "الخيار"], ["filled", "مرتبط أو معبّأ"], ["empty", "فارغ"]];
+const collator = new Intl.Collator("ar", {numeric: true});
+
 export default function MarketCoveragePage() {
   const { user } = useSession();
   const [kind, setKind] = useState<MarketKind>("medicine");
+  const [sort, setSort] = useState<{column: Column; ascending: boolean} | null>(null);
+  function sortBy(column: Column) {
+    setSort(previous => ({
+      column, ascending: previous?.column === column ? !previous.ascending : column === "label",
+    }));
+  }
   const query = useQuery({
     queryKey: ["medicine-market", user?.id, "coverage", kind],
     queryFn: ({signal}) => api<Coverage>("/medicine-market/owner/card-coverage?kind=" + kind, {signal}),
+  });
+  const rows = [...(query.data?.fields ?? [])];
+  if (sort) rows.sort((a, b) => {
+    const result = sort.column === "label" ? collator.compare(a.label, b.label)
+      : sort.column === "filled" ? a.filled - b.filled : b.filled - a.filled;
+    return sort.ascending ? result : -result;
   });
   return <section dir="rtl">
     <PageHeader title="اكتمال كروت السوق" actions={<Link to="/medicine-market">العودة إلى السوق</Link>} />
@@ -29,8 +45,13 @@ export default function MarketCoveragePage() {
       {query.isError ? <Notice tone="error">تعذر تحميل الإحصاءات. اضغط تحديث للمحاولة مجددًا.</Notice> : query.data ? <>
         <p>إجمالي الكروت المنشورة غير المؤرشفة <strong>{format.format(query.data.total)}</strong></p>
         <table style={{width:"100%", borderCollapse:"collapse"}}>
-          <thead><tr><th scope="col" style={cellStyle}>الخيار</th><th scope="col" style={cellStyle}>مرتبط أو معبّأ</th><th scope="col" style={cellStyle}>فارغ</th></tr></thead>
-          <tbody>{query.data.fields.map(field => <tr key={field.key}>
+          <thead><tr>{headings.map(([column, title]) => <th key={column} scope="col" style={cellStyle}
+            aria-sort={sort?.column === column ? (sort.ascending ? "ascending" : "descending") : undefined}>
+            <button type="button" onClick={() => sortBy(column)} style={{width:"100%", background:"transparent", border:0, color:"inherit", font:"inherit", cursor:"pointer"}}>
+              {title} <span aria-hidden="true">{sort?.column === column ? (sort.ascending ? "↑" : "↓") : "↕"}</span>
+            </button>
+          </th>)}</tr></thead>
+          <tbody>{rows.map(field => <tr key={field.key}>
             <th scope="row" style={{...cellStyle, textAlign:"start"}}>{field.label}</th>
             <td style={cellStyle}>{format.format(field.filled)}</td>
             <td style={cellStyle}>{format.format(query.data.total - field.filled)}</td>
