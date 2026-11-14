@@ -3,7 +3,7 @@ import type {Pool} from "pg";
 import {z} from "zod";
 import type {User} from "../../../../packages/contracts/src/index.ts";
 import type {MarketGatewayOptions} from "../market/gateway.ts";
-import {askMarket,inspect,limitedTransaction,type SqlDatabase} from "../routes-owner-sql.ts";
+import {askMarket,inspect,limitedTransaction,visible,type SqlDatabase} from "../routes-owner-sql.ts";
 import {HttpError} from "../errors.ts";
 import {audit} from "./audit.ts";
 
@@ -28,7 +28,7 @@ function prune(){
 export const ownerSqlMcpTools=[
   {
     name:"preview_bulk_sql",
-    description:"للمالك فقط عبر OAuth: عاين استعلام PostgreSQL واحدًا من INSERT أو UPDATE أو DELETE على قاعدة الرئيسي أو السوق المستقلة، دون تنفيذه. يتطلب tijara.read وtijara.write. أعد معرف المعاينة قبل أي تنفيذ.",
+    description:"للمالك فقط عبر OAuth: نفّذ SELECT للقراءة فقط من الرئيسي أو السوق (بحد 200 صف)، أو عاين INSERT/UPDATE/DELETE دون تنفيذ. تتطلب كتابة البيانات معاينة ومعرفًا وتأكيدًا مستقلًا. يتطلب tijara.read وtijara.write.",
     inputSchema:{
       type:"object",
       properties:{
@@ -68,7 +68,28 @@ export async function callOwnerSqlMcp(
   if(name==="preview_bulk_sql"){
     const input=previewInput.parse(args);
     const statement=inspect(input.sql,input.database);
-    if(statement.kind==="select")throw new HttpError(400,"write_only","SELECT متاح للمالك من صفحة الاستعراض");
+    if(statement.kind==="select"){
+      // Match the browser read console: transactional READ ONLY, bounded output,
+      // and the same owner/OAuth restrictions as bulk DML.
+      if(input.database==="market"){
+        const result=await askMarket(marketOptions,"preview",user,statement.sql);
+        return {...result,database:"market",kind:"select"};
+      }
+      const result=await limitedTransaction(pool,true,async client=>{
+        const answer=await client.query({
+          name:"owner_mcp_select_"+randomUUID().replaceAll("-",""),
+          text:"SELECT * FROM ("+statement.sql+") AS owner_mcp_result LIMIT 201",
+        });
+        const columns=answer.fields.slice(0,80).map(field=>field.name);
+        return {
+          columns,
+          rows:answer.rows.slice(0,200).map(row=>columns.map(column=>visible(row[column]))),
+          rowCount:Math.min(answer.rows.length,200),
+          truncated:answer.rows.length>200||answer.fields.length>80,
+        };
+      });
+      return {mode:"read",database:"main",kind:"select",...result};
+    }
     let estimatedRows:number|null=null;
     if(input.database==="market"){
       const result=await askMarket(marketOptions,"preview",user,statement.sql);
