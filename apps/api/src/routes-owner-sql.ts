@@ -6,7 +6,7 @@ import { actor, handler, parse } from "./http.ts";
 import { currentActor, ownerOnly } from "./policies/access.ts";
 import { HttpError } from "./errors.ts";
 import { audit } from "./services/audit.ts";
-import { signMarketRequest, type MarketContext } from "./market/transport.ts";
+import { signMarketRequest } from "./market/transport.ts";
 import type { MarketGatewayOptions } from "./market/gateway.ts";
 
 const unlockSchema=z.object({password:z.string().min(1).max(200)}).strict();
@@ -99,7 +99,7 @@ export async function limitedTransaction<T>(pool:Pool,readOnly:boolean,task:(cli
     throw error;
   }finally{client.release();}
 }
-async function askMarket(options:MarketGatewayOptions|undefined,operation:"preview"|"execute",user:NonNullable<MarketContext["user"]>,sql:string){
+async function askMarket(options:MarketGatewayOptions|undefined,operation:"preview"|"execute",user:NonNullable<Parameters<typeof signMarketRequest>[3]>,sql:string){
   if(!options)throw new HttpError(503,"market_unavailable","اتصال قاعدة السوق غير مفعّل");
   const path="/api/internal/owner-sql-market/"+operation;
   const body=JSON.stringify({sql});
