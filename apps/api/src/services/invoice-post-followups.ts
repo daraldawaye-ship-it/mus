@@ -6,6 +6,7 @@ import { accrueInvoiceClearance } from "./clearance-earnings.ts";
 import { emitNotification } from "./notifications.ts";
 import { archivedDoctorSaleNotice } from "./sales-doctor-notification.ts";
 import { notifyReturnWithoutRecentSales } from "./sales-return-recency-notifications.ts";
+import { notifyPurchaseOfStoppedOrderItem } from "./purchase-stopped-order-notifications.ts";
 
 interface Followup {
   id: string;
@@ -64,6 +65,8 @@ export async function processInvoicePostFollowup(pool: Pool): Promise<boolean> {
       if (invoice.kind === "sale") {
         await accrueInvoiceClearance(client, job.company_id, job.invoice_id, user);
         await notifyReturnWithoutRecentSales(client, job.company_id, job.invoice_id, invoice.number);
+      } else if (invoice.kind === "purchase") {
+        await notifyPurchaseOfStoppedOrderItem(client, job.company_id, job.invoice_id, invoice.number);
       }
       if (job.new_doctor_id !== null && job.new_doctor_name) {
         await emitNotification(client, {
