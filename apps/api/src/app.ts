@@ -132,7 +132,7 @@ export async function createApp(options: AppOptions = {}) {
     chatGroupRoutes(pool),
     quickMessagesRoutes(pool),
     monitor,
-    ownerSqlConsoleRoutes(pool),
+    ownerSqlConsoleRoutes(pool,marketOptions),
     business,
     pledgeRoutes(pool),
   );
