@@ -7,6 +7,7 @@ import { HttpError } from "./errors.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries } from "./services/pages.ts";
+import { thirdPartyGoodsSql } from "./services/third-party-goods.ts";
 
 /**
  * Time-of-day sales report. Day = posted invoice document date, while hour
@@ -19,7 +20,59 @@ const filters = z.object({
   dateFrom: documentDateSchema,
   dateTo: documentDateSchema,
   payment: z.enum(["all", "cash", "credit"]).optional().default("all"),
+  includeThirdParty: z.enum(["true", "false"]).optional().default("false"),
+  weekdays: z.string().regex(/^(?:[0-6](?:,[0-6])*)?$/).optional().default("0,1,2,3,4,5,6"),
 }).strict();
+
+export const salesTimeReportSql = `WITH sales_lines AS (
+          SELECT i.id AS invoice_id, i.document_date AS day,
+            CASE WHEN (i.created_at AT TIME ZONE 'Asia/Aden')::date = i.document_date
+              THEN EXTRACT(HOUR FROM i.created_at AT TIME ZONE 'Asia/Aden')::integer
+              ELSE NULL::integer END AS hour,
+            i.base_currency_code AS currency_code,
+            CASE WHEN fix.invoice_id IS NULL THEN il.base_total
+              ELSE -il.base_total END AS amount,
+            il.discount::numeric AS line_discount,
+            i.exchange_rate::numeric AS exchange_rate,
+            i.base_decimal_places AS base_places
+          FROM invoices i
+          JOIN invoice_lines il ON il.company_id=i.company_id AND il.invoice_id=i.id
+          LEFT JOIN accounts a ON a.company_id=i.company_id
+            AND a.id=i.counterparty_account_id
+          LEFT JOIN legacy_sales_sign_repairs fix ON fix.company_id=i.company_id
+            AND fix.invoice_id=i.id
+          WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true
+            AND i.document_date BETWEEN $2::date AND $3::date
+            AND EXTRACT(DOW FROM i.document_date)::integer=ANY($6::integer[])
+            AND ($5::boolean OR NOT ${thirdPartyGoodsSql("item", "il.company_id", "il.item_id")})
+            AND ($4::text='all' OR
+              ($4::text='cash' AND COALESCE(a.cash_or_bank,false)) OR
+              ($4::text='credit' AND NOT COALESCE(a.cash_or_bank,false)))
+        ),
+        adjusted AS (
+          SELECT *,
+            CASE WHEN amount > 0 THEN
+              round(line_discount * exchange_rate, base_places)
+              ELSE 0::numeric END AS discount_amount
+          FROM sales_lines
+        )
+        SELECT day::text AS "date",hour,
+          currency_code AS "currencyCode",
+          GROUPING(day,hour)::integer AS "level",
+          count(DISTINCT invoice_id)::integer AS "invoiceCount",
+          count(DISTINCT invoice_id) FILTER (WHERE amount < 0)::integer AS "returnInvoiceCount",
+          COALESCE(sum(amount) FILTER (WHERE amount > 0),0)::text AS "sales",
+          COALESCE(sum(amount + discount_amount) FILTER (WHERE amount > 0),0)::text AS "gross",
+          COALESCE(sum(discount_amount),0)::text AS "discount",
+          COALESCE(-sum(amount) FILTER (WHERE amount < 0),0)::text AS "returns",
+          COALESCE(sum(amount),0)::text AS "net"
+        FROM adjusted
+        GROUP BY GROUPING SETS (
+          (day,hour,currency_code),
+          (day,currency_code),
+          (currency_code)
+        )
+        ORDER BY "level" DESC,day DESC,hour ASC NULLS LAST,currency_code`;
 
 export function salesTimeReportRoutes(pool: Pool): Router {
   const router = Router();
@@ -48,54 +101,9 @@ export function salesTimeReportRoutes(pool: Pool): Router {
         [companyId],
       );
       const activity = await client.query(
-        `WITH sales_lines AS (
-          SELECT i.id AS invoice_id, i.document_date AS day,
-            CASE WHEN (i.created_at AT TIME ZONE 'Asia/Aden')::date = i.document_date
-              THEN EXTRACT(HOUR FROM i.created_at AT TIME ZONE 'Asia/Aden')::integer
-              ELSE NULL::integer END AS hour,
-            i.base_currency_code AS currency_code,
-            CASE WHEN fix.invoice_id IS NULL THEN il.base_total
-              ELSE -il.base_total END AS amount,
-            il.discount::numeric AS line_discount,
-            i.exchange_rate::numeric AS exchange_rate,
-            i.base_decimal_places AS base_places
-          FROM invoices i
-          JOIN invoice_lines il ON il.company_id=i.company_id AND il.invoice_id=i.id
-          LEFT JOIN accounts a ON a.company_id=i.company_id
-            AND a.id=i.counterparty_account_id
-          LEFT JOIN legacy_sales_sign_repairs fix ON fix.company_id=i.company_id
-            AND fix.invoice_id=i.id
-          WHERE i.company_id=$1 AND i.kind='sale' AND i.posted=true
-            AND i.document_date BETWEEN $2::date AND $3::date
-            AND ($4::text='all' OR
-              ($4::text='cash' AND COALESCE(a.cash_or_bank,false)) OR
-              ($4::text='credit' AND NOT COALESCE(a.cash_or_bank,false)))
-        ),
-        adjusted AS (
-          SELECT *,
-            CASE WHEN amount > 0 THEN
-              round(line_discount * exchange_rate, base_places)
-              ELSE 0::numeric END AS discount_amount
-          FROM sales_lines
-        )
-        SELECT day::text AS "date",hour,
-          currency_code AS "currencyCode",
-          GROUPING(day,hour)::integer AS "level",
-          count(DISTINCT invoice_id)::integer AS "invoiceCount",
-          count(DISTINCT invoice_id) FILTER (WHERE amount < 0)::integer AS "returnInvoiceCount",
-          COALESCE(sum(amount) FILTER (WHERE amount > 0),0)::text AS "sales",
-          COALESCE(sum(amount + discount_amount) FILTER (WHERE amount > 0),0)::text AS "gross",
-          COALESCE(sum(discount_amount),0)::text AS "discount",
-          COALESCE(-sum(amount) FILTER (WHERE amount < 0),0)::text AS "returns",
-          COALESCE(sum(amount),0)::text AS "net"
-        FROM adjusted
-        GROUP BY GROUPING SETS (
-          (day,hour,currency_code),
-          (day,currency_code),
-          (currency_code)
-        )
-        ORDER BY "level" DESC,day DESC,hour ASC NULLS LAST,currency_code`,
-        [companyId, input.dateFrom, input.dateTo, input.payment],
+        salesTimeReportSql,
+        [companyId, input.dateFrom, input.dateTo, input.payment,
+          input.includeThirdParty === "true", input.weekdays ? input.weekdays.split(",").map(Number) : []],
       );
       return {
         dateFrom: input.dateFrom,

@@ -112,3 +112,8 @@
     color: #111 !important;
   }
 }
+.sales-time-weekdays { position: relative; }
+.sales-time-weekdays summary { cursor: pointer; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 6px; }
+.sales-time-weekday-menu { position: absolute; z-index: 20; top: 100%; inset-inline-start: 0; min-width: 160px; padding: .5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px #0002; }
+.sales-time-weekday-menu label { display: flex; align-items: center; gap: .4rem; padding: .2rem; white-space: nowrap; }
+.sales-time-third-party { display: flex; align-items: center; gap: .4rem; }
