@@ -9,6 +9,7 @@ import { permissionRequest } from "./permission-rules.ts";
 import { centralPermissionAssignmentSchema } from "../routes-central-access.ts";
 import type { User } from "../../../../packages/contracts/src/index.ts";
 import {ownerSqlMcpPreviewSchema,ownerSqlMcpExecuteSchema} from "./owner-sql-mcp.ts";
+import {productLinkBatchSchema} from "../market/product-market-link.ts";
 
 const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPieceContracts,
   "POST /owner-bulk-sql/preview": {
@@ -26,6 +27,13 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "GET /system-monitor/main": { source: "routes-system-monitor.ts", queryFields: [] },
   "GET /system-monitor/main/count": { source: "routes-system-monitor.ts", queryFields: ["schema", "table"] },
   "GET /medicine-market/admin/monitor": { source: "market/app.ts", queryFields: [] },
+  "GET /medicine-market/staging/:sourceId/product-link-status": {
+    source:"market/product-market-link.ts",queryFields:[],pathParams:["sourceId"]
+  },
+  "POST /medicine-market/staging/:sourceId/link-product-ids": {
+    source:"market/product-market-link.ts",queryFields:[],pathParams:["sourceId"],
+    bodyContract:"productLinkBatchSchema",bodySchema:z.toJSONSchema(productLinkBatchSchema),
+  },
   "GET /medicine-market/admin/monitor/count": { source: "market/app.ts", queryFields: ["schema", "table"] },
   "GET /companies/:companyId/doctors": {source:"routes-doctors.ts",queryFields:["q","active","medicalKind","page","pageSize","sort"]},
   "GET /companies/:companyId/central-access":{source:"routes-central-access.ts",queryFields:[],pathParams:["companyId"]},
