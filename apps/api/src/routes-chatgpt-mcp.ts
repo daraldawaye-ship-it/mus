@@ -7,6 +7,8 @@ import { generalTableSchema, type GeneralTableInput } from "../../../packages/co
 import { audit } from "./services/audit.ts";
 import { apiTools, apiCatalog, dispatchApi, oauthScopes, API_READ_SCOPE, API_WRITE_SCOPE } from "./services/mcp-api.ts";
 import { userDTO } from "./repositories/models.ts";
+import {ownerSqlMcpTools,callOwnerSqlMcp} from "./services/owner-sql-mcp.ts";
+import type {MarketGatewayOptions} from "./market/gateway.ts";
 import { assertGeneralTableAccess } from "./general-table-access.ts";
 
 const tools=[{
@@ -97,7 +99,7 @@ const selectFields=`general_table_id AS "id",
  general_table_text7 AS "text7",general_table_text8 AS "text8",
  general_table_text9 AS "text9",created_at AS "createdAt",updated_at AS "updatedAt"`;
 
-export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router{
+export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router,marketOptions?:MarketGatewayOptions):Router{
  const router=Router();
  const unauthorized=(res:import("express").Response,id:string|number)=>{
    const challenge=`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", error="invalid_token", error_description="Authorize Alraesy's general table read access"`;
@@ -126,7 +128,7 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
        serverInfo:{name:"tijara-general-table",version:"1.3.0"}});return;
    }
    if(body.method==="ping"){ok({});return;}
-   if(body.method==="tools/list"){ok({tools:[...tools,...apiTools]});return;}
+   if(body.method==="tools/list"){ok({tools:[...tools,...apiTools,...ownerSqlMcpTools]});return;}
    if(body.method==="resources/list"){ok({resources:[]});return;}
    if(body.method==="prompts/list"){ok({prompts:[]});return;}
    if(body.method!=="tools/call"){fail(-32601,"Method not found");return;}
@@ -147,7 +149,20 @@ export function chatgptMcpRoutes(pool:Pool,origin:string,business:Router):Router
    if(!user){unauthorized(res,body.id);return;}
    const params=body.params as {name?:unknown;arguments?:unknown}|undefined;
    if(!params||typeof params.name!=="string"){fail(-32602,"Invalid tool");return;}
-   if(apiTools.some(tool=>tool.name===params.name)){
+   if(params.name==="preview_bulk_sql"||params.name==="execute_bulk_sql"){
+      const granted=String(user.granted_scope).split(" ");
+      if(!user.owner||!granted.includes(API_READ_SCOPE)||!granted.includes(API_WRITE_SCOPE)){
+        fail(-32001,"Owner rights and read/write OAuth scopes required for SQL bulk changes.");return;
+      }
+      try{
+        const result=await callOwnerSqlMcp(pool,marketOptions,params.name,params.arguments??{},userDTO(user),tokenHash(auth.slice(7)));
+        ok({content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result});return;
+      }catch(error){
+        const message=error instanceof Error?error.message:"SQL operation rejected";
+        ok({content:[{type:"text",text:message}],structuredContent:{error:message},isError:true});return;
+      }
+    }
+    if(apiTools.some(tool=>tool.name===params.name)){
      const granted=String(user.granted_scope).split(" ");
      if(!granted.includes(API_READ_SCOPE)||(params.name==="tijara_api_write"&&!granted.includes(API_WRITE_SCOPE))){
        fail(-32001,"Additional scope required. Reconnect Alraesy and approve the requested site read/write access.");return;
