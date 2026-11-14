@@ -8952,13 +8952,12 @@ a.notification-quick-title:hover { text-decoration: underline; }
   margin-top: 5px;
   line-height: 1.65;
 }
-
-/* The ledger description takes the freed space and remains readable without a modal. */
-.ledger-page .table-scroll td[data-cell-id="description"] {
+/* Only the administrative custody screen expands descriptions to readable lines. */
+.administrative-custody-ledger-table .table-scroll td[data-cell-id="description"] {
   white-space: normal;
 }
-.ledger-page .table-scroll td[data-cell-id="description"] .cell-content,
-.ledger-page .table-scroll td[data-cell-id="description"] .table-value {
+.administrative-custody-ledger-table .table-scroll td[data-cell-id="description"] .cell-content,
+.administrative-custody-ledger-table .table-scroll td[data-cell-id="description"] .table-value {
   height: auto;
   max-height: none;
   min-height: calc(var(--row-height) - 6px);
@@ -8966,7 +8965,7 @@ a.notification-quick-title:hover { text-decoration: underline; }
   white-space: normal;
   line-height: 1.45;
 }
-.ledger-page .table-scroll td[data-cell-id="description"] .truncate {
+.administrative-custody-ledger-table .table-scroll td[data-cell-id="description"] .truncate {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
