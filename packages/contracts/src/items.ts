@@ -30,6 +30,11 @@ export const itemProfitFactorSchema = z.string().trim().transform(normalizeDigit
   .pipe(z.string().regex(/^\d{1,4}(?:\.\d{1,4})?$/, "أدخل نسبة ربح صحيحة بأربع منازل عشرية"))
   .refine(value => Number(value) >= 1, "نسبة الربح الافتراضية لا تقل عن 1");
 export const itemOrderAlertQuantitySchema = itemWholeQuantitySchema.nullable();
+// Minimum suggested purchase quantity in whole first units, not in smallest units.
+export const itemMinOrderQuantitySchema = itemWholeQuantitySchema.refine(
+  value => BigInt(value) >= 1n && BigInt(value) <= 2_147_483_647n,
+  "أقل كمية طلب يجب أن تكون عددًا صحيحًا من 1 إلى 2147483647",
+);
 
 const phone = z
   .string()
@@ -201,6 +206,7 @@ const itemFields = z
     settlementApprovalDate: documentDateSchema.nullable().default(null),
     settlementDisplayDate: documentDateSchema.nullable().default(null),
     purchaseFactor: itemFactorSchema.default(1),
+    minOrderQuantity: itemMinOrderQuantitySchema.default("1"),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
     orderQuantity: itemWholeQuantitySchema.default("0"),
@@ -384,6 +390,7 @@ export interface Item extends ItemIdentity {
   /** Actual display instant, distinct from legacy date-only value. */
   settlementDisplayAt: string | null;
   purchaseFactor: number;
+  minOrderQuantity: string;
   currencyId: number;
   currencyCode: string;
   currencyName: string;
