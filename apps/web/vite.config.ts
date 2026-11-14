@@ -9,7 +9,10 @@ export default defineConfig({
       name: "offline-static-list",
       generateBundle(_options, bundle) {
         const assets = Object.keys(bundle)
-          .filter(name => /^assets\/.*\.(js|css|woff2?)$/.test(name))
+          // Owner reference galleries are fetched and cached when opened.
+          // Keep operational pages in the offline bundle without preloading every demo.
+          .filter(name => /^assets\/.*\.(js|css|woff2?)$/.test(name) &&
+            !/^assets\/DesignLibrary[^/]*\.(?:js|css)$/.test(name))
           .map(name => "/" + name);
         this.emitFile({ type: "asset", fileName: "offline-assets.json", source: JSON.stringify(assets) });
       },

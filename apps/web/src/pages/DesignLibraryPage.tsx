@@ -8,8 +8,11 @@ import {
 import "./DesignLibraryPage.css";
 const DesignLibraryExtras = lazy(() => import("./DesignLibraryExtras"));
 const DesignLibraryWorkspaces = lazy(() => import("./DesignLibraryWorkspaces"));
+const DesignLibrarySearch = lazy(() => import("./DesignLibrarySearch"));
+const DesignLibraryEntry = lazy(() => import("./DesignLibraryEntry"));
+const DesignLibraryData = lazy(() => import("./DesignLibraryData"));
 
-type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "navigation" | "feedback" | "text" | "workspaces";
+type SectionKey = "fields" | "buttons" | "colors" | "surfaces" | "tables" | "navigation" | "feedback" | "text" | "workspaces" | "search" | "entry" | "data";
 const sections: { key: SectionKey; title: string; detail: string; symbol: string }[] = [
   { key: "fields", title: "الحقول والاختيارات", detail: "الكتابة والبحث والقوائم والتواريخ والاختيارات", symbol: "ح" },
   { key: "buttons", title: "الأزرار والإجراءات", detail: "أنواع الأزرار وحالاتها وأحجامها ومجموعاتها", symbol: "ز" },
@@ -20,6 +23,9 @@ const sections: { key: SectionKey; title: string; detail: string; symbol: string
   { key: "feedback", title: "التحميل والإحصاءات", detail: "الانتظار والبيانات والأحداث ومؤشرات الأداء", symbol: "م" },
   { key: "text", title: "النصوص والتنبيهات", detail: "العناوين والشروح والرسائل ومؤشرات التقدم", symbol: "ن" },
   { key: "workspaces", title: "لوحات العمل والمتابعة", detail: "ملخصات وفلاتر جانبية ومراحل الطلبات ومعاينة السجلات", symbol: "ع" },
+  { key: "search", title: "البحث والإكمال التلقائي", detail: "اقتراحات ونتائج مجمعة وبحث مرن واختيار متعدد وسجل مؤقت", symbol: "ب" },
+  { key: "entry", title: "الإدخال المنظم والتحقق", detail: "أقنعة وأرقام وتواريخ وحقول مترابطة ومراجعة المدخلات", symbol: "د" },
+  { key: "data", title: "عرض البيانات التفاعلي", detail: "فرز وتصفية وتحديد وأعمدة وصفوف وتبديل طرق العرض", symbol: "ض" },
 ];
 
 function Sample({ code, title, note, children }: {
@@ -184,6 +190,7 @@ const contentBySection: Record<SectionKey, () => ReactNode> = {
   fields: DemoFields, buttons: DemoButtons, colors: DemoColors,
   surfaces: DemoSurfaces, tables: DemoTables, navigation: () => null,
   feedback: () => null, text: DemoText, workspaces: () => null,
+  search: () => null, entry: () => null, data: () => null,
 };
 
 export default function DesignLibraryPage() {
@@ -197,7 +204,7 @@ export default function DesignLibraryPage() {
       <div><h1><Layers size={21}/> مكتبة التصاميم</h1><p>مرجع المالك لأشكال الموقع، بأسماء عربية ثابتة وأمثلة قابلة للتجربة.</p></div>
       <span className="design-library-private"><Check size={14}/> للمالك فقط</span>
     </div>
-    <div className="design-library-tip"><Info size={16}/><span>اختر أي نموذج واذكر اسمه أو رمزه، مثل «ح-13» أو «ع-07». الرموز السابقة ثابتة، والتجارب لا تحفظ بيانات أعمال. مصادر الإلهام مذكورة في أقسامها؛ ومنها <a href="https://freefrontend.com/css-code-examples/" target="_blank" rel="noopener noreferrer">FreeFrontend</a> وDreams Core.</span></div>
+    <div className="design-library-tip"><Info size={16}/><span>اختر أي نموذج واذكر اسمه أو رمزه، مثل «ح-13» أو «ع-07» أو «ب-03». الرموز السابقة ثابتة، والتجارب لا تحفظ بيانات أعمال. مصادر الإلهام مذكورة في أقسامها؛ ومنها <a href="https://freefrontend.com/css-code-examples/" target="_blank" rel="noopener noreferrer">FreeFrontend</a> وDreams Core و<a href="https://webartdevelopers.com/blog/autocomplete/" target="_blank" rel="noopener noreferrer">WebArt Developers</a>.</span></div>
     <nav className="design-library-nav" aria-label="أقسام مكتبة التصاميم">
       {sections.map(item=><Link key={item.key} to={"/design-library/"+item.key}
         className={item.key===selected.key?"selected":""}
@@ -207,7 +214,7 @@ export default function DesignLibraryPage() {
       <span>الصفحة {position+1} من {sections.length}</span>
     </div>
     <Suspense fallback={<p className="design-muted" role="status">جارٍ تحميل نماذج القسم…</p>}>
-      {selected.key === "workspaces" ? <DesignLibraryWorkspaces /> : <>
+      {selected.key === "search" ? <DesignLibrarySearch /> : selected.key === "entry" ? <DesignLibraryEntry /> : selected.key === "data" ? <DesignLibraryData /> : selected.key === "workspaces" ? <DesignLibraryWorkspaces /> : <>
         <Content/>
         <DesignLibraryExtras key={selected.key} section={selected.key}/>
       </>}

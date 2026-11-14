@@ -1,0 +1,21 @@
+.design-webart-search .wa-autocomplete { position:relative; }
+.design-webart-search .wa-search-input { display:flex; align-items:center; gap:7px; border:1px solid var(--field-border,var(--border)); background:var(--field-bg,var(--bg)); border-radius:7px; padding-inline:9px 4px; min-width:0; }
+.design-webart-search .wa-search-input:focus-within { outline:2px solid var(--focus); outline-offset:1px; }
+.design-webart-search .wa-search-input svg { color:var(--muted); flex-shrink:0; }
+.design-webart-search .wa-search-input input { flex:1; width:100%; min-width:0; border:0; background:transparent; box-shadow:none; outline:0; padding-inline:0; }
+.design-webart-search .wa-search-input input:focus-visible { outline:0; }
+.design-webart-search .wa-search-input > button { display:grid; place-items:center; min-width:30px; min-height:30px; border:0; background:transparent; border-radius:5px; cursor:pointer; }
+.design-webart-search .wa-search-input > button:hover { background:var(--soft); }
+.design-webart-search .wa-suggestions { width:100%; max-height:238px; overflow:auto; overscroll-behavior:contain; border:1px solid var(--border); border-radius:7px; background:var(--surface); }
+.design-webart-search .wa-suggestions [role=option] { display:grid; gap:3px; text-align:start; width:100%; padding:9px 10px; border:0; border-bottom:1px solid var(--border); background:transparent; color:var(--text); font:inherit; font-size:12px; min-height:36px; cursor:pointer; }
+.design-webart-search .wa-suggestions [role=option]:hover,.design-webart-search .wa-suggestions [role=option].is-active { background:var(--soft); color:var(--on-soft); box-shadow:inset -3px 0 var(--primary); }
+.design-webart-search .wa-suggestions small { color:var(--muted); font-size:10px; }
+.design-webart-search .wa-suggestion-group { padding:6px 9px; font-size:10px; font-weight:750; color:var(--muted); background:var(--bg); border-bottom:1px solid var(--border); }
+.design-webart-search .wa-search-hint { padding:12px 10px; color:var(--muted); font-size:12px; }
+.design-webart-search mark { background:var(--warning-bg); color:var(--warning-text); padding:0 2px; border-radius:3px; }
+.design-webart-search .wa-multi-list { display:grid; max-height:180px; overflow:auto; border:1px solid var(--border); border-radius:7px; }
+.design-webart-search .wa-multi-list label { display:flex; gap:8px; align-items:center; padding:8px; font-size:12px; border-bottom:1px solid var(--border); cursor:pointer; }
+.design-webart-search .wa-multi-list label:has(input:checked) { background:var(--soft); color:var(--on-soft); }
+.design-webart-search .wa-multi-list input { flex-shrink:0; }
+.design-webart-search .wa-empty > svg { margin:auto; }
+.design-webart-search .wa-empty p { margin:8px 0 12px; overflow-wrap:anywhere; }
