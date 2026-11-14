@@ -188,7 +188,7 @@ page(
 );
 page(
   "public.owner-sql-console",
-  "استعلامات PostgreSQL",
+  "تسجيل الخروج",
   "إدارة المنصة",
   "/owner-sql",
   {view:owner,create:owner,edit:owner},
