@@ -18,6 +18,7 @@ import { socialAuthRoutes } from "./routes-social-auth.ts";
 import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { businessRoutes } from "./business-routes.ts";
 import { systemMonitorRoutes } from "./routes-system-monitor.ts";
+import { ownerSqlConsoleRoutes } from "./routes-owner-sql.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
@@ -131,6 +132,7 @@ export async function createApp(options: AppOptions = {}) {
     chatGroupRoutes(pool),
     quickMessagesRoutes(pool),
     monitor,
+    ownerSqlConsoleRoutes(pool),
     business,
     pledgeRoutes(pool),
   );
