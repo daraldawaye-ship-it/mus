@@ -105,6 +105,8 @@ export async function createApp(options: AppOptions = {}) {
   if (market) {
     // The signed gateway forwards these paths to the isolated market database.
     mcpBusiness.get(["/medicine-market/admin/monitor", "/medicine-market/admin/monitor/count"], market.router);
+    mcpBusiness.get("/medicine-market/staging/:sourceId/product-link-status",market.router);
+    mcpBusiness.post("/medicine-market/staging/:sourceId/link-product-ids",market.router);
   }
   // Owner SQL mutations live ONLY on the internal OAuth-dispatched MCP router.
   // This router is never mounted under the website's public /api paths.
