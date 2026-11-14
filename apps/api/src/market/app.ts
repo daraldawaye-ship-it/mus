@@ -7,6 +7,7 @@ import { deny, HttpError } from "../errors.ts";
 import { asUser, marketVerifier, type MarketContext } from "./transport.ts";
 import { databaseMonitor, exactTableCount } from "../services/system-monitor.ts";
 import { ownerMarketSqlRoutes } from "./owner-sql.ts";
+import { productMarketLinkRoutes } from "./product-market-link.ts";
 
 export function createMarketApp(pool: Pool, secret: string) {
   const app = express(), verify = marketVerifier(secret);
@@ -74,6 +75,7 @@ export function createMarketApp(pool: Pool, secret: string) {
     res.json(await exactTableCount(pool,schema,table));
   });
   app.use("/api/internal/owner-sql-market",ownerMarketSqlRoutes(pool));
+  app.use("/api/medicine-market/staging",productMarketLinkRoutes(pool));
   app.use("/api", medicineMarketRoutes(pool, access, true));
   app.use((req, res) => res.status(404).json({ error: { code: "not_found", message: "المسار غير موجود", ...(req.auth?.user.owner ? {route: req.path, service: "market-staging-v1"} : {}) } }));
   const errors: ErrorRequestHandler = (error: unknown, _req, res, next) => {
