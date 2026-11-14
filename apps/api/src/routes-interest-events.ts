@@ -121,22 +121,22 @@ export function interestEventRoutes(pool: Pool): Router {
       pool.query(`SELECT t.action,${measure}::text AS total,
         COUNT(DISTINCT t.subject_key)::integer AS visitors
         FROM ${source} t WHERE true ${period}
-        GROUP BY t.action ORDER BY total::bigint DESC`,args),
+        GROUP BY t.action ORDER BY ${measure} DESC`,args),
       pool.query(`SELECT t.subject_key,coalesce(NULLIF(u.display_name,''),u.name,
         CASE WHEN left(t.subject_key,2)='v:' THEN 'زائر غير مسجل' ELSE 'مستخدم' END) AS name,
         ${measure}::text AS total
         FROM ${source} t LEFT JOIN users u ON t.subject_key=('u:'||u.id::text)
         WHERE true ${period}
-        GROUP BY t.subject_key,u.display_name,u.name ORDER BY total::bigint DESC LIMIT 80`,args),
+        GROUP BY t.subject_key,u.display_name,u.name ORDER BY ${measure} DESC LIMIT 80`,args),
       pool.query(`SELECT t.target_type,t.target_id,MAX(t.label) AS label,
         ${measure}::text AS total,
         COUNT(DISTINCT t.subject_key)::integer AS visitors
         FROM ${source} t WHERE t.action='card_open' ${period}
-        GROUP BY t.target_type,t.target_id ORDER BY total::bigint DESC LIMIT 80`,args),
+        GROUP BY t.target_type,t.target_id ORDER BY ${measure} DESC LIMIT 80`,args),
       pool.query(`SELECT t.dimension_text AS term,${measure}::text AS total,
         COUNT(DISTINCT t.subject_key)::integer AS visitors
         FROM ${source} t WHERE t.action='search' AND t.dimension_text<>'' ${period}
-        GROUP BY t.dimension_text ORDER BY total::bigint DESC LIMIT 80`,args),
+        GROUP BY t.dimension_text ORDER BY ${measure} DESC LIMIT 80`,args),
       pool.query(`SELECT e.occurred_at,e.action,e.target_type,e.target_id,e.pathname,
         e.label,e.dimension_text,e.subject_key,
         coalesce(NULLIF(u.display_name,''),u.name,'زائر غير مسجل') AS name
