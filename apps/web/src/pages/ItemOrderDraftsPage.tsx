@@ -11,6 +11,7 @@ import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
+import { ItemMinOrderQuantityQuickEdit } from "../ItemMinOrderQuantityQuickEdit";
 import { ItemSpecialOrderQuantityQuickEdit, ItemOrderStopQuickActions } from "../ItemSpecialOrderQuickActions";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
@@ -24,6 +25,7 @@ type DraftMetrics = {
   orderAlertQuantity: string | null; orderStoppedUntil: string | null;
   availableUnit1: string; saleQuantityMonth: string;
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
+  minOrderQuantity: string;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
 };
 type DraftValue = {
@@ -401,6 +403,14 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           itemId={row.item.id} revision={info.revision}
           purchaseFactor={info.purchaseFactor} canEdit={canEditPlanning} />
           : <small>جارٍ تحميل بيانات الصنف…</small>}
+      </div>
+      <div className="item-order-draft-extra-field">
+        <strong>أقل كمية طلب</strong>
+        {info ? <ItemMinOrderQuantityQuickEdit companyId={companyId}
+          itemId={row.item.id} revision={info.revision}
+          minOrderQuantity={info.minOrderQuantity} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل بيانات الصنف…</small>}
+        <small className="muted">حد أدنى للكمية المحسوبة تلقائيًا فقط، ولا يغيّر الكمية المحددة يدويًا في المسودة.</small>
       </div>
       <div className="item-order-draft-extra-field">
         <strong>كمية طلب الأصناف الخاصة</strong>
