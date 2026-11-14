@@ -1802,21 +1802,21 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           accessorKey: "runningBalance",
           header: "الرصيد",
           enableSorting: false,
-          size: 210,
+          size: 155,
           cell: ({ row }) => <bdi>{balanceText(row.original.runningBalance)}</bdi>,
         },
         {
           accessorKey: "baseDebit",
           header: "مدين",
           enableSorting: false,
-          size: 120,
+          size: 100,
           cell: ({ row }) => money(row.original.baseDebit),
         },
         {
           accessorKey: "baseCredit",
           header: "دائن",
           enableSorting: false,
-          size: 120,
+          size: 100,
           cell: ({ row }) => money(row.original.baseCredit),
         },
         {
@@ -1829,28 +1829,8 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
           accessorKey: "description",
           header: "البيان",
           enableSorting: false,
-          size: 240,
+          size: 560,
           cell: ({ row }) => <ValueCell>{row.original.description || "—"}</ValueCell>,
-        },
-        {
-          accessorKey: "kind",
-          header: "النوع",
-          enableSorting: false,
-          cell: ({ row }) =>
-            row.original.reversesDocumentId
-              ? "قيد عكسي"
-              : documentKindLabels[row.original.kind],
-        },
-        {
-          accessorKey: "documentNumber",
-          header: "المستند",
-          enableSorting: false,
-          size: 170,
-          cell: ({ row }) => (
-            <Link to={documentPath(companyId, row.original.documentId)}>
-              {row.original.documentNumber}
-            </Link>
-          ),
         },
         {
           accessorKey: "currencyCode",
@@ -2002,7 +1982,7 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
       {preparePrint && printQuery.data && (
         <div className="ledger-print-all" aria-label="كشف الحساب الكامل للطباعة">
           <table dir="rtl">
-            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{showSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>النوع</th><th>المستند</th><th>العملة</th></tr></thead>
+            <thead><tr><th>الرصيد</th><th>مدين</th><th>دائن</th><th>التاريخ</th>{showSupplierAccount && <th>حساب المورد</th>}<th>البيان</th><th>العملة</th></tr></thead>
             <tbody>{printQuery.data.map((line, index) => (
               <tr key={`${line.documentId}-${line.id}-${index}`}>
                 <td>{balanceText(line.runningBalance)}</td>
@@ -2011,8 +1991,6 @@ function LedgerContent({ context, pledge }: { context: CompanyContext; pledge: b
                 <td>{line.documentDate}</td>
                 {showSupplierAccount && <td>{line.supplierAccountName || "—"}</td>}
                 <td>{line.description}</td>
-                <td>{line.reversesDocumentId ? "قيد عكسي" : documentKindLabels[line.kind]}</td>
-                <td>{line.documentNumber}</td>
                 <td>{line.currencyCode}</td>
               </tr>
             ))}</tbody>
