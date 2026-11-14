@@ -3,12 +3,10 @@ import {api,useSession} from "../api";
 import {Button,Card,Notice,PageHeader} from "../ui";
 
 type ReadResult={mode:"read";columns:string[];rows:(string|number|boolean|null)[][];rowCount:number;truncated:boolean};
-type WritePreview={mode:"write";kind:"insert"|"update"|"delete";table:string;estimatedRows:number|null;
-  confirmationId:string;expiresInSeconds:number;maxChangedRows:number};
-type SQLPreview=ReadResult|WritePreview;
-type Written={ok:true;kind:string;table:string;affectedRows:number};
-const example="SELECT id, code, message, created_at FROM notifications WHERE message LIKE '%@%' ORDER BY created_at DESC;";
-const marketExample="SELECT id, kind, name, status FROM medicine_market_cards ORDER BY id DESC;";
+const examples={
+  main:"SELECT id, code, message, created_at FROM notifications WHERE message LIKE '%@%' ORDER BY created_at DESC;",
+  market:"SELECT id, kind, name, status FROM medicine_market_cards ORDER BY id DESC;",
+} as const;
 const format=(v:unknown)=>v===null?"NULL":String(v);
 
 export function OwnerSqlConsolePage(){
@@ -16,48 +14,40 @@ export function OwnerSqlConsolePage(){
   const [password,setPassword]=useState("");
   const [token,setToken]=useState<string|null>(null);
   const [database,setDatabase]=useState<"main"|"market">("main");
-  const [sql,setSql]=useState(example);
-  const [preview,setPreview]=useState<SQLPreview|null>(null);
-  const [confirmation,setConfirmation]=useState("");
+  const [sql,setSql]=useState<string>(examples.main);
+  const [result,setResult]=useState<ReadResult|null>(null);
   const [running,setRunning]=useState(false);
   const [error,setError]=useState("");
-  const [saved,setSaved]=useState<Written|null>(null);
-
   const issue=(e:unknown)=>{
     setError(e instanceof Error?e.message:"تعذرت العملية");
-    if(e instanceof Error && ("code" in e) && e.code==="sql_unlock_required"){
-      setToken(null);setPreview(null);
+    if(e instanceof Error&&("code" in e)&&e.code==="sql_unlock_required"){
+      setToken(null);setResult(null);
     }
   };
   const unlock=async(event:FormEvent)=>{
     event.preventDefault();setError("");setRunning(true);
     try{
-      const res=await api<{token:string}>("/owner-sql/unlock",{method:"POST",body:{password}});
-      setToken(res.token);setPassword("");setPreview(null);setSaved(null);
+      const out=await api<{token:string}>("/owner-sql/unlock",{method:"POST",body:{password}});
+      setToken(out.token);setPassword("");setResult(null);
     }catch(e){issue(e);}finally{setRunning(false);}
   };
-  const runPreview=async()=>{
+  const read=async()=>{
     if(!token||!sql.trim())return;
-    setRunning(true);setError("");setPreview(null);setConfirmation("");setSaved(null);
+    setResult(null);setError("");
+    if(!/^\s*SELECT\b/i.test(sql)){
+      setError("هذه الصفحة للاستعراض فقط. استعلامات INSERT وUPDATE وDELETE تُنفّذ فقط عبر اتصال ChatGPT المصرّح به.");
+      return;
+    }
+    setRunning(true);
     try{
-      const result=await api<SQLPreview>("/owner-sql/preview",{method:"POST",body:{database,token,sql}});
-      setPreview(result);
+      const out=await api<ReadResult>("/owner-sql/preview",{method:"POST",body:{database,token,sql}});
+      setResult(out);
     }catch(e){issue(e);}finally{setRunning(false);}
   };
-  const execute=async()=>{
-    if(!token||!preview||preview.mode!=="write"||confirmation!=="تنفيذ")return;
-    setRunning(true);setError("");
-    try{
-      const done=await api<Written>("/owner-sql/execute",{method:"POST",body:{
-        database,token,sql,confirmationId:preview.confirmationId
-      }});
-      setSaved(done);setPreview(null);setConfirmation("");
-    }catch(e){setPreview(null);setConfirmation("");issue(e);}finally{setRunning(false);}
-  };
-  if(!user?.owner)return <Notice tone="error">صفحة استعلامات PostgreSQL مخصصة لمالك المنصة فقط.</Notice>;
+  if(!user?.owner)return <Notice tone="error">هذه الصفحة مخصصة لمالك المنصة فقط.</Notice>;
   return <main style={{maxWidth:1200,margin:"0 auto"}}>
     <PageHeader title={!token?"تسجيل الخروج":"استعلامات PostgreSQL"}
-      description={!token?"أدخل كلمة المرور للمتابعة.":"اختر قاعدة الرئيسي أو السوق، ثم اكتب SELECT أو INSERT أو UPDATE أو DELETE مع المعاينة والتأكيد."}/>
+      description={!token?"أدخل كلمة المرور للمتابعة.":"استعراض قاعدة الرئيسي والسوق الرئيسي فقط. جميع تعديلات SQL عبر اتصال ChatGPT للمالك."}/>
     {!token?<Card title="تسجيل الخروج" description="أدخل كلمة المرور للمتابعة.">
       <form onSubmit={unlock} className="form-stack" style={{maxWidth:370}}>
         <label className="form-field">كلمة المرور
@@ -66,59 +56,40 @@ export function OwnerSqlConsolePage(){
         <div><Button type="submit" disabled={running||!password}>{running?"جارٍ التحقق…":"تأكيد"}</Button></div>
       </form>
     </Card>:<>
-      <Card title="محرر الاستعلام" description="استعلام واحد في كل مرة. السوق مستقل تمامًا عن قاعدة الشركة. المعاينة لا تحفظ أي تعديل.">
+      <Card title="استعراض البيانات" description="استعلام SELECT واحد لكل مرة؛ اختيار السوق لا يخلط بياناته بقاعدة الرئيسي.">
         <label className="form-field" style={{maxWidth:420}}>قاعدة البيانات
           <select value={database} onChange={e=>{
             const next=e.target.value as "main"|"market";
-            setDatabase(next);setSql(next==="market"?marketExample:example);
-            setPreview(null);setSaved(null);setConfirmation("");setError("");
+            setDatabase(next);setSql(examples[next]);setResult(null);setError("");
           }}>
             <option value="main">الرئيسي — الشركات والصيدلية</option>
-            <option value="market">السوق الرئيسي — سوق الأدوية المنفصل</option>
+            <option value="market">السوق الرئيسي — قاعدة الأدوية المستقلة</option>
           </select>
         </label>
-        <label className="form-field">SQL
-          <textarea dir="ltr" spellCheck={false} rows={9} value={sql}
+        <label className="form-field">SQL — للقراءة فقط
+          <textarea dir="ltr" spellCheck={false} rows={8} value={sql}
             style={{width:"100%",fontFamily:"ui-monospace, SFMono-Regular, Consolas, monospace",
               fontSize:14,textAlign:"left",whiteSpace:"pre",lineHeight:1.5}}
-            onChange={e=>{setSql(e.target.value);setPreview(null);setSaved(null);setConfirmation("");setError("");}}/>
+            onChange={e=>{setSql(e.target.value);setResult(null);setError("");}}/>
         </label>
         <div className="form-actions" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <Button onClick={()=>void runPreview()} disabled={running||!sql.trim()}>
-            {running?"جارٍ الفحص…":"فحص / معاينة الاستعلام"}
-          </Button>
-          <Button variant="secondary" onClick={()=>{setToken(null);setPassword("");setPreview(null);setSaved(null);}}>
-            إغلاق الصفحة المحمية
-          </Button>
+          <Button disabled={running||!sql.trim()} onClick={()=>void read()}>{running?"جارٍ الاستعلام…":"عرض النتائج"}</Button>
+          <Button variant="secondary" onClick={()=>{setToken(null);setPassword("");setResult(null);}}>إغلاق الصفحة المحمية</Button>
         </div>
       </Card>
       <p style={{fontSize:13,opacity:.85,marginBlock:12}}>
-        الحماية: مالك المنصة فقط، كلمة مرور إضافية، مهلة تنفيذ قصيرة، حد 200 صف للعرض و500 صف للتغيير في القاعدة المختارة.
-        أوامر تحديث وحذف الصفوف تتطلب WHERE؛ الجداول الأمنية محمية. أي تغيير مباشر يتجاوز إجراءات الحفظ المعتادة
-        للموقع وقد يؤثر على الحسابات والمخزون، لذا راجع الاستعلام جيدًا.
+        عرض ما يصل إلى 200 صف و80 عمودًا. استعلامات الإضافة والتحديث والحذف غير متاحة من هذه الصفحة،
+        حتى عبر استدعاء الواجهة البرمجية مباشرة؛ تنفيذها للمالك عبر ChatGPT بصلاحيات OAuth ومعاينة وتأكيد وتدقيق.
       </p>
-      {preview?.mode==="read"&&<Card title={"النتائج — "+preview.rowCount+" صف"}>
-        {preview.truncated&&<Notice>اقتصر العرض على أول 200 صف أو أول 80 عمودًا. أضف WHERE أو LIMIT لتحديد النتائج.</Notice>}
-        {preview.rows.length===0?<p>لا توجد نتائج.</p>:<div style={{overflowX:"auto",maxHeight:550,overflowY:"auto"}}>
+      {result&&<Card title={"النتائج — "+result.rowCount+" صف"}>
+        {result.truncated&&<Notice>اقتصر العرض على أول 200 صف أو 80 عمودًا؛ استخدم WHERE أو LIMIT لتحديد النتائج.</Notice>}
+        {result.rows.length===0?<p>لا توجد نتائج.</p>:<div style={{overflowX:"auto",maxHeight:550,overflowY:"auto"}}>
           <table dir="ltr" style={{width:"max-content",minWidth:"100%",borderCollapse:"collapse",fontSize:13,textAlign:"left"}}>
-            <thead><tr>{preview.columns.map((c,i)=><th key={i} style={{padding:8,position:"sticky",top:0,background:"var(--card-bg, #fafafa)",borderBottom:"1px solid #999"}}>{c}</th>)}</tr></thead>
-            <tbody>{preview.rows.map((row,ri)=><tr key={ri}>{row.map((value,ci)=><td key={ci} style={{padding:8,verticalAlign:"top",maxWidth:420,overflowWrap:"anywhere",whiteSpace:"pre-wrap",borderBottom:"1px solid #ddd"}}>{format(value)}</td>)}</tr>)}</tbody>
+            <thead><tr>{result.columns.map((c,i)=><th key={i} style={{padding:8,position:"sticky",top:0,background:"var(--card-bg, #fafafa)",borderBottom:"1px solid #999"}}>{c}</th>)}</tr></thead>
+            <tbody>{result.rows.map((row,ri)=><tr key={ri}>{row.map((v,ci)=><td key={ci} style={{padding:8,verticalAlign:"top",maxWidth:420,overflowWrap:"anywhere",whiteSpace:"pre-wrap",borderBottom:"1px solid #ddd"}}>{format(v)}</td>)}</tr>)}</tbody>
           </table>
         </div>}
       </Card>}
-      {preview?.mode==="write"&&<Card title="معاينة التغيير — لم تُعدَّل البيانات">
-        <p><strong>قاعدة البيانات:</strong> {database==="market"?"السوق الرئيسي":"الرئيسي"} | <strong>نوع العملية:</strong> {preview.kind.toUpperCase()} | <strong>الجدول:</strong> {preview.table}</p>
-        <p>العدد التقديري من مخطط PostgreSQL: <strong>{preview.estimatedRows??"غير محدد"}</strong>.
-          قد يختلف العدد الفعلي، والمعاملة تُلغى إذا تجاوز التغيير 500 صف.</p>
-        <Notice>تنبيه: هذه معاينة تخطيطية دون تشغيل عملية التعديل. تأكد من شروط WHERE والقيم قبل التنفيذ. ينتهي التأكيد بعد دقيقتين.</Notice>
-        <label className="form-field" style={{maxWidth:350}}>اكتب كلمة «تنفيذ» لتأكيد الاستعلام
-          <input value={confirmation} autoComplete="off" onChange={e=>setConfirmation(e.target.value)} placeholder="تنفيذ"/>
-        </label>
-        <Button variant="danger" disabled={running||confirmation!=="تنفيذ"} onClick={()=>void execute()}>
-          {running?"جارٍ التنفيذ…":"تنفيذ التغيير نهائيًا"}
-        </Button>
-      </Card>}
-      {saved&&<Notice>تم تنفيذ {saved.kind.toUpperCase()} في قاعدة {database==="market"?"السوق الرئيسي":"الرئيسي"} على جدول {saved.table}. الصفوف المتأثرة: {saved.affectedRows}. سُجلت العملية في التدقيق.</Notice>}
     </>}
     {error&&<Notice tone="error">{error}</Notice>}
   </main>;
