@@ -232,6 +232,7 @@ export const itemFieldColumns = [
   ["settlementApprovalDate", "settlement_approval_date"],
   ["settlementDisplayDate", "settlement_display_date"],
   ["purchaseFactor", "purchase_factor"],
+  ["minOrderQuantity", "min_order_quantity"],
   ["currencyId", "currency_id"],
   ["reorderLimit", "reorder_limit"],
   ["orderQuantity", "order_quantity"],

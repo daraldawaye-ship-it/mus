@@ -1103,6 +1103,7 @@ type ItemFields = {
   settlementApprovalDate: string;
   settlementDisplayDate: string;
   purchaseFactor: string;
+  minOrderQuantity: string;
   reorderLimit: string;
   orderQuantity: string;
   reserveQuantity: string;
@@ -1146,6 +1147,7 @@ function initialItemFields(item: Item | null): ItemFields {
     settlementApprovalDate: item?.settlementApprovalDate ?? "",
     settlementDisplayDate: item?.settlementDisplayDate ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
+    minOrderQuantity: item?.minOrderQuantity ?? "1",
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
     reserveQuantity: item?.reserveQuantity ?? "0",
@@ -2284,6 +2286,15 @@ function ItemEditor({
               disabled={disabled}
               onChange={(event) => edit("purchaseFactor", event.target.value)}
               hint="قيمة محفوظة للشراء، لا تدخل في معاينة تحويل الوحدات."
+            />
+            <Field
+              label="أقل كمية طلب"
+              inputMode="numeric"
+              dir="ltr"
+              value={fields.minOrderQuantity}
+              disabled={disabled}
+              onChange={(event) => edit("minOrderQuantity", event.target.value)}
+              hint="عدد صحيح لا يقل عن 1 بالوحدة الأولى. حد أدنى للحساب التلقائي فقط؛ لا يقيّد تعديل كمية المسودة يدويًا."
             />
             <Field
               label="حد الطلب"

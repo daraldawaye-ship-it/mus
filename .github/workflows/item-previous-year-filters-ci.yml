@@ -13,6 +13,7 @@ on:
       - 'tests/item-previous-year-filters.test.ts'
       - 'tests/item-options-unselected-draft.test.ts'
       - 'tests/item-options-purchase-factor-coverage.test.ts'
+      - 'tests/item-min-order-quantity.test.ts'
       - '.github/workflows/item-previous-year-filters-ci.yml'
   workflow_dispatch:
 permissions:
@@ -45,5 +46,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --import tsx --test tests/item-previous-year-filters.test.ts tests/item-list-compact-scroll-filters.test.ts tests/item-options-purchase-factor-coverage.test.ts tests/item-options-unselected-draft.test.ts tests/numbered-order-drafts.test.ts
+      - run: node --import tsx --test tests/item-previous-year-filters.test.ts tests/item-list-compact-scroll-filters.test.ts tests/item-options-purchase-factor-coverage.test.ts tests/item-min-order-quantity.test.ts tests/item-options-unselected-draft.test.ts tests/numbered-order-drafts.test.ts
       - run: node --import tsx --test --test-name-pattern="(item options filter immutable previous-year sale times|company-shared item option presets)" tests/api.test.ts

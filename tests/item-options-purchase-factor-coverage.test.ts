@@ -284,7 +284,7 @@ test("nonzero minimum order is identical in row proposal and full-filter total",
   const api = read("apps/api/src/routes-item-options-list.ts");
   const coverage = read("apps/api/src/services/item-coverage.ts");
   for (const sql of [api, coverage]) {
-    assert.match(sql, /greatest\(1::numeric, ceil\(greatest\(0::numeric,/);
+    assert.match(sql, /greatest\(1::numeric,\s*ceil\(i\.min_order_quantity::numeric \/ purchase_lot\.minimum_lot_first_unit\),\s*ceil\(greatest\(0::numeric,/);
     assert.match(sql, /\/ \(purchase_lot\.minimum_lot_first_unit \* purchase_lot\.first_unit_smallest\)\)\)/);
     assert.match(sql, /greatest\(i\.purchase_factor::bigint,1\)::numeric AS minimum_lot_first_unit/);
   }
