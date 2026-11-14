@@ -481,10 +481,10 @@ test("item-more third line contains special order threshold and three confirmati
 test("order draft print and PDF output omit section headings and preserve required quantities", () => {
   const page = readFileSync("apps/web/src/pages/ItemOrderDraftsPage.tsx", "utf8");
   const printable = page.slice(page.indexOf("const printableRows ="), page.indexOf("const printRows ="));
-  assert.match(printable, /drafts\\.drafts\\.filter/);
-  assert.match(printable, /draft\\.items\\.filter\\(item => !item\\.deleted\\)/);
+  assert.match(printable, /drafts\.drafts\.filter/);
+  assert.match(printable, /draft\.items\.filter\(item => !item\.deleted\)/);
   assert.doesNotMatch(printable, /heading:|sourceOptionName|خيارات متعددة|مسودة /);
-  assert.match(page, /requiredQuantity: item\\.requiredQuantity,/);
-  assert.doesNotMatch(page, /item\\.heading/);
+  assert.match(page, /requiredQuantity: item\.requiredQuantity,/);
+  assert.doesNotMatch(page, /item\.heading/);
   assert.match(page, /<bdi className="item-options-print-quantity">/);
 });
