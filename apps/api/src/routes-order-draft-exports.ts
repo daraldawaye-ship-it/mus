@@ -21,14 +21,14 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
     const user = await currentActor(client, actor(req), false);
     await companyAccess(client, user, companyId, "items.view");
     const entries = await directoryEntries(client, user, companyId);
-    const page = entries.find(entry => entry.key === "company.order-draft-exports");
-    if (!page) throw new HttpError(403, "forbidden", "صفحة سجل الطلبيات غير متاحة");
+    // Export/print is an action from the order drafts page itself. Requiring
+    // separate access to the history page here prevents staff who may view
+    // drafts from printing or exporting them. History reads remain protected.
+    const pageKey = requireDraft ? "company.item-options-list" : "company.order-draft-exports";
+    const page = entries.find(entry => entry.key === pageKey);
+    if (!page) throw new HttpError(403, "forbidden",
+      requireDraft ? "مسودات الطلبيات غير متاحة" : "صفحة سجل الطلبيات غير متاحة");
     assertDirectoryAccess(page, "view");
-    if (requireDraft) {
-      const draftPage = entries.find(entry => entry.key === "company.item-options-list");
-      if (!draftPage) throw new HttpError(403, "forbidden", "مسودات الطلبيات غير متاحة");
-      assertDirectoryAccess(draftPage, "view");
-    }
     return user;
   }
   const clearExpired = (client: PoolClient) => client.query(
