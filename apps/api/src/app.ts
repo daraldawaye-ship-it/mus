@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { createDatabase } from "./db.ts";
 import { configuration, type AppOptions } from "./config.ts";
 import { HttpError } from "./errors.ts";
-import { loadSession, mutationSecurity, visitorOnlyGuard } from "./http.ts";
+import { actor, handler, loadSession, mutationSecurity, visitorOnlyGuard } from "./http.ts";
 import { ownerReadOnlyPreview } from "./owner-read-only-preview.ts";
 import { trackAuthenticatedPresence } from "./services/user-presence.ts";
 import { authRoutes } from "./routes-auth.ts";
@@ -19,6 +19,7 @@ import { chatgptMcpRoutes } from "./routes-chatgpt-mcp.ts";
 import { businessRoutes } from "./business-routes.ts";
 import { systemMonitorRoutes } from "./routes-system-monitor.ts";
 import { ownerSqlConsoleRoutes } from "./routes-owner-sql.ts";
+import { callOwnerSqlMcp } from "./services/owner-sql-mcp.ts";
 import { mediaRoutes } from "./routes-media.ts";
 import { chatRoutes } from "./routes-chat.ts";
 import { chatGroupRoutes } from "./routes-chat-groups.ts";
@@ -105,6 +106,18 @@ export async function createApp(options: AppOptions = {}) {
     // The signed gateway forwards these paths to the isolated market database.
     mcpBusiness.get(["/medicine-market/admin/monitor", "/medicine-market/admin/monitor/count"], market.router);
   }
+  // Owner SQL mutations live ONLY on the internal OAuth-dispatched MCP router.
+  // This router is never mounted under the website's public /api paths.
+  mcpBusiness.post("/owner-bulk-sql/preview",handler(async(req,res)=>{
+    const user=actor(req);
+    const result=await callOwnerSqlMcp(pool,marketOptions,"preview_bulk_sql",req.body,user,"oauth-dispatch:"+user.id);
+    res.json(result);
+  }));
+  mcpBusiness.post("/owner-bulk-sql/execute",handler(async(req,res)=>{
+    const user=actor(req);
+    const result=await callOwnerSqlMcp(pool,marketOptions,"execute_bulk_sql",req.body,user,"oauth-dispatch:"+user.id);
+    res.json(result);
+  }));
   mcpBusiness.use(business);
   app.use(chatgptMcpRoutes(pool, config.appOrigin, mcpBusiness, marketOptions));
   // Only the authenticated explanation attachment upload needs larger JSON bodies.
