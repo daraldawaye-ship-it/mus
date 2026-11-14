@@ -146,10 +146,13 @@ export function quickMessagesRoutes(pool: Pool): Router {
       }
       let recipients: {userId:number;employeeId:number|null}[];
       if (input.kind === "system_change" || input.kind === "app_manager") {
-        // The management recipients are the real platform owners/admins.
+        // Deliver system-change requests to the sender too when they are a
+        // platform owner/admin, so their own submitted requests stay visible
+        // in the public notification inbox. Other broadcasts still exclude
+        // the sender and non-manager employees do not become recipients.
         const rows=(await client.query(
-          "SELECT id FROM users WHERE (owner OR kind='admin') AND NOT archived AND NOT suspended AND id<>$1 ORDER BY id LIMIT 251",
-          [user.id],
+          "SELECT id FROM users WHERE (owner OR kind='admin') AND NOT archived AND NOT suspended AND (id<>$1 OR $2::boolean) ORDER BY id LIMIT 251",
+          [user.id,input.kind === "system_change"],
         )).rows;
         recipients=rows.map(row=>({userId:row.id as number,employeeId:null}));
       } else {
