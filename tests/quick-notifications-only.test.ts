@@ -39,6 +39,13 @@ test("recipient targeting and message content live in notifications alone",()=>{
   assert.doesNotMatch(route,/sendChatMessage|chat_messages|chat_conversations|notifyChatRecipient|CHAT_DIRECT|chat\\.send/);
   assert.doesNotMatch(route,/href:\\s*["']?\/chat/);
 });
+test("admin-authored system change requests appear in the sender's own inbox",()=>{
+  const route=read("apps/api/src/routes-quick-messages.ts");
+  assert.ok(route.includes("(id<>$1 OR $2::boolean)"));
+  assert.ok(route.includes('[user.id,input.kind === "system_change"]'));
+  assert.ok(route.includes("(owner OR kind='admin')"));
+  assert.ok(route.includes('AND e.active AND e.user_id<>$2'));
+});
 test("recipient inbox is visible without chat page permission, company ID scopes preserved",()=>{
   const notificationCore=read("apps/api/src/services/notifications.ts");
   const inbox=read("apps/api/src/routes-notifications.ts");
