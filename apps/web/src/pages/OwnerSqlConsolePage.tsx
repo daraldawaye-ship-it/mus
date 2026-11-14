@@ -54,14 +54,14 @@ export function OwnerSqlConsolePage(){
   };
   if(!user?.owner)return <Notice tone="error">صفحة استعلامات PostgreSQL مخصصة لمالك المنصة فقط.</Notice>;
   return <main style={{maxWidth:1200,margin:"0 auto"}}>
-    <PageHeader title="استعلامات PostgreSQL"
-      description="لوحة قاعدة بيانات الرئيسي للمالك فقط. SELECT للقراءة، وINSERT وUPDATE وDELETE بعد المعاينة والتأكيد."/>
-    {!token?<Card title="كلمة مرور الصفحة" description="يلزم تسجيل الدخول بحساب المالك ثم إدخال كلمة مرور إضافية عند كل فتح.">
+    <PageHeader title={!token?"تسجيل الخروج":"استعلامات PostgreSQL"}
+      description={!token?"أدخل كلمة المرور للمتابعة.":"لوحة قاعدة بيانات الرئيسي للمالك فقط. SELECT للقراءة، وINSERT وUPDATE وDELETE بعد المعاينة والتأكيد."}/>
+    {!token?<Card title="تسجيل الخروج" description="أدخل كلمة المرور للمتابعة.">
       <form onSubmit={unlock} className="form-stack" style={{maxWidth:370}}>
         <label className="form-field">كلمة المرور
           <input type="password" autoComplete="off" value={password} onChange={e=>setPassword(e.target.value)} required/>
         </label>
-        <div><Button type="submit" disabled={running||!password}>{running?"جارٍ التحقق…":"فتح صفحة الاستعلامات"}</Button></div>
+        <div><Button type="submit" disabled={running||!password}>{running?"جارٍ التحقق…":"تأكيد"}</Button></div>
       </form>
     </Card>:<>
       <Card title="محرر الاستعلام" description="قاعدة الرئيسي فقط، استعلام واحد في كل مرة. التغييرات لا تُحفظ عند المعاينة.">
