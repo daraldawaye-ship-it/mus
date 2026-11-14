@@ -95,33 +95,45 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
       ),
     enabled: Boolean(user && allowed),
   });
-  const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(() => [
-    {
-      accessorKey: "runningBalance", header: "الرصيد", enableSorting: false,
-      cell: ({ row }) => <span>{balanceText(row.original.runningBalance)}</span>,
-    },
-    {
-      accessorKey: "baseDebit", header: "مدين", enableSorting: false,
-      cell: ({ row }) => <bdi>{formatMoney(row.original.baseDebit)}</bdi>,
-    },
-    {
-      accessorKey: "baseCredit", header: "دائن", enableSorting: false,
-      cell: ({ row }) => <bdi>{formatMoney(row.original.baseCredit)}</bdi>,
-    },
-    {
-      accessorKey: "counterpartAccounts", header: "الحساب المقابل", enableSorting: false,
-      cell: ({ row }) => <span>{row.original.counterpartAccounts || "—"}</span>,
-    },
-    { accessorKey: "description", header: "البيان", enableSorting: false },
-    {
-      accessorKey: "kind", header: "النوع", enableSorting: false,
-      cell: ({ row }) => row.original.reversesDocumentId
-        ? "قيد عكسي" : documentKindLabels[row.original.kind],
-    },
-    { accessorKey: "documentDate", header: "التاريخ", enableSorting: false },
-    { accessorKey: "documentNumber", header: "المستند", enableSorting: false },
-    { accessorKey: "currencyCode", header: "العملة", enableSorting: false },
-  ], []);
+  const columns = useMemo<ColumnDef<AccountLedgerLine, unknown>[]>(() => {
+    const visible: ColumnDef<AccountLedgerLine, unknown>[] = [
+      {
+        accessorKey: "runningBalance", header: "الرصيد", enableSorting: false,
+        size: isCustody ? 150 : undefined,
+        cell: ({ row }) => <span>{balanceText(row.original.runningBalance)}</span>,
+      },
+      {
+        accessorKey: "baseDebit", header: "مدين", enableSorting: false,
+        size: isCustody ? 100 : undefined,
+        cell: ({ row }) => <bdi>{formatMoney(row.original.baseDebit)}</bdi>,
+      },
+      {
+        accessorKey: "baseCredit", header: "دائن", enableSorting: false,
+        size: isCustody ? 100 : undefined,
+        cell: ({ row }) => <bdi>{formatMoney(row.original.baseCredit)}</bdi>,
+      },
+      {
+        accessorKey: "counterpartAccounts", header: "الحساب المقابل", enableSorting: false,
+        size: isCustody ? 230 : undefined,
+        cell: ({ row }) => <span>{row.original.counterpartAccounts || "—"}</span>,
+      },
+      {
+        accessorKey: "description", header: "البيان", enableSorting: false,
+        size: isCustody ? 560 : undefined,
+      },
+      {
+        id: "kind", accessorKey: "kind", header: "النوع", enableSorting: false,
+        cell: ({ row }) => row.original.reversesDocumentId
+          ? "قيد عكسي" : documentKindLabels[row.original.kind],
+      },
+      { accessorKey: "documentDate", header: "التاريخ", enableSorting: false },
+      { id: "documentNumber", accessorKey: "documentNumber", header: "المستند", enableSorting: false },
+      { accessorKey: "currencyCode", header: "العملة", enableSorting: false },
+    ];
+    return isCustody
+      ? visible.filter(column => column.id !== "kind" && column.id !== "documentNumber")
+      : visible;
+  }, [isCustody]);
   const update = (field: string, value: string | null) =>
     setParams((current) => {
       const next = new URLSearchParams(current);
@@ -286,7 +298,7 @@ export function MyCashboxLedgerPage({ context, mode = "cashbox" }: {
                   onClick={()=>update("page",String(page+1))}>التالي</Button>
               </div>}
             </div>
-            <div className="my-cashbox-desktop-table">
+            <div className={isCustody ? "my-cashbox-desktop-table administrative-custody-ledger-table" : "my-cashbox-desktop-table"}>
               <DataTable
               columns={columns}
               data={result.data.items}
