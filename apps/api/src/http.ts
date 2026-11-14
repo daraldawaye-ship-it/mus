@@ -90,6 +90,7 @@ export const visitorOnlyGuard: RequestHandler = (req, res, next) => {
   ]);
   if (authRoutes.has(path) || /^\/medicine-market(?:\/|$)/.test(path) ||
       path === "/page-catalog/visit" ||
+      (req.method === "POST" && path === "/interest-events") ||
       (req.method === "GET" && path === "/page-catalog" && !req.query.companyId) ||
       (req.method === "POST" && path === "/presence/heartbeat") ||
       (path === "/appearance" &&

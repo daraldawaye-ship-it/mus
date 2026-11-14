@@ -1,6 +1,7 @@
 import { slipReceiptRoutes } from "./routes-slip-receipts.ts";
 import { marketMaintenance } from "./market/gateway.ts";
 import { Router } from "express";
+import { interestEventRoutes } from "./routes-interest-events.ts";
 import type { Pool } from "pg";
 import { publicRoutes } from "./routes-public.ts";
 import { companyRoutes } from "./routes-companies.ts";
@@ -73,6 +74,7 @@ export function businessRoutes(pool: Pool, marketGateway?: Router): Router {
     importSourceDateRoutes(pool),
     pageAvailabilityGate(pool),
     publicRoutes(pool),
+    interestEventRoutes(pool),
     companyRoutes(pool),
     companyDeviceRoutes(pool),
     attendanceRoutes(pool),
