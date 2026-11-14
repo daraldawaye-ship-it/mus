@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { CompanyContext, Item } from "../../../packages/contracts/src/index";
 import { Dialog, Notice } from "./ui";
 import { api } from "./api";
+import { recordInterest } from "./InterestTracker";
 const Editor = lazy(() => import("./pages/ItemsPages").then(m => ({ default: m.InvoiceItemEditor })));
 const EVENT_NAME = "alraesy:open-item-card-sheet";
 
@@ -26,6 +27,8 @@ export function ItemCardBottomSheetHost({ context }: { context: CompanyContext |
     const visit = `${companyId}:${itemId}`;
     if (lastRecordedCard.current === visit) return;
     lastRecordedCard.current = visit;
+    recordInterest({action:"card_open",targetType:"company-item:"+companyId,
+      targetId:itemId,path:window.location.pathname});
     void api(`/companies/${companyId}/reward-events/page-visit`, {
       method: "POST",
       body: { pageKey: "company.item-card", recordId: itemId,

@@ -69,6 +69,7 @@ import { AppSetup } from "./AppSetup";
 import { InstallBanner } from "./InstallBanner";
 import { AppUpdatePrompt } from "./AppUpdatePrompt";
 import { PresenceHeartbeat } from "./PresenceHeartbeat";
+import { InterestTracker, InterestPrivacyToggle } from "./InterestTracker";
 import { CompanyDeviceDiscovery } from "./company-device-discovery";
 import { AttendanceApprovalBanner } from "./AttendanceApprovalBanner";
 import { QuickLoginPage } from "./QuickLoginPage";
@@ -105,6 +106,7 @@ const CentralAccessPage = lazy(() =>
 const OwnerPhonePreviewPage = lazy(() => import("./pages/OwnerPhonePreviewPage"));
 const DesignLibraryPage = lazy(() => import("./pages/DesignLibraryPage"));
 const MarketCoveragePage = lazy(() => import("./pages/MarketCoveragePage"));
+const InterestStatisticsPage = lazy(() => import("./pages/InterestStatisticsPage").then(m=>({default:m.InterestStatisticsPage})));
 const MedicineMarketPage = lazy(() => import("./pages/MedicineMarketPage").then(m=>({default:m.MedicineMarketPage})));
 const MarketFriendReferralsPage = lazy(() => import("./pages/MarketFriendReferralsPage").then(m=>({default:m.MarketFriendReferralsPage})));
 const PageDirectoryPage = lazy(() =>
@@ -576,6 +578,13 @@ function Navigation({
           className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
           title="مكتبة التصاميم الخاصة بالمالك">
           <Palette size={17}/><span className="nav-text">مكتبة التصاميم</span>
+          <ChevronLeft size={13} className="nav-chevron"/>
+        </NavLink>
+      )}
+      {user?.owner && !employeePreview && !visitorOnly && (
+        <NavLink to="/interest-statistics" onClick={close}
+          className={({isActive})=>"nav-link"+(isActive?" active":"")}>
+          <TrendingUp size={17}/><span className="nav-text">إحصاءات اهتمامات الزوار</span>
           <ChevronLeft size={13} className="nav-chevron"/>
         </NavLink>
       )}
@@ -1417,6 +1426,9 @@ function Workspace() {
               <Route path="/design-library" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/design-library/:section" element={<Protected>{user?.owner && !employeePreview ? <Suspense fallback={<Notice>جارٍ تحميل مكتبة التصاميم…</Notice>}><DesignLibraryPage /></Suspense> : <Notice tone="error">هذه المكتبة للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/friend-referrals" element={<Protected><PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ تحميل متابعة تعريف الأصدقاء…</Notice>}><MarketFriendReferralsPage /></Suspense></PageRouteGuard></Protected>} />
+              <Route path="/interest-statistics" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ?
+                <Suspense fallback={<Notice>جارٍ تحميل الإحصاءات…</Notice>}><InterestStatisticsPage /></Suspense> :
+                <Notice tone="error">إحصاءات الاهتمامات للمالك فقط.</Notice>}</Protected>} />
               <Route path="/medicine-market/card-coverage" element={<Protected>{user?.owner && !visitorOnly && !employeePreview ? <PageRouteGuard pageKey="public.medicine-market"><Suspense fallback={<Notice>جارٍ التحميل…</Notice>}><MarketCoveragePage /></Suspense></PageRouteGuard> : <Notice>هذه الصفحة للمالك فقط</Notice>}</Protected>} />
               <Route path="/medicine-market/review" element={<Protected><PageRouteGuard pageKey="public.medicine-market-review"><Suspense fallback={<Notice>جارٍ تحميل المصادقات…</Notice>}><MedicineMarketPage key={`${user?.id}:review`} tab="review" /></Suspense></PageRouteGuard></Protected>} />
               <Route path="/medicine-market/contributions" element={<Protected><PageRouteGuard pageKey="public.medicine-market-contributions"><Suspense fallback={<Notice>جارٍ تحميل المساهمات…</Notice>}><MedicineMarketPage key={`${user?.id}:contributions`} tab="contributions" /></Suspense></PageRouteGuard></Protected>} />
@@ -1592,10 +1604,12 @@ function Workspace() {
           </main>
           <footer className="workspace-footer">
             <span>الرئيسي</span>
+            <InterestPrivacyToggle />
             <span>الحسابات · الشركات · فريق العمل</span>
           </footer>
         </div>
       </div>
+      <InterestTracker />
       <PresenceHeartbeat userId={user?.id ?? null} />
       <QuickMessageDeliveryStatus userId={user?.id ?? null} />
       {user && navigationContext && !employeePreview && !visitorOnly &&

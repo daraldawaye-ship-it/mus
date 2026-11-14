@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { api, useScopeGuard, useSession } from "../api";
+import { recordInterest } from "../InterestTracker";
 import { MarketImageUpload, prepareMarketImage } from "../MarketImageUpload";
 import { MarketProductImage } from "../MarketProductImage";
 import { MarketCardIcon } from "../MarketCardIcon";
@@ -1297,6 +1298,14 @@ export function MedicineMarketPage({
     enabled: createOpen && newKind!=="prescription" && newName.trim().length >= 2,
   });
   const card = detail.data?.card;
+  const lastCardVisit = useRef<number|null>(null);
+  useEffect(()=>{
+    if(tab!=="catalog" || !selected){lastCardVisit.current=null;return;}
+    if(!card || card.id!==selected || lastCardVisit.current===selected)return;
+    lastCardVisit.current=selected;
+    recordInterest({action:"card_open",targetType:"market:"+card.kind,
+      targetId:card.id,label:card.name,path:"/medicine-market"});
+  },[tab,selected,card?.id,card?.kind,card?.name]);
   const fields = types.find((t) => t.key === card?.kind)?.fields ?? [];
   useEffect(() => {
     setCreateOpen(false);
