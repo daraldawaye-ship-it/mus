@@ -8,6 +8,8 @@ import { Button, Card, Notice, PageHeader } from "../ui";
 type Coverage = { total: number; fields: { key: string; label: string; filled: number }[] };
 const format = new Intl.NumberFormat("en-US");
 
+const cellStyle = { border: "1px solid #748394", padding: "3px 8px", textAlign: "center" } as const;
+
 export default function MarketCoveragePage() {
   const { user } = useSession();
   const [kind, setKind] = useState<MarketKind>("medicine");
@@ -26,12 +28,12 @@ export default function MarketCoveragePage() {
       </div>
       {query.isError ? <Notice tone="error">تعذر تحميل الإحصاءات. اضغط تحديث للمحاولة مجددًا.</Notice> : query.data ? <>
         <p>إجمالي الكروت المنشورة غير المؤرشفة <strong>{format.format(query.data.total)}</strong></p>
-        <table style={{width:"100%"}}>
-          <thead><tr><th scope="col">الخيار</th><th scope="col">مرتبط أو معبّأ</th><th scope="col">فارغ</th></tr></thead>
+        <table style={{width:"100%", borderCollapse:"collapse"}}>
+          <thead><tr><th scope="col" style={cellStyle}>الخيار</th><th scope="col" style={cellStyle}>مرتبط أو معبّأ</th><th scope="col" style={cellStyle}>فارغ</th></tr></thead>
           <tbody>{query.data.fields.map(field => <tr key={field.key}>
-            <th scope="row" style={{textAlign:"start"}}>{field.label}</th>
-            <td style={{textAlign:"center"}}>{format.format(field.filled)}</td>
-            <td style={{textAlign:"center"}}>{format.format(query.data.total - field.filled)}</td>
+            <th scope="row" style={{...cellStyle, textAlign:"start"}}>{field.label}</th>
+            <td style={cellStyle}>{format.format(field.filled)}</td>
+            <td style={cellStyle}>{format.format(query.data.total - field.filled)}</td>
           </tr>)}</tbody>
         </table>
       </> : <Notice>جارٍ حساب أعداد الكروت…</Notice>}
