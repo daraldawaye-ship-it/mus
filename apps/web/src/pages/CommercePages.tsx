@@ -1917,6 +1917,12 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
       `/companies/${companyId}/sales/administrative-custody-funding-access`, { signal }),
     enabled: !!user && kind === "sale", staleTime: 30000,
   });
+  const custodyTransferAccess = useQuery({
+    queryKey: ["sales-custody-transfer-access", user?.id, companyId],
+    queryFn: ({ signal }) => api<{ allowed: boolean }>(
+      `/companies/${companyId}/sales/administrative-custody-transfer-access`, { signal }),
+    enabled: !!user, staleTime: 30000,
+  });
   const [custodyFundingOpen, setCustodyFundingOpen] = useState(false);
   const allowDateEdit = controls.value(kind === "sale" ? "edit_sales_date" : "edit_purchases_date") !== false;
   const showCurrency = controls.value("show_currency") !== false;
@@ -3473,8 +3479,7 @@ function InvoiceEditor({ context, onChooseItem, tabId, active, restored, pointCr
                 )}
                 <AdministrativeCustodyTransferButton companyId={companyId}
                   disabled={locked || !canOperateAdministrativeCustody(context) ||
-                    !directory.data?.find(entry =>
-                      entry.key === "company.administrative-custody")?.actionAccess.post ||
+                    custodyTransferAccess.data?.allowed !== true ||
                     isOfflineNow() || sessionRequiresLogin()} />
                 <Field
                   label="تاريخ الفاتورة"
