@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { connectionSnapshot, subscribeConnection } from "../connection-mode";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   convertItemQuantity,
@@ -328,10 +329,10 @@ function StockFilters({
   return (
     <div className="table-filters">
       <Field
-        label="بحث في المخزون" data-operator-search="lists.search"
+        label="بحث في المخزون" data-operator-search={movements ? undefined : "lists.search"}
         type="search"
         value={list.query}
-        placeholder="رمز الصنف أو اسمه أو الموقع"
+        placeholder={movements ? "الصنف أو الموقع أو الملاحظات" : "رمز الصنف أو اسمه أو الموقع"}
         onChange={(event) => list.setQuery(event.target.value)}
       />
       <ReferenceField<Item>
@@ -580,7 +581,8 @@ export function InventoryMovementsPage({
 function MovementsList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const [params] = useSearchParams();
-  const filters = new URLSearchParams();
+  const connection = useSyncExternalStore(subscribeConnection, connectionSnapshot);
+  const filters = new URLSearchParams(connection === "online" ? { includeNotes: "1" } : {});
   for (const key of ["itemId", "locationId", "kind", "supplierAccountId", "doctorId"])
     if (params.get(key)) filters.set(key, params.get(key)!);
   const dateFrom = params.has("dateFrom") ? params.get("dateFrom") ?? "" : adenInvoiceToday();
@@ -700,6 +702,15 @@ function MovementsList({ context }: { context: CompanyContext }) {
               </Link>
             : <ValueCell>{row.original.doctorName}</ValueCell>
           : "—",
+      },
+      {
+        accessorKey: "notes",
+        header: "ملاحظات",
+        size: 205,
+        enableSorting: false,
+        cell: ({ row }) => row.original.notes?.trim() ? (
+          <span data-no-interest=""><ValueCell>{row.original.notes.trim()}</ValueCell></span>
+        ) : "—",
       },
       {
         accessorKey: "locationName",

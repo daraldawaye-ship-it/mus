@@ -195,6 +195,8 @@ export interface StockMovement {
   /** Doctor or entity recorded in this sale invoice, including new unclassified cards. */
   doctorId: number | null;
   doctorName: string | null;
+  /** Saved notes for the source document when the full report requests them and the viewer can read it. */
+  notes?: string | null;
   locationId: number;
   locationName: string;
   branchId: number;

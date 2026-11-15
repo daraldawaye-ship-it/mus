@@ -327,6 +327,9 @@ export async function offlineLoginRequired():Promise<boolean> {
 function allowedSnapshot(path: string): boolean {
   // Cache only already-authorized server GET responses. The user key is
   // separate per account; no authentication or password endpoints are cached.
+  const [pathname, query] = path.split("?", 2);
+  if (/^\/companies\/[1-9]\d*\/stock-movements$/.test(pathname) &&
+      new URLSearchParams(query).get("includeNotes") === "1") return false;
   return /^\/appearance\?scope=(?:public|company%3A\d+|company:\d+)$/.test(path) ||
     /^\/my-shortcuts(?:\?|$)/.test(path) ||
     /^\/companies(?:\?|$)/.test(path) ||

@@ -252,7 +252,7 @@ export const stockMovementFrom = `FROM stock_movements m
   JOIN items i ON i.company_id=m.company_id AND i.id=m.item_id
   JOIN locations l ON l.company_id=m.company_id AND l.id=m.location_id
   JOIN branches b ON b.company_id=l.company_id AND b.id=l.branch_id JOIN users u ON u.id=m.created_by`;
-export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_text,i.code AS item_code,i.name AS item_name,l.name AS location_name,l.branch_id,b.name AS branch_name,u.display_name AS created_by_name,
+const stockMovementColumns = `SELECT m.*,m.document_date::text AS date_text,i.code AS item_code,i.name AS item_name,l.name AS location_name,l.branch_id,b.name AS branch_name,u.display_name AS created_by_name,
   COALESCE(m.supplier_account_id,supplier_hint.supplier_account_id) AS effective_supplier_account_id,
   COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) AS effective_supplier_account_code,
   COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) AS effective_supplier_account_name,
@@ -260,7 +260,11 @@ export const stockMovementSelect = `SELECT m.*,m.document_date::text AS date_tex
   doctor_invoice.doctor_id AS referral_doctor_id,
   doctor_invoice.doctor_name AS referral_doctor_name,
   doctor_invoice.total AS linked_invoice_total,
-  doctor_invoice.currency_code AS linked_invoice_currency_code ${stockMovementFrom}`;
+  doctor_invoice.currency_code AS linked_invoice_currency_code`;
+export const stockMovementSelect = `${stockMovementColumns} ${stockMovementFrom}`;
+export function stockMovementSelectWithNotes(value: string, from: string) {
+  return `${stockMovementColumns}, ${value} AS source_notes ${from}`;
+}
 export function stockMovementDTO(row: QueryResultRow): StockMovement {
   return {
     id: row.id,
@@ -274,6 +278,7 @@ export function stockMovementDTO(row: QueryResultRow): StockMovement {
     supplierInferenceSource: row.supplier_inference_source ?? null,
     doctorId: row.referral_doctor_id ?? null,
     doctorName: row.referral_doctor_name ?? null,
+    ...(Object.hasOwn(row, "source_notes") ? { notes: row.source_notes ?? null } : {}),
     locationId: row.location_id,
     locationName: row.location_name,
     branchId: row.branch_id,

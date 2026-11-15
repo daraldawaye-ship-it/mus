@@ -9,6 +9,7 @@ import {
   countedStockSmallest,
 } from "../../../packages/contracts/src/inventory.ts";
 import { documentDateSchema } from "../../../packages/contracts/src/finance.ts";
+import type { CompanyContext, User } from "../../../packages/contracts/src/index.ts";
 import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
@@ -25,6 +26,9 @@ import {
   quantum,
 } from "./services/finance.ts";
 import { listQuery, searchPattern } from "./services/lists.ts";
+import { directoryEntries } from "./services/pages.ts";
+import { permissionRuleEffects } from "./services/permission-rules.ts";
+import { stockMovementNotesAccess, stockMovementNotesSql } from "./services/stock-movement-notes.ts";
 import { addItemCoverageToPage, canReadItemCoverage, itemCoverageJoin, itemCoverageSelect, itemCoverageRedactedSelect } from "./services/item-coverage.ts";
 import { postCommerceJournal } from "./services/commerce-ledger.ts";
 import {
@@ -45,13 +49,14 @@ import {
   stockMovementDTO,
   stockMovementFrom,
   stockMovementSelect,
+  stockMovementSelectWithNotes,
   stockUnitMultiplier,
 } from "./services/inventory.ts";
 
 async function readInventory<T>(
   pool: Pool,
   req: Request,
-  action: (client: PoolClient, companyId: number) => Promise<T>,
+  action: (client: PoolClient, companyId: number, user: User, context: CompanyContext) => Promise<T>,
 ): Promise<T> {
   const companyId = id(req.params.companyId);
   return transaction(pool, async (client) => {
@@ -59,8 +64,8 @@ async function readInventory<T>(
       "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
     );
     const user = await currentActor(client, actor(req), false);
-    await companyAccess(client, user, companyId, "inventory.view");
-    return action(client, companyId);
+    const context = await companyAccess(client, user, companyId, "inventory.view");
+    return action(client, companyId, user, context);
   });
 }
 const balanceColumns = {
@@ -353,16 +358,33 @@ export function inventoryRoutes(pool: Pool): Router {
   router.get(
     `${base}/stock-movements`,
     handler(async (req, res) => {
+      if (req.query.includeNotes === "1") res.set("Cache-Control", "private, no-store");
       res.json(
-        await readInventory(pool, req, async (client, companyId) => {
+        await readInventory(pool, req, async (client, companyId, user, context) => {
           const query = listQuery(
             req.query,
             movementColumns,
             "documentDate:desc,createdAt:desc,id:desc",
           );
           const parameters: unknown[] = [companyId, searchPattern(query.q)];
+          let fromSql = stockMovementFrom, selectSql = stockMovementSelect;
+          let notePredicate = "";
+          if (req.query.includeNotes === "1") {
+            // Notes can hold information not available to inventory-only viewers.
+            // Both the returned table and matching rows use the same redacted value.
+            const entries = await directoryEntries(client, user, companyId);
+            const effects = !context.general && context.employee
+              ? await permissionRuleEffects(client, companyId, context.employee.id)
+              : new Map();
+            const { join, value, searchable } = stockMovementNotesSql(
+              stockMovementNotesAccess(entries, effects, context.permissions.includes("commerce.view")),
+            );
+            fromSql += join;
+            selectSql = stockMovementSelectWithNotes(value, fromSql);
+            if (searchable && query.q) notePredicate = ` OR ${value} ILIKE $2`;
+          }
           let where =
-            "m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) ILIKE $2 OR COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) ILIKE $2 OR COALESCE(doctor_invoice.doctor_name,'') ILIKE $2)";
+            `m.company_id=$1 AND (i.code ILIKE $2 OR i.name ILIKE $2 OR l.name ILIKE $2 OR b.name ILIKE $2 OR u.display_name ILIKE $2 OR COALESCE(m.supplier_account_code,supplier_hint.supplier_account_code) ILIKE $2 OR COALESCE(m.supplier_account_name,supplier_hint.supplier_account_name) ILIKE $2 OR COALESCE(doctor_invoice.doctor_name,'') ILIKE $2${notePredicate})`;
           if (req.query.doctorId !== undefined) {
             if (typeof req.query.doctorId !== "string")
               throw new HttpError(400, "invalid_query", "معرف الطبيب أو الجهة غير صالح");
@@ -416,11 +438,11 @@ export function inventoryRoutes(pool: Pool): Router {
               "بداية الفترة بعد نهايتها",
             );
           const count = await client.query(
-            `SELECT count(*)::integer AS total ${stockMovementFrom} WHERE ${where}`,
+            `SELECT count(*)::integer AS total ${fromSql} WHERE ${where}`,
             parameters,
           );
           const rows = await client.query(
-            `${stockMovementSelect} WHERE ${where} ORDER BY ${query.order} LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
+            `${selectSql} WHERE ${where} ORDER BY ${query.order} LIMIT $${parameters.length + 1} OFFSET $${parameters.length + 2}`,
             [...parameters, query.pageSize, query.offset],
           );
           return {
