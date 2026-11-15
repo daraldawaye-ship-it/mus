@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { employeePositions } from "../../../../packages/contracts/src/employee-positions.ts";
 import { api, useSession } from "../api";
@@ -123,6 +123,8 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
  const [creating,setCreating]=useState(false),[draft,setDraft]=useState(fresh);
  const [recipientSearch,setRecipientSearch]=useState("");
  const [selectedId,setSelectedId]=useState<number|null>(null);
+ const followUp=useRef<HTMLElement>(null);
+ useEffect(()=>{if(selectedId!==null)followUp.current?.focus();},[selectedId]);
  const [actionResult,setActionResult]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const createKey=useRef(crypto.randomUUID());
@@ -279,25 +281,40 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
         </tr></thead>
         <tbody role="rowgroup">{records.map(record=><tr role="row" key={record.id}>
           <td role="cell" className="inquiry-request-cell">{record.requestText}</td>
-          <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">المعنيون: </span>{record.assignedCount}</td>
+          <td role="cell" className="inquiry-targets-cell">
+            <span className="inquiry-mobile-label" aria-hidden="true">المعنيون: </span>
+            {record.targets.length?record.targets.map(target=>target.name).join("، "):
+              record.myStatus!==null?<>{user.displayName||user.name}
+                {record.assignedCount>1&&<>، +{record.assignedCount-1}</>}</>:
+                record.assignedCount>0?String(record.assignedCount):"—"}
+          </td>
           <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">الردود: </span>{record.answeredCount}</td>
           <td role="cell" className="inquiry-answer-cell">
             <InquiryAnswerCell key={root+":"+user.id+":"+record.id} record={record} userId={user.id} root={root}
               refresh={()=>client.invalidateQueries({queryKey:["inquiries",user.id,companyId]})}/>
+            {record.answers.length>1&&<details className="inquiry-answer-history">
+              <summary>الردود المسجلة ({record.answers.length})</summary>
+              <ul>{record.answers.map(answer=><li key={answer.id}>
+                <strong>{answer.userName}</strong> · {when(answer.answeredAt)}
+                <div><InquiryAnswerText type={record.answerType} answer={answer}/></div>
+              </li>)}</ul>
+            </details>}
           </td>
           <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">الحالة: </span>{labels[record.status]??record.status}</td>
           <td role="cell">{when(record.createdAt)}</td>
-          <td role="cell"><div className="actions">
-            <Button size="compact" variant="secondary" onClick={()=>{
-              setSelectedId(selectedId===record.id?null:record.id);
-              setActionResult(record.actionResult);
-            }}>{selectedId===record.id?"إخفاء":"عرض"}</Button>
-          </div></td>
+          <td role="cell">{manager&&(user.owner||record.createdBy===user.id)&&!["done","closed"].includes(record.status)?
+            <Button size="compact" variant="secondary" aria-expanded={selectedId===record.id}
+              aria-controls={selectedId===record.id?"inquiry-follow-up":undefined} onClick={()=>{
+                if(selectedId===record.id)return;
+                setSelectedId(record.id);
+                setActionResult(record.actionResult);
+              }}>متابعة التنفيذ</Button>:"—"}</td>
         </tr>)}</tbody>
       </table>
     </div>
   </Card>
-  {selected&&<Card title={"الطلب رقم "+selected.id}>
+  {selected&&manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&
+  <section id="inquiry-follow-up" ref={followUp} tabIndex={-1}><Card title={"متابعة الطلب رقم "+selected.id}>
     <p><strong>{selected.requestText}</strong></p>
     <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
     {selected.linkedTable&&<p><strong>الجدول المرتبط:</strong> {selected.linkedTable} #{selected.linkedRecordId??"—"}</p>}
@@ -333,9 +350,11 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
           onClick={()=>void changeStatus(selected,"done")}>تم التنفيذ</Button>}
         <Button variant="secondary" disabled={busy}
           onClick={()=>void changeStatus(selected,"closed")}>إغلاق الطلب</Button>
+        <Button variant="secondary" disabled={busy}
+          onClick={()=>setSelectedId(null)}>إغلاق المتابعة</Button>
       </div>
     </div>}
-  </Card>}
+  </Card></section>}
 
  </div>;
 }

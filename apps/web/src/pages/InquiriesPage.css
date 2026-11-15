@@ -2,6 +2,11 @@
 .inquiries-list-table { width: 100%; min-width: 900px; }
 .inquiry-request-cell { max-width: 320px; white-space: normal; overflow-wrap: anywhere; }
 .inquiry-answer-cell { min-width: 210px; white-space: normal; overflow-wrap: anywhere; }
+.inquiry-targets-cell { max-width: 240px; white-space: normal; overflow-wrap: anywhere; }
+.inquiry-answer-history { margin-block-start: .4rem; }
+.inquiry-answer-history summary { cursor: pointer; font-size: .9em; }
+.inquiry-answer-history ul { margin: .35rem 0 0; padding-inline-start: 1.2rem; }
+.inquiry-answer-history li + li { margin-block-start: .4rem; }
 .inquiry-mobile-label { display: none; }
 .inquiry-answer-form textarea,
 .inquiry-answer-form fieldset,
