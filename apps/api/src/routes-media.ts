@@ -80,7 +80,15 @@ export function mediaRoutes(pool: Pool): Router {
       const record=result.rows[0];
       if(!record)missing();
       if(record.purpose==="avatar"){
-        if(record.uploaded_by!==user.id)missing();
+        if(record.uploaded_by!==user.id){
+          // Only the site's owner may see another user's current uploaded
+          // thumbnail in the account directory. Never grant access to /full.
+          if(!user.owner || size!=="thumbnail" || !(await client.query(
+            "SELECT 1 FROM users WHERE id=$1 AND image=$2",
+            [record.uploaded_by,`/api/media/${imageId}/full`],
+          )).rowCount) missing();
+          return {...record,adminAvatarThumbnail:true};
+        }
       }else if(record.purpose==="chat"){
         if(user.suspended) missing();
         if(record.company_id!==null) await companyAccess(client,user,record.company_id);
@@ -105,7 +113,7 @@ export function mediaRoutes(pool: Pool): Router {
       }
       return record;
     });
-    res.setHeader("Cache-Control",image.purpose==="chat"?"private, no-store":"private, max-age=86400");
+    res.setHeader("Cache-Control",image.purpose==="chat"||image.adminAvatarThumbnail?"private, no-store":"private, max-age=86400");
     res.setHeader("Content-Security-Policy","default-src 'none'; sandbox");
     res.type(size==="full"?image.original_mime:image.thumbnail_mime);
     res.send(size==="full"?image.original_bytes:image.thumbnail_bytes);

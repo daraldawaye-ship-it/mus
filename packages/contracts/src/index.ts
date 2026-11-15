@@ -686,6 +686,7 @@ export const userPatchSchema = z
     suspended: z.boolean().optional(),
     editor: z.boolean().optional(),
     monitor: z.boolean().optional(),
+    image: z.union([z.literal(""), z.string().regex(/^\/api\/media\/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\/full$/)]).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "لا توجد تغييرات");

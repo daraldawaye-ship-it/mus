@@ -44,10 +44,10 @@ export function thumbnailUrl(full:string):string{
   return full.replace(/^(\/api\/media\/[a-f\d-]{36})\/full$/,"$1/thumbnail");
 }
 export function ImageUpload({
-  purpose,companyId,preview,onUploaded,onClear,disabled=false,label,buttonLabel,
+  purpose,companyId,preview,onUploaded,onClear,disabled=false,label,buttonLabel,onBusyChange,
 }:{
   purpose:"avatar"|"item"|"letterhead"|"logo";companyId?:number;preview?:string|null;label?:string;buttonLabel?:string;
-  onUploaded:(asset:UploadedImage)=>void;onClear?:()=>void;disabled?:boolean;
+  onUploaded:(asset:UploadedImage)=>void;onClear?:()=>void;disabled?:boolean;onBusyChange?:(busy:boolean)=>void;
 }){
   const inputRef=useRef<HTMLInputElement>(null);
   const [busy,setBusy]=useState(false);
@@ -58,7 +58,7 @@ export function ImageUpload({
     if(!file.type.startsWith("image/")||file.size>MAX_FILE_BYTES){
       setError("اختر صورة بحجم لا يتجاوز 10 ميجابايت.");return;
     }
-    setBusy(true);setError("");
+    setBusy(true);onBusyChange?.(true);setError("");
     let bitmap:ImageBitmap|null=null;
     try{
       bitmap=await createImageBitmap(file);
@@ -74,7 +74,7 @@ export function ImageUpload({
       onUploaded(result);
     }catch(reason){
       setError(reason instanceof Error?reason.message:"تعذر رفع الصورة.");
-    }finally{bitmap?.close();setBusy(false);}
+    }finally{bitmap?.close();setBusy(false);onBusyChange?.(false);}
   }
   return <div className="field image-upload">
     <label>{label??(purpose==="avatar"?"صورة المستخدم":purpose==="letterhead"?"صورة ترويسة الشركة":purpose==="logo"?"شعار الشركة":"صورة الصنف")}</label>

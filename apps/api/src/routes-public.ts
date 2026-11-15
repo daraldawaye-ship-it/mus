@@ -288,6 +288,21 @@ export function publicRoutes(pool: Pool): Router {
         if (!found.rows[0]) missing();
         const before = userDTO(found.rows[0]);
         if (before.owner) deny("حساب مالك المنصة محمي");
+        if (input.image !== undefined) {
+          ownerOnly(current);
+          if (input.image && input.image !== before.image) {
+            const assetId = input.image.split("/")[3];
+            // A fresh upload belongs initially to the owner. Claim it atomically
+            // for the target user rather than expanding profile/chat media grants.
+            const asset = await client.query(
+              "SELECT id FROM media_assets WHERE id=$1 AND purpose='avatar' AND company_id IS NULL AND uploaded_by=$2 FOR UPDATE",
+              [assetId, current.id],
+            );
+            if (!asset.rowCount || (await client.query("SELECT 1 FROM users WHERE image=$1 LIMIT 1", [input.image])).rowCount)
+              throw new HttpError(403, "invalid_image", "اختر صورة جديدة مرفوعة لهذا الحساب");
+            await client.query("UPDATE media_assets SET uploaded_by=$2 WHERE id=$1", [assetId, targetId]);
+          }
+        }
         if (input.archived === true && !current.owner) {
           const managers = await client.query(
             "SELECT 1 FROM employees WHERE user_id=$1 AND active AND is_general_manager LIMIT 1",
@@ -299,7 +314,7 @@ export function publicRoutes(pool: Pool): Router {
         if (afterValues.phone !== before.phone)
           await assertPhoneAvailable(client, afterValues.phone, before.id);
         const updated = await client.query(
-          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END WHERE id=$10 RETURNING *",
+          "UPDATE users SET kind=$1,archived=$2,suspended=$3,editor=$4,monitor=$5,name=$6,display_name=$7,email=$8,phone=$9,phone_login_key=CASE WHEN phone<>$9 THEN $11 ELSE phone_login_key END,phone_verified_at=CASE WHEN phone<>$9 THEN NULL ELSE phone_verified_at END,image=$12 WHERE id=$10 RETURNING *",
           [
             afterValues.kind,
             afterValues.archived,
@@ -312,6 +327,7 @@ export function publicRoutes(pool: Pool): Router {
             afterValues.phone,
             targetId,
             afterValues.phone || null,
+            afterValues.image,
           ],
         );
         const after = userDTO(updated.rows[0]);

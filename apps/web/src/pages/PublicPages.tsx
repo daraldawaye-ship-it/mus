@@ -778,6 +778,20 @@ const flagLabels: Record<PublicFlag, string> = {
   monitor: "مراقب",
 };
 
+function userDirectoryThumbnail(image: string | null | undefined): string | null {
+  return image && /^\/api\/media\/[a-f0-9-]{36}\/full$/.test(image) ? thumbnailUrl(image) : null;
+}
+
+function UserDirectoryAvatar({ image }: { image: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="user-avatar" aria-hidden="true">
+      {image && !failed ? <img src={image} alt="" loading="lazy" decoding="async"
+        onError={() => setFailed(true)} /> : <CircleUserRound size={16} />}
+    </span>
+  );
+}
+
 export function UsersPage() {
   const { user } = useSession();
   if (!user) return <Navigate to="/login" replace />;
@@ -817,6 +831,8 @@ function UserList() {
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [editDraft, setEditDraft] = useState<{name:string;displayName:string;email:string;phone:string;kind: User["kind"];editor:boolean;monitor:boolean;suspended:boolean;archived:boolean}|null>(null);
   const [editBusy, setEditBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [editAvatar, setEditAvatar] = useState<string>();
   const [editError, setEditError] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -951,19 +967,24 @@ function UserList() {
   function openEditor(target: User) {
     if (target.owner) return;
     setEditTarget(target);
+    setEditAvatar(undefined);
     setEditDraft({name:target.name,displayName:target.displayName,email:target.email,phone:target.phone,kind:target.kind,editor:target.editor,monitor:target.monitor,suspended:target.suspended,archived:target.archived});
     setEditError("");
   }
   async function saveEditor() {
-    if (!editTarget || !editDraft || editBusy) return;
+    if (!editTarget || !editDraft || editBusy || avatarBusy) return;
     setEditBusy(true);
     setEditError("");
     try {
-      await api(`/users/${editTarget.id}`, {method:"PATCH",body:editDraft,signal:guard.signal});
+      await api(`/users/${editTarget.id}`, {method:"PATCH",body:{
+        ...editDraft,
+        ...(user?.owner && editAvatar !== undefined ? {image: editAvatar} : {}),
+      },signal:guard.signal});
       if (!guard.isCurrent()) return;
       // Close as soon as the mutation succeeds; table refresh must not hold the dialog open.
       setEditTarget(null);
       setEditDraft(null);
+      setEditAvatar(undefined);
       setNotice({tone:"success",text:`حُفظت تغييرات حساب ${editTarget.displayName}.`});
       void list.refetch();
       if (editTarget.id === user?.id) await reloadSession();
@@ -1089,7 +1110,14 @@ function UserList() {
         accessorKey: "name",
         header: "الاسم",
         size: 180,
-        cell: ({ row }) => valueCell("الاسم", row.original.name),
+        cell: ({ row }) => {
+          const image = user?.owner || row.original.id === user?.id
+            ? userDirectoryThumbnail(row.original.image) : null;
+          return <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+            <UserDirectoryAvatar key={image ?? "no-avatar"} image={image}/>
+            {valueCell("الاسم", row.original.name)}
+          </div>;
+        },
       },
       {
         accessorKey: "displayName",
@@ -1161,7 +1189,7 @@ function UserList() {
         cell: ({ row }) => dateLabel(row.original.createdAt),
       },
     ];
-  }, [savingIds, user?.id, queryClient, guard.isCurrent, guard.signal]);
+  }, [savingIds, user?.id, user?.owner, queryClient, guard.isCurrent, guard.signal]);
 
   return (
     <>
@@ -1304,11 +1332,15 @@ function UserList() {
           {passwordError && <Notice tone="error">{passwordError}</Notice>}
         </div>
       </Dialog>
-      <Dialog open={Boolean(editTarget)} onClose={()=>{if(!editBusy){setEditTarget(null);setEditDraft(null);}}} title={editTarget?`تعديل المستخدم: ${editTarget.displayName}`:"تعديل المستخدم"}
-        footer={<><Button variant="secondary" disabled={editBusy} onClick={()=>{setEditTarget(null);setEditDraft(null);}}>إلغاء</Button>
-        <Button disabled={editBusy||!editDraft} onClick={()=>void saveEditor()}>{editBusy?"جارٍ الحفظ…":"حفظ التعديلات"}</Button></>}>
+      <Dialog open={Boolean(editTarget)} onClose={()=>{if(!editBusy&&!avatarBusy){setEditTarget(null);setEditDraft(null);}}} title={editTarget?`تعديل المستخدم: ${editTarget.displayName}`:"تعديل المستخدم"}
+        footer={<><Button variant="secondary" disabled={editBusy||avatarBusy} onClick={()=>{setEditTarget(null);setEditDraft(null);}}>إلغاء</Button>
+        <Button disabled={editBusy||avatarBusy||!editDraft} onClick={()=>void saveEditor()}>{editBusy?"جارٍ الحفظ…":"حفظ التعديلات"}</Button></>}>
         {editTarget&&editDraft&&<div className="form-grid">
           <p className="form-full">المعرف: {editTarget.id}</p>
+          {user?.owner && <ImageUpload key={editTarget.id} purpose="avatar" buttonLabel="تغيير الصورة"
+            preview={userDirectoryThumbnail(editAvatar ?? editTarget.image)}
+            onBusyChange={setAvatarBusy} disabled={editBusy}
+            onUploaded={asset => {if (guard.isCurrent()) setEditAvatar(asset.fullUrl);}} />}
           <Field label="الاسم" value={editDraft.name} required maxLength={120} onChange={event=>setEditDraft({...editDraft,name:event.target.value})}/>
           <Field label="اسم الظهور" value={editDraft.displayName} maxLength={120} onChange={event=>setEditDraft({...editDraft,displayName:event.target.value})}/>
           <Field label="البريد الإلكتروني (اختياري)" type="email" dir="ltr" value={editDraft.email} maxLength={254} onChange={event=>setEditDraft({...editDraft,email:event.target.value})}/>
