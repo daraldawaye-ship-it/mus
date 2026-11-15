@@ -90,9 +90,10 @@ export function prepareInstall(): void {
     };
     void navigator.serviceWorker.register("/push-sw.js", {
       scope: "/", updateViaCache: "none",
-    }).then(async registration => {
-      await registration.update();
+    }).then(registration => {
+      // Repair the active worker's offline cache even if the update check fails.
       warmStaticAssets();
+      void registration.update().catch(() => {});
     }).catch(() => {});
     window.addEventListener("online", warmStaticAssets);
     document.addEventListener("visibilitychange", warmStaticAssets);

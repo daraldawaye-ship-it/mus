@@ -111,14 +111,10 @@ function warmCurrentBundle() {
 
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
-    try {
-      await warmCurrentBundle();
-      await self.skipWaiting();
-    } catch (error) {
-      // A failed install must not replace a worker with a usable older bundle.
-      await caches.delete(shellCache);
-      throw error;
-    }
+    // The previous worker may use this very cache. Reject a failed install
+    // without deleting its last complete shell or hash-addressed assets.
+    await warmCurrentBundle();
+    await self.skipWaiting();
   })());
 });
 self.addEventListener("activate", event => {

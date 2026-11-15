@@ -89,6 +89,7 @@ test("browser shows no download controls and application detects its display mod
 test("new worker installation rotates only the static shell cache", () => {
   const worker=readFileSync("apps/web/public/push-sw.js","utf8");
   assert.match(worker,/alraesy-static-offline-20261030-v5/);
+  assert.doesNotMatch(worker,/caches\.delete\(shellCache\)/);
   assert.match(worker,/url\.pathname\.startsWith\("\/api\/"\)/);
 });
 
@@ -129,7 +130,7 @@ test("offline sales, purchases, receipts and payments require a complete cached 
   for (const expected of [
     "CommercePages-", "FinancePages-", "offline-assets.json",
     "await Promise.all(assets.slice", 'await cache.put("/", htmlResponse)',
-    "await caches.delete(shellCache)", "assertStaticResponse(path, response)",
+    "assertStaticResponse(path, response)",
     "if (warmingBundle) return warmingBundle",
   ]) assert.ok(worker.includes(expected), expected);
   assert.ok(install.includes("alraesy:warm-static"));
