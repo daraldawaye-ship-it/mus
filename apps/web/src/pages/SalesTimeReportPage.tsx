@@ -37,6 +37,7 @@ type Report = {
 type DayRow = {
   date: string;
   weekday: string;
+  isFriday: boolean;
   currencyCode: string;
   total: Row;
   hours: Row[];
@@ -163,6 +164,7 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
         result.push({
           date,
           weekday: weekdayFormat.format(new Date(date + "T12:00:00Z")),
+          isFriday: new Date(date + "T12:00:00Z").getUTCDay() === 5,
           currencyCode: total.currencyCode,
           total,
           hours: hourly.filter(row => row.date === date &&
@@ -256,14 +258,14 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
             <th>التاريخ</th><th>اليوم</th>
             {positions.map(start => <th key={start}>{periodLabel(start, group)}</th>)}
             {showUnknown && <th>وقت غير معروف</th>}
-            <th>الإجمالي</th><th>الخصم</th><th>المرتجعات</th><th>الصافي</th>
+            <th>الخصم</th><th>المرتجعات</th><th>الصافي</th>
           </tr></thead>
           <tbody>
-            {days.map(day => <tr key={day.date + ":" + day.currencyCode}>
+            {days.map(day => <tr key={day.date + ":" + day.currencyCode}
+              className={day.isFriday ? "sales-time-friday" : undefined}>
               <td dir="ltr">{day.date}</td><td>{day.weekday}</td>
               {positions.map(start => <td key={start}>{number(slotTotal(day.hours, start))}</td>)}
               {showUnknown && <td>{number(unknownTotal(day.hours))}</td>}
-              <td>{number(day.total.gross)}</td>
               <td>{number(day.total.discount)}</td>
               <td>{number(day.total.returns)}</td>
               <td className="sales-time-net">{number(day.total.net)}</td>
@@ -277,7 +279,6 @@ export function SalesTimeReportPage({ context }: { context: CompanyContext }) {
                 <th colSpan={2}>إجمالي الفترة</th>
                 {positions.map(start => <th key={start}>{number(slotTotal(allHours, start))}</th>)}
                 {showUnknown && <th>{number(unknownTotal(allHours))}</th>}
-                <th>{number(total.gross)}</th>
                 <th>{number(total.discount)}</th>
                 <th>{number(total.returns)}</th>
                 <th>{number(total.net)}</th>

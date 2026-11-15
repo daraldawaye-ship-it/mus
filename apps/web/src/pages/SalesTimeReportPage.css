@@ -26,6 +26,15 @@
   background: var(--table-selected);
   color: var(--on-table-selected);
 }
+@media screen {
+  .sales-time-report .sales-time-report-matrix tbody tr.sales-time-friday {
+    background: color-mix(in srgb, var(--surface), #d83244 18%);
+    color: var(--text);
+  }
+  .sales-time-report .sales-time-report-matrix tbody tr.sales-time-friday:hover {
+    background: color-mix(in srgb, var(--surface), #d83244 26%);
+  }
+}
 .sales-time-report .sales-time-report-matrix tbody td,
 .sales-time-report .sales-time-report-matrix tbody td .sales-time-amount {
   color: inherit;
