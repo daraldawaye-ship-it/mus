@@ -1,0 +1,7 @@
+.notification-scope-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.notification-scoped-heading { display: flex; align-items: center; gap: 5px; min-width: 0; }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Check, CheckCheck, ChevronDown, Clock3, ExternalLink, X } from "lucide-react";
+import { Bell, Building2, Check, CheckCheck, ChevronDown, Clock3, ExternalLink, Globe, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,6 +11,8 @@ import {
 import { api, useSession } from "./api";
 import { errorMessage } from "./phase2";
 import { usePageDirectory } from "./page-directory";
+import { notificationChatOpenState } from "./notification-chat-open";
+import "./notification-scope.css";
 
 type SnoozeDraft = { record: NotificationRecord; until: string };
 type HeadsUp = {
@@ -18,6 +20,8 @@ type HeadsUp = {
   title: string;
   message: string;
   href: string;
+  openState: ReturnType<typeof notificationChatOpenState>;
+  companyId: number | null;
   importance: "low" | "medium" | "high" | "critical";
 };
 // Never treat a pushed or database-provided destination as an external URL.
@@ -36,21 +40,38 @@ function initialAdenDateTime() {
   }).format(new Date(Date.now() + 24 * 60 * 60 * 1000)).replace(" ", "T");
 }
 
-export function NotificationBell({ companyId }: { companyId?: number }) {
+function ScopeIcon({ company, companyName }: { company: boolean; companyName?: string }) {
+  const label = company ? (companyName ? `الشركة: ${companyName}` : "الشركة") : "عام";
+  const Icon = company ? Building2 : Globe;
+  return (
+    <span className="notification-scope-icon" role="img" aria-label={label} title={label}>
+      <Icon size={13} aria-hidden="true" />
+    </span>
+  );
+}
+
+const baseFor = (id?: number | null) => id ? `/companies/${id}` : "";
+
+export function NotificationBell({ company }: { company?: { id: number; name: string } }) {
   const { user } = useSession();
   const client = useQueryClient();
   const location = useLocation();
-  const scope = companyId ? `company:${companyId}` : "public";
-  const base = companyId ? `/companies/${companyId}` : "";
-  const directory = usePageDirectory(companyId);
-  const page = directory.data?.find(
-    (entry) =>
-      entry.key === `${companyId ? "company" : "public"}.notifications`,
-  );
-  const allowed = !!user && (!page || (page.enabled && page.actionAccess.view));
+  const publicDirectory = usePageDirectory();
+  const companyDirectory = usePageDirectory(company?.id);
+  const publicPage = publicDirectory.data?.find(entry => entry.key === "public.notifications");
+  const companyPage = companyDirectory.data?.find(entry => entry.key === "company.notifications");
+  const publicAllowed = !!user && !!publicPage?.enabled && publicPage.actionAccess.view;
+  const companyAllowed = !!user && !!company && !!companyPage?.enabled && companyPage.actionAccess.view;
+  // The authorized company feed already contains public alerts when allowed.
+  // Use a company-only window when the public surface is unavailable.
+  const companyId = companyAllowed ? company.id : undefined;
+  const base = baseFor(companyId);
+  const companyOnly = companyAllowed && !publicAllowed;
+  const allowed = publicAllowed || companyAllowed;
+  const directory = companyId ? companyDirectory : publicDirectory;
   const chatPage = directory.data?.find(entry =>
     entry.key === `${companyId ? "company" : "public"}.chat`);
-  const chatAllowed = !!user && (!chatPage || (chatPage.enabled && chatPage.actionAccess.view));
+  const chatAllowed = !!chatPage?.enabled && chatPage.actionAccess.view;
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
@@ -64,10 +85,10 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
   const seenNotifications = useRef(new Set<number>());
   const open = position !== null;
   const query = useQuery({
-    queryKey: ["notifications", user?.id, scope, "bell"],
+    queryKey: ["notifications", user?.id, companyId ? `company:${companyId}` : "public", "bell", companyOnly],
     queryFn: ({ signal }) =>
       api<NotificationDirectory>(
-        `${base}/notifications?state=active&grouped=1&page=1&pageSize=5&sort=createdAt:desc,id:desc`,
+        `${base}/notifications?state=active&grouped=1&page=1&pageSize=5&sort=createdAt:desc,id:desc${companyOnly ? "&inboxScope=company" : ""}`,
         { signal },
       ),
     enabled: allowed,
@@ -105,10 +126,12 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
     seenNotifications.current.add(fresh.deliveryId);
     setHeadsUp({
       id: fresh.id, title: fresh.title, message: fresh.message,
-      href: safeNotificationHref(fresh.href, `${base}/notifications`),
+      href: safeNotificationHref(fresh.href, `${baseFor(fresh.companyId)}/notifications`),
+      openState: notificationChatOpenState(fresh, user?.id, fresh.companyId ?? undefined),
+      companyId: fresh.companyId,
       importance: fresh.importance,
     });
-  }, [allowed, query.data, base]);
+  }, [allowed, query.data, user?.id]);
 
   useEffect(() => {
     if (!headsUp) return;
@@ -195,9 +218,9 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
   async function refresh() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["notifications", user?.id] }),
-      client.invalidateQueries({ queryKey: ["list", user?.id, `${scope}:notifications`] }),
+      client.invalidateQueries({ queryKey: ["list", user?.id, "public:notifications"] }),
       ...(companyId ? [client.invalidateQueries({
-        queryKey: ["list", user?.id, "public:notifications"],
+        queryKey: ["list", user?.id, `company:${companyId}:notifications`],
       })] : []),
     ]);
   }
@@ -216,7 +239,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
     setError("");
     setNotice("");
     try {
-      await api(`${base}/notifications/${record.id}/action`, {
+      await api(`${baseFor(record.companyId)}/notifications/${record.id}/action`, {
         method: "POST", body: parsed.data,
       });
       setActionMenu(null);
@@ -252,7 +275,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
 
   return (
     <>
-      {headsUp && createPortal(
+      {headsUp && (headsUp.companyId === null ? publicAllowed : companyId === headsUp.companyId) && createPortal(
         <div
           className={`notification-heads-up importance-${headsUp.importance}`}
           role="status" aria-live="polite" dir="rtl"
@@ -260,10 +283,10 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
         >
           <Bell size={19} aria-hidden="true" />
           <div className="notification-heads-up-content">
-            <strong>{headsUp.title}</strong>
+            <strong className="notification-scoped-heading"><ScopeIcon company={headsUp.companyId !== null} companyName={company?.name} />{headsUp.title}</strong>
             <p>{headsUp.message}</p>
           </div>
-          <Link to={headsUp.href} className="button button-primary button-compact"
+          <Link to={headsUp.href} state={headsUp.openState} className="button button-primary button-compact"
             onClick={() => setHeadsUp(null)}>فتح</Link>
           <button type="button" className="notification-heads-up-close"
             aria-label="إغلاق التنبيه" onClick={() => setHeadsUp(null)}>
@@ -338,13 +361,17 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
                 className={`notification-quick-item${record.groupUnread>0 ? " is-unread" : ""}${record.code.startsWith("QUICK_") ? " is-quick-message" : ""}`}
               >
                 <div className="notification-quick-item-top">
-                  {record.href ? (
-                    <Link className="notification-quick-title" to={record.href} onClick={close}>
-                      {record.title}
-                    </Link>
-                  ) : (
-                    <strong className="notification-quick-title">{record.title}</strong>
-                  )}
+                  <div className="notification-scoped-heading">
+                    <ScopeIcon company={record.companyId !== null} companyName={company?.name} />
+                    {record.href ? (
+                      <Link className="notification-quick-title" to={record.href}
+                        state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)} onClick={close}>
+                        {record.title}
+                      </Link>
+                    ) : (
+                      <strong className="notification-quick-title">{record.title}</strong>
+                    )}
+                  </div>
                   {record.groupCount>1&&<span className="notification-group-count"
                     title={`عدد التنبيهات من هذا النوع: ${record.groupCount}`}>
                     {record.groupCount.toLocaleString("ar")} إشعار
@@ -370,7 +397,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
                 </p>
                 {record.groupCount>1&&<Link
                   className="notification-quick-link"
-                  to={`${base}/notifications?grouped=0&code=${encodeURIComponent(record.code)}&state=active`}
+                  to={`${baseFor(record.companyId)}/notifications?grouped=0&code=${encodeURIComponent(record.code)}&state=active`}
                   onClick={close}>
                   عرض جميع إشعارات هذا النوع
                 </Link>}
@@ -403,7 +430,7 @@ export function NotificationBell({ companyId }: { companyId?: number }) {
                       </button>
                     )}
                     {record.href && (
-                      <Link to={record.href} onClick={close}>
+                      <Link to={record.href} state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)} onClick={close}>
                         <ExternalLink size={14} /> فتح المرتبط
                       </Link>
                     )}

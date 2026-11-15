@@ -1344,12 +1344,8 @@ function Workspace() {
               )}
               {user && !employeePreview && !visitorOnly && (
                 <NotificationBell
-                  key={`${user.id}:${scope}`}
-                  companyId={
-                    inCompany && company.data && !company.isError
-                      ? companyId
-                      : undefined
-                  }
+                  key={`${user.id}:${navigationContext?.company.id ?? "public"}`}
+                  company={navigationContext?.company}
                 />
               )}
               {user ? (

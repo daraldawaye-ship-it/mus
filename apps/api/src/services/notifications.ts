@@ -11,11 +11,22 @@ export const memoNotificationCodes = ["MEMO_RECEIVED", "MEMO_REPLY", "MEMO_APPRO
 
 export const pendingCashboxCodes = ["CASHBOX_ELECTRONIC_TRANSFER", "CASHBOX_POUCH_TRANSFER", "CASHBOX_CLOSED"];
 const cashboxCodesSql = "('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED')";
-export const latestStream = "CASE WHEN COALESCE(s.latest_only,t.default_latest_only) THEN n.stream_key ELSE '' END";
-const currentNotification = `(NOT COALESCE(s.latest_only,t.default_latest_only) OR NOT EXISTS (
- SELECT 1 FROM notifications newer WHERE newer.recipient_user_id=n.recipient_user_id
+const groupChatCodes = ["CHAT_GROUP_GLOBAL", "CHAT_GROUP_COMPANY"];
+const groupChatCodesSql = "('CHAT_GROUP_GLOBAL','CHAT_GROUP_COMPANY')";
+// The subject identifies the room in both old sender-keyed and new room-keyed rows.
+const groupChatStream = (row: "n" | "newer" | "notifications") =>
+  `CASE WHEN ${row}.subject_key ~ '^chat-group:[0-9]+:message:[0-9]+$'
+    THEN 'group:' || split_part(${row}.subject_key, ':', 2) ELSE ${row}.stream_key END`;
+const inboxStream = `CASE WHEN n.code IN ${groupChatCodesSql} THEN ${groupChatStream("n")} ELSE n.stream_key END`;
+export const latestStream = `CASE WHEN COALESCE(s.latest_only,t.default_latest_only) THEN ${inboxStream} ELSE '' END`;
+const newerNotification = (sameStream: string) => `SELECT 1 FROM notifications newer
+ WHERE newer.recipient_user_id=n.recipient_user_id
  AND COALESCE(newer.company_id,0)=COALESCE(n.company_id,0) AND newer.code=n.code
- AND newer.stream_key=n.stream_key AND newer.id>n.id))`;
+ AND ${sameStream} AND newer.id>n.id`;
+// Retain the original indexed lookup for all non-group alerts.
+const currentNotification = `(CASE WHEN NOT COALESCE(s.latest_only,t.default_latest_only) THEN true
+ WHEN n.code IN ${groupChatCodesSql} THEN NOT EXISTS (${newerNotification(`(${groupChatStream("newer")})=(${groupChatStream("n")})`)})
+ ELSE NOT EXISTS (${newerNotification("newer.stream_key=n.stream_key")}) END)`;
 const selectedEmployee = `EXISTS(SELECT 1 FROM employees selected
  WHERE selected.company_id=n.company_id AND selected.id=$3 AND selected.user_id=$1 AND selected.active
  AND (selected.id=ANY(s.employee_ids) OR selected.position_keys && COALESCE(s.position_keys,t.default_position_keys)))`;
@@ -118,6 +129,8 @@ export const inboxFilter = `n.recipient_user_id=$1 AND NOT (n.company_id=2 AND n
     AND (permitted.owner OR 'sales'=ANY(COALESCE(sales_employee.position_keys,'{}'::text[])))
  ))
  AND (n.code NOT IN ${cashboxCodesSql} OR ${selectedEmployee} OR ($4::boolean AND COALESCE(s.notify_owner,false)))`;
+export const companyOnlyInboxFilter = inboxFilter + " AND n.company_id=$2::integer";
+
 export const notificationDTO = (
   r: QueryResultRow,
   general: boolean,
@@ -278,6 +291,10 @@ export async function emitNotification(
     now,
   );
   const streamKey = input.streamKey ?? "";
+  const isGroupChat = groupChatCodes.includes(input.code);
+  const matchingStream = isGroupChat ? `(${groupChatStream("notifications")})` : "stream_key";
+  const groupId = isGroupChat ? /^chat-group:([0-9]+):message:[0-9]+$/.exec(input.subjectKey)?.[1] : undefined;
+  const matchingKey = groupId ? "group:" + groupId : streamKey;
   for (const userId of recipients) {
     if (template.latestOnly || template.minIntervalHours)
       await lockDelivery(client, input.companyId, input.code, userId);
@@ -293,8 +310,8 @@ export async function emitNotification(
       if (duplicate.rowCount) continue;
       const previous = (await client.query(
         `SELECT id,read_at,snoozed_until,completed_at,message,silent_update,delivery_id FROM notifications WHERE COALESCE(company_id,0)=$1
-         AND code=$2 AND recipient_user_id=$3 AND stream_key=$4 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-        [...scope, streamKey])).rows[0];
+         AND code=$2 AND recipient_user_id=$3 AND ${matchingStream}=$4 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [...scope, matchingKey])).rows[0];
       if (input.refreshOnly && (!previous || previous.completed_at)) continue;
       if (blocked) {
         if (pendingCashboxCodes.includes(input.code) && previous?.message === input.message && !previous.completed_at) continue;
@@ -307,8 +324,8 @@ export async function emitNotification(
       await client.query(
         `UPDATE notifications SET completed_at=clock_timestamp(),read_at=COALESCE(read_at,clock_timestamp()),
          snoozed_until=NULL,next_reminder_at=NULL,revision=revision+1,updated_at=clock_timestamp()
-         WHERE COALESCE(company_id,0)=$1 AND code=$2 AND recipient_user_id=$3 AND stream_key=$4 AND completed_at IS NULL`,
-        [...scope, streamKey]);
+         WHERE COALESCE(company_id,0)=$1 AND code=$2 AND recipient_user_id=$3 AND ${matchingStream}=$4 AND completed_at IS NULL`,
+        [...scope, matchingKey]);
     }
     const created = (
       await client.query(

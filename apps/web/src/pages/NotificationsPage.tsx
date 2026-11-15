@@ -24,6 +24,7 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { rememberRecentEntity } from "../recent-entities";
+import { notificationChatOpenState } from "../notification-chat-open";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -405,7 +406,7 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             </small>}
             <div className="notification-actions">
               {record.href && (
-                <Link to={record.href} className="button button-secondary">
+                <Link to={record.href} state={notificationChatOpenState(record, user?.id, companyId)} className="button button-secondary">
                   فتح السجل المرتبط
                 </Link>
               )}

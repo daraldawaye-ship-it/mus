@@ -358,3 +358,50 @@ test("image control exemption applies to a group only while the SITE owner is a 
   });
   assert.equal(blocked.status,403,"Removing site owner restores default image prohibition");
 });
+
+test("latest-only group alerts share a room across senders while recognizing legacy stream keys", async t => {
+  const f = await fixture(t);
+  const alice = await f.actor("latest-room-alice");
+  const bob = await f.actor("latest-room-bob");
+  const carol = await f.actor("latest-room-carol");
+  const { group } = await create(alice, [bob, carol], "غرفة واحدة");
+  const { group: secondRoom } = await create(alice, [bob, carol], "غرفة أخرى");
+  const code = "CHAT_GROUP_GLOBAL";
+  const subject = (groupId: number, messageId: number) => `chat-group:${groupId}:message:${messageId}`;
+  const active = (grouped: 0 | 1) => bob.client.ok<{ items: { id: number; title: string }[] }>(
+    "GET", `/notifications?state=active&grouped=${grouped}&code=${code}`,
+  );
+  const roomTitle = (selected: ChatGroup) => "رسالة في " + selected.name;
+
+  await f.pool.query("UPDATE notification_templates SET default_latest_only=false WHERE code=$1", [code]);
+  const a = await send(alice, group, "رسالة أولى");
+  const c = await send(carol, group, "رسالة ثانية");
+  const other = await send(alice, secondRoom, "رسالة غرفة أخرى");
+  assert.equal((await active(0)).items.filter(row => row.title === roomTitle(group)).length, 2);
+  for (const [messageId, senderId] of [[a.id, alice.user.id], [c.id, carol.user.id]]) {
+    await f.pool.query("UPDATE notifications SET stream_key=$1 WHERE code=$2 AND subject_key=$3",
+      [`group:${group.id}:sender:${senderId}`, code, subject(group.id, messageId)]);
+  }
+  await f.pool.query("UPDATE notification_templates SET default_latest_only=true WHERE code=$1", [code]);
+  for (const grouped of [0, 1] as const) {
+    const rows = (await active(grouped)).items;
+    assert.equal(rows.filter(row => row.title === roomTitle(group)).length, 1);
+    assert.equal(rows.filter(row => row.title === roomTitle(secondRoom)).length, 1);
+  }
+
+  const next = await send(alice, group, "أحدث رسالة");
+  const status = await f.pool.query<{ subject_key: string; stream_key: string; completed_at: Date | null }>(
+    "SELECT subject_key,stream_key,completed_at FROM notifications WHERE code=$1 AND recipient_user_id=$2",
+    [code, bob.user.id],
+  );
+  const record = (room: ChatGroup, messageId: number) => {
+    const row = status.rows.find(item => item.subject_key === subject(room.id, messageId));
+    assert(row);
+    return row;
+  };
+  assert(record(group, a.id).completed_at);
+  assert(record(group, c.id).completed_at);
+  assert.equal(record(group, next.id).completed_at, null);
+  assert.equal(record(group, next.id).stream_key, `group:${group.id}`);
+  assert.equal(record(secondRoom, other.id).completed_at, null, "Never supersede another room");
+});

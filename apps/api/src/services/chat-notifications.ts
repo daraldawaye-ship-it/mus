@@ -28,7 +28,7 @@ export async function notifyChatRecipient(client: PoolClient, input: ChatAlert) 
   await emitNotification(client, {
     code,companyId:input.companyId,subjectEmployeeId:employee,
     recipientUserId:input.recipientId,subjectUserId:input.recipientId,
-    streamKey: (group ? "group:"+input.groupId+":" : "")+"sender:"+input.senderId,
+    streamKey: group ? "group:"+input.groupId : "sender:"+input.senderId,
     subjectKey,eventKey:code+":"+input.messageId,
     title:group?"رسالة في "+(input.groupName??"المجموعة"):"رسالة من "+input.senderName,
     message:group

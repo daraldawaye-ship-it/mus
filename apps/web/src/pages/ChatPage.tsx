@@ -32,7 +32,7 @@ import {
   Users,
 } from "lucide-react";
 import type { User, Company, CompanyPage } from "../../../../packages/contracts/src/index";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import type {
   ChatConversation,
   ChatMessage,
@@ -49,6 +49,7 @@ import { ChatAvatar, ownChatAvatarUrl } from "./ChatAvatar";
 import { ChatEmojiPicker } from "./ChatEmojiPicker";
 import { ChatImagePicker, type ChatAttachedImage } from "./ChatImagePicker";
 import { ImagePreviewModal } from "../ImagePreviewModal";
+import { notificationChatCompletion } from "../notification-chat-open";
 
 interface ChatProps {
   scope: ChatScope;
@@ -177,6 +178,11 @@ function ChatScopePicker({ user, scope, companyId }: ChatProps) {
 
 function ChatWorkspace({ user, scope, companyId }: ChatProps) {
   const active = usePageActivity();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const notificationClient = useQueryClient();
+  const attemptedNotification = useRef("");
+  const [notificationFailureKey, setNotificationFailureKey] = useState<string | null>(null);
   const imageSettings = useQuery({ queryKey:["chat","image-settings"], queryFn:()=>api<{allowGroupImages:boolean;allowDirectImages:boolean;siteOwnerIds:number[]}>("/chat/image-settings"), refetchInterval:10_000 });
   const guard = useScopeGuard(`chat:${scope}:${companyId ?? "public"}`);
   const [peer, setPeer] = useState<ChatUser | null>(null);
@@ -225,6 +231,27 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
     refetchInterval: active ? 6_000 : false,
     retry: false,
   });
+  useEffect(() => {
+    const clicked = notificationChatCompletion(location.state, user.id, location.pathname, navigationType);
+    if (!clicked || !(clicked.kind === "group" ? groups.isSuccess : conversations.isSuccess)) return;
+    const attempt = `${location.key}:${clicked.id}`;
+    if (attemptedNotification.current === attempt) return;
+    attemptedNotification.current = attempt;
+    const source = clicked.sourceCompanyId;
+    const base = source === null ? "" : `/companies/${source}`;
+    // Start only once the authorized destination has loaded. Do not use an
+    // outgoing-page abort signal: the user can continue navigating normally.
+    void api(`${base}/notifications/${clicked.id}/action`, {
+      method: "POST", body: { action: "complete", revision: clicked.revision },
+    }).then(() => Promise.all([
+      notificationClient.invalidateQueries({ queryKey: ["notifications", user.id] }),
+      notificationClient.invalidateQueries({ queryKey: ["list", user.id, "public:notifications"] }),
+      ...(source === null ? [] : [notificationClient.invalidateQueries({
+        queryKey: ["list", user.id, `company:${source}:notifications`],
+      })]),
+    ]), () => setNotificationFailureKey(location.key));
+  }, [location.key, location.pathname, location.state, navigationType, user.id,
+    groups.isSuccess, conversations.isSuccess, notificationClient]);
   const groupRows = [...new Map((groups.data?.pages.flatMap(page => page.items) ?? []).map(item => [item.id, item])).values()];
   const directory = useInfiniteQuery({
     queryKey: [...scopeKey, "directory", deferredDirectorySearch],
@@ -311,6 +338,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
         description={scope === "global" ? "محادثاتك العامة" : "محادثات أعضاء الشركة"}
         actions={<span className="chat-scope-badge">{scope === "global" ? <Globe2 size={15} /> : <Users size={15} />}{scope === "global" ? "مستخدمو الرئيسي" : "أعضاء الشركة"}</span>}
       />
+      {notificationFailureKey === location.key && <Notice tone="warning">تعذر إنجاز تنبيه الرسالة تلقائيًا. يمكنك إنجازه من صفحة التنبيهات.</Notice>}
       {storageFailed && <Notice tone="warning">تعذر حفظ المسودات على هذا الجهاز. أبقِ الصفحة مفتوحة حتى يتأكد إرسال رسائلك.</Notice>}
       <div className={`chat-shell ${peer || group ? "chat-shell-selected" : ""}`}>
         <aside className="chat-sidebar" aria-label="المحادثات">
