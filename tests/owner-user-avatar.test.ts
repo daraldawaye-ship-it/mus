@@ -53,7 +53,7 @@ async function readAvatar({
   };
   const router = mediaRoutes({ connect: async () => client } as unknown as Pool);
   const route = router.stack.find(layer => layer.route?.path === "/media/:mediaId/:size");
-  assert.ok(route);
+  assert.ok(route?.route);
   const handler = route.route.stack[0].handle as RequestHandler;
   const req = { auth: { user: { id: viewerId } }, params: { mediaId: imageId, size } } as unknown as Request;
   const result = await new Promise<Buffer | Error>((resolve) => {

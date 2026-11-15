@@ -1584,7 +1584,7 @@ export function MedicineMarketPage({
             <div className="medicine-market-search">
               <Search size={18} />
               <Field
-                label="البحث في الدليل"
+                label="البحث في الدليل" data-operator-search="market.search"
                 type="search"
                 value={q}
                 placeholder="اسم الصنف، التركيب، الوكيل أو كلمة بحث…"

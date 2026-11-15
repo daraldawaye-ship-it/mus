@@ -106,6 +106,7 @@ export function EntityMenuSearch({
           <input
             ref={input}
             type="search"
+            data-operator-search={kind === "item" ? "items.search" : undefined}
             aria-label={`البحث عن ${label}`}
             role="combobox"
             aria-autocomplete="list"
@@ -151,6 +152,7 @@ export function EntityMenuSearch({
           {(search === entry.trim() ? choices : []).map((choice,index) => (
             <button key={choice.id} type="button" role="option"
               aria-selected={active === index}
+              data-operator-action="entity.open" data-operator-detail={`menu.choose.${kind}`}
               className={`user-menu-entity-choice${active===index?" selected":""}`}
               onMouseDown={event => event.preventDefault()}
               onClick={() => choose(choice)}
@@ -162,10 +164,10 @@ export function EntityMenuSearch({
           ))}
           {showPages && (
             <div className="user-menu-entity-pager">
-              <button type="button" disabled={page<=1 || result.isFetching}
+              <button type="button" data-operator-action="entity.open" data-operator-detail="menu.previous" disabled={page<=1 || result.isFetching}
                 onClick={()=>{setPage(v=>v-1);setActive(0);}}>السابق</button>
               <span>{kind === "item" ? `صفحة ${page}` : `${page} / ${Math.max(1,Math.ceil((result.data?.total ?? 0)/10))}`}</span>
-              <button type="button" disabled={result.isFetching || !hasNext}
+              <button type="button" data-operator-action="entity.open" data-operator-detail="menu.next" disabled={result.isFetching || !hasNext}
                 onClick={()=>{setPage(v=>v+1);setActive(0);}}>التالي</button>
             </div>
           )}

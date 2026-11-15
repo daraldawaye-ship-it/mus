@@ -79,13 +79,14 @@ export function ItemMenuHistory({
     return (
       <div className="user-menu-grid user-menu-item-actions" aria-label="خيارات الصنف">
         {actions.map(action => (
-          <button type="button" key={action.key} className="user-menu-tile"
+          <button type="button" key={action.key} className="user-menu-tile" data-operator-action="entity.open" data-operator-detail={`menu.item.${action.key}`}
             onClick={() => { setPage(1); setView(action.key); }}>
             <span>{action.label}</span>
           </button>
         ))}
         <button type="button" className="user-menu-tile"
           disabled={!itemId}
+          data-operator-action="entity.open" data-operator-detail="menu.item.card"
           title={itemId ? `فتح كرت الصنف: ${itemName ?? ""}` : "اختر صنفًا من البحث أولًا"}
           onClick={() => { if (itemId) onEditItem(itemId); }}>
           <span>كرت الصنف</span>
@@ -96,7 +97,7 @@ export function ItemMenuHistory({
           ["memo", "إرسال مذكرة بالصنف"],
           ["memo-return", "إرسال مذكرة مرتجع"],
         ] as const).map(([key,label]) => (
-          <button type="button" className="user-menu-tile" key={key}
+          <button type="button" className="user-menu-tile" key={key} data-operator-action="entity.open" data-operator-detail={`menu.item.${key}`}
             disabled={!itemId || (key.startsWith("memo") && !canCreateMemo)}
             title={!itemId ? "اختر صنفًا من البحث أولًا" :
               key.startsWith("memo") && !canCreateMemo ? "ليست لديك صلاحية إنشاء المذكرات" :
@@ -193,7 +194,7 @@ export function ItemMenuHistory({
             <div className="user-menu-item-history-pager">
               <span>الصفحة {page}</span>
               {hasMore && (
-                <button type="button" disabled={fetching} onClick={() => setPage(p => p + 1)}>
+                <button type="button" data-operator-action="entity.open" data-operator-detail="menu.next" disabled={fetching} onClick={() => setPage(p => p + 1)}>
                   المزيد
                 </button>
               )}

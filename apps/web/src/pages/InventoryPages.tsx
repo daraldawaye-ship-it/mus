@@ -328,7 +328,7 @@ function StockFilters({
   return (
     <div className="table-filters">
       <Field
-        label="بحث في المخزون"
+        label="بحث في المخزون" data-operator-search="lists.search"
         type="search"
         value={list.query}
         placeholder="رمز الصنف أو اسمه أو الموقع"

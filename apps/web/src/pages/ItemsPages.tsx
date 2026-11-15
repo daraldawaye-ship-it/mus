@@ -401,7 +401,7 @@ function ItemsManager({ context }: { context: CompanyContext }) {
       <Card title="قائمة الأصناف">
         <div className="table-filters">
           <Field
-            label="بحث في الأصناف"
+            label="بحث في الأصناف" data-operator-search="items.search"
             type="search"
             value={list.query}
             placeholder="الاسم أو الرمز أو الباركود أو الخيارات القابلة للبحث"

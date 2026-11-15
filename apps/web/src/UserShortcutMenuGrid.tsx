@@ -60,13 +60,13 @@ export function UserShortcutMenuGrid({
   return (
     <div className="user-menu-grid user-menu-shortcuts-grid" aria-label="التنقل والاختصارات">
       {defaultHref && (
-        <NavLink to={defaultHref} className="user-menu-tile" onClick={onNavigate}>
+        <NavLink data-operator-action="shortcut.open" data-operator-detail={defaultPage?.key ?? (companyId ? "company.pages" : "public.pages")} to={defaultHref} className="user-menu-tile" onClick={onNavigate}>
           <span>قائمة الصفحات</span>
         </NavLink>
       )}
       {chosen.map(entry => (
         <NavLink
-          key={entry.key} to={entry.href!} title={entry.name}
+          key={entry.key} data-operator-action="shortcut.open" data-operator-detail={entry.key} to={entry.href!} title={entry.name}
           className="user-menu-tile" onClick={onNavigate}
         >
           <span>{entry.name}</span>
@@ -74,18 +74,18 @@ export function UserShortcutMenuGrid({
       ))}
       {liveReady && companyId && permitted.has("company.doctor-sales-report") && (
         <NavLink
-          to={`/companies/${companyId}/doctor-sales-report?compact=1`}
+          data-operator-action="shortcut.open" data-operator-detail="company.doctor-sales-report" to={`/companies/${companyId}/doctor-sales-report?compact=1`}
           className="user-menu-tile" onClick={onNavigate}
         >
           <span>مبيعات الأطباء آخر 3 أيام</span>
         </NavLink>
       )}
       {allowQuickAdd && (
-        <button type="button" className="user-menu-tile" onClick={onQuickAdd}>
+        <button type="button" className="user-menu-tile" data-operator-action="quick_add.open" data-operator-detail="menu.add_general" onClick={onQuickAdd}>
           <span>إضافة إلى الجدول العام</span>
         </button>
       )}
-      <button type="button" className="user-menu-tile" onClick={onManage}>
+      <button type="button" className="user-menu-tile" data-operator-action="shortcut.open" data-operator-detail="menu.edit_shortcuts" onClick={onManage}>
         <span>تحديد اختصاراتي</span>
       </button>
       {directory.isLoading && !cached && <span className="user-menu-grid-note">جارٍ تحميل الصفحات…</span>}

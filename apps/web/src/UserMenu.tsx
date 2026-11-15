@@ -169,12 +169,13 @@ export function UserMenu({
   };
 
   return (
-    <div className="user-menu" ref={container}>
+    <div className="user-menu" ref={container} data-no-interest="">
       <button
         className="user-menu-trigger"
         type="button"
         ref={trigger}
         aria-label="قائمة المستخدم"
+        data-operator-action={open ? undefined : "avatar.open"}
         title={user.displayName}
         aria-haspopup="dialog"
         aria-controls={open ? "user-account-menu" : undefined}
@@ -202,6 +203,7 @@ export function UserMenu({
                   type="button" key={section.key}
                   id={`user-menu-tab-${section.key}`}
                   role="tab"
+                  data-operator-action={({navigation:"navigation.open",item:"item.open",financialAccount:"financial_account.open",employee:"employee.open",tools:"tools.open",settings:"settings.open"} as const)[section.key]}
                   className={`user-menu-tab${selected ? " is-active" : ""}`}
                   aria-selected={selected}
                   aria-controls="user-menu-tabpanel"
@@ -278,7 +280,7 @@ export function UserMenu({
             {displayedTab === "tools" && (
               <div className="user-menu-grid user-menu-item-actions" aria-label="روابط أخرى">
                 {companyId && canViewPage("company.doctor-sales-report") && (
-                  <NavLink className="user-menu-tile"
+                  <NavLink data-operator-action="shortcut.open" data-operator-detail="company.attendance-current" className="user-menu-tile"
                     to={`/companies/${companyId}/doctor-sales-report?compact=1`} onClick={dismiss}>
                     <ClipboardList size={18} aria-hidden="true" />
                     <span>مبيعات الأطباء آخر 3 أيام</span>
@@ -292,14 +294,14 @@ export function UserMenu({
                   </NavLink>
                 )}
                 {companyId && canViewPage("company.pages") && (
-                  <NavLink className="user-menu-tile"
+                  <NavLink data-operator-action="shortcut.open" data-operator-detail="company.pages" className="user-menu-tile"
                     to={`/companies/${companyId}/pages`} onClick={dismiss}>
                     <ShieldCheck size={18} aria-hidden="true" />
                     <span>صلاحيات الصفحات</span>
                   </NavLink>
                 )}
                 {canViewPage("public.last-present") && (
-                  <NavLink className="user-menu-tile" to="/users/last-present" onClick={dismiss}>
+                  <NavLink data-operator-action="shortcut.open" data-operator-detail="public.last-present" className="user-menu-tile" to="/users/last-present" onClick={dismiss}>
                     <Users size={18} aria-hidden="true" />
                     <span>آخر المتواجدين</span>
                   </NavLink>
@@ -318,7 +320,7 @@ export function UserMenu({
             aria-label="إضافة رسالة أو مذكرة">
             {quickMessageOptions.filter(option => !option.company || !!companyId && (!!employeeId || user.owner))
               .map(option => (
-              <button key={option.kind} type="button" className="user-menu-quick-option"
+              <button key={option.kind} type="button" className="user-menu-quick-option" data-operator-action="quick_add.select" data-operator-detail={`menu.quick.${option.kind}`}
                 onClick={() => {
                   dismiss();
                   setQuickCompose(option.kind);
@@ -328,32 +330,32 @@ export function UserMenu({
           <div className="user-menu-tabs-footer user-menu-settings-actions" role="group"
             aria-label="إجراءات المستخدم والتحديث">
             <button type="button" className="user-menu-tile user-menu-quick-add"
-              aria-label="إضافة رسالة أو مذكرة" title="إضافة رسالة أو مذكرة"
+              data-operator-action={quickOptionsOpen ? undefined : "quick_add.open"} aria-label="إضافة رسالة أو مذكرة" title="إضافة رسالة أو مذكرة"
               aria-expanded={quickOptionsOpen} aria-controls="user-menu-quick-options"
               onClick={() => setQuickOptionsOpen(value => !value)}>
               <Plus size={18} aria-hidden="true" />
             </button>
-            <NavLink to="/profile" className="user-menu-tile" onClick={dismiss}>
+            <NavLink data-operator-action="profile.open" to="/profile" className="user-menu-tile" onClick={dismiss}>
               <CircleUserRound size={15} aria-hidden="true" />
               <span>تعديل حسابي</span>
             </NavLink>
             <button type="button" className="user-menu-tile"
-              onClick={() => { dismiss(); appearance.open(); }}>
+              data-operator-action="appearance.open" onClick={() => { dismiss(); appearance.open(); }}>
               <Palette size={15} aria-hidden="true" />
               <span>المظهر</span>
             </button>
             {(user.owner || user.kind === "admin") && (
-              <a href="/oauth/connections" className="user-menu-tile" onClick={dismiss}>
+              <a data-operator-action="connections.open" href="/oauth/connections" className="user-menu-tile" onClick={dismiss}>
                 <Link2 size={15} aria-hidden="true" />
                 <span>اتصالات ChatGPT</span>
               </a>
             )}
-            <button type="button" className="user-menu-tile user-menu-tile-logout"
+            <button type="button" className="user-menu-tile user-menu-tile-logout" data-operator-action="logout"
               onClick={() => { dismiss(); onLogout(); }}>
               <LogOut size={15} aria-hidden="true" />
               <span>تسجيل الخروج</span>
             </button>
-            <button type="button" className="user-menu-tile user-menu-full-refresh"
+            <button type="button" className="user-menu-tile user-menu-full-refresh" data-operator-action="refresh"
               disabled={refreshBusy} aria-label="تحديث الموقع بالكامل"
               title="جلب أحدث إصدار من الموقع مثل تحديث Ctrl+F5"
               onClick={() => { void fullRefresh(); }}>

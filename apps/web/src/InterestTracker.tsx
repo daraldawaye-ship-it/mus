@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { api } from "./api";
+import { api, useSession } from "./api";
+import { operatorActivityOrigin, sendOperatorActivity } from "./operator-activity-client";
+import { avatarActivityActionKeys, operatorSearchActionKeys, isOperatorSearchAllowed, normalizeOperatorSearchText, type OperatorSearchActionKey } from "../../../packages/contracts/src/operator-activity";
 
 type EventKind = "page_view" | "click" | "card_open" | "search";
 type EventInput = { action: EventKind; targetType: string; targetId?: number;
@@ -60,17 +62,12 @@ export function recordInterest(input: EventInput): void {
   if(queue.length>120)queue.shift();
   schedule(queue.length>=20?100:850);
 }
-function searchField(input: HTMLInputElement): boolean {
-  if(input.disabled || input.readOnly || ["password","email","tel","hidden"].includes(input.type))return false;
-  const label=[input.name,input.id,input.placeholder,input.getAttribute("aria-label")].join(" ");
-  return input.type==="search" || /(?:^|\W)(?:search|query|filter|q)(?:$|\W)|بحث|ابحث|ابحث عن/i.test(label);
-}
-
 /** Interaction collection is explicitly limited to navigation, actionable clicks,
  * card opens and debounced searches: no password fields, private form bodies,
  * free-form notes, cursor movements or raw keystroke streams. */
 export function InterestTracker() {
   const location=useLocation();
+  const {user, employeePreview} = useSession();
   useEffect(()=>{
     const path=location.pathname;
     if(!/^\/(?:login|register|quick-login)(?:\/|$)/.test(path)) {
@@ -84,21 +81,34 @@ export function InterestTracker() {
     const click=(event: MouseEvent)=>{
       if(!preference() || !(event.target instanceof Element))return;
       const control=event.target.closest("a,button,[role='button'],summary");
-      if(!control || control.closest("[data-no-interest]"))return;
+      if (!control || control.matches(":disabled,[aria-disabled='true']")) return;
+      const marked = control.getAttribute("data-operator-action");
+      if (marked && (avatarActivityActionKeys as readonly string[]).includes(marked)) {
+        if (user && !employeePreview) {
+          const detailKey = control.getAttribute("data-operator-detail") ?? undefined;
+          sendOperatorActivity(user.id,window.location.pathname,{surface:"avatar_menu",actionKey:marked,detailKey},visitorId());
+        }
+        return;
+      }
+      if (control.closest("[data-no-interest]")) return;
       const label=(control.getAttribute("aria-label") || control.getAttribute("title") ||
         control.textContent || "").replace(/\s+/g," ").trim();
       recordInterest({action:"click",targetType:control.tagName.toLowerCase(),
         label:label.slice(0,110),path:window.location.pathname});
     };
     const onInput=(event: Event)=>{
-      if(!(event.target instanceof HTMLInputElement) || !searchField(event.target) || !preference())return;
+      if (!(event.target instanceof HTMLInputElement) || !preference() ||
+          event.target.disabled || event.target.readOnly || employeePreview) return;
       const input=event.target, path=window.location.pathname;
+      const key=input.getAttribute("data-operator-search");
+      if (!key || !(operatorSearchActionKeys as readonly string[]).includes(key) ||
+          !isOperatorSearchAllowed(key as OperatorSearchActionKey,operatorActivityOrigin(path).pageKey)) return;
       if(searchTimer!==null)window.clearTimeout(searchTimer);
       searchTimer=window.setTimeout(()=>{
-        const value=input.isConnected ? input.value.trim() : "";
-        if(value && !/^(?:\/login|\/register|\/quick-login)/.test(path))
-          recordInterest({action:"search",targetType:path.startsWith("/medicine-market") || path==="/"
-            ? "market-search":"site-search",text:value,path});
+        const value=input.isConnected && path===window.location.pathname ? normalizeOperatorSearchText(input.value) : null;
+        if (!value) return;
+        if (user) sendOperatorActivity(user.id,path,{surface:"operator_search",actionKey:key,searchText:value},visitorId());
+        else if (key==="market.search") recordInterest({action:"search",targetType:"market-search",text:value,path});
       },700);
     };
     document.addEventListener("click",click,true);
@@ -107,7 +117,7 @@ export function InterestTracker() {
       document.removeEventListener("input",onInput,true);
       if(searchTimer!==null)window.clearTimeout(searchTimer);
     };
-  },[]);
+  },[user?.id, employeePreview]);
   return null;
 }
 export function InterestPrivacyToggle() {

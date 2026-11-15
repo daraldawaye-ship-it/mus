@@ -36,6 +36,7 @@ import {
 } from "../device-login-policy";
 import { ImageUpload, thumbnailUrl } from "../ImageUpload";
 import { ProfileImageUrlField } from "../ProfileImageUrlField";
+import { OperatorActivityCard } from "../OperatorActivityCard";
 import {
   Button,
   Card,
@@ -1543,6 +1544,7 @@ function AuditList() {
           </Button>
         }
       />
+      <OperatorActivityCard />
       <Card>
         <div className="table-filters">
           <Field label="من تاريخ" type="date" value={dateFrom}
