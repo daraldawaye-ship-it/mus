@@ -64,34 +64,57 @@ function assertStaticResponse(path, response) {
   }
 }
 
-// Serialized across install, navigation and online notifications. Downloading
-// only missing hashed URLs avoids repeatedly transferring the full app.
+function staticList(values) {
+  if (!Array.isArray(values)) throw new Error("Invalid offline manifest");
+  return [...new Set(values.filter(path =>
+    typeof path === "string" && staticAsset.test(path)
+  ))];
+}
+
+async function getOfflineManifest() {
+  const primary = await fetch("/offline-core-assets.json", {cache: "no-store"});
+  if (primary.ok && primary.headers.get("content-type")?.includes("json")) {
+    const manifest = await primary.json();
+    return { required: staticList(manifest.required), optional: staticList(manifest.optional) };
+  }
+  // Older deployments can return either a 404 or HTML from the SPA fallback.
+  if (primary.status !== 404 && !(primary.ok && primary.headers.get("content-type")?.includes("text/html"))) {
+    throw new Error("Offline core manifest unavailable");
+  }
+  const legacy = await fetch("/offline-assets.json", {cache: "no-store"});
+  if (!legacy.ok) throw new Error("Offline manifest unavailable");
+  return { required: staticList(await legacy.json()), optional: [] };
+}
+
+async function fillAsset(cache, path) {
+  if (await cache.match(path)) return;
+  const response = await fetch(path, {cache: "no-store"});
+  assertStaticResponse(path, response);
+  await cache.put(path, response);
+}
+
+let warmingOptional = null;
+// Keep optional route and install-icon work independent of the offline shell.
+function warmOptionalAssets(cache, assets) {
+  if (warmingOptional) return warmingOptional;
+  warmingOptional = (async () => {
+    await Promise.allSettled(["/site-icon.png", "/site.webmanifest"].map(path => cache.add(path)));
+    for (let offset = 0; offset < assets.length; offset += 6) {
+      await Promise.allSettled(assets.slice(offset, offset + 6).map(path => fillAsset(cache, path)));
+    }
+  })().finally(() => { warmingOptional = null; });
+  return warmingOptional;
+}
+
+// Download and verify the matching shell before publishing it. Retain any
+// already complete shell if a rollout or temporary failure interrupts a refresh.
 function warmCurrentBundle() {
   if (warmingBundle) return warmingBundle;
   warmingBundle = (async () => {
-    const manifestResponse = await fetch("/offline-assets.json", {cache: "no-store"});
-    if (!manifestResponse.ok) throw new Error("Offline manifest unavailable");
-    const manifest = await manifestResponse.json();
-    if (!Array.isArray(manifest)) throw new Error("Invalid offline manifest");
-    const assets = [...new Set(manifest.filter(path =>
-      typeof path === "string" && staticAsset.test(path)
-    ))];
-    // Both sales and purchases use CommercePages; receipts and payments use
-    // FinancePages. Never declare the installed shell ready without both.
-    if (!assets.some(path => commerceModule.test(path)) ||
-        !assets.some(path => financeModule.test(path))) {
-      throw new Error("Required invoice or voucher module missing");
-    }
-    const cache = await caches.open(shellCache);
-    for (let offset = 0; offset < assets.length; offset += 6) {
-      await Promise.all(assets.slice(offset, offset + 6).map(async path => {
-        if (await cache.match(path)) return;
-        const response = await fetch(path, {cache: "no-store"});
-        assertStaticResponse(path, response);
-        await cache.put(path, response);
-      }));
-    }
-    const htmlResponse = await fetch("/", {cache: "no-store"});
+    const [{ required: assets, optional }, htmlResponse] = await Promise.all([
+      getOfflineManifest(),
+      fetch("/", {cache: "no-store"}),
+    ]);
     if (!htmlResponse.ok || !htmlResponse.headers.get("content-type")?.includes("text/html")) {
       throw new Error("Application HTML unavailable");
     }
@@ -101,12 +124,27 @@ function warmCurrentBundle() {
     if (!entryAssets.length || entryAssets.some(path => !assets.includes(path))) {
       throw new Error("HTML and static asset manifest do not match");
     }
-    // Commit the shell last. A temporary network failure must leave the
-    // previously complete offline HTML in place, not a newer broken entry.
+    if (!assets.some(path => commerceModule.test(path)) ||
+        !assets.some(path => financeModule.test(path))) {
+      throw new Error("Required invoice or voucher module missing");
+    }
+    const cache = await caches.open(shellCache);
+    for (let offset = 0; offset < assets.length; offset += 6) {
+      await Promise.all(assets.slice(offset, offset + 6).map(path => fillAsset(cache, path)));
+    }
     await cache.put("/", htmlResponse);
-    await Promise.allSettled(["/site-icon.png", "/site.webmanifest"].map(path => cache.add(path)));
+    return { cache, optional };
   })().finally(() => { warmingBundle = null; });
   return warmingBundle;
+}
+
+function warmInBackground() {
+  if (self.navigator?.onLine === false) return Promise.resolve();
+  return warmCurrentBundle()
+    .then(({cache, optional}) => warmOptionalAssets(cache, optional))
+    .catch(error => {
+      console.warn("Alraesy offline shell not refreshed:", error instanceof Error ? error.message : "download or cache failed");
+    });
 }
 
 self.addEventListener("install", event => {
@@ -130,7 +168,7 @@ self.addEventListener("message", event => {
   // The app asks for a bundle refresh when it starts or comes back online.
   // No private data, URL or user identity is transferred in this message.
   if (event.data?.type !== "alraesy:warm-static") return;
-  event.waitUntil(warmCurrentBundle().catch(() => undefined));
+  event.waitUntil(warmInBackground());
 });
 self.addEventListener("fetch", event => {
   const request = event.request;
@@ -139,7 +177,7 @@ self.addEventListener("fetch", event => {
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
     // waitUntil must be registered while this event is still dispatching.
-    event.waitUntil(warmCurrentBundle().catch(() => undefined));
+    event.waitUntil(warmInBackground());
     event.respondWith((async () => {
       try {
         const response = await fetch(request, {cache: "no-store"});

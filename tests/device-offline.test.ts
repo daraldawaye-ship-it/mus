@@ -128,7 +128,7 @@ test("offline sales, purchases, receipts and payments require a complete cached 
   const main = readFileSync("apps/web/src/main.tsx", "utf8");
   // The two invoice kinds use CommercePages, both voucher kinds FinancePages.
   for (const expected of [
-    "CommercePages-", "FinancePages-", "offline-assets.json",
+    "CommercePages-", "FinancePages-", "offline-assets.json", "offline-core-assets.json",
     "await Promise.all(assets.slice", 'await cache.put("/", htmlResponse)',
     "assertStaticResponse(path, response)",
     "if (warmingBundle) return warmingBundle",

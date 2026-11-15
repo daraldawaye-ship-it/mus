@@ -88,11 +88,12 @@ export function prepareInstall(): void {
           ?.postMessage({ type: "alraesy:warm-static" });
       }).catch(() => {});
     };
+    // On an existing installation, repair the active worker even if register
+    // or update rejects. On fresh profiles, ready waits for the first worker.
+    warmStaticAssets();
     void navigator.serviceWorker.register("/push-sw.js", {
       scope: "/", updateViaCache: "none",
     }).then(registration => {
-      // Repair the active worker's offline cache even if the update check fails.
-      warmStaticAssets();
       void registration.update().catch(() => {});
     }).catch(() => {});
     window.addEventListener("online", warmStaticAssets);

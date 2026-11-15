@@ -8,15 +8,18 @@ const oldJs = "/assets/index-old.js";
 const newJs = "/assets/index-new.js";
 const commerce = "/assets/CommercePages-new.js";
 const finance = "/assets/FinancePages-new.js";
+const landing = "/assets/MedicineMarketPage-new.js";
+const css = "/assets/index-new.css";
+const extra = "/assets/Gallery-new.js";
 const oldHtml = `<script src="${oldJs}"></script>`;
 const newHtml = `<script src="${newJs}"></script>`;
 
-function workerHarness() {
+function workerHarness(options: {clean?: boolean; modern?: boolean} = {}) {
   const shell = new Map<string, Response>([
     ["/", new Response(oldHtml, { headers: { "content-type": "text/html" } })],
     [oldJs, new Response("old")],
   ]);
-  const entries = new Map([[shellName, shell]]);
+  const entries = new Map(options.clean ? [] : [[shellName, shell]]);
   const caches = {
     async open(name: string) {
       if (!entries.has(name)) entries.set(name, new Map());
@@ -31,18 +34,27 @@ function workerHarness() {
   };
   let offline = false;
   let missingAsset = false;
+  let missingOptional = false;
+  const requests: string[] = [];
   let skipped = false;
   const handlers: Record<string, (event: any) => void> = {};
   const self = {
     addEventListener: (name: string, handler: (event: any) => void) => { handlers[name] = handler; },
     location: { origin: "https://example.test" },
     skipWaiting: async () => { skipped = true; },
+    navigator: { get onLine() { return !offline; } },
   };
   const fetch = async (path: string) => {
+    requests.push(path);
     if (offline) throw Error("offline");
+    if (path === "/offline-core-assets.json" && options.modern) {
+      return Response.json({required: [newJs, commerce, finance, landing, css], optional: [extra]});
+    }
+    if (path === extra && missingOptional) return new Response("", { status: 404 });
+    if (path === css) return new Response("body {}", { headers: { "content-type": "text/css" } });
     if (path === "/offline-assets.json") return Response.json([newJs, commerce, finance]);
     if (path === finance && missingAsset) return new Response("", { status: 404 });
-    if ([newJs, commerce, finance].includes(path)) {
+    if ([newJs, commerce, finance, landing, extra].includes(path)) {
       return new Response("new JS", { headers: { "content-type": "application/javascript" } });
     }
     return new Response(newHtml, { headers: { "content-type": "text/html" } });
@@ -50,7 +62,8 @@ function workerHarness() {
   const script = readFileSync(new URL("../apps/web/public/push-sw.js", import.meta.url), "utf8");
   runInNewContext(script, { self, caches, fetch, URL, Response });
   return {
-    handlers, entries,
+    handlers, entries, requests,
+    setOptionalFailure: (fail: boolean) => { missingOptional = fail; },
     failAsset: () => { missingAsset = true; },
     goOffline: () => { offline = true; },
     skipped: () => skipped,
@@ -138,4 +151,43 @@ test("startup sends a warm signal when the worker update check rejects", async (
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+function refresh(handlers: ReturnType<typeof workerHarness>["handlers"]): Promise<unknown> {
+  let work: Promise<unknown> | undefined;
+  handlers.message({
+    data: {type: "alraesy:warm-static"},
+    waitUntil: (value: Promise<unknown>) => { work = value; },
+  });
+  assert.ok(work);
+  return work;
+}
+
+test("clean install ignores optional failures and retries those assets on later warm", async () => {
+  const worker = workerHarness({clean: true, modern: true});
+  worker.setOptionalFailure(true);
+  await install(worker.handlers);
+  assert.ok(worker.skipped());
+  assert.ok(!worker.requests.includes(extra), "installation must not wait for optional network paths");
+  for (const path of [newJs, commerce, finance, landing, css]) {
+    assert.ok(worker.entries.get(shellName)?.has(path));
+  }
+  await refresh(worker.handlers);
+  assert.ok(worker.requests.includes(extra));
+  assert.ok(!worker.entries.get(shellName)?.has(extra));
+  assert.ok(worker.entries.get(shellName)?.has("/"));
+  worker.setOptionalFailure(false);
+  await refresh(worker.handlers);
+  assert.ok(worker.entries.get(shellName)?.has(extra));
+  worker.goOffline();
+  assert.equal(await (await offlineNavigate(worker.handlers)).text(), newHtml);
+});
+
+test("an unavailable core asset preserves the previous complete shell", async () => {
+  const worker = workerHarness({modern: true});
+  worker.failAsset();
+  await assert.rejects(install(worker.handlers), /Static asset unavailable/);
+  assert.equal(worker.skipped(), false);
+  worker.goOffline();
+  assert.equal(await (await offlineNavigate(worker.handlers)).text(), oldHtml);
 });
