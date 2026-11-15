@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { employeePositions } from "../../../../packages/contracts/src/employee-positions.ts";
 import { api, useSession } from "../api";
@@ -35,6 +35,85 @@ function EnumField({label,value,options,onChange}:{label:string;value:string;opt
      {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
    </select></label>;
 }
+const answerText=(type:string,value:string)=>type==="yesno"?(value==="yes"?"نعم":"لا"):value;
+type SavedAnswer=Pick<Inquiry["answers"][number],"answerValue"|"explanation">;
+
+function InquiryAnswerCell({record,userId,root,refresh}:{
+ record:Inquiry;userId:number;root:string;refresh:()=>Promise<unknown>;
+}) {
+ const [answerValue,setAnswerValue]=useState("");
+ const [explanation,setExplanation]=useState("");
+ const [optionNumber,setOptionNumber]=useState(1);
+ const [saved,setSaved]=useState<SavedAnswer|"reused"|null>(null);
+ const [busy,setBusy]=useState(false),[error,setError]=useState("");
+ const posting=useRef(false);
+ const replyKey=useRef<string|null>(null);
+ const ownAnswer=record.answers.find(a=>a.userId===userId);
+ const shown=ownAnswer??saved??(record.myStatus!=="pending"?record.answers.at(-1):undefined);
+ const canReply=record.myStatus==="pending"&&!shown;
+ async function reply(e:FormEvent){
+   e.preventDefault();
+   if(!canReply||posting.current)return;
+   posting.current=true;setBusy(true);setError("");
+   try {
+     const draft={
+       answerValue:record.answerType==="choice"?record.answerOptions[optionNumber-1]??"":answerValue.trim(),
+       explanation:explanation.trim(),
+     };
+     replyKey.current??=crypto.randomUUID();
+     const confirmed=await api<{reused:boolean}>(root+"/"+record.id+"/answers",{method:"POST",body:{
+       answerValue:record.answerType==="choice"?"":answerValue,
+       optionNumber:record.answerType==="choice"?optionNumber:null,
+       explanation,idempotencyKey:replyKey.current
+     }});
+     // Never present a changed retry as the server's saved answer when the
+     // first request had actually committed but its response was lost.
+     setSaved(confirmed.reused?"reused":draft);
+     void refresh();
+   }catch(e){setError(e instanceof Error?e.message:"تعذر حفظ الإجابة");}
+   finally{posting.current=false;setBusy(false);}
+ }
+ if(shown==="reused")return <span role="status">حُفظت الإجابة. جارٍ تحديث النص…</span>;
+ if(shown)return <div aria-live="polite" style={{overflowWrap:"anywhere"}}>
+   <span style={{whiteSpace:"pre-wrap"}}>{answerText(record.answerType,shown.answerValue)}</span>
+   {shown.explanation&&<div className="muted" style={{whiteSpace:"pre-wrap"}}>{shown.explanation}</div>}
+ </div>;
+ if(!canReply)return <>—</>;
+ return <form onSubmit={reply} aria-label={"الإجابة على الاستفسار "+record.id} style={{display:"grid",gap:6}}>
+   {(record.answerType==="number"||record.answerType==="number_note")&&
+     <Field label="الرقم" type="number" step="any" required disabled={busy}
+       value={answerValue} onChange={e=>setAnswerValue(e.target.value)}/>}
+   {record.answerType==="date"&&
+     <Field label="التاريخ" type="date" required disabled={busy}
+       value={answerValue} onChange={e=>setAnswerValue(e.target.value)}/>}
+   {record.answerType==="yesno"&&
+     <fieldset disabled={busy}><legend>اختر الإجابة</legend>
+       {[["yes","نعم"],["no","لا"]].map(([value,label])=>
+       <label key={value} style={{marginInlineEnd:10}}>
+         <input type="radio" name={"yesno-"+record.id} checked={answerValue===value}
+           onChange={()=>setAnswerValue(value)}/> {label}
+       </label>)}
+     </fieldset>}
+   {record.answerType==="choice"&&<fieldset disabled={busy}><legend>اختر إجابة واحدة</legend>
+     {record.answerOptions.map((op,i)=><label key={i} style={{display:"block"}}>
+       <input type="radio" name={"choice-"+record.id} checked={optionNumber===i+1}
+         onChange={()=>setOptionNumber(i+1)}/> {op}
+     </label>)}
+   </fieldset>}
+   {record.answerType==="text"&&
+     <textarea required rows={2} aria-label="نص الإجابة" placeholder="اكتب الإجابة"
+       disabled={busy} value={answerValue} maxLength={2000} onChange={e=>setAnswerValue(e.target.value)}/>}
+   <label className="field"><span>{record.answerType==="number_note"?"التوضيح (إلزامي)":"توضيح (اختياري)"}</span>
+     <textarea rows={1} required={record.answerType==="number_note"} disabled={busy}
+       maxLength={2000} value={explanation} onChange={e=>setExplanation(e.target.value)}/>
+   </label>
+   <Button type="submit" size="compact" disabled={busy||(record.answerType==="yesno"&&!answerValue)}>
+     {busy?"جارٍ الحفظ…":"إجابة"}
+   </Button>
+   {error&&<span role="alert" className="muted">{error}</span>}
+ </form>;
+}
+
 export function InquiriesPage({companyId,manager=false}:{companyId?:number;manager?:boolean}) {
  const {user}=useSession(),client=useQueryClient();
  const root=companyId?'/companies/'+companyId+'/inquiries':"/inquiries";
@@ -42,16 +121,9 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
  const [creating,setCreating]=useState(false),[draft,setDraft]=useState(fresh);
  const [recipientSearch,setRecipientSearch]=useState("");
  const [selectedId,setSelectedId]=useState<number|null>(null);
- const [replyingId,setReplyingId]=useState<number|null>(null);
- const [answerValue,setAnswerValue]=useState(""),[explanation,setExplanation]=useState("");
- const [optionNumber,setOptionNumber]=useState(1);
  const [actionResult,setActionResult]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
- const createKey=useRef(crypto.randomUUID()),replyKey=useRef(crypto.randomUUID());
- const replyFormRef=useRef<HTMLDivElement>(null);
- useEffect(()=>{
-   if(replyingId!==null)replyFormRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
- },[replyingId]);
+ const createKey=useRef(crypto.randomUUID());
  const entries=useQuery({
    queryKey:["inquiries",user?.id,companyId,filter,search],
    queryFn:()=>api<{items:Inquiry[]}>(root+"?status="+encodeURIComponent(filter)+"&q="+encodeURIComponent(search)),
@@ -63,7 +135,6 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
    enabled:!!user&&manager&&creating,networkMode:"always"
  });
  const records=entries.data?.items??[],selected=records.find(x=>x.id===selectedId);
- const activeReply=records.find(x=>x.id===replyingId);
  const pending=records.filter(x=>x.myStatus==="pending").length;
  const invalid=(e:unknown)=>setError(e instanceof Error?e.message:"تعذر إكمال الإجراء");
  function update<K extends keyof ReturnType<typeof fresh>>(key:K,value:ReturnType<typeof fresh>[K]){
@@ -86,24 +157,6 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
      const result=await api<{id:number;recipientCount:number}>(root,{method:"POST",body});
      setSuccess("أُنشئ الطلب رقم "+result.id+" لـ "+result.recipientCount+" مستخدمًا");
      setCreating(false);setDraft(fresh());createKey.current=crypto.randomUUID();
-     await client.invalidateQueries({queryKey:["inquiries",user?.id,companyId]});
-   }catch(e){invalid(e);}finally{setBusy(false);}
- }
- function beginReply(record:Inquiry){
-   setReplyingId(record.id);setSelectedId(record.id);
-   setAnswerValue("");setExplanation("");setOptionNumber(1);
-   replyKey.current=crypto.randomUUID();setError("");setSuccess("");
- }
- async function reply(e:FormEvent){
-   e.preventDefault();if(!activeReply||busy)return;setBusy(true);setError("");setSuccess("");
-   try{
-     await api(root+"/"+activeReply.id+"/answers",{method:"POST",body:{
-       answerValue:activeReply.answerType==="choice"?"":answerValue,
-       optionNumber:activeReply.answerType==="choice"?optionNumber:null,
-       explanation,idempotencyKey:replyKey.current
-     }});
-     setSuccess("حُفظ الرد على الاستفسار رقم "+activeReply.id);
-     setReplyingId(null);replyKey.current=crypto.randomUUID();
      await client.invalidateQueries({queryKey:["inquiries",user?.id,companyId]});
    }catch(e){invalid(e);}finally{setBusy(false);}
  }
@@ -217,32 +270,25 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     {entries.isError&&<Notice tone="error">تعذر قراءة الاستفسارات. {entries.error instanceof Error?entries.error.message:""}</Notice>}
     {!entries.isLoading&&!records.length&&<p className="muted">لا توجد استفسارات مطابقة.</p>}
     <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",minWidth:1200}}>
+      <table style={{width:"100%",minWidth:900}}>
         <thead><tr>
-          <th>رقم</th><th>الشركة</th><th>النوع</th><th>الطلب</th><th>المعنيون</th>
-          <th>عدد الردود</th><th>آخر رد</th><th>الرد رقم</th><th>الرد تاريخ</th><th>الحالة</th><th>التاريخ والوقت</th><th>الجدول المرتبط</th><th>الإجراء</th>
+          <th>الطلب</th><th>المعنيون</th><th>عدد الردود</th>
+          <th>الإجابة</th><th>الحالة</th><th>التاريخ والوقت</th><th>الإجراء</th>
         </tr></thead>
         <tbody>{records.map(record=><tr key={record.id}>
-          <td>{record.id}</td><td>{record.companyName??record.companyId??"عام"}</td>
-          <td>{labels[record.requestType]??record.requestType}</td>
           <td style={{maxWidth:260,whiteSpace:"normal"}}>{record.requestText}</td>
           <td>{record.assignedCount}</td><td>{record.answeredCount}</td>
-          <td>{record.answers.length?(
-            record.answers[record.answers.length-1]!.answerValue==="yes"?"نعم":
-            record.answers[record.answers.length-1]!.answerValue==="no"?"لا":
-            record.answers[record.answers.length-1]!.answerValue
-          ):"—"}</td>
-          <td>{record.answers.length?record.answers[record.answers.length-1]!.id:"—"}</td>
-          <td>{when(record.answers.length?record.answers[record.answers.length-1]!.answeredAt:null)}</td>
+          <td style={{minWidth:210,whiteSpace:"normal"}}>
+            <InquiryAnswerCell key={root+":"+user.id+":"+record.id} record={record} userId={user.id} root={root}
+              refresh={()=>client.invalidateQueries({queryKey:["inquiries",user.id,companyId]})}/>
+          </td>
           <td>{labels[record.status]??record.status}</td>
           <td>{when(record.createdAt)}</td>
-          <td>{record.linkedTable?record.linkedTable+" #"+(record.linkedRecordId??"—"):"—"}</td>
           <td><div className="actions">
             <Button size="compact" variant="secondary" onClick={()=>{
               setSelectedId(selectedId===record.id?null:record.id);
               setActionResult(record.actionResult);
             }}>{selectedId===record.id?"إخفاء":"عرض"}</Button>
-            {record.myStatus==="pending"&&<Button size="compact" onClick={()=>beginReply(record)}>إجابة</Button>}
           </div></td>
         </tr>)}</tbody>
       </table>
@@ -250,48 +296,8 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
   </Card>
   {selected&&<Card title={"الطلب رقم "+selected.id}>
     <p><strong>{selected.requestText}</strong></p>
-    {activeReply?.id===selected.id&&activeReply.myStatus==="pending"&&<div ref={replyFormRef}
-      style={{marginTop:12,marginBottom:14,padding:12,border:"1px solid var(--border-color, #9994)",borderRadius:8,scrollMarginTop:90}}>
-      <strong style={{display:"block",marginBottom:10}}>إجابتك</strong>
-      <form onSubmit={reply} style={{display:"grid",gap:12}}>
-      {(activeReply.answerType==="number"||activeReply.answerType==="number_note")&&
-        <Field label="الرقم" type="number" step="any" required value={answerValue}
-          onChange={e=>setAnswerValue(e.target.value)}/>}
-      {activeReply.answerType==="date"&&
-        <Field label="التاريخ" type="date" required value={answerValue}
-          onChange={e=>setAnswerValue(e.target.value)}/>}
-      {activeReply.answerType==="yesno"&&
-        <fieldset><legend>اختر الإجابة</legend>
-          {[["yes","نعم"],["no","لا"]].map(([value,label])=>
-          <label key={value} style={{marginInlineEnd:18}}>
-            <input type="radio" name="yesno" checked={answerValue===value}
-              onChange={()=>setAnswerValue(value)}/> {label}
-          </label>)}
-        </fieldset>}
-      {activeReply.answerType==="choice"&&<fieldset><legend>اختر إجابة واحدة</legend>
-        {activeReply.answerOptions.map((op,i)=><label key={i} style={{display:"block",margin:7}}>
-          <input type="radio" name="choice" checked={optionNumber===i+1}
-            onChange={()=>setOptionNumber(i+1)}/> {op}
-        </label>)}
-      </fieldset>}
-      {activeReply.answerType==="text"&&
-        <label className="field"><span>الرد</span>
-          <textarea required rows={3} value={answerValue} maxLength={2000}
-            onChange={e=>setAnswerValue(e.target.value)}/>
-        </label>}
-      <label className="field"><span>{activeReply.answerType==="number_note"?"التوضيح (إلزامي)":"توضيح إضافي (اختياري)"}</span>
-        <textarea rows={2} required={activeReply.answerType==="number_note"} maxLength={2000}
-          value={explanation} onChange={e=>setExplanation(e.target.value)}/>
-      </label>
-      <div className="actions">
-        <Button type="submit" disabled={busy||(activeReply.answerType==="yesno"&&!answerValue)}>
-          {busy?"جارٍ الحفظ…":"حفظ الرد"}
-        </Button>
-        <Button variant="secondary" onClick={()=>setReplyingId(null)}>إلغاء</Button>
-      </div>
-    </form>
-    </div>}
     <p>نوع الإجابة: {labels[selected.answerType]??selected.answerType} · الآلية: {labels[selected.responseMode]} · الأولوية: {labels[selected.priority]} · موعد الرد: {when(selected.dueAt)}</p>
+    {selected.linkedTable&&<p><strong>الجدول المرتبط:</strong> {selected.linkedTable} #{selected.linkedRecordId??"—"}</p>}
     {selected.followUpAction&&<p><strong>المتابعة المطلوبة:</strong> {selected.followUpAction}</p>}
     {selected.actionResult&&<p><strong>نتيجة التنفيذ:</strong> {selected.actionResult}</p>}
     {manager&&(user.owner||selected.createdBy===user.id)&&selected.targets.length>0&&<div>
@@ -308,11 +314,10 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
         <thead><tr><th>الرد رقم</th><th>المجيب</th><th>الرد</th><th>التوضيح</th><th>تاريخ الرد</th></tr></thead>
         <tbody>{selected.answers.map(a=><tr key={a.id}>
           <td>{a.id}</td><td>{a.userName}</td>
-          <td>{a.answerValue==="yes"?"نعم":a.answerValue==="no"?"لا":a.answerValue}</td>
+          <td>{answerText(selected.answerType,a.answerValue)}</td>
           <td>{a.explanation||"—"}</td><td>{when(a.answeredAt)}</td>
         </tr>)}</tbody>
       </table></div>}
-    {selected.myStatus==="pending"&&replyingId!==selected.id&&<Button onClick={()=>beginReply(selected)}>تسجيل إجابتي</Button>}
     {manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
       <label className="field"><span>نتيجة المتابعة والتنفيذ</span>
         <textarea rows={2} value={actionResult} maxLength={4000}
