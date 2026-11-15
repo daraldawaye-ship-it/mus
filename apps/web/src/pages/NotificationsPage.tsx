@@ -25,6 +25,7 @@ import {
 import { api, usePagedQuery, useScopeGuard, useSession } from "../api";
 import { rememberRecentEntity } from "../recent-entities";
 import { notificationChatOpenState } from "../notification-chat-open";
+import { useNotificationClickAction } from "../use-notification-click-action";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, PageHeader, Select } from "../ui";
 
@@ -109,6 +110,7 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
     client = useQueryClient(),
     guard = useScopeGuard(`${scope}:notifications`);
   const [params, setParams] = useSearchParams();
+  const clickAction = useNotificationClickAction();
   const state = ["active", "snoozed", "done", "all"].includes(
     params.get("state") ?? "",
   )
@@ -351,7 +353,15 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             data-notification-id={record.id}
           >
             <div className="notification-heading">
-              <h2>{record.title}</h2>
+              <h2>{record.completeOnClick && !record.completedAt ? (
+                record.href ? <Link to={record.href}
+                  state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)}
+                  onClick={event => {
+                    if (!notificationChatOpenState(record, user?.id, record.companyId ?? undefined)) clickAction(record, event);
+                  }}>{record.title}</Link> :
+                  <button type="button" className="notification-click-title"
+                    onClick={event => clickAction(record, event)}>{record.title}</button>
+              ) : record.title}</h2>
               {grouped&&record.groupCount>1&&<span className="notification-group-count">
                 {record.groupCount.toLocaleString("ar")} إشعار
               </span>}
@@ -367,7 +377,8 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             </p>
             {grouped&&record.groupCount>1&&<div className="notification-details">
               <span>{record.groupUnread.toLocaleString("ar")} غير مقروءة من هذا النوع</span>
-              <Link to={`${base}/notifications?state=${state}&grouped=0&code=${encodeURIComponent(record.code)}`}>
+              <Link to={`${record.companyId === null ? "" : base}/notifications?state=${state}&grouped=0&code=${encodeURIComponent(record.code)}`}
+                onClick={event => clickAction(record, event)}>
                 عرض جميع إشعارات هذا النوع
               </Link>
             </div>}
@@ -406,7 +417,10 @@ export function NotificationsPage({ context }: { context?: CompanyContext }) {
             </small>}
             <div className="notification-actions">
               {record.href && (
-                <Link to={record.href} state={notificationChatOpenState(record, user?.id, companyId)} className="button button-secondary">
+                <Link to={record.href} state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)} className="button button-secondary"
+                  onClick={event => {
+                    if (!notificationChatOpenState(record, user?.id, record.companyId ?? undefined)) clickAction(record, event);
+                  }}>
                   فتح السجل المرتبط
                 </Link>
               )}
@@ -669,7 +683,7 @@ export function NotificationTemplatesPage({
       repeatInterval,
       notifyManagers, notifyOwner, reviewed,
       notifySubject,
-      positionKeys, minIntervalHours, latestOnly,
+      positionKeys, minIntervalHours, latestOnly, completeOnClick,
       employeeIds,
       revision,
     } = draft;
@@ -681,7 +695,7 @@ export function NotificationTemplatesPage({
       repeatInterval: allowRepeat ? repeatInterval : "none",
       notifyManagers, notifyOwner, reviewed,
       notifySubject,
-      positionKeys, minIntervalHours, latestOnly,
+      positionKeys, minIntervalHours, latestOnly, completeOnClick,
       employeeIds,
       revision,
     });
@@ -851,6 +865,7 @@ export function NotificationTemplatesPage({
                   : "التكرار غير مسموح"}
               </span>
               {template.minIntervalHours != null && <span>لا يتكرر نفس النوع خلال {template.minIntervalHours.toLocaleString("ar")} ساعة</span>}
+              {template.completeOnClick && <span>يُنجز عند النقر</span>}
               {!template.canDisable && <span>تنبيه إلزامي</span>}
             </div>
             <Button
@@ -922,6 +937,9 @@ export function NotificationTemplatesPage({
                 onChange={event => setDraft({...draft, minIntervalHours: event.target.value === "" ? null : Number(event.target.value)})} />
               <CheckField label="إظهار آخر تنبيه فقط" checked={draft.latestOnly}
                 onChange={latestOnly => setDraft({...draft, latestOnly})} />
+              <CheckField label="إنجاز الإشعار عند النقر" checked={draft.completeOnClick ?? false}
+                onChange={completeOnClick => setDraft({...draft, completeOnClick})} />
+              <small className="muted">عند النقر على اسم الإشعار أو عرض الإشعارات المشابهة، يُنجز هذا الإشعار فقط.</small>
               <CheckField
                 label="تنبيه مفعّل"
                 checked={draft.enabled}

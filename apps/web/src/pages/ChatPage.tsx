@@ -242,7 +242,7 @@ function ChatWorkspace({ user, scope, companyId }: ChatProps) {
     // Start only once the authorized destination has loaded. Do not use an
     // outgoing-page abort signal: the user can continue navigating normally.
     void api(`${base}/notifications/${clicked.id}/action`, {
-      method: "POST", body: { action: "complete", revision: clicked.revision },
+      method: "POST", body: { action: "complete", revision: clicked.revision, onClick: true },
     }).then(() => Promise.all([
       notificationClient.invalidateQueries({ queryKey: ["notifications", user.id] }),
       notificationClient.invalidateQueries({ queryKey: ["list", user.id, "public:notifications"] }),

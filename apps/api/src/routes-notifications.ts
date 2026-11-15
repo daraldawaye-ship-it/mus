@@ -138,9 +138,10 @@ export function notificationRoutes(pool: Pool) {
               );
           }
           await client.query(
-            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,position_keys,employee_ids,updated_by,min_interval_hours,latest_only,notify_owner,reviewed)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
+            `INSERT INTO notification_settings(company_id,code,importance,enabled,can_snooze,allow_repeat,repeat_interval,notify_managers,notify_subject,position_keys,employee_ids,updated_by,min_interval_hours,latest_only,notify_owner,reviewed,complete_on_click)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT(company_id,code) DO UPDATE SET importance=EXCLUDED.importance,enabled=EXCLUDED.enabled,can_snooze=EXCLUDED.can_snooze,
     allow_repeat=EXCLUDED.allow_repeat,repeat_interval=EXCLUDED.repeat_interval,notify_managers=EXCLUDED.notify_managers,notify_subject=EXCLUDED.notify_subject,position_keys=EXCLUDED.position_keys,min_interval_hours=EXCLUDED.min_interval_hours,latest_only=EXCLUDED.latest_only,notify_owner=EXCLUDED.notify_owner,reviewed=EXCLUDED.reviewed,employee_ids=EXCLUDED.employee_ids,
+    complete_on_click=COALESCE(EXCLUDED.complete_on_click,notification_settings.complete_on_click),
     revision=notification_settings.revision+1,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp()`,
             [
               companyId,
@@ -159,6 +160,7 @@ export function notificationRoutes(pool: Pool) {
               input.latestOnly ?? before.latestOnly,
               input.notifyOwner ?? before.notifyOwner,
               input.reviewed ?? before.reviewed,
+              input.completeOnClick ?? null,
             ],
           );
           const after = await effectiveTemplate(client, companyId, before.code);
@@ -336,7 +338,8 @@ export function notificationRoutes(pool: Pool) {
           ).rows[0];
           if (!row) missing();
           const before = notificationDTO(row, general);
-          if (input.action === "complete" && row.completed_at) return before;
+          if (input.action === "complete" &&
+              (row.completed_at || (input.onClick && !before.completeOnClick))) return before;
           if (input.action === "read" && row.read_at) return before;
           if (row.completed_at)
             throw new HttpError(

@@ -5,3 +5,15 @@
   color: var(--muted);
 }
 .notification-scoped-heading { display: flex; align-items: center; gap: 5px; min-width: 0; }
+
+.notification-click-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}

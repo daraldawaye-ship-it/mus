@@ -18,6 +18,7 @@ type NotificationLink = {
   code: string;
   href: string | null;
   completedAt: string | null;
+  completeOnClick?: boolean;
 };
 
 const isPositiveId = (value: unknown): value is number =>
@@ -38,7 +39,7 @@ export function notificationChatOpenState(
   viewerId: number | undefined,
   sourceCompanyId: number | undefined,
 ) {
-  if (!isPositiveId(viewerId) || !isPositiveId(record.id) ||
+  if (!record.completeOnClick || !isPositiveId(viewerId) || !isPositiveId(record.id) ||
       !isPositiveId(record.revision) || record.completedAt ||
       !isChatCode(record.code) || record.href !== destination(record.code, record.companyId) ||
       record.href === null || (sourceCompanyId !== undefined && !isPositiveId(sourceCompanyId)) ||

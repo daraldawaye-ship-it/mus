@@ -22,6 +22,7 @@ export const notificationSettingsSchema = z
     positionKeys: employeePositionListSchema.optional(),
     minIntervalHours: id.nullable().optional(),
     latestOnly: z.boolean().optional(),
+    completeOnClick: z.boolean().optional(),
     employeeIds: z
       .array(id)
       .refine((x) => new Set(x).size === x.length),
@@ -41,7 +42,7 @@ export const notificationActionSchema = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({ action: z.literal("read"), revision: id }).strict(),
-  z.object({ action: z.literal("complete"), revision: id }).strict(),
+  z.object({ action: z.literal("complete"), revision: id, onClick: z.literal(true).optional() }).strict(),
   z
     .object({
       action: z.literal("snooze"),
@@ -85,6 +86,7 @@ export interface NotificationTemplate {
   positionKeys: EmployeePosition[];
   minIntervalHours: number | null;
   latestOnly: boolean;
+  completeOnClick: boolean;
   employeeIds: number[];
   revision: number | null;
 }
@@ -116,6 +118,7 @@ export interface NotificationRecord {
   groupCount: number;
   /** Unread notifications in the current visible group. */
   groupUnread: number;
+  completeOnClick: boolean;
   canSnooze: boolean;
   canAssign: boolean;
   canRepeat: boolean;

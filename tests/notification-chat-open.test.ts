@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { notificationChatCompletion, notificationChatOpenState } from "../apps/web/src/notification-chat-open.ts";
 
-const common = {id: 81, revision: 2, completedAt: null};
+const common = {id: 81, revision: 2, completedAt: null, completeOnClick: true};
 
 test("only a clicked group or direct chat alert carries its exact completion target", () => {
   const cases = [
@@ -29,6 +29,7 @@ test("non-chat, completed and mismatched notification links retain existing beha
     {...record, code: "QUICK_SYSTEM_CHANGE"},
     {...record, code: "CHAT_GROUP_GLOBAL", companyId: null, href: "//example.com/chat"},
     {...record, href: null},
+    {...record, completeOnClick: false},
     {...record, completedAt: "2026-11-15T12:30:00Z"},
     {...record, companyId: 3},
   ]) assert.equal(notificationChatOpenState(item, 5, 2), undefined);
@@ -46,8 +47,8 @@ test("every alert link forwards the exact target to the authorized chat, not the
   assert.match(bell, /to=\{headsUp.href\} state=\{headsUp.openState\}/);
   assert.equal((bell.match(/state=\{notificationChatOpenState\(record, user\?\.id, record\.companyId \?\? undefined\)\}/g) ?? []).length, 2);
   assert.match(bell, /to=\{\x60\$\{base\}\/chat\x60\} onClick=\{close\}/);
-  assert.match(inbox, /to=\{record.href\} state=\{notificationChatOpenState\(record, user\?\.id, companyId\)\}/);
+  assert.match(inbox, /to=\{record.href\} state=\{notificationChatOpenState\(record, user\?\.id, record\.companyId \?\? undefined\)\}/);
   assert.match(chat, /if \(!clicked \|\| !\(clicked.kind === "group" \? groups.isSuccess : conversations.isSuccess\)\) return;/);
   assert.match(chat, /if \(attemptedNotification.current === attempt\) return;/);
-  assert.match(chat, /body: \{ action: "complete", revision: clicked.revision \}/);
+  assert.match(chat, /body: \{ action: "complete", revision: clicked.revision, onClick: true \}/);
 });

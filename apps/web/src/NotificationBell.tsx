@@ -13,6 +13,7 @@ import { errorMessage } from "./phase2";
 import { usePageDirectory } from "./page-directory";
 import { notificationChatOpenState } from "./notification-chat-open";
 import "./notification-scope.css";
+import { notificationClickErrorEvent, useNotificationClickAction } from "./use-notification-click-action";
 
 type SnoozeDraft = { record: NotificationRecord; until: string };
 type HeadsUp = {
@@ -21,6 +22,7 @@ type HeadsUp = {
   message: string;
   href: string;
   openState: ReturnType<typeof notificationChatOpenState>;
+  record: NotificationRecord;
   companyId: number | null;
   importance: "low" | "medium" | "high" | "critical";
 };
@@ -55,6 +57,7 @@ const baseFor = (id?: number | null) => id ? `/companies/${id}` : "";
 export function NotificationBell({ company }: { company?: { id: number; name: string } }) {
   const { user } = useSession();
   const client = useQueryClient();
+  const clickAction = useNotificationClickAction();
   const location = useLocation();
   const publicDirectory = usePageDirectory();
   const companyDirectory = usePageDirectory(company?.id);
@@ -81,6 +84,7 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [headsUp, setHeadsUp] = useState<HeadsUp | null>(null);
+  const [clickError, setClickError] = useState(false);
   const mountedAt = useRef(Date.now());
   const seenNotifications = useRef(new Set<number>());
   const open = position !== null;
@@ -128,7 +132,7 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
       id: fresh.id, title: fresh.title, message: fresh.message,
       href: safeNotificationHref(fresh.href, `${baseFor(fresh.companyId)}/notifications`),
       openState: notificationChatOpenState(fresh, user?.id, fresh.companyId ?? undefined),
-      companyId: fresh.companyId,
+      companyId: fresh.companyId, record: fresh,
       importance: fresh.importance,
     });
   }, [allowed, query.data, user?.id]);
@@ -145,6 +149,21 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
     setHeadsUp(null);
     mountedAt.current = Date.now();
     seenNotifications.current.clear();
+  }, [user?.id]);
+
+  useEffect(() => {
+    let timeout: number | undefined;
+    const show = (event: Event) => {
+      if ((event as CustomEvent).detail !== user?.id) return;
+      setClickError(true);
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => setClickError(false), 8500);
+    };
+    window.addEventListener(notificationClickErrorEvent, show);
+    return () => {
+      window.removeEventListener(notificationClickErrorEvent, show);
+      window.clearTimeout(timeout);
+    };
   }, [user?.id]);
 
   function close() {
@@ -275,7 +294,14 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
 
   return (
     <>
-      {headsUp && (headsUp.companyId === null ? publicAllowed : companyId === headsUp.companyId) && createPortal(
+      {clickError && createPortal(
+        <div className="notification-heads-up importance-high" role="status" dir="rtl">
+          <p>لم يُنجز الإشعار تلقائيًا. يمكنك إنجازه من قائمة الإجراءات.</p>
+          <button type="button" className="notification-heads-up-close" aria-label="إغلاق"
+            onClick={() => setClickError(false)}><X size={16} /></button>
+        </div>, document.body,
+      )}
+      {!clickError && headsUp && (headsUp.companyId === null ? publicAllowed : companyId === headsUp.companyId) && createPortal(
         <div
           className={`notification-heads-up importance-${headsUp.importance}`}
           role="status" aria-live="polite" dir="rtl"
@@ -287,7 +313,10 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
             <p>{headsUp.message}</p>
           </div>
           <Link to={headsUp.href} state={headsUp.openState} className="button button-primary button-compact"
-            onClick={() => setHeadsUp(null)}>فتح</Link>
+            onClick={event => {
+              if (!headsUp.openState) clickAction(headsUp.record, event);
+              setHeadsUp(null);
+            }}>فتح</Link>
           <button type="button" className="notification-heads-up-close"
             aria-label="إغلاق التنبيه" onClick={() => setHeadsUp(null)}>
             <X size={16} />
@@ -365,9 +394,16 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
                     <ScopeIcon company={record.companyId !== null} companyName={company?.name} />
                     {record.href ? (
                       <Link className="notification-quick-title" to={record.href}
-                        state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)} onClick={close}>
+                        state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)}
+                        onClick={event => {
+                          if (!notificationChatOpenState(record, user?.id, record.companyId ?? undefined)) clickAction(record, event);
+                          close();
+                        }}>
                         {record.title}
                       </Link>
+                    ) : record.completeOnClick && !record.completedAt ? (
+                      <button type="button" className="notification-quick-title notification-click-title"
+                        onClick={event => clickAction(record, event)}>{record.title}</button>
                     ) : (
                       <strong className="notification-quick-title">{record.title}</strong>
                     )}
@@ -398,7 +434,7 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
                 {record.groupCount>1&&<Link
                   className="notification-quick-link"
                   to={`${baseFor(record.companyId)}/notifications?grouped=0&code=${encodeURIComponent(record.code)}&state=active`}
-                  onClick={close}>
+                  onClick={event => { clickAction(record, event); close(); }}>
                   عرض جميع إشعارات هذا النوع
                 </Link>}
                 <div className="notification-quick-meta">
@@ -430,7 +466,11 @@ export function NotificationBell({ company }: { company?: { id: number; name: st
                       </button>
                     )}
                     {record.href && (
-                      <Link to={record.href} state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)} onClick={close}>
+                      <Link to={record.href} state={notificationChatOpenState(record, user?.id, record.companyId ?? undefined)}
+                        onClick={event => {
+                          if (!notificationChatOpenState(record, user?.id, record.companyId ?? undefined)) clickAction(record, event);
+                          close();
+                        }}>
                         <ExternalLink size={14} /> فتح المرتبط
                       </Link>
                     )}

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import type { PoolClient } from "pg";
 import { notifyChatRecipient } from "../apps/api/src/services/chat-notifications.ts";
-import { companyOnlyInboxFilter, emitNotification, inboxFilter, latestStream } from "../apps/api/src/services/notifications.ts";
+import { companyOnlyInboxFilter, effectiveTemplate, emitNotification, inboxFilter, latestStream } from "../apps/api/src/services/notifications.ts";
 
 test("chat notification streams consolidate old and new rows by room, with scope and type isolation", async (t) => {
   const db = new PGlite();
@@ -46,6 +47,15 @@ test("chat notification streams consolidate old and new rows by room, with scope
     const result = await db.query(sql, params);
     return {...result, rowCount: result.rows.length};
   }} as unknown as PoolClient;
+  // Apply the actual migration instead of mirroring the new field in this fixture.
+  await db.exec(await readFile(new URL("../apps/api/migrations/20261115_notification_complete_on_click.sql", import.meta.url), "utf8"));
+  assert.equal((await effectiveTemplate(client, 2, "CHAT_GROUP_COMPANY"))?.completeOnClick, true);
+  assert.equal((await effectiveTemplate(client, null, "CHAT_GROUP_GLOBAL"))?.completeOnClick, true);
+  assert.equal((await effectiveTemplate(client, 2, "QUICK_ALL_EMPLOYEES"))?.completeOnClick, false);
+  await db.exec("INSERT INTO notification_settings(company_id,code,complete_on_click) VALUES (3,'CHAT_GROUP_COMPANY',false), (3,'QUICK_ALL_EMPLOYEES',true)");
+  assert.equal((await effectiveTemplate(client, 3, "CHAT_GROUP_COMPANY"))?.completeOnClick, false);
+  assert.equal((await effectiveTemplate(client, 3, "QUICK_ALL_EMPLOYEES"))?.completeOnClick, true);
+  await db.exec("DELETE FROM notification_settings WHERE company_id=3");
   const group = (companyId: number | null, groupId: number, senderId: number, messageId: number, recipientId = 1) =>
     notifyChatRecipient(client, {companyId, groupId, senderId, messageId, recipientId, senderName: "Sender"});
   const direct = (senderId: number, messageId: number) =>

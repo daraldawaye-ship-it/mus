@@ -31,13 +31,17 @@ const selectedEmployee = `EXISTS(SELECT 1 FROM employees selected
  WHERE selected.company_id=n.company_id AND selected.id=$3 AND selected.user_id=$1 AND selected.active
  AND (selected.id=ANY(s.employee_ids) OR selected.position_keys && COALESCE(s.position_keys,t.default_position_keys)))`;
 
+// Missing overrides retain the historical four chat types' click behavior.
+const completeOnClickSetting = `COALESCE(s.complete_on_click,
+ t.code IN ('CHAT_GROUP_GLOBAL','CHAT_GROUP_COMPANY','CHAT_DIRECT_GLOBAL','CHAT_DIRECT_COMPANY'))`;
 export const templateQuery = `SELECT t.*,s.id AS setting_id,s.revision,
  COALESCE(s.importance,t.default_importance) AS importance,COALESCE(s.enabled,t.implemented) AS enabled,
  COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
  COALESCE(s.repeat_interval,'none') AS repeat_interval,COALESCE(s.notify_managers,t.default_notify_managers) AS notify_managers,
  COALESCE(s.notify_owner,false) AS notify_owner,COALESCE(s.reviewed,false) AS reviewed,
  COALESCE(s.notify_subject,t.code NOT IN ('CASHBOX_ELECTRONIC_TRANSFER','CASHBOX_POUCH_TRANSFER','CASHBOX_CLOSED','ATTENDANCE_APPROVAL_REJECTED')) AS notify_subject,
- COALESCE(s.position_keys,t.default_position_keys) AS position_keys,s.min_interval_hours,COALESCE(s.latest_only,t.default_latest_only) AS latest_only,COALESCE(s.employee_ids,'{}'::integer[]) AS employee_ids
+ COALESCE(s.position_keys,t.default_position_keys) AS position_keys,s.min_interval_hours,COALESCE(s.latest_only,t.default_latest_only) AS latest_only,COALESCE(s.employee_ids,'{}'::integer[]) AS employee_ids,
+ ${completeOnClickSetting} AS complete_on_click
  FROM notification_templates t LEFT JOIN notification_settings s ON s.code=t.code AND s.company_id IS NOT DISTINCT FROM $1::integer`;
 export const templateDTO = (r: QueryResultRow): NotificationTemplate => ({
   code: r.code,
@@ -59,6 +63,7 @@ export const templateDTO = (r: QueryResultRow): NotificationTemplate => ({
   positionKeys: r.position_keys,
   minIntervalHours: r.min_interval_hours,
   latestOnly: r.latest_only,
+  completeOnClick: r.complete_on_click,
   employeeIds: r.employee_ids,
   revision: r.revision ?? null,
 });
@@ -79,6 +84,7 @@ export async function effectiveTemplate(
 }
 export const notificationSelect = `SELECT n.*,COALESCE(s.can_snooze,true) AS can_snooze,COALESCE(s.allow_repeat,false) AS allow_repeat,
  COALESCE(s.enabled,t.implemented) AS template_enabled,t.implemented,s.min_interval_hours,
+ ${completeOnClickSetting} AS complete_on_click,
  (auto_resolution.notification_id IS NOT NULL) AS auto_resolved,
  CASE WHEN NOT n.silent_update THEN n.created_at ELSE (SELECT origin.created_at FROM notifications origin WHERE origin.id=n.delivery_id) END AS delivery_at
  FROM notifications n JOIN notification_templates t ON t.code=n.code
@@ -155,6 +161,7 @@ export const notificationDTO = (
   subjectEmployeeId: r.subject_employee_id ?? null,
   groupCount: Number(r.group_count ?? 1),
   groupUnread: Number(r.group_unread ?? (r.read_at ? 0 : 1)),
+  completeOnClick: r.complete_on_click,
   canSnooze: !r.completed_at && r.can_snooze,
   canRepeat:
     !r.completed_at && r.allow_repeat && r.template_enabled && r.implemented,
