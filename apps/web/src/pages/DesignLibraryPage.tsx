@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertTriangle, Bell, Check, CheckCircle2, ChevronDown,
@@ -152,6 +152,109 @@ function DemoSurfaces() {
     </Group>
   </>;
 }
+const demoCellText = {
+  long: "تمت مراجعة تفاصيل الطلب التجريبي والتأكد من الكمية والعبوة وموعد التسليم مع ملاحظات المتابعة. هذه نهاية النص.",
+  short: "جاهز للمراجعة",
+};
+
+function DemoCellScroll({ value, hint }: { value: string; hint: boolean }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ pointer: number; x: number; y: number; left: number; active: boolean } | null>(null);
+  const [overflow, setOverflow] = useState(false);
+  const [atEnd, setAtEnd] = useState(false);
+  const [grabbing, setGrabbing] = useState(false);
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const measure = () => {
+      const distance = node.scrollWidth - node.clientWidth;
+      setOverflow(distance > 1);
+      setAtEnd(Math.abs(node.scrollLeft) >= distance - 1);
+    };
+    const wheel = (event: WheelEvent) => {
+      // Preserve normal vertical and horizontal scrolling. Some browsers
+      // expose Shift + vertical wheel as deltaY instead of native deltaX.
+      if (!event.shiftKey || event.ctrlKey || event.deltaX || !event.deltaY ||
+          node.scrollWidth <= node.clientWidth) return;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? node.clientWidth : 1;
+      const next = Math.max(node.clientWidth - node.scrollWidth, Math.min(0, node.scrollLeft - event.deltaY * unit));
+      if (next === node.scrollLeft) return;
+      event.preventDefault();
+      node.scrollLeft = next;
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(node);
+    if (node.firstElementChild) resize.observe(node.firstElementChild);
+    node.addEventListener("scroll", measure, { passive: true });
+    node.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      resize.disconnect();
+      node.removeEventListener("scroll", measure);
+      node.removeEventListener("wheel", wheel);
+    };
+  }, [value]);
+
+  const finish = () => {
+    drag.current = null;
+    setGrabbing(false);
+  };
+
+  return <div className="design-cell-scroll-shell" data-hint={hint && overflow && !atEnd ? "true" : undefined}>
+    <div ref={scroller} className="design-cell-scroll" dir="rtl" tabIndex={overflow ? 0 : undefined}
+      data-overflow={overflow ? "true" : undefined} data-grabbing={grabbing ? "true" : undefined}
+      onPointerDown={event => {
+        if (!overflow || event.pointerType !== "mouse" || event.button !== 0 ||
+            event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+        drag.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, active: false };
+      }}
+      onPointerMove={event => {
+        const start = drag.current;
+        if (!start || start.pointer !== event.pointerId) return;
+        if (!(event.buttons & 1)) { finish(); return; }
+        const movedX = event.clientX - start.x;
+        const movedY = event.clientY - start.y;
+        if (!start.active) {
+          if (Math.abs(movedY) >= 5 && Math.abs(movedY) > Math.abs(movedX)) { finish(); return; }
+          if (Math.abs(movedX) < 5) return;
+          start.active = true;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.currentTarget.ownerDocument.getSelection()?.collapseToStart();
+          setGrabbing(true);
+        }
+        event.preventDefault();
+        event.currentTarget.scrollLeft = start.left - movedX;
+      }}
+      onPointerLeave={() => { if (!drag.current?.active) finish(); }}
+      onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}
+      onKeyDown={event => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const node = event.currentTarget;
+        if (event.key === "Home") node.scrollLeft = 0;
+        else if (event.key === "End") node.scrollLeft = node.clientWidth - node.scrollWidth;
+        else if (event.key === "ArrowLeft") node.scrollLeft -= 40;
+        else if (event.key === "ArrowRight") node.scrollLeft += 40;
+        else return;
+        event.preventDefault();
+      }}>
+      <span>{value}</span>
+    </div>
+  </div>;
+}
+
+function ScrollingCellTable({ hint }: { hint: boolean }) {
+  const label = hint ? "نص قابل للسحب مع ظل" : "نص قابل للسحب دون ظل";
+  return <div className="design-table-scroll">
+    <table className="design-table design-cell-demo-table" aria-label={label}>
+      <thead><tr><th scope="col">#</th><th scope="col">الملاحظات</th><th scope="col">الحالة</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><DemoCellScroll value={demoCellText.long} hint={hint} /></td><td>مفتوح</td></tr>
+        <tr><td>2</td><td><DemoCellScroll value={demoCellText.short} hint={hint} /></td><td>منجز</td></tr>
+      </tbody>
+    </table>
+  </div>;
+}
+
 function DemoTables() {
   return <>
     <Group title="أشكال الجداول" subtitle="أمثلة ببيانات وهمية، لا تعرض بيانات فعلية ولا تحفظ تعديلات.">
@@ -159,6 +262,10 @@ function DemoTables() {
       <Sample code="ج-02" title="جدول مضغوط"><div className="design-table-scroll"><table className="design-table design-table-dense"><thead><tr><th>رقم</th><th>اسم</th><th>رصيد</th></tr></thead><tbody>{[1,2,3,4].map(i=><tr key={i}><td>{i}</td><td>عنصر تجريبي {i}</td><td>{i*10}</td></tr>)}</tbody></table></div></Sample>
       <Sample code="ج-03" title="جدول بخطوط متناوبة"><div className="design-table-scroll"><table className="design-table design-table-striped"><thead><tr><th>المستخدم</th><th>الوقت</th></tr></thead><tbody><tr><td>مثال أول</td><td>09:00</td></tr><tr><td>مثال ثانٍ</td><td>10:00</td></tr><tr><td>مثال ثالث</td><td>11:00</td></tr></tbody></table></div></Sample>
       <Sample code="ج-04" title="جدول مع حالة وإجراء"><div className="design-table-scroll"><table className="design-table"><thead><tr><th>المهمة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody><tr><td>متابعة تجريبية</td><td><span className="design-badge design-badge-soft">منجز</span></td><td><button className="design-icon-button" title="إجراءات" aria-label="إجراءات"><MoreHorizontal size={16}/></button></td></tr></tbody></table></div></Sample>
+    </Group>
+    <Group title="خلايا بسحب أفقي" subtitle="النص الطويل يبقى في سطر واحد بعرض ثابت. اسحب داخل الملاحظات باللمس أو الماوس، أو استخدم Shift مع العجلة. من لوحة المفاتيح انتقل إلى الخلية بمفتاح Tab وحرك النص بالسهمين.">
+      <Sample code="ج-09" title="نص قابل للسحب دون ظل"><ScrollingCellTable hint={false} /></Sample>
+      <Sample code="ج-10" title="نص قابل للسحب مع ظل"><ScrollingCellTable hint /></Sample>
     </Group>
     <Group title="القوائم والتنقل" subtitle="طرق مختصرة لعرض العناصر دون فتح بطاقات ضخمة.">
       <Sample code="ج-05" title="قائمة عناصر"><div className="design-list"><div>الصنف الأول <span>12</span></div><div>الصنف الثاني <span>4</span></div><div>الصنف الثالث <span>8</span></div></div></Sample>

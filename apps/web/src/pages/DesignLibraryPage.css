@@ -146,3 +146,37 @@
   .design-library-nav,.design-copy,.design-library-bottom,.design-library-private { display:none!important; }
   .design-sample { break-inside:avoid; }
 }
+
+
+/* Scroll only the text inside these library demo cells, not the row. */
+.design-cell-demo-table { table-layout:fixed; min-width:0; }
+.design-cell-demo-table th:first-child { width:36px; }
+.design-cell-demo-table th:last-child { width:54px; }
+.design-cell-scroll-shell { position:relative; min-width:0; }
+.design-cell-scroll {
+  display:block;
+  inline-size:100%;
+  min-inline-size:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  white-space:nowrap;
+  text-overflow:clip;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+}
+.design-cell-scroll::-webkit-scrollbar { display:none; }
+.design-cell-scroll > span { display:inline-block; }
+.design-cell-scroll:focus-visible { outline:2px solid currentColor; outline-offset:1px; }
+@media (pointer:fine) {
+  .design-cell-scroll[data-overflow="true"] { cursor:grab; }
+}
+.design-cell-scroll[data-grabbing="true"] { cursor:grabbing; user-select:none; }
+.design-cell-scroll-shell[data-hint="true"]::after {
+  content:"";
+  position:absolute;
+  inset-block:0;
+  inset-inline-end:0;
+  inline-size:15px;
+  box-shadow:inset 9px 0 9px -9px var(--muted);
+  pointer-events:none;
+}
