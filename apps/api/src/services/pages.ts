@@ -538,8 +538,10 @@ export async function requestPageKeys(
     "purchase-history": "purchases",
   };
   const keys = names[resource!] ? [`company.${names[resource!]}`] : [];
-  if (rest === "sales/administrative-custody-transfers")
-    keys.push("company.administrative-custody");
+  // Sales header custody button has its own permission, not custody-page access.
+  if (rest === "sales/administrative-custody-transfers" ||
+      rest === "sales/administrative-custody-transfer-access")
+    keys.push("company.sales");
   if (rest === "sales/administrative-custody-funding" ||
       rest === "sales/administrative-custody-funding-access")
     keys.push("company.sales");
