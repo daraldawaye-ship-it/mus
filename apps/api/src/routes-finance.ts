@@ -240,8 +240,9 @@ export async function readAccountLedger(
   companyId: number,
   accountId: number,
   req: Request,
-  ownCashbox = false,
+  mode: "account" | "cashbox" | "administrativeCustody" = "account",
 ) {
+  const ownCashbox = mode !== "account";
   const account = await client.query(
     "SELECT id,code,name FROM accounts WHERE company_id=$1 AND id=$2 AND kind='posting'",
     [companyId, accountId],
@@ -273,9 +274,9 @@ export async function readAccountLedger(
       baseCredit: "f.base_credit",
       runningBalance: "f.running_balance",
     },
-    // Cashbox/pledge statements retain their previous order; ordinary account
-    // statements put the latest date, journal and line first.
-    ownCashbox
+    // Only the personal cashbox keeps its oldest-first default. This is the
+    // display order; the cumulative window below remains chronological.
+    mode === "cashbox"
       ? "documentDate:asc,documentId:asc,lineNumber:asc"
       : "documentDate:desc,documentId:desc,lineNumber:desc",
   );
@@ -1005,7 +1006,7 @@ export function financeRoutes(pool: Pool): Router {
             totals: null,
           };
         }
-        return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
+        return readAccountLedger(client, companyId, linked.rows[0].id, req, "cashbox");
       });
       res.json(result);
     }),
@@ -1036,7 +1037,7 @@ export function financeRoutes(pool: Pool): Router {
           return { account: null, items: [], total: 0,
             page: paging.page, pageSize: paging.pageSize, totals: null };
         }
-        return readAccountLedger(client, companyId, linked.rows[0].id, req, true);
+        return readAccountLedger(client, companyId, linked.rows[0].id, req, "administrativeCustody");
       });
       res.json(result);
     }),
