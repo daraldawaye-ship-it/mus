@@ -240,8 +240,6 @@ export function inquiryRoutes(pool:Pool):Router {
       }else if(!value){
         throw new HttpError(400,"empty_answer","اكتب الإجابة");
       }
-      if(request.answer_type==="number_note"&&!input.explanation)
-        throw new HttpError(400,"missing_explanation","التوضيح مطلوب بجوار الرقم");
       if(!value)throw new HttpError(400,"empty_answer","الإجابة مطلوبة");
       const inserted=await db.query(
         "INSERT INTO inquiry_answers(inquiry_id,target_id,user_id,answer_value,option_number,explanation,idempotency_key) "+

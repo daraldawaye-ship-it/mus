@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { employeePositions } from "../../../../packages/contracts/src/employee-positions.ts";
 import { api, useSession } from "../api";
 import { Button, Card, Field, Notice, PageHeader } from "../ui";
+import "./InquiriesPage.css";
 
 type Inquiry = {
  id:number;companyId:number|null;companyName:string|null;requestType:string;requestText:string;
@@ -17,7 +18,7 @@ type Inquiry = {
 type Recipient={id:number;name:string};
 const labels:Record<string,string>={
  question:"سؤال",clarification:"استفسار",information:"طلب معلومات",confirmation:"طلب تأكيد",
- execution:"طلب تنفيذ",number:"رقم",number_note:"رقم وتوضيح",date:"تاريخ",
+ execution:"طلب تنفيذ",number:"رقم",number_note:"رقم",date:"تاريخ",
  yesno:"نعم أو لا",choice:"خيارات",text:"نص",first:"إجابة واحدة تكفي",
  all:"إجابة كل المعنيين",normal:"عادي",important:"مهم",urgent:"عاجل",
  open:"بانتظار الرد",answered:"تمت الإجابة",in_progress:"قيد التنفيذ",
@@ -38,11 +39,17 @@ function EnumField({label,value,options,onChange}:{label:string;value:string;opt
 const answerText=(type:string,value:string)=>type==="yesno"?(value==="yes"?"نعم":"لا"):value;
 type SavedAnswer=Pick<Inquiry["answers"][number],"answerValue"|"explanation">;
 
+function InquiryAnswerText({type,answer}:{type:string;answer:SavedAnswer}) {
+ const text=answerText(type,answer.answerValue);
+ return <span style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>
+   {answer.explanation?`${text}\n${answer.explanation}`:text}
+ </span>;
+}
+
 function InquiryAnswerCell({record,userId,root,refresh}:{
  record:Inquiry;userId:number;root:string;refresh:()=>Promise<unknown>;
 }) {
  const [answerValue,setAnswerValue]=useState("");
- const [explanation,setExplanation]=useState("");
  const [optionNumber,setOptionNumber]=useState(1);
  const [saved,setSaved]=useState<SavedAnswer|"reused"|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
@@ -58,13 +65,13 @@ function InquiryAnswerCell({record,userId,root,refresh}:{
    try {
      const draft={
        answerValue:record.answerType==="choice"?record.answerOptions[optionNumber-1]??"":answerValue.trim(),
-       explanation:explanation.trim(),
+       explanation:"",
      };
      replyKey.current??=crypto.randomUUID();
      const confirmed=await api<{reused:boolean}>(root+"/"+record.id+"/answers",{method:"POST",body:{
        answerValue:record.answerType==="choice"?"":answerValue,
        optionNumber:record.answerType==="choice"?optionNumber:null,
-       explanation,idempotencyKey:replyKey.current
+       idempotencyKey:replyKey.current
      }});
      // Never present a changed retry as the server's saved answer when the
      // first request had actually committed but its response was lost.
@@ -75,11 +82,10 @@ function InquiryAnswerCell({record,userId,root,refresh}:{
  }
  if(shown==="reused")return <span role="status">حُفظت الإجابة. جارٍ تحديث النص…</span>;
  if(shown)return <div aria-live="polite" style={{overflowWrap:"anywhere"}}>
-   <span style={{whiteSpace:"pre-wrap"}}>{answerText(record.answerType,shown.answerValue)}</span>
-   {shown.explanation&&<div className="muted" style={{whiteSpace:"pre-wrap"}}>{shown.explanation}</div>}
+   <InquiryAnswerText type={record.answerType} answer={shown}/>
  </div>;
  if(!canReply)return <>—</>;
- return <form onSubmit={reply} aria-label={"الإجابة على الاستفسار "+record.id} style={{display:"grid",gap:6}}>
+ return <form className="inquiry-answer-form" onSubmit={reply} aria-label={"الإجابة على الاستفسار "+record.id} style={{display:"grid",gap:6}}>
    {(record.answerType==="number"||record.answerType==="number_note")&&
      <Field label="الرقم" type="number" step="any" required disabled={busy}
        value={answerValue} onChange={e=>setAnswerValue(e.target.value)}/>}
@@ -103,10 +109,6 @@ function InquiryAnswerCell({record,userId,root,refresh}:{
    {record.answerType==="text"&&
      <textarea required rows={2} aria-label="نص الإجابة" placeholder="اكتب الإجابة"
        disabled={busy} value={answerValue} maxLength={2000} onChange={e=>setAnswerValue(e.target.value)}/>}
-   <label className="field"><span>{record.answerType==="number_note"?"التوضيح (إلزامي)":"توضيح (اختياري)"}</span>
-     <textarea rows={1} required={record.answerType==="number_note"} disabled={busy}
-       maxLength={2000} value={explanation} onChange={e=>setExplanation(e.target.value)}/>
-   </label>
    <Button type="submit" size="compact" disabled={busy||(record.answerType==="yesno"&&!answerValue)}>
      {busy?"جارٍ الحفظ…":"إجابة"}
    </Button>
@@ -182,7 +184,7 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
           options={["question","clarification","information","confirmation","execution"].map(x=>[x,labels[x]]) as [string,string][]}
           onChange={v=>update("requestType",v)}/>
         <EnumField label="شكل الإجابة" value={draft.answerType}
-          options={["text","number","number_note","date","yesno","choice"].map(x=>[x,labels[x]]) as [string,string][]}
+          options={["text","number","date","yesno","choice"].map(x=>[x,labels[x]]) as [string,string][]}
           onChange={v=>update("answerType",v)}/>
         <EnumField label="آلية الرد" value={draft.responseMode}
           options={[["first","يكفي رد شخص واحد"],["all","رد مستقل لكل معني"]]}
@@ -269,22 +271,23 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     {entries.isLoading&&<p>جارٍ تحميل الاستفسارات…</p>}
     {entries.isError&&<Notice tone="error">تعذر قراءة الاستفسارات. {entries.error instanceof Error?entries.error.message:""}</Notice>}
     {!entries.isLoading&&!records.length&&<p className="muted">لا توجد استفسارات مطابقة.</p>}
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",minWidth:900}}>
+    <div className="inquiries-list">
+      <table className="inquiries-list-table" role="table">
         <thead><tr>
           <th>الطلب</th><th>المعنيون</th><th>عدد الردود</th>
           <th>الإجابة</th><th>الحالة</th><th>التاريخ والوقت</th><th>الإجراء</th>
         </tr></thead>
-        <tbody>{records.map(record=><tr key={record.id}>
-          <td style={{maxWidth:260,whiteSpace:"normal"}}>{record.requestText}</td>
-          <td>{record.assignedCount}</td><td>{record.answeredCount}</td>
-          <td style={{minWidth:210,whiteSpace:"normal"}}>
+        <tbody role="rowgroup">{records.map(record=><tr role="row" key={record.id}>
+          <td role="cell" className="inquiry-request-cell">{record.requestText}</td>
+          <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">المعنيون: </span>{record.assignedCount}</td>
+          <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">الردود: </span>{record.answeredCount}</td>
+          <td role="cell" className="inquiry-answer-cell">
             <InquiryAnswerCell key={root+":"+user.id+":"+record.id} record={record} userId={user.id} root={root}
               refresh={()=>client.invalidateQueries({queryKey:["inquiries",user.id,companyId]})}/>
           </td>
-          <td>{labels[record.status]??record.status}</td>
-          <td>{when(record.createdAt)}</td>
-          <td><div className="actions">
+          <td role="cell"><span className="inquiry-mobile-label" aria-hidden="true">الحالة: </span>{labels[record.status]??record.status}</td>
+          <td role="cell">{when(record.createdAt)}</td>
+          <td role="cell"><div className="actions">
             <Button size="compact" variant="secondary" onClick={()=>{
               setSelectedId(selectedId===record.id?null:record.id);
               setActionResult(record.actionResult);
@@ -311,11 +314,11 @@ export function InquiriesPage({companyId,manager=false}:{companyId?:number;manag
     <h3>الردود</h3>
     {selected.answers.length===0?<p className="muted">لم تُسجل إجابة بعد.</p>:
       <div style={{overflowX:"auto"}}><table style={{width:"100%"}}>
-        <thead><tr><th>الرد رقم</th><th>المجيب</th><th>الرد</th><th>التوضيح</th><th>تاريخ الرد</th></tr></thead>
+        <thead><tr><th>الرد رقم</th><th>المجيب</th><th>الرد</th><th>تاريخ الرد</th></tr></thead>
         <tbody>{selected.answers.map(a=><tr key={a.id}>
           <td>{a.id}</td><td>{a.userName}</td>
-          <td>{answerText(selected.answerType,a.answerValue)}</td>
-          <td>{a.explanation||"—"}</td><td>{when(a.answeredAt)}</td>
+          <td><InquiryAnswerText type={selected.answerType} answer={a}/></td>
+          <td>{when(a.answeredAt)}</td>
         </tr>)}</tbody>
       </table></div>}
     {manager&&(user.owner||selected.createdBy===user.id)&&!["done","closed"].includes(selected.status)&&<div style={{marginTop:18}}>
