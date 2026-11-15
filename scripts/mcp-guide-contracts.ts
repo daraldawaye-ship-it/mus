@@ -26,6 +26,11 @@ export const guideMcpContracts = {
     bodyContract: "createNode",
     bodySchema: inputSchema(explanationMcpSchemas.createNode),
   },
+  "PATCH /explanations/nodes/:nodeId": {
+    ...explanationContract(["nodeId"]),
+    bodyContract: "nodeFields",
+    bodySchema: inputSchema(explanationMcpSchemas.nodeFields),
+  },
   "GET /page-catalog": {
     queryFields: ["q", "page", "pageSize", "sort", "section", "scope", "type", "status", "companyId"],
     source: "routes-pages.ts",

@@ -38,7 +38,7 @@ const documentQuery = z.object({
   all:z.enum(["true","false"]).optional(),
 }).strict();
 // Publish the same schemas used by the handlers, without duplicating their limits/defaults.
-export const explanationMcpSchemas = { createNode, documentQuery };
+export const explanationMcpSchemas = { createNode, documentQuery, nodeFields };
 const imageTypes = new Set(["image/png","image/jpeg","image/webp","image/gif","application/pdf"]);
 type Rule = { users?:number[]; kinds?:string[] } | null;
 type NodeRow = QueryResultRow & {id:number;group_id:number;parent_id:number|null;position:number;read_acl:Rule;edit_acl:Rule};

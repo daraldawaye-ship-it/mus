@@ -9163,6 +9163,151 @@
       "additionalProperties": false
     }
   },
+  "PATCH /explanations/nodes/:nodeId": {
+    "queryFields": [],
+    "pathParams": [
+      "nodeId"
+    ],
+    "source": "routes-explanations.ts",
+    "bodyContract": "nodeFields",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "body": {
+          "default": "",
+          "type": "string",
+          "maxLength": 250000
+        },
+        "evidence": {
+          "default": "",
+          "type": "string",
+          "maxLength": 100000
+        },
+        "kind": {
+          "default": "paragraph",
+          "type": "string",
+          "enum": [
+            "heading",
+            "paragraph"
+          ]
+        },
+        "color": {
+          "default": null,
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": ""
+                },
+                {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fontSize": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 36
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readAcl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "users": {
+                  "default": [],
+                  "maxItems": 300,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "kinds": {
+                  "default": [],
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "supervisor",
+                      "member"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "editAcl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "users": {
+                  "default": [],
+                  "maxItems": 300,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "kinds": {
+                  "default": [],
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "supervisor",
+                      "member"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
   "POST /medicine-market/owner/approve-existing": {
     "queryFields": [],
     "source": "routes-medicine-market.ts",
