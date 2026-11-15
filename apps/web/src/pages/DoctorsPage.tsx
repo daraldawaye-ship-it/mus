@@ -38,7 +38,7 @@ function DoctorInlineCell({doctor,field,canEdit,onSaved,onFailure}:{
   const shown=field==="kind"?(doctor.kind?doctorKindLabels[doctor.kind]:"بدون فئة — مراجعة"):
     field==="active"?(doctor.active?"فعّال":"مؤرشف"):
     field==="sharedName"?`${originalText||doctor.name}${isMainDoctorCard(doctor.name,doctor.sharedName)?" (رئيسي)":""}`:
-    (originalText||"—");
+    (field==="department"&&!originalText.trim()?"بدون جهة":originalText||"—");
   function cancel(){
     cancelled.current=true;
     setDraft(originalText);
@@ -235,7 +235,7 @@ export function DoctorsPage({context}:{context:CompanyContext}) {
   const activeFilter=params.get("active")==="false"?"false":params.get("active")==="all"?"all":"true";
   const list=usePagedQuery<Doctor>(
     `/companies/${companyId}/doctors${activeFilter==="all"?"":"?active="+activeFilter}`,
-    `company:${companyId}:doctors`,"name:asc",
+    `company:${companyId}:doctors`,"withoutDepartment:asc",
   );
   const [editing,setEditing]=useState<Doctor|"new"|null>(null);
   const [notice,setNotice]=useState("");

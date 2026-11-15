@@ -201,7 +201,11 @@ export async function lookupDownloadedDoctors<T>(path:string,userId:number):Prom
     (!activeOnly || doctor.active!==false) &&
     (!search || ["name","department","searchKeys","phone"].some(k=>
       String(doctor[k]??"").toLocaleLowerCase().includes(search))));
-  matches.sort((a,b)=>String(a.name??"").localeCompare(String(b.name??""),"ar"));
+  const withoutDepartmentFirst=params.get("sort")==="withoutDepartment:asc";
+  const hasDepartment=(doctor:Record<string,unknown>)=>Number(Boolean(String(doctor.department??"").trim()));
+  matches.sort((a,b)=>(withoutDepartmentFirst ? hasDepartment(a)-hasDepartment(b) : 0) ||
+    String(a.name??"").localeCompare(String(b.name??""),"ar") ||
+    (withoutDepartmentFirst ? Number(a.id)-Number(b.id) : 0));
   return {items:matches.slice((page-1)*pageSize,page*pageSize),
     total:matches.length,page,pageSize} as T;
 }

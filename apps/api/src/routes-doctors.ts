@@ -33,6 +33,7 @@ export function doctorRoutes(pool: Pool): Router {
     const sort = String(req.query.sort ?? "name:asc");
     const sorts: Record<string,string> = {
       "name:asc":"name ASC,id ASC","name:desc":"name DESC,id DESC",
+      "withoutDepartment:asc":"(COALESCE(department, '') ~ '^[[:space:]]*$') DESC,name ASC,id ASC",
       "sharedName:asc":"shared_name ASC,name ASC,id ASC",
       "sharedName:desc":"shared_name DESC,name ASC,id ASC",
       "kind:asc":"kind ASC,name ASC,id ASC","kind:desc":"kind DESC,name ASC,id ASC",
