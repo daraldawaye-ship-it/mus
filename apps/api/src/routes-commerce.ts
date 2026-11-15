@@ -795,6 +795,26 @@ export function commerceRoutes(pool: Pool): Router {
       res.status(201).json(result);
     }),
   );
+  // The sales header custody action is separate from access to the custody ledger page.
+  router.get(`${base}/sales/administrative-custody-transfer-access`,
+    handler(async (req, res) => {
+      const allowed = await transaction(pool, async client => {
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const user = await currentActor(client, actor(req), false);
+        const companyId = id(req.params.companyId);
+        const context = await companyAccess(client, user, companyId);
+        const policies = await centralResourcePolicies(client, companyId,
+          ["button:sales.custody-transfer"]);
+        const sales = (await directoryEntries(client, user, companyId))
+          .find(entry => entry.key === "company.sales");
+        return canOperateAdministrativeCustody(context) &&
+          !!sales?.enabled && !!sales.actionAccess.view &&
+          centralResourceAllows(policies, "button:sales.custody-transfer",
+            "edit", user.owner, context.employee?.positions ?? []);
+      });
+      res.json({ allowed });
+    }),
+  );
   // Administrative custody transfers never debit an employee's till.
   // The two company system links are resolved and validated on the server.
   router.post(
@@ -808,11 +828,16 @@ export function commerceRoutes(pool: Pool): Router {
         if (!canOperateAdministrativeCustody(context))
           throw new HttpError(403, "custody_permission_denied",
             "ترحيل العهدة الإدارية متاح للمبيعات أو إدخال المشتريات أو أمين الصندوق فقط.");
+        const policies = await centralResourcePolicies(client, companyId,
+          ["button:sales.custody-transfer"]);
+        if (!centralResourceAllows(policies, "button:sales.custody-transfer",
+              "edit", user.owner, context.employee?.positions ?? []))
+          throw new HttpError(403, "custody_button_denied", "زر العهدة غير متاح لصفتك الوظيفية.");
         await assertRequestPagesEnabled(client, req, true);
-        const entry = (await directoryEntries(client, user, companyId))
-          .find(page => page.key === "company.administrative-custody");
-        if (!entry) throw new HttpError(403, "custody_page_missing", "صفحة العهدة غير متاحة");
-        assertDirectoryAccess(entry, "post");
+        const sales = (await directoryEntries(client, user, companyId))
+          .find(page => page.key === "company.sales");
+        if (!sales) throw new HttpError(403, "sales_page_missing", "صفحة المبيعات غير متاحة");
+        assertDirectoryAccess(sales, "view");
         if (input.expenseKind === "medical") {
           await companyAccess(client, user, companyId, "commerce.manage");
           const medicalPage = (await directoryEntries(client, user, companyId))
