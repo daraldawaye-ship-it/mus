@@ -1104,6 +1104,7 @@ type ItemFields = {
   settlementDisplayDate: string;
   purchaseFactor: string;
   minOrderQuantity: string;
+  reviewed: boolean;
   reorderLimit: string;
   orderQuantity: string;
   reserveQuantity: string;
@@ -1148,6 +1149,7 @@ function initialItemFields(item: Item | null): ItemFields {
     settlementDisplayDate: item?.settlementDisplayDate ?? "",
     purchaseFactor: String(item?.purchaseFactor ?? 1),
     minOrderQuantity: item?.minOrderQuantity ?? "1",
+    reviewed: item?.reviewed ?? false,
     reorderLimit: item?.reorderLimit ?? "0",
     orderQuantity: item?.orderQuantity ?? "0",
     reserveQuantity: item?.reserveQuantity ?? "0",
@@ -2260,6 +2262,11 @@ function ItemEditor({
         </Card>
         <Card title="إعدادات الشراء والطلب">
           <div className="item-fields-grid">
+            <label className="check-label">
+              <input type="checkbox" checked={fields.reviewed} disabled={disabled}
+                onChange={event => edit("reviewed", event.target.checked)} />
+              مراجع
+            </label>
             <Field
               label="سعر الشراء الافتراضي"
               inputMode="decimal"

@@ -179,7 +179,7 @@ async function filteredItems(
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
-             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,
+             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,i.reviewed,
              i.purchase_price AS purchase_price, i.purchase_notes, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
@@ -337,7 +337,7 @@ async function filteredItems(
     id: Number(row.id), code: String(row.code), name: String(row.name),
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
-    minOrderQuantity: String(row.min_order_quantity),
+    minOrderQuantity: String(row.min_order_quantity), reviewed: Boolean(row.reviewed),
     purchasePrice: String(row.purchase_price).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     purchaseNotes: String(row.purchase_notes ?? ""),
     purchaseCurrencyCode: String(row.currency_code),
@@ -368,7 +368,7 @@ async function filteredItems(
       itemId: row.id, code: row.code, name: row.name, active: row.active,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
-      minOrderQuantity: row.minOrderQuantity,
+      minOrderQuantity: row.minOrderQuantity, reviewed: row.reviewed,
       purchasePrice: row.purchasePrice, purchaseCurrencyCode: row.purchaseCurrencyCode,
       purchaseNotes: row.purchaseNotes,
       requiredPurchaseQuantity: requiredQuantities.get(row.id)?.requiredPurchaseQuantity ?? "0",
@@ -492,7 +492,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
              + COALESCE(staged_rank.net_sale_invoices,0))::text AS "saleTimesMonth",
            COALESCE(annual_sales.sale_times_year,0)::text AS "saleTimesYear",
            greatest(i.purchase_factor,1)::integer AS "purchaseFactor",
-           i.min_order_quantity::text AS "minOrderQuantity",
+           i.min_order_quantity::text AS "minOrderQuantity",i.reviewed AS "reviewed",
            i.purchase_price::text AS "purchasePrice",
            currency.code AS "purchaseCurrencyCode",
            CASE WHEN r.required_quantity IS NULL THEN NULL
@@ -904,6 +904,47 @@ export function itemOptionsListRoutes(pool: Pool): Router {
         { field: "minOrderQuantity", value: String(updated.min_order_quantity) }, companyId);
       return { itemId, revision: Number(updated.revision),
         minOrderQuantity: String(updated.min_order_quantity) };
+    });
+    res.json({ result });
+  }));
+
+  // Review marker shares company scope, page edit permission, revision and audit.
+  router.patch("/companies/:companyId/items/:itemId/reviewed", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const itemId = id(req.params.itemId);
+    const input = parse(z.object({
+      revision: z.number().int().positive(),
+      reviewed: z.boolean(),
+    }).strict(), req.body);
+    const result = await transaction(pool, async client => {
+      const user = await currentActor(client, actor(req));
+      await companyAccess(client, user, companyId, "items.view");
+      const entries = await directoryEntries(client, user, companyId);
+      const listPage = entries.find(page => page.key === "company.item-options-list");
+      if (!listPage) throw new HttpError(403, "forbidden", "قائمة الأصناف غير متاحة");
+      assertDirectoryAccess(listPage, "edit");
+      const row = (await client.query(
+        "SELECT revision, reviewed FROM items WHERE company_id=$1 AND id=$2 FOR UPDATE",
+        [companyId, itemId],
+      )).rows[0];
+      if (!row) throw new HttpError(404, "item_not_found", "الصنف غير موجود");
+      if (Number(row.revision) !== input.revision)
+        throw new HttpError(409, "stale_item", "عُدّل كرت الصنف من مستخدم آخر؛ حدّث القائمة ثم حاول مجددًا.");
+      if (Boolean(row.reviewed) === input.reviewed)
+        return { itemId, revision: Number(row.revision), reviewed: input.reviewed };
+      const updated = (await client.query(
+        `UPDATE items SET reviewed=$3::boolean,
+           revision=revision+1,updated_at=clock_timestamp()
+         WHERE company_id=$1 AND id=$2 AND revision=$4
+         RETURNING revision,reviewed`,
+        [companyId, itemId, input.reviewed, input.revision],
+      )).rows[0];
+      if (!updated) throw new HttpError(409, "stale_item", "تغيرت نسخة الصنف؛ حدّث القائمة.");
+      await audit(client, user, "item.field.update", "item", itemId,
+        { field: "reviewed", value: Boolean(row.reviewed) },
+        { field: "reviewed", value: Boolean(updated.reviewed) }, companyId);
+      return { itemId, revision: Number(updated.revision),
+        reviewed: Boolean(updated.reviewed) };
     });
     res.json({ result });
   }));

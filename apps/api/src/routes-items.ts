@@ -1174,6 +1174,7 @@ export function itemRoutes(pool: Pool): Router {
             compositionId: input.compositionId === undefined ? before.compositionId : input.compositionId,
             shelfId: input.shelfId === undefined ? before.shelfId : input.shelfId,
             reserveQuantity: input.reserveQuantity ?? before.reserveQuantity,
+            reviewed: input.reviewed ?? before.reviewed,
             supplierAccountId: input.supplierAccountId === undefined ? before.supplierAccountId : input.supplierAccountId,
             nearestExpiryDate: input.nearestExpiryDate === undefined ? before.nearestExpiryDate : input.nearestExpiryDate,
           };
@@ -1234,7 +1235,7 @@ export function itemRoutes(pool: Pool): Router {
             factor3: "عدد الوحدة الثالثة", defaultSaleUnit: "وحدة البيع الافتراضية",
             salePrice1: "سعر بيع الوحدة الأولى", salePrice2: "سعر بيع الوحدة الثانية",
             salePrice3: "سعر بيع الوحدة الثالثة", purchasePrice: "سعر الشراء",
-            purchaseFactor: "عامل وحدة الشراء", minOrderQuantity: "أقل كمية طلب", defaultProfitFactor: "نسبة الربح الافتراضية",
+            purchaseFactor: "عامل وحدة الشراء", minOrderQuantity: "أقل كمية طلب", reviewed: "مراجع", defaultProfitFactor: "نسبة الربح الافتراضية",
             orderAlertQuantity: "كمية الطلب للتنبيه", currencyId: "عملة الأسعار",
             reorderLimit: "حد الطلب", orderQuantity: "كمية الطلب",
             reserveQuantity: "الكمية الاحتياطية", searchKeys: "مفاتيح البحث",

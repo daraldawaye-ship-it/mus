@@ -207,6 +207,7 @@ const itemFields = z
     settlementDisplayDate: documentDateSchema.nullable().default(null),
     purchaseFactor: itemFactorSchema.default(1),
     minOrderQuantity: itemMinOrderQuantitySchema.default("1"),
+    reviewed: z.boolean().default(false),
     currencyId: id,
     reorderLimit: itemWholeQuantitySchema.default("0"),
     orderQuantity: itemWholeQuantitySchema.default("0"),
@@ -281,6 +282,7 @@ export const itemPatchSchema = itemFields
     compositionId: id.nullable().optional(),
     shelfId: id.nullable().optional(),
     reserveQuantity: itemWholeQuantitySchema.optional(),
+    reviewed: z.boolean().optional(),
     supplierAccountId: id.nullable().optional(),
   })
   .strict()
@@ -391,6 +393,7 @@ export interface Item extends ItemIdentity {
   settlementDisplayAt: string | null;
   purchaseFactor: number;
   minOrderQuantity: string;
+  reviewed: boolean;
   currencyId: number;
   currencyCode: string;
   currencyName: string;

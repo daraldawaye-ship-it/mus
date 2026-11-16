@@ -31,7 +31,7 @@ export async function itemIdempotent(
 ): Promise<QueryResultRow | null> {
   // Old accepted creates may predate these defaults; keep their payload immutable.
   const samePayload = table === "items"
-    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null,"nearestExpiryDate":null,"shortcut":""}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null,"nearestExpiryDate":null,"shortcut":""}'::jsonb || $3::jsonb)`
+    ? `('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null,"nearestExpiryDate":null,"shortcut":"","reviewed":false}'::jsonb || creation_payload)=('{"legacyId":"","defaultSaleUnit":1,"compositionId":null,"shelfId":null,"reserveQuantity":"0","supplierAccountId":null,"nearestExpiryDate":null,"shortcut":"","reviewed":false}'::jsonb || $3::jsonb)`
     : "creation_payload=$3::jsonb";
   const result = await db.query(
     `SELECT id,(${samePayload}) AS same_payload FROM ${table} WHERE company_id=$1 AND idempotency_key=$2`,
@@ -233,6 +233,7 @@ export const itemFieldColumns = [
   ["settlementDisplayDate", "settlement_display_date"],
   ["purchaseFactor", "purchase_factor"],
   ["minOrderQuantity", "min_order_quantity"],
+  ["reviewed", "reviewed"],
   ["currencyId", "currency_id"],
   ["reorderLimit", "reorder_limit"],
   ["orderQuantity", "order_quantity"],

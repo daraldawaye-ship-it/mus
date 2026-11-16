@@ -62,14 +62,14 @@ function readDraft(params: URLSearchParams): Draft {
     purchasePriceMin: params.get("purchasePriceMin") ?? "", purchasePriceMax: params.get("purchasePriceMax") ?? "",
     requiredPurchaseQuantityMin: params.get("requiredPurchaseQuantityMin") ?? "", requiredPurchaseQuantityMax: params.get("requiredPurchaseQuantityMax") ?? "",
     requiredPurchaseValueMin: params.get("requiredPurchaseValueMin") ?? "", requiredPurchaseValueMax: params.get("requiredPurchaseValueMax") ?? "",
-    monthMin: params.get("monthMin") ?? "1", monthMax: params.get("monthMax") ?? "",
+    monthMin: params.get("monthMin") ?? "", monthMax: params.get("monthMax") ?? "",
     fourMonthsMin: params.get("fourMonthsMin") ?? "", fourMonthsMax: params.get("fourMonthsMax") ?? "",
-    yearMin: params.get("yearMin") ?? "2", yearMax: params.get("yearMax") ?? "",
+    yearMin: params.get("yearMin") ?? "", yearMax: params.get("yearMax") ?? "",
     allTimeMin: params.get("allTimeMin") ?? "", allTimeMax: params.get("allTimeMax") ?? "",
     previousYearMin: params.get("previousYearMin") ?? "", previousYearMax: params.get("previousYearMax") ?? "",
     coverageMin: params.get("coverageMin") ?? "", coverageMax: params.get("coverageMax") ?? "",
     coverageWithReserveMin: params.get("coverageWithReserveMin") ?? "",
-    coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "1",
+    coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "",
     coverageWithRequiredMin: params.get("coverageWithRequiredMin") ?? "", coverageWithRequiredMax: params.get("coverageWithRequiredMax") ?? "",
     orderTargetDays: params.get("orderTargetDays") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
@@ -304,8 +304,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   if (q) request.set("q", q.slice(0, 120));
   for (const { key } of ranges) {
     // Absent parameters get defaults; an explicitly blank value remains unbounded.
-    const value = (params.get(key) ??
-      (key === "monthMin" || key === "coverageWithReserveMax" ? "1" : key === "yearMin" ? "2" : "")).trim();
+    const value = (params.get(key) ?? "").trim();
     if (value && numberPattern.test(value)) request.set(key, value);
   }
   // Always target a positive number of days, defaulting to one. It is not
@@ -714,7 +713,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     cancelAutoFilter();
     setSelectedPresetId("");
     const defaults = new URLSearchParams({
-      monthMin: "1", yearMin: "2", coverageWithReserveMax: "1",
+      monthMin: "", yearMin: "", coverageWithReserveMax: "",
       orderTargetDays: "1",
       coverageFilterVersion: "2",
       sortBy: "allTime", sortDir: "desc",

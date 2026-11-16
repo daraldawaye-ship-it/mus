@@ -102,6 +102,7 @@ export function itemDTO(row: QueryResultRow): Item {
     settlementDisplayAt: row.settlement_display_at ? new Date(row.settlement_display_at).toISOString() : null,
     purchaseFactor: row.purchase_factor,
     minOrderQuantity: String(row.min_order_quantity),
+    reviewed: Boolean(row.reviewed),
     currencyId: row.currency_id,
     currencyCode: row.currency_code,
     currencyName: row.currency_name,

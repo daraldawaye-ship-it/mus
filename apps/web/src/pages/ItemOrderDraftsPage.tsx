@@ -11,6 +11,7 @@ import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
+import { ItemReviewedQuickEdit } from "../ItemReviewedQuickEdit";
 import { ItemMinOrderQuantityQuickEdit } from "../ItemMinOrderQuantityQuickEdit";
 import { ItemSpecialOrderQuantityQuickEdit, ItemOrderStopQuickActions } from "../ItemSpecialOrderQuickActions";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
@@ -25,7 +26,7 @@ type DraftMetrics = {
   orderAlertQuantity: string | null; orderStoppedUntil: string | null;
   availableUnit1: string; saleQuantityMonth: string;
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
-  minOrderQuantity: string;
+  minOrderQuantity: string; reviewed: boolean;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
 };
 type DraftValue = {
@@ -382,6 +383,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   }
   const planningControls = (row: DraftRow, info: DraftMetrics | undefined) =>
     <div className="item-order-draft-extra-fields">
+      <div className="item-order-draft-extra-field">
+        {info ? <ItemReviewedQuickEdit companyId={companyId}
+          itemId={row.item.id} revision={info.revision}
+          reviewed={info.reviewed} canEdit={canEditPlanning} />
+          : <small>جارٍ تحميل حالة المراجعة…</small>}
+      </div>
       <div className="item-order-draft-extra-field">
         <strong>كمية الاحتياط</strong>
         {info ? <ItemReserveQuickEdit companyId={companyId}
