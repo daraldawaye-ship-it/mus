@@ -91,3 +91,13 @@
   .purchase-comparison-detail-pane { max-height: none; overflow: visible; }
   .purchase-comparison-detail-pane:empty { display: none; }
 }
+
+.purchase-comparison-review-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.purchase-comparison-review-filter .button {
+  min-height: 30px;
+}
