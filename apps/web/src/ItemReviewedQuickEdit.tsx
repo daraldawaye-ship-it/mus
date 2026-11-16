@@ -29,12 +29,16 @@ export function ItemReviewedQuickEdit({ companyId, itemId, revision, reviewed, c
     }
   }
   return <div>
-    <label className="check-label">
-      <input type="checkbox" checked={reviewed} disabled={!canEdit || saving}
-        onChange={event => void save(event.target.checked)} />
-      مراجع
-      {saving && <small role="status">حفظ…</small>}
-    </label>
+    <div className="item-reviewed-chips" role="group" aria-label="حالة المراجعة">
+      {[{ value: false, label: "غير مراجع" }, { value: true, label: "مراجع" }].map(option =>
+        <button key={String(option.value)} type="button"
+          className={reviewed === option.value ? "is-selected" : ""}
+          aria-pressed={reviewed === option.value} disabled={!canEdit || saving}
+          onClick={() => { if (reviewed !== option.value) void save(option.value); }}>
+          {option.label}
+        </button>)}
+    </div>
+    {saving && <small role="status">حفظ…</small>}
     {error && <small className="text-error" role="alert">{error}</small>}
   </div>;
 }

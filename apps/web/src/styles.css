@@ -8971,3 +8971,11 @@ a.notification-quick-title:hover { text-decoration: underline; }
   text-overflow: clip;
   overflow-wrap: anywhere;
 }
+
+.item-options-desktop-table col.item-options-planning-col { width: 140px; }
+/* Compact choice chips for item review in the list and order drafts. */
+.item-reviewed-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.item-reviewed-chips button { min-height: 28px; padding: 3px 9px; border: 1px solid var(--button-border,var(--border)); border-radius: 999px; background: var(--button-surface,var(--surface)); color: var(--text); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.item-reviewed-chips button.is-selected { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.item-reviewed-chips button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.item-reviewed-chips button:disabled { opacity: .6; cursor: default; }

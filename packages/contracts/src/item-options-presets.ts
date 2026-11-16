@@ -45,7 +45,9 @@ export const itemOptionsPresetFiltersSchema = z.object({
   reserveCoverageMax: numericRange.default(""),
   purchaseFactorCoverageMin: numericRange.default(""),
   purchaseFactorCoverageMax: numericRange.default(""),
-  excludeZero: z.boolean(),
+  // Decode old clients, but remove the retired flag from the saved output.
+  excludeZero: z.boolean().optional(),
+  excludeReviewed: z.boolean().default(false),
   // Old saved presets without this field must keep the new safe default.
   excludeOrderStopped: z.boolean().default(true),
   // Drafts are stored on the current device; older presets default to excluding them.
@@ -59,14 +61,16 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // Optional for backwards compatibility with presets saved before column preferences existed.
   // Shared presets preserve exactly which columns the user chose on any device.
   coverageColumnsVersion: z.literal(2).optional(),
+  planningColumnsVersion: z.literal(1).optional(),
   visibleColumns: z.array(z.enum([
+    "minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed",
     "choice", "name", "purchaseNotes", "stock", "reserve", "purchaseFactor", "month",
     "saleQuantityMonth", "fourMonths", "allTime", "previousYear",
     "requiredPurchaseQuantity", "purchasePrice", "requiredPurchaseValue",
     "coverage", "coverageWithReserve", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
-    ])).min(1).max(19).refine(columns => new Set(columns).size === columns.length,
+    ])).min(1).max(23).refine(columns => new Set(columns).size === columns.length,
     "لا يمكن تكرار العمود في مجموعة الحفظ").optional(),
-}).strict();
+}).strict().transform(({ excludeZero, ...filters }) => filters);
 export const itemOptionsPresetCreateSchema = z.object({
   name: z.string().trim().min(1, "اكتب اسمًا للفلتر").max(80),
   filters: itemOptionsPresetFiltersSchema,

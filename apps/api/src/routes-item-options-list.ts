@@ -45,7 +45,7 @@ const querySchema = z.object({
     z.string().regex(/^\d{1,15}(?:\.\d{1,6})?$/).refine(value => Number(value) > 0).default("1")),
   reserveCoverageMin: optionalNumber, reserveCoverageMax: optionalNumber,
   purchaseFactorCoverageMin: optionalNumber, purchaseFactorCoverageMax: optionalNumber,
-  excludeZero: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
+  excludeReviewed: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   // The former useReserve request parameter is ignored if supplied by old links.
@@ -113,7 +113,7 @@ async function filteredItems(
   range(options.allTimeMax, "m.sale_times_all_time", "<=");
   range(options.previousYearMin, "m.sale_times_previous_year", ">=");
   range(options.previousYearMax, "m.sale_times_previous_year", "<=");
-  if (options.excludeZero) predicates.push("m.available_smallest <> 0");
+  if (options.excludeReviewed) predicates.push("NOT m.reviewed");
 
   // The existing item coverage calculation is only joined before pagination
   // when the user filters on coverage; otherwise enrich the 20-100 rows returned.
@@ -179,7 +179,7 @@ async function filteredItems(
   const sql = `
     WITH candidate AS (
       SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
-             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,i.reviewed,
+             i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,i.reviewed,i.order_alert_quantity,i.order_stopped_until::text AS order_stopped_until,
              i.purchase_price AS purchase_price, i.purchase_notes, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
              (COALESCE(sale_rank.net_sale_invoices,0)+COALESCE(staged_rank.net_sale_invoices,0)) AS sale_times_month,
@@ -338,6 +338,8 @@ async function filteredItems(
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
     minOrderQuantity: String(row.min_order_quantity), reviewed: Boolean(row.reviewed),
+    orderAlertQuantity: row.order_alert_quantity == null ? null : String(row.order_alert_quantity),
+    orderStoppedUntil: row.order_stopped_until == null ? null : String(row.order_stopped_until).slice(0,10),
     purchasePrice: String(row.purchase_price).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""),
     purchaseNotes: String(row.purchase_notes ?? ""),
     purchaseCurrencyCode: String(row.currency_code),
@@ -369,6 +371,7 @@ async function filteredItems(
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
       minOrderQuantity: row.minOrderQuantity, reviewed: row.reviewed,
+      orderAlertQuantity: row.orderAlertQuantity, orderStoppedUntil: row.orderStoppedUntil,
       purchasePrice: row.purchasePrice, purchaseCurrencyCode: row.purchaseCurrencyCode,
       purchaseNotes: row.purchaseNotes,
       requiredPurchaseQuantity: requiredQuantities.get(row.id)?.requiredPurchaseQuantity ?? "0",
@@ -761,7 +764,7 @@ export function itemOptionsListRoutes(pool: Pool): Router {
           coverageMax:oldNet ? "" : filters.coverageMax,
           coverageWithReserveMin:legacy ? (oldNet?filters.coverageMin:"") : filters.coverageWithReserveMin,
           coverageWithReserveMax:legacy ? (oldNet?filters.coverageMax:"") : filters.coverageWithReserveMax,
-          excludeZero:filters.excludeZero?"true":"false",
+          excludeReviewed:filters.excludeReviewed?"true":"false",
           excludeOrderStopped:filters.excludeOrderStopped?"true":"false",
           // Exclude only items already assigned in PREVIOUS group stages.
           excludeOrderDrafts:"true",

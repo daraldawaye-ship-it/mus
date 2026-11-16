@@ -14,6 +14,9 @@ import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { useSharedItemSelection } from "../shared-item-selection";
 import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
+import { ItemMinOrderQuantityQuickEdit } from "../ItemMinOrderQuantityQuickEdit";
+import { ItemReviewedQuickEdit } from "../ItemReviewedQuickEdit";
+import { ItemSpecialOrderQuantityQuickEdit, ItemOrderStopQuickActions } from "../ItemSpecialOrderQuickActions";
 import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import { itemOptionsPresetFiltersSchema, type ItemOptionsPreset, type ItemOptionsPresetFilters, type ItemOptionsPresetGroup } from "../../../../packages/contracts/src/item-options-presets.ts";
@@ -53,7 +56,7 @@ const ranges = [
   { key: "purchaseFactorCoverageMax", label: "كفاية عامل وحدة الشراء إلى (يوم)" },
 ] as const;
 type RangeKey = (typeof ranges)[number]["key"];
-type Draft = Record<RangeKey, string> & { orderTargetDays: string; excludeZero: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean };
+type Draft = Record<RangeKey, string> & { orderTargetDays: string; excludeReviewed: boolean; excludeOrderStopped: boolean; excludeOrderDrafts: boolean };
 function readDraft(params: URLSearchParams): Draft {
   return {
     stockMin: params.get("stockMin") ?? "", stockMax: params.get("stockMax") ?? "",
@@ -74,7 +77,7 @@ function readDraft(params: URLSearchParams): Draft {
     orderTargetDays: params.get("orderTargetDays") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
-    excludeZero: params.get("excludeZero") === "true",
+    excludeReviewed: params.get("excludeReviewed") === "true",
     excludeOrderStopped: params.get("excludeOrderStopped") !== "false",
     excludeOrderDrafts: params.get("excludeOrderDrafts") !== "false",
   };
@@ -106,6 +109,7 @@ function migrateLegacyCoverageParams(params: URLSearchParams): URLSearchParams |
 /** Preserve explicitly blank ranges, including user-cleared defaults. */
 function appliedFilterParams(previous: URLSearchParams, values: Draft, query: string): URLSearchParams {
   const next = new URLSearchParams(previous);
+  next.delete("excludeZero");
   for (const { key } of ranges) {
     const value = values[key].trim();
     if (value || key === "stockMin" || key === "stockMax" ||
@@ -117,7 +121,7 @@ function appliedFilterParams(previous: URLSearchParams, values: Draft, query: st
   // independent post-reserve sufficiency filter range.
   next.set("orderTargetDays", values.orderTargetDays.trim());
   if (query.trim()) next.set("q", query.trim()); else next.delete("q");
-  if (values.excludeZero) next.set("excludeZero", "true"); else next.delete("excludeZero");
+  if (values.excludeReviewed) next.set("excludeReviewed", "true"); else next.delete("excludeReviewed");
   if (!values.excludeOrderStopped) next.set("excludeOrderStopped", "false"); else next.delete("excludeOrderStopped");
   if (!values.excludeOrderDrafts) next.set("excludeOrderDrafts", "false"); else next.delete("excludeOrderDrafts");
   next.delete("useReserve");
@@ -137,6 +141,7 @@ type Row = {
   itemId: number; code: string; name: string; active: boolean;
   revision: number; reserveQuantity: string; purchaseFactor: number;
   requiredPurchaseQuantity: string;
+  minOrderQuantity: string; orderAlertQuantity: string | null; orderStoppedUntil: string | null; reviewed: boolean;
   purchasePrice: string; purchaseCurrencyCode: string; purchaseNotes: string;
   requiredPurchaseValue: string; coverageWithRequiredDays: string;
   factor2: number; factor3: number; availableSmallest: string;
@@ -173,7 +178,8 @@ const sortOptions = [
   ["reserveCoverage", "كفاية كمية الاحتياط وحدها"],
   ["purchaseFactorCoverage", "كفاية عامل وحدة الشراء"],
 ] as const;
-const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const tableColumnOptions = [["choice","اختيار"],["stock","المتوفر دون المرتجعات (الوحدة الأولى)"],["saleQuantityMonth","الكمية المباعة في شهر (الوحدة الأولى)"],["name","اسم الصنف"],["reserve","كمية احتياط"],["purchaseFactor","عامل وحدة الشراء (الوحدة الأولى)"],["minOrderQuantity","أقل كمية طلب"],["orderAlertQuantity","كمية الطلب"],["orderStoppedUntil","إيقاف"],["reviewed","مراجع"],["month","مبيعات مرات في شهر"],["fourMonths","مبيعات مرات في 4 أشهر"],["allTime","مبيعات مرات منذ البداية"],["previousYear","مرات عام السابق"],["requiredPurchaseQuantity","الكمية المطلوبة (الوحدة الأولى)"],["purchasePrice","سعر الشراء الافتراضي (الوحدة الأولى)"],["requiredPurchaseValue","قيمة المطلوب"],["purchaseNotes","ملاحظات عند الشراء"],["coverage","الكفاية بدون الاحتياط (يوم)"],["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],["coverageWithRequired","الكفاية مع المطلوب (يوم)"],["reserveCoverage","كفاية كمية الاحتياط وحدها (يوم)"],["purchaseFactorCoverage","كفاية عامل وحدة الشراء (يوم)"]] as const;
+const planningColumns = ["minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed"] as const;
 type TableColumn = (typeof tableColumnOptions)[number][0];
 const allTableColumns = tableColumnOptions.map(([id]) => id);
 function readVisibleTableColumns(key: string): TableColumn[] {
@@ -183,14 +189,15 @@ function readVisibleTableColumns(key: string): TableColumn[] {
     // A v2 selection is explicit and may intentionally hide either column.
     const current = window.localStorage.getItem(key);
     const older = current === null
-      ? window.localStorage.getItem(key.replace(":v2:", ":v1:")) : null;
+      ? window.localStorage.getItem(key.replace(":v3:", ":v2:")) ?? window.localStorage.getItem(key.replace(":v3:", ":v1:")) : null;
     const raw = current ?? older;
     if (!raw) return allTableColumns;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return allTableColumns;
-    const isLegacy = current === null && older !== null;
+    const isLegacy = current === null && window.localStorage.getItem(key.replace(":v3:", ":v2:")) === null && older !== null;
     const valid = allTableColumns.filter(id => parsed.includes(id) ||
-      (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")));
+      (isLegacy && id === "coverageWithReserve" && parsed.includes("coverage")) ||
+      (current === null && planningColumns.includes(id as typeof planningColumns[number])));
     return valid.length ? valid : allTableColumns;
   } catch { return allTableColumns; }
 }
@@ -206,7 +213,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const [printMode, setPrintMode] = useState<"selected" | number>("selected");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
-  const columnsStorageKey = `alraesy:item-options-columns:v2:${companyId}:${user?.id ?? "guest"}`;
+  const columnsStorageKey = `alraesy:item-options-columns:v3:${companyId}:${user?.id ?? "guest"}`;
   const [visibleColumns, setVisibleColumns] = useState<TableColumn[]>(() => readVisibleTableColumns(columnsStorageKey));
   const [editingColumns, setEditingColumns] = useState<TableColumn[]>(visibleColumns);
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -313,7 +320,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   request.set("orderTargetDays",
     numberPattern.test(orderTargetDays) && Number(orderTargetDays) > 0
       ? orderTargetDays : "1");
-  if (params.get("excludeZero") === "true") request.set("excludeZero", "true");
+  if (params.get("excludeReviewed") === "true") request.set("excludeReviewed", "true");
   if (params.get("excludeOrderStopped") === "false") request.set("excludeOrderStopped", "false");
   if (params.get("excludeOrderDrafts") === "false") request.set("excludeOrderDrafts", "false");
   // The numbered drafts are intentionally device-local. Pass only their IDs,
@@ -450,6 +457,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   const change = (key: string, value: string) => {
     setParams(previous => {
       const next = new URLSearchParams(previous);
+  next.delete("excludeZero");
       if (value) next.set(key, value); else next.delete(key);
       if (key !== "page") next.delete("page");
       return next;
@@ -532,11 +540,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       q: search.trim(), active, sortBy, sortDir,
       ...Object.fromEntries(ranges.map(({key}) => [key,draft[key].trim()])),
       orderTargetDays: draft.orderTargetDays.trim(),
-      excludeZero: draft.excludeZero,
+      excludeReviewed: draft.excludeReviewed,
       excludeOrderStopped: draft.excludeOrderStopped,
       excludeOrderDrafts: draft.excludeOrderDrafts,
       coverageFilterVersion: 2 as const,
       coverageColumnsVersion: 2 as const,
+      planningColumnsVersion: 1 as const,
       visibleColumns: [...visibleColumns],
     };
     const result = itemOptionsPresetFiltersSchema.safeParse(candidate);
@@ -581,6 +590,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
     if (values.visibleColumns?.length) {
       const restoredColumns = allTableColumns.filter(id =>
         values.visibleColumns?.includes(id) ||
+        (values.planningColumnsVersion !== 1 && planningColumns.includes(id as typeof planningColumns[number])) ||
         (values.coverageColumnsVersion !== 2 && id === "coverageWithReserve" &&
           values.visibleColumns?.includes("coverage")));
       if (restoredColumns.length) {
@@ -613,7 +623,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
       next.set(key, value);
     }
     next.set("orderTargetDays", values.orderTargetDays);
-    if(values.excludeZero) next.set("excludeZero","true");
+    if(values.excludeReviewed) next.set("excludeReviewed","true");
     if(!values.excludeOrderStopped) next.set("excludeOrderStopped","false");
     if(!values.excludeOrderDrafts) next.set("excludeOrderDrafts","false");
     next.set("coverageFilterVersion","2");
@@ -731,6 +741,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function selectSortColumn(column: SortColumn) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
+  next.delete("excludeZero");
       next.set("sortBy", column);
       next.set("sortDir", column === "code" || column === "name" ? "asc" : "desc");
       next.delete("page");
@@ -758,6 +769,7 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
   function sortByColumn(column: SortColumn) {
     setParams(previous => {
       const next = new URLSearchParams(previous);
+  next.delete("excludeZero");
       const isSameColumn = (previous.get("sortBy") ?? "allTime") === column;
       const currentDirection = previous.get("sortDir") ?? "desc";
       const nextDirection = isSameColumn
@@ -853,12 +865,12 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
         </div>
         <div className="form-actions item-options-filter-actions">
           <label className="checkbox">
-            <input type="checkbox" checked={draft.excludeZero}
+            <input type="checkbox" checked={draft.excludeReviewed}
               onChange={event => {
-                 const next = { ...draft, excludeZero: event.target.checked };
+                 const next = { ...draft, excludeReviewed: event.target.checked };
                  setDraft(next); scheduleAutoFilter(next, search);
                }} />
-            استثناء الأصناف ذات الكمية الصفرية
+            استثناء الأصناف المراجعة
           </label>
           <label className="checkbox" title="عند التفعيل تُستبعد الأصناف التي يكون تاريخ «يتوقف الطلب حتى تاريخ» في كرت الصنف بعد تاريخ اليوم، فلا تدخل في قائمة الطلب أو الإجمالي أو المسودات.">
             <input type="checkbox" checked={draft.excludeOrderStopped}
@@ -1228,7 +1240,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                   revision={row.revision} purchaseFactor={row.purchaseFactor}
                   canEdit={canEditReserve} />
               </div>
-              <div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
+              <div style={hiddenColumnStyle("minOrderQuantity")} className="item-options-mobile-stat"><span>أقل كمية طلب</span><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></div>
+<div style={hiddenColumnStyle("orderAlertQuantity")} className="item-options-mobile-stat"><span>كمية الطلب</span><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></div>
+<div style={hiddenColumnStyle("orderStoppedUntil")} className="item-options-mobile-stat"><span>إيقاف</span><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></div>
+<div style={hiddenColumnStyle("reviewed")} className="item-options-mobile-stat"><span>مراجع</span><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></div>
+<div style={hiddenColumnStyle("month")} className="item-options-mobile-stat">
                 <span>شهر</span><bdi>{row.saleTimesMonth}</bdi>
               </div>
               <div style={hiddenColumnStyle("fourMonths")} className="item-options-mobile-stat">
@@ -1269,7 +1285,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {visibleColumns.includes("name") && <col className="item-options-name-col" />}
             {visibleColumns.includes("reserve") && <col className="item-options-reserve-col" />}
             {visibleColumns.includes("purchaseFactor") && <col className="item-options-purchase-factor-col" />}
-            {visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
+            {visibleColumns.includes("minOrderQuantity") && <col className="item-options-planning-col" />}
+{visibleColumns.includes("orderAlertQuantity") && <col className="item-options-planning-col" />}
+{visibleColumns.includes("orderStoppedUntil") && <col className="item-options-planning-col" />}
+{visibleColumns.includes("reviewed") && <col className="item-options-planning-col" />}
+{visibleColumns.includes("month") && <col className="item-options-month-times-col" />}
             {visibleColumns.includes("fourMonths") && <col className="item-options-four-months-col" />}
             {visibleColumns.includes("allTime") && <col className="item-options-all-time-col" />}
             {visibleColumns.includes("previousYear") && <col className="item-options-previous-year-col" />}
@@ -1290,7 +1310,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
             {sortHeader("name", "اسم الصنف")}
             {sortHeader("reserve", "كمية احتياط")}
             {sortHeader("purchaseFactor", "عامل وحدة الشراء (الوحدة الأولى)")}
-            {sortHeader("month", "مبيعات مرات في شهر")}
+            <th scope="col" style={hiddenColumnStyle("minOrderQuantity")}>أقل كمية طلب</th>
+<th scope="col" style={hiddenColumnStyle("orderAlertQuantity")}>كمية الطلب</th>
+<th scope="col" style={hiddenColumnStyle("orderStoppedUntil")}>إيقاف</th>
+<th scope="col" style={hiddenColumnStyle("reviewed")}>مراجع</th>
+{sortHeader("month", "مبيعات مرات في شهر")}
             {sortHeader("fourMonths", "مبيعات مرات في 4 أشهر")}
             {sortHeader("allTime", "مبيعات مرات منذ البداية")}
             {sortHeader("previousYear", "مرات عام السابق")}
@@ -1324,7 +1348,11 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td style={hiddenColumnStyle("purchaseFactor")}><ItemPurchaseFactorQuickEdit key={row.itemId} companyId={companyId}
                  itemId={row.itemId} revision={row.revision}
                  purchaseFactor={row.purchaseFactor} canEdit={canEditReserve} /></td>
-              <td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
+              <td style={hiddenColumnStyle("minOrderQuantity")}><ItemMinOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} minOrderQuantity={row.minOrderQuantity} canEdit={canEditReserve} /></td>
+<td style={hiddenColumnStyle("orderAlertQuantity")}><ItemSpecialOrderQuantityQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} orderAlertQuantity={row.orderAlertQuantity} canEdit={canEditReserve} /></td>
+<td style={hiddenColumnStyle("orderStoppedUntil")}><ItemOrderStopQuickActions key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} itemName={row.name} orderStoppedUntil={row.orderStoppedUntil} canEdit={canEditReserve} /></td>
+<td style={hiddenColumnStyle("reviewed")}><ItemReviewedQuickEdit key={row.itemId} companyId={companyId} itemId={row.itemId} revision={row.revision} reviewed={row.reviewed} canEdit={canEditReserve} /></td>
+<td style={hiddenColumnStyle("month")}><bdi>{row.saleTimesMonth}</bdi></td>
               <td style={hiddenColumnStyle("fourMonths")}><bdi>{row.saleTimesFourMonths}</bdi></td>
               <td style={hiddenColumnStyle("allTime")}><bdi>{row.saleTimesAllTime}</bdi></td>
               <td style={hiddenColumnStyle("previousYear")}><bdi>{row.saleTimesPreviousYear ?? "—"}</bdi></td>
