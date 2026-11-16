@@ -22,9 +22,9 @@ type ExportRow = {
 };
 type ExportResult = { items: ExportRow[]; total: number; page: number; pageSize: number };
 
-export function OrderDraftExportsPage({ context }: { context: CompanyContext }) {
+export function OrderDraftExportsPage({ context, comparison = false }: { context: CompanyContext; comparison?: boolean }) {
   const [params] = useSearchParams();
-  return params.get("view") === "purchases"
+  return comparison || params.get("view") === "purchases"
     ? <PurchaseComparison context={context} />
     : <ExportHistory context={context} />;
 }
@@ -302,7 +302,7 @@ function ExportHistory({ context }: { context: CompanyContext }) {
   return <section className="order-export-followup">
     <PageHeader title="متابعة الطلبيات المرحلة"
       description="سجل مشترك لجميع أجهزة الشركة؛ الصنف لا يُسجل أكثر من مرة في اليوم، والسجلات الأقدم من 40 يومًا تُحذف تلقائيًا."
-      actions={<><Link className="button button-secondary" to="?view=purchases">فارق الشراء والطلبيه</Link> <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link></>} />
+      actions={<><Link className="button button-secondary" to={`/companies/${companyId}/purchase-comparison`}>فارق الشراء والطلبيه</Link> <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link></>} />
     <Card>
       <form onSubmit={event => { event.preventDefault(); setFilter(search.trim()); setPage(1); }}
         style={{ display:"flex", flexWrap:"wrap", alignItems:"end", gap:6, marginBottom:8 }}>
