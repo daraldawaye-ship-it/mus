@@ -407,6 +407,7 @@ const companySections = [
   "item-options-list",
   "item-order-drafts",
   "order-draft-exports",
+  "purchase-comparison",
   "public-requests",
   "central-access",
   "item",
@@ -505,6 +506,7 @@ function Navigation({
     "company.central-access": <Settings2 size={17} />,
     "company.item-statistics-report": <TrendingUp size={17} />,
     "company.item-options-list": <ListTree size={17} />,
+    "company.purchase-comparison": <TableProperties size={17} />,
     "company.item-agents": <Users size={17} />,
     "company.item-compositions": <Package size={17} />,
     "company.item-form-differences": <FileText size={17} />,
@@ -873,6 +875,8 @@ function CompanyContent({
       </Suspense>;
     case "order-draft-exports":
       return <Suspense fallback={<Notice>جارٍ تحميل سجل الطلبيات…</Notice>}><OrderDraftExportsPage context={context}/></Suspense>;
+    case "purchase-comparison":
+      return <Suspense fallback={<Notice>جارٍ تحميل فارق الشراء والطلبيه…</Notice>}><OrderDraftExportsPage context={context} comparison /></Suspense>;
     case "public-requests":
       return <Suspense fallback={<Notice>جارٍ تحميل طلب الجمهور…</Notice>}><PublicRequestsPage context={context}/></Suspense>;
     case "item-order-drafts":
