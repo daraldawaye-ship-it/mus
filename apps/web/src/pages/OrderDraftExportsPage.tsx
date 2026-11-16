@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
@@ -8,25 +8,10 @@ import { errorMessage } from "../phase2";
 
 import { OrderPlanningFields, type PlanningInfo } from "../OrderPlanningFields";
 import { usePageDirectory } from "../page-directory";
+import { formatStockSaleQuantity } from "../order-draft-quantities";
 import "./purchase-comparison.css";
 
-function ComparisonDetails({ companyId, itemId, itemName }: { companyId: number; itemId: number; itemName: string }) {
-  const { user } = useSession();
-  const directory = usePageDirectory(companyId);
-  const access = directory.data?.find(entry => entry.key === "company.item-options-list");
-  const items = [{ id: itemId, requiredQuantity: null }];
-  const result = useQuery({
-    queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items)],
-    queryFn: ({ signal }) => api<{ items: PlanningInfo[] }>(`/companies/${companyId}/item-options-list/draft-review`,
-      { method: "POST", body: { items }, signal }),
-    enabled: !!user,
-  });
-  if (result.isError) return <Notice tone="error">{errorMessage(result.error)}</Notice>;
-  if (result.isPending) return <Notice>جارٍ تحميل تفاصيل الصنف…</Notice>;
-  if (!result.data?.items[0]) return <Notice>تعذّر العثور على بيانات الصنف.</Notice>;
-  return <OrderPlanningFields companyId={companyId} itemId={itemId} itemName={itemName}
-    info={result.data.items[0]} canEdit={!!access?.enabled && !!access.actionAccess.edit} />;
-}
+type ComparisonMetrics = PlanningInfo & { itemId: number; saleQuantityMonth: string; availableUnit1: string };
 
 type ExportRow = {
   id: number; itemId: number; itemName: string;
@@ -42,7 +27,7 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     : <ExportHistory context={context} />;
 }
 
-type ComparisonColumn = "itemName" | "requested" | "purchased" | "difference" | "actualPrice" | "actualValue" | "defaultPrice" | "defaultValue";
+type ComparisonColumn = "itemName" | "requested" | "purchased" | "difference" | "actualPrice" | "actualValue" | "defaultPrice" | "defaultValue" | "saleQuantityMonth" | "availableUnit1";
 
 function compareQuantity(left: string, right: string) {
   const leftNegative = left.startsWith("-"), rightNegative = right.startsWith("-");
@@ -53,10 +38,10 @@ function compareQuantity(left: string, right: string) {
   return leftNegative ? -magnitude : magnitude;
 }
 
-function comparisonValue(value: string | null, signed = false, currency?: string | null) {
+function comparisonValue(value: string | null, signed = false) {
   if (value == null) return "—";
   const prefix = signed && value !== "0" && !value.startsWith("-") ? "+" : "";
-  return <><bdi dir="ltr">{prefix}{value}</bdi>{currency && <> <bdi>{currency}</bdi></>}</>;
+  return <bdi dir="ltr">{prefix}{value}</bdi>;
 }
 
 function PurchaseComparison({ context }: { context: CompanyContext }) {
@@ -68,6 +53,8 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const threeDays = params.get("period") === "three-days";
   const period = threeDays ? "three-days" : "yesterday";
   const comparisonColumns = {
+    saleQuantityMonth: "الكمية المباعة في شهر",
+    availableUnit1: "الكمية المتوفرة دون المرتجعات",
     difference: "فارق الكمية",
     actualPrice: "سعر الشراء من الفواتير",
     actualValue: "إجمالي الفارق بسعر الفواتير",
@@ -79,7 +66,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   };
   const [sort, setSort] = useState<{ column: ComparisonColumn; descending: boolean } | null>(null);
   const base = `/companies/${companyId}/order-draft-exports`;
-  type Row = Record<ComparisonColumn, string | null> & {
+  type Row = Record<Exclude<ComparisonColumn, "saleQuantityMonth" | "availableUnit1">, string | null> & {
     itemId: number; itemName: string; purchased: string; actualCurrency: string | null; defaultCurrency: string;
   };
   const result = useQuery({
@@ -87,10 +74,27 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
     queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison?period=" + period, { signal }),
     enabled: !!user,
   });
-  const rows = useMemo(() => {
-    const filtered = result.data?.items.filter(row => row.itemName.includes(search.trim()));
-    if (!sort) return filtered;
-    return filtered?.sort((a, b) => {
+  const directory = usePageDirectory(companyId);
+  const access = directory.data?.find(entry => entry.key === "company.item-options-list");
+  const batches = useMemo(() => {
+    const items = (result.data?.items ?? []).map(row => ({ id: row.itemId, requiredQuantity: null }));
+    return Array.from({ length: Math.ceil(items.length / 300) }, (_, i) => items.slice(i * 300, (i + 1) * 300));
+  }, [result.data]);
+  const metrics = useQueries({
+    queries: batches.map(items => ({
+      queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items)],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api<{ items: ComparisonMetrics[] }>(
+        `/companies/${companyId}/item-options-list/draft-review`, { method: "POST", body: { items }, signal }),
+      staleTime: 30_000,
+    })),
+  });
+  const byId = new Map(metrics.flatMap(batch => batch.data?.items ?? []).map(item => [item.itemId, item]));
+  const metricsError = metrics.find(batch => batch.isError)?.error;
+  const rows = result.data?.items.filter(row => row.itemName.includes(search.trim())).map(row => {
+    const info = byId.get(row.itemId);
+    return { ...row, info, saleQuantityMonth: info?.saleQuantityMonth ?? null, availableUnit1: info?.availableUnit1 ?? null };
+  });
+  if (sort) rows?.sort((a, b) => {
       const left = a[sort.column], right = b[sort.column];
       if (left === null || right === null) return Number(left === null) - Number(right === null);
       const order = sort.column === "itemName"
@@ -98,7 +102,6 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         : compareQuantity(left, right);
       return (sort.descending ? -order : order) || a.itemId - b.itemId;
     });
-  }, [result.data, search, sort]);
   const heading = (column: ComparisonColumn) => {
     const active = sort?.column === column;
     return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
@@ -120,13 +123,14 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
           aria-current={threeDays ? "page" : undefined} to="?view=purchases&period=three-days">طلبية 3 أيام ومشتريات 3 أيام</Link>
       </nav>
       <label>بحث عن الصنف<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
-      <Button variant="secondary" size="compact" onClick={() => void result.refetch()}>تحديث</Button>
+      <Button variant="secondary" size="compact" onClick={() => { void result.refetch(); metrics.forEach(batch => void batch.refetch()); }}>تحديث</Button>
       {result.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {metricsError && <Notice tone="error">{errorMessage(metricsError)}</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
         <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
-          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
+          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("saleQuantityMonth")}{heading("availableUnit1")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
           <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={index % 2 ? "alternate" : undefined}>
             <td><div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
               aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
@@ -134,12 +138,16 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
               <Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></div></td>
             <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
             <td>{comparisonValue(row.difference, true)}</td>
-            <td>{comparisonValue(row.actualPrice, false, row.actualCurrency)}</td>
-            <td>{comparisonValue(row.actualValue, true, row.actualCurrency)}</td>
-            <td>{comparisonValue(row.defaultPrice, false, row.defaultCurrency)}</td>
-            <td>{comparisonValue(row.defaultValue, true, row.defaultCurrency)}</td>
-          </tr>{expanded === row.itemId && <tr className="purchase-comparison-details"><td colSpan={8}>
-            <ComparisonDetails companyId={companyId} itemId={row.itemId} itemName={row.itemName} />
+            <td><bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(row.saleQuantityMonth)}</bdi></td>
+            <td><bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(row.availableUnit1)}</bdi></td>
+            <td>{comparisonValue(row.actualPrice)}</td>
+            <td>{comparisonValue(row.actualValue, true)}</td>
+            <td>{comparisonValue(row.defaultPrice)}</td>
+            <td>{comparisonValue(row.defaultValue, true)}</td>
+          </tr>{expanded === row.itemId && <tr className="purchase-comparison-details"><td colSpan={10}>
+            {!row.info && metricsError ? <Notice tone="error">{errorMessage(metricsError)}</Notice> :
+              <OrderPlanningFields companyId={companyId} itemId={row.itemId} itemName={row.itemName}
+                info={row.info} canEdit={!!access?.enabled && !!access.actionAccess.edit} />}
           </td></tr>}</Fragment>)}</tbody>
         </table></div>
         {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
