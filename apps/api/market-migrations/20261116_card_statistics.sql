@@ -38,12 +38,11 @@ CREATE FUNCTION market_ref(value text) RETURNS integer LANGUAGE sql IMMUTABLE ST
     AND (length(value)<10 OR value COLLATE "C" <= '2147483647') THEN value::integer END
 $$;
 CREATE FUNCTION market_ingredient_ids(data jsonb) RETURNS integer[]
-LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-  SELECT ARRAY(SELECT DISTINCT id FROM
+LANGUAGE sql IMMUTABLE PARALLEL SAFE
+  RETURN ARRAY(SELECT DISTINCT id FROM
     (SELECT market_ref(e->>'scientificId') id FROM jsonb_array_elements(
       CASE WHEN jsonb_typeof(data->'ingredients')='array' THEN data->'ingredients' ELSE '[]'::jsonb END) e) ids
-    WHERE id IS NOT NULL ORDER BY id)
-$$;
+    WHERE id IS NOT NULL ORDER BY id);
 CREATE VIEW market_counted_cards AS SELECT id,kind,data FROM medicine_market_cards
   WHERE status='published' AND NOT archived;
 CREATE INDEX market_stats_medicine_composition ON medicine_market_cards(market_ref(data->>'compositionId'))
