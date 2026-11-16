@@ -20,10 +20,24 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     : <ExportHistory context={context} />;
 }
 
+const comparisonColumns = {
+  itemName: "اسم الصنف",
+  requested: "الكمية المطلوبة أمس",
+  purchased: "إجمالي الكمية المشتراة أمس واليوم",
+} as const;
+type ComparisonColumn = keyof typeof comparisonColumns;
+
+function compareQuantity(left: string, right: string) {
+  const [a, fractionA = ""] = left.split(".");
+  const [b, fractionB = ""] = right.split(".");
+  return a.length - b.length || a.localeCompare(b, "en") || fractionA.localeCompare(fractionB, "en");
+}
+
 function PurchaseComparison({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<{ column: ComparisonColumn; descending: boolean } | null>(null);
   const base = `/companies/${companyId}/order-draft-exports`;
   type Row = { itemId: number; itemName: string; requested: string | null; purchased: string };
   const result = useQuery({
@@ -31,7 +45,27 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
     queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison", { signal }),
     enabled: !!user,
   });
-  const rows = result.data?.items.filter(row => row.itemName.includes(search.trim()));
+  const rows = useMemo(() => {
+    const filtered = result.data?.items.filter(row => row.itemName.includes(search.trim()));
+    if (!sort) return filtered;
+    return filtered?.sort((a, b) => {
+      const left = a[sort.column], right = b[sort.column];
+      if (left === null || right === null) return Number(left === null) - Number(right === null);
+      const order = sort.column === "itemName"
+        ? left.localeCompare(right, "ar", { numeric: true })
+        : compareQuantity(left, right);
+      return (sort.descending ? -order : order) || a.itemId - b.itemId;
+    });
+  }, [result.data, search, sort]);
+  const heading = (column: ComparisonColumn) => {
+    const active = sort?.column === column;
+    return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : undefined}>
+      <button type="button" style={{ width: "100%", border: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}
+        onClick={() => setSort(current => ({ column, descending: current?.column === column && !current.descending }))}>
+        {comparisonColumns[column]} <span aria-hidden="true">{active ? (sort.descending ? "▼" : "▲") : "↕"}</span>
+      </button>
+    </th>;
+  };
   return <section>
     <PageHeader title="طلبية أمس ومشتريات أمس واليوم"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الكميات بالوحدة الأولى للصنف."
@@ -44,7 +78,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
         <table className="data-table" dir="rtl">
-          <thead><tr><th>اسم الصنف</th><th>الكمية المطلوبة أمس</th><th>إجمالي الكمية المشتراة أمس واليوم</th></tr></thead>
+          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}</tr></thead>
           <tbody>{rows.map(row => <tr key={row.itemId}>
             <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
             <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
