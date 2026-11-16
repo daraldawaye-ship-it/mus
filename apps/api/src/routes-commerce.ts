@@ -139,7 +139,7 @@ export function commerceRoutes(pool: Pool): Router {
            FROM invoice_lines il
            JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
            WHERE il.company_id=$1 AND il.item_id=$2
-             AND i.kind='purchase' AND il.smallest_quantity>0
+             AND i.kind='purchase' AND i.posted
            ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
            LIMIT 5`,
           [companyId, itemId],
@@ -198,14 +198,14 @@ export function commerceRoutes(pool: Pool): Router {
                SELECT document_date FROM item_daily_activity
                WHERE company_id=$1 AND item_id=$2
                  AND CASE WHEN $3='sale-return' THEN sale_return_invoices>0
-                   WHEN $3='sale' THEN sale_invoices>0 ELSE purchase_invoices>0 END
+                   WHEN $3='sale' THEN sale_invoices>0 OR sale_return_invoices>0
+                   ELSE purchase_invoices>0 OR purchase_return_invoices>0 END
                ORDER BY document_date DESC LIMIT ($4::bigint+$5::bigint)
              ) days
              JOIN invoices i ON i.company_id=$1 AND i.document_date=days.document_date
-               AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
+               AND i.posted AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
              JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
-               AND il.item_id=$2 AND CASE WHEN $3='sale-return'
-                 THEN il.smallest_quantity<0 ELSE il.smallest_quantity>0 END
+               AND il.item_id=$2 AND ($3<>'sale-return' OR il.smallest_quantity<0)
              JOIN users u ON u.id=i.created_by
              ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
              LIMIT $4 OFFSET $5`,
