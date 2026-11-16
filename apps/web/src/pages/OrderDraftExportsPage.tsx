@@ -20,12 +20,7 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     : <ExportHistory context={context} />;
 }
 
-const comparisonColumns = {
-  itemName: "اسم الصنف",
-  requested: "الكمية المطلوبة أمس",
-  purchased: "إجمالي الكمية المشتراة أمس واليوم",
-} as const;
-type ComparisonColumn = keyof typeof comparisonColumns;
+type ComparisonColumn = "itemName" | "requested" | "purchased";
 
 function compareQuantity(left: string, right: string) {
   const [a, fractionA = ""] = left.split(".");
@@ -37,12 +32,20 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [search, setSearch] = useState("");
+  const [params] = useSearchParams();
+  const threeDays = params.get("period") === "three-days";
+  const period = threeDays ? "three-days" : "yesterday";
+  const comparisonColumns = {
+    itemName: "اسم الصنف",
+    requested: threeDays ? "أعلى كمية مطلوبة خلال 3 أيام" : "الكمية المطلوبة أمس",
+    purchased: threeDays ? "إجمالي الكمية المشتراة خلال 3 أيام" : "إجمالي الكمية المشتراة أمس واليوم",
+  };
   const [sort, setSort] = useState<{ column: ComparisonColumn; descending: boolean } | null>(null);
   const base = `/companies/${companyId}/order-draft-exports`;
   type Row = { itemId: number; itemName: string; requested: string | null; purchased: string };
   const result = useQuery({
-    queryKey: ["order-purchase-comparison", companyId, user?.id],
-    queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison", { signal }),
+    queryKey: ["order-purchase-comparison", companyId, user?.id, period],
+    queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison?period=" + period, { signal }),
     enabled: !!user,
   });
   const rows = useMemo(() => {
@@ -71,6 +74,12 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الكميات بالوحدة الأولى للصنف."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
     <Card>
+      <nav aria-label="فترة المقارنة" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        <Link className={threeDays ? "button button-secondary" : "button button-primary"}
+          aria-current={threeDays ? undefined : "page"} to="?view=purchases">طلبية أمس ومشتريات أمس واليوم</Link>
+        <Link className={threeDays ? "button button-primary" : "button button-secondary"}
+          aria-current={threeDays ? "page" : undefined} to="?view=purchases&period=three-days">طلبية 3 أيام ومشتريات 3 أيام</Link>
+      </nav>
       <label>بحث عن الصنف<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <Button variant="secondary" size="compact" onClick={() => void result.refetch()}>تحديث</Button>
       {result.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}

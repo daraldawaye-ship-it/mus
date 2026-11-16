@@ -72,6 +72,8 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
 
   router.get(base + "/purchase-comparison", handler(async (req, res) => {
     const companyId = id(req.params.companyId);
+    const period = parse(z.enum(["yesterday", "three-days"]).default("yesterday"), req.query.period);
+    const threeDays = period === "three-days";
     const items = await transaction(pool, async client => {
       const user = await checkAccess(client, req, companyId);
       await companyAccess(client, user, companyId, "commerce.view");
@@ -80,14 +82,14 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
         requested AS (
           SELECT item_id, max(required_quantity) AS quantity
           FROM company_order_draft_exports, days
-          WHERE company_id=$1 AND export_date=today-1
+          WHERE company_id=$1 AND export_date BETWEEN today-$2::int AND today-$3::int
           GROUP BY item_id
         ), purchased AS (
           SELECT l.item_id, sum(l.smallest_quantity / (l.factor2::numeric * l.factor3)) AS quantity
           FROM invoices i JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
           CROSS JOIN days
           WHERE i.company_id=$1 AND i.kind='purchase' AND i.posted AND l.quantity>0
-            AND i.document_date BETWEEN today-1 AND today
+            AND i.document_date BETWEEN today-$2::int AND today
           GROUP BY l.item_id
         )
         SELECT i.id AS "itemId", i.name AS "itemName",
@@ -95,7 +97,7 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
           trim_scale(coalesce(p.quantity,0))::text AS "purchased"
         FROM requested r FULL JOIN purchased p USING (item_id)
         JOIN items i ON i.company_id=$1 AND i.id=coalesce(r.item_id,p.item_id)
-        ORDER BY i.name,i.id`, [companyId]);
+        ORDER BY i.name,i.id`, [companyId, threeDays ? 2 : 1, threeDays ? 0 : 1]);
       return result.rows;
     });
     res.setHeader("Cache-Control", "private, no-store");
