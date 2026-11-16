@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transaction, type Database } from "./db.ts";
@@ -76,6 +77,23 @@ const legalRecordImageSchema = z.object({
   filename:z.string().max(250).default(""),
   dataUrl:z.string().min(30).max(3000000),
 }).strict();
+const legalImageMatchSchema=z.object({expectedSha256:z.string().regex(/^[0-9a-fA-F]{64}$/)}).strict();
+const legalRecordImageReplaceSchema=legalRecordImageSchema.extend({
+  filename:z.string().max(250).optional(),
+  ...legalImageMatchSchema.shape,
+});
+function decodeLegalImage(dataUrl:string) {
+  const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if(!match) throw new HttpError(400,"invalid_image","صيغة صورة غير صالحة");
+  const image=Buffer.from(match[2],"base64"),mime="image/"+match[1];
+  const valid=mime==="image/png"?image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):mime==="image/jpeg"?image[0]===255&&image[1]===216:image.subarray(0,4).toString()==="RIFF"&&image.subarray(8,12).toString()==="WEBP";
+  if(!valid||!image.length||image.length>2097152) throw new HttpError(400,"invalid_image","الصورة كبيرة أو غير صالحة؛ الحد 2 ميجابايت");
+  return {image,mime};
+}
+const legalImageMetadata=(row:QueryResultRow)=>({
+  id:row.id,sha256:createHash("sha256").update(row.image_bytes).digest("hex"),
+  bytes:row.image_bytes.length,mimeType:row.mime_type,filename:row.filename,
+});
 export const mcpBodySchemas = {
   caseSchema,
   legalCaseUpdateSchema,
@@ -87,6 +105,8 @@ export const mcpBodySchemas = {
   legalRecordLinkSchema,
   legalRecordTaskStatusSchema,
   legalRecordImageSchema,
+  legalRecordImageReplaceSchema,
+  legalImageMatchSchema,
   legalTaskPrioritySchema,
   legalTaskCommentSchema,
 };
@@ -562,11 +582,7 @@ export function legalCaseRoutes(pool:Pool):Router {
   router.post("/legal/records/:id/images",handler(async(req,res)=>{
     const recordId=number(req.params.id);
     const input=parse(legalRecordImageSchema,req.body);
-    const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.dataUrl);
-    if(!match) throw new HttpError(400,"invalid_image","صيغة صورة غير صالحة");
-    const image=Buffer.from(match[2],"base64"),mime="image/"+match[1];
-    const valid=mime==="image/png"?image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):mime==="image/jpeg"?image[0]===255&&image[1]===216:image.subarray(0,4).toString()==="RIFF"&&image.subarray(8,12).toString()==="WEBP";
-    if(!valid||!image.length||image.length>2097152) throw new HttpError(400,"invalid_image","الصورة كبيرة أو غير صالحة؛ الحد 2 ميجابايت");
+    const {image,mime}=decodeLegalImage(input.dataUrl);
     const item=await transaction(pool,async db=>{
       const user=await currentActor(db,actor(req));
       await canRecord(db,user,recordId,"editor");
@@ -578,6 +594,54 @@ export function legalCaseRoutes(pool:Pool):Router {
       return next;
     });
     res.status(201).json({item});
+  }));
+  router.get("/legal/records/:id/images/:imageId/metadata",handler(async(req,res)=>{
+    const recordId=number(req.params.id),imageId=number(req.params.imageId),user=actor(req);
+    await canRecord(pool,user,recordId);
+    const row=(await pool.query("SELECT id,mime_type,image_bytes,filename FROM legal_document_images WHERE id=$1 AND record_id=$2",[imageId,recordId])).rows[0];
+    if(!row) missing();
+    res.setHeader("Cache-Control","private,no-store");
+    res.json({item:legalImageMetadata(row)});
+  }));
+  router.put("/legal/records/:id/images/:imageId",handler(async(req,res)=>{
+    const recordId=number(req.params.id),imageId=number(req.params.imageId);
+    const input=parse(legalRecordImageReplaceSchema,req.body),{image,mime}=decodeLegalImage(input.dataUrl);
+    const item=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      await canRecord(db,user,recordId,"editor");
+      await forbidIfDisabled(db);
+      const record=await getRecord(db,recordId);
+      if(record.kind!=="document") throw new HttpError(400,"invalid_kind","الصور لسجلات المستندات");
+      const old=(await db.query("SELECT id,mime_type,image_bytes,filename FROM legal_document_images WHERE id=$1 AND record_id=$2",[imageId,recordId])).rows[0];
+      if(!old) missing();
+      const before=legalImageMetadata(old);
+      if(before.sha256!==input.expectedSha256.toLowerCase()) throw new HttpError(409,"stale_image","تغيرت الصورة؛ أعد قراءتها قبل التعديل");
+      const next=(await db.query("UPDATE legal_document_images SET mime_type=$3,image_bytes=$4,filename=COALESCE($5,filename) WHERE id=$1 AND record_id=$2 AND image_bytes=$6 RETURNING id,mime_type,image_bytes,filename",[imageId,recordId,mime,image,input.filename??null,old.image_bytes])).rows[0];
+      if(!next) throw new HttpError(409,"stale_image","تغيرت الصورة؛ أعد قراءتها قبل التعديل");
+      const after=legalImageMetadata(next);
+      await audit(db,user,"legal.update","legalImage",imageId,{recordId,...before},{recordId,...after});
+      return after;
+    });
+    res.json({item});
+  }));
+  router.delete("/legal/records/:id/images/:imageId",handler(async(req,res)=>{
+    const recordId=number(req.params.id),imageId=number(req.params.imageId),input=parse(legalImageMatchSchema,req.body);
+    const item=await transaction(pool,async db=>{
+      const user=await currentActor(db,actor(req));
+      await canRecord(db,user,recordId,"editor");
+      await forbidIfDisabled(db);
+      const record=await getRecord(db,recordId);
+      if(record.kind!=="document") throw new HttpError(400,"invalid_kind","الصور لسجلات المستندات");
+      const old=(await db.query("SELECT id,mime_type,image_bytes,filename FROM legal_document_images WHERE id=$1 AND record_id=$2",[imageId,recordId])).rows[0];
+      if(!old) missing();
+      const before=legalImageMetadata(old);
+      if(before.sha256!==input.expectedSha256.toLowerCase()) throw new HttpError(409,"stale_image","تغيرت الصورة؛ أعد قراءتها قبل الحذف");
+      const removed=await db.query("DELETE FROM legal_document_images WHERE id=$1 AND record_id=$2 AND image_bytes=$3 RETURNING id",[imageId,recordId,old.image_bytes]);
+      if(!removed.rows.length) throw new HttpError(409,"stale_image","تغيرت الصورة؛ أعد قراءتها قبل الحذف");
+      await audit(db,user,"legal.update","legalImage",imageId,{recordId,...before},{recordId,id:imageId,deleted:true});
+      return {id:imageId,deleted:true};
+    });
+    res.json({item});
   }));
   router.get("/legal/images/:id",handler(async(req,res)=>{
     const imageId=number(req.params.id),user=actor(req);

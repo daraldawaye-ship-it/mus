@@ -45,6 +45,9 @@ const operationContracts: Record<string, unknown> = { ...contracts, ...supplyPie
   "POST /legal/transcription-status":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"legalTranscriptionBatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalTranscriptionBatchSchema)},
   "POST /legal/records":{source:"routes-legal-cases.ts",queryFields:[],bodyContract:"recordSchema",bodySchema:z.toJSONSchema(legalSchemas.recordSchema)},
   "PUT /legal/records/:id":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id"],bodyContract:"legalRecordUpdateSchema",bodySchema:z.toJSONSchema(legalSchemas.legalRecordUpdateSchema)},
+  "GET /legal/records/:id/images/:imageId/metadata":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id","imageId"]},
+  "PUT /legal/records/:id/images/:imageId":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id","imageId"],bodyContract:"legalRecordImageReplaceSchema",bodySchema:z.toJSONSchema(legalSchemas.legalRecordImageReplaceSchema)},
+  "DELETE /legal/records/:id/images/:imageId":{source:"routes-legal-cases.ts",queryFields:[],pathParams:["id","imageId"],bodyContract:"legalImageMatchSchema",bodySchema:z.toJSONSchema(legalSchemas.legalImageMatchSchema)},
   [stagingPricesOperation]: {source:"routes-market-staging.ts",queryFields:[],pathParams:["sourceId"],
     bodyContract:"stagingPricesSchema",bodySchema:z.toJSONSchema(stagingPricesSchema)},
 };

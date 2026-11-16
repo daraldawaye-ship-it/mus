@@ -10173,5 +10173,57 @@
       ],
       "additionalProperties": false
     }
+  },
+  "GET /legal/records/:id/images/:imageId/metadata": {
+    "queryFields": [],
+    "source": "routes-legal-cases.ts"
+  },
+  "PUT /legal/records/:id/images/:imageId": {
+    "queryFields": [],
+    "bodyContract": "legalRecordImageReplaceSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "maxLength": 250
+        },
+        "dataUrl": {
+          "type": "string",
+          "minLength": 30,
+          "maxLength": 3000000
+        },
+        "expectedSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "required": [
+        "dataUrl",
+        "expectedSha256"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
+  },
+  "DELETE /legal/records/:id/images/:imageId": {
+    "queryFields": [],
+    "bodyContract": "legalImageMatchSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "expectedSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "required": [
+        "expectedSha256"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-legal-cases.ts"
   }
 }
