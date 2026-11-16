@@ -8,6 +8,7 @@ import {
   invoiceQuickAccountSchema,
   invoiceSaleCustomerPatchSchema,
 } from "../../../packages/contracts/src/index.ts";
+import { currentPurchase } from "./services/current-purchase.ts";
 import { correctionSchema, correctPurchase } from "./services/purchase-corrections.ts";
 import { createInvoiceQuickAccount } from "./routes-accounts.ts";
 import { transaction } from "./db.ts";
@@ -132,15 +133,16 @@ export function commerceRoutes(pool: Pool): Router {
           throw new HttpError(404, "not_found", "الصنف غير موجود لهذه الشركة.");
         const result = await client.query(
           `SELECT il.id AS "lineId", i.id AS "invoiceId",
-             i.document_date::text AS "documentDate",
+             ${invoiceReportDate}::text AS "documentDate",
              COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد') AS "supplierName",
              round(il.smallest_quantity::numeric /
                (il.factor2::numeric * il.factor3::numeric), 3)::text AS "quantityFirstUnit"
            FROM invoice_lines il
            JOIN invoices i ON i.company_id=il.company_id AND i.id=il.invoice_id
+           ${purchaseDateJoin}
            WHERE il.company_id=$1 AND il.item_id=$2
-             AND i.kind='purchase' AND i.posted
-           ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+             AND i.kind='purchase' AND i.posted AND ${currentPurchase}
+           ORDER BY ${invoiceReportDate} DESC,i.id DESC,il.line_number DESC
            LIMIT 5`,
           [companyId, itemId],
         );
@@ -179,7 +181,7 @@ export function commerceRoutes(pool: Pool): Router {
           // the unposted source/staging cache. Daily activity limits the dates.
           const result = await client.query(
             `SELECT il.id::text AS "lineId",i.id::text AS "documentId",
-               i.document_date::text AS "documentDate",
+               ${type === "purchase" ? invoiceReportDate : "i.document_date"}::text AS "documentDate",
                CASE WHEN i.kind='purchase'
                  THEN COALESCE(NULLIF(i.supplier_account_name,''),'غير محدد')
                  ELSE COALESCE(NULLIF(i.counterparty_account_name,''),'غير محدد')
@@ -194,20 +196,20 @@ export function commerceRoutes(pool: Pool): Router {
                u.display_name AS "byName",
                NULLIF(i.doctor_name,'') AS "doctorName",
                NULLIF(i.description,'') AS "notes"
-             FROM (
+             ${type === "purchase" ? `FROM invoices i ${purchaseDateJoin}` : `FROM (
                SELECT document_date FROM item_daily_activity
                WHERE company_id=$1 AND item_id=$2
                  AND CASE WHEN $3='sale-return' THEN sale_return_invoices>0
-                   WHEN $3='sale' THEN sale_invoices>0 OR sale_return_invoices>0
-                   ELSE purchase_invoices>0 OR purchase_return_invoices>0 END
+                   ELSE sale_invoices>0 OR sale_return_invoices>0 END
                ORDER BY document_date DESC LIMIT ($4::bigint+$5::bigint)
              ) days
              JOIN invoices i ON i.company_id=$1 AND i.document_date=days.document_date
-               AND i.posted AND i.kind=CASE WHEN $3='sale-return' THEN 'sale' ELSE $3 END
+               AND i.posted AND i.kind='sale'`}
              JOIN invoice_lines il ON il.company_id=$1 AND il.invoice_id=i.id
                AND il.item_id=$2 AND ($3<>'sale-return' OR il.smallest_quantity<0)
              JOIN users u ON u.id=i.created_by
-             ORDER BY i.document_date DESC,i.id DESC,il.line_number DESC
+             ${type === "purchase" ? `WHERE i.company_id=$1 AND i.kind='purchase' AND i.posted AND ${currentPurchase}` : ""}
+             ORDER BY ${type === "purchase" ? invoiceReportDate : "i.document_date"} DESC,i.id DESC,il.line_number DESC
              LIMIT $4 OFFSET $5`,
             [companyId, itemId, type, pageSize + 1, (page - 1) * pageSize],
           );
@@ -398,7 +400,7 @@ export function commerceRoutes(pool: Pool): Router {
             amountFrom,amountTo,
           ];
           const filter =
-            `i.company_id=$1 AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.counterparty_account_code ILIKE $2 OR COALESCE(i.supplier_account_name,'') ILIKE $2 OR COALESCE(i.supplier_account_code,'') ILIKE $2 OR COALESCE(i.sale_customer_name,'') ILIKE $2 OR COALESCE(i.sale_customer_number,'') ILIKE $2 OR COALESCE(i.doctor_name,'') ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR ${invoiceReportDate} >= $4::date) AND ($5::date IS NULL OR ${invoiceReportDate} <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10) AND ($11::numeric IS NULL OR i.total >= $11::numeric) AND ($12::numeric IS NULL OR i.total <= $12::numeric)`;
+            `i.company_id=$1 AND ${currentPurchase} AND (i.number ILIKE $2 OR i.supplier_receipt_number ILIKE $2 OR i.description ILIKE $2 OR i.counterparty_account_name ILIKE $2 OR i.counterparty_account_code ILIKE $2 OR COALESCE(i.supplier_account_name,'') ILIKE $2 OR COALESCE(i.supplier_account_code,'') ILIKE $2 OR COALESCE(i.sale_customer_name,'') ILIKE $2 OR COALESCE(i.sale_customer_number,'') ILIKE $2 OR COALESCE(i.doctor_name,'') ILIKE $2) AND ($3::text IS NULL OR i.kind=$3) AND ($4::date IS NULL OR ${invoiceReportDate} >= $4::date) AND ($5::date IS NULL OR ${invoiceReportDate} <= $5::date) AND ($6::boolean IS NULL OR i.is_return=$6) AND ($7::integer IS NULL OR i.branch_id=$7) AND ($8::integer IS NULL OR i.location_id=$8) AND (COALESCE(i.supplier_account_name,'') ILIKE $9 OR COALESCE(i.supplier_account_code,'') ILIKE $9) AND (i.counterparty_account_name ILIKE $10 OR i.counterparty_account_code ILIKE $10) AND ($11::numeric IS NULL OR i.total >= $11::numeric) AND ($12::numeric IS NULL OR i.total <= $12::numeric)`;
           const count = await client.query(
             `SELECT count(*)::integer AS total ${invoiceFrom} WHERE ${filter}`,
             params,
@@ -441,7 +443,7 @@ export function commerceRoutes(pool: Pool): Router {
     const page = Number(pageText);
     const term = typeof q === "string" ? q.trim() : "";
     res.json(await readCommerce(pool, req, async (client, companyId) => {
-      const conditions = `i.company_id=$1 AND i.kind='purchase'
+      const conditions = `i.company_id=$1 AND i.kind='purchase' AND ${currentPurchase}
         AND ($2::text='' OR l.item_name ILIKE $5 OR l.item_code ILIKE $5 OR
              i.supplier_account_name ILIKE $5)
         AND ($3::date IS NULL OR i.document_date >= $3::date)

@@ -5,6 +5,8 @@ import { actor, handler, id, parse } from "./http.ts";
 import { transaction } from "./db.ts";
 import { companyAccess, currentActor } from "./policies/access.ts";
 import { directoryEntries, assertDirectoryAccess } from "./services/pages.ts";
+import { currentPurchase } from "./services/current-purchase.ts";
+import { purchaseDateJoin, invoiceReportDate } from "./services/commerce.ts";
 import { HttpError } from "./errors.ts";
 
 const exportInput = z.object({
@@ -93,9 +95,10 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
                  WHEN min(i.base_currency_id)=max(i.base_currency_id) THEN min(i.base_currency_code)
             END AS currency
           FROM invoices i JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
+          ${purchaseDateJoin}
           CROSS JOIN days
           WHERE i.company_id=$1 AND i.kind='purchase' AND i.posted AND l.quantity>0
-            AND i.document_date BETWEEN today-$2::int AND today
+            AND ${currentPurchase} AND ${invoiceReportDate} BETWEEN today-$2::int AND today
           GROUP BY l.item_id
         )
         SELECT i.id AS "itemId", i.name AS "itemName",
