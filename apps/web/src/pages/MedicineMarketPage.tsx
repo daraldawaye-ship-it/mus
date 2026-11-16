@@ -28,6 +28,7 @@ import { MarketProductImage } from "../MarketProductImage";
 import { MarketCardIcon } from "../MarketCardIcon";
 import { MarketFriendReferral } from "../MarketFriendReferral";
 import { MarketStagingProgress } from "./MarketStagingProgress";
+import { MarketCardCounts, RecordMarketCardOpen } from "./MarketCardStatistics";
 import { MarketCatalogSections, MarketCompactCard } from "./MarketCatalogSections";
 import { errorMessage } from "../phase2";
 import { Button, Card, Dialog, Field, Notice, Select } from "../ui";
@@ -1675,6 +1676,8 @@ export function MedicineMarketPage({
                       </p>
                     </div>
                   </div>
+                  {card.statistics && user && <RecordMarketCardOpen key={user.id+":"+card.id} cardId={card.id} userId={user.id}/>}
+                  <MarketCardCounts card={card}/>
                   {card.status === "pending" && (
                     <Notice>
                       {card.kind==="prescription"

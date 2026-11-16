@@ -1,0 +1,72 @@
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Eye, Heart, MessageCircle } from "lucide-react";
+import type { MarketCard, MarketDetail } from "../../../../packages/contracts/src/medicine-market";
+import { api } from "../api";
+import { interestCollectionEnabled } from "../InterestTracker";
+
+const relationLabels = {
+  medicines: "الأصناف", compositions: "التراكيب", scientificNames: "الأسماء العلمية",
+  agents: "الوكلاء", manufacturers: "الشركات المصنّعة",
+} as const;
+type Relation = keyof typeof relationLabels;
+const relationKeys: Partial<Record<MarketCard["kind"], Relation[]>> = {
+  composition: ["medicines", "scientificNames", "agents", "manufacturers"],
+  agent: ["medicines", "compositions"], "scientific-name": ["compositions", "medicines"],
+  manufacturer: ["medicines"],
+};
+
+export function MarketCardCounts({card, compact = false}: {card: MarketCard; compact?: boolean}) {
+  const stats = card.statistics;
+  if (!stats) return null;
+  return <span className={compact ? "market-counts compact" : "market-counts"}>
+    <span title="مرات الفتح"><Eye size={14}/>{stats.opens}<span className={compact ? "sr-only" : ""}> فتحات</span></span>
+    <span title="التعليقات المعتمدة"><MessageCircle size={14}/>{stats.comments}<span className={compact ? "sr-only" : ""}> تعليقات معتمدة</span></span>
+    <span title="الإعجابات"><Heart size={14}/>{card.likes}<span className={compact ? "sr-only" : ""}> إعجابات</span></span>
+    {relationKeys[card.kind]?.map(key =>
+      <span key={key}>{relationLabels[key]} {stats.relations[key] ?? 0}</span>)}
+  </span>;
+}
+
+/** Mount only for the displayed detail. List/lookup GETs and polling cannot record opens. */
+export function RecordMarketCardOpen({cardId,userId}: {cardId: number;userId: number}) {
+  const client = useQueryClient();
+  const requestKey = useRef<string | null>(null);
+  useEffect(() => {
+    let sent = false;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const submit = async (attempt = 0) => {
+      if (stopped || !interestCollectionEnabled() || document.visibilityState !== "visible") return;
+      requestKey.current ??= crypto.randomUUID();
+      try {
+        const {opens} = await api<{opens: number}>(`/medicine-market/cards/${cardId}/open`, {
+          method: "POST", body: {idempotencyKey: requestKey.current}, signal: controller.signal,
+        });
+        if (stopped) return;
+        client.setQueryData<MarketDetail>(["medicine-market", userId, "card", cardId], old =>
+          old?.card.statistics ? {...old,card:{...old.card, statistics:{...old.card.statistics,opens}}} : old);
+        client.setQueriesData<{items: MarketCard[]}>({queryKey:["medicine-market",userId,"cards"]}, page =>
+          page?.items.some(item => item.id === cardId && item.statistics)
+            ? {...page,items:page.items.map(item => item.id === cardId && item.statistics
+              ? {...item,statistics:{...item.statistics,opens}} : item)} : page);
+      } catch {
+        if (!stopped && attempt < 2) retry = setTimeout(() => {
+          if (document.visibilityState !== "visible") sent = false;
+          else void submit(attempt+1);
+        }, 1500 * (attempt+1));
+      }
+    };
+    const whenVisible = () => {
+      if (!sent && document.visibilityState === "visible") { sent = true; void submit(); }
+    };
+    whenVisible();
+    document.addEventListener("visibilitychange", whenVisible);
+    return () => {
+      stopped = true; controller.abort(); clearTimeout(retry);
+      document.removeEventListener("visibilitychange", whenVisible);
+    };
+  }, [cardId,userId,client]);
+  return null;
+}

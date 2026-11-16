@@ -208,6 +208,11 @@ export interface MarketMeta {
   references: MarketReferenceEntry[];
   userPoints: string;
 }
+export interface MarketCardStatistics {
+  opens: number;
+  comments: number;
+  relations: Partial<Record<"medicines" | "compositions" | "scientificNames" | "agents" | "manufacturers", number>>;
+}
 export interface MarketCard {
   id: number;
   kind: MarketKind;
@@ -219,6 +224,7 @@ export interface MarketCard {
   createdAt: string;
   updatedAt: string;
   likes: number;
+  statistics?: MarketCardStatistics;
   ratingAverage: number | null;
   ratingCount: number;
   myLiked: boolean;

@@ -9,6 +9,7 @@ import type {
   MarketCard, MarketDetail, MarketKind, MarketMeta, MarketReferenceEntry,
 } from "../../../../packages/contracts/src/medicine-market";
 import "./MarketCatalogSections.css";
+import { MarketCardCounts } from "./MarketCardStatistics";
 import { MarketCardIcon, hasMarketCardImage } from "../MarketCardIcon";
 
 type MarketType = MarketMeta["types"][number];
@@ -89,6 +90,7 @@ export function MarketCompactCard({ item, type, references, onOpen }: {
       </span>
       <ChevronLeft size={15} aria-hidden="true" />
     </span>
+    <MarketCardCounts card={item} compact/>
   </button>;
 }
 

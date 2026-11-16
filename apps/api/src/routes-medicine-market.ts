@@ -388,6 +388,7 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     likes: Number(row.likes ?? 0),
+    ...(row.opens != null ? { statistics: { opens: Number(row.opens), comments: Number(row.comments), relations: row.relations } } : {}),
     ratingAverage:
       row.rating_average == null ? null : Number(row.rating_average),
     ratingCount: Number(row.rating_count ?? 0),
@@ -395,8 +396,20 @@ function cardOutput(row: QueryResultRow, p: MarketPermissions): MarketCard {
     myRating: row.my_rating ?? null,
   };
 }
-const cardSelect = `SELECT c.*,(SELECT count(*) FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.liked) likes,(SELECT avg(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_average,(SELECT count(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_count,COALESCE((SELECT r.liked FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1),false) my_liked,(SELECT r.rating FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1) my_rating FROM medicine_market_cards c`;
-async function getCard(
+function marketCardSelect(isolated: boolean) {
+  // The company database can still serve the legacy embedded catalog in development.
+  const counters = isolated
+    ? "s.likes, s.opens, s.comments, COALESCE(s.relations,market_relation_counts(c.id)) relations"
+    : "(SELECT count(*) FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.liked) likes";
+  return `SELECT c.*, ${counters},
+    (SELECT avg(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_average,
+    (SELECT count(r.rating) FROM medicine_market_reactions r WHERE r.card_id=c.id) rating_count,
+    COALESCE((SELECT r.liked FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1),false) my_liked,
+    (SELECT r.rating FROM medicine_market_reactions r WHERE r.card_id=c.id AND r.user_id=$1) my_rating
+    FROM medicine_market_cards c ${isolated ? "JOIN market_card_statistics s ON s.card_id=c.id" : ""}`;
+}
+async function readCard(
+  cardSelect: string,
   db: Database,
   cardId: number,
   u: User | null,
@@ -625,6 +638,9 @@ function validateMarketImage(dataUrl:string, _profile:'medicine'|'prescription'=
 }
 
 export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingIsolated = false): Router {
+  const cardSelect = marketCardSelect(stagingIsolated);
+  const getCard = (db: Database, cardId: number, user: User | null, lock = false) =>
+    readCard(cardSelect, db, cardId, user, lock);
   const baseViewer = access?.viewer ?? defaultViewer;
   // A phone-only visitor session never acquires administrative market rights
   // just because the account is later promoted or linked to a company.
@@ -637,6 +653,20 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
   const enabled = access?.enabled ?? defaultEnabled;
   const router = Router();
   router.use(marketStagingRoutes(pool, {viewer, enabled}, stagingIsolated));
+
+  if (stagingIsolated) router.post(root + "/cards/:cardId/open", handler(async (req,res) => {
+    const {idempotencyKey} = parse(z.object({idempotencyKey: z.string().uuid()}).strict(), req.body);
+    const cardId = id(req.params.cardId);
+    const user = await viewer(pool, req);
+    if (!user) throw new HttpError(401,"unauthenticated","يرجى تسجيل الدخول");
+    await enabled(pool, req);
+    const opens = await transaction(pool, async db => {
+      await getCard(db, cardId, user);
+      const {rows} = await db.query("SELECT market_record_open($1,$2,$3) AS opens", [cardId,user.id,idempotencyKey]);
+      return Number(rows[0].opens);
+    });
+    res.json({opens});
+  }));
 
   router.get(root + "/owner/card-coverage", handler(async (req, res) => {
     const user = await viewer(pool, req);

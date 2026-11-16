@@ -16,7 +16,7 @@ let visitorFallback: string | null = null;
 let flushTimer: number | null = null;
 let sending = false;
 
-function preference(): boolean {
+export function interestCollectionEnabled(): boolean {
   try {
     if (window.localStorage.getItem(OPT_OUT) === "1") return false;
   } catch { return false; }
@@ -37,7 +37,7 @@ function schedule(ms = 850) {
   flushTimer=window.setTimeout(()=>{flushTimer=null;void flush();},ms);
 }
 async function flush(): Promise<void> {
-  if(sending || !queue.length || !preference()) return;
+  if(sending || !queue.length || !interestCollectionEnabled()) return;
   sending=true;
   const events=queue.splice(0,24);
   try {
@@ -54,7 +54,7 @@ async function flush(): Promise<void> {
   if(queue.length) schedule(150);
 }
 export function recordInterest(input: EventInput): void {
-  if(!preference())return;
+  if(!interestCollectionEnabled())return;
   const path=(input.path ?? window.location.pathname).split(/[?#]/,1)[0].slice(0,220);
   queue.push({id:crypto.randomUUID(),action:input.action,
     targetType:input.targetType.slice(0,48),targetId:input.targetId ?? 0,
@@ -79,7 +79,7 @@ export function InterestTracker() {
   useEffect(()=>{
     let searchTimer: number | null=null;
     const click=(event: MouseEvent)=>{
-      if(!preference() || !(event.target instanceof Element))return;
+      if(!interestCollectionEnabled() || !(event.target instanceof Element))return;
       const control=event.target.closest("a,button,[role='button'],summary");
       if (!control || control.matches(":disabled,[aria-disabled='true']")) return;
       const marked = control.getAttribute("data-operator-action");
@@ -97,7 +97,7 @@ export function InterestTracker() {
         label:label.slice(0,110),path:window.location.pathname});
     };
     const onInput=(event: Event)=>{
-      if (!(event.target instanceof HTMLInputElement) || !preference() ||
+      if (!(event.target instanceof HTMLInputElement) || !interestCollectionEnabled() ||
           event.target.disabled || event.target.readOnly || employeePreview) return;
       const input=event.target, path=window.location.pathname;
       const key=input.getAttribute("data-operator-search");

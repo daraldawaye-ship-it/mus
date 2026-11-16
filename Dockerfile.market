@@ -2,7 +2,10 @@
 FROM node:24.19.0-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
+COPY apps/api/market-migrations/001_market.sql apps/api/market-migrations/20261116_card_statistics.sql ./apps/api/market-migrations/
+COPY apps/api/test/market-card-statistics.test.mjs ./apps/api/test/
+RUN node --test apps/api/test/market-card-statistics.test.mjs && npm prune --omit=dev
 FROM node:24.19.0-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000

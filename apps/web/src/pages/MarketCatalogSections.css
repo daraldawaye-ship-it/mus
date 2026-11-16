@@ -65,3 +65,15 @@
   .medicine-market .market-compact-card-name { font-size: 13px; }
   .medicine-market .market-catalog-section-heading h2 { font-size: 14px; }
 }
+
+.medicine-market .market-counts {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px;
+  color: var(--muted); font-size: 12px; margin-block: 5px;
+}
+.medicine-market .market-counts > span { display: inline-flex; align-items: center; gap: 3px; }
+.medicine-market .market-counts.compact {
+  grid-column: 1 / -1; gap: 2px 9px; margin: 0; line-height: 16px; font-size: 11px;
+}
+.medicine-market .market-counts.compact .sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
