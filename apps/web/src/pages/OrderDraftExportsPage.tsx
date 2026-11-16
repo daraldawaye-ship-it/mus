@@ -50,6 +50,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [search, setSearch] = useState("");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "unreviewed" | "reviewed">("all");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [sidePanel, setSidePanel] = useState<{ itemId: number; itemName: string; view: "purchase" | "movement" } | null>(null);
   useEffect(() => {
@@ -98,10 +99,14 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   });
   const byId = new Map(metrics.flatMap(batch => batch.data?.items ?? []).map(item => [item.itemId, item]));
   const metricsError = metrics.find(batch => batch.isError)?.error;
-  const rows = result.data?.items.filter(row => row.itemName.includes(search.trim())).map(row => {
+  // Do not classify an item as unreviewed while its reviewed status is still unknown.
+  const reviewFilterReady = reviewFilter === "all" || metrics.every(batch => batch.isSuccess);
+  const rows = reviewFilterReady ? result.data?.items.filter(row => row.itemName.includes(search.trim())).map(row => {
     const info = byId.get(row.itemId);
     return { ...row, info, saleQuantityMonth: info?.saleQuantityMonth ?? null, availableUnit1: info?.availableUnit1 ?? null };
-  });
+  }).filter(row => reviewFilter === "all" || (
+    row.info && (reviewFilter === "reviewed" ? row.info.reviewed === true : row.info.reviewed === false)
+  )) : undefined;
   if (sort) rows?.sort((a, b) => {
       const left = a[sort.column], right = b[sort.column];
       if (left === null || right === null) return Number(left === null) - Number(right === null);
@@ -131,11 +136,27 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         <Link className={threeDays ? "button button-primary" : "button button-secondary"}
           aria-current={threeDays ? "page" : undefined} to="?view=purchases&period=three-days">طلبية 3 أيام ومشتريات 3 أيام</Link>
       </nav>
+      <div className="purchase-comparison-review-filter" role="group" aria-label="تصفية الأصناف حسب المراجعة">
+        {([
+          { value: "all", label: "إظهار الكل" },
+          { value: "unreviewed", label: "استثناء المراجع" },
+          { value: "reviewed", label: "إظهار المراجع فقط" },
+        ] as const).map(option => (
+          <Button key={option.value} size="compact"
+            variant={reviewFilter === option.value ? "primary" : "secondary"}
+            aria-pressed={reviewFilter === option.value}
+            onClick={() => { setReviewFilter(option.value); setExpanded(null); setSidePanel(null); }}>
+            {option.label}
+          </Button>
+        ))}
+      </div>
       <label>بحث عن الصنف<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <Button variant="secondary" size="compact" onClick={() => { void result.refetch(); metrics.forEach(batch => void batch.refetch()); }}>تحديث</Button>
       {result.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       {metricsError && <Notice tone="error">{errorMessage(metricsError)}</Notice>}
+      {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
+        <Notice>جارٍ تحميل حالة المراجعة لجميع الأصناف لتطبيق الفلتر…</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
         <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
