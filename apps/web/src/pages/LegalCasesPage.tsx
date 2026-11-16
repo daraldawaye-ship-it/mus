@@ -78,6 +78,8 @@ export function LegalCasesPage() {
  const [globalSearch,setGlobalSearch]=useState(""),[globalPage,setGlobalPage]=useState(1);
  const [expandedId,setExpandedId]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[page,setPage]=useState(1),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+ const [caseSort,setCaseSort]=useState({key:"",direction:"asc"});
+ const sortCases=(key:string)=>{setCaseSort(current=>({key,direction:current.key===key&&current.direction==="asc"?"desc":"asc"}));setPage(1);};
  const [activePanel,setActivePanel]=useState<"cases"|"tasks">(caseId>0?"cases":"tasks");
  const [unlinkedPage,setUnlinkedPage]=useState(1),[unlinkedSearch,setUnlinkedSearch]=useState("");
  const [caseEdit,setCaseEdit]=useState(false),[caseNew,setCaseNew]=useState(false),[caseDraft,setCaseDraft]=useState<CaseForm>(emptyCase);
@@ -85,7 +87,7 @@ export function LegalCasesPage() {
  const [editingRevision,setEditingRevision]=useState(0);
  const [linkAfterSave,setLinkAfterSave]=useState<number|null>(null);
  const [focus,setFocus]=useState<number|null>(null),[linkNumber,setLinkNumber]=useState(""),[accessUser,setAccessUser]=useState(""),[accessRole,setAccessRole]=useState("reporter");
- const list=useQuery({queryKey:["legal","cases",search,page],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page)})),enabled:!!user});
+ const list=useQuery({queryKey:["legal","cases",search,page,caseSort],queryFn:()=>api<{items:Case[];total:number}>( "/legal/cases?"+new URLSearchParams({q:search,page:String(page),sortBy:caseSort.key,sortDir:caseSort.direction})),enabled:!!user});
  const selected=useQuery({queryKey:["legal","case",caseId],queryFn:()=>api<{record:Case;role:string}>("/legal/cases/"+caseId),enabled:caseId>0});
  const records=useQuery({queryKey:["legal","records",caseId,user?.id],queryFn:({signal})=>api<{items:Entry[]}>("/legal/cases/"+caseId+"/records",{signal}),enabled:caseId>0,refetchInterval:60_000});
  const all=useQuery({queryKey:["legal","all",tab,unlinkedPage,unlinkedSearch,user?.id],queryFn:()=>api<{items:Entry[];total:number;pageSize:number}>("/legal/records?"+new URLSearchParams({unlinked:"true",page:String(unlinkedPage),q:unlinkedSearch})),enabled:owner&&tab==="unlinked"});
@@ -196,7 +198,9 @@ export function LegalCasesPage() {
  </Card>:<>
  {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
  <div className="legal-case-table-scroll" role="region" aria-label="قائمة القضايا" tabIndex={0}>
- <table className="legal-case-table"><thead><tr><th scope="col">اسم القضية</th><th scope="col">رقم القضية</th><th scope="col">النوع</th><th scope="col">الحالة</th><th scope="col">شرح عنها</th><th scope="col">الأولوية</th><th scope="col">تاريخ البداية</th><th scope="col">تاريخ الجلسة القادمة</th><th scope="col">تاريخ آخر جلسة</th></tr></thead>
+ <table className="legal-case-table"><thead><tr>{[
+ ["title","اسم القضية"],["case_number","رقم القضية"],["case_type","النوع"],["stage","الحالة"],["summary","شرح عنها"],["priority","الأولوية"],["start_date","تاريخ البداية"],["next_hearing","تاريخ الجلسة القادمة"],["last_hearing","تاريخ آخر جلسة"]
+ ].map(([key,label])=><th scope="col" key={key} aria-sort={caseSort.key===key?(caseSort.direction==="asc"?"ascending":"descending"):"none"}><button className="legal-case-sort" onClick={()=>sortCases(key)}>{label}<span aria-hidden="true">{caseSort.key===key?(caseSort.direction==="asc"?" ↑":" ↓"):" ↕"}</span></button></th>)}</tr></thead>
  <tbody>{(list.data?.items??[]).map(c=><tr key={c.id} className={caseId===c.id?"selected":""}>
  <td><button className="legal-case-title-button" aria-pressed={caseId===c.id} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}>{c.title}</button></td>
  <td>{c.case_number||"—"}</td><td>{c.case_type||"—"}</td>

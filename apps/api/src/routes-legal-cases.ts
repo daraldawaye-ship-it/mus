@@ -236,11 +236,15 @@ export function legalCaseRoutes(pool:Pool):Router {
     const status=req.query.status;
     if(status!==undefined && !["active","closed","unknown"].includes(String(status))) throw new HttpError(400,"invalid_query","حالة غير صالحة");
     const page=Math.max(1,Math.min(100000,Number(req.query.page)||1));
+    const sortColumns:Record<string,string>={title:"NULLIF(c.title,'')",case_number:"NULLIF(c.case_number,'')",case_type:"NULLIF(c.case_type,'')",stage:"COALESCE(NULLIF(c.stage,''),CASE c.status WHEN 'closed' THEN 'منتهية' WHEN 'active' THEN 'نشطة إداريًا' ELSE 'غير محددة' END)",summary:"NULLIF(c.summary,'')",priority:"NULLIF(c.priority,0)",start_date:"c.start_date",next_hearing:"c.next_hearing",last_hearing:"c.last_hearing"};
+    const sortBy=String(req.query.sortBy??""),sortDir=String(req.query.sortDir??"asc");
+    if((sortBy&&!Object.hasOwn(sortColumns,sortBy))||!["asc","desc"].includes(sortDir)) throw new HttpError(400,"invalid_query","ترتيب غير صالح");
+    const orderBy=sortBy?sortColumns[sortBy]+(sortDir==="asc"?" ASC":" DESC")+" NULLS LAST,c.id DESC":"(c.priority=0) ASC,c.priority ASC,c.id DESC";
     const limit=30;
     const where="($1::boolean OR EXISTS(SELECT 1 FROM legal_case_access a WHERE a.case_id=c.id AND a.user_id=$2)) AND (c.title ILIKE $3 OR c.case_number ILIKE $3 OR c.agency ILIKE $3 OR c.summary ILIKE $3) AND ($4::text IS NULL OR c.status=$4)";
     const args=[user.owner,user.id,"%"+q.replace(/[%_\\]/g,"\\$&")+"%",status??null];
     const [rows,count]=await Promise.all([
-      pool.query("SELECT c.* FROM legal_cases c WHERE "+where+" ORDER BY (c.priority=0) ASC,c.priority ASC,c.id DESC LIMIT $5 OFFSET $6",[...args,limit,(page-1)*limit]),
+      pool.query("SELECT c.* FROM legal_cases c WHERE "+where+" ORDER BY "+orderBy+" LIMIT $5 OFFSET $6",[...args,limit,(page-1)*limit]),
       pool.query("SELECT count(*)::int AS total FROM legal_cases c WHERE "+where,args),
     ]);
     res.json({items:rows.rows,total:count.rows[0].total,page,pageSize:limit});

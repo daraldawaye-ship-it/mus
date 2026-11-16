@@ -107,3 +107,6 @@
 .legal-case-table tr.selected{background:var(--surface-muted,rgba(128,128,128,.15))}
 .legal-case-summary summary{cursor:pointer;line-height:1.6}.legal-case-summary .legal-preserve{margin-top:8px;max-height:250px;overflow:auto}
 .legal-case-admin-status{display:block;opacity:.75;margin-top:4px}
+
+.legal-case-sort{display:flex;align-items:center;justify-content:space-between;gap:4px;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;text-align:inherit;cursor:pointer}
+.legal-case-sort:focus-visible{outline:2px solid var(--accent,#ffbd00);outline-offset:4px}

@@ -44,5 +44,16 @@ test("case list fields persist, preserve omitted values for older clients and en
  assert.equal(cleared.status,200);assert.equal(cleared.data.record.case_type,"");assert.equal(cleared.data.record.last_hearing,null);
  assert.equal((await call("PUT",`/legal/cases/${id}`,{title:"Invalid",revision:3,lastHearing:"2026-02-30"})).status,400);
  const listed=await call("GET","/legal/cases");assert.equal(listed.data.items[0].last_hearing,null);
+ await db.exec("INSERT INTO legal_cases(title,priority,start_date,created_by,updated_by) SELECT 'Sort '||n, ((n-1)%10)+1, DATE '2026-01-01'+n,1,1 FROM generate_series(1,35) n");
+ const asc=await call("GET","/legal/cases?sortBy=start_date&sortDir=asc");
+ assert.equal(asc.data.items[0].priority,1);assert.equal(asc.data.items[29].title,"Sort 30");
+ const second=await call("GET","/legal/cases?sortBy=start_date&sortDir=asc&page=2");
+ assert.equal(second.data.items[0].title,"Sort 31");assert.equal(second.data.items.at(-1).priority,0);
+ const desc=await call("GET","/legal/cases?sortBy=start_date&sortDir=desc");
+ assert.equal(desc.data.items[0].title,"Sort 35");
+ for(const sortBy of ["title","case_number","case_type","stage","summary","last_hearing","next_hearing"])
+  assert.equal((await call("GET","/legal/cases?sortBy="+sortBy)).status,200);
+ assert.equal((await call("GET","/legal/cases?sortBy=__proto__")).status,400);
+ assert.equal((await call("GET","/legal/cases?sortDir=invalid")).status,400);
  assert.equal((await db.query("SELECT count(*)::int n FROM audit_events")).rows[0]!.n,3);
 });
