@@ -67,7 +67,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
     </th>;
   };
   return <section>
-    <PageHeader title="طلبية أمس ومشتريات أمس واليوم"
+    <PageHeader title="فارق الشراء والطلبيه"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الكميات بالوحدة الأولى للصنف."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
     <Card>
@@ -134,7 +134,7 @@ function ExportHistory({ context }: { context: CompanyContext }) {
   return <section className="order-export-followup">
     <PageHeader title="متابعة الطلبيات المرحلة"
       description="سجل مشترك لجميع أجهزة الشركة؛ الصنف لا يُسجل أكثر من مرة في اليوم، والسجلات الأقدم من 40 يومًا تُحذف تلقائيًا."
-      actions={<><Link className="button button-secondary" to="?view=purchases">طلبية أمس ومشتريات أمس واليوم</Link> <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link></>} />
+      actions={<><Link className="button button-secondary" to="?view=purchases">فارق الشراء والطلبيه</Link> <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link></>} />
     <Card>
       <form onSubmit={event => { event.preventDefault(); setFilter(search.trim()); setPage(1); }}
         style={{ display:"flex", flexWrap:"wrap", alignItems:"end", gap:6, marginBottom:8 }}>
