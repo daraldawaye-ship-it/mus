@@ -127,6 +127,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // Sorting is captured once on load or after an explicit header/mobile sort.
+  // Saving a review flag or a required quantity must not move the edited row.
+  const [sortVersion, setSortVersion] = useState(0);
+  const [sortSnapshot, setSortSnapshot] = useState<{
+    version: number; memberKey: string; orderedItemIds: number[];
+  } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
@@ -306,12 +312,38 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       default: return "";
     }
   };
-  const sorted = sortKey ? [...filtered].sort((left, right) => {
-    const a = sortValue(left), b = sortValue(right);
-    const result = sortKey === "name" || sortKey === "option"
-      ? a.localeCompare(b, "ar", { numeric: true }) : compareNumeric(a, b);
-    return (sortDir === "asc" ? 1 : -1) * result || left.item.id - right.item.id;
-  }) : filtered;
+  // Rank the full draft list, not just the visible/filtered page. The default
+  // order is unreviewed first, then required purchase value descending within
+  // each review group. Later manual column sorting overrides that default.
+  const sortMemberKey = rows.map(row => row.draftId + ":" + row.item.id).join(",");
+  useEffect(() => {
+    if (metricsLoading || metricsError) return;
+    if (sortSnapshot?.version === sortVersion && sortSnapshot.memberKey === sortMemberKey) return;
+    const orderedItemIds = [...rows].sort((left, right) => {
+      if (sortVersion === 0) {
+        const leftReviewed = metricsById.get(left.item.id)?.reviewed === true;
+        const rightReviewed = metricsById.get(right.item.id)?.reviewed === true;
+        if (leftReviewed !== rightReviewed) return leftReviewed ? 1 : -1;
+      }
+      if (!sortKey) return 0; // Explicitly restore the original draft order.
+      const a = sortValue(left), b = sortValue(right);
+      const result = sortKey === "name" || sortKey === "option"
+        ? a.localeCompare(b, "ar", { numeric: true }) : compareNumeric(a, b);
+      return (sortDir === "asc" ? 1 : -1) * result || left.item.id - right.item.id;
+    }).map(row => row.item.id);
+    setSortSnapshot({ version: sortVersion, memberKey: sortMemberKey, orderedItemIds });
+  }, [rows, sortMemberKey, sortVersion, sortKey, sortDir, metricsById,
+    metricsLoading, metricsError, sortSnapshot]);
+  // Updating requiredQuantity invalidates metrics, and reviewing invalidates
+  // draft-review queries. Neither event changes this captured row order.
+  const sortRanks = new Map((sortSnapshot?.orderedItemIds ?? [])
+    .map((id, index) => [id, index] as const));
+  const sorted = [...filtered].sort((left, right) => {
+    const a = sortRanks.get(left.item.id);
+    const b = sortRanks.get(right.item.id);
+    if (a === undefined && b === undefined) return 0;
+    return (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER);
+  });
   const pageSize = 300;
   const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, pages);
@@ -328,6 +360,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       <button type="button" className="item-order-draft-sort" onClick={() => {
         setSortDir(sortKey === key && sortDir === "asc" ? "desc" : "asc");
         setSortKey(key);
+        setSortVersion(version => version + 1);
         setPage(1);
       }} title={"ترتيب حسب " + label}>
         {label}<span aria-hidden="true">{sortKey === key ?
@@ -551,7 +584,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           <select aria-label="ترتيب مسودات الطلبيات حسب العمود" value={sortKey ?? ""}
             onChange={event => {
               setSortKey((event.target.value || null) as DraftSortKey | null);
-              setSortDir("asc"); resetPage();
+              setSortDir("asc"); setSortVersion(version => version + 1); resetPage();
             }}>
             <option value="">ترتيب المسودات الأصلي</option>
             <option value="quantity">الكمية المطلوبة</option>
@@ -566,7 +599,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
           </select>
         </label>
         <Button variant="secondary" disabled={!sortKey}
-          onClick={() => {setSortDir(value => value === "asc" ? "desc" : "asc"); resetPage();}}>
+          onClick={() => {setSortDir(value => value === "asc" ? "desc" : "asc");
+            setSortVersion(version => version + 1); resetPage();}}>
           {sortDir === "asc" ? "▲ تصاعدي" : "▼ تنازلي"}
         </Button>
       </div>
