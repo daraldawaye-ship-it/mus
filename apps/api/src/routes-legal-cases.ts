@@ -37,6 +37,8 @@ const caseSchema = z.object({
   fileCopyStatus: z.enum(["unknown","yes","no","partial"]).default("unknown"),
   startDate: date.default(null),
   nextHearing: date.default(null),
+  caseType: z.string().trim().max(120).optional(),
+  lastHearing: date.optional(),
   priority: z.number().int().min(0).max(10).default(0),
   summary: z.string().max(100000).default(""),
 }).strict();
@@ -115,11 +117,11 @@ export const mcpBodySchemas = {
 export const mcpBodylessOperations = ["POST /legal/records/:id/review"];
 const caseColumns = [
   "title","case_number","agency","drive_folder_id","drive_folder_url","stage","status","file_copy_status",
-  "start_date","next_hearing","priority","summary",
+  "start_date","next_hearing","priority","summary","case_type","last_hearing",
 ] as const;
 const caseValues = (v:z.infer<typeof caseSchema>)=>[
   v.title,v.caseNumber,v.agency,v.driveFolderId,v.driveFolderUrl,v.stage,v.status,v.fileCopyStatus,
-  v.startDate,v.nextHearing,v.priority,v.summary,
+  v.startDate,v.nextHearing,v.priority,v.summary,v.caseType??"",v.lastHearing??null,
 ];
 const recordColumns = [
   "kind","title","body","content_text","image_urls","pdf_url",
@@ -274,8 +276,8 @@ export function legalCaseRoutes(pool:Pool):Router {
       const previous=(await db.query("SELECT * FROM legal_cases WHERE id=$1 FOR UPDATE",[caseId])).rows[0];
       if(previous.revision!==payload.revision) throw new HttpError(409,"conflict","عُدلت القضية من جهاز آخر؛ أعد تحميلها");
       if(!user.owner && previous.status!==payload.status) throw new HttpError(403,"legal_forbidden","تغيير حالة القضية من اختصاص المالك");
-      const values=caseValues(payload);
-      const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$13 WHERE id=$14 RETURNING *";
+      const values=caseValues({...payload,caseType:payload.caseType??previous.case_type,lastHearing:payload.lastHearing===undefined?previous.last_hearing:payload.lastHearing});
+      const sql="UPDATE legal_cases SET "+caseColumns.map((col,i)=>col+"=$"+(i+1)).join(",")+",revision=revision+1,needs_review=false,updated_at=now(),updated_by=$"+(values.length+1)+" WHERE id=$"+(values.length+2)+" RETURNING *";
       const next=(await db.query(sql,[...values,user.id,caseId])).rows[0];
       await audit(db,user,"legal.update","legalCase",caseId,previous,next);
       return next;

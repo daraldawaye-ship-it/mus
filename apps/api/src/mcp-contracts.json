@@ -7539,6 +7539,21 @@
           "default": "",
           "type": "string",
           "maxLength": 100000
+        },
+        "caseType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "lastHearing": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -7657,6 +7672,21 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 2147483647
+        },
+        "caseType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "lastHearing": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

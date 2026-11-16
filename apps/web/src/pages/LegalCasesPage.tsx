@@ -9,15 +9,15 @@ import { errorMessage } from "../phase2";
 import { LegalTaskBoard, LegalTaskPriorityControl, type LegalTaskPriority } from "./LegalTaskBoard";
 
 type Kind = "fact"|"document"|"event"|"explanation"|"task"|"report"|"hearing"|"instruction";
-type Case = {id:number;title:string;case_number:string;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
+type Case = {id:number;title:string;case_number:string;case_type:string;last_hearing:string|null;agency:string;drive_folder_id:string;drive_folder_url:string;stage:string;status:string;file_copy_status:string;start_date:string|null;next_hearing:string|null;priority:number;summary:string;needs_review:boolean;legacy_snapshot:unknown;revision:number};
 type Entry = Partial<LegalTaskPriority> & {id:number;kind:Kind;transcription_status:TranscriptionState|null;transcription_file:boolean;title:string;body:string;content_text:string;image_urls:string[];pdf_url:string;drive_file_id:string;drive_folder_id:string;drive_folder_url:string;source_issuer:string;document_number:string;record_date:string|null;due_at:string|null;sort_order:number;status:string;assigned_to:number|null;created_by:number;created_at:string;creator_name?:string;reviewed_at:string|null;revision:number;image_count:number;legacy_snapshot:unknown};
 type Person = {id:number;name:string};
-type CaseForm = {title:string;caseNumber:string;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
+type CaseForm = {title:string;caseNumber:string;caseType:string;lastHearing:string|null;agency:string;driveFolderId:string;driveFolderUrl:string;stage:string;status:string;fileCopyStatus:string;startDate:string|null;nextHearing:string|null;priority:number;summary:string};
 type RecordForm = {kind:Kind;transcriptionStatus?:TranscriptionState;transcriptionFile?:boolean;title:string;body:string;contentText:string;imageUrls:string[];pdfUrl:string;driveFileId:string;driveFolderId:string;driveFolderUrl:string;sourceIssuer:string;documentNumber:string;recordDate:string|null;dueAt:string|null;sortOrder:number;status:string;assignedTo:number|null;caseIds:number[]};
 const kinds:{id:Kind;label:string}[]=[{id:"instruction",label:"التعليمات"},{id:"explanation",label:"الشرح"},{id:"fact",label:"المعطيات"},{id:"event",label:"التسلسل الزمني"},{id:"document",label:"المستندات"},{id:"task",label:"المهام"},{id:"report",label:"تقارير المتابعة"},{id:"hearing",label:"الجلسات"}];
 const globalLists=[{id:"instruction",label:"التعليمات"},{id:"event",label:"التسلسل الزمني"},{id:"fact",label:"المعطيات"},{id:"document",label:"المستندات"}] as const;
-const emptyCase:CaseForm={title:"",caseNumber:"",agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
-const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
+const emptyCase:CaseForm={title:"",caseNumber:"",caseType:"",lastHearing:null,agency:"",driveFolderId:"",driveFolderUrl:"",stage:"",status:"active",fileCopyStatus:"unknown",startDate:null,nextHearing:null,priority:0,summary:""};
+const caseForm=(c:Case):CaseForm=>({title:c.title,caseNumber:c.case_number,caseType:c.case_type??"",lastHearing:c.last_hearing?.slice(0,10)??null,agency:c.agency,driveFolderId:c.drive_folder_id,driveFolderUrl:c.drive_folder_url,stage:c.stage,status:c.status,fileCopyStatus:c.file_copy_status,startDate:c.start_date?.slice(0,10)??null,nextHearing:c.next_hearing?.slice(0,10)??null,priority:c.priority,summary:c.summary});
 const entryForm=(kind:Kind,caseId:number,e?:Entry):RecordForm=>({kind,transcriptionStatus:e?.transcription_status??undefined,transcriptionFile:e?.transcription_file,title:e?.title??"",body:e?.body??"",contentText:e?.content_text??"",imageUrls:e?.image_urls??[],pdfUrl:e?.pdf_url??"",driveFileId:e?.drive_file_id??"",driveFolderId:e?.drive_folder_id??"",driveFolderUrl:e?.drive_folder_url??"",sourceIssuer:e?.source_issuer??"",documentNumber:e?.document_number??"",recordDate:e?.record_date?.slice(0,10)??null,dueAt:e?.due_at??null,sortOrder:e?.sort_order??0,status:e?.status??(kind==="task"?"pending":""),assignedTo:e?.assigned_to??null,caseIds:caseId?[caseId]:[]});
 function evidenceReason(entry:Entry):string {
  const texts=[entry.body,entry.content_text].filter(Boolean);
@@ -32,6 +32,7 @@ function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseFo
  const set=(key:keyof CaseForm,v:string|number|null)=>change({...value,[key]:v});
  return <div className="legal-fields">
  <Field label="اسم القضية" value={value.title} onChange={e=>set("title",e.target.value)}/>
+ <Field label="النوع" value={value.caseType} onChange={e=>set("caseType",e.target.value)}/>
  <Field label="رقم القضية" value={value.caseNumber} onChange={e=>set("caseNumber",e.target.value)}/>
  <Field label="المحكمة أو الجهة" value={value.agency} onChange={e=>set("agency",e.target.value)}/>
  <Field label="معرّف مجلد القضية في Drive" value={value.driveFolderId} onChange={e=>set("driveFolderId",e.target.value)}/>
@@ -41,6 +42,7 @@ function CaseFields({value,change,disabled}:{value:CaseForm;change:(value:CaseFo
  <Select label="صورة الملف" value={value.fileCopyStatus} onChange={e=>set("fileCopyStatus",e.target.value)}><option value="unknown">لم تحدد</option><option value="yes">موجودة</option><option value="no">غير موجودة</option><option value="partial">ناقصة</option></Select>
  <Field label="تاريخ بداية القضية" type="date" value={value.startDate??""} onChange={e=>set("startDate",e.target.value||null)}/>
  <Field label="تاريخ الجلسة القادمة" type="date" value={value.nextHearing??""} onChange={e=>set("nextHearing",e.target.value||null)}/>
+ <Field label="تاريخ آخر جلسة" type="date" value={value.lastHearing??""} onChange={e=>set("lastHearing",e.target.value||null)}/>
  <Field label="أولوية القضية: 1 الأعلى، 10 الأقل، 0 غير محددة" type="number" min={0} max={10} value={value.priority} onChange={e=>set("priority",Number(e.target.value))}/>
  <div className="legal-wide"><TextField label="ملخص القضية" value={value.summary} onChange={v=>set("summary",v)}/></div></div>;
 }
@@ -192,11 +194,19 @@ export function LegalCasesPage() {
  <Button variant="secondary" disabled={globalPage*globalRecords.data.pageSize>=globalRecords.data.total||globalRecords.isFetching} onClick={()=>{setGlobalPage(p=>p+1);setFocus(null);setExpandedId(null);}}>التالي</Button>
  </div>}
  </Card>:<>
- {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
- <div className="legal-case-list">{(list.data?.items??[]).map(c=><button key={c.id} className={"legal-case-link"+(caseId===c.id?" selected":"")} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}><strong>{c.title}</strong><small>{c.case_number||"دون رقم"} · {c.status==="closed"?"منتهية":c.status==="active"?"فعالة":"غير محددة"} · {c.priority===0?"الأولوية غير محددة":"الأولوية "+c.priority}</small></button>)}</div>
+ {activePanel==="tasks" ? <LegalTaskBoard key={user?.id} owner={owner}/> : <div className="legal-grid legal-case-table-layout"><Card title="القضايا"><Field label="ابحث" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/>
+ <div className="legal-case-table-scroll" role="region" aria-label="قائمة القضايا" tabIndex={0}>
+ <table className="legal-case-table"><thead><tr><th scope="col">اسم القضية</th><th scope="col">رقم القضية</th><th scope="col">النوع</th><th scope="col">الحالة</th><th scope="col">شرح عنها</th><th scope="col">الأولوية</th><th scope="col">تاريخ البداية</th><th scope="col">تاريخ الجلسة القادمة</th><th scope="col">تاريخ آخر جلسة</th></tr></thead>
+ <tbody>{(list.data?.items??[]).map(c=><tr key={c.id} className={caseId===c.id?"selected":""}>
+ <td><button className="legal-case-title-button" aria-pressed={caseId===c.id} onClick={()=>{go("case",String(c.id));setCaseEdit(false);setEntryEdit(null);setFocus(null);}}>{c.title}</button></td>
+ <td>{c.case_number||"—"}</td><td>{c.case_type||"—"}</td>
+ <td>{c.stage||(c.status==="closed"?"منتهية":c.status==="active"?"نشطة إداريًا":"غير محددة")}{c.stage&&<small className="legal-case-admin-status">حالة البطاقة: {c.status==="closed"?"مغلقة":c.status==="active"?"نشطة":"غير محددة"}</small>}</td>
+ <td>{c.summary?<details className="legal-case-summary"><summary>{c.summary.length>150?c.summary.slice(0,150)+"… — إظهار المزيد":c.summary}</summary><div className="legal-preserve">{c.summary}</div></details>:"—"}</td>
+ <td>{c.priority||"غير محددة"}</td><td>{c.start_date?.slice(0,10)||"—"}</td><td>{c.next_hearing?.slice(0,10)||"—"}</td><td>{c.last_hearing?.slice(0,10)||"—"}</td>
+ </tr>)}{!list.isPending&&!list.error&&!list.data?.items.length&&<tr><td colSpan={9}>لا توجد قضايا مطابقة</td></tr>}</tbody></table></div>
  {list.error&&<Notice tone="error">{errorMessage(list.error)}</Notice>}
  <div className="legal-actions"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</Button><span>{page} / {Math.max(1,Math.ceil((list.data?.total??0)/30))}</span><Button variant="secondary" disabled={page*30>=(list.data?.total??0)} onClick={()=>setPage(p=>p+1)}>التالي</Button></div>
- <p>عدد القضايا: {list.data?.total??"…"}؛ البيانات القديمة باقية كما هي.</p>
+ <p>عدد القضايا: {list.data?.total??"…"}</p>
  {owner&&<Button variant="secondary" onClick={()=>go("tab","unlinked")}>سجلات تحتاج ربطًا</Button>}
  </Card>
  <div className="legal-content">
@@ -205,7 +215,7 @@ export function LegalCasesPage() {
  {selected.data.record.needs_review&&<Notice tone="warning">هذا السجل منقول من الجدول العام ويحتاج استكمال بياناته ومراجعتها؛ الأصل محفوظ.</Notice>}
  {caseEdit?<><CaseFields value={caseDraft} change={setCaseDraft} disabled={!owner}/><div className="legal-actions"><Button disabled={busy||!caseDraft.title} onClick={submitCase}>حفظ</Button><Button variant="secondary" onClick={()=>setCaseEdit(false)}>إلغاء</Button></div></>:
  <><div className="legal-tags"><span>{selected.data.record.case_number||"لم يحدد الرقم"}</span><span>{selected.data.record.agency||"لم تحدد الجهة"}</span><span>{selected.data.record.status==="closed"?"منتهية":selected.data.record.status==="active"?"فعالة":"غير محددة"}</span><span>صورة الملف: {({unknown:"غير محددة",yes:"موجودة",no:"غير موجودة",partial:"ناقصة"} as Record<string,string>)[selected.data.record.file_copy_status]??"غير محددة"}</span></div>
- <div className="legal-tags"><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div><p className="legal-preserve">{selected.data.record.summary}</p>{selected.data.record.drive_folder_url&&<p><a href={selected.data.record.drive_folder_url} rel="noreferrer" target="_blank">فتح مجلد القضية في Google Drive</a></p>}
+ <div className="legal-tags"><span>النوع: {selected.data.record.case_type||"—"}</span><span>آخر جلسة: {selected.data.record.last_hearing?.slice(0,10)||"—"}</span><span>البداية: {selected.data.record.start_date?.slice(0,10)||"—"}</span><span>الجلسة: {selected.data.record.next_hearing?.slice(0,10)||"—"}</span><span>المرحلة: {selected.data.record.stage||"—"}</span></div><p className="legal-preserve">{selected.data.record.summary}</p>{selected.data.record.drive_folder_url&&<p><a href={selected.data.record.drive_folder_url} rel="noreferrer" target="_blank">فتح مجلد القضية في Google Drive</a></p>}
  {Boolean(selected.data.record.legacy_snapshot)&&<details className="legal-legacy"><summary>البيانات الأصلية المنقولة من الجدول العام</summary><pre>{JSON.stringify(selected.data.record.legacy_snapshot,null,2)}</pre></details>}
  <div className="legal-actions">{editor&&<Button variant="secondary" onClick={()=>{setCaseDraft(caseForm(selected.data!.record));setCaseEdit(true);}}>تعديل بيانات القضية</Button>}
  <Button variant="secondary" onClick={()=>void action(async()=>{const data=await api<unknown>("/legal/cases/"+caseId+"/ai-export");await navigator.clipboard.writeText(JSON.stringify(data,null,2));setNotice("تم نسخ البيانات المترابطة");})}>نسخ ملف القضية للذكاء الاصطناعي</Button></div></>}

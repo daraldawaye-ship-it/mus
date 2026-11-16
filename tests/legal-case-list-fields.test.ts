@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+import express from "express";
+import { ZodError } from "zod";
+import { PGlite } from "@electric-sql/pglite";
+import type { Pool, QueryResultRow } from "pg";
+import { legalCaseRoutes } from "../apps/api/src/routes-legal-cases.ts";
+import { userDTO } from "../apps/api/src/repositories/models.ts";
+import { HttpError } from "../apps/api/src/errors.ts";
+
+test("case list fields persist, preserve omitted values for older clients and enforce revisions",async t=>{
+ const db=new PGlite();
+ await db.exec(`CREATE TABLE users(id integer PRIMARY KEY,name text,display_name text,owner boolean,archived boolean DEFAULT false,created_at timestamptz DEFAULT now());
+ INSERT INTO users VALUES(1,'Owner','Owner',true,false,now());
+ CREATE TABLE general_table(general_table_id integer PRIMARY KEY);
+ CREATE TABLE page_settings(page_key text,company_id integer,enabled boolean);
+ CREATE TABLE legal_case_access(case_id integer,user_id integer,role text);
+ CREATE TABLE audit_events(actor_id integer,actor_name text,scope text,company_id integer,action text,target_type text,target_id integer,before_value jsonb,after_value jsonb);`);
+ const original=await readFile("apps/api/migrations/118_legal_case_management.sql","utf8");
+ await db.exec(original.slice(0,original.indexOf("CREATE INDEX")));
+ const migration=await readFile("apps/api/migrations/20261116_legal_case_list_fields.sql","utf8");
+ await db.exec(migration);await db.exec(migration);
+ const client={query:async(sql:string,params:unknown[]=[])=>{const r=await db.query(sql,params);return {...r,rowCount:r.rows.length||r.affectedRows||0};},release(){}};
+ const pool={...client,connect:async()=>client} as unknown as Pool;
+ const app=express();app.use(express.json());
+ const owner=userDTO((await db.query<QueryResultRow>("SELECT * FROM users WHERE id=1")).rows[0]!);
+ app.use((req,_res,next)=>{req.auth={user:owner,tokenHash:"test",csrf:"test"};next();});
+ app.use(legalCaseRoutes(pool));
+ app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{res.status(error instanceof HttpError?error.status:error instanceof ZodError?400:500).json({message:String(error)});});
+ const server=app.listen(0,"127.0.0.1");await new Promise<void>(resolve=>server.once("listening",resolve));
+ t.after(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));await db.close();});
+ const addr=server.address();assert(addr&&typeof addr!=="string");
+ async function call(method:string,path:string,body?:unknown){const r=await fetch(`http://127.0.0.1:${addr.port}${path}`,{method,headers:{"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
+ const created=await call("POST","/legal/cases",{title:"Test case",caseType:"تجارية",lastHearing:"2026-11-07"});
+ assert.equal(created.status,201,JSON.stringify(created.data));
+ const id=created.data.record.id;
+ assert.equal(created.data.record.case_type,"تجارية");assert.equal(created.data.record.last_hearing.slice(0,10),"2026-11-07");
+ const updated=await call("PUT",`/legal/cases/${id}`,{title:"Updated",revision:1});
+ assert.equal(updated.status,200,JSON.stringify(updated.data));
+ assert.equal(updated.data.record.case_type,"تجارية");assert.equal(updated.data.record.last_hearing.slice(0,10),"2026-11-07");
+ assert.equal((await call("PUT",`/legal/cases/${id}`,{title:"Stale",revision:1,caseType:"",lastHearing:null})).status,409);
+ const cleared=await call("PUT",`/legal/cases/${id}`,{title:"Updated",revision:2,caseType:"",lastHearing:null});
+ assert.equal(cleared.status,200);assert.equal(cleared.data.record.case_type,"");assert.equal(cleared.data.record.last_hearing,null);
+ assert.equal((await call("PUT",`/legal/cases/${id}`,{title:"Invalid",revision:3,lastHearing:"2026-02-30"})).status,400);
+ const listed=await call("GET","/legal/cases");assert.equal(listed.data.items[0].last_hearing,null);
+ assert.equal((await db.query("SELECT count(*)::int n FROM audit_events")).rows[0]!.n,3);
+});
