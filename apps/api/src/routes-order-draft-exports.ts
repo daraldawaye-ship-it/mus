@@ -70,6 +70,38 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
     res.status(201).json(result);
   }));
 
+  router.get(base + "/purchase-comparison", handler(async (req, res) => {
+    const companyId = id(req.params.companyId);
+    const items = await transaction(pool, async client => {
+      const user = await checkAccess(client, req, companyId);
+      await companyAccess(client, user, companyId, "commerce.view");
+      const result = await client.query(
+        `WITH days AS (SELECT (now() AT TIME ZONE 'Asia/Aden')::date AS today),
+        requested AS (
+          SELECT item_id, max(required_quantity) AS quantity
+          FROM company_order_draft_exports, days
+          WHERE company_id=$1 AND export_date=today-1
+          GROUP BY item_id
+        ), purchased AS (
+          SELECT l.item_id, sum(l.smallest_quantity / (l.factor2::numeric * l.factor3)) AS quantity
+          FROM invoices i JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
+          CROSS JOIN days
+          WHERE i.company_id=$1 AND i.kind='purchase' AND i.posted AND l.quantity>0
+            AND i.document_date BETWEEN today-1 AND today
+          GROUP BY l.item_id
+        )
+        SELECT i.id AS "itemId", i.name AS "itemName",
+          CASE WHEN r.item_id IS NULL THEN '0' ELSE trim_scale(r.quantity)::text END AS "requested",
+          trim_scale(coalesce(p.quantity,0))::text AS "purchased"
+        FROM requested r FULL JOIN purchased p USING (item_id)
+        JOIN items i ON i.company_id=$1 AND i.id=coalesce(r.item_id,p.item_id)
+        ORDER BY i.name,i.id`, [companyId]);
+      return result.rows;
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ items });
+  }));
+
   router.get(base, handler(async (req,res) => {
     const companyId = id(req.params.companyId);
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";

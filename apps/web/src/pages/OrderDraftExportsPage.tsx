@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
@@ -14,6 +14,49 @@ type ExportRow = {
 type ExportResult = { items: ExportRow[]; total: number; page: number; pageSize: number };
 
 export function OrderDraftExportsPage({ context }: { context: CompanyContext }) {
+  const [params] = useSearchParams();
+  return params.get("view") === "purchases"
+    ? <PurchaseComparison context={context} />
+    : <ExportHistory context={context} />;
+}
+
+function PurchaseComparison({ context }: { context: CompanyContext }) {
+  const companyId = context.company.id;
+  const { user } = useSession();
+  const [search, setSearch] = useState("");
+  const base = `/companies/${companyId}/order-draft-exports`;
+  type Row = { itemId: number; itemName: string; requested: string | null; purchased: string };
+  const result = useQuery({
+    queryKey: ["order-purchase-comparison", companyId, user?.id],
+    queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison", { signal }),
+    enabled: !!user,
+  });
+  const rows = result.data?.items.filter(row => row.itemName.includes(search.trim()));
+  return <section>
+    <PageHeader title="طلبية أمس ومشتريات أمس واليوم"
+      description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الكميات بالوحدة الأولى للصنف."
+      actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
+    <Card>
+      <label>بحث عن الصنف<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
+      <Button variant="secondary" size="compact" onClick={() => void result.refetch()}>تحديث</Button>
+      {result.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}
+      {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
+      {rows && <>
+        <small>عدد الأصناف: {rows.length}</small>
+        <table className="data-table" dir="rtl">
+          <thead><tr><th>اسم الصنف</th><th>الكمية المطلوبة أمس</th><th>إجمالي الكمية المشتراة أمس واليوم</th></tr></thead>
+          <tbody>{rows.map(row => <tr key={row.itemId}>
+            <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
+            <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
+          </tr>)}</tbody>
+        </table>
+        {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
+      </>}
+    </Card>
+  </section>;
+}
+
+function ExportHistory({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [search, setSearch] = useState("");
@@ -57,7 +100,7 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
   return <section className="order-export-followup">
     <PageHeader title="متابعة الطلبيات المرحلة"
       description="سجل مشترك لجميع أجهزة الشركة؛ الصنف لا يُسجل أكثر من مرة في اليوم، والسجلات الأقدم من 40 يومًا تُحذف تلقائيًا."
-      actions={<Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link>} />
+      actions={<><Link className="button button-secondary" to="?view=purchases">طلبية أمس ومشتريات أمس واليوم</Link> <Link className="button button-secondary" to={`/companies/${companyId}/item-order-drafts`}>متابعة المسودة</Link></>} />
     <Card>
       <form onSubmit={event => { event.preventDefault(); setFilter(search.trim()); setPage(1); }}
         style={{ display:"flex", flexWrap:"wrap", alignItems:"end", gap:6, marginBottom:8 }}>
