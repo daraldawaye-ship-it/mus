@@ -1,7 +1,9 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
+import type { CompanyContext, Page } from "../../../../packages/contracts/src/index.ts";
+import { stockMovementKindLabels, type StockMovement } from "../../../../packages/contracts/src/inventory";
+import { signedStockMovementQuantity } from "../stock-movement-display";
 import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
 import { errorMessage } from "../phase2";
@@ -49,6 +51,12 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const { user } = useSession();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [sidePanel, setSidePanel] = useState<{ itemId: number; itemName: string; view: "purchase" | "movement" } | null>(null);
+  useEffect(() => {
+    if (sidePanel && window.matchMedia("(max-width: 900px)").matches) {
+      document.getElementById("purchase-comparison-detail-pane")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [sidePanel]);
   const [params] = useSearchParams();
   const threeDays = params.get("period") === "three-days";
   const period = threeDays ? "three-days" : "yesterday";
@@ -115,6 +123,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
     <PageHeader title="فارق الشراء والطلبيه"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الفارق = المشتَرى − المطلوب. سعر الفواتير متوسط مرجّح بالكمية للوحدة الأولى."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
+    <div className="purchase-comparison-split-layout">
     <Card>
       <nav aria-label="فترة المقارنة" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         <Link className={threeDays ? "button button-secondary" : "button button-primary"}
@@ -131,11 +140,17 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         <small>عدد الأصناف: {rows.length}</small>
         <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
           <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("saleQuantityMonth")}{heading("availableUnit1")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
-          <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={index % 2 ? "alternate" : undefined}>
+          <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={[index % 2 ? "alternate" : "", sidePanel?.itemId === row.itemId ? "selected" : ""].filter(Boolean).join(" ")}>
             <td><div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
               aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
               onClick={() => setExpanded(current => current === row.itemId ? null : row.itemId)}>⋯</button>
-              <Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></div></td>
+              <button type="button" className="purchase-comparison-item-select"
+                aria-pressed={sidePanel?.itemId === row.itemId}
+                onClick={() => setSidePanel(current => ({ itemId: row.itemId, itemName: row.itemName, view: current?.view ?? "purchase" }))}>
+                {row.itemName}
+              </button>
+              <Link className="purchase-comparison-item-card-link" to={`/companies/${companyId}/items/${row.itemId}`}
+                title="فتح كرت الصنف" aria-label={`فتح كرت الصنف ${row.itemName}`}>↗</Link></div></td>
             <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
             <td>{comparisonValue(row.difference, true)}</td>
             <td><bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(row.saleQuantityMonth)}</bdi></td>
@@ -153,7 +168,94 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
         {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
       </>}
     </Card>
+    <aside id="purchase-comparison-detail-pane" className="purchase-comparison-detail-pane" aria-live="polite">
+      {sidePanel && <Card>
+        <div className="purchase-comparison-side-heading">
+          <strong dir="auto">{sidePanel.itemName}</strong>
+          <button type="button" className="purchase-comparison-close" onClick={() => setSidePanel(null)} aria-label="إغلاق تفاصيل الصنف">×</button>
+        </div>
+        <div className="purchase-comparison-view-switch" role="group" aria-label="نوع حركة الصنف">
+          <Button size="compact" variant={sidePanel.view === "purchase" ? "primary" : "secondary"}
+            onClick={() => setSidePanel(current => current && { ...current, view: "purchase" })}
+            aria-pressed={sidePanel.view === "purchase"}>مشتريات الصنف</Button>
+          <Button size="compact" variant={sidePanel.view === "movement" ? "primary" : "secondary"}
+            onClick={() => setSidePanel(current => current && { ...current, view: "movement" })}
+            aria-pressed={sidePanel.view === "movement"}>حركة الصنف</Button>
+        </div>
+        <PurchaseComparisonItemPanel companyId={companyId} userId={user?.id} itemId={sidePanel.itemId} view={sidePanel.view} />
+      </Card>}
+    </aside>
+    </div>
   </section>;
+}
+
+type ComparisonHistoryRow = {
+  lineId: string | number;
+  documentDate: string;
+  partyName?: string | null;
+  quantityFirstUnit: string;
+  unitPriceFirstUnit?: string | null;
+  isStaged?: boolean;
+};
+
+function PurchaseComparisonItemPanel({ companyId, userId, itemId, view }: {
+  companyId: number;
+  userId: number | undefined;
+  itemId: number;
+  view: "purchase" | "movement";
+}) {
+  const history = useQuery<{ items: ComparisonHistoryRow[] }>({
+    queryKey: ["purchase-comparison-side-purchases", companyId, userId, itemId],
+    queryFn: ({ signal }) => api<{ items: ComparisonHistoryRow[] }>(
+      "/companies/" + companyId + "/item-history/" + itemId + "?type=purchase", { signal }),
+    enabled: !!userId && view === "purchase",
+    staleTime: 10_000,
+  });
+  const movements = useQuery<Page<StockMovement>>({
+    queryKey: ["purchase-comparison-side-movements", companyId, userId, itemId],
+    queryFn: ({ signal }) => api<Page<StockMovement>>(
+      "/companies/" + companyId + "/stock-movements?" + new URLSearchParams({
+        itemId: String(itemId), page: "1", pageSize: "20", sort: "documentDate:desc,id:desc",
+      }), { signal }),
+    enabled: !!userId && view === "movement",
+    staleTime: 10_000,
+  });
+  if (view === "purchase") return <>
+    {history.isPending && <Notice>جارٍ تحميل مشتريات الصنف…</Notice>}
+    {history.isError && <Notice tone="error">تعذر تحميل مشتريات الصنف: {errorMessage(history.error)}</Notice>}
+    {history.data?.items.length === 0 && <small>لا توجد مشتريات سابقة لهذا الصنف.</small>}
+    {!!history.data?.items.length && <div className="purchase-comparison-side-scroll" role="region" tabIndex={0} aria-label="مشتريات الصنف">
+      <table className="purchase-comparison-side-table" dir="rtl">
+        <thead><tr><th>التاريخ</th><th>المورد</th><th>السعر</th><th>الكمية (و1)</th></tr></thead>
+        <tbody>{history.data.items.map(row => <tr key={row.lineId}>
+          <td dir="ltr">{row.documentDate}{row.isStaged && <small className="muted">أوليًا</small>}</td>
+          <td title={row.partyName ?? "—"}>{row.partyName || "—"}</td>
+          <td dir="ltr">{row.unitPriceFirstUnit ?? "—"}</td>
+          <td dir="ltr">{row.quantityFirstUnit}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </>;
+  return <>
+    {movements.isPending && <Notice>جارٍ تحميل حركة الصنف…</Notice>}
+    {movements.isError && <Notice tone="error">تعذر تحميل حركة الصنف: {errorMessage(movements.error)}</Notice>}
+    {movements.data?.items.length === 0 && <small>لا توجد حركات مخزون مرحلة لهذا الصنف.</small>}
+    {!!movements.data?.items.length && <div className="purchase-comparison-side-scroll" role="region" tabIndex={0} aria-label="حركة الصنف">
+      <table className="purchase-comparison-side-table" dir="rtl">
+        <thead><tr><th>التاريخ</th><th>الحركة والموقع</th><th>الكمية</th></tr></thead>
+        <tbody>{movements.data.items.map(row => <tr key={row.id}>
+          <td dir="ltr">{row.documentDate}</td>
+          <td title={row.locationName}>{stockMovementKindLabels[row.kind]} — {row.locationName}</td>
+          <td dir="ltr">{signedStockMovementQuantity(row.quantitySmallest)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    {movements.data && movements.data.total > movements.data.pageSize &&
+      <small>تظهر آخر {movements.data.pageSize} حركة من أصل {movements.data.total}.</small>}
+    <Link className="purchase-comparison-all-movements" to={"/companies/" + companyId + "/stock-movements?itemId=" + itemId}>
+      عرض جميع الحركات
+    </Link>
+  </>;
 }
 
 function ExportHistory({ context }: { context: CompanyContext }) {
