@@ -9,11 +9,7 @@ import { api, useSession } from "../api";
 import { errorMessage } from "../phase2";
 import { useNumberedOrderDrafts } from "../numbered-order-drafts";
 import { usePageDirectory } from "../page-directory";
-import { ItemReserveQuickEdit } from "../ItemReserveQuickEdit";
-import { ItemPurchaseFactorQuickEdit } from "../ItemPurchaseFactorQuickEdit";
-import { ItemReviewedQuickEdit } from "../ItemReviewedQuickEdit";
-import { ItemMinOrderQuantityQuickEdit } from "../ItemMinOrderQuantityQuickEdit";
-import { ItemSpecialOrderQuantityQuickEdit, ItemOrderStopQuickActions } from "../ItemSpecialOrderQuickActions";
+import { OrderPlanningFields } from "../OrderPlanningFields";
 import { createTwoColumnItemNamesPdf, exportPdfToDevice } from "../item-names-pdf";
 import type { OrderDraftItem } from "../numbered-order-drafts-core";
 import { Button, Card, Notice, PageHeader } from "../ui";
@@ -415,54 +411,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     } finally { setGroupBusy(false); }
   }
   const planningControls = (row: DraftRow, info: DraftMetrics | undefined) =>
-    <div className="item-order-draft-extra-fields">
-      <div className="item-order-draft-extra-field">
-        {info ? <ItemReviewedQuickEdit companyId={companyId}
-          itemId={row.item.id} revision={info.revision}
-          reviewed={info.reviewed} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل حالة المراجعة…</small>}
-      </div>
-      <div className="item-order-draft-extra-field">
-        <strong>كمية الاحتياط</strong>
-        {info ? <ItemReserveQuickEdit companyId={companyId}
-          itemId={row.item.id} revision={info.revision}
-          reserveQuantity={info.reserveQuantity} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل بيانات الصنف…</small>}
-      </div>
-      <div className="item-order-draft-extra-field">
-        <strong>عامل وحدة الشراء</strong>
-        {info ? <ItemPurchaseFactorQuickEdit companyId={companyId}
-          itemId={row.item.id} revision={info.revision}
-          purchaseFactor={info.purchaseFactor} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل بيانات الصنف…</small>}
-      </div>
-      <div className="item-order-draft-extra-field">
-        <strong>أقل كمية طلب</strong>
-        {info ? <ItemMinOrderQuantityQuickEdit companyId={companyId}
-          itemId={row.item.id} revision={info.revision}
-          minOrderQuantity={info.minOrderQuantity} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل بيانات الصنف…</small>}
-        <small className="muted">حد أدنى للكمية المحسوبة تلقائيًا فقط، ولا يغيّر الكمية المحددة يدويًا في المسودة.</small>
-      </div>
-      <div className="item-order-draft-extra-field">
-        <strong>كمية طلب الأصناف الخاصة</strong>
-        {info ? <ItemSpecialOrderQuantityQuickEdit companyId={companyId}
-          itemId={row.item.id} revision={info.revision}
-          orderAlertQuantity={info.orderAlertQuantity} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل بيانات الصنف…</small>}
-        <small className="muted">التذكير يعمل حتى لو كان الصنف موقوف الطلب؛ إخلاء الحقل فقط يوقف الإشعار.</small>
-      </div>
-      <div className="item-order-draft-extra-field item-order-draft-stop-field">
-        <strong>إيقاف طلب الصنف</strong>
-        {info ? <ItemOrderStopQuickActions companyId={companyId}
-          itemId={row.item.id} itemName={row.item.name} revision={info.revision}
-          orderStoppedUntil={info.orderStoppedUntil} canEdit={canEditPlanning} />
-          : <small>جارٍ تحميل بيانات الصنف…</small>}
-      </div>
-      {!canEditPlanning && <small className="muted">
-        هذه الحقول للعرض فقط حتى تُمنح صلاحية تعديل قائمة الأصناف.
-      </small>}
-    </div>;
+    <OrderPlanningFields companyId={companyId} itemId={row.item.id} itemName={row.item.name}
+      info={info} canEdit={canEditPlanning} />;
   const togglePlanning = (id: number) => setExpandedItemId(current => current === id ? null : id);
   const moreButton = (row: DraftRow) =>
     <button type="button" className="item-order-draft-expand-button"

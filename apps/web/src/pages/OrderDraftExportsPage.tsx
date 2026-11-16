@@ -1,10 +1,32 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { CompanyContext } from "../../../../packages/contracts/src/index.ts";
 import { api, useSession } from "../api";
 import { Button, Card, Notice, PageHeader } from "../ui";
 import { errorMessage } from "../phase2";
+
+import { OrderPlanningFields, type PlanningInfo } from "../OrderPlanningFields";
+import { usePageDirectory } from "../page-directory";
+import "./purchase-comparison.css";
+
+function ComparisonDetails({ companyId, itemId, itemName }: { companyId: number; itemId: number; itemName: string }) {
+  const { user } = useSession();
+  const directory = usePageDirectory(companyId);
+  const access = directory.data?.find(entry => entry.key === "company.item-options-list");
+  const items = [{ id: itemId, requiredQuantity: null }];
+  const result = useQuery({
+    queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items)],
+    queryFn: ({ signal }) => api<{ items: PlanningInfo[] }>(`/companies/${companyId}/item-options-list/draft-review`,
+      { method: "POST", body: { items }, signal }),
+    enabled: !!user,
+  });
+  if (result.isError) return <Notice tone="error">{errorMessage(result.error)}</Notice>;
+  if (result.isPending) return <Notice>جارٍ تحميل تفاصيل الصنف…</Notice>;
+  if (!result.data?.items[0]) return <Notice>تعذّر العثور على بيانات الصنف.</Notice>;
+  return <OrderPlanningFields companyId={companyId} itemId={itemId} itemName={itemName}
+    info={result.data.items[0]} canEdit={!!access?.enabled && !!access.actionAccess.edit} />;
+}
 
 type ExportRow = {
   id: number; itemId: number; itemName: string;
@@ -41,6 +63,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
   const { user } = useSession();
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [params] = useSearchParams();
   const threeDays = params.get("period") === "three-days";
   const period = threeDays ? "three-days" : "yesterday";
@@ -102,17 +125,22 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
-        <div style={{ overflowX: "auto" }}><table className="data-table" dir="rtl">
+        <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
           <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.itemId}>
-            <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
+          <tbody>{rows.map((row, index) => <Fragment key={row.itemId}><tr className={index % 2 ? "alternate" : undefined}>
+            <td><div className="purchase-comparison-name"><button type="button" className="item-order-draft-expand-button"
+              aria-expanded={expanded === row.itemId} aria-label={`تفاصيل الصنف ${row.itemName}`}
+              onClick={() => setExpanded(current => current === row.itemId ? null : row.itemId)}>⋯</button>
+              <Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></div></td>
             <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
             <td>{comparisonValue(row.difference, true)}</td>
             <td>{comparisonValue(row.actualPrice, false, row.actualCurrency)}</td>
             <td>{comparisonValue(row.actualValue, true, row.actualCurrency)}</td>
             <td>{comparisonValue(row.defaultPrice, false, row.defaultCurrency)}</td>
             <td>{comparisonValue(row.defaultValue, true, row.defaultCurrency)}</td>
-          </tr>)}</tbody>
+          </tr>{expanded === row.itemId && <tr className="purchase-comparison-details"><td colSpan={8}>
+            <ComparisonDetails companyId={companyId} itemId={row.itemId} itemName={row.itemName} />
+          </td></tr>}</Fragment>)}</tbody>
         </table></div>
         {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
       </>}
