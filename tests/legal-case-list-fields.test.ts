@@ -51,7 +51,7 @@ test("case list fields persist, preserve omitted values for older clients and en
  assert.equal(second.data.items[0].title,"Sort 31");assert.equal(second.data.items.at(-1).priority,0);
  const desc=await call("GET","/legal/cases?sortBy=start_date&sortDir=desc");
  assert.equal(desc.data.items[0].title,"Sort 35");
- for(const sortBy of ["title","case_number","case_type","stage","summary","last_hearing","next_hearing"])
+ for(const sortBy of ["title","case_number","agency","case_type","stage","summary","last_hearing","next_hearing"])
   assert.equal((await call("GET","/legal/cases?sortBy="+sortBy)).status,200);
  assert.equal((await call("GET","/legal/cases?sortBy=__proto__")).status,400);
  assert.equal((await call("GET","/legal/cases?sortDir=invalid")).status,400);

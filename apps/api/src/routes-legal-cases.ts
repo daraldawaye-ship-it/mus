@@ -236,7 +236,7 @@ export function legalCaseRoutes(pool:Pool):Router {
     const status=req.query.status;
     if(status!==undefined && !["active","closed","unknown"].includes(String(status))) throw new HttpError(400,"invalid_query","حالة غير صالحة");
     const page=Math.max(1,Math.min(100000,Number(req.query.page)||1));
-    const sortColumns:Record<string,string>={title:"NULLIF(c.title,'')",case_number:"NULLIF(c.case_number,'')",case_type:"NULLIF(c.case_type,'')",stage:"COALESCE(NULLIF(c.stage,''),CASE c.status WHEN 'closed' THEN 'منتهية' WHEN 'active' THEN 'نشطة إداريًا' ELSE 'غير محددة' END)",summary:"NULLIF(c.summary,'')",priority:"NULLIF(c.priority,0)",start_date:"c.start_date",next_hearing:"c.next_hearing",last_hearing:"c.last_hearing"};
+    const sortColumns:Record<string,string>={title:"NULLIF(c.title,'')",case_number:"NULLIF(c.case_number,'')",agency:"NULLIF(c.agency,'')",case_type:"NULLIF(c.case_type,'')",stage:"COALESCE(NULLIF(c.stage,''),CASE c.status WHEN 'closed' THEN 'منتهية' WHEN 'active' THEN 'نشطة إداريًا' ELSE 'غير محددة' END)",summary:"NULLIF(c.summary,'')",priority:"NULLIF(c.priority,0)",start_date:"c.start_date",next_hearing:"c.next_hearing",last_hearing:"c.last_hearing"};
     const sortBy=String(req.query.sortBy??""),sortDir=String(req.query.sortDir??"asc");
     if((sortBy&&!Object.hasOwn(sortColumns,sortBy))||!["asc","desc"].includes(sortDir)) throw new HttpError(400,"invalid_query","ترتيب غير صالح");
     const orderBy=sortBy?sortColumns[sortBy]+(sortDir==="asc"?" ASC":" DESC")+" NULLS LAST,c.id DESC":"(c.priority=0) ASC,c.priority ASC,c.id DESC";
