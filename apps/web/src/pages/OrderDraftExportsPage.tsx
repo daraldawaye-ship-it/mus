@@ -20,12 +20,21 @@ export function OrderDraftExportsPage({ context }: { context: CompanyContext }) 
     : <ExportHistory context={context} />;
 }
 
-type ComparisonColumn = "itemName" | "requested" | "purchased";
+type ComparisonColumn = "itemName" | "requested" | "purchased" | "difference" | "actualPrice" | "actualValue" | "defaultPrice" | "defaultValue";
 
 function compareQuantity(left: string, right: string) {
-  const [a, fractionA = ""] = left.split(".");
-  const [b, fractionB = ""] = right.split(".");
-  return a.length - b.length || a.localeCompare(b, "en") || fractionA.localeCompare(fractionB, "en");
+  const leftNegative = left.startsWith("-"), rightNegative = right.startsWith("-");
+  if (leftNegative !== rightNegative) return leftNegative ? -1 : 1;
+  const [a, fractionA = ""] = left.replace(/^-/, "").split(".");
+  const [b, fractionB = ""] = right.replace(/^-/, "").split(".");
+  const magnitude = a.length - b.length || a.localeCompare(b, "en") || fractionA.localeCompare(fractionB, "en");
+  return leftNegative ? -magnitude : magnitude;
+}
+
+function comparisonValue(value: string | null, signed = false, currency?: string | null) {
+  if (value == null) return "—";
+  const prefix = signed && value !== "0" && !value.startsWith("-") ? "+" : "";
+  return <><bdi dir="ltr">{prefix}{value}</bdi>{currency && <> <bdi>{currency}</bdi></>}</>;
 }
 
 function PurchaseComparison({ context }: { context: CompanyContext }) {
@@ -36,13 +45,20 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   const threeDays = params.get("period") === "three-days";
   const period = threeDays ? "three-days" : "yesterday";
   const comparisonColumns = {
+    difference: "فارق الكمية",
+    actualPrice: "سعر الشراء من الفواتير",
+    actualValue: "إجمالي الفارق بسعر الفواتير",
+    defaultPrice: "سعر الشراء الافتراضي",
+    defaultValue: "إجمالي الفارق بالسعر الافتراضي",
     itemName: "اسم الصنف",
     requested: threeDays ? "أعلى كمية مطلوبة خلال 3 أيام" : "الكمية المطلوبة أمس",
     purchased: threeDays ? "إجمالي الكمية المشتراة خلال 3 أيام" : "إجمالي الكمية المشتراة أمس واليوم",
   };
   const [sort, setSort] = useState<{ column: ComparisonColumn; descending: boolean } | null>(null);
   const base = `/companies/${companyId}/order-draft-exports`;
-  type Row = { itemId: number; itemName: string; requested: string | null; purchased: string };
+  type Row = Record<ComparisonColumn, string | null> & {
+    itemId: number; itemName: string; purchased: string; actualCurrency: string | null; defaultCurrency: string;
+  };
   const result = useQuery({
     queryKey: ["order-purchase-comparison", companyId, user?.id, period],
     queryFn: ({ signal }) => api<{ items: Row[] }>(base + "/purchase-comparison?period=" + period, { signal }),
@@ -71,7 +87,7 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   };
   return <section>
     <PageHeader title="فارق الشراء والطلبيه"
-      description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الكميات بالوحدة الأولى للصنف."
+      description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الفارق = المشتَرى − المطلوب. سعر الفواتير متوسط مرجّح بالكمية للوحدة الأولى."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
     <Card>
       <nav aria-label="فترة المقارنة" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -86,13 +102,18 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       {rows && <>
         <small>عدد الأصناف: {rows.length}</small>
-        <table className="data-table" dir="rtl">
-          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}</tr></thead>
+        <div style={{ overflowX: "auto" }}><table className="data-table" dir="rtl">
+          <thead><tr>{heading("itemName")}{heading("requested")}{heading("purchased")}{heading("difference")}{heading("actualPrice")}{heading("actualValue")}{heading("defaultPrice")}{heading("defaultValue")}</tr></thead>
           <tbody>{rows.map(row => <tr key={row.itemId}>
             <td><Link to={`/companies/${companyId}/items/${row.itemId}`}>{row.itemName}</Link></td>
             <td>{row.requested ?? "—"}</td><td>{row.purchased}</td>
+            <td>{comparisonValue(row.difference, true)}</td>
+            <td>{comparisonValue(row.actualPrice, false, row.actualCurrency)}</td>
+            <td>{comparisonValue(row.actualValue, true, row.actualCurrency)}</td>
+            <td>{comparisonValue(row.defaultPrice, false, row.defaultCurrency)}</td>
+            <td>{comparisonValue(row.defaultValue, true, row.defaultCurrency)}</td>
           </tr>)}</tbody>
-        </table>
+        </table></div>
         {!rows.length && <Notice>لا توجد أصناف مطابقة.</Notice>}
       </>}
     </Card>

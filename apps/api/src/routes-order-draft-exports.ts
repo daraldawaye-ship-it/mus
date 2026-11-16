@@ -85,7 +85,13 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
           WHERE company_id=$1 AND export_date BETWEEN today-$2::int AND today-$3::int
           GROUP BY item_id
         ), purchased AS (
-          SELECT l.item_id, sum(l.smallest_quantity / (l.factor2::numeric * l.factor3)) AS quantity
+          SELECT l.item_id, sum(l.smallest_quantity / (l.factor2::numeric * l.factor3)) AS quantity,
+            CASE WHEN min(i.currency_id)=max(i.currency_id) THEN sum(l.quantity*l.unit_price)
+                 WHEN min(i.base_currency_id)=max(i.base_currency_id) THEN sum(l.quantity*l.unit_price*i.exchange_rate)
+            END AS amount,
+            CASE WHEN min(i.currency_id)=max(i.currency_id) THEN min(i.currency_code)
+                 WHEN min(i.base_currency_id)=max(i.base_currency_id) THEN min(i.base_currency_code)
+            END AS currency
           FROM invoices i JOIN invoice_lines l ON l.company_id=i.company_id AND l.invoice_id=i.id
           CROSS JOIN days
           WHERE i.company_id=$1 AND i.kind='purchase' AND i.posted AND l.quantity>0
@@ -94,9 +100,21 @@ export function orderDraftExportsRoutes(pool: Pool): Router {
         )
         SELECT i.id AS "itemId", i.name AS "itemName",
           CASE WHEN r.item_id IS NULL THEN '0' ELSE trim_scale(r.quantity)::text END AS "requested",
-          trim_scale(coalesce(p.quantity,0))::text AS "purchased"
+          trim_scale(coalesce(p.quantity,0))::text AS "purchased",
+          trim_scale(v.difference)::text AS difference,
+          trim_scale(round(v.actual_price,6))::text AS "actualPrice",
+          trim_scale(round(v.difference*v.actual_price,6))::text AS "actualValue",
+          p.currency AS "actualCurrency",
+          trim_scale(i.purchase_price)::text AS "defaultPrice",
+          trim_scale(round(v.difference*i.purchase_price,6))::text AS "defaultValue",
+          c.code AS "defaultCurrency"
         FROM requested r FULL JOIN purchased p USING (item_id)
         JOIN items i ON i.company_id=$1 AND i.id=coalesce(r.item_id,p.item_id)
+        JOIN company_currencies c ON c.company_id=i.company_id AND c.id=i.currency_id
+        CROSS JOIN LATERAL (
+          SELECT coalesce(p.quantity,0) - CASE WHEN r.item_id IS NULL THEN 0 ELSE r.quantity END AS difference,
+            p.amount / nullif(p.quantity,0) AS actual_price
+        ) v
         ORDER BY i.name,i.id`, [companyId, threeDays ? 2 : 1, threeDays ? 0 : 1]);
       return result.rows;
     });
