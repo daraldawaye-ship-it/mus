@@ -686,6 +686,15 @@ page(
   { parentKey: "company.item-options-list", type: "report", keywords: ["طلبيات", "مسودات", "ترحيل", "طباعة"] },
 );
 page(
+  "company.purchase-comparison",
+  "فارق الشراء والطلبيه",
+  "الأصناف والمخزون",
+  "/companies/:companyId/purchase-comparison",
+  { view: permission("items.view") },
+  "مقارنة كميات الطلبيات المرحلة بمشتريات الفواتير المرحلة وأسعارها وفروق الكميات والقيم مع عرض مشتريات وحركة الصنف.",
+  { parentKey: "company.order-draft-exports", type: "report", keywords: ["فارق", "شراء", "طلبيه", "طلبية", "مشتريات", "مقارنة"] },
+);
+page(
   "company.item-card",
   "كرت الصنف",
   "الأصناف والمخزون",
