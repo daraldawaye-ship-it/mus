@@ -128,6 +128,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [search, setSearch] = useState("");
   const [draftFilter, setDraftFilter] = useState("all");
   const [status, setStatus] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "reviewed" | "unreviewed">("all");
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -274,13 +275,6 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   }, [rows, sidePanel?.itemId]);
   const activeCount = rows.filter(row => !row.item.deleted).length;
   const removedCount = rows.length - activeCount;
-  const filtered = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase();
-    return rows.filter(row => (draftFilter === "all" || String(row.draftId) === draftFilter)
-      && (status === "all" || (status === "deleted" ? !!row.item.deleted : !row.item.deleted))
-      && (!q || [row.item.name, row.item.code, row.item.sourceOptionName ?? row.draftOptionName ?? "",
-        String(row.draftId)].some(value => value.toLocaleLowerCase().includes(q))));
-  }, [rows, search, draftFilter, status]);
   // Load all draft facts in authorized chunks so sorting works across the
   // entire locally saved draft list, not merely the current visible page.
   const metricRequests = rows.map(row => ({
@@ -307,6 +301,22 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     .map(item => [item.itemId, item]));
   const metricsLoading = metricResults.some(result => result.isPending || result.isFetching);
   const metricsError = metricResults.find(result => result.error)?.error;
+  // Reviewed is an authoritative item-card flag from the draft-review API.
+  // Never treat an unloaded or failed metric as "غير مراجع".
+  const reviewFilterReady = reviewFilter === "all" || (
+    metricResults.every(result => result.isSuccess) &&
+    rows.every(row => metricsById.has(row.item.id))
+  );
+  const filtered = useMemo(() => {
+    if (!reviewFilterReady) return [];
+    const q = search.trim().toLocaleLowerCase();
+    return rows.filter(row => (draftFilter === "all" || String(row.draftId) === draftFilter)
+      && (status === "all" || (status === "deleted" ? !!row.item.deleted : !row.item.deleted))
+      && (!q || [row.item.name, row.item.code, row.item.sourceOptionName ?? row.draftOptionName ?? "",
+        String(row.draftId)].some(value => value.toLocaleLowerCase().includes(q)))
+      && (reviewFilter === "all" || (metricsById.get(row.item.id)?.reviewed ===
+        (reviewFilter === "reviewed"))));
+  }, [rows, search, draftFilter, status, reviewFilter, reviewFilterReady, metricsById]);
   const draftValuesInput = drafts.drafts.map(draft => ({
     id: draft.id,
     items: draft.items.filter(item => !item.deleted).map(item => ({
@@ -571,6 +581,24 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     </Card>
     <div className="item-order-drafts-split-layout">
     <Card title={"المسودات: " + drafts.drafts.length + " — الأصناف الفعالة: " + activeCount + " — المحذوفة: " + removedCount}>
+      <div className="item-order-drafts-review-filter" role="group"
+        aria-label="تصفية مسودات الطلبيات حسب مراجعة الصنف">
+        {([
+          { value: "all", label: "إظهار الكل" },
+          { value: "reviewed", label: "إظهار المراجع" },
+          { value: "unreviewed", label: "إظهار غير المراجع" },
+        ] as const).map(option => (
+          <Button key={option.value} size="compact"
+            variant={reviewFilter === option.value ? "primary" : "secondary"}
+            aria-pressed={reviewFilter === option.value}
+            onClick={() => {
+              setReviewFilter(option.value);
+              setSelectedIds(new Set());
+              setSidePanel(null);
+              resetPage();
+            }}>{option.label}</Button>
+        ))}
+      </div>
       <div className="item-order-drafts-filters">
         <label>البحث عن صنف أو اسم خيارات
           <input type="search" value={search} onChange={event => {
@@ -679,6 +707,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       </div>}
       {metricsLoading && <small className="muted" role="status">جارٍ تحديث مؤشرات المبيعات والسعر والقيمة…</small>}
       {metricsError && <Notice tone="error">تعذر تحميل مؤشرات الأصناف: {errorMessage(metricsError)}</Notice>}
+      {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
+        <Notice>جارٍ تحميل حالات المراجعة لجميع أصناف المسودات لتطبيق الفلتر…</Notice>}
       {!drafts.drafts.length && <Notice>لا توجد مسودات محفوظة على هذا الجهاز حاليًا. أنشئ مسودة أو اختر تجميعًا أعلاه.</Notice>}
       {!!drafts.drafts.length && <div className="table-scroll item-order-drafts-table-scroll" role="region"
         aria-label="قائمة أصناف جميع المسودات">
@@ -761,7 +791,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               </tr>}
             </Fragment>;
           })}
-          {!filtered.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف مطابقة للبحث.</td></tr>}
+          {reviewFilterReady && !filtered.length &&
+            <tr><td colSpan={visibleColumns.length}>لا توجد أصناف مطابقة للخيارات الحالية.</td></tr>}
           </tbody>
         </table>
       </div>}
@@ -823,7 +854,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
               </div>}
           </article>;
         })}
-        {!filtered.length && <p className="muted">لا توجد أصناف مطابقة للبحث.</p>}
+        {reviewFilterReady && !filtered.length &&
+          <p className="muted">لا توجد أصناف مطابقة للخيارات الحالية.</p>}
       </div>}
       {pages > 1 && <div className="form-actions item-order-drafts-pagination">
         <Button variant="secondary" disabled={currentPage <= 1}
