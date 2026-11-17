@@ -8,15 +8,15 @@ import { Button, Card, Notice, PageHeader } from "../ui";
 import "./expiry-alert-follow-up.css";
 
 type Kind = "expired" | "expiring-30";
-type SortKey = "expiry" | "name" | "quantity" | "location";
-type BatchRow = {
-  balanceId: number; itemId: number; code: string; name: string;
-  locationName: string; expiryDate: string; quantityUnit1: string;
+type SortKey = "expiry" | "name" | "quantity";
+type ExpiryItem = {
+  itemId: number; code: string; name: string; unit1Name: string;
+  expiryDate: string; quantityUnit1: string;
 };
 type Report = {
   kind: Kind; asOf: string; page: number; pageSize: number; total: number;
-  summary: {items: number; batches: number};
-  items: BatchRow[];
+  summary: {items: number};
+  items: ExpiryItem[];
 };
 const fmt = (value: string | number) => Number(value).toLocaleString("en-US",{
   minimumFractionDigits: 0,maximumFractionDigits: 4,
@@ -30,7 +30,7 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
   const [params,setParams] = useSearchParams();
   const q=params.get("q")||"";
   const [search,setSearch] = useState(q);
-  const sortValues: SortKey[]=["expiry","name","quantity","location"];
+  const sortValues: SortKey[]=["expiry","name","quantity"];
   const sortBy=sortValues.find(value=>value===params.get("sortBy"))??"expiry";
   const sortDir=params.get("sortDir")==="desc"?"desc":"asc";
   const page=Math.max(1,Math.min(100000,Number(params.get("page"))||1));
@@ -72,7 +72,7 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
       {key===sortBy?(sortDir==="asc"?"▲":"▼"):"⇵"}</span></button>
   </th>;
   return <div className="expiry-alert-follow-up-page">
-    <PageHeader title={title} description="عرض الدفعات ذات الرصيد الموجب فقط بحسب تاريخ الصلاحية المسجل وموقع المخزون."
+    <PageHeader title={title} description="سطر واحد لكل صنف، حسب أقرب تاريخ انتهاء في كرت الصنف وصافي المتوفر دون مخازن المرتجعات."
       actions={<>
         <Link className="button button-secondary" to={"/companies/"+companyId+"/"+another}>
           {kind==="expired"?"الأصناف القريبة من الانتهاء":"الأصناف المنتهية"}
@@ -84,43 +84,40 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
     <Card>
       {data&&<div className="expiry-alert-follow-up-summary">
         <span>عدد الأصناف: <strong>{fmt(data.summary.items)}</strong></span>
-        <span>عدد الدفعات/المواقع: <strong>{fmt(data.summary.batches)}</strong></span>
         <span>تاريخ الفحص: <strong>{data.asOf}</strong></span>
       </div>}
       <div className="expiry-alert-follow-up-controls">
         <label>بحث
           <input type="search" value={search} onChange={event=>setSearch(event.target.value)}
-            placeholder="اسم الصنف أو الرمز أو الموقع"/>
+            placeholder="اسم الصنف أو الرمز"/>
         </label>
         <Button variant="secondary" size="compact" disabled={report.isFetching}
           onClick={()=>void report.refetch()}>تحديث</Button>
       </div>
-      {report.isPending&&<Notice>جارٍ تحميل بيانات الدفعات…</Notice>}
-      {report.isError&&<Notice tone="error">تعذر قراءة الدفعات: {errorMessage(report.error)}</Notice>}
+      {report.isPending&&<Notice>جارٍ تحميل بيانات الأصناف…</Notice>}
+      {report.isError&&<Notice tone="error">تعذر قراءة أصناف الصلاحية: {errorMessage(report.error)}</Notice>}
       {data&&<>
-        <div className="expiry-alert-follow-up-count">الدفعات المطابقة: {fmt(data.total)}</div>
+        <div className="expiry-alert-follow-up-count">الأصناف المطابقة: {fmt(data.total)}</div>
         <div className="table-scroll expiry-alert-follow-up-scroll" role="region"
           aria-label={title}>
           <table dir="rtl">
             <thead><tr>
               {th("name","الصنف")}
-              {th("quantity","الكمية المتوفرة (و1)")}
-              {th("expiry","تاريخ الانتهاء")}
-              {th("location","الموقع")}
-              <th>حركة الدفعة</th>
+              {th("quantity","صافي المتوفر دون المرتجعات (و1)")}
+              {th("expiry","أقرب تاريخ انتهاء (من كرت الصنف)")}
+              <th>التفاصيل</th>
             </tr></thead>
             <tbody>
-              {data.items.map(item=><tr key={item.balanceId}>
+              {data.items.map(item=><tr key={item.itemId}>
                 <td><Link to={"/companies/"+companyId+"/items/"+item.itemId}>
                   {item.name}</Link><small>{item.code}</small></td>
-                <td><bdi>{fmt(item.quantityUnit1)}</bdi></td>
+                <td><bdi>{fmt(item.quantityUnit1)}</bdi> {item.unit1Name}</td>
                 <td dir="ltr">{item.expiryDate}</td>
-                <td>{item.locationName}</td>
-                <td><Link to={"/companies/"+companyId+"/stock-balances?itemId="+item.itemId+
-                  "&expiryDate="+encodeURIComponent(item.expiryDate)}>عرض الرصيد</Link></td>
+                <td><Link to={"/companies/"+companyId+"/stock-balances?view=lots&itemId="+item.itemId}>
+                  تفاصيل الدفعات</Link></td>
               </tr>)}
-              {!data.items.length&&<tr><td colSpan={5}>
-                لا توجد دفعات ذات رصيد موجب مطابقة للبحث في هذه الفئة.
+              {!data.items.length&&<tr><td colSpan={4}>
+                لا توجد أصناف مطابقة لهذه الفئة وفق أقرب تاريخ انتهاء في كرت الصنف.
               </td></tr>}
             </tbody>
           </table>
@@ -138,7 +135,7 @@ export function ExpiryAlertFollowUpPage({context,kind}: {
           </label>
         </div>
       </>}
-      <small className="muted">يتجدد التنبيه الإجمالي طالما بقيت دفعة مطابقة. وتحدد عدد ساعات إعادة الفحص من كرت نوع التنبيه، دون إنشاء تنبيه منفصل لكل صنف أو دفعة.</small>
+      <small className="muted">التاريخ مأخوذ من حقل «أقرب تاريخ انتهاء» بكرت الصنف، وهو للمتابعة المختصرة ولا يوزّع الكمية على دفعات الصلاحية. يمكن فتح «تفاصيل الدفعات» لمراجعة تواريخ المخزون الفعلية. يضبط تكرار التنبيه من كرت نوعه.</small>
     </Card>
   </div>;
 }
