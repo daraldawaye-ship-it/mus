@@ -780,3 +780,76 @@ test("delivery windows apply across senders while latest messages stay separate"
   await emit(3,"open");
   assert.equal((await f.pool.query("SELECT 1 FROM notifications WHERE event_key='open' AND NOT silent_update")).rowCount,1);
 });
+
+
+test("explicitly selected owner employee receives cashbox alerts even when broad owner notifications are off", async t => {
+  const f = await fixture(t);
+  const company = await f.company("Named owner cashbox notification");
+  const base = "/companies/" + company.id;
+  let ownerEmployeeId = (await f.pool.query<{ id: number }>(
+    "SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 AND active",
+    [company.id, f.ownerUser.id],
+  )).rows[0]?.id;
+  if (!ownerEmployeeId) {
+    const { employee } = await f.owner.ok<{ employee: Employee }>(
+      "POST", base + "/employees", {
+        userId: f.ownerUser.id, name: "Owner employee recipient",
+        phone: "", role: "employee", active: true, permissions: [],
+      }, 201);
+    ownerEmployeeId = employee.id;
+  }
+  // The owner also has the cashier position. A position-only audience must
+  // not opt the owner in accidentally, but an explicit employee ID must.
+  await f.pool.query(
+    "UPDATE employees SET position_keys=ARRAY['employee','cashier']::text[] WHERE company_id=$1 AND id=$2",
+    [company.id, ownerEmployeeId],
+  );
+  const getTemplate = async () => {
+    const directory = await f.owner.ok<NotificationTemplateDirectory>(
+      "GET", base + "/notification-templates");
+    const template = directory.templates.find(t => t.code === "CASHBOX_CLOSED");
+    assert(template?.enabled && template.implemented);
+    return template;
+  };
+  const configure = async (namedOwner: boolean, notifyOwner: boolean) => {
+    const template = await getTemplate();
+    await f.owner.ok("PUT", base + "/notification-templates/CASHBOX_CLOSED", {
+      ...settings(template),
+      notifyOwner, positionKeys: ["cashier"],
+      employeeIds: namedOwner ? [ownerEmployeeId] : [],
+      minIntervalHours: null, latestOnly: false,
+    });
+  };
+  const emit = async (eventKey: string) => transaction(f.pool, client =>
+    emitNotification(client, {
+      companyId: company.id,
+      code: "CASHBOX_CLOSED",
+      subjectKey: eventKey, eventKey,
+      message: "إغلاقات صندوق لم تُستلم",
+      href: base + "/pouch-receipts",
+    }),
+  );
+  const emittedCount = async () => Number((await f.pool.query(
+    "SELECT COUNT(*)::integer AS total FROM notifications WHERE company_id=$1 AND code='CASHBOX_CLOSED' AND recipient_user_id=$2",
+    [company.id, f.ownerUser.id],
+  )).rows[0].total);
+  const inbox = () => f.owner.ok<NotificationDirectory>(
+    "GET", base + "/notifications?state=all&code=CASHBOX_CLOSED&grouped=0");
+
+  await configure(false, false);
+  await emit("owner-cashbox-position-only");
+  assert.equal(await emittedCount(), 0, "Owner cashier position alone is not an owner opt-in");
+
+  await configure(true, false);
+  await emit("owner-cashbox-explicit-name");
+  assert.equal(await emittedCount(), 1, "Named owner employee must receive the notification");
+  assert.equal((await inbox()).total, 1, "Named recipient must see the notification in their inbox");
+
+  await configure(false, false);
+  assert.equal((await inbox()).total, 0, "Removing the named owner revokes inbox visibility");
+
+  await configure(false, true);
+  await emit("owner-cashbox-owner-toggle");
+  assert.equal(await emittedCount(), 2, "Independent owner toggle must also deliver the alert");
+  assert.equal((await inbox()).total, 2);
+});
