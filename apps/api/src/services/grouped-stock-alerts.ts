@@ -67,25 +67,26 @@ async function orderShortages(client: PoolClient, companyId: number) {
 
 async function expiryTotals(client: PoolClient, companyId: number,
   code: typeof expiryTypes[number]) {
-  // Exactly the positive stock, active-item/location/branch and batch date
-  // predicates used by the existing expiry scanner. No per-item re-counts.
+  // Use the item's authoritative card "nearest expiry" date, not individual
+  // batch rows. Compare one item only once, with the net available stock from
+  // showroom + non-return warehouse snapshots. Negative unknown-expiry lots
+  // therefore offset positive lots without inventing an expiry for them.
   const dateTest = code === "ITEM_EXPIRED"
-    ? "s.batch_key < clock.today::text"
-    : "s.batch_key >= clock.today::text AND s.batch_key <= (clock.today + 30)::text";
-  const result = await client.query<{ items: number; batches: number }>(
-    `WITH clock AS MATERIALIZED(
+    ? "i.nearest_expiry_date < clock.today"
+    : "i.nearest_expiry_date >= clock.today AND i.nearest_expiry_date <= clock.today + 30";
+  const result = await client.query<{ items: number }>(
+    `WITH clock AS MATERIALIZED (
         SELECT (clock_timestamp() AT TIME ZONE 'Asia/Aden')::date AS today)
-      SELECT COUNT(DISTINCT s.item_id)::integer AS items,
-        COUNT(*)::integer AS batches
-      FROM stock_balances s CROSS JOIN clock
-      JOIN items i ON i.company_id=s.company_id AND i.id=s.item_id
-        AND i.active AND i.has_expiry
-      JOIN locations l ON l.company_id=s.company_id AND l.id=s.location_id AND l.active
-      JOIN branches b ON b.company_id=l.company_id AND b.id=l.branch_id AND b.active
-      WHERE s.company_id=$1 AND s.quantity_smallest>0 AND s.batch_key<>''
+      SELECT COUNT(*)::integer AS items
+      FROM items i
+      JOIN item_statistics stats ON stats.company_id=i.company_id AND stats.item_id=i.id
+      CROSS JOIN clock
+      WHERE i.company_id=$1 AND i.active AND i.has_expiry
+        AND i.nearest_expiry_date IS NOT NULL
+        AND COALESCE(stats.stock_showroom,0)+COALESCE(stats.stock_warehouse,0)>0
         AND (${dateTest})`, [companyId],
   );
-  return result.rows[0] ?? { items: 0, batches: 0 };
+  return { items: result.rows[0]?.items ?? 0 };
 }
 
 async function closeObsoleteAlerts(client: PoolClient, companyId: number,
@@ -131,8 +132,8 @@ export async function scanGroupedStockAlert(client: PoolClient, companyId: numbe
   const message = code === "ITEM_ORDER_LEVEL"
     ? `يوجد ${summary.items} صنفًا وصل مخزونه إلى حد الطلب أو دونه. افتح متابعة حدود الطلب لمعرفة الأصناف.`
     : code === "ITEM_EXPIRED"
-    ? `يوجد ${summary.items} صنفًا لديه ${summary.batches} دفعة منتهية الصلاحية وبها رصيد موجب. افتح متابعة الأصناف المنتهية.`
-    : `يوجد ${summary.items} صنفًا لديه ${summary.batches} دفعة ستنتهي خلال 30 يومًا وبها رصيد موجب. افتح صفحة المتابعة.`;
+    ? `يوجد ${summary.items} صنفًا تجاوز أقرب تاريخ انتهاء المسجل في كرت الصنف وله رصيد موجب دون المرتجعات. افتح متابعة الأصناف المنتهية.`
+    : `يوجد ${summary.items} صنفًا أقرب تاريخ انتهاء له خلال 30 يومًا بحسب كرت الصنف وله رصيد موجب دون المرتجعات. افتح صفحة المتابعة.`;
   const path = code === "ITEM_ORDER_LEVEL" ? "item-order-levels?level=low"
     : code === "ITEM_EXPIRED" ? "expired-items-follow-up"
     : "expiring-items-follow-up";
