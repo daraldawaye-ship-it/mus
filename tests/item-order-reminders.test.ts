@@ -32,32 +32,48 @@ test("optional order-alert first-unit quantity allows zero but not blank or nega
   assert.match(migration,/إذا كمية الطلب للأصناف الخاصة/);
 });
 
-test("order reminders detect exact first-unit threshold excluding return warehouses", () => {
-  const worker=readFileSync("apps/api/src/services/item-order-reminders.ts","utf8");
-  const clock=readFileSync("apps/api/src/services/attendance-notifications.ts","utf8");
-  assert.match(worker,/stock_showroom,0\)\+COALESCE\(s\.stock_warehouse,0\)/);
-  assert.match(worker,/i\.order_alert_quantity\*i\.factor2::numeric\*i\.factor3::numeric/);
-  assert.match(worker,/i\.order_alert_quantity IS NOT NULL/);
-  assert.match(worker,/sent\.item_id IS NULL/);
-  assert.match(worker,/INSERT INTO item_order_reminder_days\(company_id,item_id,scan_day\)/);
-  assert.match(worker,/ON CONFLICT DO NOTHING RETURNING item_id/);
-  assert.match(worker,/AT TIME ZONE 'Asia\/Aden'/);
-  assert.match(worker,/explicitSubjectOnly: true/);
-  assert.match(worker,/u\.owner OR 'sales'=ANY/);
-  assert.match(clock,/scanDailyItemOrderReminders\(client, companyId\)/);
+test("grouped special-order reminders use the exact first-unit threshold without stock returns", () => {
+  const monitor = readFileSync("apps/api/src/services/grouped-stock-alerts.ts","utf8");
+  const worker = readFileSync("apps/api/src/services/attendance-notifications.ts","utf8");
+  const wrapper = readFileSync("apps/api/src/services/item-order-reminders.ts","utf8");
+  assert.match(monitor,/stock_showroom,0\)\+COALESCE\(s\.stock_warehouse,0\)/);
+  assert.match(monitor,/i\.order_alert_quantity\*i\.factor2::numeric\*i\.factor3::numeric/);
+  assert.match(monitor,/i\.order_alert_quantity IS NOT NULL/);
+  assert.match(monitor,/subjectKey:"aggregate:"\+code/);
+  assert.match(monitor,/stock_alert_group_scans/);
+  assert.match(monitor,/minIntervalHours/);
+  assert.match(monitor,/stockAlertCheckHours/);
+  assert.match(monitor,/item-order-levels\?level=low/);
+  assert.match(wrapper,/scanGroupedStockAlert\(client,companyId,"ITEM_ORDER_LEVEL"\)/);
+  assert.match(worker,/scanGroupedExpiryAlerts\(client, companyId\)/);
+  assert.match(worker,/scanDailyItemOrderReminders\(client, companyId\)/);
 });
 
-test("order-level notifications stay owner-or-active-sales only even after role changes", () => {
+test("expired and expiring stock alerts use separate positive-balance groups and pages", () => {
+  const monitor = readFileSync("apps/api/src/services/grouped-stock-alerts.ts","utf8");
+  const route = readFileSync("apps/api/src/routes-expiry-alert-follow-up.ts","utf8");
+  assert.match(monitor,/s\.quantity_smallest>0/);
+  assert.match(monitor,/i\.active AND i\.has_expiry/);
+  assert.match(monitor,/s\.batch_key < clock\.today::text/);
+  assert.match(monitor,/s\.batch_key >= clock\.today::text/);
+  assert.match(monitor,/scanGroupedStockAlert\(client,companyId,code\)/);
+  assert.match(monitor,/expired-items-follow-up/);
+  assert.match(monitor,/expiring-items-follow-up/);
+  assert.match(route,/b\.quantity_smallest>0/);
+  assert.match(route,/item_id/);
+  assert.match(route,/batch_key/);
+});
+
+test("order-level notification inbox follows the recipient card's current positions", () => {
   const sql=readFileSync("apps/api/src/services/notifications.ts","utf8");
   assert.match(sql,/n\.code<>'ITEM_ORDER_LEVEL'/);
-  assert.match(sql,/sales_employee\.active/);
-  assert.match(sql,/permitted\.owner OR 'sales'=ANY/);
-  assert.match(sql,/permitted\.id=\$1/);
+  assert.match(sql,/selectedEmployee/);
+  assert.match(sql,/position_keys/);
 });
 
 
 test("special-item threshold notification ignores stopped order dates; only NULL disables it", () => {
-  const scanner=readFileSync("apps/api/src/services/item-order-reminders.ts","utf8");
+  const scanner=readFileSync("apps/api/src/services/grouped-stock-alerts.ts","utf8");
   const routes=readFileSync("apps/api/src/routes-item-options-list.ts","utf8");
   assert.match(scanner,/i\.order_alert_quantity IS NOT NULL/);
   assert.doesNotMatch(scanner,/order_stopped_until/);
