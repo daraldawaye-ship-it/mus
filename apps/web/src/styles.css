@@ -8338,6 +8338,30 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-mobile-sticky-summary { display: none; }
 .item-order-drafts-table-scroll { max-width: 100%; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
+/* Optional draft columns: default keeps the original compact twelve-column grid.
+   Other selections fill the available space and scroll only when needed. */
+.item-order-drafts-table.item-order-drafts-custom-columns { table-layout: auto; width: 100%; }
+.item-order-drafts-table.item-order-drafts-custom-columns th { width: auto; }
+.item-order-drafts-columns-backdrop {
+  position: fixed; inset: 0; z-index: 1200; display: flex;
+  align-items: center; justify-content: center; padding: 12px;
+  background: rgba(0,0,0,.65);
+}
+.item-order-drafts-columns-dialog {
+  background: var(--surface); color: var(--text);
+  width: min(470px,100%); max-height: min(85vh,740px); overflow-y: auto;
+  padding: 14px; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+.item-order-drafts-columns-dialog h3 { margin: 0 0 6px; font-size: 18px; }
+.item-order-drafts-columns-dialog p { font-size: 12px; margin: 0 0 9px; }
+.item-order-drafts-columns-choices { display: grid; gap: 7px; margin-bottom: 12px; }
+.item-order-drafts-columns-choices label {
+  display: flex; align-items: center; gap: 9px; min-height: 25px;
+  font-size: 13px; cursor: pointer;
+}
+.item-order-drafts-columns-choices input { flex: 0 0 auto; accent-color: var(--primary); }
+
 .item-order-drafts-table th,
 .item-order-drafts-table td {
   padding: 5px 4px; vertical-align: middle; overflow-wrap: anywhere; font-size: 12px;
@@ -8684,6 +8708,34 @@ a.notification-quick-title:hover { text-decoration: underline; }
   }
   .item-order-drafts-mobile-third-row .item-special-order-quick-edit {
     width: min(100%, 230px);
+  }
+}
+
+/* Draft mobile columns use saved visibility with no empty grid slots. */
+@media (max-width: 680px) {
+  .item-order-drafts-mobile-action > .button {
+    padding: 3px 5px; font-size: 10px;
+  }
+  .item-order-drafts-mobile-bottom > span.item-order-drafts-option-stat {
+    flex: 0 0 auto; width: max-content; min-width: 0; max-width: 108px;
+    direction: rtl; text-align: right; align-items: flex-start;
+    white-space: normal; overflow: hidden;
+  }
+  .item-order-drafts-mobile-bottom > span[title*="الكفاية"] {
+    flex: 0 0 auto; min-width: 79px; width: auto; max-width: 110px;
+    align-items: center; text-align: center;
+  }
+  .item-order-drafts-mobile-bottom > span[title*="الكفاية"] small {
+    white-space: normal; text-align: center; line-height: 1.15;
+  }
+  .item-order-drafts-mobile-card.item-order-drafts-custom-columns .item-order-drafts-mobile-top {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  }
+  .item-order-drafts-mobile-card.item-order-drafts-custom-columns .item-order-drafts-mobile-quantity {
+    flex: 0 0 100px; min-width: 82px;
+  }
+  .item-order-drafts-mobile-card.item-order-drafts-custom-columns .item-order-drafts-mobile-name {
+    flex: 1 1 115px; min-width: 75px; max-height: none;
   }
 }
 
