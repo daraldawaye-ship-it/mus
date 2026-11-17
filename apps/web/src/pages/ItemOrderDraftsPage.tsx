@@ -303,10 +303,8 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const metricsError = metricResults.find(result => result.error)?.error;
   // Reviewed is an authoritative item-card flag from the draft-review API.
   // Never treat an unloaded or failed metric as "غير مراجع".
-  const reviewFilterReady = reviewFilter === "all" || (
-    metricResults.every(result => result.isSuccess) &&
-    rows.every(row => metricsById.has(row.item.id))
-  );
+  const reviewFilterReady = reviewFilter === "all" ||
+    metricResults.every(result => result.isSuccess);
   const filtered = useMemo(() => {
     if (!reviewFilterReady) return [];
     const q = search.trim().toLocaleLowerCase();
