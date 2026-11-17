@@ -8386,32 +8386,57 @@ a.notification-quick-title:hover { text-decoration: underline; }
 }
 .item-order-drafts-table-scroll { max-width: 100%; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
-/* Optional draft columns: default keeps the original compact twelve-column grid.
-   Other selections fill the available space and scroll only when needed. */
+/* Compact fixed tracks (including saved column selections) avoid wide
+   headers stretching the list into the purchases/alternatives sidebar.
+   The table itself retains its bottom horizontal scrollbar when needed. */
 .item-order-drafts-table.item-order-drafts-custom-columns {
-  table-layout: auto;
-  /* Let the table grow horizontally instead of squeezing a newly shown
-     coverage heading into a one-character-wide column. */
+  table-layout: fixed;
   width: max-content;
   min-width: 100%;
 }
 .item-order-drafts-table.item-order-drafts-custom-columns th {
-  width: auto;
-  min-width: 105px;
-  white-space: normal;
+  overflow: hidden;
+  white-space: nowrap;
   overflow-wrap: normal;
   word-break: keep-all;
 }
-.item-order-drafts-table.item-order-drafts-custom-columns th:first-child { min-width: 42px; }
-/* Only the three optional sufficiency columns have long Arabic headings. */
-.item-order-drafts-table.item-order-drafts-custom-columns th:nth-child(n+13) {
-  min-width: 160px;
+.item-order-drafts-table .item-order-draft-sort {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-shadow: none;
+  box-shadow: none;
 }
-.item-order-drafts-table.item-order-drafts-custom-columns .item-order-draft-sort {
-  overflow-wrap: normal;
-  word-break: keep-all;
-  line-height: 1.25;
-  min-height: 33px;
+.item-order-draft-sort-label {
+  flex: 1 1 0;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  text-align: center;
+  text-shadow: none;
+  box-shadow: none;
+  user-select: none;
+  cursor: grab;
+}
+.item-order-draft-sort-label::-webkit-scrollbar { display: none; }
+.item-order-draft-sort > span[aria-hidden="true"] {
+  flex: 0 0 auto;
+  opacity: .7;
+  font-size: 11px;
+}
+@media (min-width: 901px) and (max-width: 1920px) {
+  .item-order-drafts-page .order-draft-quantity-controls { max-width: 142px; }
+  .item-order-drafts-page .order-draft-quantity-controls button {
+    flex-basis: 24px;
+    min-height: 29px;
+  }
+  .item-order-drafts-table th,
+  .item-order-drafts-table td { padding: 4px 3px; }
 }
 .item-order-drafts-columns-backdrop {
   position: fixed; inset: 0; z-index: 1200; display: flex;
@@ -8450,16 +8475,16 @@ a.notification-quick-title:hover { text-decoration: underline; }
 .item-order-drafts-table th:nth-child(11) { width: 9%; }
 .item-order-drafts-table td:not(:nth-child(3)):not(:nth-child(11)) { text-align: center; }
 .item-order-draft-sort {
-  display: flex; justify-content: center; align-items: center; gap: 4px;
-  border: 0; padding: 3px 1px; width: 100%; min-height: 27px;
+  display: flex; justify-content: center; align-items: center; gap: 3px;
+  border: 0; padding: 3px 1px; width: 100%; min-height: 29px;
   font: inherit; font-weight: inherit;
   color: inherit; background: transparent; cursor: pointer;
-  white-space: normal; text-align: center;
+  white-space: nowrap; text-align: center;
 }
 .item-order-draft-sort:hover, .item-order-draft-sort:focus-visible {
   text-decoration: underline;
 }
-.item-order-draft-sort span { opacity: .65; font-size: 11px; }
+/* Only the sort indicator is dimmed; draggable title text stays legible. */
 .item-order-draft-deleted { opacity: .7; }
 .item-order-draft-deleted td:nth-child(3) a { text-decoration: line-through; }
 .item-order-deleted-label { display: inline; padding-inline-start: 5px; font-weight: 700; }
