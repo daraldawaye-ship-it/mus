@@ -8282,6 +8282,30 @@
     "queryFields": [],
     "source": "routes-medicine-market.ts"
   },
+  "POST /medicine-market/cards/:cardId/images": {
+    "queryFields": [],
+    "bodyContract": "marketImageUploadSchema",
+    "bodySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "dataUrl": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 700000
+        },
+        "cropWhitespace": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dataUrl"
+      ],
+      "additionalProperties": false
+    },
+    "source": "routes-medicine-market.ts"
+  },
   "POST /medicine-market/cards": {
     "queryFields": [],
     "bodyContract": "createCardSchema",

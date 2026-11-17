@@ -586,9 +586,14 @@ const reactionMarketSchema = z
   .strict()
   .refine((x) => x.liked !== undefined || x.rating !== undefined);
 
+const marketImageUploadSchema=z.object({
+  dataUrl:z.string().min(50).max(700000),
+  cropWhitespace:z.boolean().default(false),
+}).strict();
 const backfillMarketImagesSchema = z.object({ retryFailed: z.boolean().default(false) }).strict();
 
 export const mcpBodySchemas = {
+  marketImageUploadSchema,
   backfillMarketImagesSchema,
   createCardSchema,
   prescriptionCreateSchema,
@@ -607,9 +612,6 @@ export interface MarketAccess {
 }
 
 
-const marketImageUploadSchema=z.object({
-  dataUrl:z.string().min(50).max(700000),
-}).strict();
 const marketImagePath=(id:string)=>`/api/medicine-market/images/${id}`;
 /** Validate compressed WebP dimensions without trusting browser metadata. */
 function validateMarketImage(dataUrl:string, _profile:'medicine'|'prescription'='medicine'):{bytes:Buffer;width:number;height:number} {
@@ -798,8 +800,10 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
     if(isMarketAdministrativeKind(cardPreview.kind)&&!perms(user).canConfigure)deny();
     if(!findType(cardPreview.kind).fields.some(field=>field.key==="image"))
       throw new HttpError(400,"image_field","هذا النوع من الكروت لا يدعم الصورة");
-    const image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');
-    const variants=stagingIsolated?await buildMarketImageVariants(image.bytes):null;
+    let image=validateMarketImage(input.dataUrl, cardPreview.kind==='prescription'?'prescription':'medicine');
+    const cropped=input.cropWhitespace?await buildMarketImageVariants(image.bytes,{cropWhitespace:true}):null;
+    if(cropped)image={bytes:cropped.preview,width:cropped.previewWidth,height:cropped.previewHeight};
+    const variants=stagingIsolated?(cropped??await buildMarketImageVariants(image.bytes)):null;
     const assetId=randomUUID();
     await transaction(pool,async db=>{
       const card=await getCard(db,cardId,user);
@@ -821,7 +825,7 @@ export function medicineMarketRoutes(pool: Pool, access?: MarketAccess, stagingI
         [assetId,cardId,user.id,image.bytes.length,image.bytes,image.width,image.height],
       );
       if(variants)await storeMarketImageVariants(db,marketImagePath(assetId),variants);
-      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height});
+      await auditMarket(db,user,"image_upload",cardId,null,{imageId:assetId,size:image.bytes.length,format:"webp",width:image.width,height:image.height,cropWhitespace:input.cropWhitespace});
     });
     res.status(201).json({url:marketImagePath(assetId),bytes:image.bytes.length,width:image.width,height:image.height,
       ...(variants?{iconUrl:marketImagePath(assetId)+"?variant=icon",mainUrl:marketImagePath(assetId),iconBytes:variants.icon.length,mainBytes:variants.preview.length}:{})});

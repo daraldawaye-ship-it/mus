@@ -23,8 +23,34 @@ export type ImageVariants = {
 export const imageSourceKey = (source: string) => createHash("sha256").update(source).digest("hex");
 let transformations = 0;
 
+/** Only exterior white/near-white pixels are expendable; keep every darker pixel
+ * and a small safety margin, including isolated marks near the image edge. */
+async function exteriorWhitespaceBounds(bytes: Buffer) {
+  const { data, info } = await sharp(bytes, { limitInputPixels: 30_000_000, animated: false, pages: 1 })
+    .rotate().toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let left = info.width, top = info.height, right = -1, bottom = -1;
+  for (let y = 0; y < info.height; y++) {
+    for (let x = 0; x < info.width; x++) {
+      const at = (y * info.width + x) * 4, alpha = data[at + 3]!;
+      // Composite transparent pixels on white for the blank-margin test only.
+      const visible = Math.min(data[at]!, data[at + 1]!, data[at + 2]!) * alpha +
+        255 * (255 - alpha) < 248 * 255;
+      if (!visible) continue;
+      left = Math.min(left, x); right = Math.max(right, x);
+      top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) return null; // Entirely blank: preserve it.
+  const padding = Math.min(12, Math.max(2, Math.ceil(Math.max(right - left + 1, bottom - top + 1) * 0.02)));
+  left = Math.max(0, left - padding); top = Math.max(0, top - padding);
+  right = Math.min(info.width - 1, right + padding);
+  bottom = Math.min(info.height - 1, bottom + padding);
+  if (left === 0 && top === 0 && right === info.width - 1 && bottom === info.height - 1) return null;
+  return { left, top, width: right - left + 1, height: bottom - top + 1 };
+}
+
 /** GIF is decoded as one still frame; metadata and the raw input are not stored. */
-export async function buildMarketImageVariants(bytes: Buffer): Promise<ImageVariants> {
+export async function buildMarketImageVariants(bytes: Buffer, input: { cropWhitespace?: boolean } = {}): Promise<ImageVariants> {
   if (!bytes.length || bytes.length > MAX_SOURCE)
     throw new HttpError(400, "image_size", "حجم الصورة غير مدعوم");
   if (transformations >= 2)
@@ -35,11 +61,14 @@ export async function buildMarketImageVariants(bytes: Buffer): Promise<ImageVari
     const meta = await sharp(bytes, options).metadata();
     if (!["jpeg", "png", "webp", "gif", "avif", "heif"].includes(meta.format ?? ""))
       throw new HttpError(400, "image_format", "صيغة الصورة غير مدعومة");
+    const crop = input.cropWhitespace ? await exteriorWhitespaceBounds(bytes) : null;
     const resize = async (size: number, maximum: number) => {
       for (const scale of [1, 0.8, 0.6]) {
         for (const quality of [82, 70, 56, 42, 28]) {
           const side = Math.max(1, Math.floor(size * scale));
-          const output = await sharp(bytes, options).rotate()
+          const pipeline = sharp(bytes, options).rotate();
+          if (crop) pipeline.extract(crop);
+          const output = await pipeline
             .resize(side, side, { fit: "inside", withoutEnlargement: true })
             .webp({ quality, effort: 3 }).timeout({ seconds: 2 })
             .toBuffer({ resolveWithObject: true });
@@ -49,7 +78,7 @@ export async function buildMarketImageVariants(bytes: Buffer): Promise<ImageVari
       throw new HttpError(400, "image_size", "تعذر تجهيز نسخة خفيفة للصورة");
     };
     // Do not recompress or enlarge old images that already meet the policy.
-    const reusable = meta.format === "webp" && (meta.pages ?? 1) === 1 &&
+    const reusable = !crop && meta.format === "webp" && (meta.pages ?? 1) === 1 &&
       !!meta.width && !!meta.height && meta.width <= 1200 && meta.height <= 1200 &&
       bytes.length <= 200 * 1024 && !meta.exif && !meta.xmp && !meta.icc && !meta.orientation;
     const main = reusable ? { data: bytes, info: { width: meta.width!, height: meta.height! } }

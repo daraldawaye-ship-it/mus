@@ -27,6 +27,37 @@ test("variants preserve aspect ratio and keep icon/preview byte bounds", async (
   await assert.rejects(buildMarketImageVariants(Buffer.from("not an image")));
   await assert.rejects(buildMarketImageVariants(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50"/></svg>')));
 });
+test("opt-in whitespace cropping removes exterior margins and retains artwork, small marks and padding", async () => {
+  const art = await sharp({ create: { width: 120, height: 60, channels: 3, background: "#183850" } }).png().toBuffer();
+  const mark = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#202020" } }).png().toBuffer();
+  const original = await sharp({ create: { width: 300, height: 200, channels: 3, background: "#fcfcfc" } })
+    .composite([{ input: art, left: 90, top: 70 }, { input: mark, left: 80, top: 65 }])
+    .webp({ lossless: true }).toBuffer();
+  const unchanged = await buildMarketImageVariants(original);
+  assert.deepEqual(unchanged.preview, original, "ordinary uploads retain their existing margins and bytes");
+  const cropped = await buildMarketImageVariants(original, { cropWhitespace: true });
+  assert.equal(cropped.previewWidth, 136); assert.equal(cropped.previewHeight, 71);
+  const { data, info } = await sharp(cropped.preview).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const color = (x: number, y: number) => [...data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3)];
+  assert.ok(color(0, 0).every(value => value > 240), "retain a white safety margin");
+  assert.ok(color(3, 3).every(value => value < 130), "retain the isolated small mark");
+  assert.ok(color(13, 8).every(value => value < 140), "retain the artwork at its original scale and position");
+  assert.ok(cropped.preview.length <= 200 * 1024); assert.ok(cropped.icon.length <= 16 * 1024);
+  assert.ok(cropped.iconWidth <= 64 && cropped.iconHeight <= 64);
+});
+test("whitespace cropping preserves non-white edges, corner marks and entirely blank images", async () => {
+  const corner = await sharp({ create: { width: 1, height: 1, channels: 3, background: "#404040" } }).png().toBuffer();
+  const bounded = await sharp({ create: { width: 80, height: 40, channels: 3, background: "white" } })
+    .composite([{ input: corner, left: 0, top: 0 }, { input: corner, left: 79, top: 39 }])
+    .webp({ lossless: true }).toBuffer();
+  const colored = await sharp({ create: { width: 80, height: 40, channels: 3, background: "#80a0b0" } }).webp({ lossless: true }).toBuffer();
+  const blank = await sharp({ create: { width: 80, height: 40, channels: 3, background: "white" } }).webp({ lossless: true }).toBuffer();
+  for (const original of [bounded, colored, blank]) {
+    const output = await buildMarketImageVariants(original, { cropWhitespace: true });
+    assert.deepEqual(output.preview, original);
+    assert.equal(output.previewWidth, 80); assert.equal(output.previewHeight, 40);
+  }
+});
 test("remote source checks refuse private, alternate-IP, metadata and credentialed URLs", () => {
   for (const address of ["127.0.0.1", "10.1.1.1", "169.254.169.254", "172.16.1.1", "192.168.0.1", "100.64.0.1", "224.1.1.1", "::1", "::ffff:127.0.0.1"])
     assert.equal(isPublicImageAddress(address), false, address);
