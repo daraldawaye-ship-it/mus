@@ -288,19 +288,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       default: return "";
     }
   };
-  // Rank the full draft list, not just the visible/filtered page. The default
-  // order is unreviewed first, then required purchase value descending within
-  // each review group. Later manual column sorting overrides that default.
+  // Rank all draft rows before filtering and pagination.
   const sortMemberKey = rows.map(row => row.draftId + ":" + row.item.id).join(",");
   useEffect(() => {
     if (metricsLoading || metricsError) return;
     if (sortSnapshot?.version === sortVersion && sortSnapshot.memberKey === sortMemberKey) return;
     const orderedItemIds = [...rows].sort((left, right) => {
-      if (sortVersion === 0) {
-        const leftReviewed = metricsById.get(left.item.id)?.reviewed === true;
-        const rightReviewed = metricsById.get(right.item.id)?.reviewed === true;
-        if (leftReviewed !== rightReviewed) return leftReviewed ? 1 : -1;
-      }
       if (!sortKey) return 0; // Explicitly restore the original draft order.
       const a = sortValue(left), b = sortValue(right);
       const result = sortKey === "name" || sortKey === "option"
