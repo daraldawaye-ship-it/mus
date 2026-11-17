@@ -406,11 +406,83 @@ export function InventoryBalancesPage({
   context: CompanyContext;
 }) {
   const { user } = useSession();
+  const [params] = useSearchParams();
   if (!inventoryAccess(context))
     return <Notice tone="warning">ليس لديك صلاحية عرض المخزون.</Notice>;
-  return (
-    <BalancesList key={`${user?.id}:${context.company.id}`} context={context} />
+  // Explicit lot links remain detailed; ordinary visits show one net row
+  // per item with its card's nearest expiry date.
+  const lots = params.get("view") === "lots" || params.has("expiryDate");
+  return lots
+    ? <BalancesList key={`${user?.id}:${context.company.id}:lots`} context={context} />
+    : <BalancesSummaryList key={`${user?.id}:${context.company.id}:summary`} context={context}/>;
+}
+type BalanceSummaryRow = {
+  itemId: number;itemCode: string;itemName: string;
+  nearestExpiryDate: string|null;unit1Name: string;
+  quantityUnit1: string;quantitySmallest: string;
+  locationsCount: number;batchesCount: number;
+};
+function BalancesSummaryList({context}: {context: CompanyContext}) {
+  const companyId=context.company.id;
+  const [params]=useSearchParams();
+  const filters=new URLSearchParams();
+  for(const key of ["itemId","locationId"])
+    if(params.get(key))filters.set(key,params.get(key)!);
+  const list=usePagedQuery<BalanceSummaryRow>(
+    `/companies/${companyId}/stock-balances/summary?${filters}`,
+    `company:${companyId}:inventory:balances:summary`,
+    "itemCode:asc",
+    {pageSizes:[20,50,100],staleTime:60_000},
   );
+  const columns=useMemo<ColumnDef<BalanceSummaryRow,unknown>[]>(()=>[
+    {accessorKey:"itemCode",header:"رمز الصنف",size:110,
+      cell:({row})=>exact(row.original.itemCode)},
+    {accessorKey:"itemName",header:"الصنف",size:220,
+      cell:({row})=><ValueCell>{row.original.itemName}</ValueCell>},
+    {accessorKey:"quantityUnit1",header:"صافي الرصيد بالوحدة الأولى",size:205,
+      cell:({row})=><ValueCell><bdi>{row.original.quantityUnit1}</bdi> {row.original.unit1Name}</ValueCell>},
+    {accessorKey:"quantitySmallest",header:"الصافي بأصغر جزء",size:145,
+      cell:({row})=>exact(row.original.quantitySmallest)},
+    {accessorKey:"nearestExpiryDate",header:"أقرب تاريخ انتهاء (كرت الصنف)",size:175,
+      cell:({row})=>exact(row.original.nearestExpiryDate)},
+    {accessorKey:"locationsCount",header:"المواقع",size:82,
+      cell:({row})=>exact(String(row.original.locationsCount))},
+    {accessorKey:"batchesCount",header:"الدفعات",size:82,
+      cell:({row})=>exact(String(row.original.batchesCount))},
+    {id:"batchDetails",header:"التفاصيل",size:130,
+      cell:({row})=><Link className="button button-secondary"
+        to={`/companies/${companyId}/stock-balances?view=lots&itemId=${row.original.itemId}`}
+      >عرض الدفعات</Link>},
+  ],[companyId]);
+  const detailParams=new URLSearchParams(params);
+  detailParams.set("view","lots");
+  return <>
+    <PageHeader
+      title="أرصدة المخزون"
+      description="ملخص الصنف في سطر واحد: صافي الرصيد لجميع دفعات المواقع المحددة، وأقرب انتهاء من كرت الصنف."
+      actions={<>
+        <Link className="button button-secondary"
+          to={`?${detailParams.toString()}`}>تفاصيل الدفعات</Link>
+        <InventoryLinks companyId={companyId} operations={inventoryAccess(context,"post")}/>
+      </>}
+    />
+    <Card>
+      <StockFilters companyId={companyId} list={list}/>
+      <p className="muted">تجمع الكميات الموجبة والسالبة في صافي واحد لكل صنف؛
+        أقرب انتهاء مأخوذ من كرت الصنف ولا يعني أن جميع الدفعات تحمل التاريخ نفسه.
+        افتح «عرض الدفعات» للتدقيق بتاريخ كل دفعة على حدة.</p>
+      {list.error&&<Notice tone="error">{errorMessage(list.error)}
+        <Button variant="ghost" onClick={()=>void list.refetch()}>إعادة المحاولة</Button>
+      </Notice>}
+      <DataTable columns={columns} data={list.data?.items??[]}
+        total={list.data?.total??0} totalKnown={list.dataLoaded}
+        page={list.page} pageSize={list.pageSize}
+        pageSizeOptions={[20,50,100]}
+        onPageChange={list.setPage} onPageSizeChange={list.setPageSize}
+        sorting={list.sorting} onSortingChange={list.setSorting}
+        loading={list.loading} ariaLabel="ملخص أرصدة المخزون بحسب الصنف"/>
+    </Card>
+  </>;
 }
 function BalancesList({ context }: { context: CompanyContext }) {
   const companyId = context.company.id;
@@ -520,14 +592,16 @@ function BalancesList({ context }: { context: CompanyContext }) {
   return (
     <>
       <PageHeader
-        title="أرصدة المخزون"
-        description="الرصيد حسب الصنف والموقع والدفعة، مع إجمالي المتوفر بالوحدة الأولى والكفاية."
-        actions={
+        title="أرصدة المخزون — تفاصيل الدفعات"
+        description="كل تاريخ دفعة وموقع برصيد مستقل، للمراجعة التفصيلية دون تغيير البيانات."
+        actions={<>
+          <Link className="button button-secondary"
+            to={`?${new URLSearchParams([...params].filter(([key])=>key!=="view"&&key!=="expiryDate")).toString()}`}>ملخص الأصناف</Link>
           <InventoryLinks
             companyId={companyId}
             operations={inventoryAccess(context, "post")}
           />
-        }
+        </>}
       />
       <Card>
         <StockFilters companyId={companyId} list={list} />
