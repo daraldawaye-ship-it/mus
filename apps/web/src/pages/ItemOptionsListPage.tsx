@@ -50,6 +50,8 @@ const ranges = [
   { key: "coverageWithReserveMax", label: "الكفاية مع الاحتياط إلى (يوم)" },
   { key: "coverageWithRequiredMin", label: "الكفاية مع المطلوب من (يوم)" },
   { key: "coverageWithRequiredMax", label: "الكفاية مع المطلوب إلى (يوم)" },
+  { key: "compositionCoverageMin", label: "الكفاية التقريبية للتركيب من (يوم)" },
+  { key: "compositionCoverageMax", label: "الكفاية التقريبية للتركيب إلى (يوم)" },
   { key: "reserveCoverageMin", label: "كفاية الكمية الاحتياط من (يوم)" },
   { key: "reserveCoverageMax", label: "كفاية الكمية الاحتياط إلى (يوم)" },
   { key: "purchaseFactorCoverageMin", label: "كفاية عامل وحدة الشراء من (يوم)" },
@@ -74,6 +76,7 @@ function readDraft(params: URLSearchParams): Draft {
     coverageWithReserveMin: params.get("coverageWithReserveMin") ?? "",
     coverageWithReserveMax: params.get("coverageWithReserveMax") ?? "",
     coverageWithRequiredMin: params.get("coverageWithRequiredMin") ?? "", coverageWithRequiredMax: params.get("coverageWithRequiredMax") ?? "",
+    compositionCoverageMin: params.get("compositionCoverageMin") ?? "", compositionCoverageMax: params.get("compositionCoverageMax") ?? "",
     orderTargetDays: params.get("orderTargetDays") ?? "1",
     reserveCoverageMin: params.get("reserveCoverageMin") ?? "", reserveCoverageMax: params.get("reserveCoverageMax") ?? "",
     purchaseFactorCoverageMin: params.get("purchaseFactorCoverageMin") ?? "", purchaseFactorCoverageMax: params.get("purchaseFactorCoverageMax") ?? "",
@@ -1291,13 +1294,13 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
                 <span>كفاية عامل الشراء/يوم</span><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionSaleMonth")} className="item-options-mobile-stat">
-                <span>كمية التركيب المباعة في شهر</span><bdi>{row.compositionSaleUnit1Month === null ? "—" : formatAmountGroup(row.compositionSaleUnit1Month)}</bdi>
+                <span>كمية التركيب المباعة في شهر</span><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionStock")} className="item-options-mobile-stat">
-                <span>المتوفر للتركيب</span><bdi>{row.compositionAvailableUnit1 === null ? "—" : formatAmountGroup(row.compositionAvailableUnit1)}</bdi>
+                <span>المتوفر للتركيب</span><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi>
               </div>
               <div style={hiddenColumnStyle("compositionCoverage")} className="item-options-mobile-stat">
-                <span>الكفاية التقريبية للتركيب/يوم</span><bdi>{row.compositionCoverageDays ?? "—"}</bdi>
+                <span>الكفاية التقريبية للتركيب/يوم</span><bdi>{row.compositionCoverageDays ?? "0"}</bdi>
               </div>
                       </div>
           </article>)}
@@ -1399,9 +1402,9 @@ export function ItemOptionsListPage({ context }: { context: CompanyContext }) {
               <td style={hiddenColumnStyle("coverageWithRequired")}><bdi>{row.coverageWithRequiredDays}</bdi></td>
               <td style={hiddenColumnStyle("reserveCoverage")}><bdi>{row.reserveCoverageDays ?? "—"}</bdi></td>
               <td style={hiddenColumnStyle("purchaseFactorCoverage")}><bdi>{row.purchaseFactorCoverageDays ?? "—"}</bdi></td>
-              <td style={hiddenColumnStyle("compositionSaleMonth")}><bdi>{row.compositionSaleUnit1Month === null ? "—" : formatAmountGroup(row.compositionSaleUnit1Month)}</bdi></td>
-              <td style={hiddenColumnStyle("compositionStock")}><bdi>{row.compositionAvailableUnit1 === null ? "—" : formatAmountGroup(row.compositionAvailableUnit1)}</bdi></td>
-              <td style={hiddenColumnStyle("compositionCoverage")}><bdi>{row.compositionCoverageDays ?? "—"}</bdi></td>
+              <td style={hiddenColumnStyle("compositionSaleMonth")}><bdi>{formatAmountGroup(row.compositionSaleUnit1Month ?? "0")}</bdi></td>
+              <td style={hiddenColumnStyle("compositionStock")}><bdi>{formatAmountGroup(row.compositionAvailableUnit1 ?? "0")}</bdi></td>
+              <td style={hiddenColumnStyle("compositionCoverage")}><bdi>{row.compositionCoverageDays ?? "0"}</bdi></td>
             </tr>)}
             {!result.rows.length && <tr><td colSpan={visibleColumns.length}>لا توجد أصناف تطابق الخيارات الحالية.</td></tr>}
           </tbody>
