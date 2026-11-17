@@ -164,7 +164,7 @@ async function filteredItems(
   const compositionRange = (value: string | undefined, op: ">=" | "<=") => {
     if (value === undefined) return;
     values.push(value);
-    compositionPredicates.push(`f.composition_coverage_days ${op} ${values.length}::numeric`);
+    compositionPredicates.push("f.composition_coverage_days " + op + " $" + values.length + "::numeric");
   };
   compositionRange(options.compositionCoverageMin, ">=");
   compositionRange(options.compositionCoverageMax, "<=");
