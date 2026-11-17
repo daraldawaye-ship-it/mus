@@ -56,19 +56,21 @@ export const itemOptionsPresetFiltersSchema = z.object({
   // It is accepted for decoding only and is ignored in new computations.
   useReserve: z.boolean().optional(),
   coverageFilterVersion: z.literal(2).optional(),
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "saleQuantityMonth", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired", "compositionSaleMonth", "compositionStock"]),
   sortDir: z.enum(["asc", "desc"]),
   // Optional for backwards compatibility with presets saved before column preferences existed.
   // Shared presets preserve exactly which columns the user chose on any device.
   coverageColumnsVersion: z.literal(2).optional(),
   planningColumnsVersion: z.literal(1).optional(),
+  compositionColumnsVersion: z.literal(1).optional(),
   visibleColumns: z.array(z.enum([
     "minOrderQuantity", "orderAlertQuantity", "orderStoppedUntil", "reviewed",
     "choice", "name", "purchaseNotes", "stock", "reserve", "purchaseFactor", "month",
     "saleQuantityMonth", "fourMonths", "allTime", "previousYear",
     "requiredPurchaseQuantity", "purchasePrice", "requiredPurchaseValue",
     "coverage", "coverageWithReserve", "coverageWithRequired", "reserveCoverage", "purchaseFactorCoverage",
-    ])).min(1).max(23).refine(columns => new Set(columns).size === columns.length,
+    "compositionSaleMonth", "compositionStock",
+    ])).min(1).max(25).refine(columns => new Set(columns).size === columns.length,
     "لا يمكن تكرار العمود في مجموعة الحفظ").optional(),
 }).strict().transform(({ excludeZero, ...filters }) => filters);
 export const itemOptionsPresetCreateSchema = z.object({
