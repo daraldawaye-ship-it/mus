@@ -307,7 +307,9 @@ export async function emitNotification(
   }
   const now = (await client.query("SELECT clock_timestamp() AS now")).rows[0]
     .now as Date;
-  const next = await nextReminder(
+  // Grouped stock monitors are re-issued by their own hourly scanner only.
+  // They must never get a second repeat from notification reminder machinery.
+  const next = groupedSummary ? null : await nextReminder(
     client,
     template.allowRepeat ? template.repeatInterval : "none",
     now,
@@ -368,7 +370,7 @@ export async function emitNotification(
           input.message,
           template.importance,
           input.href ?? null,
-          template.allowRepeat ? template.repeatInterval : "none",
+          groupedSummary ? "none" : template.allowRepeat ? template.repeatInterval : "none",
           next,
           input.explicitSubjectOnly ?? false,
           streamKey, blocked, readAt, snoozedUntil, deliveryId,
