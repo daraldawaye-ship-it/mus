@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Eye, Heart, MessageCircle } from "lucide-react";
+import { Eye, Heart, MessageCircle, Star } from "lucide-react";
 import type { MarketCard, MarketDetail } from "../../../../packages/contracts/src/medicine-market";
 import { api } from "../api";
 import { interestCollectionEnabled } from "../InterestTracker";
@@ -23,6 +23,13 @@ export function MarketCardCounts({card, compact = false}: {card: MarketCard; com
     <span title="مرات الفتح"><Eye size={14}/>{stats.opens}<span className={compact ? "sr-only" : ""}> فتحات</span></span>
     <span title="التعليقات المعتمدة"><MessageCircle size={14}/>{stats.comments}<span className={compact ? "sr-only" : ""}> تعليقات معتمدة</span></span>
     <span title="الإعجابات"><Heart size={14}/>{card.likes}<span className={compact ? "sr-only" : ""}> إعجابات</span></span>
+    <span title={stats.ratingCount
+      ? `متوسط التقييم ${stats.ratingAverage?.toFixed(1) ?? "—"} من 5، من ${stats.ratingCount} تقييم`
+      : "لا توجد تقييمات بعد"}>
+      <Star size={14}/>
+      {stats.ratingCount ? `${stats.ratingAverage?.toFixed(1) ?? "—"}/5` : "—"}
+      <span>{compact ? ` (${stats.ratingCount})` : ` · ${stats.ratingCount} تقييم`}</span>
+    </span>
     {relationKeys[card.kind]?.map(key =>
       <span key={key}>{relationLabels[key]} {stats.relations[key] ?? 0}</span>)}
   </span>;
