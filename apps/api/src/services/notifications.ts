@@ -162,7 +162,7 @@ const orderLevelReportHref = (r: QueryResultRow): string | null => {
 const salesReturnInvoiceHref = (r: QueryResultRow): string | null => {
   if (!r.company_id || !["SALES_RETURN_NO_SALES_3D", "SALES_RETURN_NO_SALES_30D"].includes(r.code))
     return null;
-  const match = /^sales-return:([1-9]\\d*):item:[1-9]\\d*$/.exec(String(r.subject_key ?? ""));
+  const match = /^sales-return:([1-9]\d*):item:[1-9]\d*$/.exec(String(r.subject_key ?? ""));
   return match ? `/companies/${r.company_id}/invoices/${match[1]}` : `/companies/${r.company_id}/sales`;
 };
 
