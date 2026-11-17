@@ -727,35 +727,48 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
         {visible.map(row => {
           const info = metricsById.get(row.item.id);
           return <article className={"item-order-drafts-mobile-card" +
-            (row.item.deleted ? " item-order-draft-deleted" : "")}
+            (row.item.deleted ? " item-order-draft-deleted" : "") +
+            (defaultColumnLayout ? "" : " item-order-drafts-custom-columns")}
             key={row.draftId + ":" + row.item.id}>
             <div className="item-order-drafts-mobile-top">
-              <input type="checkbox" aria-label={"اختيار " + row.item.name}
+              <input type="checkbox" style={columnStyle("select")} aria-label={"اختيار " + row.item.name}
                 disabled={!!row.item.deleted} checked={!row.item.deleted && selectedIds.has(row.item.id)}
                 onChange={event => selectItem(row.item.id, event.target.checked)} />
-              <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
-                onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
-              <span className="item-order-drafts-mobile-name">
+              <div className="item-order-drafts-mobile-quantity" style={columnStyle("quantity")}>
+                <DraftQuantityInput item={row.item} factor={info?.purchaseFactor}
+                  onSave={quantity => drafts.updateItemQuantity(row.draftId, row.item.id, quantity)} />
+              </div>
+              <span className="item-order-drafts-mobile-name" style={columnStyle("name")}>
                 <Link to={"/companies/" + companyId + "/items/" + row.item.id}>{row.item.name}</Link>
                 {row.item.deleted && <strong className="item-order-deleted-label"> محذوف</strong>}
               </span>
-              {action(row)}
+              <span className="item-order-drafts-mobile-action" style={columnStyle("action")}>{action(row)}</span>
             </div>
             <div className="item-order-drafts-mobile-bottom" role="group"
               aria-label={"مؤشرات الصنف " + row.item.name}>
-              {moreButton(row)}
-              <span title="المتوفر دون مخازن المرتجعات">
+              {visibleColumns.includes("details") && moreButton(row)}
+              <span title="المتوفر دون مخازن المرتجعات" style={columnStyle("stock")}>
                 <small>المتوفر</small><bdi className="item-order-drafts-stock-quantity">{formatStockSaleQuantity(info?.availableUnit1)}</bdi>
               </span>
-              <span title="الكمية المباعة في شهر">
+              <span title="الكمية المباعة في شهر" style={columnStyle("sold")}>
                 <small>المباع</small><bdi className="item-order-drafts-sold-quantity">{formatStockSaleQuantity(info?.saleQuantityMonth)}</bdi>
               </span>
-              <span title="المبيعات مرات في شهر"><small>مرات شهر</small><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></span>
-              <span title="المبيعات مرات في سنة"><small>مرات سنة</small><bdi>{formatNumber(info?.saleTimesYear)}</bdi></span>
-              <span title="سعر الشراء"><small>سعر الشراء</small><bdi>{formatNumber(info?.purchasePrice)}</bdi></span>
-              <span title="قيمة المطلوب"><small>قيمة المطلوب</small>
+              <span title="المبيعات مرات في شهر" style={columnStyle("month")}><small>مرات شهر</small><bdi>{formatNumber(info?.saleTimesMonth)}</bdi></span>
+              <span title="المبيعات مرات في سنة" style={columnStyle("year")}><small>مرات سنة</small><bdi>{formatNumber(info?.saleTimesYear)}</bdi></span>
+              <span title="سعر الشراء" style={columnStyle("price")}><small>سعر الشراء</small><bdi>{formatNumber(info?.purchasePrice)}</bdi></span>
+              <span title="قيمة المطلوب" style={columnStyle("value")}><small>قيمة المطلوب</small>
                 <bdi>{formatNumber(info?.requiredPurchaseValue)}</bdi></span>
-              <span title={"مسودة " + row.draftId}><small>اسم الخيارات</small>{optionName(row)}</span>
+              <span title={"مسودة " + row.draftId} className="item-order-drafts-option-stat"
+                style={columnStyle("option")}><small>اسم الخيارات</small>{optionName(row)}</span>
+              <span title="الكفاية بدون الاحتياط (يوم)" style={columnStyle("coverage")}>
+                <small>كفاية دون احتياط</small><bdi>{formatNumber(info?.approximateCoverageDays)}</bdi>
+              </span>
+              <span title="الكفاية مع الاحتياط (يوم)" style={columnStyle("coverageWithReserve")}>
+                <small>كفاية مع احتياط</small><bdi>{formatNumber(info?.coverageAfterReserveDays)}</bdi>
+              </span>
+              <span title="الكفاية التقريبية للتركيب (يوم)" style={columnStyle("compositionCoverage")}>
+                <small>كفاية التركيب</small><bdi>{formatNumber(info?.compositionCoverageDays)}</bdi>
+              </span>
             </div>
             {expandedItemId === row.item.id &&
               <div className="item-order-drafts-mobile-third-row">
