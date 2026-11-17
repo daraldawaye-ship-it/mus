@@ -355,6 +355,76 @@ export function inventoryRoutes(pool: Pool): Router {
       );
     }),
   );
+  // A read-only one-row-per-item view. Keep /stock-balances untouched for
+  // lot-level reconciliation and FIFO/expiry investigations.
+  router.get(
+    `${base}/stock-balances/summary`,
+    handler(async (req,res) => {
+      const result = await readInventory(pool,req,async (client,companyId) => {
+        const columns = {
+          id:"x.item_id",itemCode:"x.item_code",itemName:"x.item_name",
+          quantitySmallest:"x.quantity_smallest",quantityUnit1:"x.quantity_unit1",
+          nearestExpiryDate:"x.nearest_expiry_date",locationsCount:"x.locations_count",
+          batchesCount:"x.batches_count",
+        };
+        const query = listQuery(req.query,columns,"itemCode:asc");
+        const intFilter = (name: string): number | null => {
+          const value = req.query[name];
+          if (value === undefined) return null;
+          if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)
+              || !Number.isSafeInteger(Number(value)) || Number(value)>2147483647)
+            throw new HttpError(400,"invalid_query","معرف الصنف أو الموقع غير صالح");
+          return Number(value);
+        };
+        const itemId=intFilter("itemId"),locationId=intFilter("locationId");
+        const params=[companyId,searchPattern(query.q,true),itemId,locationId,
+          query.pageSize,query.offset];
+        const rows=await client.query(
+          `WITH grouped AS MATERIALIZED (
+             SELECT i.id AS item_id,i.code AS item_code,i.name AS item_name,
+               i.nearest_expiry_date::text AS nearest_expiry_date,
+               i.unit1_name AS unit1_name,
+               SUM(s.quantity_smallest)::text AS quantity_smallest,
+               ROUND(SUM(s.quantity_smallest)::numeric /
+                 GREATEST(i.factor2::numeric*i.factor3::numeric,1),6)::text
+                 AS quantity_unit1,
+               COUNT(DISTINCT s.location_id)::integer AS locations_count,
+               COUNT(*)::integer AS batches_count
+             FROM stock_balances s
+             JOIN items i ON i.company_id=s.company_id AND i.id=s.item_id
+             WHERE s.company_id=$1
+               AND ($3::integer IS NULL OR s.item_id=$3)
+               AND ($4::integer IS NULL OR s.location_id=$4)
+               AND (i.code ILIKE $2 OR i.name ILIKE $2 OR
+                    i.english_name ILIKE $2)
+             GROUP BY i.id,i.code,i.name,i.nearest_expiry_date,i.unit1_name,
+               i.factor2,i.factor3
+           )
+           SELECT counts.total,x.*
+           FROM (SELECT COUNT(*)::integer AS total FROM grouped) counts
+           LEFT JOIN LATERAL (
+             SELECT * FROM grouped x ORDER BY ${query.order}
+             LIMIT $5 OFFSET $6
+           ) x ON TRUE`,params,
+        );
+        return {
+          items: rows.rows.filter(row=>row.item_id!=null).map(row=>({
+            itemId:Number(row.item_id),itemCode:String(row.item_code),
+            itemName:String(row.item_name),
+            nearestExpiryDate:row.nearest_expiry_date==null?null:String(row.nearest_expiry_date),
+            quantityUnit1:String(row.quantity_unit1),
+            quantitySmallest:String(row.quantity_smallest),
+            unit1Name:String(row.unit1_name),
+            locationsCount:Number(row.locations_count),batchesCount:Number(row.batches_count),
+          })),
+          total:Number(rows.rows[0]?.total??0),
+          page:query.page,pageSize:query.pageSize,
+        };
+      });
+      res.setHeader("Cache-Control","private, no-store");
+      res.json(result);
+    }),
+  );
   router.get(
     `${base}/stock-movements`,
     handler(async (req, res) => {
