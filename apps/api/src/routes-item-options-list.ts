@@ -49,7 +49,7 @@ const querySchema = z.object({
   excludeOrderStopped: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   excludeOrderDrafts: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
   // The former useReserve request parameter is ignored if supplied by old links.
-  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
+  sortBy: z.enum(["code", "name", "stock", "reserve", "purchaseFactor", "month", "fourMonths", "year", "allTime", "previousYear", "coverage", "coverageWithReserve", "reserveCoverage", "purchaseFactorCoverage", "saleQuantityMonth", "compositionSaleMonth", "compositionStock", "purchasePrice", "requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"]).default("code"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
 }).strip();
 type Options = z.infer<typeof querySchema>;
@@ -150,6 +150,7 @@ async function filteredItems(
     code: "f.code", name: "f.name", stock: "f.available_unit1",
     reserve: "f.reserve_quantity", purchaseFactor: "f.purchase_factor", previousYear: "f.sale_times_previous_year",
     month: "f.sale_times_month", saleQuantityMonth: "f.sale_quantity_month",
+    compositionSaleMonth: "f.composition_sale_unit1_month", compositionStock: "f.composition_available_unit1",
     purchasePrice: "f.purchase_price",
     requiredPurchaseQuantity: "f.order_quantity_first_unit",
     requiredPurchaseValue: "f.order_value",
@@ -161,8 +162,11 @@ async function filteredItems(
     reserveCoverage: "f.reserve_coverage_days", purchaseFactorCoverage: "f.purchase_factor_coverage_days",
   };
   const draftUsesDerivedSort = unselectedForDraft &&
-    ["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired"].includes(options.sortBy);
-  const order = `${draftUsesDerivedSort ? "f.code" : orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${options.sortBy === "previousYear" ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
+    ["requiredPurchaseQuantity", "requiredPurchaseValue", "coverageWithRequired",
+      "compositionSaleMonth", "compositionStock"].includes(options.sortBy);
+  const compositionSort = !unselectedForDraft &&
+    (options.sortBy === "compositionSaleMonth" || options.sortBy === "compositionStock");
+  const order = `${draftUsesDerivedSort ? "f.code" : orders[options.sortBy]} ${options.sortDir === "asc" ? "ASC" : "DESC"}${["previousYear", "compositionSaleMonth", "compositionStock"].includes(options.sortBy) ? " NULLS LAST" : ""}, f.code ASC, f.id ASC`;
   // Draft export deliberately ignores list pagination; its entire filtered
   // company-wide complement is fetched in ONE authorized query. Never quietly
   // return only the first 50/100 or truncate a large result.
@@ -178,7 +182,7 @@ async function filteredItems(
   const reserveParam = "$" + values.length;
   const sql = `
     WITH candidate AS (
-      SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision,
+      SELECT i.id, i.company_id, i.code, i.name, i.active, i.revision, i.composition_id,
              i.unit1_name,i.unit2_name,i.unit3_name,i.factor2,i.factor3,i.reserve_quantity,i.purchase_factor,i.min_order_quantity,i.reviewed,i.order_alert_quantity,i.order_stopped_until::text AS order_stopped_until,
              i.purchase_price AS purchase_price, i.purchase_notes, currency.code AS currency_code,
              COALESCE(previous.sale_times,0) AS sale_times_previous_year,
@@ -287,6 +291,27 @@ async function filteredItems(
       SELECT f.* FROM replenishment f
       ${replenishmentPredicates.length ? `WHERE ${replenishmentPredicates.join(" AND ")}` : ""}
     )
+    ${compositionSort ? `,
+    composition_sale_sort AS MATERIALIZED (
+      SELECT d.composition_id, SUM(d.sale_unit1) AS sale_unit1_month
+      FROM item_composition_daily_statistics d
+      WHERE d.company_id=$1 AND d.group_key='all'
+        AND d.document_date BETWEEN
+          ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date AND $2::date
+        AND d.composition_id IN (SELECT DISTINCT composition_id FROM eligible
+          WHERE composition_id IS NOT NULL)
+      GROUP BY d.composition_id
+    ),
+    eligible_composition_sorted AS MATERIALIZED (
+      SELECT f.*,
+        CASE WHEN f.composition_id IS NULL THEN NULL::numeric
+          ELSE COALESCE(cs.sale_unit1_month,0) END AS composition_sale_unit1_month,
+        st.available_unit1 AS composition_available_unit1
+      FROM eligible f
+      LEFT JOIN composition_sale_sort cs ON cs.composition_id=f.composition_id
+      LEFT JOIN item_composition_statistics st ON st.company_id=$1
+        AND st.composition_id=f.composition_id AND st.group_key='all'
+    )` : ""}
     ${unselectedForDraft ? `
     SELECT f.id, f.code, f.name
     FROM eligible f
@@ -308,7 +333,7 @@ async function filteredItems(
         '[]'::jsonb) AS required_purchase_value_totals
       FROM order_costs_by_currency
     ) currency_totals
-    LEFT JOIN LATERAL (SELECT * FROM eligible f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
+    LEFT JOIN LATERAL (SELECT * FROM ${compositionSort ? "eligible_composition_sorted" : "eligible"} f ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}) f ON TRUE
     `}`;
   const rows = (await client.query(sql, values)).rows;
   if (unselectedForDraft) {
@@ -335,6 +360,7 @@ async function filteredItems(
   }
   const selected = rows.filter(row => row.id !== null).map(row => ({
     id: Number(row.id), code: String(row.code), name: String(row.name),
+    compositionId: row.composition_id == null ? null : Number(row.composition_id),
     active: Boolean(row.active), revision: Number(row.revision),
     reserveQuantity: String(row.reserve_quantity), purchaseFactor: Number(row.purchase_factor),
     minOrderQuantity: String(row.min_order_quantity), reviewed: Boolean(row.reviewed),
@@ -358,6 +384,28 @@ async function filteredItems(
     reserveCoverageDays: needsCoverageJoin ? String(row.reserve_coverage_days) : null,
     purchaseFactorCoverageDays: needsCoverageJoin ? String(row.purchase_factor_coverage_days) : null,
   }));
+  // Read only the materialized composition projections for this page.
+  // Never derive these values from items, raw invoices, or stock movements.
+  // group_key='all' prevents double counting higher/lower price bands.
+  const compositionIds = [...new Set(selected.map(row => row.compositionId)
+    .filter((value): value is number => value !== null))];
+  const compositionRows = compositionIds.length ? (await client.query(
+    `SELECT s.composition_id, s.available_unit1::text AS available_unit1,
+        COALESCE(SUM(d.sale_unit1),0)::text AS sale_unit1_month
+      FROM item_composition_statistics s
+      LEFT JOIN item_composition_daily_statistics d
+        ON d.company_id=s.company_id AND d.composition_id=s.composition_id
+        AND d.group_key='all' AND d.document_date BETWEEN
+          ($2::date-INTERVAL '1 month'+INTERVAL '1 day')::date AND $2::date
+      WHERE s.company_id=$1 AND s.composition_id=ANY($3::integer[])
+        AND s.group_key='all'
+      GROUP BY s.composition_id,s.available_unit1`,
+    [companyId,asOf,compositionIds],
+  )).rows : [];
+  const compositionValues = new Map(compositionRows.map(row => [
+    Number(row.composition_id),
+    {saleUnit1Month:String(row.sale_unit1_month),availableUnit1:String(row.available_unit1)},
+  ] as const));
   const enriched = needsCoverageJoin ? selected
     : await addItemCoverageToPage(client, companyId, selected);
   // Only the requested page needs replenishment quantities; never alter stock.
@@ -368,6 +416,10 @@ async function filteredItems(
   return {
     rows: enriched.map(row => ({
       itemId: row.id, code: row.code, name: row.name, active: row.active,
+      compositionSaleUnit1Month: row.compositionId === null ? null
+        : compositionValues.get(row.compositionId)?.saleUnit1Month ?? null,
+      compositionAvailableUnit1: row.compositionId === null ? null
+        : compositionValues.get(row.compositionId)?.availableUnit1 ?? null,
       revision: row.revision, reserveQuantity: row.reserveQuantity,
       purchaseFactor: row.purchaseFactor,
       minOrderQuantity: row.minOrderQuantity, reviewed: row.reviewed,
