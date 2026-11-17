@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import type { CompanyContext, ItemCompositionPeers, Page } from "../../../../packages/contracts/src/index.ts";
@@ -107,6 +107,22 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
   }).filter(row => reviewFilter === "all" || (
     row.info && (reviewFilter === "reviewed" ? row.info.reviewed === true : row.info.reviewed === false)
   )) : undefined;
+  const tableViewport = useRef<HTMLDivElement>(null);
+  const hasRows = !!rows;
+  useLayoutEffect(() => {
+    const viewport = tableViewport.current;
+    if (!viewport) return;
+    const fit = () => {
+      const top = viewport.getBoundingClientRect().top;
+      viewport.style.setProperty("--comparison-height", Math.max(100, window.innerHeight - Math.max(0, top) - 24) + "px");
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    const report = viewport.closest(".company-report-printable") ?? viewport.parentElement;
+    report?.querySelectorAll(".page-heading, .comparison-controls, .comparison-search, .company-report-print-toolbar").forEach(el => observer.observe(el));
+    window.addEventListener("resize", fit);
+    return () => { observer.disconnect(); window.removeEventListener("resize", fit); };
+  }, [hasRows]);
   if (sort) rows?.sort((a, b) => {
       const left = a[sort.column], right = b[sort.column];
       if (left === null || right === null) return Number(left === null) - Number(right === null);
@@ -127,13 +143,13 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
       </button>
     </th>;
   };
-  return <section>
+  return <section className="purchase-comparison-page">
     <PageHeader title="فارق الشراء والطلبيه"
       description="بحسب تاريخ الترحيل وتاريخ فاتورة الشراء بتوقيت عدن. الفارق = المشتَرى − المطلوب. سعر الفواتير متوسط مرجّح بالكمية للوحدة الأولى."
       actions={<Link className="button button-secondary" to={base}>الطلبيات المرحلة</Link>} />
     <div className="purchase-comparison-split-layout">
     <Card>
-      <nav aria-label="فترة المقارنة" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      <div className="comparison-controls"><nav aria-label="فترة المقارنة">
         <Link className={threeDays ? "button button-secondary" : "button button-primary"}
           aria-current={threeDays ? undefined : "page"} to="?view=purchases">طلبية أمس ومشتريات أمس واليوم</Link>
         <Link className={threeDays ? "button button-primary" : "button button-secondary"}
@@ -153,16 +169,19 @@ function PurchaseComparison({ context }: { context: CompanyContext }) {
           </Button>
         ))}
       </div>
-      <label>بحث عن الصنف<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
+      </div>
+      <div className="comparison-search">
+      <input aria-label="بحث عن الصنف" placeholder="بحث عن الصنف" type="search" value={search} onChange={e => setSearch(e.target.value)} />
       <Button variant="secondary" size="compact" onClick={() => { void result.refetch(); metrics.forEach(batch => void batch.refetch()); }}>تحديث</Button>
+      {rows && <small>عدد الأصناف: {rows.length}</small>}
+      </div>
       {result.isPending && <Notice>جارٍ تحميل الأصناف…</Notice>}
       {result.isError && <Notice tone="error">{errorMessage(result.error)}</Notice>}
       {metricsError && <Notice tone="error">{errorMessage(metricsError)}</Notice>}
       {reviewFilter !== "all" && !reviewFilterReady && !metricsError &&
         <Notice>جارٍ تحميل حالة المراجعة لجميع الأصناف لتطبيق الفلتر…</Notice>}
       {rows && <>
-        <small>عدد الأصناف: {rows.length}</small>
-        <div className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
+        <div ref={tableViewport} className="purchase-comparison-scroll"><table className="purchase-comparison-table" dir="rtl">
           <thead
             onPointerDown={event => {
               dragged.current = false;
