@@ -1269,11 +1269,9 @@ function Workspace() {
   // Render the public medicine market on both / and /medicine-market without
   // changing the visitor's address. The last accessible company still wins at /.
   const marketLanding = (
-    <PageRouteGuard pageKey="public.medicine-market">
-      <Suspense fallback={<Notice>جارٍ تحميل السوق الرئيسي…</Notice>}>
-        <MedicineMarketPage key={user?.id ?? "guest"} />
-      </Suspense>
-    </PageRouteGuard>
+    <Suspense fallback={<Notice>جارٍ تحميل السوق الرئيسي…</Notice>}>
+      <MedicineMarketPage key={user?.id ?? "guest"} />
+    </Suspense>
   );
   return (
     <AppearanceProvider key={`${user?.id ?? "guest"}:${scope}`} scope={scope}>
@@ -1425,23 +1423,13 @@ function Workspace() {
             <CompanyDeviceDiscovery userId={user.id} companyId={companyId} />
           )}
           <main className="main-content" ref={main} tabIndex={-1}>
-            {sessionError && <Notice tone="error">{sessionError}</Notice>}
+            {sessionError && inCompany && <Notice tone="error">{sessionError}</Notice>}
             {logoutError && <Notice tone="error">{logoutError}</Notice>}
-            {requiresOnlineLogin && (
+            {requiresOnlineLogin && inCompany && (
               <Notice tone="warning">هذا الموظف دخل دون إنترنت. عند توفر الاتصال، <Link to="/login">سجّل دخوله مجددًا</Link> لإرسال عملياته المحفوظة باسمه؛ لن تُستخدم جلسة الموظف السابق.</Notice>
             )}
             <Routes>
-              <Route path="/" element={
-                user
-                  ? visitorOnly
-                    ? marketLanding
-                    : lastCompany.isPending
-                    ? <Notice>جارٍ فتح شركتك…</Notice>
-                    : lastCompany.data && !lastCompany.isError
-                      ? <Navigate to={`/companies/${lastCompany.data.company.id}`} replace />
-                      : marketLanding
-                  : marketLanding
-              } />
+              <Route path="/" element={marketLanding} />
               <Route path="/login" element={<AuthPage mode="login" />} />
               <Route path="/quick-login" element={<QuickLoginPage />} />
               <Route path="/register" element={<AuthPage mode="register" />} />
@@ -1623,8 +1611,10 @@ function Workspace() {
             <ItemQuickInventorySheetHost context={navigationContext} />
             {/* Device sync runs in the background, and notification setup remains below content.
                 The installation call-to-action is displayed above the page instead. */}
-            {!visitorOnly && <AppSetup key={user?.id ?? "guest"} userId={user?.id}
-              companyId={navigationContext?.company.id} />}
+            {!visitorOnly && location.pathname !== "/" &&
+              !location.pathname.startsWith("/medicine-market") &&
+              <AppSetup key={user?.id ?? "guest"} userId={user?.id}
+                companyId={navigationContext?.company.id} />}
           </main>
           <footer className="workspace-footer">
             <span>الرئيسي</span>
