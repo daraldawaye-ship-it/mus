@@ -18,7 +18,7 @@ const config: Record<RecentEntityKind, { label: string; placeholder: string }> =
 
 export function EntityMenuSearch({
   user, companyId, employeeId, employeeName, kind, itemMenuReset = 0, onEditItem,
-  onItemQuickAction, canCreateMemo,
+  onOpenComposition, onItemQuickAction, canCreateMemo, canViewItemCompositions,
 }: {
   user: User;
   companyId: number | null;
@@ -27,8 +27,10 @@ export function EntityMenuSearch({
   kind: RecentEntityKind;
   itemMenuReset?: number;
   onEditItem: (itemId: number) => void;
+  onOpenComposition: (compositionId: number) => void;
   onItemQuickAction: (action: ItemMenuQuickAction,itemId: number,itemName: string) => void;
   canCreateMemo: boolean;
+  canViewItemCompositions: boolean;
 }) {
   const [recent, setRecent] = useState<RecentEntity | null>(() =>
     readRecentEntity(user.id, companyId ?? 0, kind));
@@ -177,7 +179,9 @@ export function EntityMenuSearch({
         <ItemMenuHistory userId={user.id} companyId={company}
           itemId={selected?.id ?? null} itemName={selected?.name ?? null}
           resetKey={itemMenuReset} onEditItem={onEditItem}
-          onQuickAction={onItemQuickAction} canCreateMemo={canCreateMemo} />
+          onOpenComposition={onOpenComposition}
+          onQuickAction={onItemQuickAction} canCreateMemo={canCreateMemo}
+          canViewItemCompositions={canViewItemCompositions} />
       )}
       {!focused && selected && kind !== "item" && (
         <p className="user-menu-entity-hint">
