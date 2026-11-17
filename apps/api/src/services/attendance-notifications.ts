@@ -4,6 +4,7 @@ import { scanCashboxReceipts } from "./cashbox-notifications.ts";
 import { scanInventoryNotifications } from "./inventory-notifications.ts";
 import { scanUnansweredInquiryNotifications } from "./inquiry-notifications.ts";
 import { scanDailyItemOrderReminders } from "./item-order-reminders.ts";
+import { scanGroupedExpiryAlerts } from "./grouped-stock-alerts.ts";
 import {scanDueMemoSchedules} from "./memo-reminders.ts";
 import {
   emitNotification,
@@ -124,6 +125,7 @@ export async function runAttendanceNotifications(pool: Pool): Promise<void> {
         );
         if (!importing.rowCount) {
           await scanInventoryNotifications(client, companyId);
+          await scanGroupedExpiryAlerts(client, companyId);
           await scanDailyItemOrderReminders(client, companyId);
         }
       });
