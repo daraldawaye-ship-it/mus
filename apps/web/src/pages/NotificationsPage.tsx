@@ -921,7 +921,7 @@ export function NotificationTemplatesPage({
               </Select>
               <Select
                 label="التكرار الافتراضي"
-                disabled={!draft.allowRepeat}
+                disabled={!draft.allowRepeat || ["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)}
                 value={draft.allowRepeat ? draft.repeatInterval : "none"}
                 onChange={(event) =>
                   setDraft({
@@ -932,10 +932,16 @@ export function NotificationTemplatesPage({
               >
                 <RepeatOptions />
               </Select>
-              <Field label="لا يتكرر نفس نوع التنبيه خلال (ساعات)" type="number" min={1} step={1}
-                placeholder="بدون حد" value={draft.minIntervalHours ?? ""}
+              <Field label={["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)
+                  ? "إعادة فحص مجموع الأصناف وإرسال التنبيه كل (ساعات)"
+                  : "لا يتكرر نفس نوع التنبيه خلال (ساعات)"}
+                type="number" min={1} step={1}
+                placeholder={["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)
+                  ? "1 ساعة افتراضيًا" : "بدون حد"} value={draft.minIntervalHours ?? ""}
                 onChange={event => setDraft({...draft, minIntervalHours: event.target.value === "" ? null : Number(event.target.value)})} />
-              <CheckField label="إظهار آخر تنبيه فقط" checked={draft.latestOnly}
+              <CheckField label="إظهار آخر تنبيه فقط"
+                checked={draft.latestOnly || ["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)}
+                disabled={["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)}
                 onChange={latestOnly => setDraft({...draft, latestOnly})} />
               <CheckField label="إنجاز الإشعار عند النقر" checked={draft.completeOnClick ?? false}
                 onChange={completeOnClick => setDraft({...draft, completeOnClick})} />
@@ -954,6 +960,7 @@ export function NotificationTemplatesPage({
               <CheckField
                 label="السماح بالتكرار حتى الإنجاز"
                 checked={draft.allowRepeat}
+                disabled={["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code)}
                 onChange={(allowRepeat) =>
                   setDraft({
                     ...draft,
@@ -963,6 +970,14 @@ export function NotificationTemplatesPage({
                 }
               />
             </div>
+            {["ITEM_ORDER_LEVEL","ITEM_EXPIRED","ITEM_EXPIRING_30"].includes(draft.code) && (
+              <small className="muted">
+                هذا التنبيه إجمالي وليس لكل صنف. عند ترك الساعات فارغة يفحص النظام كل ساعة؛
+                وإذا أدخلت 6 مثلًا يعيد فحص جميع الأصناف كل 6 ساعات ويرسل تنبيهًا
+                واحدًا عند استمرار وجود أصناف مطابقة، وينتهي عند زوال الحالة.
+                لا يحتاج إلى تفعيل «السماح بالتكرار حتى الإنجاز».
+              </small>
+            )}
             <fieldset className="notification-recipients">
               <legend>المستلمون وصلاحية المتابعة</legend>
               <CheckField label="إرسال التنبيه للمالك" checked={draft.notifyOwner}
