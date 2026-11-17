@@ -8367,6 +8367,10 @@ a.notification-quick-title:hover { text-decoration: underline; }
   }
   .item-order-drafts-detail-pane:empty { display: none; }
 }
+@media print {
+  .item-order-drafts-detail-pane { display: none !important; }
+  .item-order-drafts-split-layout { display: block; }
+}
 .item-order-drafts-table-scroll { max-width: 100%; }
 .item-order-drafts-table { min-width: 1180px; width: 100%; table-layout: fixed; }
 /* Optional draft columns: default keeps the original compact twelve-column grid.
