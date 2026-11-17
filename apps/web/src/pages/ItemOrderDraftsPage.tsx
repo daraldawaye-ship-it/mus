@@ -25,13 +25,39 @@ type DraftMetrics = {
   saleTimesMonth: string; saleTimesYear: string; purchaseFactor: number;
   minOrderQuantity: string; reviewed: boolean;
   purchasePrice: string; purchaseCurrencyCode: string; requiredPurchaseValue: string | null;
+  approximateCoverageDays: string | null; coverageAfterReserveDays: string | null;
+  compositionCoverageDays: string | null;
 };
 type DraftValue = {
   id: number; itemCount: number; pricedCount: number; missingCount: number;
   totals: Array<{ currencyCode: string; value: string }>;
 };
 type DraftSortKey = "quantity" | "name" | "option" | "stock" | "sold" |
-  "month" | "year" | "price" | "value";
+  "month" | "year" | "price" | "value" |
+  "coverage" | "coverageWithReserve" | "compositionCoverage";
+const draftColumnOptions = [
+  ["select","اختيار"], ["quantity","الكمية المطلوبة (و1)"], ["name","اسم الصنف"],
+  ["details","إظهار التفاصيل ⋯"], ["stock","المتوفر دون المرتجعات (و1)"],
+  ["sold","الكمية المباعة في شهر (و1)"], ["month","المبيعات مرات في شهر"],
+  ["year","المبيعات مرات في سنة"], ["price","سعر الشراء"], ["value","قيمة المطلوب"],
+  ["action","الإجراء"], ["option","اسم الخيارات"],
+  ["coverage","الكفاية بدون الاحتياط (يوم)"],
+  ["coverageWithReserve","الكفاية مع الاحتياط (يوم)"],
+  ["compositionCoverage","الكفاية التقريبية للتركيب (يوم)"],
+] as const;
+type DraftColumn = (typeof draftColumnOptions)[number][0];
+const defaultDraftColumns: DraftColumn[] = draftColumnOptions.slice(0, 12).map(([key]) => key);
+function readDraftColumns(key: string): DraftColumn[] {
+  if (typeof window === "undefined") return [...defaultDraftColumns];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [...defaultDraftColumns];
+    const stored: unknown = JSON.parse(raw);
+    if (!Array.isArray(stored)) return [...defaultDraftColumns];
+    const valid = draftColumnOptions.map(([id]) => id).filter(id => stored.includes(id));
+    return valid.length ? valid : [...defaultDraftColumns];
+  } catch { return [...defaultDraftColumns]; }
+}
 type PresetGroupRun = {
   id: number; name: string; totalUnique: number;
   stages: Array<{ presetId: number; name: string; items: OrderDraftItem[] }>;
@@ -103,6 +129,27 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<DraftSortKey | null>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const columnsStorageKey = "alraesy:order-drafts-columns:v1:" +
+    companyId + ":" + (user?.id ?? "guest");
+  const [visibleColumns, setVisibleColumns] = useState<DraftColumn[]>(
+    () => readDraftColumns(columnsStorageKey));
+  const [editingColumns, setEditingColumns] = useState<DraftColumn[]>(visibleColumns);
+  const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
+  useEffect(() => {
+    const selected = readDraftColumns(columnsStorageKey);
+    setVisibleColumns(selected);
+    setEditingColumns(selected);
+    setColumnsDialogOpen(false);
+  }, [columnsStorageKey]);
+  const columnStyle = (column: DraftColumn) =>
+    visibleColumns.includes(column) ? undefined : { display: "none" as const };
+  const defaultColumnLayout = visibleColumns.length === defaultDraftColumns.length &&
+    defaultDraftColumns.every(column => visibleColumns.includes(column));
+  const needsItemCoverage = visibleColumns.includes("coverage") ||
+    visibleColumns.includes("coverageWithReserve") ||
+    sortKey === "coverage" || sortKey === "coverageWithReserve";
+  const needsCompositionCoverage = visibleColumns.includes("compositionCoverage") ||
+    sortKey === "compositionCoverage";
   // Sorting is captured once on load or after an explicit header/mobile sort.
   // Saving a review flag or a required quantity must not move the edited row.
   const [sortVersion, setSortVersion] = useState(0);
@@ -219,10 +266,12 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     (_, index) => metricRequests.slice(index * 300, (index + 1) * 300));
   const metricResults = useQueries({
     queries: metricBatches.map(items => ({
-      queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items)],
+      queryKey: ["item-order-draft-review", companyId, user?.id, JSON.stringify(items),
+        needsItemCoverage, needsCompositionCoverage],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         api<{ items: DraftMetrics[] }>("/companies/" + companyId + "/item-options-list/draft-review",
-          { method: "POST", body: { items }, signal }),
+          { method: "POST", body: { items, includeCoverage: needsItemCoverage,
+            includeCompositionCoverage: needsCompositionCoverage }, signal }),
       enabled: !!user && items.length > 0,
       staleTime: 30_000,
     })),
@@ -285,6 +334,9 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       case "year": return info?.saleTimesYear ?? "0";
       case "price": return info?.purchasePrice ?? "0";
       case "value": return info?.requiredPurchaseValue ?? "0";
+      case "coverage": return info?.approximateCoverageDays ?? "0";
+      case "coverageWithReserve": return info?.coverageAfterReserveDays ?? "0";
+      case "compositionCoverage": return info?.compositionCoverageDays ?? "0";
       default: return "";
     }
   };
@@ -324,7 +376,7 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
     && visibleActiveIds.every(id => selectedIds.has(id));
   const resetPage = () => setPage(1);
   const sortHeader = (key: DraftSortKey, label: string) =>
-    <th scope="col" aria-sort={sortKey === key ?
+    <th scope="col" style={columnStyle(key)} aria-sort={sortKey === key ?
       (sortDir === "asc" ? "ascending" : "descending") : undefined}>
       <button type="button" className="item-order-draft-sort" onClick={() => {
         setSortDir(sortKey === key && sortDir === "asc" ? "desc" : "asc");
@@ -337,6 +389,15 @@ export function ItemOrderDraftsPage({ context }: { context: CompanyContext }) {
       </button>
     </th>;
 
+  const applyColumns = () => {
+    if (!editingColumns.length) return;
+    const next = draftColumnOptions.map(([key]) => key)
+      .filter(key => editingColumns.includes(key));
+    setVisibleColumns(next);
+    setColumnsDialogOpen(false);
+    try { window.localStorage.setItem(columnsStorageKey, JSON.stringify(next)); }
+    catch { /* Browsers with disabled storage still keep the current selection. */ }
+  };
   const optionName = (row: DraftRow) =>
     row.item.sourceOptionName ?? row.draftOptionName ?? "غير مسجل (مسودة سابقة)";
   const selectItem = (id: number, checked: boolean) => setSelectedIds(before => {
